@@ -69,6 +69,9 @@ describe("progressive content benchmark", () => {
 		const fixture = progressiveConformanceFixture();
 		let measurement = 0;
 		const sample = await runProgressiveContentBenchmarkProcessSample({
+			family: "file",
+			adapterId: "native-file-reader",
+			productionMethod: "bounded-file-read",
 			sourceBytes: fixture.object.byteLength,
 			repetition: 1,
 			processId: 101,
@@ -131,6 +134,9 @@ describe("progressive content benchmark", () => {
 			resourceGrowth: stable,
 		};
 		const sample: ProgressiveContentBenchmarkProcessSample = {
+			family: "file",
+			adapterId: "native-file-reader",
+			productionMethod: "bounded-file-read",
 			sourceBytes: 1,
 			repetition: 1,
 			processId: 7,
@@ -140,6 +146,7 @@ describe("progressive content benchmark", () => {
 			warm: { ...phase, phase: "warm" },
 		};
 		const report = buildProgressiveContentBenchmarkReport({
+			families: ["file"],
 			sourceSizes: [1, 2],
 			repetitions: 2,
 			samples: [sample, sample],
@@ -148,13 +155,22 @@ describe("progressive content benchmark", () => {
 		expect(report.evidenceEligible).toBe(false);
 		expect(report.failures).toEqual(
 			expect.arrayContaining([
-				"sample 1:1 was not process-isolated",
-				"duplicate sample 1:1",
+				"sample file:1:1 was not process-isolated",
+				"duplicate sample file:1:1",
 				"process 7 was reused",
-				"missing sample 1:2",
-				"missing sample 2:1",
-				"missing sample 2:2",
+				"missing sample file:1:2",
+				"missing sample file:2:1",
+				"missing sample file:2:2",
 			]),
 		);
+	});
+
+	it("requires all ninety family-size-repetition coordinates for evidence", () => {
+		const report = buildProgressiveContentBenchmarkReport({ samples: [] });
+		expect(report.status).toBe("failed");
+		expect(report.evidenceEligible).toBe(false);
+		expect(report.failures).toHaveLength(90);
+		expect(report.cases).toHaveLength(18);
+		expect(report.failures).toContain("missing sample tool-output:104857600:5");
 	});
 });

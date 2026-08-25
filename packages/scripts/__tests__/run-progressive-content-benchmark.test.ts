@@ -1,160 +1,162 @@
-/** Tests the fresh-process benchmark command contract without executing the production 1/10/100 MiB matrix. */
+/** Tests the closed fixed-target benchmark command without executing its production 90-worker matrix. */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { progressiveConformanceFixture } from "../../core/src/testing/progressive-content-conformance.fixture";
+import { generateProgressiveContentCorpus } from "../../corpus-tools/src/progressive-content";
 import {
-  PROGRESSIVE_CONTENT_BENCHMARK_FACTORY_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY,
   parseProgressiveContentBenchmarkArgs,
-  validateProgressiveContentBenchmarkFactory,
+  selectProgressiveContentBenchmarkObject,
 } from "../run-progressive-content-benchmark.mjs";
 
 const commit = "a".repeat(40);
 const execFileAsync = promisify(execFile);
 
 describe("progressive content benchmark producer", () => {
-  it("requires a run-bound parent invocation", () => {
+  it("requires only the repository corpus, output, and exact commit", () => {
     expect(() => parseProgressiveContentBenchmarkArgs([])).toThrow(
-      /factory-module/u,
+      /corpus-root/u,
     );
     expect(
       parseProgressiveContentBenchmarkArgs([
-        "--factory-module=/private/factory.mjs",
+        "--corpus-root=/private/corpus",
         "--out=/private/benchmark.json",
         `--commit=${commit}`,
       ]),
     ).toMatchObject({ worker: false, commit });
-  });
-
-  it("keeps size and repetition overrides worker-only", () => {
     expect(() =>
       parseProgressiveContentBenchmarkArgs([
-        "--factory-module=/private/factory.mjs",
+        "--factory-module=/private/caller-selected.mjs",
+        "--corpus-root=/private/corpus",
         "--out=/private/benchmark.json",
         `--commit=${commit}`,
-        "--source-bytes=1",
+      ]),
+    ).toThrow(/unsupported benchmark argument/u);
+  });
+
+  it("keeps every coordinate and work root internal to workers", () => {
+    expect(() =>
+      parseProgressiveContentBenchmarkArgs([
+        "--corpus-root=/private/corpus",
+        "--out=/private/benchmark.json",
+        `--commit=${commit}`,
+        "--family=file",
       ]),
     ).toThrow(/worker-only/u);
     expect(
       parseProgressiveContentBenchmarkArgs([
-        "--factory-module=/private/factory.mjs",
+        "--corpus-root=/private/corpus",
         "--worker-out=/private/sample.json",
+        "--work-root=/private/work",
         `--commit=${commit}`,
-        "--source-bytes=1048576",
+        "--family=attachment",
+        "--source-bytes=104857600",
         "--repetition=5",
       ]),
     ).toMatchObject({
       worker: true,
-      sourceBytes: 1_048_576,
+      family: "attachment",
+      sourceBytes: 104_857_600,
       repetition: 5,
     });
   });
 
-  it("requires an explicit production factory and complete resource sampler", () => {
-    const valid = {
-      schemaVersion: PROGRESSIVE_CONTENT_BENCHMARK_FACTORY_SCHEMA_VERSION,
-      production: true,
-      adapterId: "file-native-reader",
-      productionMethod: "bounded-file-read",
-      create() {},
-      measureResources() {},
+  it("requires one exact native-readable object per family and size", () => {
+    const object = {
+      family: "email",
+      byteLength: 1_048_576,
+      format: "lf-lines",
+      id: "email-1",
     };
-    expect(validateProgressiveContentBenchmarkFactory(valid)).toBe(valid);
+    expect(
+      selectProgressiveContentBenchmarkObject(
+        { objects: [object] },
+        "email",
+        1_048_576,
+      ),
+    ).toBe(object);
     expect(() =>
-      validateProgressiveContentBenchmarkFactory({
-        ...valid,
-        measureResources: undefined,
-      }),
-    ).toThrow(/resource sampler/u);
+      selectProgressiveContentBenchmarkObject(
+        { objects: [object, { ...object, id: "duplicate" }] },
+        "email",
+        1_048_576,
+      ),
+    ).toThrow(/exactly one/u);
     expect(() =>
-      validateProgressiveContentBenchmarkFactory({
-        ...valid,
-        adapterId: "fixture-reader",
-      }),
-    ).toThrow(/production adapter/u);
+      selectProgressiveContentBenchmarkObject(
+        { objects: [{ ...object, format: "binary" }] },
+        "email",
+        1_048_576,
+      ),
+    ).toThrow(/found 0/u);
+    expect(
+      selectProgressiveContentBenchmarkObject(
+        {
+          objects: [
+            {
+              ...object,
+              family: "attachment",
+              format: "binary",
+            },
+          ],
+        },
+        "attachment",
+        1_048_576,
+      ).format,
+    ).toBe("binary");
+    expect(PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY.memory).toBe(
+      "typed-rejection",
+    );
   });
 
-  it("executes a worker in a distinct process and records both phases", async () => {
+  it("executes a fixed repository FILE worker in a distinct process", async () => {
     const root = await mkdtemp(
       path.join(tmpdir(), "progressive-benchmark-test-"),
     );
     try {
-      const factoryFile = path.join(root, "factory.mjs");
+      const corpusRoot = path.join(root, "corpus");
       const workerOut = path.join(root, "sample.json");
-      const fixtureModule = pathToFileURL(
-        fileURLToPath(
-          new URL(
-            "../../core/src/testing/progressive-content-conformance.fixture.ts",
-            import.meta.url,
-          ),
-        ),
-      ).href;
-      await writeFile(
-        factoryFile,
-        `import { progressiveConformanceAdapter, progressiveConformanceFixture } from ${JSON.stringify(fixtureModule)};
-export default {
-  schemaVersion: ${JSON.stringify(PROGRESSIVE_CONTENT_BENCHMARK_FACTORY_SCHEMA_VERSION)},
-  production: true,
-  adapterId: "native-file-reader",
-  productionMethod: "bounded-file-read",
-  async create({ sourceBytes }) {
-    const { object } = progressiveConformanceFixture();
-    if (object.byteLength !== sourceBytes) throw new Error("size mismatch");
-    const adapter = progressiveConformanceAdapter();
-    return {
-      family: "file",
-      object,
-      realization: {
-        reference: { kind: "file", ref: "file:worker", revision: object.revision },
-        sourceRevision: object.revision,
-        authorizationMode: "principal",
-        restartScope: "process",
-        authorizationScopeDigest: "a".repeat(64),
-        cleanupIdentity: "worker",
-        resolverBindingSha256: object.sourceSha256,
-      },
-      read: ({ access, ...request }) => adapter.read({
-        ...request,
-        objectId: object.id,
-        authorizationScope: access === "authorized" ? object.authorizationScope : "denied",
-      }),
-      restart: () => adapter.restart(),
-      inspect: async () => ({ resolverGeneration: "worker", present: true, ownedBytes: object.byteLength, databaseRows: 1, temporaryArtifacts: 0, walBytes: 0 }),
-      cleanup: () => adapter.cleanup(object.id),
-    };
-  },
-  async measureResources({ target }) {
-    const usage = process.memoryUsage();
-    const snapshot = target ? await target.inspect() : { ownedBytes: 0, databaseRows: 0, walBytes: 0 };
-    return { rssBytes: usage.rss, heapUsedBytes: usage.heapUsed, externalBytes: usage.external, arrayBuffersBytes: usage.arrayBuffers, fileDescriptors: 4, databaseBytes: snapshot.ownedBytes, databaseRows: snapshot.databaseRows, walBytes: snapshot.walBytes };
-  },
-};
-`,
-        { mode: 0o600 },
+      const workRoot = path.join(root, "work");
+      await mkdir(corpusRoot, { mode: 0o700 });
+      const manifest = await generateProgressiveContentCorpus({
+        outDir: corpusRoot,
+        profile: "micro",
+        rootSeed: "benchmark-worker-test",
+        generatorRevision: "test-revision",
+      });
+      const object = manifest.objects.find(
+        ({ family, byteLength, format }) =>
+          family === "file" &&
+          byteLength > 0 &&
+          format !== "binary" &&
+          format !== "invalid-utf8",
       );
-      const sourceBytes = progressiveConformanceFixture().object.byteLength;
+      if (!object) throw new Error("micro corpus lacks a readable FILE object");
       const script = fileURLToPath(
         new URL("../run-progressive-content-benchmark.mjs", import.meta.url),
       );
       await execFileAsync(process.execPath, [
         script,
-        `--factory-module=${factoryFile}`,
+        `--corpus-root=${corpusRoot}`,
         `--worker-out=${workerOut}`,
+        `--work-root=${workRoot}`,
         `--commit=${commit}`,
-        `--source-bytes=${sourceBytes}`,
+        "--family=file",
+        `--source-bytes=${object.byteLength}`,
         "--repetition=1",
       ]);
       const sample = JSON.parse(await readFile(workerOut, "utf8"));
       expect(sample.processId).not.toBe(process.pid);
-      expect(sample.freshProcess).toBe(true);
-      expect(sample.cold.bytesReturned).toBe(sourceBytes);
-      expect(sample.warm.bytesReturned).toBe(sourceBytes);
-      expect(sample.cold.pageLatencySamplesMs).toHaveLength(sample.cold.pages);
+      expect(sample.family).toBe("file");
+      expect(sample.adapterId).toBeTypeOf("string");
+      expect(sample.productionMethod).toBeTypeOf("string");
+      expect(sample.cold.bytesReturned).toBe(object.byteLength);
+      expect(sample.warm.bytesReturned).toBe(object.byteLength);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

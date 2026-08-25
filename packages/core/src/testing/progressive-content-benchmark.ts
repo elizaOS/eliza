@@ -2,7 +2,11 @@
 
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import type { ProgressiveContentTarget } from "./progressive-content-target";
+import {
+	PROGRESSIVE_CONTENT_TARGET_FAMILIES,
+	type ProgressiveContentTarget,
+	type ProgressiveContentTargetFamily,
+} from "./progressive-content-target";
 
 export const PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION =
 	"elizaos.progressive-content.benchmark.v2" as const;
@@ -51,6 +55,9 @@ export interface ProgressiveContentBenchmarkPhaseSample {
 }
 
 export interface ProgressiveContentBenchmarkProcessSample {
+	readonly family: ProgressiveContentTargetFamily;
+	readonly adapterId: string;
+	readonly productionMethod: string;
 	readonly sourceBytes: number;
 	readonly repetition: number;
 	readonly processId: number;
@@ -64,10 +71,14 @@ export interface ProgressiveContentBenchmarkReport {
 	readonly schemaVersion: typeof PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION;
 	readonly status: "passed" | "failed";
 	readonly evidenceEligible: boolean;
+	readonly families: readonly ProgressiveContentTargetFamily[];
 	readonly sourceSizes: readonly number[];
 	readonly repetitions: number;
 	readonly processCount: number;
 	readonly cases: readonly {
+		readonly family: ProgressiveContentTargetFamily;
+		readonly adapterId: string;
+		readonly productionMethod: string;
 		readonly sourceBytes: number;
 		readonly repetitions: number;
 		readonly setupGrowth: ProgressiveContentBenchmarkAggregate["resourceGrowth"];
@@ -239,6 +250,9 @@ async function traversePhase(input: {
 
 /** Run one process sample: target creation, a cold traversal, then a warm traversal. */
 export async function runProgressiveContentBenchmarkProcessSample(input: {
+	readonly family: ProgressiveContentTargetFamily;
+	readonly adapterId: string;
+	readonly productionMethod: string;
 	readonly sourceBytes: number;
 	readonly repetition: number;
 	readonly processId?: number;
@@ -251,6 +265,10 @@ export async function runProgressiveContentBenchmarkProcessSample(input: {
 		| Promise<ProgressiveContentBenchmarkResourceSample>;
 	readonly pageBytes?: number;
 }): Promise<ProgressiveContentBenchmarkProcessSample> {
+	if (!PROGRESSIVE_CONTENT_TARGET_FAMILIES.includes(input.family))
+		throw new TypeError("benchmark family is unsupported");
+	if (!input.adapterId || !input.productionMethod)
+		throw new TypeError("benchmark native adapter identity is required");
 	positiveSafeInteger(input.sourceBytes, "sourceBytes");
 	positiveSafeInteger(input.repetition, "repetition");
 	const pageBytes = positiveSafeInteger(
@@ -283,6 +301,9 @@ export async function runProgressiveContentBenchmarkProcessSample(input: {
 			measureResources: measure,
 		});
 		return {
+			family: input.family,
+			adapterId: input.adapterId,
+			productionMethod: input.productionMethod,
 			sourceBytes: input.sourceBytes,
 			repetition: input.repetition,
 			processId: input.processId ?? process.pid,
@@ -324,9 +345,11 @@ function aggregatePhase(
 /** Validate and aggregate the exact 1/10/100 MiB by five-repetition process matrix. */
 export function buildProgressiveContentBenchmarkReport(input: {
 	readonly samples: readonly ProgressiveContentBenchmarkProcessSample[];
+	readonly families?: readonly ProgressiveContentTargetFamily[];
 	readonly sourceSizes?: readonly number[];
 	readonly repetitions?: number;
 }): ProgressiveContentBenchmarkReport {
+	const families = input.families ?? PROGRESSIVE_CONTENT_TARGET_FAMILIES;
 	const sourceSizes =
 		input.sourceSizes ?? PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES;
 	const repetitions = positiveSafeInteger(
@@ -335,15 +358,31 @@ export function buildProgressiveContentBenchmarkReport(input: {
 	);
 	const failures: string[] = [];
 	const expected = new Set<string>();
-	for (const sourceBytes of sourceSizes) {
-		positiveSafeInteger(sourceBytes, "source size");
-		for (let repetition = 1; repetition <= repetitions; repetition += 1)
-			expected.add(`${sourceBytes}:${repetition}`);
+	if (
+		new Set(families).size !== families.length ||
+		families.some(
+			(family) => !PROGRESSIVE_CONTENT_TARGET_FAMILIES.includes(family),
+		)
+	)
+		throw new TypeError("benchmark families must be unique and supported");
+	for (const family of families) {
+		for (const sourceBytes of sourceSizes) {
+			positiveSafeInteger(sourceBytes, "source size");
+			for (let repetition = 1; repetition <= repetitions; repetition += 1)
+				expected.add(`${family}:${sourceBytes}:${repetition}`);
+		}
 	}
 	const identities = new Set<string>();
 	const processIds = new Set<number>();
 	for (const sample of input.samples) {
-		const identity = `${sample.sourceBytes}:${sample.repetition}`;
+		const identity = `${sample.family}:${sample.sourceBytes}:${sample.repetition}`;
+		if (
+			!Number.isSafeInteger(sample.processId) ||
+			sample.processId <= 0 ||
+			!sample.adapterId ||
+			!sample.productionMethod
+		)
+			failures.push(`sample ${identity} lacks native process identity`);
 		if (!expected.has(identity)) failures.push(`unexpected sample ${identity}`);
 		if (identities.has(identity)) failures.push(`duplicate sample ${identity}`);
 		identities.add(identity);
@@ -367,26 +406,49 @@ export function buildProgressiveContentBenchmarkReport(input: {
 	}
 	for (const identity of expected)
 		if (!identities.has(identity)) failures.push(`missing sample ${identity}`);
-	const cases = sourceSizes.map((sourceBytes) => {
-		const samples = input.samples
-			.filter((sample) => sample.sourceBytes === sourceBytes)
-			.sort((left, right) => left.repetition - right.repetition);
-		return {
-			sourceBytes,
-			repetitions: samples.length,
-			setupGrowth: Object.fromEntries(
-				RESOURCE_FIELDS.map((field) => [
-					field,
-					progressiveContentBenchmarkDistribution(
-						samples.map((sample) => sample.setupGrowth[field]),
-					),
-				]),
-			) as ProgressiveContentBenchmarkAggregate["resourceGrowth"],
-			cold: aggregatePhase(samples.map(({ cold }) => cold)),
-			warm: aggregatePhase(samples.map(({ warm }) => warm)),
-		};
-	});
+	const cases = families.flatMap((family) =>
+		sourceSizes.map((sourceBytes) => {
+			const samples = input.samples
+				.filter(
+					(sample) =>
+						sample.family === family && sample.sourceBytes === sourceBytes,
+				)
+				.sort((left, right) => left.repetition - right.repetition);
+			const adapterIds = new Set(samples.map(({ adapterId }) => adapterId));
+			const productionMethods = new Set(
+				samples.map(({ productionMethod }) => productionMethod),
+			);
+			if (
+				samples.length > 0 &&
+				(adapterIds.size !== 1 || productionMethods.size !== 1)
+			)
+				failures.push(
+					`${family}:${sourceBytes} changed native adapter identity across repetitions`,
+				);
+			return {
+				family,
+				adapterId: samples[0]?.adapterId ?? "missing",
+				productionMethod: samples[0]?.productionMethod ?? "missing",
+				sourceBytes,
+				repetitions: samples.length,
+				setupGrowth: Object.fromEntries(
+					RESOURCE_FIELDS.map((field) => [
+						field,
+						progressiveContentBenchmarkDistribution(
+							samples.map((sample) => sample.setupGrowth[field]),
+						),
+					]),
+				) as ProgressiveContentBenchmarkAggregate["resourceGrowth"],
+				cold: aggregatePhase(samples.map(({ cold }) => cold)),
+				warm: aggregatePhase(samples.map(({ warm }) => warm)),
+			};
+		}),
+	);
 	const exactProductionPolicy =
+		families.length === PROGRESSIVE_CONTENT_TARGET_FAMILIES.length &&
+		families.every(
+			(value, index) => value === PROGRESSIVE_CONTENT_TARGET_FAMILIES[index],
+		) &&
 		sourceSizes.length === PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES.length &&
 		sourceSizes.every(
 			(value, index) =>
@@ -397,6 +459,7 @@ export function buildProgressiveContentBenchmarkReport(input: {
 		schemaVersion: PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION,
 		status: failures.length === 0 ? "passed" : "failed",
 		evidenceEligible: failures.length === 0 && exactProductionPolicy,
+		families: [...families],
 		sourceSizes: [...sourceSizes],
 		repetitions,
 		processCount: processIds.size,
