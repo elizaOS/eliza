@@ -279,6 +279,14 @@ export async function describeInboundImageMedia(
   );
   let completion: Awaited<ReturnType<typeof generateText>>;
   try {
+    // Exactly one billable provider attempt per admitted claim (issue #25127:
+    // "define and test the AI SDK provider-attempt/retry policy"). The AI SDK
+    // default (maxRetries 2) would let one admission spend up to three provider
+    // attempts while the daily quota accounting charges only the admitted
+    // image count, so retry spend would be unaccounted. The caller's
+    // AbortSignal.timeout is shared across attempts, so retries add no wall
+    // clock beyond it; a later redelivery is separately admitted and
+    // attempt-counted, and a recorded terminal failure is never retried.
     completion = await generateText({
       model,
       messages: [
@@ -294,6 +302,7 @@ export async function describeInboundImageMedia(
           ],
         },
       ],
+      maxRetries: 0,
       abortSignal: AbortSignal.timeout(INBOUND_MEDIA_VISION_TIMEOUT_MS),
     });
   } catch (error) {
