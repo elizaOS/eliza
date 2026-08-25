@@ -26,7 +26,8 @@ function hasNativeBuffer(): boolean {
  */
 export function fromHex(hex: string): BufferLike {
 	// Clean the hex string to remove non-hex characters
-	const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
+	const rawClean = hex.replace(/[^0-9a-fA-F]/g, "");
+	const cleanHex = rawClean.length % 2 === 1 ? `0${rawClean}` : rawClean;
 
 	if (hasNativeBuffer()) {
 		return Buffer.from(cleanHex, "hex");

@@ -28,6 +28,39 @@ describe("hex / string round-trips", () => {
 		expect(bufferToString(fromHex("48 65 6c 6c 6f"))).toBe("Hello");
 	});
 
+	it("pads odd-length hex with a leading zero (browser + Node parity)", () => {
+		// "abc" -> "0abc" -> bytes 0x0a, 0xbc
+		expect(toHex(fromHex("abc"))).toBe("0abc");
+		expect(toHex(fromHex("0abc"))).toBe("0abc");
+		expect(toHex(fromHex("a"))).toBe("0a");
+		expect(toHex(fromHex("f"))).toBe("0f");
+		expect(toHex(fromHex("0"))).toBe("00");
+		expect(toHex(fromHex("1"))).toBe("01");
+		// odd length with separators: "a b c" -> "abc" -> "0abc"
+		expect(toHex(fromHex("a b c"))).toBe("0abc");
+		expect(toHex(fromHex("a-b-c"))).toBe("0abc");
+		expect(toHex(fromHex("  a  "))).toBe("0a");
+		// odd length with 0x prefix noise
+		expect(toHex(fromHex("0xabc"))).toBe("0abc");
+		expect(toHex(fromHex("0x1"))).toBe("01");
+		// longer odd
+		expect(toHex(fromHex("12345"))).toBe("012345");
+		expect(toHex(fromHex("1234567"))).toBe("01234567");
+		// even length unchanged
+		expect(toHex(fromHex("abcd"))).toBe("abcd");
+		expect(toHex(fromHex("00"))).toBe("00");
+		expect(toHex(fromHex("0000"))).toBe("0000");
+		expect(toHex(fromHex(""))).toBe("");
+		// case-insensitive and non-hex stripping
+		expect(toHex(fromHex("ABC"))).toBe("0abc");
+		expect(toHex(fromHex("a!b@c#"))).toBe("0abc");
+		// browser parity: ensures byte length is correct after padding
+		expect(fromHex("abc").length).toBe(2);
+		expect(fromHex("a").length).toBe(1);
+		expect(fromHex("12345").length).toBe(3);
+		expect(fromHex("").length).toBe(0);
+	});
+
 	it("base64 ⇄ utf8", () => {
 		expect(bufferToString(fromString("SGVsbG8=", "base64"))).toBe("Hello");
 		expect(bufferToString(fromString("Hi"), "base64")).toBe("SGk=");
