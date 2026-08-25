@@ -135,6 +135,49 @@ describe("runCapabilityRouterConnect", () => {
     );
   });
 
+  it("treats blank env values as unset and uses the documented default api base", async () => {
+    process.env.ELIZA_API_BASE_URL = "";
+    process.env.ELIZA_API_PORT = "";
+    const fetchMock = mockFetch({
+      success: true,
+      endpoint: { id: "tools", baseUrl: "https://capability.example.test" },
+      sync: { registered: [], unloaded: [], skipped: [] },
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+    });
+
+    expect(code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:2138/api/capability-router/connect",
+      expect.anything(),
+    );
+  });
+
+  it("skips a blank ELIZA_API_PORT in favor of the next env candidate", async () => {
+    process.env.ELIZA_API_BASE_URL = "";
+    process.env.ELIZA_API_PORT = "";
+    process.env.ELIZA_PORT = "4599";
+    const fetchMock = mockFetch({
+      success: true,
+      endpoint: { id: "tools", baseUrl: "https://capability.example.test" },
+      sync: { registered: [], unloaded: [], skipped: [] },
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const code = await runCapabilityRouterConnect({
+      endpointUrl: "https://capability.example.test",
+    });
+
+    expect(code).toBe(0);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:4599/api/capability-router/connect",
+      expect.anything(),
+    );
+  });
+
   it("can request an ephemeral direct connection", async () => {
     const fetchMock = mockFetch({
       success: true,
