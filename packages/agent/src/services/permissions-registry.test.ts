@@ -257,4 +257,57 @@ describe("PermissionRegistry", () => {
     second.hydrate();
     expect(second.get("health").status).toBe("granted");
   });
+
+  it("isolates subscriber errors so subsequent subscribers still receive notifications", () => {
+    const persistence = new InMemoryPersistence();
+    const registry = makeRegistry(persistence);
+    const badSubscriber = vi.fn(() => {
+      throw new Error("Subscriber failure");
+    });
+    const goodSubscriber = vi.fn();
+
+    registry.subscribe(badSubscriber);
+    registry.subscribe(goodSubscriber);
+
+    registry.recordBlock("calendar", { app: "app", action: "act" });
+
+    expect(badSubscriber).toHaveBeenCalledOnce();
+    expect(goodSubscriber).toHaveBeenCalledOnce();
+  });
+
+  it("flushes debounced writes on stop()", async () => {
+    const persistence = new InMemoryPersistence();
+    const registry = new PermissionRegistry(makeRuntime(), {
+      persistence,
+      persistDebounceMs: 5000,
+    });
+
+    registry.recordBlock("camera", { app: "app", action: "act" });
+    expect(persistence.writes).toBe(0);
+
+    await registry.stop();
+    expect(persistence.writes).toBe(1);
+    expect(persistence.data?.[0]?.id).toBe("camera");
+  });
+
+  it("hydrates and persists via real FilePersistenceAdapter disk boundaries", async () => {
+    const firstRegistry = new PermissionRegistry(makeRuntime(), {
+      persistDebounceMs: 0,
+    });
+
+    // Fresh start with no file on disk
+    firstRegistry.hydrate();
+    expect(firstRegistry.list()).toEqual([]);
+
+    const prober = makeProber("camera", { status: "granted" });
+    firstRegistry.registerProber(prober);
+    await firstRegistry.check("camera");
+
+    // Second registry reads the file written by the first
+    const secondRegistry = new PermissionRegistry(makeRuntime(), {
+      persistDebounceMs: 0,
+    });
+    secondRegistry.hydrate();
+    expect(secondRegistry.get("camera").status).toBe("granted");
+  });
 });
