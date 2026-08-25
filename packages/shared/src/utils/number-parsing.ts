@@ -147,14 +147,17 @@ export function parseClampedFloat(
   value: string | null | undefined,
   options: ParseClampedNumberOptions = {},
 ): number | undefined {
+  const min = options.min ?? -Infinity;
+  const max = options.max ?? Infinity;
+  if (min > max) {
+    throw new RangeError("clamped bounds must be ordered: min > max");
+  }
   const raw = sanitizeNumericText(value);
   if (!raw) return normalizeFallback(options.fallback);
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
 
-  const min = options.min ?? -Infinity;
-  const max = options.max ?? Infinity;
   return Math.max(min, Math.min(max, parsed));
 }
 
@@ -170,6 +173,11 @@ export function parseClampedInteger(
   value: string | null | undefined,
   options: ParseClampedIntegerOptions = {},
 ): number | undefined {
+  const min = options.min ?? -Infinity;
+  const max = options.max ?? Infinity;
+  if (min > max) {
+    throw new RangeError("clamped bounds must be ordered: min > max");
+  }
   const raw = sanitizeNumericText(value);
   if (!raw) return normalizeFallback(options.fallback);
 
@@ -180,7 +188,5 @@ export function parseClampedInteger(
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) return normalizeFallback(options.fallback);
 
-  const min = options.min ?? -Infinity;
-  const max = options.max ?? Infinity;
   return Math.max(min, Math.min(max, parsed));
 }
