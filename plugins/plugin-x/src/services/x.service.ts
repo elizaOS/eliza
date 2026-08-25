@@ -1137,15 +1137,17 @@ export class XService extends Service {
       target?.channelId ??
       target?.threadId;
     const limit = explicitConnectorLimit(params.limit);
-    const messages = await this.listRecentDirectMessages(accountId).catch((error) => {
-      // error-policy:J7 a DM fetch failure (expired token, rate limit) must
-      // surface to the agent rather than reading as an empty inbox; degrade to
-      // no messages after reporting.
-      runtime.reportError("XService.fetchConnectorMessages", error, {
-        accountId,
-      });
-      return [];
-    });
+    const messages = await this.listRecentDirectMessages(accountId).catch(
+      (error) => {
+        // error-policy:J7 a DM fetch failure (expired token, rate limit) must
+        // surface to the agent rather than reading as an empty inbox; degrade to
+        // no messages after reporting.
+        runtime.reportError("XService.fetchConnectorMessages", error, {
+          accountId,
+        });
+        return [];
+      },
+    );
 
     const matches = messages
       .filter((message) => !targetUserId || message.senderId === targetUserId)

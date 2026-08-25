@@ -244,10 +244,7 @@ export class TwitterPostService implements IPostService {
         }
       } else {
         // Get home timeline or search results
-        tweets = await this.client.fetchHomeTimeline(
-          options.limit,
-          false,
-        );
+        tweets = await this.client.fetchHomeTimeline(options.limit, false);
       }
 
       const posts: Post[] = tweets.flatMap((tweet) => {

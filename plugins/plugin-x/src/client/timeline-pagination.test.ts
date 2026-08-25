@@ -224,13 +224,9 @@ describe("ordinary timelines still page through completely", () => {
   it("Client.getTweets returns every page when no limit is requested", async () => {
     const { auth, state } = stubAuth(threePages);
 
-    expect(await collect(clientWith(auth).getTweets(freshScreenName()))).toEqual([
-      "t1",
-      "t2",
-      "t3",
-      "t4",
-      "t5",
-    ]);
+    expect(
+      await collect(clientWith(auth).getTweets(freshScreenName())),
+    ).toEqual(["t1", "t2", "t3", "t4", "t5"]);
     expect(state.calls).toBe(3);
   });
 
