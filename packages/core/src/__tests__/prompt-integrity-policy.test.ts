@@ -15,6 +15,8 @@ const repositoryRoot = resolve(
 );
 
 const removedCompactionModules = [
+	"packages/core/src/utils/slice-to-fit-budget.ts",
+	"packages/core/src/utils/slice-to-fit-budget.test.ts",
 	"packages/agent/src/actions/compact-conversation.ts",
 	"packages/agent/src/runtime/compaction-handoff.ts",
 	"packages/agent/src/runtime/conversation-compactor.ts",
