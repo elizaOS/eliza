@@ -162,8 +162,12 @@ export async function runCommandWithTimeout(
     typeof optionsOrTimeout === "number"
       ? { timeoutMs: optionsOrTimeout }
       : optionsOrTimeout;
-  const { timeoutMs, cwd, input, env } = options;
+  const { cwd, input, env } = options;
   const { windowsVerbatimArguments } = options;
+  // Default the timeout the same way the number shorthand does; without this,
+  // an options object that omits timeoutMs schedules setTimeout(…, undefined)
+  // which fires on the next tick and SIGKILLs a healthy command immediately.
+  const timeoutMs = options.timeoutMs ?? 10_000;
   const hasInput = input !== undefined;
 
   const shouldSuppressNpmFund = (() => {
