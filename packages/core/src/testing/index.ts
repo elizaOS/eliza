@@ -147,6 +147,7 @@ export * from "./progressive-content-conformance";
 export * from "./progressive-content-mixed-soak";
 export * from "./progressive-content-mutants";
 export * from "./progressive-content-stress";
+export * from "./progressive-content-target";
 // React test-renderer helpers
 export { findButtonByText, flush, text, textOf } from "./react-test";
 // Real connector helpers (Discord, Telegram)
