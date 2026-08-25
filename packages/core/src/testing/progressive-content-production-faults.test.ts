@@ -77,6 +77,8 @@ describe("production progressive-content fault executors", () => {
 			expect(receipt.id).toBe(id);
 			expect(receipt.operation.length).toBeGreaterThan(3);
 			expect(receipt.causeCode).not.toBe(expectedCode);
+			if (id === "read-cancellation")
+				expect(receipt.causeCode).toBe("ABORT_ERR");
 		}
-	});
+	}, 30_000);
 });

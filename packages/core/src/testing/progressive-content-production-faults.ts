@@ -341,7 +341,22 @@ export async function createProgressiveContentProductionFaultExecutors(input: {
 				);
 				const controller = new AbortController();
 				controller.abort();
-				await readFile(file, { signal: controller.signal });
+				try {
+					await readFile(file, { signal: controller.signal });
+				} catch (error) {
+					// Node exposes AbortError as ABORT_ERR on some versions and as the
+					// Web-DOM numeric code 20 on others. Normalize only after observing
+					// the native aborted read so the public contract is runtime-stable.
+					if (
+						error instanceof Error &&
+						error.name === "AbortError" &&
+						((error as Error & { code?: unknown }).code === "ABORT_ERR" ||
+							(error as Error & { code?: unknown }).code === 20)
+					) {
+						throw cause("ABORT_ERR", "source read was cancelled");
+					}
+					throw error;
+				}
 			},
 		),
 		"short-read": observed(
