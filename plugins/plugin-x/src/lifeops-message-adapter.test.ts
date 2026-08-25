@@ -194,4 +194,24 @@ describe("XDmAdapter", () => {
 
     expect(sendDirectMessageForAccount).not.toHaveBeenCalled();
   });
+
+  it("preserves UTF-16 surrogate pairs when creating draft preview and snippet", async () => {
+    const emojis = "🎉".repeat(150); // 300 code units > 200
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({});
+
+    const draft = await adapter.createDraft(runtime, {
+      to: [{ identifier: "recipient-1" }],
+      body: emojis,
+    });
+
+    expect(draft.preview.endsWith("...")).toBe(true);
+    for (const char of draft.preview) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

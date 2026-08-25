@@ -63,6 +63,18 @@ function decodeDraftBody(encoded: string): string {
   return Buffer.from(encoded, "base64url").toString("utf8");
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function memoryToMessageRef(memory: Memory): MessageRef {
   const metadata = record(memory.metadata);
   const content = record(memory.content);
@@ -89,7 +101,7 @@ function memoryToMessageRef(memory: Memory): MessageRef {
       displayName: senderHandle,
     },
     to: [],
-    snippet: body.slice(0, 200),
+    snippet: truncateText(body, 200),
     body,
     receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
     hasAttachments: false,
@@ -203,7 +215,7 @@ export class XDmAdapter extends BaseMessageAdapter {
     }
     const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
     const preview =
-      draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
+      draft.body.length > 200 ? `${truncateText(draft.body, 197)}...` : draft.body;
     return { draftId, preview };
   }
 
