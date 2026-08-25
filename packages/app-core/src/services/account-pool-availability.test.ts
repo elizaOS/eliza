@@ -159,7 +159,7 @@ describe("describe() healthy count agrees with select() eligibility", () => {
         }),
         now,
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isAccountSelectableNow(
         account("x", {
@@ -188,6 +188,38 @@ describe("describe() healthy count agrees with select() eligibility", () => {
     expect(
       isAccountSelectableNow(account("x", { health: "needs-reauth" }), now),
     ).toBe(false);
+  });
+
+  it("selectable and reprobeFlagged agree at the exact expiry boundary", async () => {
+    const now = Date.now();
+    const untilAtNow = account("at-now", {
+      health: "rate-limited",
+      healthDetail: { until: now },
+    });
+    // until === now is now selectable (fix: <= not <)
+    expect(isAccountSelectableNow(untilAtNow, now)).toBe(true);
+    // reprobeFlagged uses Date.now() internally, so craft until relative to real now
+    const accounts = {
+      "anthropic-subscription:at-now": account("at-now2", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() },
+      }),
+      "anthropic-subscription:future": account("future", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 60_000 },
+      }),
+    };
+    const pool = poolOf(accounts);
+    const ready = await pool.reprobeFlagged();
+    // reprobeFlagged already treats until === now as ready (until > now continues)
+    expect(ready).toContain("at-now2");
+    expect(ready).not.toContain("future");
+    // select serves the boundary account as well (using the at-now boundary)
+    const selPool = poolOf({
+      "anthropic-subscription:at-now": untilAtNow,
+    });
+    const sel = await selPool.select({ providerId: "anthropic-subscription" });
+    expect(sel?.id).toBe("at-now");
   });
 });
 
