@@ -333,7 +333,8 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "settings voice path",
     path: "/settings/voice",
-    readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
+    readyChecks: [{ text: "Text to speech" }, { text: "Speech recognition" }],
+    mode: "all",
     timeoutMs: 60_000,
   },
   {
@@ -421,31 +422,25 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   label: RegExp;
   expectedHash: string;
 }[] = [
-  { label: /^Basics$/, expectedHash: "identity" },
-  { label: /^Models & Providers$/, expectedHash: "ai-model" },
+  { label: /^General$/, expectedHash: "general" },
   { label: /^Voice$/, expectedHash: "voice" },
-  { label: /^Capabilities$/, expectedHash: "capabilities" },
-  { label: /^Apps$/, expectedHash: "apps" },
-  { label: /^Connectors$/, expectedHash: "connectors" },
-  { label: /^My Runtimes$/, expectedHash: "my-runtimes" },
-  { label: /^Runtime$/, expectedHash: "runtime" },
-  { label: /^Appearance$/, expectedHash: "appearance" },
-  { label: /^Background$/, expectedHash: "background" },
-  { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
-  { label: /^Updates$/, expectedHash: "updates" },
-  { label: /^Backups$/, expectedHash: "advanced" },
+  { label: /^Agent$/, expectedHash: "agent" },
+  { label: /^Connections$/, expectedHash: "connections" },
+  { label: /^Permissions$/, expectedHash: "permissions" },
+  { label: /^Notifications$/, expectedHash: "notifications" },
+  { label: /^Shortcuts$/, expectedHash: "shortcuts" },
+  { label: /^Advanced$/, expectedHash: "advanced" },
 ];
 const SETTING_DEEP_LINKS: readonly {
   hash: string;
 }[] = [
-  { hash: "ai-model" },
   { hash: "voice" },
-  { hash: "connectors" },
-  { hash: "apps" },
-  { hash: "background" },
-  { hash: "wallet-rpc" },
+  { hash: "agent" },
+  { hash: "connections" },
+  { hash: "permissions" },
+  { hash: "notifications" },
+  { hash: "shortcuts" },
   { hash: "advanced" },
-  { hash: "cloud-agents" },
 ];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
@@ -508,6 +503,7 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
   await page.addInitScript((permissions) => {
     const secureStore = new Map<string, string>();
     const existing = window.__ELIZA_ELECTROBUN_RPC__;
+    const secureStore = new Map<string, string>();
     window.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
         ...(existing?.request ?? {}),
@@ -528,6 +524,22 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async (params) => {
+          const { kind } = params as { kind: string };
+          return secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" };
+        },
+        secureStoreSet: async (params) => {
+          const { kind, value } = params as { kind: string; value: string };
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async (params) => {
+          const { kind } = params as { kind: string };
+          secureStore.delete(kind);
+          return { ok: true, deleted: true };
+        },
         permissionsGetAll: async () => permissions,
         permissionsIsShellEnabled: async () => false,
         permissionsGetPlatform: async () => "linux",
@@ -611,6 +623,18 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify([]),
+    });
+  });
+
+  await page.route("**/api/v1/mcps**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ mcps: [] }),
     });
   });
 

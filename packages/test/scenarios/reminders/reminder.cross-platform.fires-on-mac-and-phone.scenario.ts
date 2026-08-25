@@ -125,8 +125,15 @@ async function resetSharedRateLimits(): Promise<string | undefined> {
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason: "Direct API turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "reminder-owner-facing-copy",
+        match: { modelType: "TEXT_SMALL", toolNames: [] },
+        response: { text: "Heads up: this is your reminder." },
+        cardinality: "any",
+      },
+    ],
   },
   id: "reminder.cross-platform.fires-on-mac-and-phone",
   title: "Reminder ladder fires across all three rungs before acknowledgement",

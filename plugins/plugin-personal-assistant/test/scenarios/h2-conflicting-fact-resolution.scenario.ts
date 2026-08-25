@@ -17,9 +17,15 @@ import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "relationship-owner-facing-copy",
+        match: { modelType: "TEXT_SMALL", toolNames: [] },
+        response: { text: "Recorded the relationship." },
+        cardinality: 2,
+      },
+    ],
   },
   id: "h2-conflicting-fact-resolution",
   title: "H2 owner correction supersedes captured relationship fact",

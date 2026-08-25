@@ -1,16 +1,27 @@
 /**
  * Hash routing for the cloud settings panel.
  *
- * Reads and writes the `#<section-id>` hash so deep links work and the
- * panel remembers the last-viewed section across restarts.
+ * Reads `/settings/<section-id>` paths and `#<section-id>` hashes so deep links
+ * work across both app-shell route forms. Writes remain hash-based so existing
+ * settings navigation and restart persistence retain their stable contract.
  */
+import {
+  readSettingsLocationRoute,
+  subscribeSettingsLocation,
+} from "../settings-route";
 import { resolveCloudPanelSection } from "./cloud-panel-sections";
+
+/** Whether the current location explicitly addresses a settings section. */
+export function hasCloudPanelSectionRoute(): boolean {
+  return readSettingsLocationRoute().kind !== "hub";
+}
 
 /** Read the current section id from the URL hash. */
 export function readCloudPanelHash(): string {
-  if (typeof window === "undefined") return "general";
-  const hash = window.location.hash.replace(/^#/, "");
-  return resolveCloudPanelSection(hash || null);
+  const route = readSettingsLocationRoute();
+  return resolveCloudPanelSection(
+    route.kind === "hub" ? null : route.sectionId,
+  );
 }
 
 /** Navigate to a section by updating the URL hash. */
@@ -37,8 +48,9 @@ export function replaceCloudPanel(sectionId: string): void {
 export function subscribeCloudPanelHash(
   listener: (sectionId: string) => void,
 ): () => void {
-  if (typeof window === "undefined") return () => {};
-  const handler = () => listener(readCloudPanelHash());
-  window.addEventListener("hashchange", handler);
-  return () => window.removeEventListener("hashchange", handler);
+  return subscribeSettingsLocation((route) =>
+    listener(
+      resolveCloudPanelSection(route.kind === "hub" ? null : route.sectionId),
+    ),
+  );
 }

@@ -20,6 +20,7 @@ vi.mock("./cloud-management-auth", () => ({
 }));
 
 vi.mock("./cloud-panel-routing", () => ({
+  hasCloudPanelSectionRoute: () => false,
   navigateCloudPanel: vi.fn(),
   readCloudPanelHash: () => "general",
   replaceCloudPanel: vi.fn(),
@@ -66,6 +67,7 @@ describe("CloudSettingsPanel narrow navigation", () => {
 
   it("returns from section content to the settings hub", () => {
     render(<CloudSettingsPanel />);
+    expect(screen.getByTestId("settings-shell")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Voice/ }));
     expect(screen.getByText("Voice section")).toBeTruthy();

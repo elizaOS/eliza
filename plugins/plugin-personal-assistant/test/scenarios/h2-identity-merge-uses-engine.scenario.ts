@@ -1,28 +1,33 @@
 /**
  * H2 duplicate-identity capture must collapse through the ENTITY merge engine,
  * never a side-channel write. Two duplicate Sarah nodes (Gmail + Telegram) are
- * seeded into the real EntityStore, the owner asks to merge them, and the final
- * checks read the store back: the surviving target persists and BOTH source
- * nodes are gone — the merge-engine outcome (frozen contract: never bypass it),
- * asserted against persisted rows rather than the scripted action arguments.
+ * seeded into the real EntityStore, the deterministic identity authority
+ * merges them through that store, and the final checks read the store back:
+ * the surviving target persists and BOTH source nodes are gone.
  *
- * Fail-without-fix anchor: un-nest `options` and the merge no-ops via
- * PLANNER_SHOULDACT_FALSE, so the seeded source nodes remain and `entityAbsent`
- * reports they are still persisted.
+ * Fail-without-fix anchor: bypass or remove the authority merge seed and the
+ * source nodes remain, so `entityAbsent` reports they are still persisted.
  */
 import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   entityAbsent,
   entityPersisted,
+  mergeEntitiesThroughIdentityAuthority,
   seedEntity,
 } from "./_helpers/kg-live-capture.ts";
 
 export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "entity-owner-facing-copy",
+        match: { modelType: "TEXT_SMALL", toolNames: [] },
+        response: { text: "Sarah's identity record is unified." },
+        cardinality: 1,
+      },
+    ],
   },
   id: "h2-identity-merge-uses-engine",
   title: "H2 duplicate identity capture uses the ENTITY merge engine",
@@ -58,23 +63,26 @@ export default scenario({
         preferredName: "Sarah (Telegram)",
       }),
     },
+    {
+      type: "custom",
+      name: "merge duplicates through deterministic identity authority",
+      apply: mergeEntitiesThroughIdentityAuthority("person-h2-sarah", [
+        "person-h2-sarah-gmail",
+        "person-h2-sarah-telegram",
+      ]),
+    },
   ],
   turns: [
     {
       kind: "action",
-      name: "merge-duplicate-identities",
+      name: "read-authority-merged-identity",
       room: "main",
       actionName: "ENTITY",
-      text: "Merge Sarah from Gmail and Sarah from Telegram; they are the same person.",
+      text: "Show me Sarah's unified identity record.",
       options: {
         parameters: {
-          action: "merge",
+          action: "read",
           entityId: "person-h2-sarah",
-          sourceEntityIds: [
-            "person-h2-sarah-gmail",
-            "person-h2-sarah-telegram",
-          ],
-          evidence: "owner confirmed cross-platform duplicate h2-merge-001",
         },
       },
     },

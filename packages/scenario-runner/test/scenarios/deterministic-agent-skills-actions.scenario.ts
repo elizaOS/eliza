@@ -3,12 +3,12 @@
  * deterministic routing fixtures; no network service participates.
  */
 
-import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
+import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const guidanceSlug = "scenario-guidance";
 const removableSlug = "scenario-removable";
@@ -85,6 +85,8 @@ interface ScenarioSkillsService {
   setSkillEnabled: (slug: string, enabled: boolean) => boolean;
 }
 
+let previousEvaluators: unknown[] | null = null;
+
 async function seedSkill(
   service: ScenarioSkillsService,
   slug: string,
@@ -141,8 +143,14 @@ export default scenario({
           | {
               getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
               getService?: (serviceType: string) => unknown;
+              evaluators: unknown[];
             }
           | undefined;
+        if (!runtime) return "runtime unavailable";
+        // Post-turn reflection is outside this action-routing scenario. Keep the
+        // deterministic fixture ledger strict for the Stage 1 and planner calls.
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
         await runtime?.getServiceLoadPromise?.("AGENT_SKILLS_SERVICE");
         const service = runtime?.getService?.("AGENT_SKILLS_SERVICE") as
           | ScenarioSkillsService
@@ -159,6 +167,19 @@ export default scenario({
           strictRoutes,
         );
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async (ctx) => {
+        if (previousEvaluators !== null) {
+          (ctx.runtime as { evaluators: unknown[] }).evaluators =
+            previousEvaluators;
+          previousEvaluators = null;
+        }
       },
     },
   ],

@@ -89,9 +89,15 @@ export default scenario({
   id: "creative-owner-voice-draft-persistence",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "creative-draft-optional-generation",
+        match: { modelType: "TEXT_LARGE", toolNames: [] },
+        response: { text: "{}" },
+        cardinality: 2,
+      },
+    ],
   },
   title:
     "Owner voice draft preserves memo affect and reloads the standing artifact for revision",

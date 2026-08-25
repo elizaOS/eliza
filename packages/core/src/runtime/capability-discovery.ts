@@ -197,7 +197,9 @@ function parameterSearchText(action: Action): string[] {
 }
 
 function actionRecord(action: Action): PlannerCapabilityRecord {
-	const tool = buildPlannerToolsFromActions([action])[0];
+	const description =
+		uniqueStrings([action.description])[0] ?? `Run the ${action.name} action.`;
+	const tool = buildPlannerToolsFromActions([{ ...action, description }])[0];
 	const contexts = uniqueStrings([
 		...(action.contexts ?? []),
 		...(action.contextGate?.contexts ?? []),
@@ -206,11 +208,13 @@ function actionRecord(action: Action): PlannerCapabilityRecord {
 	]);
 	const aliases = uniqueStrings(action.similes ?? []);
 	const summary =
-		action.descriptionCompressed?.trim() ||
-		action.compressedDescription?.trim() ||
-		action.description.trim();
+		uniqueStrings([
+			action.descriptionCompressed,
+			action.compressedDescription,
+			description,
+		])[0] ?? description;
 	const retrievalSummary = uniqueStrings([
-		action.description,
+		description,
 		action.descriptionCompressed,
 		action.compressedDescription,
 		action.routingHint,

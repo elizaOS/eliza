@@ -386,6 +386,17 @@ describe("SettingsView", () => {
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
   });
 
+  it("keeps a nested-path section selected when startup replays navigation", () => {
+    window.history.replaceState(null, "", "/settings/runtime");
+
+    render(<SettingsView />);
+    fireEvent(window, new PopStateEvent("popstate"));
+
+    expect(screen.getByTestId("stub-runtime")).toBeTruthy();
+    expect(screen.queryByTestId("stub-identity")).toBeNull();
+    expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+  });
+
   it("synchronizes same-page settings navigation dispatched through popstate", () => {
     render(<SettingsView initialSection="identity" />);
     expect(screen.getByTestId("stub-identity")).toBeTruthy();

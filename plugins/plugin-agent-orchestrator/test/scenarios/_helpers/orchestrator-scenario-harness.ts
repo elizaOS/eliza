@@ -690,6 +690,10 @@ class OrchestratorScenarioHarness {
           source: "scenario-runner",
           deviceProfile: profile.id,
         },
+        acceptanceCriteria: [
+          `${profile.id} delegates through the host orchestrator`,
+          `${profile.framework} account metadata is persisted on the spawned session`,
+        ],
       })) as TaskDetail;
       const detail = (await this.taskService.spawnAgentForTask(task.id, {
         label: profile.id === "desktop" ? "Ada" : "Lin",
@@ -1060,46 +1064,56 @@ function cacheChangeSet(): WorkspaceChangeSet {
 }
 
 async function registerHarnessPlugin(runtime: ScenarioRuntime): Promise<void> {
+  const actions = [
+    scenarioAction(
+      ORCHESTRATOR_GRILLING_HAPPY_PATH,
+      "Drive a proofless completion through the automatic verifier grill, then prove the re-report.",
+      (harness) => harness.runGrillingHappyPath(),
+    ),
+    scenarioAction(
+      ORCHESTRATOR_EVIDENCE_BUNDLE,
+      "Assert diff, test stdout, and URL evidence reach the verifier.",
+      (harness) => harness.runEvidenceBundle(),
+    ),
+    scenarioAction(
+      ORCHESTRATOR_MULTI_TASK_SUPERVISOR,
+      "Assert two orchestrator tasks stay isolated and produce a supervisor digest.",
+      (harness) => harness.runMultiTaskSupervisor(),
+    ),
+    scenarioAction(
+      ORCHESTRATOR_VIEW_CLOUD_DEPLOY,
+      "Assert cloud-targeted view-plugin guidance yields apps.create, viewKind, Cloud CDN bundleUrl, and affiliate evidence.",
+      (harness) => harness.runViewCloudDeploy(),
+    ),
+    scenarioAction(
+      ORCHESTRATOR_DEVICE_MODALITY_REACH,
+      "Assert device support profiles, unsupported mobile stubs, and voice-origin coding delegation.",
+      (harness) => harness.runDeviceModalityReach(),
+    ),
+    scenarioAction(
+      ORCHESTRATOR_REFLEXION_RESPAWN,
+      "Assert a failed verification's reflection is injected into the re-spawn goal prompt.",
+      (harness) => harness.runReflexionRespawn(),
+    ),
+  ];
   const registered = runtime.plugins?.some(
     (plugin) => plugin.name === ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
   );
-  if (registered) return;
+  if (registered) {
+    const registeredActionNames = new Set(
+      runtime.actions.map((action) => action.name),
+    );
+    for (const action of actions) {
+      if (!registeredActionNames.has(action.name))
+        runtime.registerAction(action);
+    }
+    return;
+  }
   await runtime.registerPlugin?.({
     name: ORCHESTRATOR_SCENARIO_PLUGIN_NAME,
     description:
       "Deterministic scenario actions for orchestrator evidence tests",
-    actions: [
-      scenarioAction(
-        ORCHESTRATOR_GRILLING_HAPPY_PATH,
-        "Drive a proofless completion through the automatic verifier grill, then prove the re-report.",
-        (harness) => harness.runGrillingHappyPath(),
-      ),
-      scenarioAction(
-        ORCHESTRATOR_EVIDENCE_BUNDLE,
-        "Assert diff, test stdout, and URL evidence reach the verifier.",
-        (harness) => harness.runEvidenceBundle(),
-      ),
-      scenarioAction(
-        ORCHESTRATOR_MULTI_TASK_SUPERVISOR,
-        "Assert two orchestrator tasks stay isolated and produce a supervisor digest.",
-        (harness) => harness.runMultiTaskSupervisor(),
-      ),
-      scenarioAction(
-        ORCHESTRATOR_VIEW_CLOUD_DEPLOY,
-        "Assert cloud-targeted view-plugin guidance yields apps.create, viewKind, Cloud CDN bundleUrl, and affiliate evidence.",
-        (harness) => harness.runViewCloudDeploy(),
-      ),
-      scenarioAction(
-        ORCHESTRATOR_DEVICE_MODALITY_REACH,
-        "Assert device support profiles, unsupported mobile stubs, and voice-origin coding delegation.",
-        (harness) => harness.runDeviceModalityReach(),
-      ),
-      scenarioAction(
-        ORCHESTRATOR_REFLEXION_RESPAWN,
-        "Assert a failed verification's reflection is injected into the re-spawn goal prompt.",
-        (harness) => harness.runReflexionRespawn(),
-      ),
-    ],
+    actions,
   });
 }
 

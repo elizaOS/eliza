@@ -65,6 +65,31 @@ const contexts: ContextDefinition[] = [
 ];
 
 describe("planner capability discovery", () => {
+	it("keeps legacy registered actions without descriptions discoverable", () => {
+		const legacyAction = {
+			...action({ name: "LEGACY_TOOL", description: "placeholder" }),
+			description: undefined,
+			descriptionCompressed: undefined,
+		} as unknown as Action;
+		const catalog = buildPlannerCapabilityCatalog({
+			actions: [legacyAction],
+		});
+		const record = catalog.byRef.get("action:LEGACY_TOOL");
+
+		expect(record?.summary).toBe("Run the LEGACY_TOOL action.");
+		expect(record?.tool?.description).toBe("Run the LEGACY_TOOL action.");
+		expect(
+			new PlannerCapabilityDiscoverySession({ catalog }).execute({
+				operation: "search",
+				query: "legacy tool",
+				kinds: ["action"],
+			}),
+		).toMatchObject({
+			items: [{ ref: "action:LEGACY_TOOL" }],
+			activated: { actions: ["LEGACY_TOOL"] },
+		});
+	});
+
 	it("keeps non-admitted metadata out of the authorization-filtered catalog", () => {
 		const allowed = action({
 			name: "CALENDAR_READ",

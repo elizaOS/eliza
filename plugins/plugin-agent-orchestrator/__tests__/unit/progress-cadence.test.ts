@@ -945,6 +945,8 @@ describe("emitProgress routing ladder + cadence", () => {
     expect(params.prompt).not.toContain('"", ""');
     expect(params.prompt).not.toMatch(/source order[^\n]*:\s*""/);
     // The real, informative call still made it in with its complete path.
+    expect(params.prompt).not.toMatch(/recently[^\n]*:\s*""/);
+    // The real, informative call and its complete path still make it in.
     expect(params.prompt).toContain("Edit(/repo/src/app.ts)");
 
     await rt.dispose();

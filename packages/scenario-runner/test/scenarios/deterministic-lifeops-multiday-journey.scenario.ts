@@ -35,17 +35,18 @@
  */
 
 import { type IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -134,6 +135,7 @@ const historyParameters = {
 
 let createdTaskId: string | null = null;
 let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
+let restoreEvaluators: (() => void) | null = null;
 
 const initialStrictRoutes: StrictActionRouteFixture[] = [
   {
@@ -289,6 +291,11 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
   }
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+  restoreEvaluators = isolatePostTurnEvaluators(
+    scenarioRuntime as RuntimeWithScenarioModelFixtures & {
+      evaluators: unknown[];
+    },
+  );
   registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }
@@ -296,6 +303,8 @@ async function seedJourney(ctx: ScenarioContext): Promise<string | undefined> {
 async function cleanupJourney(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
+  restoreEvaluators?.();
+  restoreEvaluators = null;
   if (!createdTaskId) return undefined;
   const runner = resolveRunner(ctx);
   if (typeof runner === "string") return undefined;

@@ -30,10 +30,12 @@ import { codingAgentRoutePlugin } from "../../../../src/setup-routes.ts";
 const COMMAND_TEXT = "/orchestrator-status";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  evaluators: unknown[];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
+let restoreEvaluators: (() => void) | undefined;
 
 function statusRouteFixtures(): Array<Record<string, unknown>> {
   const inputMatches = (value: string) => value.includes(COMMAND_TEXT);
@@ -105,6 +107,12 @@ export default scenario({
       name: "register-orchestrator-command",
       apply: async (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        const evaluators = runtime.evaluators;
+        runtime.evaluators = [];
+        restoreEvaluators = () => {
+          runtime.evaluators = evaluators;
+          restoreEvaluators = undefined;
+        };
         // Register the view-scoped universal slash command, exactly as a live
         // runtime does when the orchestrator view mounts, so validate() resolves.
         useRuntime(runtime.agentId);
@@ -117,6 +125,17 @@ export default scenario({
           runtime.routes.push(route);
         }
         runtime.scenarioModelFixtures?.register(...statusRouteFixtures());
+        return undefined;
+      },
+    },
+  ],
+
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-post-turn-evaluators",
+      apply: () => {
+        restoreEvaluators?.();
         return undefined;
       },
     },

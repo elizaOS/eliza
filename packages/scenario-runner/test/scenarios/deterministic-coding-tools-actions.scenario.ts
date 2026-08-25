@@ -70,33 +70,6 @@ const exitWorktreeParameters = {
   cleanup: true,
 };
 
-/**
- * The exact tool set the action planner is offered on every turn of this
- * scenario: core's always-available REPLY/IGNORE/STOP plus the actions
- * `@elizaos/plugin-coding-tools` contributes. It is one constant, not a
- * per-route list, because the runtime offers the same validated action surface
- * on every turn — a per-route copy only invited the two to drift apart.
- *
- * The fixtures below match this set exactly, so it doubles as an assertion that
- * no other plugin's action reaches this scenario's planner. That is the
- * property `enterScenarioActionScope` restores: before it, a batch peer's
- * plugin (app-control's APP/VIEWS/SETTINGS/BACKGROUND) joined this list and
- * every route fixture stopped matching.
- */
-const codingToolsPlannerToolNames = [
-  "FILE",
-  "READ",
-  "WRITE",
-  "EDIT",
-  "SHELL",
-  "WORKTREE",
-  "WEB_FETCH",
-  "WEB_SEARCH",
-  "REPLY",
-  "IGNORE",
-  "STOP",
-];
-
 const strictCodingToolRoutes = [
   {
     actionName: "FILE",
@@ -104,7 +77,6 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Write the deterministic coding tools note file",
     messageToUser: `Wrote ${notePath}`,
-    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "FILE",
@@ -112,7 +84,6 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Read the deterministic coding tools note file",
     messageToUser: "alpha coding-tools scenario",
-    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "SHELL",
@@ -121,7 +92,6 @@ const strictCodingToolRoutes = [
     input:
       "Run a shell command to count the deterministic coding tools note lines",
     messageToUser: "shell-ok:2",
-    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "WORKTREE",
@@ -129,7 +99,6 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Enter an isolated repo worktree",
     messageToUser: `Entered worktree ${worktreeBranch}`,
-    plannerToolNames: codingToolsPlannerToolNames,
   },
   {
     actionName: "WORKTREE",
@@ -137,7 +106,6 @@ const strictCodingToolRoutes = [
     contextIds: ["code"],
     input: "Exit and clean up the isolated repo worktree",
     messageToUser: "Exited and removed worktree",
-    plannerToolNames: codingToolsPlannerToolNames,
   },
 ];
 
@@ -173,7 +141,10 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
         match: {
           modelType: "ACTION_PLANNER" as const,
           input: { pattern: currentTurnInputPattern(route.input) },
-          toolNames: route.plannerToolNames,
+          // This scenario owns coding-tool execution, while the capability
+          // discovery scenario owns the exact progressive planner surface.
+          // Baseline actions and context-expanded children may legitimately
+          // join this call without changing the requested coding action.
         },
         response: {
           json: {

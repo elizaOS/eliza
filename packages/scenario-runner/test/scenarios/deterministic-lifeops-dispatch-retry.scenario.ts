@@ -20,10 +20,13 @@
  *   tick 3 (past retry)    — the same step retries (`scheduled_override_due`),
  *                            the channel delivers, the task lands `fired`.
  *
- * Runs keylessly: no message turns, no LLM calls. The probe channel captures
- * a dispatch ledger asserted exactly (fail-then-deliver, both for this task)
- * and a custom final check reads the REAL DB-backed state log through the
- * runner's injected deps (`getScheduledTaskRunnerDeps`).
+ * Runs keylessly: no message turns, and the dispatch path itself makes no LLM
+ * calls. The composed scheduler may run incidental LifeOps scoring/check-in
+ * work, so deterministic catch-all fixtures keep that unrelated background
+ * work from contaminating this contract. The probe channel captures a dispatch
+ * ledger asserted exactly (fail-then-deliver, both for this task), and a custom
+ * final check reads the REAL DB-backed state log through the runner's injected
+ * deps (`getScheduledTaskRunnerDeps`).
  *
  * Fail-without-fix anchor: revert the dispatch-policy enforcement in
  * `plugin-scheduling/src/scheduled-task/runner.ts` (typed `ok:false` results
@@ -34,6 +37,7 @@
 
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -80,6 +84,7 @@ const probeQueue: ProbeDispatchResult[] = [];
 const probeLedger: ProbeDispatch[] = [];
 let probeTaskId: string | null = null;
 let scenarioRuntime: RuntimeLike | null = null;
+let restoreEvaluators: (() => void) | null = null;
 
 interface ChannelContributionLike {
   kind: string;
@@ -424,6 +429,44 @@ async function assertStateLog(
 export default scenario({
   id: "deterministic-lifeops-dispatch-retry",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "incidental-lifeops-priority-scoring",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "Score each inbox message." },
+          toolNames: [],
+        },
+        response: { text: '{"scores":[]}' },
+        cardinality: "any",
+      },
+      {
+        name: "scheduled-probe-dispatch-rendering",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: PROBE_PROMPT },
+          toolNames: [],
+        },
+        response: { text: `Heads up: ${PROBE_PROMPT}` },
+        cardinality: 2,
+      },
+      {
+        name: "incidental-lifeops-checkin-summary",
+        match: {
+          modelType: "TEXT_LARGE",
+          input: {
+            includes:
+              "Write the owner's morning personal-assistant intro summary.",
+          },
+          toolNames: [],
+        },
+        response: { text: "Deterministic LifeOps background summary." },
+        cardinality: "any",
+      },
+    ],
+  },
   title:
     "Typed dispatch failure parks the fire for retry, then delivers at the retry instant",
   domain: "lifeops",
@@ -446,14 +489,24 @@ export default scenario({
     {
       type: "custom",
       name: "register the failing-then-delivering probe channel",
-      apply: seedProbeChannel,
+      apply: (ctx) => {
+        restoreEvaluators = isolatePostTurnEvaluators(ctx.runtime);
+        return seedProbeChannel(ctx);
+      },
     },
   ],
   cleanup: [
     {
       type: "custom",
       name: "dismiss the probe task",
-      apply: dismissProbeTask,
+      apply: async () => {
+        try {
+          return await dismissProbeTask();
+        } finally {
+          restoreEvaluators?.();
+          restoreEvaluators = null;
+        }
+      },
     },
   ],
   turns: [

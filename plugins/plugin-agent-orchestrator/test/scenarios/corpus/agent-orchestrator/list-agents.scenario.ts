@@ -21,10 +21,12 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 const TASKS = "TASKS";
 type R = AgentRuntime & {
+  evaluators: unknown[];
   scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
+let restoreEvaluators: (() => void) | undefined;
 
 export default scenario({
   lane: "pr-deterministic",
@@ -44,6 +46,12 @@ export default scenario({
       name: "orchestrator-list-agents-fixtures",
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
+        const evaluators = runtime.evaluators;
+        runtime.evaluators = [];
+        restoreEvaluators = () => {
+          runtime.evaluators = evaluators;
+          restoreEvaluators = undefined;
+        };
         runtime.scenarioModelFixtures?.register(
           {
             name: "orchestrator-stage1",
@@ -102,6 +110,17 @@ export default scenario({
             times: 1,
           },
         );
+        return undefined;
+      },
+    },
+  ],
+
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-post-turn-evaluators",
+      apply: () => {
+        restoreEvaluators?.();
         return undefined;
       },
     },

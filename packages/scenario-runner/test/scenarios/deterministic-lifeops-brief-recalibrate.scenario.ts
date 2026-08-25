@@ -42,12 +42,14 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
 
 type JsonRecord = Record<string, unknown>;
 
 const SCENARIO_ID = "deterministic-lifeops-brief-recalibrate";
 const NEWSLETTER_CLASS = "inbox:newsletter-digest";
 const CALENDAR_CLASS = "calendar:high-consequence";
+let restoreEvaluators: (() => void) | null = null;
 
 // ---------------------------------------------------------------------------
 // Structural views of the plugin-personal-assistant repository surface. The
@@ -170,6 +172,9 @@ async function seedIgnorePattern(
 ): Promise<string | undefined> {
   const runtime = ctx.runtime;
   if (!runtime) return "scenario runtime is unavailable";
+  restoreEvaluators = isolatePostTurnEvaluators(
+    runtime as { evaluators: unknown[] },
+  );
   const agentId = (runtime as RuntimeLike).agentId;
 
   // The shared-runtime store may hold ledger rows from earlier runs; the
@@ -450,6 +455,16 @@ export default scenario({
       type: "custom",
       name: "seed five-day ignore pattern + strict BRIEF fixtures",
       apply: seedIgnorePattern,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async () => {
+        restoreEvaluators?.();
+        restoreEvaluators = null;
+      },
     },
   ],
   rooms: [

@@ -2,17 +2,19 @@
  * Keyless coverage for the LifeOps ScheduledTask action surface. Runs on the
  * pr-deterministic lane under the model provider.
  */
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+  type StrictActionRouteFixture,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-  type StrictActionRouteFixture,
-} from "@elizaos/core/testing";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -79,6 +81,7 @@ const historyParameters = {
 
 let createdTaskId: string | null = null;
 let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
+let restoreEvaluators: (() => void) | null = null;
 
 const initialStrictRoutes: StrictActionRouteFixture[] = [
   {
@@ -143,6 +146,11 @@ function seedStrictFixtures(ctx: ScenarioContext): string | undefined {
   historyParameters.taskId = "__created_task_id_unset__";
 
   scenarioRuntime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+  restoreEvaluators = isolatePostTurnEvaluators(
+    scenarioRuntime as RuntimeWithScenarioModelFixtures & {
+      evaluators: unknown[];
+    },
+  );
   registerStrictActionRouteFixtures(scenarioRuntime, initialStrictRoutes);
   return undefined;
 }
@@ -433,6 +441,16 @@ export default scenario({
       type: "custom",
       name: "register strict SCHEDULED_TASKS LLM route fixtures",
       apply: seedStrictFixtures,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async () => {
+        restoreEvaluators?.();
+        restoreEvaluators = null;
+      },
     },
   ],
   rooms: [

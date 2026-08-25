@@ -15,24 +15,31 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   describeCalls,
   successfulActionData,
 } from "@elizaos/scenario-runner/scenario-assertions";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const CLOUD_ACCOUNT_STATUS = "CLOUD_ACCOUNT_STATUS";
 const CLOUD_BASE_URL = "https://cloud.test.invalid/api/v1";
 const MOCK_BALANCE = 12.5;
 
 type R = AgentRuntime & {
+  evaluators: unknown[];
   setSetting?: (k: string, v: string, secret?: boolean) => void;
   scenarioModelFixtures?: {
     register: (...f: Array<Record<string, unknown>>) => void;
   };
 };
 
+interface ScenarioCloudAuthService {
+  authenticateWithApiKey(input: { apiKey: string }): unknown;
+  getClient(): { setBaseUrl(baseUrl: string): void };
+}
+
 let restoreFetch: (() => void) | undefined;
+let restoreEvaluators: (() => void) | undefined;
 /** True once the balance endpoint was actually served by the mock. */
 let balanceMockHit = false;
 
@@ -55,6 +62,13 @@ export default scenario({
       apply: async (ctx) => {
         const runtime = ctx.runtime as R;
         balanceMockHit = false;
+
+        const evaluators = runtime.evaluators;
+        runtime.evaluators = [];
+        restoreEvaluators = () => {
+          runtime.evaluators = evaluators;
+          restoreEvaluators = undefined;
+        };
 
         const realFetch = globalThis.fetch;
         restoreFetch = () => {
@@ -106,6 +120,16 @@ export default scenario({
         process.env.ELIZAOS_CLOUD_BASE_URL = CLOUD_BASE_URL;
         process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
         process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+
+        // The required plugin starts before scenario seeds. Apply the seeded
+        // credentials to that already-running service as well as settings so
+        // authorization filtering includes CLOUD_ACCOUNT_STATUS this turn.
+        const cloudAuth = runtime.getService(
+          "CLOUD_AUTH",
+        ) as ScenarioCloudAuthService | null;
+        if (!cloudAuth) return "CloudAuthService was not registered";
+        cloudAuth.getClient().setBaseUrl(CLOUD_BASE_URL);
+        cloudAuth.authenticateWithApiKey({ apiKey: "cloud_scenario_key" });
 
         runtime.scenarioModelFixtures?.register(
           {
@@ -159,6 +183,7 @@ export default scenario({
       type: "custom",
       name: "restore-elizacloud-fetch",
       apply: () => {
+        restoreEvaluators?.();
         restoreFetch?.();
         return undefined;
       },

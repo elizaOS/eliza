@@ -2,6 +2,11 @@
  * Keyless catalog coverage for the browser-workspace action surface against a
  * seeded browser tab. Runs on the pr-deterministic lane under the model provider.
  */
+
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioTurnExecution,
@@ -13,10 +18,9 @@ import {
   ensureBrowserWorkspaceDefaultTab,
   executeBrowserWorkspaceCommand,
 } from "../../../../plugins/plugin-browser/src/workspace/browser-workspace.ts";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
+
+let restoreEvaluators: (() => void) | null = null;
 
 const strictBrowserRoutes = [
   {
@@ -347,6 +351,7 @@ export default scenario({
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
         }
+        restoreEvaluators = isolatePostTurnEvaluators(runtime);
         if (
           !runtime.plugins?.some(
             (plugin) =>
@@ -405,6 +410,16 @@ export default scenario({
         scheduleWaitForUrlCallbackNavigation();
         registerStrictActionRouteFixtures(runtime, strictBrowserRoutes);
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async () => {
+        restoreEvaluators?.();
+        restoreEvaluators = null;
       },
     },
   ],

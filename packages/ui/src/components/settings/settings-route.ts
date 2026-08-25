@@ -69,9 +69,37 @@ export function parseSettingsHash(rawHash: string): SettingsRoute {
   return { kind: "section", sectionId: head };
 }
 
+/** Parse a canonical `/settings[/<section>[/<detail>]]` pathname. */
+export function parseSettingsPath(pathname: string): SettingsRoute {
+  const match = pathname.match(/^\/settings(?:\/(.*?))?\/?$/i);
+  return parseSettingsHash(match?.[1] ?? "");
+}
+
 export function readSettingsHashRoute(): SettingsRoute {
   if (typeof window === "undefined") return { kind: "hub" };
   return parseSettingsHash(window.location.hash);
+}
+
+/** Read the current settings route, preferring an explicit hash over the path. */
+export function readSettingsLocationRoute(): SettingsRoute {
+  if (typeof window === "undefined") return { kind: "hub" };
+  return window.location.hash
+    ? parseSettingsHash(window.location.hash)
+    : parseSettingsPath(window.location.pathname);
+}
+
+/** Subscribe to both hash navigation and app-shell path replay. */
+export function subscribeSettingsLocation(
+  listener: (route: SettingsRoute) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handler = () => listener(readSettingsLocationRoute());
+  window.addEventListener("hashchange", handler);
+  window.addEventListener("popstate", handler);
+  return () => {
+    window.removeEventListener("hashchange", handler);
+    window.removeEventListener("popstate", handler);
+  };
 }
 
 /** Section id only — back-compat for callers that ignore connector detail. */

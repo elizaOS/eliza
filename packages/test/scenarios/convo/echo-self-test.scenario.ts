@@ -17,8 +17,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
 const ECHO_INPUT = "Please echo this message back to me: hello world";
+let previousEvaluators: AgentRuntime["evaluators"] | null = null;
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+type RuntimeWithScenarioModelFixtures = Omit<AgentRuntime, "evaluators"> & {
+  evaluators: AgentRuntime["evaluators"];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -111,8 +113,22 @@ export default scenario({
       name: "register-echo-test-plugin",
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
         await runtime.registerPlugin(echoTestPlugin satisfies Plugin);
         runtime.scenarioModelFixtures?.register(...echoRouteFixtures());
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore runtime evaluators",
+      apply: (ctx) => {
+        if (previousEvaluators !== null) {
+          asRuntime(ctx.runtime).evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
       },
     },
   ],

@@ -43,12 +43,14 @@ import {
   parseSettingsHash,
   readSettingsHashRoute,
   readSettingsHashSection,
+  readSettingsLocationRoute,
   replaceConnectorDetailHash,
   replaceSettingsHash,
   type SettingsRoute,
   type SettingsSectionDef,
   settingsSectionLabel,
   settingsSectionTitle,
+  subscribeSettingsLocation,
 } from "../settings/settings-sections";
 import { navigateBackToLauncher, ViewHeader } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -320,15 +322,22 @@ function LegacySettingsView({
     void loadPlugins();
   }, [loadPlugins]);
 
-  // Legacy path deep links: /connectors, /connectors/<id>, /settings/connectors/<id>
-  // → structured hash the connectors body already understands.
+  // Path deep links select the matching settings section. Connectors retains
+  // its structured detail route; every other /settings/<section> path carries
+  // the section through React state without rewriting the caller's URL.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const path = getWindowNavigationPath();
     const connectorsPath = path.match(
       /^\/(?:settings\/)?connectors(?:\/([a-z0-9-]+))?\/?$/i,
     );
-    if (!connectorsPath) return;
+    if (!connectorsPath) {
+      const route = readSettingsLocationRoute();
+      if (route.kind === "hub") return;
+      setActiveSection(route.sectionId);
+      setSettingsRoute(route);
+      return;
+    }
     const connectorId = connectorsPath[1]?.toLowerCase();
     if (connectorId) {
       setActiveSection("connectors");
@@ -401,10 +410,9 @@ function LegacySettingsView({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleLocationChange = () => {
-      const route = readSettingsHashRoute();
+    return subscribeSettingsLocation((route) => {
       setSettingsRoute(route);
-      const nextSection = readSettingsHashSection();
+      const nextSection = route.kind === "hub" ? null : route.sectionId;
       if (
         nextSection &&
         (visibleSectionIds.has(nextSection) ||
@@ -414,13 +422,7 @@ function LegacySettingsView({
       } else {
         setActiveSection(null);
       }
-    };
-    window.addEventListener("hashchange", handleLocationChange);
-    window.addEventListener("popstate", handleLocationChange);
-    return () => {
-      window.removeEventListener("hashchange", handleLocationChange);
-      window.removeEventListener("popstate", handleLocationChange);
-    };
+    });
   }, [visibleSectionIds]);
 
   // Explicit navigation (hash / initialSection / agent anchor) resolves
@@ -485,7 +487,11 @@ function LegacySettingsView({
         className={cn(
           !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
         )}
-        contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
+        contentClassName={
+          isDesktop
+            ? "px-0 pt-0"
+            : "max-sm:pt-1 mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)]"
+        }
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
       >

@@ -21,6 +21,7 @@ import { buildReviewPreview } from "../../../../plugins/plugin-github/src/action
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
 
 const REPO = "octo/repo";
 const ISSUE_TITLE = "Deterministic issue";
@@ -57,6 +58,7 @@ let githubLedger: GithubLedgerEntry[] = [];
 let originalElizaStateDir: string | undefined;
 let scenarioStateDir: string | null = null;
 let scenarioRuntime: RuntimeWithGithubScenario | null = null;
+let restoreEvaluators: (() => void) | null = null;
 
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -256,6 +258,7 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
   if (!runtime) return "scenario runtime was not available";
   try {
     scenarioRuntime = runtime;
+    restoreEvaluators = isolatePostTurnEvaluators(runtime);
     githubLedger = [];
     originalElizaStateDir = process.env.ELIZA_STATE_DIR;
     scenarioStateDir = mkdtempSync(join(tmpdir(), "eliza-scenario-github-"));
@@ -880,6 +883,16 @@ export default scenario({
       type: "custom",
       name: "register real GitHub plugin with fake Octokit client and isolated state dir",
       apply: seedGithub,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async () => {
+        restoreEvaluators?.();
+        restoreEvaluators = null;
+      },
     },
   ],
   rooms: [

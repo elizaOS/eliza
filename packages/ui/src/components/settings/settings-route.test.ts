@@ -4,15 +4,18 @@
  */
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   backFromConnectorDetail,
   isPushedConnectorDetailRoute,
   normalizeConnectorRouteId,
   openConnectorDetailHash,
   parseSettingsHash,
+  parseSettingsPath,
+  readSettingsLocationRoute,
   replaceConnectorDetailHash,
   settingsRouteToHash,
+  subscribeSettingsLocation,
 } from "./settings-route";
 
 beforeEach(() => {
@@ -61,6 +64,40 @@ describe("parseSettingsHash", () => {
       kind: "section",
       sectionId: "appearance",
     });
+  });
+});
+
+describe("settings location routes", () => {
+  it("parses flat and nested canonical settings paths", () => {
+    expect(parseSettingsPath("/settings/voice")).toEqual({
+      kind: "section",
+      sectionId: "voice",
+    });
+    expect(parseSettingsPath("/settings/connectors/discord")).toEqual({
+      kind: "connector-detail",
+      sectionId: "connectors",
+      connectorId: "discord",
+    });
+  });
+
+  it("gives an explicit hash precedence over the pathname", () => {
+    window.history.replaceState(null, "", "/settings/voice#appearance");
+    expect(readSettingsLocationRoute()).toEqual({
+      kind: "section",
+      sectionId: "appearance",
+    });
+  });
+
+  it("synchronizes app-shell path replay through popstate", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeSettingsLocation(listener);
+    window.history.pushState(null, "", "/settings/voice");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    expect(listener).toHaveBeenCalledWith({
+      kind: "section",
+      sectionId: "voice",
+    });
+    unsubscribe();
   });
 });
 

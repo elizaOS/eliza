@@ -21,6 +21,7 @@ import {
 } from "./CloudSettingsSidebar";
 import { useHasCloudManagementCredential } from "./cloud-management-auth";
 import {
+  hasCloudPanelSectionRoute,
   navigateCloudPanel,
   readCloudPanelHash,
   replaceCloudPanel,
@@ -96,7 +97,7 @@ function SectionError({
 function SectionContent({ section }: { section: CloudPanelSection }) {
   const Component = section.Component;
   return (
-    <>
+    <div id={section.id}>
       <h1 className="sr-only">{section.label}</h1>
       <ErrorBoundary
         key={section.id}
@@ -108,7 +109,7 @@ function SectionContent({ section }: { section: CloudPanelSection }) {
           <Component />
         </Suspense>
       </ErrorBoundary>
-    </>
+    </div>
   );
 }
 
@@ -191,7 +192,7 @@ export function CloudSettingsPanel() {
   );
   const isWide = useMediaQuery("(min-width: 700px)");
   const [narrowView, setNarrowView] = useState<"hub" | "section">(() =>
-    typeof window !== "undefined" && window.location.hash ? "section" : "hub",
+    hasCloudPanelSectionRoute() ? "section" : "hub",
   );
   const [accountSignOutAttempt, setAccountSignOutAttempt] = useState<
     "idle" | "pending" | "finished"
@@ -267,7 +268,10 @@ export function CloudSettingsPanel() {
   if (!isWide) {
     const showHub = narrowView === "hub";
     return (
-      <div className="flex h-full flex-col bg-bg pt-8">
+      <div
+        className="flex h-full flex-col bg-bg pt-8"
+        data-testid="settings-shell"
+      >
         <CloudSettingsDragStrip />
         {showHub ? (
           <HubList
@@ -300,7 +304,7 @@ export function CloudSettingsPanel() {
 
   // Wide layout: sidebar + content side-by-side.
   return (
-    <div className="flex h-full bg-bg">
+    <div className="flex h-full bg-bg" data-testid="settings-shell">
       <CloudSettingsDragStrip />
       <CloudSettingsSidebar
         accountState={accountNavigationState}

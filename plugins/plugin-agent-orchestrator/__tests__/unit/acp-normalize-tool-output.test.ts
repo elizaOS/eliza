@@ -45,7 +45,7 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     expect(out).toBe("$ echo hi → exit 0\nhi there");
   });
 
-  it("caps a long stdout tail to 200 chars", () => {
+  it("preserves a long stdout tail", () => {
     const record = {
       call_id: "c3",
       command: "cat big",
@@ -54,8 +54,7 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     };
     const out = normalizeToolOutput(record);
     const tail = out.split("\n")[1];
-    expect(tail.length).toBe(201); // 200 chars + ellipsis
-    expect(tail.endsWith("…")).toBe(true);
+    expect(tail).toBe("A".repeat(500));
   });
 
   it("parses a STRINGIFIED exec record back to a one-liner", () => {

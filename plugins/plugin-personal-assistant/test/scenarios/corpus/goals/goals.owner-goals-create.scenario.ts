@@ -26,10 +26,12 @@ const GOAL_INPUT = "Add a goal to run a marathon next year, and save it.";
 const OWNER_GOALS = "OWNER_GOALS";
 
 type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+  evaluators: unknown[];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
+let restoreEvaluators: (() => void) | undefined;
 
 function goalsRouteFixtures(): Array<Record<string, unknown>> {
   const inputMatches = (value: string) => value.includes("marathon");
@@ -150,6 +152,12 @@ export default scenario({
       name: "provision-audit-table-and-fixtures",
       apply: async (ctx) => {
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        const evaluators = runtime.evaluators;
+        runtime.evaluators = [];
+        restoreEvaluators = () => {
+          runtime.evaluators = evaluators;
+          restoreEvaluators = undefined;
+        };
         await executeRawSql(runtime, "CREATE SCHEMA IF NOT EXISTS app_lifeops");
         await executeRawSql(
           runtime,
@@ -167,6 +175,17 @@ export default scenario({
            )`,
         );
         runtime.scenarioModelFixtures?.register(...goalsRouteFixtures());
+        return undefined;
+      },
+    },
+  ],
+
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore-post-turn-evaluators",
+      apply: () => {
+        restoreEvaluators?.();
         return undefined;
       },
     },

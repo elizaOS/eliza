@@ -766,12 +766,15 @@ export {
   openConnectorDetailHash,
   openConnectorsIndexHash,
   parseSettingsHash,
+  parseSettingsPath,
   readSettingsHashRoute,
   readSettingsHashSectionId,
+  readSettingsLocationRoute,
   replaceConnectorDetailHash,
   replaceSettingsHashRoute,
   type SettingsRoute,
   settingsRouteToHash,
+  subscribeSettingsLocation,
 } from "./settings-route";
 
 /**

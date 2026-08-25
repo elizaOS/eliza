@@ -23,8 +23,10 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import { greetTestPlugin } from "./_fixtures/greet-test-plugin.ts";
 
 const GREETING_INPUT = "Hello!";
+let previousEvaluators: AgentRuntime["evaluators"] | null = null;
 
-type RuntimeWithScenarioModelFixtures = AgentRuntime & {
+type RuntimeWithScenarioModelFixtures = Omit<AgentRuntime, "evaluators"> & {
+  evaluators: AgentRuntime["evaluators"];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
@@ -108,8 +110,22 @@ export default scenario({
       name: "register-greet-test-plugin",
       apply: async (ctx) => {
         const runtime = asRuntime(ctx.runtime);
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
         await runtime.registerPlugin(greetTestPlugin satisfies Plugin);
         runtime.scenarioModelFixtures?.register(...greetingRouteFixtures());
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore runtime evaluators",
+      apply: (ctx) => {
+        if (previousEvaluators !== null) {
+          asRuntime(ctx.runtime).evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
       },
     },
   ],

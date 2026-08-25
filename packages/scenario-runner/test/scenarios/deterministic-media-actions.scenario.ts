@@ -14,6 +14,9 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { isolatePostTurnEvaluators } from "./_helpers/post-turn-evaluator-isolation";
+
+let restoreEvaluators: (() => void) | null = null;
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";
@@ -238,6 +241,7 @@ export default scenario({
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
         }
+        restoreEvaluators = isolatePostTurnEvaluators(runtime);
         if (
           !runtime.plugins?.some(
             (plugin) => plugin.name === deterministicMediaPlugin.name,
@@ -248,6 +252,16 @@ export default scenario({
         }
         registerStrictActionRouteFixtures(runtime, strictMediaRoutes);
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: async () => {
+        restoreEvaluators?.();
+        restoreEvaluators = null;
       },
     },
   ],

@@ -124,7 +124,8 @@ const shortReason = extractFailureReason;
 function buildFailureReply(label: string, reason: string): string {
   const what = label ? `the "${label}" task` : "that task";
   const because = reason ? ` — ${reason}` : "";
-  return `Couldn't finish ${what}${because}. Want me to retry?`;
+  const terminator = /[.!?]$/u.test(because) ? "" : ".";
+  return `Couldn't finish ${what}${because}${terminator} Want me to retry?`;
 }
 
 function respondIfNeeded(messageHandler: MessageHandlerResult) {

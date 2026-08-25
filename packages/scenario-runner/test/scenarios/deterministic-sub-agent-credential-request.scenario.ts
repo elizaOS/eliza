@@ -371,8 +371,42 @@ export default scenario({
   id: "deterministic-sub-agent-credential-request",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason: "Direct API turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "owner-app-inline-form-voice-gate",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "I need these credentials." },
+          toolNames: [],
+        },
+        response: {
+          text: "I need these credentials. Enter them in the owner-only app form below.",
+        },
+      },
+      {
+        name: "credential-request-announcement-voice-gate",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "needs credentials to continue:" },
+          toolNames: [],
+        },
+        response: {
+          text: "Credential Bridge Child needs credentials to continue: `OPENAI_API_KEY` and `STRIPE_API_KEY`.",
+        },
+      },
+      {
+        name: "credential-resolution-voice-gate",
+        match: {
+          modelType: "TEXT_SMALL",
+          input: { includes: "Credential `OPENAI_API_KEY` received" },
+          toolNames: [],
+        },
+        response: {
+          text: "Credential `OPENAI_API_KEY` received. Resuming Credential Bridge Child.",
+        },
+      },
+    ],
   },
   title: "Deterministic sub-agent credential request bridge",
   domain: "agent-orchestrator",

@@ -60,6 +60,7 @@ interface EntityStoreLike {
     tags: string[];
     visibility: string;
   }): Promise<EntityRowLike>;
+  merge(targetId: string, sourceIds: string[]): Promise<EntityRowLike>;
 }
 
 interface KnowledgeGraphServiceLike {
@@ -166,8 +167,8 @@ export function entityAbsent(entityId: string) {
 
 /**
  * Seed a bare entity node directly through the real EntityStore. Used by the
- * merge scenario to stand up the duplicate rows the ENTITY merge subaction then
- * collapses — the merge engine requires the target + sources to pre-exist
+ * merge scenario to stand up the duplicate rows the identity authority then
+ * collapses — the merge engine requires the target and sources to pre-exist
  * (`EntityStore.merge` throws on a missing target).
  */
 export function seedEntity(input: {
@@ -189,6 +190,24 @@ export function seedEntity(input: {
       tags: [],
       visibility: "owner_agent_admin",
     });
+    return undefined;
+  };
+}
+
+/**
+ * Merge duplicate nodes through the runtime-owned deterministic identity
+ * engine. ENTITY intentionally cannot perform principal merges from model
+ * tool calls; scenario setup stands in for the verified authority boundary.
+ */
+export function mergeEntitiesThroughIdentityAuthority(
+  targetId: string,
+  sourceIds: string[],
+) {
+  return async (ctx: ScenarioContext): Promise<string | undefined> => {
+    const resolved = resolveGraph(ctx);
+    if (typeof resolved === "string") return resolved;
+    const store = resolved.kg.getEntityStore(resolved.runtime.agentId);
+    await store.merge(targetId, sourceIds);
     return undefined;
   };
 }

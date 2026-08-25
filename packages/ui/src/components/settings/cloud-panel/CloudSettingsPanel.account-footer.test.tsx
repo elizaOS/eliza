@@ -49,6 +49,16 @@ vi.mock("./cloud-panel-sections", () => {
     order: 0,
     Component: () => <div data-testid="section-general">General section</div>,
   };
+  const voiceSection = {
+    id: "voice",
+    label: "Voice",
+    subtitle: "Voice behavior",
+    icon: Icon,
+    placement: "navigation",
+    group: "agent",
+    order: 0,
+    Component: () => <div data-testid="section-voice">Voice section</div>,
+  };
   const footerSections = [
     {
       id: "cloud-billing",
@@ -82,11 +92,14 @@ vi.mock("./cloud-panel-sections", () => {
       <div data-testid={`section-${section.id}`}>{section.label} section</div>
     ),
   }));
-  const sections = [primarySection, ...footerSections];
+  const sections = [primarySection, voiceSection, ...footerSections];
   return {
     CLOUD_PANEL_SECTIONS: sections,
     cloudPanelAccountFooterSections: () => footerSections,
-    groupedCloudPanelSections: () => ({ general: [primarySection] }),
+    groupedCloudPanelSections: () => ({
+      general: [primarySection],
+      agent: [voiceSection],
+    }),
     resolveCloudPanelSection: (id: string) =>
       sections.some((section) => section.id === id) ? id : "general",
   };
@@ -116,6 +129,18 @@ describe("CloudSettingsPanel account footer navigation", () => {
     appState.handleCloudSignOut.mockResolvedValue(undefined);
     appState.setActionNotice.mockClear();
     window.history.replaceState(null, "", "/settings");
+  });
+
+  it("exposes the shared settings shell contract on wide screens", () => {
+    render(<CloudSettingsPanel />);
+    expect(screen.getByTestId("settings-shell")).toBeTruthy();
+  });
+
+  it("opens a nested-path section directly on narrow screens", () => {
+    mediaState.wide = false;
+    window.history.replaceState(null, "", "/settings/voice");
+    render(<CloudSettingsPanel />);
+    expect(screen.getByTestId("section-voice")).toBeTruthy();
   });
 
   it.each(ACCOUNT_DESTINATIONS)(

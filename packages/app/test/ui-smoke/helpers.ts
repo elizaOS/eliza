@@ -599,7 +599,10 @@ async function locatorVisible(
   timeoutMs: number = READY_CHECK_TIMEOUT_MS,
 ): Promise<boolean> {
   try {
-    await locator.first().waitFor({ state: "visible", timeout: timeoutMs });
+    await locator
+      .filter({ visible: true })
+      .first()
+      .waitFor({ state: "visible", timeout: timeoutMs });
     return true;
   } catch {
     return false;
