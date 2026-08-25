@@ -70,7 +70,6 @@ describe("dormant restore API boundary", () => {
       "startAgentSandboxReplacementAttemptInTransaction",
       "recordAgentSandboxReplacementIntentInTransaction",
       "commitAgentSandboxReplacementLifecycleAdoptionInTransaction",
-      "recordAgentSandboxReplacementCleanupProvenInTransaction",
     ]) {
       const occurrences = sources.flatMap(({ path, source }) =>
         source.includes(symbol) ? [path] : [],
@@ -86,11 +85,34 @@ describe("dormant restore API boundary", () => {
       const invocationLikeOccurrences = production.match(
         new RegExp(`\\b${symbol}(?:<[^>]+>)?\\s*\\(`, "g"),
       );
-      const expectedInvocationLikeOccurrences = symbol === "loadAgentBackupRestoreSourceV3" ? 2 : 1;
+      const expectedInvocationLikeOccurrences =
+        symbol === "loadAgentBackupRestoreSourceV3" ||
+        symbol === "startAgentSandboxReplacementAttemptInTransaction"
+          ? 2
+          : 1;
       expect(
         invocationLikeOccurrences ?? [],
         `${symbol} gained a production call site`,
       ).toHaveLength(expectedInvocationLikeOccurrences);
+    }
+    // The cleanup reconciler is the first deliberately activated consumer of
+    // the replacement ledger. Keep both terminal settlement APIs confined to
+    // that service until admission/provider/adoption are wired end-to-end.
+    for (const symbol of [
+      "recordAgentSandboxReplacementCleanupProvenInTransaction",
+      "recordAgentSandboxReplacementPreviousCleanupProvenInTransaction",
+    ]) {
+      const occurrences = sources
+        .filter(({ source }) => source.includes(symbol))
+        .map(({ path }) => path)
+        .sort();
+      expect(occurrences, `${symbol} gained an unexpected production consumer`).toEqual(
+        [
+          join(import.meta.dir, "repositories/agent-sandbox-replacement-attempts.ts"),
+          join(import.meta.dir, "../lib/services/eliza-sandbox.ts"),
+        ].sort(),
+      );
+      expect(production.match(new RegExp(`\\b${symbol}\\s*\\(`, "g")) ?? []).toHaveLength(2);
     }
     // Capture already consumes current vault authority in one deliberately
     // narrow production adapter; restore must not add another caller here.

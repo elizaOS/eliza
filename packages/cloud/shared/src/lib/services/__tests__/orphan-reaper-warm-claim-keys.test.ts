@@ -187,6 +187,8 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
       const reusedIncarnation = crypto.randomUUID();
       const rowId = crypto.randomUUID();
       const cleanupNameId = crypto.randomUUID();
+      const cleanupAttemptId = crypto.randomUUID();
+      const cleanupContainerId = "a".repeat(64);
 
       await dbWrite.insert(agentNodeIncarnationHistories).values([
         {
@@ -260,6 +262,8 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
         replacement_cleanup_node_ssh_user: "root",
         replacement_cleanup_node_host_key_fingerprint: "SHA256:owner-old",
         replacement_cleanup_container_name: `agent-${cleanupNameId}`,
+        replacement_cleanup_attempt_id: cleanupAttemptId,
+        replacement_cleanup_container_id: cleanupContainerId,
         replacement_cleanup_allocation_counted: true,
         replacement_cleanup_created_at: new Date(),
       });

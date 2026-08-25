@@ -95,6 +95,9 @@ beforeAll(async () => {
       replacement_cleanup_attempt_id uuid,
       replacement_cleanup_sandbox_id text,
       replacement_cleanup_node_id text,
+      replacement_cleanup_node_record_id uuid,
+      replacement_cleanup_node_incarnation uuid,
+      replacement_cleanup_node_history_id uuid,
       replacement_cleanup_container_name text,
       replacement_cleanup_allocation_counted boolean,
       deletion_allocation_counted boolean
@@ -111,6 +114,8 @@ beforeAll(async () => {
       locator_sandbox_id text,
       locator_node_record_id uuid,
       locator_node_id text,
+      locator_node_incarnation uuid,
+      locator_node_history_id uuid,
       locator_container_name text,
       capacity_state text
     );
