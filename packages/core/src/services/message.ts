@@ -2221,11 +2221,19 @@ function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
-function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+export function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	if (normalized.length <= 80) return normalized;
+	let end = 77;
+	if (end > 0 && end < normalized.length) {
+		const code = normalized.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return `${normalized.slice(0, end)}...`;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
