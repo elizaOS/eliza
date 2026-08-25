@@ -22,7 +22,14 @@ export function detectAuthMethod(
     return "baileys";
   }
 
-  if ("accessToken" in config && "phoneNumberId" in config) {
+  // Cloud API credentials must be present and non-empty: an empty
+  // accessToken/phoneNumberId would select cloudapi and then fail downstream
+  // at auth time with a confusing error. Mirrors the authDir truthiness check
+  // above (an empty authDir already falls through to the error below).
+  if (
+    (config as { accessToken?: unknown }).accessToken &&
+    (config as { phoneNumberId?: unknown }).phoneNumberId
+  ) {
     return "cloudapi";
   }
 
