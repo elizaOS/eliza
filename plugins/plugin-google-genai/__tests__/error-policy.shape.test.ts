@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  assertModelOutputComplete: vi.fn(),
   createPreparedModelRequestGuard: vi.fn(() => ({
     assertBeforeAttempt: vi.fn(),
   })),
