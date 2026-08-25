@@ -68,7 +68,6 @@ describe("PGlite progressive-content target factories", () => {
         manifestSha256: "a".repeat(64),
         adapterId: factory.adapterId,
         target,
-        performanceCeilings: { maxRssGrowthBytes: 256 * 1024 * 1024 },
       });
       expect(result.report).toMatchObject({
         status: "passed",
@@ -93,6 +92,55 @@ describe("PGlite progressive-content target factories", () => {
       expect(await fs.readdir(root)).toEqual([]);
     }, 120_000);
   }
+
+  it("replaces the resolver repeatedly without recreating the PGlite engine", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sql-target-restart-rss-"));
+    roots.push(root);
+    const bytes = Buffer.from("x");
+    const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+    const factory = await createProgressiveSqlTargetFactory({
+      dataRoot: root,
+      family: "memory",
+    });
+    const target = await factory.create({
+      object: {
+        id: "memory-sql-repeated-restart-object",
+        family: "memory",
+        byteLength: bytes.byteLength,
+        sourceSha256,
+        sourceRevision: sourceSha256,
+        format: "unicode-text",
+        authorizationScope: "memory-restart-room",
+        canaries: [],
+      },
+      source: {
+        byteLength: bytes.byteLength,
+        async read(offset, maximum = 64 * 1024) {
+          return bytes.subarray(offset, offset + maximum);
+        },
+      },
+    });
+    Bun.gc(true);
+    const rssBefore = process.memoryUsage().rss;
+    let generation = (await target.inspect()).resolverGeneration;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      await target.restart();
+      const next = (await target.inspect()).resolverGeneration;
+      expect(next).not.toBe(generation);
+      generation = next;
+      const page = await target.read({
+        access: "authorized",
+        offset: 0,
+        limit: 1,
+        expectedRevision: target.object.revision,
+      });
+      expect(Buffer.from(page.bytes).toString("utf8")).toBe("x");
+    }
+    Bun.gc(true);
+    expect(process.memoryUsage().rss - rssBefore).toBeLessThan(32 * 1024 * 1024);
+    await target.cleanup();
+    expect(await fs.readdir(root)).toEqual([]);
+  }, 120_000);
 
   it("rolls back staged rows when the manifest-last parent commit fails", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "sql-target-rollback-"));

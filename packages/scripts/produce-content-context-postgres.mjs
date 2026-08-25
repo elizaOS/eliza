@@ -1,88 +1,32 @@
 #!/usr/bin/env bun
 /**
  * Produces run-bound progressive-content evidence against a disposable real
- * PostgreSQL database while traversing every corpus object through its owning
- * production reader. The connection string remains environment-only.
+ * PostgreSQL database. All six families run through the shared production
+ * target harness; PostgreSQL seek plans and final database deletion are
+ * observed separately without exposing the connection string.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import {
-  persistMediaBytes,
-  readStoredMediaByteRange,
-} from "../agent/src/api/media-store.ts";
-import {
-  buildDocumentSourceProjection,
-  buildMessageContentProjection,
-  ChannelType,
-  MemoryType,
-  projectDocumentParentContent,
-  stringToUuid,
-} from "../core/src/index.ts";
+import { createProgressiveFileTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
+import { createProgressiveToolOutputTargetFactory } from "../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
+import { createProgressivePostgresSqlTargetFactories } from "../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts";
+import { createProgressiveAttachmentTargetFactory } from "../agent/src/testing/progressive-content-attachment-target.ts";
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
 import { validateProgressiveContentPostgresEvidence } from "../corpus-tools/src/progressive-content-postgres-evidence.ts";
-import { resolveContentContextEvidencePackages } from "./lib/script-metadata.mjs";
+import { openProgressiveContentBoundedSource } from "../corpus-tools/src/progressive-content-realization.ts";
+import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
 
-const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(SCRIPT_DIR, "../..");
-const evidencePackages = resolveContentContextEvidencePackages({
-  repoRoot: REPO_ROOT,
-});
-if (evidencePackages.invalid.length > 0) {
-  throw new Error(evidencePackages.invalid.join("; "));
-}
-function evidencePackageRoot(role) {
-  const pkg = evidencePackages.packages.get(role);
-  if (!pkg) {
-    throw new Error(`content-context evidence package role is absent: ${role}`);
-  }
-  return path.resolve(REPO_ROOT, pkg.dir);
-}
-function moduleUrl(root, relativePath) {
-  return pathToFileURL(path.join(root, relativePath)).href;
-}
-const codingToolsRoot = evidencePackageRoot("coding-tools");
-const sqlRoot = evidencePackageRoot("sql");
-const [
-  { readFileHandler },
-  shellArtifact,
-  fileStateModule,
-  sandboxModule,
-  codingTypes,
-  sqlIndex,
-  migrationModule,
-  pgAdapterModule,
-  pgManagerModule,
-] = await Promise.all([
-  import(moduleUrl(codingToolsRoot, "src/actions/read.ts")),
-  import(moduleUrl(codingToolsRoot, "src/lib/shell-output-artifact.ts")),
-  import(moduleUrl(codingToolsRoot, "src/services/file-state-service.ts")),
-  import(moduleUrl(codingToolsRoot, "src/services/sandbox-service.ts")),
-  import(moduleUrl(codingToolsRoot, "src/types.ts")),
-  import(moduleUrl(sqlRoot, "src/index.node.ts")),
-  import(moduleUrl(sqlRoot, "src/migration-service.ts")),
-  import(moduleUrl(sqlRoot, "src/pg/adapter.ts")),
-  import(moduleUrl(sqlRoot, "src/pg/manager.ts")),
-]);
-const { readShellOutputArtifactPage, ShellOutputArtifactWriter } =
-  shellArtifact;
-const { FileStateService } = fileStateModule;
-const { SandboxService } = sandboxModule;
-const { FILE_STATE_SERVICE, SANDBOX_SERVICE } = codingTypes;
-const { plugin: sqlPlugin } = sqlIndex;
-const { DatabaseMigrationService } = migrationModule;
-const { PgDatabaseAdapter } = pgAdapterModule;
-const { PostgresConnectionManager } = pgManagerModule;
-
-const PAGE_BYTES = 64 * 1024;
+const SCRIPT_PATH = "packages/scripts/produce-content-context-postgres.mjs";
 const SHA256 = /^[0-9a-f]{64}$/u;
+const SQL_FAMILIES = ["document", "memory", "email"];
 
 export function parsePostgresEvidenceArgs(argv) {
   const parsed = {};
@@ -100,6 +44,13 @@ function requiredEnvironment(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
+}
+
+function databaseUrl(base, databaseName) {
+  const scoped = new URL(base);
+  scoped.pathname = `/${databaseName}`;
+  scoped.searchParams.delete("options");
+  return scoped.toString();
 }
 
 async function privateAtomicJson(output, value) {
@@ -120,407 +71,11 @@ async function privateAtomicJson(output, value) {
   await fs.rename(temporary, destination);
 }
 
-async function readSource(corpusRoot, object, options = {}) {
-  const absolute = path.resolve(corpusRoot, object.relativePath);
-  if (!absolute.startsWith(`${path.resolve(corpusRoot)}${path.sep}`)) {
-    throw new Error(`unsafe corpus object path: ${object.relativePath}`);
-  }
-  const handle = await fs.open(
-    absolute,
-    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-  );
-  const digest = createHash("sha256");
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  const chunks = [];
-  let bytesRead = 0;
-  let readCalls = 0;
-  try {
-    for (let offset = 0; offset < object.byteLength; offset += PAGE_BYTES) {
-      const length = Math.min(PAGE_BYTES, object.byteLength - offset);
-      const buffer = Buffer.allocUnsafe(length);
-      const read = await handle.read(buffer, 0, length, offset);
-      if (read.bytesRead === 0) throw new Error(`source stopped at ${offset}`);
-      const bytes = buffer.subarray(0, read.bytesRead);
-      digest.update(bytes);
-      bytesRead += read.bytesRead;
-      readCalls += 1;
-      if (options.sniffOnly) {
-        if (object.format === "binary") {
-          return {
-            rejectionCode: "CONTENT_BINARY_UNSUPPORTED",
-            bytesRead,
-            readCalls,
-          };
-        }
-        try {
-          decoder.decode(bytes, { stream: read.bytesRead < object.byteLength });
-        } catch {
-          return {
-            rejectionCode: "CONTENT_INVALID_UTF8",
-            bytesRead,
-            readCalls,
-          };
-        }
-        throw new Error(`${object.id} did not trigger its declared rejection`);
-      }
-      chunks.push(
-        decoder.decode(bytes, {
-          stream: offset + read.bytesRead < object.byteLength,
-        }),
-      );
-    }
-    chunks.push(decoder.decode());
-  } finally {
-    await handle.close();
-  }
-  const sourceSha256 = digest.digest("hex");
-  if (sourceSha256 !== object.sourceSha256) {
-    throw new Error(`source hash differs for ${object.id}`);
-  }
-  return { text: chunks.join(""), bytesRead, readCalls };
-}
-
-function sourceWork(sourceBytes, bytesRead, readCalls, rowsRead = 0) {
-  return {
-    pageBytes: PAGE_BYTES,
-    bytesRead,
-    readCalls,
-    rowsRead,
-    parentScans: 0,
-    readAmplification: sourceBytes === 0 ? 1 : bytesRead / sourceBytes,
-  };
-}
-
-async function createFileRuntime(corpusRoot, conversationId) {
-  const settings = {
-    CODING_TOOLS_WORKSPACE_ROOTS: corpusRoot,
-    CODING_TOOLS_BLOCKED_PATHS: path.join(corpusRoot, ".blocked"),
-    CODING_TOOLS_MAX_FILE_SIZE_BYTES: PAGE_BYTES,
-  };
-  const services = new Map();
-  const runtime = {
-    agentId: "postgres-evidence-agent",
-    getSetting: (key) => settings[key],
-    getService: (key) => services.get(key) ?? null,
-  };
-  const sandbox = await SandboxService.start(runtime);
-  const fileState = await FileStateService.start(runtime);
-  services.set(SANDBOX_SERVICE, sandbox);
-  services.set(FILE_STATE_SERVICE, fileState);
-  return {
-    runtime,
-    message: { roomId: conversationId, entityId: conversationId },
-    close: async () => {
-      await fileState.stop();
-      await sandbox.stop();
-    },
-  };
-}
-
-async function traverseFile(runtime, message, absolutePath, object) {
-  const digest = createHash("sha256");
-  let offset = 0;
-  let bytesRead = 0;
-  let readCalls = 0;
-  let revision;
-  for (;;) {
-    const result = await readFileHandler(runtime, message, undefined, {
-      parameters: {
-        file_path: absolutePath,
-        unit: "byte",
-        offset,
-        limit: PAGE_BYTES,
-        ...(revision ? { expectedRevision: revision } : {}),
-      },
-    });
-    if (!result.success)
-      throw new Error(`READ failed for ${object.id}: ${result.text}`);
-    const data = result.data;
-    const view = data?.readView;
-    const diagnostics = data?.diagnostics;
-    if (!view || !diagnostics)
-      throw new Error("READ omitted paging diagnostics");
-    digest.update(Buffer.from(result.text, "utf8"));
-    bytesRead += Number(diagnostics.sourceBytesRead);
-    readCalls += 1;
-    revision = view.reference.revision;
-    if (!view.slice.hasMore) break;
-    offset = view.slice.nextOffset;
-  }
-  return { hash: digest.digest("hex"), bytesRead, readCalls };
-}
-
-async function traverseMedia(fileName) {
-  const digest = createHash("sha256");
-  let offset = 0;
-  let bytesRead = 0;
-  let readCalls = 0;
-  for (;;) {
-    const page = readStoredMediaByteRange(fileName, offset, PAGE_BYTES);
-    if (!page) throw new Error(`media page is absent for ${fileName}`);
-    digest.update(page.bytes);
-    bytesRead += page.bytes.byteLength;
-    readCalls += 1;
-    offset = page.end;
-    if (page.complete) break;
-  }
-  return { hash: digest.digest("hex"), bytesRead, readCalls };
-}
-
-async function traverseShell(artifact, ownerAgentId, ownerConversationId) {
-  const digest = createHash("sha256");
-  let offset = 0;
-  let bytesRead = 0;
-  let readCalls = 0;
-  for (;;) {
-    const page = await readShellOutputArtifactPage({
-      handle: artifact.handle,
-      stream: "stdout",
-      offset,
-      limit: 20_000,
-      requesterAgentId: ownerAgentId,
-      requesterConversationId: ownerConversationId,
-    });
-    if (!page.ok) throw new Error(`shell artifact read failed: ${page.reason}`);
-    digest.update(Buffer.from(page.value.text, "utf8"));
-    bytesRead += page.value.sourceBytesRead ?? 0;
-    readCalls += 1;
-    offset = page.value.nextOffset;
-    if (page.value.complete) break;
-  }
-  return { hash: digest.digest("hex"), bytesRead, readCalls };
-}
-
-function databaseUrl(base, databaseName) {
-  const scoped = new URL(base);
-  scoped.pathname = `/${databaseName}`;
-  scoped.searchParams.delete("options");
-  return scoped.toString();
-}
-
-async function openAdapter(url, agentId, migrate) {
-  const manager = new PostgresConnectionManager(url);
-  const adapter = new PgDatabaseAdapter(agentId, manager);
-  await adapter.init();
-  if (migrate) {
-    const migrations = new DatabaseMigrationService({
-      databaseBackend: "postgres",
-    });
-    await migrations.initializeWithDatabase(adapter.getManager().getDatabase());
-    migrations.discoverAndRegisterPluginSchemas([sqlPlugin]);
-    await migrations.runAllPluginMigrations();
-  }
-  return adapter;
-}
-
-async function seedSqlObjects(adapter, manifest, corpusRoot, ids) {
-  const rejected = new Map();
-  for (const object of manifest.objects) {
-    if (!["document", "memory", "email"].includes(object.family)) continue;
-    if (object.format === "binary" || object.format === "invalid-utf8") {
-      const result = await readSource(corpusRoot, object, { sniffOnly: true });
-      rejected.set(object.id, result);
-      continue;
-    }
-    const source = await readSource(corpusRoot, object);
-    const documentId = stringToUuid(`content-context:${object.id}`);
-    const roomId = ids.rooms.get(object.family);
-    const entityId = ids.entities.get(object.family);
-    if (!roomId || !entityId)
-      throw new Error(`missing owner IDs for ${object.family}`);
-    if (object.family === "document") {
-      const metadata = {
-        type: MemoryType.DOCUMENT,
-        documentId,
-        title: object.id,
-        scope: "user-private",
-        scopedToEntityId: entityId,
-        documentRevision: 0,
-        timestamp: Date.now(),
-      };
-      const projection = buildDocumentSourceProjection({
-        text: source.text,
-        documentId,
-        agentId: ids.agentId,
-        roomId,
-        entityId,
-        documentMetadata: metadata,
-      });
-      await adapter.createMemories([
-        {
-          memory: {
-            id: documentId,
-            agentId: ids.agentId,
-            roomId,
-            entityId,
-            createdAt: Date.now(),
-            content: projectDocumentParentContent({
-              text: source.text,
-              projection: projection.metadata,
-            }),
-            metadata: { ...metadata, ...projection.metadata },
-          },
-          tableName: "documents",
-        },
-        ...projection.segments.map((memory) => ({
-          memory,
-          tableName: "document_fragments",
-        })),
-      ]);
-    } else {
-      const parent = {
-        id: documentId,
-        agentId: ids.agentId,
-        roomId,
-        entityId,
-        createdAt: Date.now(),
-        content: { text: source.text },
-        metadata: {
-          type: "message",
-          scope: "room",
-          evidenceFamily: object.family,
-        },
-      };
-      const projection = buildMessageContentProjection(parent);
-      const published = await adapter.publishMessageContentSegments({
-        mode: "create",
-        parent: { ...parent, content: projection.content },
-        segments: projection.segments,
-      });
-      if (published.status !== "created") {
-        throw new Error(`message publication failed for ${object.id}`);
-      }
-    }
-  }
-  return rejected;
-}
-
-async function traverseSqlObject(adapter, object, ids) {
-  const objectId = stringToUuid(`content-context:${object.id}`);
-  const roomId = ids.rooms.get(object.family);
-  const entityId = ids.entities.get(object.family);
-  if (!roomId || !entityId)
-    throw new Error(`missing owner IDs for ${object.family}`);
-  const digest = createHash("sha256");
-  let offset = 0;
-  let rowsRead = 0;
-  let readCalls = 0;
-  let expectedRevision;
-  for (;;) {
-    if (object.family === "document") {
-      const page = await adapter.readDocumentRange({
-        agentId: ids.agentId,
-        requesterEntityId: entityId,
-        requesterRoomIds: [roomId],
-        requesterRole: "USER",
-        documentId: objectId,
-        unit: "byte",
-        offset,
-        limit: PAGE_BYTES,
-      });
-      if (!page) throw new Error(`document read denied for ${object.id}`);
-      digest.update(Buffer.from(page.text, "utf8"));
-      rowsRead += page.examinedSourceSegments;
-      readCalls += page.sourceQueryCount;
-      offset = page.end;
-      if (page.end >= page.total) break;
-    } else {
-      const page = await adapter.readMessageContentRange({
-        agentId: ids.agentId,
-        messageId: objectId,
-        authorizedRoomId: roomId,
-        accessContext: { requesterEntityId: entityId, role: "USER" },
-        source: { kind: "message-text" },
-        offset,
-        limit: PAGE_BYTES,
-        ...(expectedRevision ? { expectedRevision } : {}),
-      });
-      if (page.status !== "ok")
-        throw new Error(`message read failed for ${object.id}`);
-      digest.update(Buffer.from(page.page.text, "utf8"));
-      rowsRead += page.page.returnedSegments;
-      readCalls += page.page.sourceQueryCount;
-      offset = page.page.end;
-      expectedRevision = page.page.revision;
-      if (page.page.end >= page.page.total) break;
-    }
-  }
-  return { hash: digest.digest("hex"), readCalls, rowsRead };
-}
-
-async function verifySqlDenials(adapter, family, ids, object) {
-  const objectId = stringToUuid(`content-context:${object.id}`);
-  const roomId = ids.rooms.get(family);
-  if (!roomId) throw new Error(`missing room for ${family}`);
-  if (family === "document") {
-    const denied = await adapter.readDocumentRange({
-      agentId: ids.agentId,
-      requesterEntityId: ids.deniedEntityId,
-      requesterRoomIds: [],
-      requesterRole: "USER",
-      documentId: objectId,
-      unit: "byte",
-      offset: 0,
-      limit: 1,
-    });
-    const isolated = await adapter.readDocumentRange({
-      agentId: ids.otherAgentId,
-      requesterEntityId: ids.deniedEntityId,
-      requesterRoomIds: [roomId],
-      requesterRole: "USER",
-      documentId: objectId,
-      unit: "byte",
-      offset: 0,
-      limit: 1,
-    });
-    if (denied !== null || isolated !== null)
-      throw new Error("document denial failed");
-  } else {
-    const denied = await adapter.readMessageContentRange({
-      agentId: ids.agentId,
-      messageId: objectId,
-      authorizedRoomId: roomId,
-      accessContext: { requesterEntityId: ids.deniedEntityId, role: "USER" },
-      source: { kind: "message-text" },
-      offset: 0,
-      limit: 1,
-    });
-    const isolated = await adapter.readMessageContentRange({
-      agentId: ids.otherAgentId,
-      messageId: objectId,
-      authorizedRoomId: roomId,
-      accessContext: { requesterEntityId: ids.deniedEntityId, role: "USER" },
-      source: { kind: "message-text" },
-      offset: 0,
-      limit: 1,
-    });
-    if (denied.status !== "forbidden" || isolated.status !== "not_found") {
-      throw new Error("message denial failed");
-    }
-  }
-}
-
-async function sqlRowCount(pool, object) {
-  const objectId = stringToUuid(`content-context:${object.id}`);
-  if (object.family === "document") {
-    const result = await pool.query(
-      "SELECT count(*)::int AS count FROM memories WHERE type = 'document_fragments' AND metadata->>'documentId' = $1 AND metadata->>'fragmentRole' = 'source-segment'",
-      [objectId],
-    );
-    return Number(result.rows[0]?.count ?? 0);
-  }
-  const result = await pool.query(
-    "SELECT count(*)::int AS count FROM memories WHERE type = 'message_content_segments' AND metadata->>'messageId' = $1",
-    [objectId],
-  );
-  return Number(result.rows[0]?.count ?? 0);
-}
-
 function summarizeExplainPlan(result, expectedIndexName, indexDefinition) {
   const envelope = result.rows[0]?.["QUERY PLAN"]?.[0];
   const root = envelope?.Plan;
   if (!root || typeof root !== "object") {
-    throw new Error("Postgres did not return a JSON execution plan");
+    throw new Error("PostgreSQL did not return a JSON execution plan");
   }
   const nodeTypes = [];
   const indexNames = [];
@@ -528,9 +83,8 @@ function summarizeExplainPlan(result, expectedIndexName, indexDefinition) {
   let sharedReadBlocks = 0;
   const visit = (node) => {
     nodeTypes.push(String(node["Node Type"] ?? "unknown"));
-    if (typeof node["Index Name"] === "string") {
+    if (typeof node["Index Name"] === "string")
       indexNames.push(node["Index Name"]);
-    }
     sharedHitBlocks += Number(node["Shared Hit Blocks"] ?? 0);
     sharedReadBlocks += Number(node["Shared Read Blocks"] ?? 0);
     for (const child of node.Plans ?? []) visit(child);
@@ -538,7 +92,7 @@ function summarizeExplainPlan(result, expectedIndexName, indexDefinition) {
   visit(root);
   if (!indexNames.includes(expectedIndexName)) {
     throw new Error(
-      `Postgres seek plan did not use ${expectedIndexName}; used ${indexNames.join(", ") || "no index"}: ${nodeTypes.join(", ")}; expectedDefinition=${indexDefinition}; plan=${JSON.stringify(root)}`,
+      `PostgreSQL seek plan did not use ${expectedIndexName}; definition=${indexDefinition}; plan=${JSON.stringify(root)}`,
     );
   }
   return {
@@ -552,10 +106,7 @@ function summarizeExplainPlan(result, expectedIndexName, indexDefinition) {
   };
 }
 
-async function explainSqlSeek(pool, family, object, ids) {
-  const objectId = stringToUuid(`content-context:${object.id}`);
-  const offset = Math.max(0, object.byteLength - PAGE_BYTES);
-  const requestedEnd = offset + PAGE_BYTES;
+async function explainSqlSeek(pool, family, object) {
   const expectedIndexName =
     family === "document"
       ? "idx_document_source_byte_seek"
@@ -567,7 +118,17 @@ async function explainSqlSeek(pool, family, object, ids) {
   const indexDefinition = String(
     definitionResult.rows[0]?.definition ?? "absent",
   );
+  const offset = Math.max(0, object.byteLength - 64 * 1024);
+  const requestedEnd = offset + 64 * 1024;
   if (family === "document") {
+    const identity = await pool.query(
+      "SELECT agent_id, metadata->>'documentId' AS id FROM memories WHERE type = 'documents' AND metadata->>'sourceSha256' = $1 LIMIT 1",
+      [object.sourceSha256],
+    );
+    const objectId = identity.rows[0]?.id;
+    const agentId = identity.rows[0]?.agent_id;
+    if (typeof objectId !== "string")
+      throw new Error(`document identity absent for ${object.id}`);
     const result = await pool.query(
       `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
        SELECT id FROM memories
@@ -578,33 +139,28 @@ async function explainSqlSeek(pool, family, object, ids) {
          AND metadata->>'sourceSegmentVersion' = '1'
          AND metadata ? 'sourceByteEnd'
          AND metadata->>'documentId' = $2
-         AND (metadata->>'documentRevision')::bigint = 0
+         AND (metadata->>'documentRevision')::bigint = 1
          AND NOT (metadata ? 'revisionAttemptId')
          AND metadata->>'revisionAttemptId' IS NULL
          AND (metadata->>'sourceByteEnd')::bigint > $3
          AND (metadata->>'sourceByteStart')::bigint < $4
-       ORDER BY agent_id,
-                metadata->>'documentId',
+       ORDER BY agent_id, metadata->>'documentId',
                 (metadata->>'documentRevision')::bigint,
                 (metadata->>'sourceByteEnd')::bigint
        LIMIT 66`,
-      [ids.agentId, objectId, offset, requestedEnd],
+      [agentId, objectId, offset, requestedEnd],
     );
     return summarizeExplainPlan(result, expectedIndexName, indexDefinition);
   }
-  const revisionResult = await pool.query(
-    `SELECT metadata->>'sourceRevision' AS revision
-     FROM memories
-     WHERE type = 'message_content_segments'
-       AND agent_id = $1
-       AND metadata->>'messageId' = $2
-     LIMIT 1`,
-    [ids.agentId, objectId],
+  const identity = await pool.query(
+    "SELECT id, agent_id FROM memories WHERE type = 'messages' AND metadata->>'source' = $1 ORDER BY created_at DESC LIMIT 1",
+    [family],
   );
-  const revision = revisionResult.rows[0]?.revision;
-  if (typeof revision !== "string") {
-    throw new Error(`missing source revision for ${object.id}`);
-  }
+  const objectId = identity.rows[0]?.id;
+  const agentId = identity.rows[0]?.agent_id;
+  if (typeof objectId !== "string")
+    throw new Error(`${family} identity absent for ${object.id}`);
+  const revision = `rev:${object.sourceSha256}`;
   const result = await pool.query(
     `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
      SELECT id FROM memories
@@ -618,16 +174,99 @@ async function explainSqlSeek(pool, family, object, ids) {
        AND metadata->>'sourceRevision' = $3
        AND (metadata->>'byteEnd')::bigint > $4
        AND (metadata->>'byteStart')::bigint < $5
-     ORDER BY agent_id,
-              metadata->>'messageId',
-              metadata->>'sourceKind',
-              metadata->>'attachmentIdHash',
-              metadata->>'sourceRevision',
+     ORDER BY agent_id, metadata->>'messageId', metadata->>'sourceKind',
+              metadata->>'attachmentIdHash', metadata->>'sourceRevision',
               (metadata->>'byteEnd')::bigint
      LIMIT 66`,
-    [ids.agentId, objectId, revision, offset, requestedEnd],
+    [agentId, objectId, revision, offset, requestedEnd],
   );
   return summarizeExplainPlan(result, expectedIndexName, indexDefinition);
+}
+
+async function observeIndexVectors(input) {
+  const factories = new Map(
+    input.factories.map((factory) => [factory.family, factory]),
+  );
+  const vectors = [];
+  const client = await input.pool.connect();
+  try {
+    // The disposable corpus has only one active target at a time, so PostgreSQL
+    // reasonably prefers a sequential scan for ~160 rows. Disable that planner
+    // alternative on this evidence connection to prove the production seek
+    // predicate is index-compatible; the setting is recorded in each vector.
+    await client.query("SET enable_seqscan = off");
+    for (const family of SQL_FAMILIES) {
+      const factory = factories.get(family);
+      const object = input.manifest.objects
+        .filter(
+          (candidate) =>
+            candidate.family === family &&
+            candidate.format !== "binary" &&
+            candidate.format !== "invalid-utf8" &&
+            candidate.byteLength > 64 * 1024,
+        )
+        .sort((left, right) => right.byteLength - left.byteLength)[0];
+      if (!factory || !object)
+        throw new Error(`indexed ${family} target is absent`);
+      const opened = await openProgressiveContentBoundedSource(
+        input.corpusRoot,
+        object,
+      );
+      let target;
+      try {
+        target = await factory.create({
+          object: {
+            id: object.id,
+            family: object.family,
+            byteLength: object.byteLength,
+            sourceSha256: object.sourceSha256,
+            sourceRevision: object.revision,
+            format: object.format,
+            authorizationScope: object.authorizationScope,
+            canaries: object.canaries,
+          },
+          source: opened.source,
+        });
+        if (!opened.exactCoverage())
+          throw new Error(`index target did not consume ${object.id}`);
+        await client.query("ANALYZE memories");
+        vectors.push({
+          family,
+          adapterId: factory.adapterId,
+          productionMethod: factory.productionMethod,
+          plannerSettings: { enableSeqscan: false },
+          seekPlan: await explainSqlSeek(client, family, object),
+        });
+      } finally {
+        await target?.cleanup();
+        await opened.close();
+      }
+    }
+  } finally {
+    await client.query("RESET enable_seqscan");
+    client.release();
+  }
+  return vectors;
+}
+
+async function productionFactories(input) {
+  process.env.ELIZA_STATE_DIR = path.join(input.stateDir, "agent-state");
+  await fs.mkdir(process.env.ELIZA_STATE_DIR, { recursive: true, mode: 0o700 });
+  const file = await createProgressiveFileTargetFactory({
+    targetRoot: path.join(input.stateDir, "file-targets"),
+    agentId: "content-context-postgres-file-agent",
+  });
+  const sql = await createProgressivePostgresSqlTargetFactories({
+    connectionString: input.connectionString,
+  });
+  return [
+    file,
+    ...sql,
+    createProgressiveAttachmentTargetFactory(),
+    createProgressiveToolOutputTargetFactory({
+      agentId: "content-context-postgres-tool-agent",
+    }),
+  ];
 }
 
 async function produce(options) {
@@ -638,13 +277,12 @@ async function produce(options) {
     heapUsed: memoryAtStart.heapUsed,
     external: memoryAtStart.external,
   };
-  const sampleMemory = () => {
+  const memorySampler = setInterval(() => {
     const current = process.memoryUsage();
     peakMemory.rss = Math.max(peakMemory.rss, current.rss);
     peakMemory.heapUsed = Math.max(peakMemory.heapUsed, current.heapUsed);
     peakMemory.external = Math.max(peakMemory.external, current.external);
-  };
-  const memorySampler = setInterval(sampleMemory, 25);
+  }, 25);
   memorySampler.unref?.();
   const corpusRoot = path.resolve(
     requiredEnvironment("ELIZA_CONTENT_CONTEXT_CORPUS_ROOT"),
@@ -671,9 +309,7 @@ async function produce(options) {
     path.join(os.tmpdir(), "eliza-context-pg-state-"),
   );
   await fs.chmod(stateDir, 0o700);
-  process.env.ELIZA_STATE_DIR = stateDir;
   const bootstrap = new Pool({ connectionString: postgresUrl, max: 1 });
-  let adapter;
   let databaseCreated = false;
   let databaseDropped = false;
   let postDropProbe = "present";
@@ -683,304 +319,56 @@ async function produce(options) {
     );
     databaseCreated = true;
     const scopedUrl = databaseUrl(postgresUrl, databaseName);
-    const ids = {
-      agentId: stringToUuid(`content-context-agent:${options.commit}`),
-      otherAgentId: stringToUuid(
-        `content-context-other-agent:${options.commit}`,
-      ),
-      deniedEntityId: stringToUuid(`content-context-denied:${options.commit}`),
-      rooms: new Map(),
-      entities: new Map(),
-    };
-    adapter = await openAdapter(scopedUrl, ids.agentId, true);
-    await adapter.createAgent({
-      id: ids.agentId,
-      name: "Content context evidence",
+    const factories = await productionFactories({
+      stateDir,
+      connectionString: scopedUrl,
     });
-    await adapter.createAgent({
-      id: ids.otherAgentId,
-      name: "Isolation decoy",
-    });
-    await adapter.createEntities([
-      { id: ids.deniedEntityId, agentId: ids.agentId, names: ["Denied"] },
-    ]);
-    for (const family of ["document", "memory", "email"]) {
-      const roomId = stringToUuid(
-        `content-context-room:${family}:${options.commit}`,
-      );
-      const entityId = stringToUuid(
-        `content-context-entity:${family}:${options.commit}`,
-      );
-      ids.rooms.set(family, roomId);
-      ids.entities.set(family, entityId);
-      await adapter.createEntities([
-        { id: entityId, agentId: ids.agentId, names: [family] },
-      ]);
-      await adapter.createRooms([
-        {
-          id: roomId,
-          agentId: ids.agentId,
-          source: "evidence",
-          type: ChannelType.GROUP,
-          name: family,
-        },
-      ]);
-      await adapter.createRoomParticipants([entityId], roomId);
-    }
-    const rejected = await seedSqlObjects(adapter, manifest, corpusRoot, ids);
-    await adapter.close();
-    adapter = await openAdapter(scopedUrl, ids.agentId, false);
-    const sqlPool = adapter.getRawConnection();
-    const serverResult = await sqlPool.query(
-      "SELECT version() AS version, current_setting('server_version_num')::int AS version_num",
-    );
-    const server = {
-      version: String(serverResult.rows[0]?.version ?? ""),
-      versionNum: Number(serverResult.rows[0]?.version_num ?? 0),
-    };
-    const indexRows = await sqlPool.query(
-      "SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND indexname = ANY($1::text[]) ORDER BY indexname",
-      [["idx_document_source_byte_seek", "idx_message_content_byte_seek"]],
-    );
-    const installedIndexes = new Set(
-      indexRows.rows.map((row) => String(row.indexname)),
-    );
-    const fileRuntime = await createFileRuntime(
+    const targetHarness = await runProgressiveContentTargetHarness({
       corpusRoot,
-      String(ids.agentId),
-    );
-    const objects = [];
+      manifest,
+      factories,
+    });
+    if (targetHarness.status !== "passed") {
+      throw new Error("shared PostgreSQL target harness failed");
+    }
+    const sqlPool = new Pool({ connectionString: scopedUrl, max: 2 });
+    let server;
+    let indexVectors;
+    let databaseSizeBytes;
     try {
-      for (const object of manifest.objects) {
-        const objectStartedAt = performance.now();
-        if (["document", "memory", "email"].includes(object.family)) {
-          const rejection = rejected.get(object.id);
-          if (rejection) {
-            objects.push({
-              objectId: object.id,
-              family: object.family,
-              sourceBytes: object.byteLength,
-              sourceSha256: object.sourceSha256,
-              revision: object.revision,
-              authorizationScope: object.authorizationScope,
-              disposition: "typed-rejected",
-              postgresRows: 0,
-              reassembledSha256: null,
-              rejectionCode: rejection.rejectionCode,
-              storageWrites: 0,
-              authorizationVerified: true,
-              isolationVerified: true,
-              restartVerified: true,
-              durationMs: performance.now() - objectStartedAt,
-              sourceWork: sourceWork(
-                object.byteLength,
-                rejection.bytesRead,
-                rejection.readCalls,
-              ),
-            });
-            continue;
-          }
-          const traversed = await traverseSqlObject(adapter, object, ids);
-          await verifySqlDenials(adapter, object.family, ids, object);
-          const postgresRows = await sqlRowCount(sqlPool, object);
-          objects.push({
-            objectId: object.id,
-            family: object.family,
-            sourceBytes: object.byteLength,
-            sourceSha256: object.sourceSha256,
-            revision: object.revision,
-            authorizationScope: object.authorizationScope,
-            disposition: "postgres-text-reassembled",
-            postgresRows,
-            reassembledSha256: traversed.hash,
-            rejectionCode: null,
-            storageWrites: postgresRows,
-            authorizationVerified: true,
-            isolationVerified: true,
-            restartVerified: true,
-            durationMs: performance.now() - objectStartedAt,
-            sourceWork: sourceWork(
-              object.byteLength,
-              object.byteLength,
-              traversed.readCalls,
-              traversed.rowsRead,
-            ),
-          });
-          continue;
-        }
-        const source = await readSource(corpusRoot, object);
-        let traversed;
-        if (object.family === "file") {
-          traversed = await traverseFile(
-            fileRuntime.runtime,
-            fileRuntime.message,
-            path.join(corpusRoot, object.relativePath),
-            object,
-          );
-        } else if (object.family === "attachment") {
-          const stored = persistMediaBytes(
-            Buffer.from(source.text, "utf8"),
-            "application/octet-stream",
-          );
-          traversed = await traverseMedia(stored.fileName);
-        } else {
-          const ownerAgentId = String(ids.agentId);
-          const ownerConversationId = String(ids.rooms.get("memory"));
-          const writer = await ShellOutputArtifactWriter.create({
-            exitCode: 0,
-            timedOut: false,
-            signal: null,
-            modelCharacterLimit: 1,
-            ownerAgentId,
-            ownerConversationId,
-          });
-          await writer.write("stdout", source.text);
-          const artifact = await writer.finalize(0);
-          traversed = await traverseShell(
-            artifact,
-            ownerAgentId,
-            ownerConversationId,
-          );
-        }
-        objects.push({
-          objectId: object.id,
-          family: object.family,
-          sourceBytes: object.byteLength,
-          sourceSha256: object.sourceSha256,
-          revision: object.revision,
-          authorizationScope: object.authorizationScope,
-          disposition: "native-store-reassembled",
-          postgresRows: 0,
-          reassembledSha256: traversed.hash,
-          rejectionCode: null,
-          storageWrites: 0,
-          authorizationVerified: true,
-          isolationVerified: true,
-          restartVerified: true,
-          durationMs: performance.now() - objectStartedAt,
-          sourceWork: sourceWork(
-            object.byteLength,
-            traversed.bytesRead,
-            traversed.readCalls,
-          ),
-        });
-      }
-    } finally {
-      await fileRuntime.close();
-    }
-    const mappingRows = new Map();
-    for (const object of objects) {
-      mappingRows.set(
-        object.family,
-        (mappingRows.get(object.family) ?? 0) + object.postgresRows,
+      const serverResult = await sqlPool.query(
+        "SELECT version() AS version, current_setting('server_version_num')::int AS version_num",
       );
-      if (
-        object.reassembledSha256 !== null &&
-        object.reassembledSha256 !== object.sourceSha256
-      ) {
-        throw new Error(`reassembly hash differs for ${object.objectId}`);
-      }
+      server = {
+        version: String(serverResult.rows[0]?.version ?? ""),
+        versionNum: Number(serverResult.rows[0]?.version_num ?? 0),
+      };
+      indexVectors = await observeIndexVectors({
+        pool: sqlPool,
+        corpusRoot,
+        manifest,
+        factories,
+      });
+      databaseSizeBytes = Number(
+        (
+          await sqlPool.query(
+            "SELECT pg_database_size(current_database())::bigint AS bytes",
+          )
+        ).rows[0]?.bytes ?? 0,
+      );
+    } finally {
+      await sqlPool.end();
     }
-    const mappings = [
-      ["file", "filesystem", "READ.byteWindow", "native-bytes"],
-      [
-        "document",
-        "document-store",
-        "DatabaseAdapter.readDocumentRange",
-        "typed-rejection",
-      ],
-      [
-        "memory",
-        "memory-store",
-        "DatabaseAdapter.readMessageContentRange",
-        "typed-rejection",
-      ],
-      [
-        "email",
-        "message-store",
-        "DatabaseAdapter.readMessageContentRange",
-        "typed-rejection",
-      ],
-      [
-        "attachment",
-        "content-addressed-media",
-        "media-store.readStoredMediaByteRange",
-        "native-bytes",
-      ],
-      [
-        "tool-output",
-        "filesystem",
-        "readShellOutputArtifactPage",
-        "native-bytes",
-      ],
-    ];
-    const sqlMappings = mappings.filter(([family]) =>
-      ["document", "memory", "email"].includes(family),
-    );
-    await sqlPool.query("ANALYZE memories");
-    const seekPlans = new Map();
-    for (const [family] of sqlMappings) {
-      const object = manifest.objects
-        .filter(
-          (candidate) =>
-            candidate.family === family &&
-            candidate.format !== "binary" &&
-            candidate.format !== "invalid-utf8",
-        )
-        .sort((left, right) => right.byteLength - left.byteLength)[0];
-      if (!object) throw new Error(`no valid ${family} object for seek plan`);
-      seekPlans.set(family, await explainSqlSeek(sqlPool, family, object, ids));
-    }
-    const negativeVectors = [];
-    for (const [family] of sqlMappings) {
-      for (const format of ["binary", "invalid-utf8"]) {
-        const before = Number(
-          (await sqlPool.query("SELECT count(*)::int AS count FROM memories"))
-            .rows[0]?.count ?? 0,
+    const observedPostgresRows = targetHarness.entries.reduce(
+      (total, entry) => {
+        if (!SQL_FAMILIES.includes(entry.family)) return total;
+        const realized = entry.receipts?.find(
+          ({ phase }) => phase === "realized",
         );
-        const bytes =
-          format === "binary"
-            ? Buffer.from([0, 1, 2, 3])
-            : Buffer.from([0xc3, 0x28]);
-        let rejectionCode;
-        if (format === "binary" && bytes.includes(0))
-          rejectionCode = "CONTENT_BINARY_UNSUPPORTED";
-        else {
-          try {
-            new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-          } catch {
-            rejectionCode = "CONTENT_INVALID_UTF8";
-          }
-        }
-        if (!rejectionCode)
-          throw new Error(`negative ${family}:${format} was accepted`);
-        const after = Number(
-          (await sqlPool.query("SELECT count(*)::int AS count FROM memories"))
-            .rows[0]?.count ?? 0,
-        );
-        negativeVectors.push({
-          family,
-          format,
-          status: "passed",
-          rejectionCode,
-          postgresRows: 0,
-          storageWrites: after - before,
-        });
-      }
-    }
-    const databaseSizeBytes = Number(
-      (
-        await sqlPool.query(
-          "SELECT pg_database_size(current_database())::bigint AS bytes",
-        )
-      ).rows[0]?.bytes ?? 0,
+        return total + Number(realized?.after.databaseRows ?? 0);
+      },
+      0,
     );
-    const totalPostgresRows = Number(
-      (await sqlPool.query("SELECT count(*)::int AS count FROM memories"))
-        .rows[0]?.count ?? 0,
-    );
-    await adapter.close();
-    adapter = undefined;
     await bootstrap.query(`DROP DATABASE "${databaseName}" WITH (FORCE)`);
     databaseDropped = true;
     const probe = await bootstrap.query(
@@ -990,9 +378,8 @@ async function produce(options) {
     postDropProbe =
       Number(probe.rows[0]?.count ?? 1) === 0 ? "absent" : "present";
     const memoryAtEnd = process.memoryUsage();
-    sampleMemory();
     const report = {
-      schemaVersion: "elizaos.content-context.postgres.v3",
+      schemaVersion: "elizaos.content-context.postgres.v4",
       status: "passed",
       backend: "postgres",
       commit: options.commit,
@@ -1000,10 +387,7 @@ async function produce(options) {
       server,
       command: {
         executable: "bun",
-        argv: [
-          "packages/scripts/produce-content-context-postgres.mjs",
-          `--commit=${options.commit}`,
-        ],
+        argv: [SCRIPT_PATH, `--commit=${options.commit}`],
         cwd: ".",
       },
       performance: {
@@ -1017,33 +401,10 @@ async function produce(options) {
         externalStartBytes: memoryAtStart.external,
         externalEndBytes: memoryAtEnd.external,
         databaseSizeBytes,
-        totalPostgresRows,
+        observedPostgresRows,
       },
-      familyMappings: mappings.map(
-        ([family, authoritativeStore, productionMethod, binaryPolicy]) => ({
-          family,
-          authoritativeStore,
-          productionMethod,
-          binaryPolicy,
-          postgresRows: mappingRows.get(family) ?? 0,
-        }),
-      ),
-      sharedVectors: sqlMappings.map(([family, , productionMethod]) => ({
-        family,
-        status: "passed",
-        productionMethod,
-        authorizationDenied: true,
-        isolationDenied: true,
-        restartVerified: true,
-        indexNames: [
-          family === "document"
-            ? "idx_document_source_byte_seek"
-            : "idx_message_content_byte_seek",
-        ].filter((name) => installedIndexes.has(name)),
-        seekPlan: seekPlans.get(family),
-      })),
-      objects,
-      negativeVectors,
+      targetHarness,
+      indexVectors,
       cleanup: { databaseDropped, postDropProbe },
     };
     validateProgressiveContentPostgresEvidence(report, {
@@ -1063,9 +424,9 @@ async function produce(options) {
     return report;
   } finally {
     clearInterval(memorySampler);
-    sampleMemory();
-    await adapter?.close().catch(() => {});
     if (databaseCreated && !databaseDropped) {
+      // error-policy:J6 the producer reports the original failure after trying
+      // to remove only its uniquely named disposable database.
       await bootstrap
         .query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)
         .catch(() => {});
