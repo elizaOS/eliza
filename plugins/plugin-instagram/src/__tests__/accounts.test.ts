@@ -311,4 +311,38 @@ describe("Instagram connector accounts", () => {
       expect(postComment).not.toHaveBeenCalled();
     }
   );
+
+  it("preserves UTF-16 surrogate pairs in comment truncation", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    let postedComment = "";
+    const postComment = vi.fn(async (_id: string, text: string) => {
+      postedComment = text;
+      return "123";
+    });
+    Object.assign(service, {
+      defaultAccountId: "default",
+      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      isRunning: true,
+      postComment,
+    });
+
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+    // "🔥" is 2 code units. 600 repeats = 1200 code units > MAX_COMMENT_LENGTH (1000)
+    const longEmoji = "🔥".repeat(600);
+    await service.handleSendPost(runtime, {
+      text: longEmoji,
+      metadata: { mediaId: "123" },
+    } as Content);
+
+    expect(postComment).toHaveBeenCalled();
+    expect(postedComment.endsWith("...")).toBe(true);
+    expect(postedComment.length).toBe(999);
+    for (const char of postedComment) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

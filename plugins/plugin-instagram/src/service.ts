@@ -138,8 +138,22 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
     : undefined;
 }
 
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function truncateInstagramComment(text: string): string {
-  return text.length > MAX_COMMENT_LENGTH ? `${text.slice(0, MAX_COMMENT_LENGTH - 3)}...` : text;
+  return text.length > MAX_COMMENT_LENGTH
+    ? `${truncateUtf16Safe(text, MAX_COMMENT_LENGTH - 3)}...`
+    : text;
 }
 
 function getInstagramPostMetadata(content: Content): Record<string, unknown> {
