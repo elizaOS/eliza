@@ -115,12 +115,12 @@ const PROFILE_SHAPES: Readonly<
   },
   scale: {
     counts: {
-      file: 2,
-      document: 2,
-      memory: 2,
-      email: 2,
-      attachment: 2,
-      "tool-output": 2,
+      file: 3,
+      document: 3,
+      memory: 3,
+      email: 3,
+      attachment: 3,
+      "tool-output": 3,
     },
     baseBytes: {
       file: 1024 * 1024,
@@ -1034,7 +1034,9 @@ function objectByteLength(
 ) {
   const base = shape.baseBytes[family];
   if (profile === "scale") {
-    return index === 1 ? 10 * 1024 * 1024 : base;
+    if (index === 1) return 10 * 1024 * 1024;
+    if (index === 2) return 100 * 1024 * 1024;
+    return base;
   }
   const boundaryCases =
     profile === "micro"

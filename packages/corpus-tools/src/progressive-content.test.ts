@@ -155,7 +155,7 @@ describe("progressive content corpus", () => {
     }
   });
 
-  it("builds every family at deterministic 1 MiB and 10 MiB scales", async () => {
+  it("builds every family at deterministic 1, 10, and 100 MiB scales", async () => {
     const root = await makeRoot();
     const manifest = await generateProgressiveContentCorpus({
       outDir: root,
@@ -163,7 +163,7 @@ describe("progressive content corpus", () => {
       rootSeed: "scale-seed",
       generatorRevision: "test-revision",
     });
-    expect(manifest.objects).toHaveLength(12);
+    expect(manifest.objects).toHaveLength(18);
     expect(new Set(manifest.objects.map(({ family }) => family))).toEqual(
       new Set([
         "file",
@@ -186,15 +186,15 @@ describe("progressive content corpus", () => {
         .filter((object) => object.family === family)
         .map(({ byteLength }) => byteLength)
         .sort((left, right) => left - right);
-      expect(sizes).toEqual([1024 * 1024, 10 * 1024 * 1024]);
+      expect(sizes).toEqual([1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024]);
     }
     expect(
       manifest.objects.reduce((total, object) => total + object.byteLength, 0),
-    ).toBe(66 * 1024 * 1024);
+    ).toBe(666 * 1024 * 1024);
     await expect(verifyProgressiveContentCorpus(root)).resolves.toEqual(
       manifest,
     );
-  }, 30_000);
+  }, 120_000);
 
   it("plans every required byte boundary in non-micro profiles", async () => {
     const fileSizes = new Set(planProgressiveContentByteLengths("pr", "file"));
