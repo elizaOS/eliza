@@ -79,15 +79,24 @@ export type VoiceAffectPlannerSlice = {
 };
 
 const RAW_AUDIO_KEYS = new Set([
+  // Canonical spellings (lowercased for case-insensitive matching) plus the
+  // snake_case variants callers may plausibly use to smuggle raw audio past
+  // the guard. The guard exists so raw audio never reaches durable storage;
+  // a case- or separator-variant key must not bypass it.
   "audio",
-  "audioBlob",
-  "audioData",
-  "base64Audio",
+  "audioblob",
+  "audiodata",
+  "base64audio",
   "buffer",
   "pcm",
-  "rawAudio",
+  "rawaudio",
   "samples",
   "waveform",
+  "raw_audio",
+  "audio_data",
+  "audio_blob",
+  "base64_audio",
+  "pcm_data",
 ]);
 
 function clamp01(value: number): number {
@@ -117,7 +126,7 @@ function assertNonEmpty(value: string, field: string): void {
 
 function assertNoRawAudio(features: Record<string, unknown>): void {
   for (const key of Object.keys(features)) {
-    if (RAW_AUDIO_KEYS.has(key)) {
+    if (RAW_AUDIO_KEYS.has(key.toLowerCase())) {
       throw new Error(
         `voice affect features must not include raw audio key: ${key}`,
       );
