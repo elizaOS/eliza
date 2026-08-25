@@ -10,6 +10,7 @@
  * rather than silently succeeding.
  */
 
+import { ElizaError } from "./errors";
 import type {
 	AccessContext,
 	Agent,
@@ -170,15 +171,24 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	): Promise<DocumentMutationResult>;
 
 	/**
-	 * Atomic world-metadata compare-and-swap with same-transaction audit commit
-	 * (#23100). Every first-class adapter implements this natively — the exact
-	 * prior snapshot is compared in the transaction that writes the
-	 * replacement, so concurrent metadata writers lose atomically instead of
-	 * silently overwriting authorization state.
+	 * Optional world-metadata CAS capability. This concrete fail-closed default
+	 * preserves compatibility for existing third-party subclasses while role
+	 * writes refuse to fall back to an unsafe whole-world overwrite.
 	 */
-	abstract compareAndSwapWorldMetadata(
+	compareAndSwapWorldMetadata(
 		params: WorldMetadataCompareAndSwapParams,
-	): Promise<WorldMetadataMutationResult>;
+	): Promise<WorldMetadataMutationResult> {
+		throw new ElizaError(
+			"Database adapter does not support atomic world-metadata role writes",
+			{
+				code: "WORLD_METADATA_CAS_CAPABILITY_REQUIRED",
+				context: {
+					adapter: this.constructor.name,
+					worldId: params.worldId,
+				},
+			},
+		);
+	}
 
 	abstract replaceDocumentRevision(
 		params: DocumentRevisionReplaceParams,

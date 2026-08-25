@@ -94,13 +94,7 @@ describe("Twitter memory utilities", () => {
         }),
       }),
     );
-    expect(updateWorld).toHaveBeenCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({
-          ownership: { ownerId: context.entityId },
-        }),
-      }),
-    );
+    expect(updateWorld).not.toHaveBeenCalled();
     expect(context.entityId).not.toBe("1830340867737178112");
   });
 

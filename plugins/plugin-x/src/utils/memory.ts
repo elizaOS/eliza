@@ -47,16 +47,12 @@ type TwitterMetadataTweet = Pick<
   "conversationId" | "id" | "name" | "userId" | "username"
 >;
 
-/**
- * Persists a Twitter world on both modern upsert runtimes and older production
- * runtimes where ensureWorldExists only creates missing rows.
- */
+/** Persists a Twitter world through the runtime's merge-aware ensure path. */
 export async function reconcileTwitterWorld(
   runtime: IAgentRuntime,
   world: World,
 ): Promise<void> {
   await runtime.ensureWorldExists(world);
-  await runtime.updateWorld(world);
 }
 
 /**

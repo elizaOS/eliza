@@ -9,6 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter.ts";
+import { WORLD_METADATA_REVISION_KEY } from "./database/world-metadata-cas.ts";
 import {
 	ROLE_WRITE_CAS_MAX_ATTEMPTS,
 	type RolesWorldMetadata,
@@ -256,6 +257,65 @@ describe("setEntityRoleCas against the real in-memory adapter", () => {
 		);
 		expect(result.status).toBe("world_not_found");
 	});
+
+	it.each(["updateWorlds", "upsertWorlds"] as const)(
+		"keeps a stale legacy %s writer from overwriting a committed role CAS",
+		async (legacyMethod) => {
+			const { adapter, runtime, message } = await setup();
+			let signalRead!: () => void;
+			let releaseWriter!: () => void;
+			const readComplete = new Promise<void>((resolve) => {
+				signalRead = resolve;
+			});
+			const writerGate = new Promise<void>((resolve) => {
+				releaseWriter = resolve;
+			});
+			const legacyWriter = (async () => {
+				const staleWorld = await storedWorld(adapter);
+				signalRead();
+				await writerGate;
+				if (!staleWorld) throw new Error("test world missing");
+				const staleMetadata = staleWorld.metadata as RolesWorldMetadata;
+				if (!staleMetadata.roles) throw new Error("test roles missing");
+				staleMetadata.roles[TARGET_ID] = "GUEST";
+				await adapter[legacyMethod]([staleWorld]);
+			})();
+			await readComplete;
+
+			const result = await setEntityRoleCas(
+				runtime,
+				message,
+				TARGET_ID,
+				"ADMIN",
+				{ authorize: () => true },
+			);
+			releaseWriter();
+			await expect(legacyWriter).rejects.toMatchObject({
+				code: "WORLD_METADATA_STALE_WRITE",
+			});
+
+			expect(result.status).toBe("committed");
+			expect(await storedRoles(adapter)).toMatchObject({
+				[TARGET_ID]: "ADMIN",
+			});
+		},
+	);
+
+	it.each(["updateWorlds", "upsertWorlds"] as const)(
+		"rejects a malformed revision from legacy %s",
+		async (legacyMethod) => {
+			const { adapter } = await setup();
+			const world = await storedWorld(adapter);
+			if (!world?.metadata) throw new Error("test world metadata missing");
+			(world.metadata as Record<string, unknown>)[WORLD_METADATA_REVISION_KEY] =
+				"invalid";
+
+			await expect(adapter[legacyMethod]([world])).rejects.toMatchObject({
+				code: "WORLD_METADATA_STALE_WRITE",
+			});
+			expect(await storedRoles(adapter)).toMatchObject({ [TARGET_ID]: "USER" });
+		},
+	);
 
 	it("conflicts when a legacy writer mutates the live stored metadata during authorization", async () => {
 		const { adapter, runtime, message } = await setup();
