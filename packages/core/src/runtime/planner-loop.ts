@@ -3929,14 +3929,13 @@ function deferCodingCompletionUntilMutationVerified(args: {
 		: {
 				success: false,
 				decision: "CONTINUE",
-				thought:
-					latestSuccessfulNoTestVerification(args.trajectory)
-						? "The last test command selected no tests."
-						: "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+				thought: latestSuccessfulNoTestVerification(args.trajectory)
+					? "The last test command selected no tests."
+					: "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
 				messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
 					? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
 					: "Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
-		};
+			};
 	args.trajectory.evaluatorOutputs.push(
 		projectToolDiagnosticValue(
 			evaluator,
@@ -3959,7 +3958,7 @@ function latestSuccessfulNoTestVerification(
 	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
 	for (let index = steps.length - 1; index >= 0; index--) {
 		const step = steps[index];
-		if (!step?.toolCall || step.toolCall.name.toUpperCase() !== "SHELL") continue;
+		if (step.toolCall?.name.toUpperCase() !== "SHELL") continue;
 		if (step.result?.success !== true) continue;
 		const command = shellCommandParam(step.toolCall);
 		if (codingVerificationKind(command) !== "test") return false;
@@ -4484,8 +4483,10 @@ function resolveShellFailuresSubsumedBy(
 		// by a later test.
 		if (
 			codingVerificationKind(failedCommand) !== undefined &&
-			codingVerificationKind(command) === codingVerificationKind(failedCommand) &&
-			verificationCommandFamily(command) === verificationCommandFamily(failedCommand)
+			codingVerificationKind(command) ===
+				codingVerificationKind(failedCommand) &&
+			verificationCommandFamily(command) ===
+				verificationCommandFamily(failedCommand)
 		) {
 			unresolvedByOperation.delete(key);
 		}
