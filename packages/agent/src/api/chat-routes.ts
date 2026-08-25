@@ -454,14 +454,17 @@ function readRuntimeStringSetting(
   return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
 }
 
-function readPositiveIntegerSetting(
+export function readPositiveIntegerSetting(
   runtime: AgentRuntime,
   key: string,
   fallback: number,
 ): number {
   const raw = readRuntimeStringSetting(runtime, key);
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+  if (typeof raw !== "string" || raw.trim() === "") return fallback;
+  const trimmed = raw.trim();
+  if (!/^[1-9]\d*$/.test(trimmed)) return fallback;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {

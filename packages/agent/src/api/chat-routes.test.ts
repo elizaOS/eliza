@@ -51,6 +51,7 @@ import {
   persistExactConversationMemoryResult,
   persistInterruptedAssistantReceipt,
   readChatRequestPayload,
+  readPositiveIntegerSetting,
   releaseChatMessageId,
   renderChatSurfaceText,
   resolveChatAdminEntityId,
@@ -1308,6 +1309,128 @@ describe("SSE + delta-v2 token writer", () => {
     expect(sse).toHaveBeenCalledWith(res, {
       type: "token",
       fullText: "done",
+    });
+  });
+
+  describe("readPositiveIntegerSetting", () => {
+    const fallback = 128;
+    function makeRuntime(value: unknown): AgentRuntime {
+      return {
+        getSetting: (key: string) =>
+          key === "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS"
+            ? value
+            : undefined,
+        logger: {
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+          debug: vi.fn(),
+        },
+      } as unknown as AgentRuntime;
+    }
+
+    it("returns fallback for trailing junk, hex, floats and non-canonical strings", () => {
+      for (const junk of [
+        "10abc",
+        "0x10",
+        "10.5",
+        "1e3",
+        "010",
+        "",
+        "  ",
+        "Infinity",
+        "-5",
+        "0",
+      ]) {
+        const runtime = makeRuntime(junk);
+        expect(
+          readPositiveIntegerSetting(
+            runtime,
+            "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+            fallback,
+          ),
+        ).toBe(fallback);
+      }
+    });
+
+    it("accepts canonical positive integers and trimmed whitespace", () => {
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime("1"),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(1);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime("  256  "),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(256);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime(42),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(42);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime("999"),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(999);
+    });
+
+    it("rejects unsafe and non-integer numbers", () => {
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime(10.5),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(fallback);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime(Number.NaN),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(fallback);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime(Number.POSITIVE_INFINITY),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(fallback);
+      expect(
+        readPositiveIntegerSetting(
+          makeRuntime(Number.MAX_SAFE_INTEGER + 1),
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(fallback);
+    });
+
+    it("returns fallback when setting is missing", () => {
+      const runtime = {
+        getSetting: () => undefined,
+      } as unknown as AgentRuntime;
+      // ensure env not polluted
+      const prev = process.env.ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS;
+      delete process.env.ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS;
+      expect(
+        readPositiveIntegerSetting(
+          runtime,
+          "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+          fallback,
+        ),
+      ).toBe(fallback);
+      if (prev !== undefined)
+        process.env.ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS = prev;
     });
   });
 });
