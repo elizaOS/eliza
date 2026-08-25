@@ -388,7 +388,7 @@ async function getLatestTrajectory(
 	const promise = (async () => {
 		const service = getTrajectoryService(runtime);
 		if (!service?.listTrajectories || !service.getTrajectoryDetail) return null;
-		const list = await service.listTrajectories();
+		const list = await service.listTrajectories({ limit: 1 });
 		const latest = pickMostRecent(list.trajectories);
 		if (!latest) return null;
 		const trajectory = await service.getTrajectoryDetail(latest.id);
