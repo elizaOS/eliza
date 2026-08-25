@@ -248,6 +248,14 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/** Recompute the identity of a manifest value without trusting its digest field. */
+export function progressiveContentManifestDigest(
+  manifest: Record<string, unknown>,
+): string {
+  const { manifestSha256: _manifestSha256, ...unsigned } = manifest;
+  return sha256(canonicalJson(unsigned));
+}
+
 const OWNED_DIRECTORIES = ["objects", "formats"] as const;
 
 export class ProgressiveContentCorpusError extends Error {
@@ -609,8 +617,8 @@ export async function verifyProgressiveContentCorpus(
       "manifestSha256 must be a string",
     );
   }
-  const { manifestSha256, ...unsigned } = record;
-  if (sha256(canonicalJson(unsigned)) !== manifestSha256) {
+  const manifestSha256 = record.manifestSha256;
+  if (progressiveContentManifestDigest(record) !== manifestSha256) {
     corpusFailure(
       "PROGRESSIVE_CONTENT_MANIFEST_DIGEST_MISMATCH",
       "manifest identity does not match its canonical fields",
