@@ -1,8 +1,8 @@
 /**
- * Focused tests for the account-pool consumer-key and metering contract. The
- * harness uses a temp state directory and does not touch provider transport:
- * parser tests feed raw SSE bytes, auth tests inspect stripped headers, and
- * storage tests exercise the durable JSONL/totals path.
+ * Unit and integration tests for account-pool consumer-key authentication,
+ * quota reservation, and usage metering. Covers key creation/rotation/lookup,
+ * header sanitization, reservation admission under daily quotas, JSONL usage
+ * persistence, and Anthropic SSE streaming usage aggregation.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,14 +11,23 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   __resetAccountPoolConsumerMeteringForTests,
   admitAccountPoolConsumerRequest,
+  anthropicAuthError,
+  anthropicQuotaError,
   authenticateAccountPoolConsumerRequest,
   createAccountPoolConsumerKey,
   createAnthropicSseUsageMeter,
+  estimateAnthropicRequestReservation,
   extractAnthropicUsageFromJson,
+  findAccountPoolConsumerByKey,
   getAccountPoolConsumerUsageSummary,
+  listAccountPoolConsumerKeys,
+  parseAnthropicSseEventUsage,
   queryAccountPoolConsumerUsage,
   recordAccountPoolConsumerUsage,
-} from "./account-pool-consumer-metering.js";
+  rotateAccountPoolConsumerKey,
+  stripAccountPoolConsumerCredentialHeaders,
+  updateAccountPoolConsumerKey,
+} from "./account-pool-consumer-metering.ts";
 
 let stateDir: string;
 let prevStateDir: string | undefined;
@@ -62,25 +71,185 @@ async function pipeMeteredSse(chunks: string[]): Promise<{
   const reader = stream.readable.getReader();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const outputPromise = (async () => {
-    let output = "";
+  const collected: string[] = [];
+
+  const readPromise = (async () => {
     while (true) {
-      const read = await reader.read();
-      if (read.done) return output;
-      output += decoder.decode(read.value, { stream: true });
+      const { done, value } = await reader.read();
+      if (done) break;
+      collected.push(decoder.decode(value, { stream: true }));
     }
   })();
+
   for (const chunk of chunks) {
     await writer.write(encoder.encode(chunk));
   }
   await writer.close();
-  return {
-    output: await outputPromise,
-    observed,
-  };
+  await readPromise;
+  return { output: collected.join(""), observed };
 }
 
-describe("Anthropic usage extraction", () => {
+describe("consumer key lifecycle and management", () => {
+  it("creates a key with defaults and lists public representation", () => {
+    const created = createAccountPoolConsumerKey();
+    expect(created).not.toBeNull();
+    if (!created) throw new Error("expected created key");
+    expect(created.key.startsWith("eliza_cp_")).toBe(true);
+    expect(created.consumer.label).toBe("consumer");
+    expect(created.consumer.enabled).toBe(true);
+    expect(created.consumer.dailyTokenQuota).toBeNull();
+    expect(created.consumer.keyPrefix).toBe(created.key.slice(0, 18));
+    expect(created.consumer.id.startsWith("ck_")).toBe(true);
+
+    const list = listAccountPoolConsumerKeys();
+    expect(list).toHaveLength(1);
+    expect(list[0]?.id).toBe(created.consumer.id);
+    expect(
+      (list[0] as unknown as { keyDigest?: string }).keyDigest,
+    ).toBeUndefined();
+  });
+
+  it("creates a key with custom label, disabled state, and quota", () => {
+    const created = createAccountPoolConsumerKey({
+      label: " analytics-agent ",
+      enabled: false,
+      dailyTokenQuota: 50_000,
+    });
+    expect(created).not.toBeNull();
+    if (!created) throw new Error("expected created key");
+    expect(created.consumer.label).toBe("analytics-agent");
+    expect(created.consumer.enabled).toBe(false);
+    expect(created.consumer.dailyTokenQuota).toBe(50_000);
+  });
+
+  it("rejects invalid key creation parameters", () => {
+    expect(createAccountPoolConsumerKey({ label: "" })).toBeNull();
+    expect(createAccountPoolConsumerKey({ label: "a".repeat(130) })).toBeNull();
+    expect(createAccountPoolConsumerKey({ dailyTokenQuota: -100 })).toBeNull();
+    expect(
+      createAccountPoolConsumerKey({ dailyTokenQuota: "invalid" }),
+    ).toBeNull();
+  });
+
+  it("finds active key, disabled key, and unknown key", () => {
+    const active = createAccountPoolConsumerKey({ label: "active-client" });
+    const disabled = createAccountPoolConsumerKey({
+      label: "disabled-client",
+      enabled: false,
+    });
+    if (!active || !disabled) throw new Error("expected created keys");
+
+    const foundActive = findAccountPoolConsumerByKey(active.key);
+    expect(foundActive).not.toBeNull();
+    expect(typeof foundActive).toBe("object");
+    expect((foundActive as { id: string }).id).toBe(active.consumer.id);
+
+    const foundDisabled = findAccountPoolConsumerByKey(disabled.key);
+    expect(foundDisabled).toBe("disabled");
+
+    const unknown = findAccountPoolConsumerByKey(
+      "eliza_cp_nonexistentkey1234567890",
+    );
+    expect(unknown).toBeNull();
+  });
+
+  it("updates consumer key label, enabled status, and quota", () => {
+    const created = createAccountPoolConsumerKey({
+      label: "initial",
+      dailyTokenQuota: 10_000,
+    });
+    if (!created) throw new Error("expected created key");
+
+    const updated = updateAccountPoolConsumerKey(created.consumer.id, {
+      label: "renamed",
+      enabled: false,
+      dailyTokenQuota: 25_000,
+    });
+
+    expect(updated).not.toBeNull();
+    expect(updated).not.toBe("invalid");
+    const pub = updated as typeof created.consumer;
+    expect(pub.label).toBe("renamed");
+    expect(pub.enabled).toBe(false);
+    expect(pub.dailyTokenQuota).toBe(25_000);
+
+    expect(
+      updateAccountPoolConsumerKey(created.consumer.id, {
+        dailyTokenQuota: -5,
+      }),
+    ).toBe("invalid");
+
+    expect(
+      updateAccountPoolConsumerKey("ck_missing", { label: "test" }),
+    ).toBeNull();
+  });
+
+  it("rotates consumer key while preserving id and createdAt", () => {
+    const created = createAccountPoolConsumerKey({ label: "rotatable" });
+    if (!created) throw new Error("expected created key");
+    const rotated = rotateAccountPoolConsumerKey(created.consumer.id);
+
+    expect(rotated).not.toBeNull();
+    if (!rotated) throw new Error("expected rotated key");
+    expect(rotated.consumer.id).toBe(created.consumer.id);
+    expect(rotated.consumer.createdAt).toBe(created.consumer.createdAt);
+    expect(rotated.key).not.toBe(created.key);
+    expect(rotated.consumer.keyPrefix).toBe(rotated.key.slice(0, 18));
+
+    expect(findAccountPoolConsumerByKey(created.key)).toBeNull();
+    const found = findAccountPoolConsumerByKey(rotated.key);
+    expect(typeof found).toBe("object");
+    expect((found as { id: string }).id).toBe(created.consumer.id);
+
+    expect(rotateAccountPoolConsumerKey("ck_missing")).toBeNull();
+  });
+
+  it("strips credential headers and formats error responses", () => {
+    const headers = new Headers({
+      "x-api-key": "secret-key",
+      authorization: "Bearer token",
+      "content-type": "application/json",
+    });
+
+    const stripped = stripAccountPoolConsumerCredentialHeaders(headers);
+    expect(stripped.has("x-api-key")).toBe(false);
+    expect(stripped.has("authorization")).toBe(false);
+    expect(stripped.get("content-type")).toBe("application/json");
+
+    expect(anthropicAuthError("Auth failed")).toEqual({
+      type: "error",
+      error: { type: "authentication_error", message: "Auth failed" },
+    });
+
+    expect(anthropicQuotaError("Limit reached")).toEqual({
+      type: "error",
+      error: { type: "rate_limit_error", message: "Limit reached" },
+    });
+  });
+
+  it("estimates reservation tokens from payload size and max_tokens", () => {
+    const payload = {
+      model: "claude-3-7-sonnet",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: "Hello" }],
+    };
+    const bytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+    expect(estimateAnthropicRequestReservation(payload)).toBe(bytes + 1024);
+
+    const noMax = { prompt: "test" };
+    expect(estimateAnthropicRequestReservation(noMax)).toBe(
+      Buffer.byteLength(JSON.stringify(noMax), "utf8"),
+    );
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(estimateAnthropicRequestReservation(cyclic)).toBeGreaterThanOrEqual(
+      1,
+    );
+  });
+});
+
+describe("usage extraction and streaming meter", () => {
   it("extracts non-stream usage from Anthropic response JSON", () => {
     expect(
       extractAnthropicUsageFromJson({
@@ -146,6 +315,40 @@ describe("Anthropic usage extraction", () => {
         cache_creation_input_tokens: 0,
       },
     ]);
+  });
+
+  it("parses Anthropic SSE message_start and message_delta usage events", () => {
+    const startPayload = {
+      type: "message_start",
+      message: {
+        id: "msg_123",
+        usage: {
+          input_tokens: 45,
+          cache_read_input_tokens: 15,
+          cache_creation_input_tokens: 5,
+        },
+      },
+    };
+    expect(parseAnthropicSseEventUsage(startPayload)).toEqual({
+      input_tokens: 45,
+      cache_read_input_tokens: 15,
+      cache_creation_input_tokens: 5,
+    });
+
+    const deltaPayload = {
+      type: "message_delta",
+      usage: {
+        output_tokens: 80,
+      },
+    };
+    expect(parseAnthropicSseEventUsage(deltaPayload)).toEqual({
+      output_tokens: 80,
+    });
+
+    expect(
+      parseAnthropicSseEventUsage({ type: "content_block_delta" }),
+    ).toBeNull();
+    expect(parseAnthropicSseEventUsage(null)).toBeNull();
   });
 });
 
