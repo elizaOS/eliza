@@ -1,4 +1,4 @@
-/** Verifies the sole PR workflow stays cancelable, static-only, and fail-closed over the affected workspace closure. */
+/** Verifies PR admission combines affected static checks with Windows browser-bridge security. */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -12,21 +12,40 @@ const source = readFileSync(
 );
 const workflow = Bun.YAML.parse(source) as {
   concurrency?: { group?: string; "cancel-in-progress"?: boolean };
-  jobs?: Record<string, { name?: string; steps?: Array<{ run?: string }> }>;
+  jobs?: Record<
+    string,
+    {
+      name?: string;
+      uses?: string;
+      needs?: string[];
+      steps?: Array<{ run?: string }>;
+    }
+  >;
 };
 
 describe("PR Static Smoke workflow", () => {
-  test("owns one cancelable static job with the stable admission context", () => {
+  test("owns cancelable source and Windows lanes behind the stable admission context", () => {
     expect(workflow.concurrency?.group).toContain(
       "github.event.pull_request.number",
     );
     expect(workflow.concurrency?.["cancel-in-progress"]).toBeTrue();
-    expect(Object.keys(workflow.jobs ?? {})).toEqual(["static-smoke"]);
+    expect(Object.keys(workflow.jobs ?? {})).toEqual([
+      "source-smoke",
+      "browser-bridge-windows-security",
+      "static-smoke",
+    ]);
+    expect(workflow.jobs?.["browser-bridge-windows-security"]?.uses).toBe(
+      "./.github/workflows/browser-bridge-windows-security.yml",
+    );
+    expect(workflow.jobs?.["static-smoke"]?.needs).toEqual([
+      "source-smoke",
+      "browser-bridge-windows-security",
+    ]);
     expect(workflow.jobs?.["static-smoke"]?.name).toBe("All Tests Passed");
   });
 
   test("fails closed over mergeability, secrets, workflows, and affected static checks", () => {
-    const commands = (workflow.jobs?.["static-smoke"]?.steps ?? [])
+    const commands = (workflow.jobs?.["source-smoke"]?.steps ?? [])
       .map((step) => step.run ?? "")
       .join("\n");
     expect(commands).toContain("git merge-tree --write-tree");

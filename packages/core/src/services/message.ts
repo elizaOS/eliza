@@ -151,6 +151,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	HANDLED_STEP_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerLoopResult,
@@ -349,7 +350,10 @@ import { toWellFormedUnicode } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
-import { runBotLoopGate } from "./message/bot-loop-gate";
+import {
+	runBotGroupAddressGate,
+	runBotLoopGate,
+} from "./message/bot-loop-gate";
 import { runBotNoiseTriage } from "./message/bot-noise-triage";
 import {
 	type DirectCurrentRequestCandidateInference,
@@ -538,18 +542,103 @@ function textContainsUserTag(text: string | undefined): boolean {
  * text. Shared by the reply gate, the bot-noise TEXT_SMALL triage, and the
  * Stage-1 prompt tier so all three branch on the same ground truth.
  */
+export interface MessageAddressSignals {
+	platformMention: boolean;
+	replyToAgent: boolean;
+	textualAgentName: boolean;
+	effective: boolean;
+}
+
+function textDirectlyAddressesAgentName(
+	text: string | undefined,
+	names: Array<string | null | undefined>,
+): boolean {
+	if (!text) return false;
+	return names.some((name) => {
+		const candidate = name?.trim();
+		if (!candidate) return false;
+		const escaped = escapeRegex(candidate);
+		if (
+			new RegExp(`,\\s*@?${escaped}(?=\\s|$)`, "iu").test(text) ||
+			new RegExp(
+				`^\\s*(?:ok(?:ay)?|thanks?|thank you)\\s*,?\\s*@?${escaped}\\s*[.!?]*\\s*$`,
+				"iu",
+			).test(text)
+		) {
+			return true;
+		}
+		const leading = text.match(
+			new RegExp(
+				`^\\s*(?:(?:hey|hi|hello|thanks?|thank you|please)\\s*[,!:;-]?\\s*)?@?${escaped}(?<rest>(?:$|[^\\p{L}\\p{N}][\\s\\S]*))$`,
+				"iu",
+			),
+		);
+		if (!leading?.groups) return false;
+		const rest = leading.groups.rest.trim();
+		if (!rest || /^[,!:;?-]/u.test(rest) || /[?]$/u.test(rest)) return true;
+		// A name-led imperative is a direct address regardless of its verb. Only
+		// reject clear third-person continuations; this avoids a brittle allowlist
+		// that makes ordinary commands such as "Eliza summarize that" ambient.
+		return !/^(?:is|was|were|has|had|said|says|thinks|thought|seems|look(?:s|ed)|does|did)\b/iu.test(
+			rest,
+		);
+	});
+}
+
+/** Classifies the structural signals used by Stage 1 to distinguish addressed from ambient turns. */
+export function classifyMessageAddress(
+	runtime: IAgentRuntime,
+	message: Memory,
+): MessageAddressSignals {
+	const mentionContext = message.content?.mentionContext;
+	const platformMention = mentionContext?.isMention === true;
+	const replyToAgent = mentionContext?.isReply === true;
+	const textualAgentName = textDirectlyAddressesAgentName(
+		message.content?.text,
+		[runtime.character?.name, runtime.character?.username],
+	);
+	return {
+		platformMention,
+		replyToAgent,
+		textualAgentName,
+		effective: platformMention || replyToAgent || textualAgentName,
+	};
+}
+
 function messageExplicitlyAddressesAgent(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): boolean {
-	const mentionContext = message.content?.mentionContext;
-	return (
-		mentionContext?.isMention === true ||
-		mentionContext?.isReply === true ||
-		textContainsAgentName(message.content?.text, [
-			runtime.character?.name,
-			runtime.character?.username,
-		])
+	return classifyMessageAddress(runtime, message).effective;
+}
+
+/** Detects a current-turn challenge that directly continues the agent's prior reply. */
+export function messageChallengesPriorAgentReply(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): boolean {
+	const providers = state.data?.providers;
+	if (!providers || typeof providers !== "object") return false;
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") return false;
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) return false;
+	const prior = [...recentMessages]
+		.reverse()
+		.find((candidate): candidate is Memory => {
+			if (!candidate || typeof candidate !== "object") return false;
+			const memory = candidate as Memory;
+			return !message.id || memory.id !== message.id;
+		});
+	if (prior?.entityId !== runtime.agentId) return false;
+	const text = getUserMessageText(message) ?? "";
+	return /\b(counterintuitive|disagree|doubt|wrong|incorrect|confus(?:ed|ing)|clarify|actually|but i thought|i thought|are you sure|really|why)\b/iu.test(
+		text,
 	);
 }
 
@@ -1565,6 +1654,12 @@ export {
 
 export type V5MessageRuntimeStage1Result =
 	| {
+			kind: "decision";
+			action: "RESPOND" | "IGNORE" | "STOP";
+			messageHandler: MessageHandlerResult;
+			state: State;
+	  }
+	| {
 			kind: "terminal";
 			action: "IGNORE" | "STOP";
 			messageHandler: MessageHandlerResult;
@@ -1575,6 +1670,15 @@ export type V5MessageRuntimeStage1Result =
 			messageHandler: MessageHandlerResult;
 			result: StrategyResult;
 	  };
+
+/** Observable evidence emitted after Stage 1 parses a decision and before routing. */
+export interface Stage1DecisionObservation {
+	trajectoryId?: string;
+	provider?: string;
+	prefixHash: string;
+	decision: MessageHandlerResult["processMessage"];
+	parsed: MessageHandlerResult;
+}
 
 type ResponseHandlerEarlyReplyEvent = {
 	text: string;
@@ -2298,6 +2402,14 @@ function createV5ReplyStrategyResult(args: {
 		...(args.terminalFailure
 			? {
 					failureKind: args.terminalFailure.kind,
+					terminalFailure: {
+						kind: args.terminalFailure.kind,
+						message: args.terminalFailure.message,
+						transient: args.terminalFailure.transient,
+						...(args.terminalFailure.code
+							? { code: args.terminalFailure.code }
+							: {}),
+					},
 					elizaSyntheticFailure: true,
 					transient: args.terminalFailure.transient,
 				}
@@ -3851,14 +3963,20 @@ async function createV5MessageContextObject(args: {
 
 	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
 	// group turn the planner ran, produced no tool activity, and still shipped
-	// the filler completion "I handled the available step." as the reply. The
-	// planner prompt never told the model the turn was ambient, so it treated
-	// "end the turn" as "compose a status". Rendered only when the caller's
-	// structural classifier flagged the turn ambient — addressed turns (and
-	// callers that do not pass the flag) render byte-identical context, and
-	// the IGNORE terminal invoked here already flows to deliberate,
-	// recorded non-delivery (see the planner deliberate-silence terminal in
-	// runV5MessageRuntimeStage1).
+	// a filler completion as the reply. Nothing in the planner prompt told the
+	// model the turn was ambient, so "end the turn" read as "compose a status".
+	// Rendered only when the caller's structural classifier flagged the turn
+	// ambient — addressed turns (and callers that do not pass the flag) render
+	// byte-identical context, and the IGNORE terminal invoked here already
+	// flows to deliberate, recorded non-delivery (see the ambient
+	// deliberate-silence terminal in runV5MessageRuntimeStage1).
+	//
+	// The instruction names the SHAPE of a process description and quotes no
+	// sentence. It used to quote HANDLED_STEP_FALLBACK_MESSAGE as its negative
+	// example, which bought nothing: that string is runtime-emitted, so no
+	// instruction could suppress it, while an emittable forbidden sentence
+	// sitting in context is a live hazard on weak models. The guarantee is
+	// structural now, in the terminal named above.
 	if (args.ambientTurn) {
 		events.push({
 			id: "ambient-turn-policy",
@@ -3866,14 +3984,14 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content: args.includeTools
-				? 'ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn\'s work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process (for example "I handled the available step") as the reply: on an unaddressed message, an empty outcome means silence.'
+				? "ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn's work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process as the reply — any sentence whose subject is what you did, tried, handled, or checked rather than what they are discussing: on an unaddressed message, an empty outcome means silence."
 				: // Stage-1 wording: the decision here is the shouldRespond field, not
 					// a terminal tool. Live group-chat evaluation (five ambient-mode
 					// rooms, gemma-4-31b) replied to nearly every unaddressed message —
 					// "Hard to miss.", "Sounds like the move." — a running commentary
 					// nobody asked for. Unaddressed group chatter defaults to IGNORE;
 					// RESPOND is reserved for a concrete contribution.
-					"ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. RESPOND when you can genuinely help: someone asks the group for something you could do (find a place, food, storage, a route, a time, a list, a reminder) — answer it, or if one detail is missing (an address, a time), ask for that detail once; an open who/when/where/how question you can move forward with a specific fact; a constraint or conflict they are missing or about to get wrong (an allergy, a double-booking, a forgotten item, who has what); or a plan that has just come together, which you state once in one line so nobody has to ask again. IGNORE banter, jokes, reactions, acknowledgements, and side chatter where you would only agree, comment, restate, or keep the conversation going; never post a running commentary after every message, and having replied a moment ago is a reason to IGNORE unless something new needs you. When you do respond, name the specific person you mean (whose allergy, who has the keys).",
+					"ambient_turn_policy: HARD GATE. The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Default shouldRespond=IGNORE. You MUST set shouldRespond=IGNORE unless the current turn explicitly challenges or asks to clarify your immediately preceding prior_message:agent reply, silence would allow a concrete consequential error or harm you can specifically prevent, or an explicit standing responsibility makes this turn yours to handle. A broadcast question, a useful fact you could add, your ability to answer, or your desire to keep the discussion moving is never enough. IGNORE banter, jokes, reactions, acknowledgements, open group questions, and side chatter where you would only answer, agree, comment, restate, or continue the conversation. Having replied earlier is a reason to stay silent unless the current turn directly challenges or needs clarification of that reply.",
 		});
 	}
 
@@ -4998,7 +5116,7 @@ function selectMessageHandlerTask(
 }
 
 function renderMessageHandlerInstructions(
-	runtime: OptimizedPromptRuntimeLike,
+	runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
 	availableContexts: readonly ContextDefinition[],
 	options?: {
 		directMessage?: boolean;
@@ -5013,6 +5131,7 @@ function renderMessageHandlerInstructions(
 	);
 	const rendered = composePrompt({
 		state: {
+			agentName: runtime.character.name?.trim() || "the agent",
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
@@ -5043,7 +5162,7 @@ function renderMessageHandlerInstructions(
 }
 
 function renderMessageHandlerModelInput(
-	runtime: OptimizedPromptRuntimeLike,
+	runtime: OptimizedPromptRuntimeLike & Pick<IAgentRuntime, "character">,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
 	options?: {
@@ -8056,6 +8175,10 @@ export async function runV5MessageRuntimeStage1(args: {
 	 * failure-reply gate.
 	 */
 	onStage1RespondDecision?: () => void;
+	/** Receives the exact parsed Stage-1 decision and its inference provenance. */
+	onStage1Decision?: (observation: Stage1DecisionObservation) => void;
+	/** Stops after Stage-1 routing, before reply generation, planning, or tools. */
+	stage1DecisionOnly?: boolean;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -8081,7 +8204,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	const ambientTurn = isAmbientStage1Turn(
 		args.runtime,
 		args.message,
-		messageExplicitlyAddressesAgent(args.runtime, args.message),
+		messageExplicitlyAddressesAgent(args.runtime, args.message) ||
+			messageChallengesPriorAgentReply(args.runtime, args.message, args.state),
 	);
 	const context = await createV5MessageContextObject({
 		...args,
@@ -8546,6 +8670,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			}
 		}
 		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		args.onStage1Decision?.({
+			...(trajectoryId ? { trajectoryId } : {}),
+			provider: messageHandlerProvider,
+			prefixHash: stage1PrefixHash,
+			decision: messageHandler.processMessage,
+			// Evaluators may patch the live handler later. Preserve the exact model
+			// boundary value observed here instead of exposing a mutable alias.
+			parsed: structuredClone(messageHandler),
+		});
 
 		if (!args.codingMode && recorder && trajectoryId) {
 			messageHandlerStageTask = recordMessageHandlerStage({
@@ -8603,6 +8736,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// trajectory persistence is recorded there; slower extraction remains a
 		// tracked data task but cannot leave the completed turn marked running.
 		if (
+			!args.stage1DecisionOnly &&
 			messageHandler.extract &&
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
 				(messageHandler.extract.relationships?.length ?? 0) > 0)
@@ -8637,7 +8771,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// against the room's participants. Fire-and-forget like the facts task;
 		// failures land in the logger but never block the reply.
 		const addressedTo = messageHandler.extract?.addressedTo ?? [];
-		if (addressedTo.length > 0) {
+		if (!args.stage1DecisionOnly && addressedTo.length > 0) {
 			const addressedToTask = applyAddressedTo({
 				runtime: args.runtime,
 				message: args.message,
@@ -8669,7 +8803,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// room's running topic list for the CHANNEL_TOPICS provider and must
 		// never block or break the turn.
 		const topics = messageHandler.extract?.topics ?? [];
-		if (topics.length > 0 && args.message.roomId) {
+		if (!args.stage1DecisionOnly && topics.length > 0 && args.message.roomId) {
 			const channelTopics = args.runtime.getService<ChannelTopicsService>(
 				ChannelTopicsService.serviceType,
 			);
@@ -8706,7 +8840,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Stamp the turn's topics onto the inbound message memory so the dashboard
 		// can group the transcript by topic + show a topic chips bar (#8928).
 		// Additive, fire-and-forget metadata write — never blocks/breaks the turn.
-		if (topics.length > 0 && args.message.id) {
+		if (!args.stage1DecisionOnly && topics.length > 0 && args.message.id) {
 			// args.message is always a message memory, so its metadata is
 			// MessageMetadata; force `type: "message"` so the spread result is a
 			// valid, discriminated MessageMetadata regardless of the inbound shape
@@ -8857,6 +8991,19 @@ export async function runV5MessageRuntimeStage1(args: {
 			addressedToOtherParticipant,
 			messageText: getUserMessageText(args.message) ?? "",
 		});
+		if (args.stage1DecisionOnly) {
+			return {
+				kind: "decision",
+				action:
+					route.type === "ignored"
+						? "IGNORE"
+						: route.type === "stopped"
+							? "STOP"
+							: "RESPOND",
+				messageHandler,
+				state: args.state,
+			};
+		}
 		if (route.type === "ignored" || route.type === "stopped") {
 			return {
 				kind: "terminal",
@@ -9988,13 +10135,38 @@ export async function runV5MessageRuntimeStage1(args: {
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
-		const plannedText = sanitizeReplyTextAfterMediaDelivery(
-			plannedTextRaw,
-			deliveredMediaUrls,
-		);
-		// Planner deliberate silence on an ambient turn: the ambient-turn policy
-		// instruction tells the planner to end an empty unaddressed turn with
-		// IGNORE, so honor that choice the same way a Stage-1 IGNORE is honored —
+		// HANDLED_STEP_FALLBACK_MESSAGE is the planner's marker for "this turn
+		// produced no usable user-facing text": `userSafeFinalMessage` emits it
+		// when every model candidate failed the egress safety chain and no tool
+		// exposed user-facing text. The tool-turn reply guarantee normally
+		// replaces it, but only for turns that ran a successful non-terminal
+		// tool — a turn with no tool work keeps the placeholder and ships it.
+		// On an unaddressed turn that is a description of the agent's own
+		// process posted into a room full of other people, the exact filler the
+		// ambient-turn policy forbids, and the policy's own semantics for an
+		// empty outcome are silence. Structural, not prompt-dependent: the
+		// placeholder is runtime-produced, so no instruction to the model can
+		// prevent it. On a turn that owes a response, blanking this internal marker
+		// routes through `resolveZeroDeliveryRecovery`, whose toolless fallback is
+		// a truthful no-answer rather than a fabricated claim of completed work.
+		const unusablePlannerReply =
+			plannedTextRaw === HANDLED_STEP_FALLBACK_MESSAGE;
+		const ambientPlaceholderOnlyReply = ambientTurn && unusablePlannerReply;
+		const plannedText = unusablePlannerReply
+			? ""
+			: sanitizeReplyTextAfterMediaDelivery(plannedTextRaw, deliveredMediaUrls);
+		// Single source of truth for "this ambient turn ends in silence",
+		// covering both the planner's own IGNORE/STOP terminal and the
+		// placeholder outcome above. Both resolve through the same terminal and
+		// the same reply suppression below, so there is one silence path.
+		const ambientDeliberateSilence =
+			ambientTurn &&
+			(plannerResult.endedWithDeliberateSilence === true ||
+				ambientPlaceholderOnlyReply);
+		// Deliberate silence on an ambient turn — the planner's own IGNORE/STOP
+		// terminal, or the placeholder outcome that means the same thing. The
+		// ambient-turn policy instruction tells the planner to end an empty
+		// unaddressed turn with IGNORE, so honor that the way a Stage-1 IGNORE is —
 		// a terminal decision handleMessage records observably (an
 		// actions:["IGNORE"] terminal memory + MESSAGE_SENT), not a bare
 		// mode-"none" result indistinguishable from a dropped turn. Scoped to
@@ -10006,8 +10178,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// exists to suppress. Addressed turns never take this branch, so the
 		// turn-delivery floor (an addressed turn always delivers) is untouched.
 		if (
-			ambientTurn &&
-			plannerResult.endedWithDeliberateSilence === true &&
+			ambientDeliberateSilence &&
 			!earlyReplySent &&
 			actionResults.length === 0 &&
 			!plannedText
@@ -10037,8 +10208,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				(result) =>
 					(result.data as { suppressPlannerReply?: unknown } | undefined)
 						?.suppressPlannerReply === true,
-			) ||
-			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
+			) || ambientDeliberateSilence;
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
 		const rawStageOneAck =
@@ -13597,6 +13767,35 @@ export class DefaultMessageService implements IMessageService {
 			}
 		}
 
+		// Trusted-metadata group floor. A bot-authored group turn that does not
+		// address this agent is deterministically silent; human text containing a
+		// spoofed "(bot)" label never qualifies. Direct address wins so deliberate
+		// agent-to-agent orchestration remains available.
+		const botGroupAddressGate = await runBotGroupAddressGate({
+			runtime,
+			message,
+			explicitlyAddressesAgent,
+		});
+		if (botGroupAddressGate.ignored) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					roomId: message.roomId,
+					entityId: message.entityId,
+				},
+				"Unaddressed bot-authored group turn ignored by deterministic address gate",
+			);
+			runTerminalOwner.request("bot_group_address_gate");
+			return {
+				didRespond: false,
+				responseContent: null,
+				responseMessages: [],
+				state: { values: {}, data: {}, text: "" } as State,
+				mode: "none",
+			};
+		}
+
 		// Cheap-tier triage for unaddressed bot/webhook traffic. A relay channel
 		// flooding automated embeds otherwise burns a full composeState + Stage 1
 		// RESPONSE_HANDLER call (the most expensive model in the stack — on
@@ -13640,7 +13839,11 @@ export class DefaultMessageService implements IMessageService {
 		// deterministically with IGNORE before any model call. Every
 		// unverifiable input (untagged sender, unknown channel, read failure)
 		// fails OPEN — the gate only ever biases toward silence, never speech.
-		const botLoopGate = await runBotLoopGate({ runtime, message });
+		const botLoopGate = await runBotLoopGate({
+			runtime,
+			message,
+			explicitlyAddressesAgent,
+		});
 		if (botLoopGate.ignored) {
 			runtime.logger.info(
 				{
@@ -14044,9 +14247,10 @@ export class DefaultMessageService implements IMessageService {
 						: {};
 				setContextRoutingMetadata(message, routedDecision);
 
-				if (outcome.kind === "terminal") {
+				if (outcome.kind === "terminal" || outcome.kind === "decision") {
 					shouldRespondToMessage = false;
-					terminalDecision = outcome.action;
+					terminalDecision =
+						outcome.action === "RESPOND" ? "IGNORE" : outcome.action;
 					state = outcome.state;
 				} else {
 					shouldRespondToMessage = true;

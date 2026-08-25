@@ -200,7 +200,6 @@ import {
   getCloudSecret,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
@@ -1071,7 +1070,6 @@ export async function startApiServer(
   // passes through to upstream which checks this env var).
   ensureCloudTtsApiKeyAlias();
   hydrateWalletOsStoreFlagFromConfig();
-  await hydrateWalletKeysFromNodePlatformSecureStore();
 
   const compatState: CompatRuntimeState = {
     current: (args[0]?.runtime as AgentRuntime | undefined) ?? null,

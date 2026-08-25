@@ -18,9 +18,6 @@ and the structural ``format_ok`` gate in ``benchmarks/eliza1_gates.yaml``):
     surface forms: a legacy ``ACTION: NAME`` line + short reply.
   * ``tool_use`` — Cerebras-generated OpenAI-style function-call turns over the
     canonical action catalog, plus repaired noisy converted rows.
-  * ``personality`` — from ``packages/benchmarks/personality-bench/tests/
-    calibration/{hand-graded,adversarial}.jsonl``: PASS-graded trajectories
-    (silence-on-demand, style stickiness, trait respect, escalation, scope).
   * ``assistant`` — Cerebras-generated general assistant turns (concise, on the
     topics the held-out text-eval corpus probes: capital-of-France-style facts,
     speculative decoding, on-device assistants, quantization, VAD) + refusals.
@@ -78,7 +75,6 @@ LOG = logging.getLogger("build-eliza1-sft-2b")
 
 OUT_DIR = TRAINING_ROOT / "datasets" / "eliza1-sft-2b"
 ACTION_CASES_TS = REPO_ROOT / "packages" / "app-core" / "test" / "benchmarks" / "action-selection-cases.ts"
-PERSONALITY_DIR = REPO_ROOT / "packages" / "benchmarks" / "personality-bench" / "tests" / "calibration"
 
 # gemma-4-E2B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
 # heuristic keeps us conservative without a tokenizer dependency at build time.
@@ -246,56 +242,7 @@ def _convert_action_cases() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Source 2: personality-bench calibration JSONL (PASS-graded only)
-# ---------------------------------------------------------------------------
-def _convert_personality() -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for name in ("hand-graded.jsonl", "adversarial.jsonl"):
-        p = PERSONALITY_DIR / name
-        if not p.exists():
-            continue
-        for line in p.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if rec.get("ground_truth") != "PASS":
-                continue
-            traj = rec.get("trajectory")
-            if not isinstance(traj, list) or len(traj) < 2:
-                continue
-            msgs: list[dict[str, str]] = []
-            for turn in traj:
-                role = turn.get("role")
-                content = turn.get("content")
-                if role not in ("user", "assistant", "system") or not isinstance(content, str):
-                    msgs = []
-                    break
-                msgs.append({"role": role, "content": content})
-            # SFT cannot learn an empty terminal target. Reject the complete
-            # trajectory instead of turning an earlier assistant prefix into a
-            # different training row.
-            if not msgs or msgs[-1]["role"] != "assistant" or not msgs[-1]["content"].strip():
-                continue
-            if not any(m["role"] == "user" for m in msgs):
-                continue
-            rows.append(
-                _row(
-                    messages=msgs,
-                    task="personality",
-                    provenance=f"benchmark:personality-bench/{name}#{rec.get('scenario_id', '?')}",
-                    tags=[rec.get("bucket", "personality")],
-                )
-            )
-    LOG.info("converted %d personality PASS trajectories", len(rows))
-    return rows
-
-
-# ---------------------------------------------------------------------------
-# Source 3: Cerebras augmentation
+# Source 2: Cerebras augmentation
 # ---------------------------------------------------------------------------
 _ACTION_CATALOG = [
     "OWNER_TODOS", "OWNER_ROUTINES", "OWNER_GOALS", "OWNER_REMINDERS",
@@ -815,7 +762,6 @@ def main() -> int:
 
     rows: list[dict[str, Any]] = []
     rows += _convert_action_cases()
-    rows += _convert_personality()
     # Stage-1 envelope + voice-emotion seed rows are deterministic (no Cerebras
     # needed) — they ground the structured_decode / voice_emotion buckets even
     # in a --no-augment build.
@@ -913,14 +859,12 @@ def main() -> int:
         "benchmark_alignment": {
             "eliza1_eval_suite_text": "general assistant + factual turns mirror the held-out text-eval corpus topics",
             "format_ok_gate": "action_selection rows teach 'ACTION: NAME {params}' + structured_decode rows teach the W3 flat JSON envelope (shouldRespond/thought/replyText/contexts/.../requiresTool/extract) that buildResponseGrammar constrains",
-            "personality_bench": "PASS-graded shut_up/hold_style/note_trait_unrelated/escalation/scope trajectories",
             "action_selection_benchmark": "1:1 with action-selection-cases.ts case ids",
             "structured_decode": "Stage-1 response envelope rows — JSON, key order matches packages/core/src/runtime/response-grammar.ts STAGE1_ENVELOPE_KEYS; direct + non-direct paths",
             "voice_emotion": "spoken replies with omnivoice-singing inline tags ([happy]/[sad]/[angry]/[nervous]/[calm]/[excited]/[whisper]/[singing] + non-verbals [laughter]/[sigh]) in replyText",
         },
         "sources": {
             "action-selection-cases.ts": str(ACTION_CASES_TS.relative_to(REPO_ROOT)),
-            "personality-bench": str(PERSONALITY_DIR.relative_to(REPO_ROOT)),
             "cerebras": "gpt-oss-120b via https://api.cerebras.ai/v1 (CEREBRAS_API_KEY env)",
         },
     }

@@ -11,6 +11,7 @@ import os from "node:os";
 import {
   logger,
   type RouteRequestContext,
+  redactSensitiveText,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -150,9 +151,8 @@ export function sanitize(input: string, maxLen = 10_000): string {
     : cleaned;
 }
 
-function redactSecrets(input: string, maxLen = 10_000): string {
-  const sanitized = sanitize(input, maxLen);
-  return sanitized
+function redactBugReportText(input: string): string {
+  const patternRedacted = toWellFormedUnicode(input)
     .replace(
       /\b(0x[a-fA-F0-9]{64}|[A-Za-z0-9+/]{80,}={0,2})\b/g,
       "[redacted-secret]",
@@ -165,6 +165,40 @@ function redactSecrets(input: string, maxLen = 10_000): string {
       /\b(mnemonic|private[_ -]?key|seed phrase)\b\s*[:=]\s*.+/gi,
       "$1: [redacted]",
     );
+  return redactSensitiveText(patternRedacted, { mode: "tools" });
+}
+
+function redactSecrets(input: string, maxLen = 10_000): string {
+  return sanitize(redactBugReportText(input), maxLen);
+}
+
+function redactBugReport(body: BugReportBody): BugReportBody {
+  const redactOptional = (value: string | undefined): string | undefined =>
+    value === undefined ? undefined : redactBugReportText(value);
+
+  return {
+    description: redactBugReportText(body.description),
+    stepsToReproduce: redactBugReportText(body.stepsToReproduce),
+    expectedBehavior: redactOptional(body.expectedBehavior),
+    actualBehavior: redactOptional(body.actualBehavior),
+    environment: redactOptional(body.environment),
+    nodeVersion: redactOptional(body.nodeVersion),
+    modelProvider: redactOptional(body.modelProvider),
+    logs: redactOptional(body.logs),
+    category: body.category,
+    appVersion: redactOptional(body.appVersion),
+    releaseChannel: redactOptional(body.releaseChannel),
+    startup: body.startup
+      ? {
+          reason: redactOptional(body.startup.reason),
+          phase: redactOptional(body.startup.phase),
+          message: redactOptional(body.startup.message),
+          detail: redactOptional(body.startup.detail),
+          status: body.startup.status,
+          path: redactOptional(body.startup.path),
+        }
+      : undefined,
+  };
 }
 
 function formatIssueBody(body: BugReportBody): string {
@@ -352,7 +386,10 @@ export async function handleBugReportRoutes(
       );
       return true;
     }
-    const body = parsedBug.data;
+    // Apply the complete user-controlled text policy once before either remote
+    // intake or GitHub dispatch. Sink-specific formatting may shorten or strip
+    // markup afterward, but it never receives the original credential text.
+    const body = redactBugReport(parsedBug.data);
 
     if (getRemoteBugReportUrl()) {
       const remoteFetch = createBugReportFetchSignal(req);

@@ -1,10 +1,12 @@
 /** Tests deterministic and live provider selection for scenario runtimes. */
 import { ModelType } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   clearLlmWireMockEnvForLiveProvider,
   deterministicScheduledDispatchRenderText,
+  disableScenarioEmbeddingCapability,
+  disposeScenarioProviderPlugin,
   isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
@@ -13,6 +15,32 @@ import {
   scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("scenario provider lifecycle", () => {
+  it("disposes the selected provider during runtime cleanup", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const runtime = {} as never;
+
+    await disposeScenarioProviderPlugin({ dispose }, runtime);
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledWith(runtime);
+  });
+});
+
+describe("scenario embedding capability", () => {
+  it("declares the canonical embedding capability disabled", () => {
+    const setSetting = vi.fn();
+
+    disableScenarioEmbeddingCapability({ setSetting } as never);
+
+    expect(setSetting).toHaveBeenCalledWith(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+      false,
+      false,
+    );
+  });
+});
 
 describe("scenario live provider preflight", () => {
   const cerebrasActingConfig = {

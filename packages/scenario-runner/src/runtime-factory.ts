@@ -81,6 +81,8 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_MODEL_PROVIDER_NAME =
   "deterministic-model-provider" as const;
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+  "ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
@@ -162,6 +164,16 @@ function applyRuntimeSettings(
   }
 }
 
+export function disableScenarioEmbeddingCapability(
+  runtime: Pick<AgentRuntime, "setSetting">,
+): void {
+  // Core recall paths read this canonical host declaration before attempting
+  // TEXT_EMBEDDING. Omitting the provider alone is insufficient: a speculative
+  // recall call would be reported as a runtime error and quarantine the shared
+  // scenario process even though keyword-only recall is intentional here.
+  runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, false, false);
+}
+
 function isPlugin(value: unknown): value is Plugin {
   return (
     value !== null &&
@@ -204,6 +216,13 @@ async function runCleanupStep(
   }
 }
 
+export async function disposeScenarioProviderPlugin(
+  plugin: Pick<Plugin, "dispose"> | null,
+  runtime: AgentRuntime,
+): Promise<void> {
+  await plugin?.dispose?.(runtime);
+}
+
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
@@ -224,6 +243,7 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 }
 
 export interface CreateScenarioRuntimeOptions {
+  character?: Parameters<typeof createCharacter>[0];
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
@@ -823,6 +843,7 @@ export async function createScenarioRuntime(
       "[scenario-runner] provider-qualified execution requires a live model provider",
     );
   }
+  let selectedProviderPlugin: Plugin | null = null;
   const preparedEnvironment =
     await prepareScenarioExecutionEnvironment(executionProfile);
   const { testMocks, mockedEnvironment } = preparedEnvironment;
@@ -892,9 +913,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "ScenarioAgent",
-  });
+  const character = createCharacter(
+    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
+  );
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
@@ -960,6 +981,9 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
+  if (skipEmbeddingPlugin) {
+    disableScenarioEmbeddingCapability(runtime);
+  }
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
       throw new Error(
@@ -1007,6 +1031,7 @@ export async function createScenarioRuntime(
         `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
       );
     }
+    selectedProviderPlugin = providerPlugin;
     await runtime.registerPlugin(providerPlugin);
 
     if (providerConfig.name === "cli") {
@@ -1172,6 +1197,14 @@ export async function createScenarioRuntime(
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
+    await runCleanupStep("provider plugin dispose", async () => {
+      try {
+        await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
+      } catch (err) {
+        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
+        logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
+      }
+    });
     await runCleanupStep("runtime.stop()", async () => {
       try {
         await runtime.stop();

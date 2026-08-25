@@ -1,17 +1,28 @@
 /** Exercises authenticated broker enrollment and canonical bounded responses. */
 
-import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BrowserBridgeEnrollmentBroker } from "./browser-bridge-enrollment-broker";
 import {
   BROWSER_BRIDGE_BROKER_PROTOCOL,
   signBrokerEnvelope,
 } from "./browser-bridge-native-protocol";
+import { PersistentNativeEnrollmentReplayGuard } from "./browser-bridge-replay-store";
 
 const secret = Buffer.alloc(32, 9);
 const nowMs = 1_800_000_000_000;
 const callerId = "abcdefghijklmnopabcdefghijklmnop";
 const requestId = "123e4567-e89b-42d3-a456-426614174000";
 const profileId = "123e4567-e89b-42d3-a456-426614174001";
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 function request(nonce = Buffer.alloc(32, 4).toString("base64url")) {
   return signBrokerEnvelope(
@@ -34,6 +45,28 @@ function request(nonce = Buffer.alloc(32, 4).toString("base64url")) {
   );
 }
 
+function revokeRequest(nonce = Buffer.alloc(32, 11).toString("base64url")) {
+  return signBrokerEnvelope(
+    {
+      protocol: BROWSER_BRIDGE_BROKER_PROTOCOL,
+      timestampMs: nowMs,
+      caller: { browser: "chrome", id: callerId },
+      request: {
+        v: 1,
+        type: "browser_bridge.revoke",
+        requestId,
+        nonce,
+        browser: "chrome",
+        extensionId: callerId,
+        extensionVersion: "1.2.3",
+        profileId,
+        companionId: "companion-1",
+      },
+    },
+    secret,
+  );
+}
+
 const baseOptions = {
   apiBase: "http://127.0.0.1:31337",
   brokerSecret: secret,
@@ -46,6 +79,41 @@ const baseOptions = {
 };
 
 describe("browser bridge enrollment broker", () => {
+  it("translates native revoke into an owner-authenticated API mutation", async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ revoked: true }), { status: 200 }),
+    );
+    const broker = new BrowserBridgeEnrollmentBroker({
+      ...baseOptions,
+      ownerSession: async () => ({
+        sessionId: "owner-session",
+        csrfToken: "owner-csrf",
+        expiresAt: Date.now() + 60_000,
+      }),
+      fetchImpl,
+    });
+    await expect(broker.handle(revokeRequest())).resolves.toEqual({
+      v: 1,
+      type: "browser_bridge.revoke_result",
+      requestId,
+      nonce: Buffer.alloc(32, 11).toString("base64url"),
+      revoked: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL(
+        "http://127.0.0.1:31337/api/browser-bridge/companions/companion-1/revoke",
+      ),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          cookie: "eliza_session=owner-session",
+          "x-eliza-csrf": "owner-csrf",
+        }),
+      }),
+    );
+  });
+
   it("returns the canonical narrow config after native and owner authentication", async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -186,6 +254,48 @@ describe("browser bridge enrollment broker", () => {
       code: "broker_unavailable",
       retryable: true,
     });
+  });
+
+  it("rejects an exact envelope after broker restart before calling the pairing API", async () => {
+    const directory = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-browser-broker-replay-"),
+    );
+    temporaryDirectories.push(directory);
+    const replayPath = path.join(directory, "browser-bridge", "replay.json");
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 500 }));
+    const ownerSession = async () => ({
+      sessionId: "owner-session",
+      csrfToken: "owner-csrf",
+      expiresAt: Date.now() + 60_000,
+    });
+    const envelope = request(Buffer.alloc(32, 10).toString("base64url"));
+    const first = new BrowserBridgeEnrollmentBroker({
+      ...baseOptions,
+      ownerSession,
+      fetchImpl,
+      replayGuard: new PersistentNativeEnrollmentReplayGuard(
+        replayPath,
+        secret,
+      ),
+    });
+    await first.handle(envelope);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const restarted = new BrowserBridgeEnrollmentBroker({
+      ...baseOptions,
+      ownerSession,
+      fetchImpl,
+      replayGuard: new PersistentNativeEnrollmentReplayGuard(
+        replayPath,
+        secret,
+      ),
+    });
+    await expect(restarted.handle(envelope)).resolves.toMatchObject({
+      type: "browser_bridge.error",
+      code: "broker_unavailable",
+      retryable: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the typed revoked pairing state at the extension boundary", async () => {

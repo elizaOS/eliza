@@ -20,6 +20,7 @@ async function makeHostRuntime(): Promise<IAgentRuntime> {
   const services = new Map<string, unknown>();
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    runtimeInstanceId: "coding-tools-error-path-runtime",
     getSetting: vi.fn(() => undefined),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
     redactSecrets: vi.fn((text: string) => text),
@@ -62,8 +63,25 @@ describeIfPosix("SHELL action real error paths", () => {
     );
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.exit_code).toBe(127);
+    expect(data?.signal).toBeNull();
     // The real shell diagnostic (not a canned default) is carried through.
     expect(String(data?.output ?? "")).toMatch(/not found|No such file/i);
+  });
+
+  it("preserves the terminating signal on a signaled command failure", async () => {
+    const runtime = await makeHostRuntime();
+
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "kill -TERM $$" },
+    );
+
+    expect(result.success).toBe(false);
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.exit_code).toBe(-1);
+    expect(data?.signal).toBe("SIGTERM");
   });
 
   it("surfaces a failing command (unreadable path) as success:false + result.error", async () => {

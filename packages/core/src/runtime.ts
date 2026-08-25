@@ -1247,6 +1247,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
 	readonly agentId: UUID;
+	readonly runtimeInstanceId: UUID;
 	readonly character: Character;
 	public adapter!: IDatabaseAdapter;
 	static #anonymousAgentCounter = 0;
@@ -1456,6 +1457,8 @@ export class AgentRuntime implements IAgentRuntime {
 	constructor(opts: {
 		conversationLength?: number;
 		agentId?: UUID;
+		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
+		runtimeInstanceId?: UUID;
 		/** Optional character configuration. If not provided, an anonymous character is created. */
 		character?: Character;
 		plugins?: Plugin[];
@@ -1572,6 +1575,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Falls back to random UUID only if no character name is provided
 		this.agentId =
 			character.id ?? opts.agentId ?? stringToUuid(character.name ?? uuidv4());
+		this.runtimeInstanceId = opts.runtimeInstanceId ?? (uuidv4() as UUID);
 		this.character = character;
 
 		this.initPromise = new Promise((resolve) => {

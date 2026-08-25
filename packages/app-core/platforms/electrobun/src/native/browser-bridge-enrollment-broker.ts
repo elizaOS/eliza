@@ -7,7 +7,9 @@ import type { DesktopSession, FetchLike } from "./auth-bridge";
 import {
   BrowserBridgePairingError,
   pairBrowserBridgeCompanionAsDesktopOwner,
+  revokeBrowserBridgeCompanionAsDesktopOwner,
 } from "./browser-bridge-enrollment-adapter";
+import type { BrowserBridgeNativeRevokeResult } from "./browser-bridge-native-protocol";
 import {
   authenticateBrokerEnvelope,
   type BrowserBridgeCallerAllowlist,
@@ -32,6 +34,7 @@ export interface BrowserBridgeEnrollmentBrokerOptions {
 
 export type BrowserBridgeEnrollmentBrokerResponse =
   | BrowserBridgeNativeEnrollmentResult
+  | BrowserBridgeNativeRevokeResult
   | BrowserBridgeNativeErrorResponse;
 
 function mapProtocolErrorCode(code: string): BrowserBridgeNativeErrorCode {
@@ -65,6 +68,21 @@ export class BrowserBridgeEnrollmentBroker {
           requestId,
           code: "app_not_authenticated",
           retryable: true,
+        };
+      }
+      if (envelope.request.type === "browser_bridge.revoke") {
+        await revokeBrowserBridgeCompanionAsDesktopOwner({
+          apiBase: this.options.apiBase,
+          ownerSession,
+          companionId: envelope.request.companionId,
+          fetchImpl: this.options.fetchImpl,
+        });
+        return {
+          v: 1,
+          type: "browser_bridge.revoke_result",
+          requestId,
+          nonce: envelope.request.nonce,
+          revoked: true,
         };
       }
       const pairing = await pairBrowserBridgeCompanionAsDesktopOwner({

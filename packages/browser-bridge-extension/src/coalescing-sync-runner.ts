@@ -6,6 +6,7 @@
 export class CoalescingSyncRunner<TRequest, TResult> {
   private pendingRequest: TRequest | null = null;
   private runnerPromise: Promise<TResult> | null = null;
+  private generation = 0;
 
   constructor(
     private readonly mergeRequests: (
@@ -21,8 +22,9 @@ export class CoalescingSyncRunner<TRequest, TResult> {
       return this.runnerPromise;
     }
 
+    const generation = this.generation;
     const runner = Promise.resolve()
-      .then(async () => await this.drain())
+      .then(async () => await this.drain(generation))
       .finally(() => {
         if (this.runnerPromise === runner) {
           this.runnerPromise = null;
@@ -32,11 +34,30 @@ export class CoalescingSyncRunner<TRequest, TResult> {
     return runner;
   }
 
-  private async drain(): Promise<TResult> {
+  /**
+   * Drops queued work and waits until the active generation can no longer
+   * publish a result through the runner.
+   */
+  async cancelPending(): Promise<void> {
+    this.generation += 1;
+    this.pendingRequest = null;
+    const active = this.runnerPromise;
+    this.runnerPromise = null;
+    if (active) {
+      try {
+        await active;
+      } catch {
+        // error-policy:J5 The caller that requested this same runner promise
+        // remains the primary observer of its rejection.
+      }
+    }
+  }
+
+  private async drain(generation: number): Promise<TResult> {
     const firstRequest = this.takePendingRequest();
     let result = await this.execute(firstRequest);
 
-    while (this.pendingRequest !== null) {
+    while (generation === this.generation && this.pendingRequest !== null) {
       result = await this.execute(this.takePendingRequest());
     }
 

@@ -12,7 +12,11 @@ import { ElizaConnectButton } from "./eliza-connect-button";
 
 const apiWithStatus = vi.hoisted(() => vi.fn());
 const runSharedToDedicatedUpgradeHandoff = vi.hoisted(() => vi.fn());
+const client = vi.hoisted(() => ({
+  getBaseUrl: vi.fn(),
+}));
 const silentlyRepointToDedicated = vi.hoisted(() => vi.fn());
+const directCloudSharedAgentIdFromBase = vi.hoisted(() => vi.fn());
 const toast = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
@@ -56,7 +60,12 @@ vi.mock("../../handoff/silent-repoint", () => ({
   silentlyRepointToDedicated,
 }));
 
+vi.mock("../../../utils/cloud-agent-base", () => ({
+  directCloudSharedAgentIdFromBase,
+}));
+
 vi.mock("../../../api", () => ({
+  client,
   ElizaClient: class {},
 }));
 
@@ -113,7 +122,9 @@ describe("Dedicated activation quote", () => {
   beforeEach(() => {
     apiWithStatus.mockReset();
     runSharedToDedicatedUpgradeHandoff.mockReset();
+    client.getBaseUrl.mockReset();
     silentlyRepointToDedicated.mockReset();
+    directCloudSharedAgentIdFromBase.mockReset();
   });
 
   afterEach(() => {
@@ -229,7 +240,7 @@ describe("Dedicated activation quote", () => {
     );
   });
 
-  it("repoints the live chat transport before showing the Dedicated page", async () => {
+  it("repoints the active live chat and announces the switch before navigating", async () => {
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000099";
     const dedicatedApiBase = `http://127.0.0.1:18787/api/v1/eliza/agents/${dedicatedAgentId}/api`;
     apiWithStatus
@@ -241,6 +252,10 @@ describe("Dedicated activation quote", () => {
         status: 200,
         data: { success: true, data: { dedicatedAgentId } },
       });
+    client.getBaseUrl.mockReturnValue(
+      `https://api.eliza.app/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_ID)}`,
+    );
+    directCloudSharedAgentIdFromBase.mockReturnValue(PERSONAL_ID);
     runSharedToDedicatedUpgradeHandoff.mockImplementationOnce(
       async (params) => {
         await params.onSwitch(dedicatedApiBase);
@@ -251,6 +266,10 @@ describe("Dedicated activation quote", () => {
         };
       },
     );
+    const phases: Array<Record<string, unknown>> = [];
+    const onPhase = (event: Event) =>
+      phases.push((event as CustomEvent).detail as Record<string, unknown>);
+    window.addEventListener("eliza:cloud-handoff-phase", onPhase);
     renderActions();
 
     await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
@@ -266,6 +285,51 @@ describe("Dedicated activation quote", () => {
         personalElizaId: PERSONAL_ID,
       }),
     );
+    expect(phases).toContainEqual({
+      agentId: PERSONAL_ID,
+      phase: "switched-empty",
+      imported: 0,
+    });
+    expect(toast.success).toHaveBeenCalledWith(
+      "Upgrade complete — your conversation moved to the dedicated agent.",
+    );
+    window.removeEventListener("eliza:cloud-handoff-phase", onPhase);
+  });
+
+  it("does not hijack an unrelated active chat after a management upgrade", async () => {
+    const dedicatedAgentId = "00000000-0000-4000-8000-000000000099";
+    apiWithStatus
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { success: true, data: QUOTE },
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { success: true, data: { dedicatedAgentId } },
+      });
+    client.getBaseUrl.mockReturnValue("https://another-agent.example.test");
+    directCloudSharedAgentIdFromBase.mockReturnValue("another-agent");
+    runSharedToDedicatedUpgradeHandoff.mockImplementationOnce(
+      async (params) => {
+        await params.onSwitch("https://dedicated-agent.example.test");
+        return {
+          status: "switched-empty",
+          imported: 0,
+          sourceCleanup: "preserved-rowless",
+        };
+      },
+    );
+    renderActions();
+
+    await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Activate Dedicated" }),
+    );
+
+    await waitFor(() =>
+      expect(runSharedToDedicatedUpgradeHandoff).toHaveBeenCalledTimes(1),
+    );
+    expect(silentlyRepointToDedicated).not.toHaveBeenCalled();
   });
 
   it("shows a credit action instead of an activation button when the server denies the quote", async () => {

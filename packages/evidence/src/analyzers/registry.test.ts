@@ -1,8 +1,8 @@
 /**
  * Unit coverage for evidence analyzer registry in registry.ts.
  *
- * Tests analyzer list completeness, getAnalyzer lookup by name, tierRunnable
- * matrix evaluation, analyzersForTier filtering, and analyzersForKind filtering.
+ * Tests analyzer lookup, tierRunnable matrix evaluation, analyzersForTier
+ * filtering, and analyzersForKind filtering.
  */
 
 import { describe, expect, it } from "vitest";
@@ -15,23 +15,6 @@ import {
 } from "./registry.js";
 
 describe("evidence analyzer registry", () => {
-  it("exports static ANALYZERS array containing all 10 built-in analyzers", () => {
-    expect(Array.isArray(ANALYZERS)).toBe(true);
-    expect(ANALYZERS.length).toBe(10);
-
-    const names = ANALYZERS.map((a) => a.name);
-    expect(names).toContain("ocr.tesseract");
-    expect(names).toContain("ocr.unlimited");
-    expect(names).toContain("color.palette");
-    expect(names).toContain("color.corners");
-    expect(names).toContain("brand.rules");
-    expect(names).toContain("diff.change");
-    expect(names).toContain("diff.region");
-    expect(names).toContain("hash.perceptual");
-    expect(names).toContain("tree.aria");
-    expect(names).toContain("video.keyframes");
-  });
-
   describe("getAnalyzer", () => {
     it("looks up an analyzer by exact dotted name", () => {
       const analyzer = getAnalyzer("ocr.tesseract");

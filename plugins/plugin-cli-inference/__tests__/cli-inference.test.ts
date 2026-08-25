@@ -1293,6 +1293,33 @@ describe("reasoning effort (SDK effort option)", () => {
     await session.dispose();
   });
 
+  it("aborts the SDK transport when the session is disposed", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+          interrupt: vi.fn().mockResolvedValue(undefined),
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      sdkModule: fakeSdk as never,
+    });
+    await session.send("hi");
+    const abortController = captured?.abortController;
+    expect(abortController).toBeInstanceOf(AbortController);
+    expect((abortController as AbortController).signal.aborted).toBe(false);
+    await session.dispose();
+    expect((abortController as AbortController).signal.aborted).toBe(true);
+  });
+
   it("omits effort entirely when unset (SDK keeps its default)", async () => {
     let captured: Record<string, unknown> | undefined;
     const fakeSdk = {

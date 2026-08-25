@@ -279,7 +279,7 @@ const expectedTodoExecution = {
 };
 const expectedTodoActionResult = {
   success: true,
-  text: "Created: [ ] Buy milk",
+  text: 'Added "Buy milk" to your list.',
   verifiedUserFacing: true,
   effectReceipts: [
     {
@@ -446,6 +446,7 @@ type TestMessage = {
 
 function harness(initialHistory?: TestMessage[]) {
   let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
+  let staged: TestMessage[] = [];
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -464,6 +465,9 @@ function harness(initialHistory?: TestMessage[]) {
     background,
     historyStore: {
       load: async () => history,
+      stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+        staged = messages;
+      },
       save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
         history = next;
       },
@@ -474,6 +478,7 @@ function harness(initialHistory?: TestMessage[]) {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
     },
     history: () => history,
+    staged: () => staged,
   };
 }
 
@@ -850,10 +855,10 @@ describe("SharedRuntimeChatService", () => {
     streamTurn = {
       degraded: false,
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk",
+          text: 'Added "Buy milk" to your list.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -891,10 +896,10 @@ describe("SharedRuntimeChatService", () => {
       degraded: false,
       blockedSecondaryCapabilities: [blockedCommunication],
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+          text: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -913,7 +918,7 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
-        assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+        assistantReply: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
         interrupted: false,
       }),
     ]);
@@ -1423,6 +1428,10 @@ describe("SharedRuntimeChatService", () => {
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
     const cancellation = reader.cancel("barge-in");
+    expect(h.staged()).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     let guardTimer: ReturnType<typeof setTimeout> | undefined;
     const cancellationOutcome = await Promise.race([
       cancellation.then(() => "persisted" as const),
@@ -1597,10 +1606,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     let attempts = 0;
     let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+    let staged: TestMessage[] = [];
+    const backgroundFailures: unknown[] = [];
     const h = {
       background: [] as Promise<unknown>[],
       historyStore: {
         load: async () => history,
+        stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+          staged = messages;
+        },
         save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
           history = next;
         },
@@ -1612,7 +1626,12 @@ describe("SharedRuntimeChatService", () => {
         },
       },
       executionCtx: {
-        waitUntil: (promise: Promise<unknown>) => h.background.push(promise),
+        waitUntil: (promise: Promise<unknown>) =>
+          h.background.push(
+            promise.catch((error: unknown) => {
+              backgroundFailures.push(error);
+            }),
+          ),
       },
     };
     let releaseProvider = () => {};
@@ -1631,13 +1650,20 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
-    await expect(reader.cancel("first cancel")).rejects.toThrow("durable put failed");
+    await expect(reader.cancel("first cancel")).resolves.toBeUndefined();
+    expect(staged).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     expect(history).toHaveLength(1);
 
     releaseProvider();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.all(h.background);
 
+    expect(backgroundFailures).toContainEqual(
+      expect.objectContaining({ message: "durable put failed" }),
+    );
     expect(attempts).toBe(2);
     expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
     expect(history.at(-1)).toMatchObject({

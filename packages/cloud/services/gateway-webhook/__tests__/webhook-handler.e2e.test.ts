@@ -812,6 +812,7 @@ describe("gateway webhook handler e2e routing", () => {
     const sendReplyWithReceipt = mock(async () => ({
       providerMessageIds: ["provider-reply-1"],
     }));
+    const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined);
     const adapter: PlatformAdapter = {
       platform: "blooio",
       verifyWebhook: mock(async () => true),
@@ -837,6 +838,8 @@ describe("gateway webhook handler e2e routing", () => {
                   authorized: false,
                   leaseToken: null,
                   expiresAt: null,
+                  reason: "source_already_attempted",
+                  deliveryState: receiptPersisted ? "reconciled" : "committed",
                 }
               : {
                   code: "group_delivery_authorization",
@@ -928,6 +931,10 @@ describe("gateway webhook handler e2e routing", () => {
       "committed delivery retry fence",
     );
     expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+    expect(warnLog).not.toHaveBeenCalledWith(
+      "Personal Shared delivery outcome remains uncertain",
+      expect.anything(),
+    );
   });
 
   test("forwards Telegram membership removal without model or provider egress", async () => {
