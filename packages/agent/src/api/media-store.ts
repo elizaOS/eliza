@@ -421,6 +421,7 @@ export async function persistMediaStream(
     try {
       await fs.promises.link(pendingPath, filePath);
     } catch (error) {
+      // error-policy:J3 EEXIST is an explicit content-addressed dedup result.
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
     await fs.promises.unlink(pendingPath);
@@ -450,6 +451,7 @@ export async function persistMediaStream(
       await fs.promises
         .unlink(pendingPath)
         .catch((error: NodeJS.ErrnoException) => {
+          // error-policy:J6 failed-publication cleanup ignores only absence.
           if (error.code !== "ENOENT") {
             logger.warn(
               { error },
