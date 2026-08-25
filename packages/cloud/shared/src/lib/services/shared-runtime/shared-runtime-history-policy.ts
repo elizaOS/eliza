@@ -503,7 +503,7 @@ function messageIdentity(message: SharedRuntimeHistoryMessageLike): string {
 export function selectSharedRuntimeContext<T extends SharedRuntimeHistoryMessageLike>(
   history: T[],
   _queryText: string,
-  _limit = Number.MAX_SAFE_INTEGER,
+  _limit?: number,
 ): T[] {
   return history.filter(isPersistedMessage);
 }

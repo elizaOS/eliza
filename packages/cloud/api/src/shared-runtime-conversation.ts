@@ -869,7 +869,6 @@ export class SharedRuntimeConversation {
           snapshot.agentId,
           snapshot.channelId,
           completeHistory,
-          Number.MAX_SAFE_INTEGER,
         );
         // The caller purges Postgres before dispatching the DO delete. A merge
         // already in flight can therefore finish after that purge. Re-check
@@ -1032,7 +1031,6 @@ export class SharedRuntimeConversation {
         return mergeSharedRuntimeHistoryMessages(
           await this.loadCompleteHistory(current),
           this.pendingHistory.get(pendingKey(agentId, channelId)) ?? [],
-          Number.MAX_SAFE_INTEGER,
         );
       },
       stagePending: (agentId, channelId, messages) => {
@@ -1042,7 +1040,6 @@ export class SharedRuntimeConversation {
           mergeSharedRuntimeHistoryMessages(
             this.pendingHistory.get(key) ?? [],
             messages,
-            Number.MAX_SAFE_INTEGER,
           ),
         );
         this.pendingHistoryCheckpoint = this.pendingHistoryCheckpoint.then(
@@ -1063,7 +1060,6 @@ export class SharedRuntimeConversation {
           mergeSharedRuntimeHistoryMessages(
             await this.loadCompleteHistory(current),
             pending,
-            Number.MAX_SAFE_INTEGER,
           ),
           messages,
         );

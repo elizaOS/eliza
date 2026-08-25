@@ -220,6 +220,57 @@ describe("DOCUMENT search/list echo clamping", () => {
 		expect(res.text).toContain("completeness beyond that window is unknown");
 	});
 
+	it("returns every retrieved match when no result limit was requested", async () => {
+		const service = makeService();
+		service.searchDocuments.mockResolvedValueOnce(
+			Array.from({ length: 125 }, (_, index) => ({
+				id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
+				content: { text: `fragment ${index}` },
+				metadata: {},
+			})),
+		);
+		const res = await documentAction.handler(
+			makeRuntime(service),
+			makeMessage(""),
+			undefined,
+			options({ action: "search", query: "complete context" }),
+		);
+		const data = res.data as {
+			results: unknown[];
+			scope: Record<string, unknown>;
+		};
+		expect(data.results).toHaveLength(125);
+		expect(data.scope).toMatchObject({ shown: 125, hasMoreInWindow: false });
+		expect(data.scope).not.toHaveProperty("limit");
+	});
+
+	it("honors an explicit result limit above the retired cap of 100", async () => {
+		const service = makeService();
+		service.searchDocuments.mockResolvedValueOnce(
+			Array.from({ length: 130 }, (_, index) => ({
+				id: `00000000-0000-4000-8001-${String(index).padStart(12, "0")}` as UUID,
+				content: { text: `fragment ${index}` },
+				metadata: {},
+			})),
+		);
+		const res = await documentAction.handler(
+			makeRuntime(service),
+			makeMessage(""),
+			undefined,
+			options({ action: "search", query: "complete context", limit: 125 }),
+		);
+		const data = res.data as {
+			results: unknown[];
+			scope: Record<string, unknown>;
+		};
+		expect(data.results).toHaveLength(125);
+		expect(data.scope).toMatchObject({
+			shown: 125,
+			limit: 125,
+			hasMoreInWindow: true,
+		});
+	});
+
 	it("projects transcript anchors and a document reference without inventing readable fragment coordinates", async () => {
 		const service = makeService();
 		service.searchDocuments.mockResolvedValueOnce([

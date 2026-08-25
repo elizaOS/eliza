@@ -1336,6 +1336,7 @@ describe("restore operation spine", () => {
           }),
         ).rejects.toThrow("retryDelayMs must be an integer between 0 and 3600000");
       }
+      const completeError = `seeding timed out: ${"diagnostic".repeat(300)}`;
       const failed = await failAgentBackupRestoreOperation({
         operationId: operation.id,
         ownerId: "restore-worker",

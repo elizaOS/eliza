@@ -356,10 +356,18 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 		: undefined;
 }
 
-function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value) && value >= 1
-		? Math.min(100, Math.floor(value))
-		: fallback;
+function getLimit(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+		throw new ElizaError(
+			"Document result limit must be a positive safe integer",
+			{
+				code: "DOCUMENT_INVALID_LIMIT",
+				context: { limit: value },
+			},
+		);
+	}
+	return value;
 }
 
 function getScope(
@@ -684,12 +692,13 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit, Number.MAX_SAFE_INTEGER);
+	const limit = getLimit(params.limit);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);
-	const hasMoreInWindow = filteredMatches.length > limit;
-	const visible = filteredMatches.slice(0, limit);
+	const hasMoreInWindow = limit !== undefined && filteredMatches.length > limit;
+	const visible =
+		limit === undefined ? filteredMatches : filteredMatches.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
@@ -723,7 +732,7 @@ async function handleSearch(
 					.join("\n\n")}`
 	} ${retrievalScope}${
 		hasMoreInWindow
-			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
+			? ` More filtered matches exist within the retrieved window beyond the explicitly requested ${limit} shown.`
 			: ""
 	}`;
 	const filtersApplied = [
@@ -744,7 +753,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -757,7 +766,7 @@ async function handleSearch(
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -1211,9 +1220,9 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const requestedLimit = getLimit(params.limit, 0);
+	const requestedLimit = getLimit(params.limit);
 	const listResult = await service.listDocumentsDetailed(message, {
-		...(requestedLimit > 0 ? { limit: requestedLimit } : {}),
+		...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
 		offset,
 		query,
 		scope,

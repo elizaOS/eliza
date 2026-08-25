@@ -5261,7 +5261,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (params.agentIds.length === 0) return [];
     return this.withRetry(async () => {
       return this.withDatabase(async () => {
-        const result = await this.db
+        const query = this.db
           .select()
           .from(taskTable)
           .where(
@@ -5281,8 +5281,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             )
           )
           .orderBy(asc(taskTable.createdAt), asc(taskTable.id))
-          .limit(params.limit ?? Number.MAX_SAFE_INTEGER)
           .offset(params.offset ?? 0);
+        const result = params.limit === undefined ? await query : await query.limit(params.limit);
 
         return result.map((row) => {
           const metadata = (row.metadata || {}) as TaskMetadata;

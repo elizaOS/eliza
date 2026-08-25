@@ -115,6 +115,14 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
+	"packages/agent/src/services/agent-export.ts": [
+		/limit:\s*Number\.MAX_SAFE_INTEGER/,
+		/getMemoriesByWorldId\(/,
+	],
+	"packages/core/src/features/working-memory/taskClipboardService.ts": [
+		/TASK_CLIPBOARD_MAX_ITEMS/,
+		/maxItems/,
+	],
 	"plugins/plugin-inbox/src/actions/inbox.ts": [/:\s*50;/],
 	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
 	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
@@ -306,7 +314,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-inmemorydb/adapter.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
 	],
-	"plugins/plugin-sql/src/base.ts": [/const count = params\.count\s*\?\?\s*10/],
+	"plugins/plugin-sql/src/base.ts": [
+		/const count = params\.count\s*\?\?\s*10/,
+		/\.limit\(params\.limit\s*\?\?\s*Number\.MAX_SAFE_INTEGER\)/,
+	],
 	"plugins/plugin-sql/src/stores/memory.store.ts": [
 		/\.limit\(params\.count\s*\?\?\s*10\)/,
 	],

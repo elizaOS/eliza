@@ -732,7 +732,7 @@ async function sharedTurnFactsContext(
 ): Promise<string | undefined> {
   if (!store || !sharedFactsEnabled()) return undefined;
   try {
-    const facts = await store.listFacts(Number.MAX_SAFE_INTEGER);
+    const facts = await store.listFacts();
     return buildSharedFactsContext(facts) ?? undefined;
   } catch (error) {
     // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
@@ -781,7 +781,7 @@ function extractSharedTurnFactsOffPath(
         await Promise.all([
           import("ai"),
           import("../../providers/language-model"),
-          store.listFacts(Number.MAX_SAFE_INTEGER),
+          store.listFacts(),
         ]);
       const facts = await extractSharedTurnFacts({
         agentName: character.name,

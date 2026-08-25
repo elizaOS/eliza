@@ -1,7 +1,12 @@
 /** Verifies the hosted-search JSON boundary with deterministic auth and provider mocks. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const executeHostedGoogleSearch = mock(async () => ({ results: [] }));
+const executeHostedGoogleSearch = mock(
+  async (
+    _request: { query: string; maxResults?: number },
+    _context: unknown,
+  ) => ({ results: [] }),
+);
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
   apiKey: { id: "key-1" },

@@ -605,7 +605,7 @@ function responseRecordText(params: {
 			: "",
 		params.clipboardStatusText,
 		params.clipboardResult.requested && params.clipboardResult.stored
-			? `Clipboard usage: ${params.clipboardResult.snapshot.items.length}/${params.clipboardResult.snapshot.maxItems}.`
+			? `Clipboard contains ${params.clipboardResult.snapshot.items.length} complete item(s).`
 			: "",
 		params.clipboardResult.requested && params.clipboardResult.stored
 			? "Clear unused clipboard state when it is no longer needed."
