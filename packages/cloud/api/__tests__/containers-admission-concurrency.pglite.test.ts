@@ -56,10 +56,6 @@ delete process.env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE;
 delete process.env.CONTAINERS_DOCKER_NETWORK;
 delete process.env.AGENT_DOCKER_NETWORK;
 
-const { buildDockerEnvFileStdinTransport } = await import(
-  "../../shared/src/lib/services/docker-sandbox-utils"
-);
-
 const ORGANIZATION_ID = "10000000-0000-4000-8000-000000000001";
 const USER_ID = "10000000-0000-4000-8000-000000000002";
 const ORGANIZATION_CONFIG_ID = "10000000-0000-4000-8000-000000000003";
@@ -86,6 +82,41 @@ const EMPTY_DOCKER_ENV_STDIN = [
   "ELIZA_DOCKER_ENV_FILE_STDIN_V1_END",
   "",
 ].join("\n");
+// Test-owned transcript contract. Keep this literal independent from
+// buildDockerEnvFileStdinTransport so any added, removed, or rewritten shell
+// command changes the observed transcript instead of also changing its oracle.
+const EXPECTED_DOCKER_ENV_STDIN_WRAPPER_SEGMENTS = [
+  "set -eu",
+  "env_frame_file=",
+  "env_file=",
+  "env_end_file=",
+  'cleanup_env_files() { test -z "$env_frame_file" || rm -f "$env_frame_file"; test -z "$env_end_file" || rm -f "$env_end_file"; test -z "$env_file" || rm -f "$env_file"; }',
+  "trap cleanup_env_files EXIT",
+  "trap 'exit 1' HUP INT TERM",
+  "umask 077",
+  "env_frame_file=$(mktemp '/tmp/eliza-docker-env-frame.XXXXXX')",
+  "env_file=$(mktemp '/tmp/eliza-docker-env.XXXXXX')",
+  "env_end_file=$(mktemp '/tmp/eliza-docker-env-end.XXXXXX')",
+  'chmod 600 "$env_frame_file" "$env_end_file" "$env_file"',
+  'dd bs=1 count=38 of="$env_frame_file" status=none',
+  'test "$(wc -c < "$env_frame_file" | tr -d \' \')" = 38',
+  'env_header=$(cat "$env_frame_file")',
+  "case \"$env_header\" in 'ELIZA_DOCKER_ENV_FILE_STDIN_V1 '??????) ;; *) exit 44 ;; esac",
+  `env_length_padded=\${env_header#ELIZA_DOCKER_ENV_FILE_STDIN_V1 }`,
+  "case \"$env_length_padded\" in ''|*[!0-9]*) exit 44 ;; esac",
+  "env_length=$(printf %s \"$env_length_padded\" | sed 's/^0*//')",
+  'test -n "$env_length" || env_length=0',
+  'test "$env_length" -le 262144',
+  'if test "$env_length" -gt 0; then dd bs=1 count="$env_length" of="$env_frame_file" status=none; else : > "$env_frame_file"; fi',
+  "env_actual_length=$(wc -c < \"$env_frame_file\" | tr -d ' ')",
+  'test "$env_actual_length" = "$env_length"',
+  'dd bs=1 count=35 of="$env_end_file" status=none',
+  'test "$(wc -c < "$env_end_file" | tr -d \' \')" = 35',
+  'test "$(cat "$env_end_file")" = \'ELIZA_DOCKER_ENV_FILE_STDIN_V1_END\'',
+  "test \"$(dd bs=1 count=1 status=none | wc -c | tr -d ' ')\" = 0",
+  '. "$env_frame_file"',
+  'chmod 600 "$env_file"',
+] as const;
 
 const ENV = {
   NODE_ENV: "test",
@@ -235,6 +266,30 @@ function expectedDockerProvisioningOperations(
   return operations;
 }
 
+function expectedDockerCreateTransportCommand(
+  containerId: string,
+  hostPort: number,
+): string {
+  const dockerCreateCommand = [
+    "docker create",
+    `--name 'cloud-container-${containerId.replaceAll("-", "")}'`,
+    "--restart unless-stopped",
+    "--network 'containers-isolated'",
+    "--cpus 1.75",
+    "--memory 1792m",
+    "--cap-drop=ALL",
+    "--security-opt no-new-privileges",
+    "--pids-limit=512",
+    `-p ${hostPort}:3000`,
+    '--env-file "$env_file"',
+    "'ghcr.io/elizaos/eliza:stable'",
+  ].join(" ");
+  return [
+    ...EXPECTED_DOCKER_ENV_STDIN_WRAPPER_SEGMENTS,
+    dockerCreateCommand,
+  ].join("; ");
+}
+
 function expectDockerCreateCall(
   call: { command: string; input: string | Buffer },
   containerId: string,
@@ -246,26 +301,9 @@ function expectDockerCreateCall(
   expect(Number.isInteger(hostPort)).toBe(true);
   expect(hostPort).toBeGreaterThanOrEqual(20_000);
   expect(hostPort).toBeLessThan(25_000);
-  expect(call.command.match(/(?:^|; )docker /g) ?? []).toHaveLength(1);
-  const expectedTransport = buildDockerEnvFileStdinTransport(
-    {},
-    (envFilePath) =>
-      [
-        "docker create",
-        `--name 'cloud-container-${containerId.replaceAll("-", "")}'`,
-        "--restart unless-stopped",
-        "--network 'containers-isolated'",
-        "--cpus 1.75",
-        "--memory 1792m",
-        "--cap-drop=ALL",
-        "--security-opt no-new-privileges",
-        "--pids-limit=512",
-        `-p ${hostPort}:3000`,
-        `--env-file ${envFilePath}`,
-        "'ghcr.io/elizaos/eliza:stable'",
-      ].join(" "),
+  expect(call.command).toBe(
+    expectedDockerCreateTransportCommand(containerId, hostPort),
   );
-  expect(call.command).toBe(expectedTransport.command);
   expect(
     typeof call.input === "string" ? call.input : call.input.toString("utf8"),
   ).toBe(EMPTY_DOCKER_ENV_STDIN);
