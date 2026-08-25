@@ -906,11 +906,17 @@ async function runCreateLegacy(
     ? completeUserReferenceView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
-  const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
-    params,
-    content,
-    extraMetadata,
+  const useSmithers = shouldUseSmithersTaskRunner();
+  const durableTaskServiceAvailable = Boolean(
+    runtime.getService?.(OrchestratorTaskService.serviceType),
   );
+  // Durable Smithers sessions are the orchestrator's ongoing coding surface:
+  // the task service owns their bounded idle reclamation and follow-up state.
+  // Direct ACP compatibility runs remain one-shot unless they carry the
+  // validated app-verification retry contract.
+  const keepAliveAfterComplete =
+    (useSmithers && durableTaskServiceAvailable) ||
+    hasVerifiedRetryLifecycle(params, content, extraMetadata);
   const originConnectorMessageId = connectorMessageIdFromMemory(
     message,
     content,
@@ -997,7 +1003,6 @@ async function runCreateLegacy(
       };
     }
   }
-  const useSmithers = shouldUseSmithersTaskRunner();
   let threadId: string | null = null;
   try {
     if (!taskService || typeof taskService.createTask !== "function") {
