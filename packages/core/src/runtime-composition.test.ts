@@ -133,6 +133,20 @@ describe("getBasicCapabilitiesSettings", () => {
 		});
 	});
 
+	it("lets nested settings.secrets override a plain setting with the same key", () => {
+		const character = makeCharacter({
+			settings: asSettings({
+				API_KEY: "plain-setting",
+				secrets: { API_KEY: "nested-secret" },
+			}),
+		});
+		// The secrets pass runs after the plain-settings pass, so the nested
+		// secret wins the collision (settings < settings.secrets).
+		expect(getBasicCapabilitiesSettings(character, {}).API_KEY).toBe(
+			"nested-secret",
+		);
+	});
+
 	it("flattens both secrets sources into the same record as plain settings", () => {
 		const character = makeCharacter({
 			settings: asSettings({
