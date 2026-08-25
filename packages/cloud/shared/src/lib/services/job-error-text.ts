@@ -32,7 +32,7 @@ const FILE_URL_PATTERN = /\bfile:\/\//iu;
 const DRIVE_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u;
 const UNC_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u;
 const POSIX_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u;
-const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)(?:[/?#].*)?$/iu;
+const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)$/iu;
 const ABSOLUTE_HOST_PATH_PATTERN = /^(?:\/{1,2}|[A-Za-z]:[\\/]|\\\\)/u;
 
 function decodeUrlMetadata(value: string): string | null {
