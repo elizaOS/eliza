@@ -140,6 +140,34 @@ describe("resolveUserPath", () => {
 	it("resolves a relative path to absolute", () => {
 		expect(resolveUserPath("relative")).toBe(join(process.cwd(), "relative"));
 	});
+
+	it("throws on non-string input with clear message", () => {
+		expect(() =>
+			(resolveUserPath as unknown as (v: unknown) => string)(
+				123 as unknown as string,
+			),
+		).toThrow(/must be a string/);
+		expect(() =>
+			(resolveUserPath as unknown as (v: unknown) => string)(
+				null as unknown as string,
+			),
+		).toThrow(/must be a string/);
+		expect(() =>
+			(resolveUserPath as unknown as (v: unknown) => string)(
+				undefined as unknown as string,
+			),
+		).toThrow(/must be a string/);
+		expect(() =>
+			(resolveUserPath as unknown as (v: unknown) => string)(
+				{} as unknown as string,
+			),
+		).toThrow(/must be a string/);
+	});
+
+	it("handles whitespace-only input as empty", () => {
+		expect(resolveUserPath("   ")).toBe("");
+		expect(resolveUserPath("\t\n ")).toBe("");
+	});
 });
 
 describe("migrateStateDir", () => {

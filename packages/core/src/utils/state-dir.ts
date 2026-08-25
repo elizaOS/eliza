@@ -24,6 +24,9 @@ import { readEnv } from "./read-env.ts";
 
 /** Expand a leading `~` segment and resolve to an absolute path. */
 export function resolveUserPath(input: string): string {
+	if (typeof input !== "string") {
+		throw new TypeError("resolveUserPath: input must be a string");
+	}
 	const trimmed = input.trim();
 	if (!trimmed) return trimmed;
 	if (trimmed.startsWith("~")) {
