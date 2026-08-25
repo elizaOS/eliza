@@ -34,6 +34,7 @@ import {
 import { ElizaError as ScriptElizaError } from "./lib/eliza-error.mjs";
 import {
   assertAndroidArtifactOmitsLp3ManifestMarkers,
+  assertAndroidArtifactRetainsBackgroundRunnerJniBridge,
   assertAndroidArtifactShipsWebPayload,
   assertAndroidArtifactSnapshotUnchanged,
   auditAndroidArtifactDexLp3Policy,
@@ -281,7 +282,10 @@ function writeSyntheticCloudAab(
   { extraEntries = {}, includeWebPayload = true } = {},
 ) {
   const entries = {
-    "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
+    "base/dex/classes.dex": Buffer.from(
+      "clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI",
+      "utf8",
+    ),
     "base/manifest/AndroidManifest.xml": Buffer.from(
       "compiled manifest placeholder",
       "utf8",
@@ -1425,7 +1429,7 @@ describe("Android Cloud outer audit boundary", () => {
       const inspectAndroidAppBundleImpl = vi.fn((options) => {
         expect(
           options.readDexEntries(["base/dex/classes.dex"])[0].toString("utf8"),
-        ).toBe("clean synthetic DEX");
+        ).toBe("clean synthetic DEX io/ionic/android_js_engine/NativeWebAPI");
         expect(fs.realpathSync(options.artifact)).not.toBe(
           fs.realpathSync(artifact),
         );
@@ -1443,6 +1447,39 @@ describe("Android Cloud outer audit boundary", () => {
         /android-cloud AAB attestation .*"sha256":"[a-f0-9]{64}"/,
       );
       expect(log.mock.calls.at(-1)?.[0]).toContain("artifact audit passed");
+    } finally {
+      fs.rmSync(temporaryDir, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects a release AAB missing the Background Runner JNI bridge before inspection", () => {
+    const temporaryDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-outer-aab-no-background-runner-jni-"),
+    );
+    const inspectAndroidAppBundleImpl = vi.fn();
+    const log = vi.fn();
+    try {
+      const artifact = writeSyntheticCloudAab(temporaryDir, {
+        extraEntries: {
+          "base/dex/classes.dex": Buffer.from("clean synthetic DEX", "utf8"),
+        },
+      });
+
+      expect(() =>
+        auditAndroidCloudArtifact(
+          { artifact, env: {}, javaHome: JAVA_HOME },
+          { inspectAndroidAppBundleImpl, log },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          code: "ANDROID_BACKGROUND_RUNNER_JNI_CLASS_MISSING",
+          context: expect.objectContaining({
+            label: "android-cloud release AAB",
+          }),
+        }),
+      );
+      expect(inspectAndroidAppBundleImpl).not.toHaveBeenCalled();
+      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }
@@ -1614,6 +1651,46 @@ describe("Android APK audit regression contract", () => {
       ["classes.dex"],
       JAVA_HOME,
       { label: "LP3 policy DEX audit" },
+    );
+  });
+
+  it("requires the Background Runner class resolved through JNI", () => {
+    const readEntryBuffers = vi
+      .fn()
+      .mockReturnValueOnce([
+        Buffer.from("io/ionic/android_js_engine/NativeWebAPI", "utf8"),
+      ])
+      .mockReturnValueOnce([Buffer.from("unrelated classes", "utf8")]);
+    const entries = ["classes.dex", "classes2.dex"];
+
+    expect(() =>
+      assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+        "/artifacts/app-release.apk",
+        entries,
+        JAVA_HOME,
+        { label: "android-system" },
+        { readEntryBuffers },
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
+        "/artifacts/app-release.apk",
+        entries,
+        JAVA_HOME,
+        { label: "android-system" },
+        { readEntryBuffers },
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "ANDROID_BACKGROUND_RUNNER_JNI_CLASS_MISSING",
+        context: expect.objectContaining({ label: "android-system" }),
+      }),
+    );
+    expect(readEntryBuffers).toHaveBeenCalledWith(
+      "/artifacts/app-release.apk",
+      entries,
+      JAVA_HOME,
+      { label: "Background Runner JNI DEX audit" },
     );
   });
 
