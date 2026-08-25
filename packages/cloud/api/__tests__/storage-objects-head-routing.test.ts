@@ -414,10 +414,13 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
 
 test("fail-closed pricing: GET, HEAD, and DELETE refuse 503 on a missing catalogue instead of billing the $0.001 fallback", async () => {
   // resolveNativeStorageObject already yields a live provider object from
-  // beforeEach, so DELETE reaches its priced leg.
+  // beforeEach, so DELETE reaches its priced leg. Each rejection carries its
+  // own method so the test also proves which row each verb looked up.
   requireServiceMethodCost.mockReset();
-  requireServiceMethodCost.mockRejectedValue(
-    new TestPricingNotFoundError("storage", "get"),
+  requireServiceMethodCost.mockImplementation(
+    async (serviceId: string, method: string) => {
+      throw new TestPricingNotFoundError(serviceId, method);
+    },
   );
 
   const getResponse = await request("GET");
@@ -450,10 +453,30 @@ test("fail-closed pricing: GET, HEAD, and DELETE refuse 503 on a missing catalog
   // operation rather than silently bill the $0.001 per-call fallback.
   expect(executeNativeStorageDelete).not.toHaveBeenCalled();
   expect(deductCredits).not.toHaveBeenCalled();
-  expect(loggerError).toHaveBeenCalledWith(
-    "[storage objects] pricing catalogue unavailable",
-    expect.objectContaining({ serviceId: "storage" }),
+  // DELETE must look up its own seeded row, not a sibling verb's.
+  expect(requireServiceMethodCost).toHaveBeenLastCalledWith(
+    "storage",
+    "delete",
   );
+  expect(loggerError).toHaveBeenLastCalledWith(
+    "[storage objects] pricing catalogue unavailable",
+    expect.objectContaining({ serviceId: "storage", method: "delete" }),
+  );
+});
+
+test("fail-closed pricing: a corrupt (non-finite) stored price refuses the GET before any provider read", async () => {
+  requireServiceMethodCost.mockReset();
+  // A corrupt row surfaces as a plain Error (distinct from
+  // PricingNotFoundError), so it lands in the generic failureResponse path.
+  requireServiceMethodCost.mockRejectedValueOnce(
+    new Error("Invalid pricing for storage.get: not-a-number"),
+  );
+
+  const response = await request("GET");
+
+  expect(response.status).toBe(500);
+  expect(executeNativeStorageGetOrHead).not.toHaveBeenCalled();
+  expect(deductCredits).not.toHaveBeenCalled();
 });
 
 describe("storage object HEAD routing", () => {
