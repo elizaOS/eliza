@@ -413,6 +413,14 @@ export class MessageManager {
     this.telegramMembershipGate.rebind(gate.authority, gate.botTelegramUserId);
   }
 
+  /**
+   * Marks the membership gate broken (authority configured but bootstrap
+   * failed): group admission fails closed until a later successful boot.
+   */
+  markMembershipGateBroken(): void {
+    this.telegramMembershipGate.markBroken();
+  }
+
   private telegramMessageMemoryKey(
     chatId: number | string,
     messageId: number | string,

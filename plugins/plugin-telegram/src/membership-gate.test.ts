@@ -7,6 +7,7 @@
  * lives in __tests__/membership-authority.real.test.ts.
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TelegramMembershipMessageGate } from "./membership-gate";
 
@@ -74,16 +75,49 @@ describe("TelegramMembershipMessageGate without an authority service", () => {
       authority: null,
       botTelegramUserId: null,
     });
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    // Unique chat ids + message+context filtering: the structured logger
+    // flushes asynchronously, so calls buffered by earlier tests can land
+    // while this spy is attached and must not be counted.
+    const absentWarns = (chatId: string) =>
+      warnSpy.mock.calls.filter(
+        (call) =>
+          call[call.length - 1] ===
+            "Telegram group admission running without a membership authority service; membership checks disabled" &&
+          (call[0] as { chatId?: string })?.chatId === chatId,
+      );
     try {
-      await gate.authorizeMessage(decisionInput());
-      await gate.authorizeMessage(decisionInput());
+      const first = decisionInput();
+      first.chatId = "-9101";
+      first.chatRoomKey = "-9101";
+      const sameChatOtherSender = decisionInput({ telegramUserId: "43" });
+      sameChatOtherSender.chatId = "-9101";
+      sameChatOtherSender.chatRoomKey = "-9101";
+      await gate.authorizeMessage(first);
+      await gate.authorizeMessage(first);
+      await gate.authorizeMessage(sameChatOtherSender);
+      expect(absentWarns("-9101").length).toBe(1);
+      // A different chat warns independently.
+      const otherChat = decisionInput();
+      otherChat.chatId = "-9102";
+      otherChat.chatRoomKey = "-9102";
+      await gate.authorizeMessage(otherChat);
+      expect(absentWarns("-9102").length).toBe(1);
+      expect(absentWarns("-9101").length).toBe(1);
     } finally {
       warnSpy.mockRestore();
     }
-    // The once-per-chat contract is internal (this.warned); asserting on the
-    // observable behavior (both admissions allowed) plus no thrown errors.
-    expect(true).toBe(true);
+  });
+
+  it("fails closed after markBroken (authority configured but bootstrap failed)", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: null,
+      botTelegramUserId: null,
+    });
+    gate.markBroken();
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
   });
 
   it("admits the bot's own messages without consulting any authority", async () => {
