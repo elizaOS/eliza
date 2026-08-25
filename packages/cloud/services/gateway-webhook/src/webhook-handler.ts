@@ -50,10 +50,12 @@ const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
-// Inbound Blooio image turns may spend the cloud stage fetching media and
-// running a vision description before the model turn; the plain 30s ceiling
-// would abort those turns mid-flight and re-run them.
-const PERSONAL_SHARED_MEDIA_TIMEOUT_MS = 90_000;
+// Seedance video generation is selected by the runtime action planner, after
+// the gateway has forwarded the turn, so ingress cannot reliably classify a
+// text-only video request. Keep every Personal Shared cloud turn alive long
+// enough for a short queued render; image attachments use the same budget for
+// vision followed by image-to-video generation.
+export const PERSONAL_SHARED_TURN_TIMEOUT_MS = 15 * 60_000;
 // Mirrors the Worker binding of the same name. Both sides must be enabled
 // together: the gateway only forwards Blooio media URLs (and adopts the
 // long-turn timeout/retry posture they require) when this is exactly "true",
@@ -134,6 +136,23 @@ function parseGroupDeliveryDirective(
   };
 }
 
+function parsePersonalSharedMediaUrls(
+  data: Record<string, unknown> | null,
+): string[] {
+  if (!Array.isArray(data?.mediaUrls)) return [];
+  return data.mediaUrls
+    .flatMap((value) => {
+      if (typeof value !== "string") return [];
+      try {
+        const url = new URL(value.trim());
+        return url.protocol === "https:" ? [url.toString()] : [];
+      } catch {
+        return [];
+      }
+    })
+    .slice(0, 4);
+}
+
 interface MessageTraceContext {
   traceId: string;
   gatewayReceivedAtMs: number;
@@ -145,6 +164,7 @@ async function sendReplyWithRequiredReceipt(
   event: ChatEvent,
   text: string,
   deliveryHooks?: TelegramDeliveryHooks,
+  mediaUrls?: readonly string[],
 ): Promise<void> {
   if (!adapter.sendReplyWithReceipt) {
     throw new PlatformDeliveryError(
@@ -159,6 +179,7 @@ async function sendReplyWithRequiredReceipt(
     event,
     text,
     deliveryHooks,
+    mediaUrls,
   );
   const providerMessageIds = receipt.providerMessageIds
     .map((id) => id.trim())
@@ -1101,13 +1122,11 @@ async function sendPersonalSharedReply(
   // spend-safe (the second execution sees the live claim and keeps the raw
   // text), but that raw turn would only race the enriched one, so media turns
   // still hand provider/transport failures to the durable redelivery path.
-  // Group Blooio events carry mediaUrls too but are never forwarded as media
-  // (no vision runs), and with the vision flag off no media is forwarded at
-  // all, so both keep the plain text-turn retry/timeout posture.
+  // Blooio private and group events share the same guarded cloud vision path.
+  // Media URLs are forwarded only while that path is explicitly enabled.
   const isMediaTurn =
     inboundMediaVisionEnabled() &&
     adapter.platform === "blooio" &&
-    !isGroup &&
     !!event.mediaUrls?.length;
   // Voice and media turns can spend most of the 120-second processing lease in
   // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
@@ -1158,6 +1177,9 @@ async function sendPersonalSharedReply(
                 ...(event.replyToMessageId
                   ? { replyToMessageId: event.replyToMessageId }
                   : {}),
+                ...(isMediaTurn && event.mediaUrls?.length
+                  ? { mediaUrls: event.mediaUrls }
+                  : {}),
               }
             : adapter.platform === "telegram"
               ? {
@@ -1188,9 +1210,7 @@ async function sendPersonalSharedReply(
       signal: AbortSignal.timeout(
         voiceNote
           ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
-          : isMediaTurn
-            ? PERSONAL_SHARED_MEDIA_TIMEOUT_MS
-            : 30_000,
+          : PERSONAL_SHARED_TURN_TIMEOUT_MS,
       ),
     });
 
@@ -1305,6 +1325,12 @@ async function sendPersonalSharedReply(
       "personal Shared chat returned no reply",
     );
   }
+  const replyMediaUrls = parsePersonalSharedMediaUrls(data);
+  const replyText = reply
+    .split("\n")
+    .filter((line) => !replyMediaUrls.includes(line.trim()))
+    .join("\n")
+    .trim();
   // Empty is the agent's deliberate shouldRespond=no result. Membership
   // changes and stale turns intentionally take this path with no authority
   // token because there will be no provider egress to authorize.
@@ -1330,7 +1356,13 @@ async function sendPersonalSharedReply(
       );
     }
     if (groupDelivery.kind === "control") {
-      await sendReplyWithReceipt(config, event, reply, deliveryHooks);
+      await sendReplyWithReceipt(
+        config,
+        event,
+        replyText,
+        deliveryHooks,
+        replyMediaUrls,
+      );
       return {
         cloudMs,
         cloudAttempts: attemptResult.attempts,
@@ -1505,8 +1537,9 @@ async function sendPersonalSharedReply(
     const receipt = await sendReplyWithReceipt(
       config,
       event,
-      reply,
+      replyText,
       deliveryHooks,
+      replyMediaUrls,
     );
     const receiptBody = JSON.stringify({
       eventType: "delivery_receipt",
@@ -1575,8 +1608,9 @@ async function sendPersonalSharedReply(
       adapter,
       config,
       event,
-      reply,
+      replyText,
       deliveryHooks,
+      replyMediaUrls,
     );
   }
   return {

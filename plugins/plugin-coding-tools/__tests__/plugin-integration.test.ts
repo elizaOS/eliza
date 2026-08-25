@@ -226,6 +226,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     services = new Map();
     runtime = {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
+      runtimeInstanceId: "coding-tools-integration-runtime",
       actions: codingToolsPlugin.actions ?? [],
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,

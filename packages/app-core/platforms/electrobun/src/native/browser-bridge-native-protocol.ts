@@ -24,6 +24,22 @@ export interface BrowserBridgeNativeEnrollmentRequest {
   profileId: string;
 }
 
+export interface BrowserBridgeNativeRevokeRequest {
+  v: 1;
+  type: "browser_bridge.revoke";
+  requestId: string;
+  nonce: string;
+  browser: BrowserBridgeNativeBrowser;
+  extensionId: string;
+  extensionVersion: string;
+  profileId: string;
+  companionId: string;
+}
+
+export type BrowserBridgeNativeRequest =
+  | BrowserBridgeNativeEnrollmentRequest
+  | BrowserBridgeNativeRevokeRequest;
+
 export interface BrowserBridgeNativeEnrollmentConfig {
   apiBaseUrl: string;
   companionId: string;
@@ -44,6 +60,14 @@ export interface BrowserBridgeNativeEnrollmentResult {
   config: BrowserBridgeNativeEnrollmentConfig;
 }
 
+export interface BrowserBridgeNativeRevokeResult {
+  v: 1;
+  type: "browser_bridge.revoke_result";
+  requestId: string;
+  nonce: string;
+  revoked: true;
+}
+
 export type BrowserBridgeNativeErrorCode =
   | "app_not_running"
   | "app_not_authenticated"
@@ -61,6 +85,7 @@ export interface BrowserBridgeNativeErrorResponse {
 
 export type BrowserBridgeNativeResponse =
   | BrowserBridgeNativeEnrollmentResult
+  | BrowserBridgeNativeRevokeResult
   | BrowserBridgeNativeErrorResponse;
 
 export interface BrowserBridgeNativeCaller {
@@ -72,7 +97,7 @@ export interface BrowserBridgeBrokerEnvelope {
   protocol: typeof BROWSER_BRIDGE_BROKER_PROTOCOL;
   timestampMs: number;
   caller: BrowserBridgeNativeCaller;
-  request: BrowserBridgeNativeEnrollmentRequest;
+  request: BrowserBridgeNativeRequest;
   mac: string;
 }
 
@@ -263,6 +288,56 @@ export function parseNativeEnrollmentRequest(
   };
 }
 
+export function parseNativeRequest(input: unknown): BrowserBridgeNativeRequest {
+  if (!isRecord(input)) {
+    throw new BrowserBridgeNativeProtocolError(
+      "invalid_message",
+      "native browser bridge message must be an object",
+    );
+  }
+  if (input.type === "browser_bridge.enroll") {
+    return parseNativeEnrollmentRequest(input);
+  }
+  if (input.type !== "browser_bridge.revoke") {
+    throw new BrowserBridgeNativeProtocolError(
+      "unsupported_protocol",
+      "native browser bridge request version or type is unsupported",
+    );
+  }
+  assertExactKeys(input, [
+    "v",
+    "type",
+    "requestId",
+    "nonce",
+    "browser",
+    "extensionId",
+    "extensionVersion",
+    "profileId",
+    "companionId",
+  ]);
+  if (input.v !== 1) {
+    throw new BrowserBridgeNativeProtocolError(
+      "unsupported_protocol",
+      "native browser bridge request version is unsupported",
+    );
+  }
+  const common = parseNativeEnrollmentRequest({
+    v: input.v,
+    type: "browser_bridge.enroll",
+    requestId: input.requestId,
+    nonce: input.nonce,
+    browser: input.browser,
+    extensionId: input.extensionId,
+    extensionVersion: input.extensionVersion,
+    profileId: input.profileId,
+  });
+  return {
+    ...common,
+    type: "browser_bridge.revoke",
+    companionId: requiredString(input, "companionId", 256),
+  };
+}
+
 const NATIVE_ERROR_CODES = new Set<BrowserBridgeNativeErrorCode>([
   "app_not_running",
   "app_not_authenticated",
@@ -406,6 +481,36 @@ export function parseNativeEnrollmentResponse(
   };
 }
 
+export function parseNativeResponse(
+  input: unknown,
+): BrowserBridgeNativeResponse {
+  if (
+    isRecord(input) &&
+    input.v === 1 &&
+    input.type === "browser_bridge.revoke_result"
+  ) {
+    assertExactKeys(input, ["v", "type", "requestId", "nonce", "revoked"]);
+    const nonce = requiredString(input, "nonce", 43);
+    if (!/^[A-Za-z0-9_-]{43}$/.test(nonce) || input.revoked !== true) {
+      throw new BrowserBridgeNativeProtocolError(
+        "invalid_response",
+        "native revoke result is invalid",
+      );
+    }
+    return {
+      v: 1,
+      type: "browser_bridge.revoke_result",
+      requestId: requireUuid(
+        requiredString(input, "requestId", 36),
+        "requestId",
+      ),
+      nonce,
+      revoked: true,
+    };
+  }
+  return parseNativeEnrollmentResponse(input);
+}
+
 export function parseBrokerEnvelope(
   input: unknown,
 ): BrowserBridgeBrokerEnvelope {
@@ -452,7 +557,7 @@ export function parseBrokerEnvelope(
       browser: parseBrowser(input.caller.browser),
       id: requiredString(input.caller, "id", 256),
     },
-    request: parseNativeEnrollmentRequest(input.request),
+    request: parseNativeRequest(input.request),
     mac: requiredString(input, "mac", 128),
   };
 }
@@ -467,7 +572,7 @@ function allowedCallerIds(
 }
 
 export function assertNativeHostCaller(
-  request: BrowserBridgeNativeEnrollmentRequest,
+  request: BrowserBridgeNativeRequest,
   caller: BrowserBridgeNativeCaller,
   allowlist: BrowserBridgeCallerAllowlist,
 ): void {
@@ -486,7 +591,7 @@ export function assertNativeHostCaller(
 export function canonicalBrokerEnvelopeData(
   envelope: Omit<BrowserBridgeBrokerEnvelope, "mac">,
 ): string {
-  return [
+  const fields = [
     envelope.protocol,
     String(envelope.timestampMs),
     envelope.caller.browser,
@@ -499,7 +604,11 @@ export function canonicalBrokerEnvelopeData(
     envelope.request.extensionId,
     envelope.request.extensionVersion,
     envelope.request.profileId,
-  ].join("\n");
+  ];
+  if (envelope.request.type === "browser_bridge.revoke") {
+    fields.push(envelope.request.companionId);
+  }
+  return fields.join("\n");
 }
 
 export function signBrokerEnvelope(
@@ -520,7 +629,7 @@ export function signBrokerEnvelope(
 }
 
 export function createAuthenticatedBrokerEnvelope(options: {
-  request: BrowserBridgeNativeEnrollmentRequest;
+  request: BrowserBridgeNativeRequest;
   launchedCaller: BrowserBridgeNativeCaller;
   allowlist: BrowserBridgeCallerAllowlist;
   secret: Uint8Array;

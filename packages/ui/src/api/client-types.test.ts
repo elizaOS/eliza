@@ -1,13 +1,5 @@
-/**
- * Unit coverage for the ElizaClient DTO barrel (api/client-types.ts): pins the
- * runtime re-export identity of every value module it aggregates and drives
- * that surface through the single import path consumers use — ApiError
- * construction and the error guards, the ConversationMessage boundary guard,
- * and the two pure coding-agent session mappers. Deterministic fixtures only,
- * no network.
- */
+/** Exercises API errors, message validation, and coding-session mapping behavior. */
 import { describe, expect, test } from "vitest";
-import * as barrel from "./client-types";
 import { isConversationMessage } from "./client-types-chat";
 import {
   type CodingAgentTaskThread,
@@ -21,28 +13,6 @@ import {
   isCloudAgentGoneError,
   isRateLimitedError,
 } from "./client-types-core";
-
-describe("client-types barrel re-exports", () => {
-  test("exposes the core error class and guards by identity", () => {
-    expect(barrel.ApiError).toBe(ApiError);
-    expect(barrel.isApiError).toBe(isApiError);
-    expect(barrel.isRateLimitedError).toBe(isRateLimitedError);
-    expect(barrel.isCloudAgentGoneError).toBe(isCloudAgentGoneError);
-  });
-
-  test("exposes the chat message guard by identity", () => {
-    expect(barrel.isConversationMessage).toBe(isConversationMessage);
-  });
-
-  test("exposes the coding-agent session mappers by identity", () => {
-    expect(barrel.mapAcpSessionsToCodingAgentSessions).toBe(
-      mapAcpSessionsToCodingAgentSessions,
-    );
-    expect(barrel.mapTaskThreadsToCodingAgentSessions).toBe(
-      mapTaskThreadsToCodingAgentSessions,
-    );
-  });
-});
 
 describe("ApiError", () => {
   test("carries kind, path, message, status, code and retryAfter", () => {

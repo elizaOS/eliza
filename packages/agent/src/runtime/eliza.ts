@@ -255,6 +255,7 @@ import {
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
 } from "./model-resolution.ts";
+import { constructWithRuntimeInstallationIdentity } from "./runtime-installation-id.ts";
 
 type RemoteCodingRunnerModule =
   typeof import("../services/remote-coding-runner.ts");
@@ -4823,39 +4824,49 @@ export async function startEliza(
   await configureLocalEmbeddingEnvEarlyIfNeeded(config);
   opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
-  let runtime = new AgentRuntime({
-    character,
-    // advancedCapabilities: true,
-    actionPlanning: true,
-    // advancedMemory is enabled via character.advancedMemory
-    enableSecretsManager: true,
-    plugins: [...subAgentCredentialPlugins, elizaPlugin, ...pluginsForRuntime],
-    ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-    // Sandbox options — only active when mode != "off"
-    ...(isSandboxActive
-      ? {
-          sandboxMode: true,
-          sandboxAuditHandler: sandboxAuditLog
-            ? (event: SandboxFetchAuditEvent) => {
-                sandboxAuditLog.recordTokenReplacement(
-                  event.direction,
-                  event.url,
-                  event.tokenIds,
-                );
-              }
-            : undefined,
-        }
-      : {}),
-    settings: buildRuntimeSettings(config, {
-      preferredProviderId,
-      brainProviderName: preferredTextRuntimeProviderName,
-      embeddingProviderName: preferredEmbeddingRuntimeProviderName,
-      visionModeSetting,
-      managedSkillsDir,
-      bundledSkillsDir,
-      workspaceSkillsDir,
-      connectorSecretsOverlay,
-    }),
+  let runtime = await constructWithRuntimeInstallationIdentity({
+    stateDirectory: resolveStateDir(),
+    abortSignal: opts?.abortSignal,
+    construct: (runtimeInstanceId) =>
+      new AgentRuntime({
+        character,
+        runtimeInstanceId,
+        // advancedCapabilities: true,
+        actionPlanning: true,
+        // advancedMemory is enabled via character.advancedMemory
+        enableSecretsManager: true,
+        plugins: [
+          ...subAgentCredentialPlugins,
+          elizaPlugin,
+          ...pluginsForRuntime,
+        ],
+        ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
+        // Sandbox options — only active when mode != "off"
+        ...(isSandboxActive
+          ? {
+              sandboxMode: true,
+              sandboxAuditHandler: sandboxAuditLog
+                ? (event: SandboxFetchAuditEvent) => {
+                    sandboxAuditLog.recordTokenReplacement(
+                      event.direction,
+                      event.url,
+                      event.tokenIds,
+                    );
+                  }
+                : undefined,
+            }
+          : {}),
+        settings: buildRuntimeSettings(config, {
+          preferredProviderId,
+          brainProviderName: preferredTextRuntimeProviderName,
+          embeddingProviderName: preferredEmbeddingRuntimeProviderName,
+          visionModeSetting,
+          managedSkillsDir,
+          bundledSkillsDir,
+          workspaceSkillsDir,
+          connectorSecretsOverlay,
+        }),
+      }),
   });
   installRuntimeMethodBindings(runtime);
   opts?.onRuntimeCreated?.(runtime);

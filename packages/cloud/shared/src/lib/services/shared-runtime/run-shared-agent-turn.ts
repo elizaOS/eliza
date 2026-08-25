@@ -602,7 +602,10 @@ export async function runSharedAgentTurn(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
-              transport: sharedCapabilityTransportForSource(execution.channel.source),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
@@ -781,7 +784,10 @@ export async function runSharedAgentTurnStream(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
-              transport: sharedCapabilityTransportForSource(execution.channel.source),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,

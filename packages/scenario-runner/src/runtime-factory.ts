@@ -216,6 +216,13 @@ async function runCleanupStep(
   }
 }
 
+export async function disposeScenarioProviderPlugin(
+  plugin: Pick<Plugin, "dispose"> | null,
+  runtime: AgentRuntime,
+): Promise<void> {
+  await plugin?.dispose?.(runtime);
+}
+
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
@@ -236,6 +243,7 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 }
 
 export interface CreateScenarioRuntimeOptions {
+  character?: Parameters<typeof createCharacter>[0];
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
@@ -835,6 +843,7 @@ export async function createScenarioRuntime(
       "[scenario-runner] provider-qualified execution requires a live model provider",
     );
   }
+  let selectedProviderPlugin: Plugin | null = null;
   const preparedEnvironment =
     await prepareScenarioExecutionEnvironment(executionProfile);
   const { testMocks, mockedEnvironment } = preparedEnvironment;
@@ -904,9 +913,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "ScenarioAgent",
-  });
+  const character = createCharacter(
+    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
+  );
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
@@ -1022,6 +1031,7 @@ export async function createScenarioRuntime(
         `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
       );
     }
+    selectedProviderPlugin = providerPlugin;
     await runtime.registerPlugin(providerPlugin);
 
     if (providerConfig.name === "cli") {
@@ -1187,6 +1197,14 @@ export async function createScenarioRuntime(
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
+    await runCleanupStep("provider plugin dispose", async () => {
+      try {
+        await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
+      } catch (err) {
+        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
+        logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
+      }
+    });
     await runCleanupStep("runtime.stop()", async () => {
       try {
         await runtime.stop();

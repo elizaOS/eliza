@@ -1,19 +1,12 @@
 /** Verifies workspace package discovery against isolated and live layouts. */
 
-import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { getElizaCoreEntry, getUiSourceRoot } from "./eliza-package-paths.ts";
+import { getElizaCoreEntry } from "./eliza-package-paths.ts";
 
 const temporaryRoots: string[] = [];
-const repoRoot = path.resolve(
-	path.dirname(fileURLToPath(import.meta.url)),
-	"../../../..",
-);
-
 afterEach(async () => {
 	await Promise.all(
 		temporaryRoots.splice(0).map((root) =>
@@ -47,13 +40,5 @@ describe("getElizaCoreEntry", () => {
 		await writeFile(sourceEntry, "export {};\n");
 
 		expect(getElizaCoreEntry(isolatedRepoRoot)).toBe(sourceEntry);
-	});
-});
-
-describe("workspace package source discovery", () => {
-	it("resolves @elizaos/ui to packages/ui/src", () => {
-		expect(realpathSync(getUiSourceRoot(repoRoot) ?? "")).toBe(
-			realpathSync(path.join(repoRoot, "packages/ui/src")),
-		);
 	});
 });

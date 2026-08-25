@@ -7,7 +7,6 @@
 // semantic outcome: populated content from the mocked lifeops endpoints plus a
 // real state-changing interaction (channel/kind/status filters, calendar day
 // selection and month navigation). This is the interaction owner that closes
-// INTERACTION_DEBT in view-interaction-coverage.test.ts.
 
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";

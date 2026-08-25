@@ -6,6 +6,7 @@ import {
   clearLlmWireMockEnvForLiveProvider,
   deterministicScheduledDispatchRenderText,
   disableScenarioEmbeddingCapability,
+  disposeScenarioProviderPlugin,
   isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
@@ -14,6 +15,18 @@ import {
   scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("scenario provider lifecycle", () => {
+  it("disposes the selected provider during runtime cleanup", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const runtime = {} as never;
+
+    await disposeScenarioProviderPlugin({ dispose }, runtime);
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledWith(runtime);
+  });
+});
 
 describe("scenario embedding capability", () => {
   it("declares the canonical embedding capability disabled", () => {

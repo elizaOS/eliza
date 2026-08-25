@@ -8,6 +8,8 @@ import type { BrowserBridgeNativeBrowser } from "./browser-bridge-native-protoco
 
 export const BROWSER_BRIDGE_PAIR_ENDPOINT =
   "/api/browser-bridge/companions/pair";
+export const BROWSER_BRIDGE_REVOKE_ENDPOINT = (companionId: string): string =>
+  `/api/browser-bridge/companions/${encodeURIComponent(companionId)}/revoke`;
 const DEFAULT_PAIR_TIMEOUT_MS = 10_000;
 
 export class BrowserBridgePairingError extends Error {
@@ -27,6 +29,38 @@ function isLoopbackHostname(hostname: string): boolean {
     normalized === "127.0.0.1" ||
     normalized === "::1"
   );
+}
+
+function requireLoopbackApiBase(apiBase: string): URL {
+  const parsed = new URL(apiBase);
+  if (
+    parsed.protocol !== "http:" ||
+    !isLoopbackHostname(parsed.hostname) ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.pathname !== "/" ||
+    parsed.search !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new Error(
+      "browser companion owner actions require the loopback desktop API",
+    );
+  }
+  return parsed;
+}
+
+function requireCurrentOwnerSession(ownerSession: DesktopSession): void {
+  if (ownerSession.expiresAt <= Date.now()) {
+    throw new Error("desktop owner session is expired");
+  }
+}
+
+function ownerHeaders(ownerSession: DesktopSession): Record<string, string> {
+  return {
+    "content-type": "application/json",
+    cookie: `eliza_session=${encodeURIComponent(ownerSession.sessionId)}`,
+    "x-eliza-csrf": ownerSession.csrfToken,
+  };
 }
 
 export interface BrowserBridgePairingResult {
@@ -100,23 +134,8 @@ export async function pairBrowserBridgeCompanionAsDesktopOwner(options: {
   fetchImpl?: FetchLike;
   timeoutMs?: number;
 }): Promise<BrowserBridgePairingResult> {
-  const apiBase = new URL(options.apiBase);
-  if (
-    apiBase.protocol !== "http:" ||
-    !isLoopbackHostname(apiBase.hostname) ||
-    apiBase.username !== "" ||
-    apiBase.password !== "" ||
-    apiBase.pathname !== "/" ||
-    apiBase.search !== "" ||
-    apiBase.hash !== ""
-  ) {
-    throw new Error(
-      "browser enrollment pairing requires the loopback desktop API",
-    );
-  }
-  if (options.ownerSession.expiresAt <= Date.now()) {
-    throw new Error("desktop owner session is expired");
-  }
+  const apiBase = requireLoopbackApiBase(options.apiBase);
+  requireCurrentOwnerSession(options.ownerSession);
   const abortController = new AbortController();
   const timeoutMs = options.timeoutMs ?? DEFAULT_PAIR_TIMEOUT_MS;
   const timeout = setTimeout(() => abortController.abort(), timeoutMs);
@@ -125,11 +144,7 @@ export async function pairBrowserBridgeCompanionAsDesktopOwner(options: {
       new URL(BROWSER_BRIDGE_PAIR_ENDPOINT, apiBase),
       {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-          cookie: `eliza_session=${encodeURIComponent(options.ownerSession.sessionId)}`,
-          "x-eliza-csrf": options.ownerSession.csrfToken,
-        },
+        headers: ownerHeaders(options.ownerSession),
         body: JSON.stringify({
           ...options.payload,
           pairingKind: "native_enrollment",
@@ -161,6 +176,46 @@ export async function pairBrowserBridgeCompanionAsDesktopOwner(options: {
       );
     }
     return validatePairingResult(await response.json());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function revokeBrowserBridgeCompanionAsDesktopOwner(options: {
+  apiBase: string;
+  ownerSession: DesktopSession;
+  companionId: string;
+  fetchImpl?: FetchLike;
+  timeoutMs?: number;
+}): Promise<void> {
+  const apiBase = requireLoopbackApiBase(options.apiBase);
+  requireCurrentOwnerSession(options.ownerSession);
+  if (!options.companionId || options.companionId.length > 256) {
+    throw new Error("browser companion ID is invalid");
+  }
+  const abortController = new AbortController();
+  const timeout = setTimeout(
+    () => abortController.abort(),
+    options.timeoutMs ?? DEFAULT_PAIR_TIMEOUT_MS,
+  );
+  try {
+    const response = await (options.fetchImpl ?? fetch)(
+      new URL(BROWSER_BRIDGE_REVOKE_ENDPOINT(options.companionId), apiBase),
+      {
+        method: "POST",
+        headers: ownerHeaders(options.ownerSession),
+        body: JSON.stringify({}),
+        signal: abortController.signal,
+      },
+    );
+    if (!response.ok) {
+      throw new BrowserBridgePairingError(
+        response.status === 401
+          ? "app_not_authenticated"
+          : "broker_unavailable",
+        `browser companion revoke API rejected the owner request with status ${response.status}`,
+      );
+    }
   } finally {
     clearTimeout(timeout);
   }

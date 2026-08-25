@@ -465,7 +465,8 @@ export type DirectCurrentRequestCandidateKind =
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
-	| "web";
+	| "web"
+	| "calculate";
 
 export interface DirectCurrentRequestCandidateInference {
 	names: string[];
@@ -1139,6 +1140,93 @@ export function inferDirectCurrentRequestCandidateActions(
 	).names;
 }
 
+/**
+ * Explicit multi-digit arithmetic in the message ("whats 3847 times 292",
+ * "1,234 * 56"). Deterministically detectable, and worth routing: models
+ * reliably miscompute once any operand reaches three digits (live
+ * 2026-08-24: three different wrong products for one ask), while the
+ * CALCULATE action is exact. Two-digit mental math stays on the simple path
+ * — it is fast and demonstrated reliable — so the detector requires at
+ * least one operand of three or more digits (separators ignored).
+ */
+const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
+const STRONG_ARITHMETIC_OPERATOR =
+	"(?:\\*\\*|[*×÷^%]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
+const AMBIGUOUS_ARITHMETIC_OPERATOR = "(?:[+\\-/]|[xX])";
+const STRONG_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})\\s*${STRONG_ARITHMETIC_OPERATOR}\\s*(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const AMBIGUOUS_ARITHMETIC_EXPRESSION_RE = new RegExp(
+	`(${ARITHMETIC_OPERAND})(\\s*)(${AMBIGUOUS_ARITHMETIC_OPERATOR})(\\s*)(${ARITHMETIC_OPERAND})`,
+	"iu",
+);
+const EXPLICIT_ARITHMETIC_REQUEST_CUE_RE =
+	/\b(?:calculate|compute|evaluate|solve|how\s+much|equals?|answer)\b/iu;
+const WHAT_IS_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*what(?:'s|\\s+is)\\s+[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
+	"iu",
+);
+const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
+	`^\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*${AMBIGUOUS_ARITHMETIC_OPERATOR}\\s*[+\\-]?(?:${ARITHMETIC_OPERAND})\\s*[?!.]?\\s*$`,
+	"iu",
+);
+
+function looksLikeMultiDigitArithmetic(text: string): boolean {
+	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
+	const hasLargeOperand = (left: string, right: string) =>
+		digits(left) >= 3 || digits(right) >= 3;
+	const strongMatch = STRONG_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		strongMatch &&
+		hasLargeOperand(strongMatch[1] ?? "", strongMatch[2] ?? "")
+	) {
+		return true;
+	}
+
+	const ambiguousMatch = AMBIGUOUS_ARITHMETIC_EXPRESSION_RE.exec(text);
+	if (
+		!ambiguousMatch ||
+		!hasLargeOperand(ambiguousMatch[1] ?? "", ambiguousMatch[5] ?? "")
+	) {
+		return false;
+	}
+	const operator = ambiguousMatch[3] ?? "";
+	const left = ambiguousMatch[1] ?? "";
+	const right = ambiguousMatch[5] ?? "";
+	const isBareCalendarYearRange =
+		operator === "-" &&
+		/^\d{4}$/u.test(left) &&
+		/^\d{4}$/u.test(right) &&
+		Number(left) >= 1900 &&
+		Number(left) <= 2199 &&
+		Number(right) >= 1900 &&
+		Number(right) <= 2199;
+	if (
+		isBareCalendarYearRange &&
+		!EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) &&
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	) {
+		return false;
+	}
+
+	// Hyphens, slashes, plus signs, and the letter x occur routinely in dates,
+	// ranges, phone numbers, versions, and dimensions. Treat them as arithmetic
+	// only when the user supplies a math cue or the complete message is the
+	// expression; spacing alone must not narrow the action catalog.
+	return (
+		EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) ||
+		WHAT_IS_AMBIGUOUS_ARITHMETIC_RE.test(text) ||
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	);
+}
+
+function findCalculateActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
+): string | undefined {
+	return findAvailableActionName(actions, ["CALCULATE"]);
+}
+
 export function inferDirectCurrentRequestCandidateInference(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -1147,6 +1235,12 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
+	}
+	if (looksLikeMultiDigitArithmetic(messageText)) {
+		const calculateAction = findCalculateActionName(actions);
+		if (calculateAction) {
+			return { names: [calculateAction], kind: "calculate" };
+		}
 	}
 	if (hooks.looksLikeCodingWorkRequest?.(messageText)) {
 		const codingAction = hooks.findCodingDelegationActionName?.(actions);

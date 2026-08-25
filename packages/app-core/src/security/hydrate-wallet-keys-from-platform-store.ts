@@ -5,11 +5,11 @@
  * steward env vars stay on the OS-keystore path because that backend's
  * lifecycle is independent of the unified vault.
  *
- * Precedence contract: launch env > vault/OS-keystore > persisted config.
- * app-core's `startApiServer` still calls this before it merges `config.env`,
- * where the contract holds by ordering alone; the agent boot path instead
- * defers the hydrate to the post-ready wave and captures a pre-merge baseline
- * (`captureWalletEnvBootBaseline`) so the same precedence holds there too.
+ * Precedence contract: launch env > vault/OS-keystore > persisted config. The
+ * agent boot path defers the potentially interactive OS-store read until after
+ * the API listener is live and captures a pre-merge baseline
+ * (`captureWalletEnvBootBaseline`) so persisted config cannot outrank launch
+ * env while the deferred hydrate runs.
  */
 import { logger } from "@elizaos/core";
 
@@ -50,16 +50,15 @@ function stewardOsPairs(): ReadonlyArray<
   ];
 }
 
-// The hydrate used to run BEFORE config.env merged into process.env, so its
+// The hydrate used to run before config.env merged into process.env, so its
 // "skip keys that already have a value" check naturally meant "skip keys the
 // LAUNCH ENV set" — vault/keystore values beat persisted config, launch env
 // beat both. Now that the agent boot defers the hydrate (it runs after the
 // merge), the baseline preserves that exact precedence: the boot path records
 // which handled keys the launch env set pre-merge, and `hasLaunchEnvValue`
 // treats a post-merge value on a key absent from the baseline as
-// overwritable. With no baseline captured (callers that still hydrate
-// pre-merge, e.g. app-core's startApiServer), any present value is respected —
-// the original semantics.
+// overwritable. With no baseline captured, any present value is respected —
+// the original pre-merge semantics used by direct callers.
 let walletEnvBootBaseline: ReadonlySet<string> | null = null;
 
 /** Record which wallet/steward env keys currently hold values (pre-merge). */

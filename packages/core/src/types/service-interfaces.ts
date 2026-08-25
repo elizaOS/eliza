@@ -332,6 +332,8 @@ export interface MediaGenerationRequest {
 	seed?: number;
 	duration?: number;
 	aspectRatio?: string;
+	resolution?: string;
+	audio?: boolean;
 	imageUrl?: string;
 	instrumental?: boolean;
 	genre?: string;

@@ -143,7 +143,7 @@ import {
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
 } from "./events";
-import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
+import { completeRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
 import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runtime-mode";
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
@@ -2441,12 +2441,15 @@ function AppContent() {
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
         if (shouldCompleteFirstRun) {
-          await adoptRemoteAgentFirstRun(client, {
-            apiBase: connection.apiBase,
-            token: connection.token,
-            uiLanguage,
-          });
-          completeFirstRun();
+          await completeRemoteAgentFirstRun(
+            client,
+            {
+              apiBase: connection.apiBase,
+              token: connection.token,
+              uiLanguage,
+            },
+            completeFirstRun,
+          );
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();

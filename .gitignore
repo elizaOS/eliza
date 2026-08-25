@@ -796,17 +796,13 @@ waifu.fun/
 # --- synced artifacts (stripped for fast clones; pulled on install by
 #     packages/scripts/sync-artifacts.mjs from elizaOS/eliza-archive) ---
 /.eliza-artifacts-version
-/packages/shared/assets-classic/background/Clouds_Loop_HQ_1080p.mp4
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png
 /packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png
-/packages/shared/assets-classic/background/clouds_background.jpg
-/packages/shared/assets-classic/background/Clouds_Loop_Mobile_480p.mp4
 /packages/app/public/app-heroes/skills-viewer.png
 /plugins/plugin-companion/public/vrms/eliza-7.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-5.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-8.vrm.gz
-/packages/shared/assets-classic/background/optimized/clouds_8x_1080p.mp4
 /packages/app/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_HQ_1080p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_HQ_1080p.mp4
@@ -816,13 +812,10 @@ waifu.fun/
 /plugins/plugin-companion/public/vrms/eliza-3.vrm.gz
 /plugins/plugin-companion/public/vrms/eliza-2.vrm.gz
 /packages/app/public/brand/concepts/billboard_concept.jpg
-/packages/shared/assets-classic/concepts/billboard_concept.jpg
 /packages/shared/assets/concepts/billboard_concept.jpg
 /plugins/plugin-trajectory-logger/assets/hero.png
 /packages/docs/images/shakespeare-discord-screenshot.jpeg
 /plugins/plugin-documents/assets/hero.png
-/packages/shared/assets-classic/background/optimized/clouds_4x_1080p.mp4
-/packages/shared/assets-classic/background/optimized/clouds_8x_1080p.webm
 /packages/cloud-frontend/public/brand/elizaos-phone.png
 /plugins/plugin-companion/public_src/animations/mixamo/Angry.fbx
 /packages/cloud-frontend/public/brand/elizaos-phone-transparent.png
@@ -842,13 +835,10 @@ waifu.fun/
 /plugins/plugin-phone/assets/hero.png
 /plugins/plugin-wifi/assets/hero.png
 /plugins/plugin-companion/public_src/animations/mixamo/Look Around.fbx
-/packages/shared/assets-classic/background/optimized/clouds_8x_720p.mp4
-/packages/shared/assets-classic/background/optimized/clouds_4x_1080p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Bashful.fbx
 /plugins/plugin-personal-assistant/assets/hero.png
 /packages/docs/images/shakespeare-screenshot.jpeg
 /plugins/plugin-companion/public_src/animations/mixamo/Bored.fbx
-/packages/shared/assets-classic/background/optimized/clouds_8x_720p.webm
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2018-10.pdf
 /plugins/plugin-companion/public_src/animations/mixamo/Yawn.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Gangnam Style.fbx
@@ -857,19 +847,15 @@ waifu.fun/
 /packages/cloud-frontend/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/homepage/public/brand/background/Clouds_Loop_Mobile_480p.mp4
 /packages/shared/assets/background/Clouds_Loop_Mobile_480p.mp4
-/packages/shared/assets-classic/background/optimized/clouds_4x_720p.mp4
 /packages/training/datasets/eliza1-sft-0_6b/train.jsonl
-/packages/shared/assets-classic/background/optimized/clouds_1x_1080p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Crying.fbx
 /plugins/plugin-companion/public_src/animations/BreathingIdle.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Breathing Idle.fbx
 /packages/app/public/app-heroes/runtime-debugger.png
-/packages/shared/assets-classic/background/optimized/clouds_1x_1080p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Shoulder Rubbing.fbx
 /packages/app/public/app-heroes/memory-viewer.png
 /packages/app/public/app-heroes/database-viewer.png
 /packages/app/public/app-heroes/relationship-viewer.png
-/packages/shared/assets-classic/background/optimized/clouds_4x_720p.webm
 /plugins/plugin-companion/public_src/animations/mixamo/Spin In Place.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Surprised.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Breakdance Freeze Var 4.fbx
@@ -879,12 +865,10 @@ waifu.fun/
 /packages/app/public/app-heroes/log-viewer.png
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing.fbx
 /packages/app/public/brand/concepts/concept_minipc.jpg
-/packages/shared/assets-classic/concepts/concept_minipc.jpg
 /packages/shared/assets/concepts/concept_minipc.jpg
 /plugins/plugin-companion/public_src/animations/mixamo/Blow A Kiss.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thinking.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Kneeling Idle.fbx
-/packages/shared/assets-classic/background/optimized/clouds_8x_480p.mp4
 /plugins/plugin-companion/public_src/animations/mixamo/Relieved Sigh.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thankful.fbx
 /plugins/plugin-companion/public/animations/emotes/greeting.fbx
@@ -898,12 +882,9 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Happy Idle.fbx
 /plugins/plugin-companion/public/animations/mixamo/Angry.fbx.gz
 /packages/app/public/brand/concepts/chibi_usb_concept.jpg
-/packages/shared/assets-classic/concepts/chibi_usb_concept.jpg
 /packages/shared/assets/concepts/chibi_usb_concept.jpg
 /packages/app/public/brand/concepts/concept_usbdrive.jpg
-/packages/shared/assets-classic/concepts/concept_usbdrive.jpg
 /packages/shared/assets/concepts/concept_usbdrive.jpg
-/packages/shared/assets-classic/background/optimized/clouds_8x_480p.webm
 /plugins/plugin-companion/public/animations/mixamo/Hip Hop Dancing 2.fbx.gz
 /plugins/plugin-companion/public/animations/mixamo/Happy.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Cheering.fbx
@@ -916,7 +897,6 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Joyful Jump.fbx
 /plugins/plugin-companion/public/animations/mixamo/Look Around.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Agreeing 2.fbx
-/packages/shared/assets-classic/background/optimized/clouds_1x_720p.webm
 /packages/homepage/tests/e2e/visual.spec.ts-snapshots/get-started-mobile-chromium-linux.png
 /packages/cloud-frontend/public/avatars/eliza.png
 /packages/ui/src/components/shell/__e2e__/output/24-state-responding.png
@@ -939,14 +919,11 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/emotes/dance-happy.glb
 /packages/ui/src/first-run/__e2e__/output/04-mobile-remote.png
 /packages/ui/src/first-run/__e2e__/output/06-mobile-busy.png
-/packages/shared/assets-classic/background/optimized/clouds_4x_480p.mp4
 /packages/training/data/voice/sam-distill/synthesis_manifest.jsonl
 /packages/ui/src/components/shell/__e2e__/output/34-state-no-provider-gate.png
 /plugins/plugin-companion/public_src/animations/mixamo/Whatever Gesture.fbx
-/packages/shared/assets-classic/background/optimized/clouds_1x_720p.mp4
 /packages/app-core/test/contracts/lib/openzeppelin-contracts/audits/2024-10-v5.1.pdf
 /packages/ui/src/first-run/__e2e__/output/05-mobile-cloud-signin.png
-/packages/shared/assets-classic/background/optimized/clouds_8x_360p.mp4
 /packages/ui/src/first-run/__e2e__/output/02-mobile-choose-no-local-runtime.png
 /plugins/plugin-companion/public_src/animations/mixamo/Fallen Idle.fbx
 /packages/ui/src/first-run/__e2e__/output/01-mobile-choose.png
@@ -954,7 +931,6 @@ waifu.fun/
 /packages/app-core/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/app/public/brand/concepts/concept_phone.jpg
-/packages/shared/assets-classic/concepts/concept_phone.jpg
 /packages/shared/assets/concepts/concept_phone.jpg
 /plugins/plugin-companion/public/animations/emotes/dance-popping.glb.gz
 /packages/ui/src/components/shell/__e2e__/output/03-desktop-full.png
@@ -962,10 +938,8 @@ waifu.fun/
 /packages/ui/src/components/shell/__screenshots__/slash-commands/01-all-commands--desktop.png
 /packages/cloud-frontend/public/avatars/eliza-default.png
 /plugins/plugin-companion/public/animations/mixamo/Bashful.fbx.gz
-/packages/shared/assets-classic/background/optimized/clouds_4x_480p.webm
 /plugins/plugin-companion/public/animations/mixamo/Bored.fbx.gz
 /plugins/plugin-companion/public_src/animations/mixamo/Clapping.fbx
-/packages/shared/assets-classic/background/optimized/clouds_8x_360p.webm
 /packages/ui/src/components/shell/__screenshots__/slash-commands/02-filtered--desktop.png
 /packages/ui/src/components/shell/__e2e__/output/06-desktop-free-rest.png
 /packages/ui/src/components/shell/__e2e__/output-home/02-mobile-home-editing.png
