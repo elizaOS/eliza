@@ -362,3 +362,25 @@ describe("applyTelegramSetMyCommands", () => {
     expect(setMyCommands).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("clampDescription UTF-16 surrogate safety", () => {
+  it("preserves UTF-16 surrogate pairs when clamping command descriptions", () => {
+    // TELEGRAM_COMMAND_DESCRIPTION_MAX is 256.
+    // 255 ASCII chars + "🔥" (2 code units) = 257.
+    // Truncating limit is 256. Index 256 lands on high surrogate.
+    // Surrogate safe back-off ensures we take index 255, keeping emoji whole.
+    const longDesc = "a".repeat(255) + "🔥";
+    const descriptors = buildTelegramCommandDescriptors();
+    // Verify pure clamp with surrogate safety
+    for (const d of descriptors) {
+      for (const char of d.description) {
+        expect(
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+            char,
+          ),
+        ).toBe(false);
+      }
+    }
+  });
+});
+

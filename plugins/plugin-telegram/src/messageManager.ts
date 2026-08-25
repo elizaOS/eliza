@@ -1404,8 +1404,15 @@ export class MessageManager {
         }
 
         if (availableLength > 0) {
-          currentChunk += remaining.slice(0, availableLength);
-          remaining = remaining.slice(availableLength);
+          let sliceEnd = availableLength;
+          if (sliceEnd > 0 && sliceEnd < remaining.length) {
+            const code = remaining.charCodeAt(sliceEnd - 1);
+            if (code >= 0xd800 && code <= 0xdbff) {
+              sliceEnd -= 1;
+            }
+          }
+          currentChunk += remaining.slice(0, sliceEnd);
+          remaining = remaining.slice(sliceEnd);
         }
 
         if (currentChunk) {
