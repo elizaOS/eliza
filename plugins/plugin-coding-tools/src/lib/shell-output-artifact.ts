@@ -148,7 +148,7 @@ interface UnsignedShellOutputManifestV2 {
   handle: string;
   createdAt: string;
   expiresAt: string;
-  leaseRevision: 1;
+  leaseRevision: number;
   owner: { agentId: string; conversationId: string };
   contentRevision: string;
   stdout: ShellOutputStreamDescriptor;
@@ -184,7 +184,7 @@ interface UnsignedShellOutputManifestV3 {
   handle: string;
   createdAt: string;
   expiresAt: string;
-  leaseRevision: 1;
+  leaseRevision: number;
   owner: { agentId: string; conversationId: string };
   contentRevision: string;
   stream: ShellOutputArtifactStream;
@@ -209,6 +209,18 @@ export interface PersistShellOutputByteArtifactOptions {
   signal: NodeJS.Signals | null;
   ownerAgentId: string;
   ownerConversationId: string;
+}
+
+export interface RenewShellOutputArtifactLeaseOptions {
+  handle: string;
+  requesterAgentId: string;
+  requesterConversationId: string;
+}
+
+export interface RenewedShellOutputArtifactLease {
+  handle: string;
+  expiresAt: string;
+  leaseRevision: number;
 }
 
 export interface ShellOutputByteArtifact {
@@ -377,7 +389,8 @@ function parseManifestV2(value: unknown): PersistedShellOutputManifestV2 {
     typeof manifest.handle !== "string" ||
     typeof manifest.createdAt !== "string" ||
     typeof manifest.expiresAt !== "string" ||
-    manifest.leaseRevision !== 1 ||
+    !Number.isSafeInteger(manifest.leaseRevision) ||
+    manifest.leaseRevision < 1 ||
     !manifest.owner ||
     typeof manifest.owner.agentId !== "string" ||
     typeof manifest.owner.conversationId !== "string" ||
@@ -423,7 +436,8 @@ function parseManifestV3(value: unknown): PersistedShellOutputManifestV3 {
     typeof manifest.handle !== "string" ||
     typeof manifest.createdAt !== "string" ||
     typeof manifest.expiresAt !== "string" ||
-    manifest.leaseRevision !== 1 ||
+    !Number.isSafeInteger(manifest.leaseRevision) ||
+    manifest.leaseRevision < 1 ||
     !manifest.owner ||
     typeof manifest.owner.agentId !== "string" ||
     typeof manifest.owner.conversationId !== "string" ||
@@ -948,6 +962,107 @@ export async function persistShellOutputByteArtifact(
     // error-policy:J6 the unpublished opaque handle was never returned.
     await fs.rm(pendingDirectory, { recursive: true, force: true });
     throw error;
+  }
+}
+
+/** Extend an owner-authorized native-byte artifact lease without changing its content. */
+export async function renewShellOutputArtifactLease(
+  options: RenewShellOutputArtifactLeaseOptions,
+): Promise<
+  | { ok: true; value: RenewedShellOutputArtifactLease }
+  | {
+      ok: false;
+      reason: "unavailable" | "expired" | "corrupt";
+      message: string;
+    }
+> {
+  const root = path.join(resolveStateDir(), ...ARTIFACT_ROOT_SEGMENTS);
+  const artifactDirectory = path.join(root, options.handle);
+  try {
+    const [realRoot, realArtifactDirectory] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(artifactDirectory),
+    ]);
+    if (path.dirname(realArtifactDirectory) !== realRoot)
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "shell-output artifact is unavailable for this conversation",
+      };
+    const manifestPath = path.join(realArtifactDirectory, "manifest.json");
+    const parsed = JSON.parse(
+      (await readRegularFile(manifestPath)).toString("utf8"),
+    );
+    if (parsed?.version !== 3) {
+      return {
+        ok: false,
+        reason: "unavailable",
+        message:
+          "only native-byte shell-output artifacts support lease renewal",
+      };
+    }
+    const manifest = parseManifestV3(parsed);
+    verifyManifestV3Mac(manifest, await artifactMacKey(root));
+    if (
+      manifest.handle !== options.handle ||
+      manifest.owner.agentId !== options.requesterAgentId ||
+      manifest.owner.conversationId !== options.requesterConversationId
+    )
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "shell-output artifact is unavailable for this conversation",
+      };
+    if (Date.parse(manifest.expiresAt) <= Date.now())
+      return {
+        ok: false,
+        reason: "expired",
+        message: "shell-output artifact has expired",
+      };
+    const renewed = {
+      ...manifest,
+      expiresAt: new Date(Date.now() + resolveShellJobTtlMs()).toISOString(),
+      leaseRevision: manifest.leaseRevision + 1,
+    };
+    const { mac: _mac, ...unsigned } = renewed;
+    const next = {
+      ...renewed,
+      mac: manifestMac(unsigned, await artifactMacKey(root)),
+    };
+    const temporary = path.join(
+      realArtifactDirectory,
+      `.manifest-renew-${process.pid}-${randomUUID()}.tmp`,
+    );
+    await fs.writeFile(temporary, `${JSON.stringify(next)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    await fs.rename(temporary, manifestPath);
+    return {
+      ok: true,
+      value: {
+        handle: next.handle,
+        expiresAt: next.expiresAt,
+        leaseRevision: next.leaseRevision,
+      },
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT")
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "shell-output artifact is unavailable for this conversation",
+      };
+    logger.warn(
+      { handle: options.handle, error },
+      "[CodingTools] Failed to renew shell-output artifact lease",
+    );
+    return {
+      ok: false,
+      reason: "corrupt",
+      message: "shell-output artifact lease could not be renewed safely",
+    };
   }
 }
 

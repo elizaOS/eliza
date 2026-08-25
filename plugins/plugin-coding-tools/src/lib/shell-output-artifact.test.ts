@@ -12,6 +12,7 @@ import {
   persistShellOutputByteArtifact,
   readShellOutputArtifactBytePage,
   readShellOutputArtifactPage,
+  renewShellOutputArtifactLease,
 } from "./shell-output-artifact.js";
 
 const OWNER_AGENT = "00000000-0000-4000-8000-000000000001";
@@ -133,6 +134,41 @@ describe("private shell-output artifacts", () => {
     });
     expect(denied).toMatchObject({ ok: false, reason: "unavailable" });
     expect(JSON.stringify(denied)).not.toContain("restart-safe");
+  });
+
+  it("renews an owner-bound native-byte lease without changing its revision", async () => {
+    const source = Buffer.from("lease-renewal\0payload", "utf8");
+    const artifact = await persistShellOutputByteArtifact({
+      chunks: (async function* () {
+        yield source;
+      })(),
+      stream: "stdout",
+      exitCode: 0,
+      timedOut: false,
+      signal: null,
+      ownerAgentId: OWNER_AGENT,
+      ownerConversationId: OWNER_CONVERSATION,
+    });
+    const renewed = await renewShellOutputArtifactLease({
+      handle: artifact.handle,
+      requesterAgentId: OWNER_AGENT,
+      requesterConversationId: OWNER_CONVERSATION,
+    });
+    expect(renewed).toMatchObject({ ok: true });
+    if (!renewed.ok) throw new Error(renewed.message);
+    expect(renewed.value.leaseRevision).toBe(2);
+    expect(Date.parse(renewed.value.expiresAt)).toBeGreaterThan(
+      Date.parse(artifact.expiresAt),
+    );
+    const page = await readShellOutputArtifactBytePage({
+      handle: artifact.handle,
+      stream: "stdout",
+      offset: 0,
+      limit: source.byteLength,
+      requesterAgentId: OWNER_AGENT,
+      requesterConversationId: OWNER_CONVERSATION,
+    });
+    expect(page).toMatchObject({ ok: true, value: { bytes: source } });
   });
 
   it("pages native-byte artifacts exactly and keeps text and owner boundaries closed", async () => {

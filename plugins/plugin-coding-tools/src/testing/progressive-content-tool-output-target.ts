@@ -15,6 +15,7 @@ import {
   deleteShellOutputArtifact,
   persistShellOutputByteArtifact,
   readShellOutputArtifactBytePage,
+  renewShellOutputArtifactLease,
 } from "../lib/shell-output-artifact.js";
 
 const SOURCE_PAGE_BYTES = 64 * 1024;
@@ -95,7 +96,7 @@ export function createProgressiveToolOutputTargetFactory(input: {
         );
       }
 
-      const reference = {
+      let reference = {
         kind: "tool-result" as const,
         ref: `shell-artifact:${artifact.handle}:stdout`,
         revision: artifact.contentRevision,
@@ -194,6 +195,19 @@ export function createProgressiveToolOutputTargetFactory(input: {
           if (!active) {
             throw new ProgressiveToolOutputTargetError("CONTENT_NOT_FOUND");
           }
+          const renewed = await renewShellOutputArtifactLease({
+            handle: artifact.handle,
+            requesterAgentId: input.agentId,
+            requesterConversationId: object.authorizationScope,
+          });
+          if (!renewed.ok) {
+            throw new ProgressiveToolOutputTargetError(
+              renewed.reason === "expired"
+                ? "CONTENT_REFERENCE_EXPIRED"
+                : "CONTENT_NOT_FOUND",
+            );
+          }
+          reference = { ...reference, expiresAt: renewed.value.expiresAt };
           generation += 1;
         },
         async inspect() {
