@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * @module pr-op
  * @description Single router action covering GitHub pull request ops:
@@ -177,7 +189,7 @@ async function runReview(
 
   const preview =
     `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-    (body ? ` with body: "${body.slice(0, 120)}"` : "") +
+    (body ? ` with body: "${truncateUtf16Safe(body, 120)}"` : "") +
     ` as ${describeSelection(selection)}.`;
   const decision = await requireConfirmation({
     runtime,

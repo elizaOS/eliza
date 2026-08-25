@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * Single router action covering the GitHub issue lifecycle ops: create,
  * assign, close, reopen, comment, label. Dispatched to by the umbrella
@@ -279,7 +291,7 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${truncateUtf16Safe(body, 120)}"` : "";
       default:
         return "";
     }
