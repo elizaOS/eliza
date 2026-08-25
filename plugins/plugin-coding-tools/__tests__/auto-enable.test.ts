@@ -69,6 +69,16 @@ describe("plugin-coding-tools auto-enable gate", () => {
     expect(shouldEnable(ctxWith({}))).toBe(false);
   });
 
+  it("rejects array-valued feature configs instead of treating them as enabled", () => {
+    // Regression: `features.codingTools = []` passed the `typeof f === "object"`
+    // check, and `[].enabled !== false` evaluates to true, silently enabling the
+    // plugin for a config that declared no tools. Array-valued feature configs
+    // must fail closed, mirroring the doordash gate's !Array.isArray guard.
+    expect(shouldEnable(ctxWith({}, { codingTools: [] }))).toBe(false);
+    expect(shouldEnable(ctxWith({}, { "coding-agent": [] }))).toBe(false);
+    expect(shouldEnable(ctxWith({}, { shell: [] }))).toBe(false);
+  });
+
   it("honors the legacy coding-agent and shell feature keys", () => {
     expect(shouldEnable(ctxWith({}, { "coding-agent": true }))).toBe(true);
     expect(shouldEnable(ctxWith({}, { shell: true }))).toBe(true);
