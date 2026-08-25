@@ -2065,7 +2065,13 @@ ElizaClient.prototype.getContextInspector = async function (
   if (options.limit !== undefined) {
     params.set("limit", String(options.limit));
   }
-  return this.fetch(`/api/context-inspector?${params.toString()}`);
+  // The local PGlite host serializes database work. Inspector paging can enter
+  // the queue behind the app's initial catalog/status reads even though the
+  // inspector query itself is fast, so retain a finite but startup-tolerant
+  // deadline for this developer-only diagnostic surface.
+  return this.fetch(`/api/context-inspector?${params.toString()}`, undefined, {
+    timeoutMs: 30_000,
+  });
 };
 
 ElizaClient.prototype.getTrajectoryConfig = async function (this: ElizaClient) {
