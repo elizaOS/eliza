@@ -581,3 +581,26 @@ describe("Matrix service hardening", () => {
     info.mockRestore();
   });
 });
+
+describe("truncateUtf16Safe in matrix logging", () => {
+  it("preserves UTF-16 surrogate pairs during truncation", () => {
+    // "🔥" is 2 code units. 30 repeats = 60 units > 50
+    const longEmoji = "a" + "🔥".repeat(30);
+    // index 50 lands inside a surrogate pair, backs off to 49
+    let end = 50;
+    const code = longEmoji.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+    const truncated = longEmoji.slice(0, end);
+    expect(truncated.length).toBe(49);
+    for (const char of truncated) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
