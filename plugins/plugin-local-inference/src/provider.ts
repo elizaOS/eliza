@@ -17,6 +17,7 @@
 import {
 	type AudioStreamResult,
 	applyBackgroundInferenceBudget,
+	canonicalPromptForModelCall,
 	EventType,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -288,21 +289,6 @@ function renderPromptContent(content: unknown): string {
 	return "";
 }
 
-function promptFromMessages(messages: readonly MessageLike[]): string {
-	return messages
-		.map((message) => {
-			const content = renderPromptContent(message.content);
-			if (!content) return "";
-			const role =
-				typeof message.role === "string" && message.role.trim()
-					? message.role.trim()
-					: "message";
-			return `${role}:\n${content}`;
-		})
-		.filter(Boolean)
-		.join("\n\n");
-}
-
 function promptFromParams(params: GenerateTextParams): string {
 	const record = params as GenerateTextParams & {
 		messages?: readonly MessageLike[];
@@ -311,12 +297,13 @@ function promptFromParams(params: GenerateTextParams): string {
 	const prompt =
 		typeof params.prompt === "string" && params.prompt.length > 0
 			? params.prompt
-			: Array.isArray(record.promptSegments) && record.promptSegments.length > 0
-				? record.promptSegments
-						.map((segment) => renderPromptContent(segment.content))
-						.join("")
-				: Array.isArray(record.messages) && record.messages.length > 0
-					? promptFromMessages(record.messages)
+			: Array.isArray(record.messages) && record.messages.length > 0
+				? canonicalPromptForModelCall({ messages: record.messages })
+				: Array.isArray(record.promptSegments) &&
+						record.promptSegments.length > 0
+					? record.promptSegments
+							.map((segment) => renderPromptContent(segment.content))
+							.join("")
 					: "";
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
 		throw unavailable(

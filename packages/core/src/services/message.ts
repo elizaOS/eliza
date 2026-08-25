@@ -9795,10 +9795,12 @@ export async function runV5MessageRuntimeStage1(args: {
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
+								cacheConversationId: String(args.message.roomId),
 							}),
 						evaluatorEffects,
 						recorder,
 						trajectoryId,
+						cacheConversationId: String(args.message.roomId),
 						providerAttributionState: plannerState,
 					});
 				}
@@ -9895,6 +9897,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					evaluatorEffects,
 					recorder,
 					trajectoryId,
+					cacheConversationId: String(args.message.roomId),
 					providerAttributionState: plannerState,
 					executeToolCall: (toolCall, ctx) =>
 						timeInferenceSpan(
@@ -9953,6 +9956,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								effects: evaluatorEffects,
 								recorder,
 								trajectoryId,
+								cacheConversationId: String(args.message.roomId),
 							}),
 						),
 				}),

@@ -942,7 +942,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -953,7 +953,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -1029,6 +1029,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
 			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
+		);
+		// Local/model-runner affinity is stable across turns but stage-scoped so
+		// planner and evaluator KV state cannot collide. The shared provider
+		// prefix hash above intentionally remains identical across both stages.
+		expect(plannerParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:planner`,
+		);
+		expect(evaluatorParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:evaluator`,
 		);
 
 		// Trajectory recording wrote a JSON file
