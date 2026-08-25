@@ -471,4 +471,175 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       );
     });
   }, 120_000);
+
+  it("does not let an equal-second join redelivery resurrect a same-second revocation (strict tie-break)", async () => {
+    const { authority, harness } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+    // Both observations carry the SAME second-resolution timestamp.
+    const sameSecond = new Date(Date.now() - 1_000).toISOString();
+
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 10,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: sameSecond,
+    });
+    // A join redelivery stamped within the SAME second must not resurrect:
+    // Telegram dates are one-second resolution, so equal is not newer.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 11,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: sameSecond,
+    });
+
+    const decision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(decision.decision).toBe("denied");
+    expect((decision as { reason: string }).reason).toBe("membership_revoked");
+  }, 120_000);
+
+  it("tombstones a bot-removed scope: backlogged evidence cannot restore it, bot re-add clears it", async () => {
+    const { authority, harness } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    const beforeDecision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(beforeDecision.decision).toBe("allowed");
+
+    // The bot is removed from the chat: the scope degrades to unavailable.
+    await authority.markScopeUnavailable({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      reason: "bot_removed",
+    });
+
+    // A backlogged join redelivery (observed AFTER the removal) must NOT
+    // advance the scope back to current — the tombstone holds.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const tombstonedDecision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      tombstonedDecision.decision,
+      "backlogged evidence cannot restore a bot-removed scope",
+    ).toBe("denied");
+
+    // The bot is re-added: the tombstone clears and fresh evidence works.
+    authority.clearScopeRemoval({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+    });
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const readdedDecision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      readdedDecision.decision,
+      "after a bot re-add, fresh evidence re-establishes authority",
+    ).toBe("allowed");
+  }, 120_000);
+
+  it("rejects a reconcile response describing a different user than requested (subject mismatch)", async () => {
+    const { authority, harness } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Provider replies with member status but for user 999999, not 555001:
+    // the response must never become evidence for the requested principal.
+    const mismatched = await authority.reconcile({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      getChatMember: async () => ({
+        status: "member",
+        user: { id: 999_999 },
+      }),
+      nonce: "mismatch-probe-1",
+    });
+    expect(mismatched).toBeNull();
+
+    const decision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(decision.decision).toBe("denied");
+  }, 120_000);
 });
