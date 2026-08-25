@@ -65,13 +65,25 @@ export interface OwnerPolicyConfigureEscalationInput {
   details?: OwnerPolicyDetails;
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function policyProvenance(intent: string): OwnerFactProvenance {
   const provenance: OwnerFactProvenance = {
     source: "policy_action",
     recordedAt: new Date().toISOString(),
   };
   if (intent.length > 0) {
-    provenance.note = intent.slice(0, 200);
+    provenance.note = truncateText(intent, 200);
   }
   return provenance;
 }
