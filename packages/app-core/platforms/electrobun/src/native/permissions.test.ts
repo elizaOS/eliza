@@ -203,3 +203,74 @@ describeMac("PermissionManager macOS Settings handoff", () => {
     ).rejects.toThrow("Could not open macOS notification settings");
   });
 });
+
+describe("PermissionManager shell and feature permissions", () => {
+  it("manages shell permission state via setShellEnabled and isShellEnabled", async () => {
+    const manager = new PermissionManager();
+    expect(manager.isShellEnabled()).toBe(true);
+
+    const initial = await manager.checkPermission("shell");
+    expect(initial).toMatchObject({
+      id: "shell",
+      status: "granted",
+      canRequest: false,
+    });
+
+    manager.setShellEnabled(false);
+    expect(manager.isShellEnabled()).toBe(false);
+
+    const updated = await manager.checkPermission("shell", true);
+    expect(updated).toMatchObject({
+      id: "shell",
+      status: "denied",
+      canRequest: false,
+    });
+
+    const requested = await manager.requestPermission("shell");
+    expect(requested).toMatchObject({
+      id: "shell",
+      status: "denied",
+    });
+
+    manager.setShellEnabled(true);
+    const reenabled = await manager.requestPermission("shell");
+    expect(reenabled).toMatchObject({
+      id: "shell",
+      status: "granted",
+      canRequest: false,
+    });
+  });
+
+  it("evaluates feature requirements via checkFeaturePermissions", async () => {
+    const manager = new PermissionManager();
+    manager.setShellEnabled(false);
+
+    const shellBlocked = await manager.checkFeaturePermissions("shell");
+    expect(shellBlocked).toEqual({
+      granted: false,
+      missing: ["shell"],
+    });
+
+    manager.setShellEnabled(true);
+    const shellAllowed = await manager.checkFeaturePermissions("shell");
+    expect(shellAllowed).toEqual({
+      granted: true,
+      missing: [],
+    });
+
+    const unknownFeature = await manager.checkFeaturePermissions(
+      "custom-unrestricted-feature",
+    );
+    expect(unknownFeature).toEqual({
+      granted: true,
+      missing: [],
+    });
+  });
+
+  it("clears cached states without error when disposed", async () => {
+    const manager = new PermissionManager();
+    manager.setShellEnabled(true);
+    await manager.checkPermission("shell");
+    expect(() => manager.dispose()).not.toThrow();
+  });
+});
