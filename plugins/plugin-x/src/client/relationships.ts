@@ -182,6 +182,12 @@ export async function fetchProfileFollowing(
     throw new Error("Not authenticated");
   }
 
+  // The v2 following endpoint rejects max_results below 1 with HTTP 400;
+  // a non-positive budget is an empty result, not an API request.
+  if (maxProfiles <= 0) {
+    return { profiles: [], next: undefined };
+  }
+
   const client = await auth.getV2Client();
 
   try {
@@ -239,6 +245,12 @@ export async function fetchProfileFollowers(
 ): Promise<QueryProfilesResponse> {
   if (!auth) {
     throw new Error("Not authenticated");
+  }
+
+  // The v2 followers endpoint rejects max_results below 1 with HTTP 400;
+  // a non-positive budget is an empty result, not an API request.
+  if (maxProfiles <= 0) {
+    return { profiles: [], next: undefined };
   }
 
   const client = await auth.getV2Client();
