@@ -28,6 +28,15 @@ describe("hex / string round-trips", () => {
 		expect(bufferToString(fromHex("48 65 6c 6c 6f"))).toBe("Hello");
 	});
 
+	it("fromHex rejects odd-length hex instead of silently dropping a nibble", () => {
+		expect(() => fromHex("abc")).toThrow(TypeError);
+		expect(() => fromHex("0x01")).toThrow(TypeError);
+		expect(() => fromHex("a")).toThrow(TypeError);
+		// even-length still round-trips
+		expect(toHex(fromHex("0a0b"))).toBe("0a0b");
+		expect(bufferToString(fromHex("0a"))).toBe("\n");
+	});
+
 	it("base64 ⇄ utf8", () => {
 		expect(bufferToString(fromString("SGVsbG8=", "base64"))).toBe("Hello");
 		expect(bufferToString(fromString("Hi"), "base64")).toBe("SGk=");
