@@ -7,7 +7,7 @@ import { organizations } from "../../db/schemas/organizations";
 import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { organizationLifecycleAllowsNewWork } from "./account-lifecycle-authority";
 
-export type ProviderAdmissionOperationKind = "auto_top_up" | "agent_provision";
+export type ProviderAdmissionOperationKind = "auto_top_up" | "agent_lifecycle";
 
 export interface ProviderAdmissionAuthority {
   organizationId: string;
@@ -46,7 +46,10 @@ export async function acquireProviderAdmission(
     }
 
     const [existing] = await tx
-      .select({ releasedAt: providerAdmissions.released_at })
+      .select({
+        organizationId: providerAdmissions.organization_id,
+        releasedAt: providerAdmissions.released_at,
+      })
       .from(providerAdmissions)
       .where(
         and(
@@ -56,7 +59,33 @@ export async function acquireProviderAdmission(
       )
       .for("update")
       .limit(1);
-    if (existing) return existing.releasedAt === null;
+    if (existing) {
+      if (existing.organizationId !== authority.organizationId) {
+        throw new ElizaError("Provider admission operation belongs to another organization", {
+          code: "PROVIDER_ADMISSION_ORGANIZATION_MISMATCH",
+          severity: "fatal",
+        });
+      }
+      if (existing.releasedAt === null) return true;
+      const [reopened] = await tx
+        .update(providerAdmissions)
+        .set({ admitted_at: now, released_at: null })
+        .where(
+          and(
+            eq(providerAdmissions.organization_id, authority.organizationId),
+            eq(providerAdmissions.operation_kind, authority.operationKind),
+            eq(providerAdmissions.operation_id, authority.operationId),
+          ),
+        )
+        .returning({ id: providerAdmissions.id });
+      if (!reopened) {
+        throw new ElizaError("Provider admission retry was not durably reopened", {
+          code: "PROVIDER_ADMISSION_REOPEN_MISSING",
+          severity: "fatal",
+        });
+      }
+      return true;
+    }
 
     const [created] = await tx
       .insert(providerAdmissions)

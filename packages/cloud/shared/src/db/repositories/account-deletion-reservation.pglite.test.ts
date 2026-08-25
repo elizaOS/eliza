@@ -166,6 +166,43 @@ describe("personal account deletion reservation", () => {
     );
   });
 
+  test("reopens one released operation for a retry only while lifecycle authority remains active", async () => {
+    const providerAuthority = {
+      organizationId,
+      operationKind: "agent_lifecycle" as const,
+      operationId: "60000000-0000-4000-8000-000000000091",
+    };
+    const firstAdmissionAt = new Date(now.getTime() - 2_000);
+    const retryAdmissionAt = new Date(now.getTime() - 1_000);
+
+    await expect(acquireProviderAdmission(providerAuthority, firstAdmissionAt)).resolves.toBe(true);
+    await releaseProviderAdmission(providerAuthority, new Date(firstAdmissionAt.getTime() + 100));
+    await expect(acquireProviderAdmission(providerAuthority, retryAdmissionAt)).resolves.toBe(true);
+
+    const [reopened] = await dbWrite
+      .select()
+      .from(providerAdmissions)
+      .where(eq(providerAdmissions.operation_id, providerAuthority.operationId));
+    expect(reopened).toMatchObject({
+      organization_id: organizationId,
+      operation_kind: "agent_lifecycle",
+      operation_id: providerAuthority.operationId,
+      admitted_at: retryAdmissionAt,
+      released_at: null,
+    });
+
+    await releaseProviderAdmission(providerAuthority, now);
+    await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000091", "retry-fenced"),
+    );
+    await expect(activateReservation("retry-fenced")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+    await expect(
+      acquireProviderAdmission(providerAuthority, new Date(now.getTime() + 1)),
+    ).resolves.toBe(false);
+  });
+
   test("never returns an open receipt from a different organization", async () => {
     const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
     await dbWrite.insert(organizations).values({

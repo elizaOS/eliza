@@ -1349,6 +1349,60 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  for (const jobType of [JOB_TYPES.AGENT_RESUME, JOB_TYPES.AGENT_WAKE] as const) {
+    test(`${jobType} keeps deletion fenced through provider response and durable settlement`, async () => {
+      const arm = AGENT_ARMS.find((candidate) => candidate.type === jobType);
+      if (!arm) throw new Error(`Missing dispatch fixture for ${jobType}`);
+      let admissionLive = false;
+      let markSettlementStarted: (() => void) | undefined;
+      let commitSettlement: (() => void) | undefined;
+      const settlementStarted = new Promise<void>((resolve) => {
+        markSettlementStarted = resolve;
+      });
+      const settlementCommitted = new Promise<void>((resolve) => {
+        commitSettlement = resolve;
+      });
+      const service = new ProvisioningJobService({
+        acquireProviderAdmission: async (authority) => {
+          expect(authority).toEqual({
+            organizationId: ORG,
+            operationKind: "agent_lifecycle",
+            operationId: "44444444-4444-4444-8444-444444444444",
+          });
+          admissionLive = true;
+          return true;
+        },
+        releaseProviderAdmission: async () => {
+          admissionLive = false;
+        },
+      });
+      const ctx = harness(makeJob(jobType, arm.data), service);
+      ctx.updateStatusSpy.mockImplementation(async () => {
+        markSettlementStarted?.();
+        await settlementCommitted;
+        return true;
+      });
+      const providerSpy = stub(arm.method, arm.success);
+
+      try {
+        const processing = run(jobType, service);
+        await settlementStarted;
+        expect(providerSpy).toHaveBeenCalledTimes(1);
+        expect(admissionLive).toBe(true);
+        commitSettlement?.();
+        await expect(processing).resolves.toMatchObject({ succeeded: 1, failed: 0 });
+        expect(admissionLive).toBe(false);
+      } finally {
+        ctx.claimSpy.mockRestore();
+        ctx.recoverSpy.mockRestore();
+        ctx.updateStatusSpy.mockRestore();
+        ctx.updateSpy.mockRestore();
+        ctx.incrementSpy.mockRestore();
+        ctx.retryLaterSpy.mockRestore();
+      }
+    });
+  }
+
   test("organization-id mismatch between payload and column fails before any transport call", async () => {
     const ctx = harness(
       makeJob(JOB_TYPES.AGENT_SUSPEND, { organizationId: "99999999-9999-4999-8999-999999999999" }),

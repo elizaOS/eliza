@@ -881,8 +881,8 @@ describe("AutoTopUpService durable provider recovery", () => {
       "provider-admitted",
       "provider-call",
       "record-payment-intent",
-      "provider-released",
       "schedule-retry",
+      "provider-released",
     ]);
   });
 

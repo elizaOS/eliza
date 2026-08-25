@@ -69,7 +69,7 @@ describe("provisioning account lifecycle fence", () => {
       executeProvisioningWithAccountLifecycleAdmission({
         authority: {
           organizationId: "10000000-0000-4000-8000-000000000001",
-          operationKind: "agent_provision",
+          operationKind: "agent_lifecycle",
           operationId: "20000000-0000-4000-8000-000000000001",
         },
         execute,
@@ -86,7 +86,7 @@ describe("provisioning account lifecycle fence", () => {
     const result = await executeProvisioningWithAccountLifecycleAdmission({
       authority: {
         organizationId: "10000000-0000-4000-8000-000000000001",
-        operationKind: "agent_provision",
+        operationKind: "agent_lifecycle",
         operationId: "20000000-0000-4000-8000-000000000001",
       },
       execute: async () => {
@@ -122,7 +122,7 @@ describe("provisioning account lifecycle fence", () => {
     const operation = executeProvisioningWithAccountLifecycleAdmission({
       authority: {
         organizationId: "10000000-0000-4000-8000-000000000001",
-        operationKind: "agent_provision",
+        operationKind: "agent_lifecycle",
         operationId: "20000000-0000-4000-8000-000000000001",
       },
       acquire: mock(async () => {
@@ -152,7 +152,7 @@ describe("provisioning account lifecycle fence", () => {
       executeProvisioningWithAccountLifecycleAdmission({
         authority: {
           organizationId: "10000000-0000-4000-8000-000000000001",
-          operationKind: "agent_provision",
+          operationKind: "agent_lifecycle",
           operationId: "20000000-0000-4000-8000-000000000001",
         },
         acquire: mock(async () => true),

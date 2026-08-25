@@ -106,7 +106,11 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
-import { acquireProviderAdmission, releaseProviderAdmission } from "./provider-admission";
+import {
+  acquireProviderAdmission,
+  type ProviderAdmissionAuthority,
+  releaseProviderAdmission,
+} from "./provider-admission";
 import {
   executeProvisioningWithAccountLifecycleAdmission,
   prepareProvisioningWithAccountLifecycleFence,
@@ -3827,7 +3831,9 @@ export class ProvisioningJobService {
               () => stopLeaseHeartbeat(),
               async (executionError) => {
                 try {
-                  await this.handleExecutionFailure(job, executionError);
+                  if (await this.handleExecutionFailure(job, executionError)) {
+                    await this.releaseProviderAdmissionAfterRecordedFailure(job);
+                  }
                 } finally {
                   stopLeaseHeartbeat();
                 }
@@ -3843,7 +3849,9 @@ export class ProvisioningJobService {
           continue;
         }
         try {
-          await this.handleExecutionFailure(job, err, result);
+          if (await this.handleExecutionFailure(job, err, result)) {
+            await this.releaseProviderAdmissionAfterRecordedFailure(job);
+          }
         } finally {
           stopLeaseHeartbeat();
         }
@@ -3855,7 +3863,7 @@ export class ProvisioningJobService {
     job: Job,
     err: unknown,
     result?: ProcessingResult,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const appCacheError = safeErrorKind(err, AppCacheInvalidationRetryError) ? err : undefined;
     const retryableTransportError = safeErrorKind(err, RetryableProvisionTransportError)
       ? err
@@ -3889,7 +3897,7 @@ export class ProvisioningJobService {
           error: errorMsg,
         });
       }
-      return;
+      return outcome === "rejected" || outcome === "already-terminal";
     }
 
     if (retryableTransportError) {
@@ -3934,7 +3942,7 @@ export class ProvisioningJobService {
           error: errorMsg,
         });
       }
-      return;
+      return transition !== undefined;
     }
 
     // When retries are exhausted (permanent failure) the dependent
@@ -3987,7 +3995,7 @@ export class ProvisioningJobService {
             acknowledgingUserId: readAgentDeleteJobData(transition).stateLossAcknowledgedByUserId,
           },
         );
-        return;
+        return true;
       }
     }
     if (result) result.failed++;
@@ -4007,6 +4015,7 @@ export class ProvisioningJobService {
         logger.warn("[provisioning-jobs] App cache invalidation failed; retry scheduled", context);
       }
     }
+    return updated !== undefined;
   }
 
   /**
@@ -4605,6 +4614,53 @@ export class ProvisioningJobService {
       await this.executionOverride(job);
       return;
     }
+    const providerAdmission = this.providerAdmissionForJob(job);
+    if (!providerAdmission) {
+      await this.executeJobDispatch(job);
+      return;
+    }
+    try {
+      await executeProvisioningWithAccountLifecycleAdmission({
+        authority: providerAdmission,
+        acquire: this.acquireProviderAdmission,
+        release: this.releaseProviderAdmission,
+        execute: () => this.executeJobDispatch(job),
+      });
+    } catch (error) {
+      if (!(error instanceof AccountLifecycleFencedError)) throw error;
+      const identity = this.assertAgentJobIdentity(job);
+      throw new RejectedAgentExecutionError(
+        `Account lifecycle fenced provider admission ${job.id}`,
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          payloadAgentId: identity?.agentId,
+          payloadOrganizationId: identity?.organizationId,
+          cause: "account_lifecycle_fenced_or_stale",
+        },
+      );
+    }
+  }
+
+  private providerAdmissionForJob(job: Job): ProviderAdmissionAuthority | undefined {
+    if (!ACCOUNT_LIFECYCLE_FENCED_AGENT_JOB_TYPES.includes(job.type as ProvisioningJobType)) {
+      return undefined;
+    }
+    return {
+      organizationId: job.organization_id,
+      operationKind: "agent_lifecycle",
+      operationId: job.id,
+    };
+  }
+
+  private async releaseProviderAdmissionAfterRecordedFailure(job: Job): Promise<void> {
+    const authority = this.providerAdmissionForJob(job);
+    if (authority) await this.releaseProviderAdmission(authority);
+  }
+
+  private async executeJobDispatch(job: Job): Promise<void> {
     switch (job.type) {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
@@ -6029,98 +6085,48 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    let admittedResult:
-      | { kind: "completed_no_op" }
-      | { kind: "completed"; jobResult: AgentProvisionJobResult }
-      | {
-          kind: "failed";
-          error: string;
-          retryable: boolean;
-          retrySnapshot: Job;
-        };
-    try {
-      admittedResult = await executeProvisioningWithAccountLifecycleAdmission({
-        authority: {
-          organizationId: data.organizationId,
-          operationKind: "agent_provision",
-          operationId: job.id,
-        },
-        acquire: this.acquireProviderAdmission,
-        release: this.releaseProviderAdmission,
-        execute: async () => {
-          const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+    const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
 
-          if (await this.completeIfAgentGone(job, provResult, data.agentId)) {
-            return { kind: "completed_no_op" } as const;
-          }
+    if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 
-          if (!provResult.success) {
-            const retrySnapshot = await this.updateClaimedExecution(job, {
-              result: agentProvisionJobResultToRecord({
-                cloudAgentId: data.agentId,
-                status: provResult.sandboxRecord?.status ?? "error",
-                error: provResult.error,
-              }),
-            });
-            return {
-              kind: "failed",
-              error: provResult.error,
-              retryable: provResult.retryable === true,
-              retrySnapshot,
-            } as const;
-          }
-
-          const jobResult: AgentProvisionJobResult = {
-            cloudAgentId: data.agentId,
-            status: provResult.sandboxRecord.status,
-            bridgeUrl: provResult.bridgeUrl,
-            healthUrl: provResult.healthUrl,
-          };
-
-          await this.settleClaimedExecution(job, "completed", {
-            result: agentProvisionJobResultToRecord(jobResult),
-            completed_at: new Date(),
-          });
-          return { kind: "completed", jobResult } as const;
-        },
+    if (!provResult.success) {
+      const retrySnapshot = await this.updateClaimedExecution(job, {
+        result: agentProvisionJobResultToRecord({
+          cloudAgentId: data.agentId,
+          status: provResult.sandboxRecord?.status ?? "error",
+          error: provResult.error,
+        }),
       });
-    } catch (error) {
-      if (!(error instanceof AccountLifecycleFencedError)) throw error;
-      throw new RejectedAgentExecutionError(
-        `Account lifecycle fenced provisioning provider admission ${job.id}`,
-        {
-          jobId: job.id,
-          jobType: job.type,
-          columnAgentId: job.agent_id,
-          columnOrganizationId: job.organization_id,
-          payloadAgentId: data.agentId,
-          payloadOrganizationId: data.organizationId,
-          cause: "account_lifecycle_fenced_or_stale",
-        },
-      );
-    }
-
-    if (admittedResult.kind === "completed_no_op") return;
-
-    if (admittedResult.kind === "failed") {
-      if (admittedResult.retryable) {
+      if (provResult.retryable) {
         throw new RetryableProvisionTransportError(
-          admittedResult.error,
-          admittedResult.retrySnapshot,
+          provResult.error,
+          retrySnapshot,
           PROVISION_TRANSPORT_MAX_FREE_RETRIES,
         );
       }
-      throw new Error(admittedResult.error);
+      throw new Error(provResult.error);
     }
 
+    const jobResult: AgentProvisionJobResult = {
+      cloudAgentId: data.agentId,
+      status: provResult.sandboxRecord.status,
+      bridgeUrl: provResult.bridgeUrl,
+      healthUrl: provResult.healthUrl,
+    };
+
+    await this.settleClaimedExecution(job, "completed", {
+      result: agentProvisionJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
     if (job.webhook_url) {
-      await this.fireWebhook(job, admittedResult.jobResult);
+      await this.fireWebhook(job, jobResult);
     }
 
     logger.info("[provisioning-jobs] agent_provision completed", {
       jobId: job.id,
       agentId: data.agentId,
-      status: admittedResult.jobResult.status,
+      status: provResult.sandboxRecord.status,
     });
   }
 

@@ -1045,13 +1045,15 @@ export class AutoTopUpService {
             },
             { idempotencyKey: attempt.idempotencyKey },
           );
-      return this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
+      // Keep the provider admission until the payment outcome and any
+      // cancellation/reconciliation receipt are durably settled.
+      return await this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
     } catch (error) {
       // error-policy:J4 Provider failures are mapped to retry, cancellation, or
       // manual-review states in the durable ledger; none become fake success.
       const paymentIntent = paymentIntentFromError(error);
       if (paymentIntent) {
-        return this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
+        return await this.handlePaymentIntent(attempt, leaseToken, recovered, paymentIntent);
       }
       const type = stripeErrorType(error);
       const code = stripeErrorCode(error);

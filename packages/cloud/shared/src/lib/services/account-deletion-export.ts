@@ -277,7 +277,7 @@ async function querySubjectRowsWhere(input: {
     );
   }
   const result = await input.executor.execute(
-    sql`SELECT * FROM ${sql.raw(quoteIdentifier(input.table))}
+    sql`SELECT * FROM ${sql.raw(quoteIdentifier(input.table))} AS subject
         WHERE ${input.where}
         LIMIT ${MAX_ROWS_PER_TABLE + 1}`,
   );
