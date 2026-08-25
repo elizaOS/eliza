@@ -73,9 +73,15 @@ const IMAGE_INSPECT_COMMAND =
 const NETWORK_ENSURE_COMMAND =
   "docker network inspect 'containers-isolated' >/dev/null 2>&1 || docker network create --driver bridge 'containers-isolated' >/dev/null 2>&1 || docker network inspect 'containers-isolated' >/dev/null";
 const DOCKER_CREATE_COMMAND_PATTERN =
-  /(?:^|; )docker create --name 'cloud-container-[0-9a-f]{32}' --restart unless-stopped --network 'containers-isolated' /;
+  /(?:^|; )docker create --name 'cloud-container-(?<containerId>[0-9a-f]{32})' --restart unless-stopped --network 'containers-isolated' --cpus 1\.75 --memory 1792m --cap-drop=ALL --security-opt no-new-privileges --pids-limit=512 -p (?<hostPort>[0-9]+):3000 --env-file "\$env_file" 'ghcr\.io\/elizaos\/eliza:stable'$/;
 const DOCKER_START_COMMAND_PATTERN =
   /^docker start 'cloud-container-[0-9a-f]{32}'$/;
+const EMPTY_DOCKER_ENV_STDIN = [
+  "ELIZA_DOCKER_ENV_FILE_STDIN_V1 000029",
+  `printf '%s' '' > "$env_file"`,
+  "ELIZA_DOCKER_ENV_FILE_STDIN_V1_END",
+  "",
+].join("\n");
 
 const ENV = {
   NODE_ENV: "test",
@@ -98,7 +104,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 type DockerTransportOperation =
   | { readonly method: "connect" }
   | { readonly method: "exec"; readonly command: string }
-  | { readonly method: "execStdin"; readonly command: string };
+  | { readonly method: "execStdin" };
 
 async function withTimeout<T>(
   promise: Promise<T>,
@@ -126,10 +132,13 @@ class DockerTransportRecorder {
   }> = [];
   readonly operations: DockerTransportOperation[] = [];
   readonly connectEntered = deferred();
+  readonly pullEntered = deferred();
   readonly createEntered = deferred();
   connectCalls = 0;
   private readonly connectRelease = deferred();
+  private readonly pullRelease = deferred();
   private readonly createRelease = deferred();
+  private pullCompleted = false;
 
   async connect(): Promise<void> {
     this.connectCalls += 1;
@@ -149,10 +158,20 @@ class DockerTransportRecorder {
         "full avg10=0.00 avg60=0.00 avg300=0.00 total=0",
       ].join("\n");
     }
-    if (command === IMAGE_INSPECT_COMMAND) return "[]";
+    if (command === IMAGE_PULL_COMMAND) {
+      this.pullEntered.resolve();
+      await this.pullRelease.promise;
+      this.pullCompleted = true;
+      return "";
+    }
+    if (command === IMAGE_INSPECT_COMMAND) {
+      if (!this.pullCompleted) {
+        throw new Error("Docker image inspect started before pull completed");
+      }
+      return "[]";
+    }
     if (
       command === REGISTRY_LOGOUT_COMMAND ||
-      command === IMAGE_PULL_COMMAND ||
       command === NETWORK_ENSURE_COMMAND ||
       DOCKER_START_COMMAND_PATTERN.test(command)
     ) {
@@ -166,7 +185,7 @@ class DockerTransportRecorder {
       throw new Error(`Unexpected stdin SSH command: ${command}`);
     }
     this.execStdinCalls.push({ command, input });
-    this.operations.push({ method: "execStdin", command });
+    this.operations.push({ method: "execStdin" });
     this.createEntered.resolve();
     await this.createRelease.promise;
     return "";
@@ -180,6 +199,10 @@ class DockerTransportRecorder {
     this.connectRelease.resolve();
   }
 
+  releasePull(): void {
+    this.pullRelease.resolve();
+  }
+
   releaseCreate(): void {
     this.createRelease.resolve();
   }
@@ -187,7 +210,6 @@ class DockerTransportRecorder {
 
 function expectedDockerProvisioningOperations(
   containerId: string,
-  dockerCreateCommand: string,
   includeStart: boolean,
 ): DockerTransportOperation[] {
   const containerName = `cloud-container-${containerId.replaceAll("-", "")}`;
@@ -198,7 +220,7 @@ function expectedDockerProvisioningOperations(
     { method: "exec", command: IMAGE_PULL_COMMAND },
     { method: "exec", command: IMAGE_INSPECT_COMMAND },
     { method: "exec", command: NETWORK_ENSURE_COMMAND },
-    { method: "execStdin", command: dockerCreateCommand },
+    { method: "execStdin" },
   ];
   if (includeStart) {
     operations.push({
@@ -207,6 +229,22 @@ function expectedDockerProvisioningOperations(
     });
   }
   return operations;
+}
+
+function expectDockerCreateCall(
+  call: { command: string; input: string | Buffer },
+  containerId: string,
+): void {
+  const match = DOCKER_CREATE_COMMAND_PATTERN.exec(call.command);
+  expect(match).not.toBeNull();
+  expect(match?.groups?.containerId).toBe(containerId.replaceAll("-", ""));
+  const hostPort = Number(match?.groups?.hostPort);
+  expect(Number.isInteger(hostPort)).toBe(true);
+  expect(hostPort).toBeGreaterThanOrEqual(20_000);
+  expect(hostPort).toBeLessThanOrEqual(25_000);
+  expect(
+    typeof call.input === "string" ? call.input : call.input.toString("utf8"),
+  ).toBe(EMPTY_DOCKER_ENV_STDIN);
 }
 
 let dockerTransport = new DockerTransportRecorder();
@@ -514,6 +552,16 @@ describe("container admission and provisioning through generated API routes", ()
 
         dockerTransport.releaseConnect();
         await withTimeout(
+          dockerTransport.pullEntered.promise,
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "The shared request did not reach the Docker pull barrier",
+        );
+        expect(dockerTransport.execCommands).not.toContain(
+          IMAGE_INSPECT_COMMAND,
+        );
+        expect(dockerTransport.execStdinCalls).toHaveLength(0);
+        dockerTransport.releasePull();
+        await withTimeout(
           dockerTransport.createEntered.promise,
           BLOCKED_RESPONSE_TIMEOUT_MS,
           "The shared request did not reach the Docker create barrier",
@@ -533,16 +581,9 @@ describe("container admission and provisioning through generated API routes", ()
         const [dockerCreate] = dockerTransport.execStdinCalls;
         if (!dockerCreate)
           throw new Error("The shared Docker create command was missing");
-        const expectedContainerName = `cloud-container-${pendingRow.id.replaceAll("-", "")}`;
-        expect(dockerCreate.command).toContain(
-          `docker create --name '${expectedContainerName}' --restart unless-stopped`,
-        );
+        expectDockerCreateCall(dockerCreate, pendingRow.id);
         expect(dockerTransport.operations).toEqual(
-          expectedDockerProvisioningOperations(
-            pendingRow.id,
-            dockerCreate.command,
-            false,
-          ),
+          expectedDockerProvisioningOperations(pendingRow.id, false),
         );
         expect(
           dockerTransport.execCommands.filter((command) =>
@@ -553,6 +594,7 @@ describe("container admission and provisioning through generated API routes", ()
         blockedPhaseFailure = { error };
       } finally {
         dockerTransport.releaseConnect();
+        dockerTransport.releasePull();
         dockerTransport.releaseCreate();
       }
 
@@ -615,12 +657,9 @@ describe("container admission and provisioning through generated API routes", ()
         throw new Error("The shared Docker create command was missing");
       const finalRow = finalRows[0];
       if (!finalRow) throw new Error("The shared final row was missing");
+      expectDockerCreateCall(dockerCreate, finalRow.id);
       expect(dockerTransport.operations).toEqual(
-        expectedDockerProvisioningOperations(
-          finalRow.id,
-          dockerCreate.command,
-          true,
-        ),
+        expectedDockerProvisioningOperations(finalRow.id, true),
       );
       expect(
         dockerTransport.execCommands.filter((command) =>
@@ -704,6 +743,16 @@ describe("container admission and provisioning through generated API routes", ()
 
         dockerTransport.releaseConnect();
         await withTimeout(
+          dockerTransport.pullEntered.promise,
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "The admitted request did not reach the Docker pull barrier",
+        );
+        expect(dockerTransport.execCommands).not.toContain(
+          IMAGE_INSPECT_COMMAND,
+        );
+        expect(dockerTransport.execStdinCalls).toHaveLength(0);
+        dockerTransport.releasePull();
+        await withTimeout(
           dockerTransport.createEntered.promise,
           BLOCKED_RESPONSE_TIMEOUT_MS,
           "The admitted request did not reach the Docker create barrier",
@@ -759,11 +808,11 @@ describe("container admission and provisioning through generated API routes", ()
           ),
         ).toHaveLength(1);
         expect(dockerTransport.execCommands).toHaveLength(5);
-        expect(
-          dockerTransport.execStdinCalls.filter(({ command }) =>
-            DOCKER_CREATE_COMMAND_PATTERN.test(command),
-          ),
-        ).toHaveLength(1);
+        expect(dockerTransport.execStdinCalls).toHaveLength(1);
+        const [dockerCreate] = dockerTransport.execStdinCalls;
+        if (!dockerCreate)
+          throw new Error("The admitted Docker create command was missing");
+        expectDockerCreateCall(dockerCreate, pendingRow.id);
         expect(
           dockerTransport.execCommands.filter((command) =>
             DOCKER_START_COMMAND_PATTERN.test(command),
@@ -773,6 +822,7 @@ describe("container admission and provisioning through generated API routes", ()
         blockedPhaseFailure = { error };
       } finally {
         dockerTransport.releaseConnect();
+        dockerTransport.releasePull();
         dockerTransport.releaseCreate();
       }
 
@@ -867,9 +917,7 @@ describe("container admission and provisioning through generated API routes", ()
       const [dockerCreate] = dockerTransport.execStdinCalls;
       if (!dockerCreate)
         throw new Error("The Docker create command was missing");
-      expect(dockerCreate.command).toContain(
-        `docker create --name '${expectedContainerName}' --restart unless-stopped`,
-      );
+      expectDockerCreateCall(dockerCreate, finalRow.id);
       expect(
         dockerTransport.execCommands.filter((command) =>
           DOCKER_START_COMMAND_PATTERN.test(command),
