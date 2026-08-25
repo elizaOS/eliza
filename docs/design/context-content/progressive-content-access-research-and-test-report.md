@@ -14,6 +14,12 @@ The best elizaOS v1 is smaller: keep native FILE, DOCUMENT, ATTACHMENT, email/me
 
 This pass concentrated on proof: generated corpora, fault models, scenario/E2E architecture, live-model behavior, and speed/memory measurements. It also looked for architecture that can be deleted or unified rather than adding another framework.
 
+### Exact-head verification pass (2026-08-25)
+
+The follow-up verification is pinned to commit `2bc8b94a235bd0e5472bc3236426fc5d759ba75c` and the generated scale-corpus manifest `435430b1f502dffcc48b06e528e290237dd032259ada2dca30fc88ae7286f201`. The tightened corpus-evidence validator passes 40/40 adversarial tests, including forged benchmark/soak identities, duplicate-key E2E evidence, incomplete family coverage, stale continuations, and unauthorized fault claims. A fresh exact-head real-PostgreSQL run passes all 30 target-harness entries, records indexed seek plans, 5,346 observed rows, a 32,223,715-byte database, and verified disposable-database deletion (`postDropProbe=absent`); its peak RSS was 1,230,815,232 bytes, so the result is useful performance evidence as well as a reminder that SQL scale work must be monitored separately from bounded page transfer.
+
+The exact-head 90-process/5-repetition benchmark and the mandatory six-hour/100,000-operation mixed soak are deliberately run as external evidence artifacts. They must finish, be validated against the same commit and corpus manifest, and be ingested into one canonical evidence bundle before this design is described as complete. No credentialed live-model trajectory is claimed without explicit model, judge, and pricing configuration; no optional discovery skip can satisfy acceptance.
+
 ### Fourth-pass implementation and test audit
 
 The 2026-08-23 pass refreshed `origin/develop`, the open PR/issue queue, every current production source seam, and the evidence/test orchestration. PRs [#24020](https://github.com/elizaOS/eliza/pull/24020) and [#24017](https://github.com/elizaOS/eliza/pull/24017) are closed with changes requested. They made fixed email/inbox previews Unicode-safe but preserved irreversible 800/200/100-character model-facing loss, so they are useful hygiene examples rather than an architecture to revive.

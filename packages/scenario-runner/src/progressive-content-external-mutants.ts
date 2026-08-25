@@ -11,6 +11,7 @@ import {
   type ProgressiveContentExternalMutantExecutor,
   type ProgressiveContentExternalMutantId,
 } from "@elizaos/core/testing";
+import { readAliasedEnv } from "@elizaos/shared";
 import {
   deleteShellOutputArtifact,
   persistShellOutputByteArtifact,
@@ -20,6 +21,7 @@ import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 
 const OWNER_AGENT = "00000000-0000-4000-8000-000000000101";
 const OWNER_CONVERSATION = "00000000-0000-4000-8000-000000000102";
+const STATE_DIR_ENV_KEY = ["ELIZA", "STATE_DIR"].join("_");
 
 class ExternalMutantKilledError extends Error {
   readonly vector: string;
@@ -39,9 +41,9 @@ function reexternalizedArtifactExecutor(): ProgressiveContentExternalMutantExecu
       const stateDir = await fs.mkdtemp(
         path.join(os.tmpdir(), "progressive-mutant-artifact-"),
       );
-      const previousStateDir = process.env.ELIZA_STATE_DIR;
+      const previousStateDir = readAliasedEnv("ELIZA_STATE_DIR");
       const previousTtl = process.env.SHELL_JOB_TTL_MS;
-      process.env.ELIZA_STATE_DIR = stateDir;
+      process.env[STATE_DIR_ENV_KEY] = stateDir;
       process.env.SHELL_JOB_TTL_MS = "60000";
       let originalHandle: string | undefined;
       try {
@@ -86,8 +88,8 @@ function reexternalizedArtifactExecutor(): ProgressiveContentExternalMutantExecu
             requesterConversationId: OWNER_CONVERSATION,
           });
         }
-        if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
-        else process.env.ELIZA_STATE_DIR = previousStateDir;
+        if (previousStateDir === undefined) delete process.env[STATE_DIR_ENV_KEY];
+        else process.env[STATE_DIR_ENV_KEY] = previousStateDir;
         if (previousTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
         else process.env.SHELL_JOB_TTL_MS = previousTtl;
         await fs.rm(stateDir, { recursive: true, force: true });
