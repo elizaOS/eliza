@@ -10,7 +10,8 @@ const UNMANAGED_AGENT_ID = "00000000-0000-4000-8000-000000000005";
 const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-000000000004";
 const GENERATION = "00000000-0000-4000-8000-000000000002";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000003";
-const ENDPOINT_SHA256 = "a".repeat(64);
+const ENDPOINT_SHA256 =
+  "73eb701612c13ee660f3598e5309e6ce83743070eb648ea7670a57e060047e11";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
 
@@ -91,7 +92,15 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
       generation: GENERATION,
       publicationId: PUBLICATION_ID,
       endpointSha256: ENDPOINT_SHA256,
-      serverName: `sandbox-${GENERATION}`,
+      endpoint: {
+        version: 1 as const,
+        generation: GENERATION,
+        kind: "dedicated-sandbox" as const,
+        serverName: `sandbox-${GENERATION}`,
+        registryUrl: "https://sandbox.internal:3000/",
+        bridgeUrl: "http://100.64.0.2:3000",
+        healthUrl: "http://100.64.0.2:3000/health",
+      },
     };
 
     await redis.set(
@@ -113,8 +122,8 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
       route,
     });
     await redis.set(
-      `server:${route.serverName}:url`,
-      "https://sandbox.internal:3000",
+      `server:${route.endpoint.serverName}:url`,
+      route.endpoint.registryUrl,
     );
     // A legacy pointer is deliberately present: the durable managed marker
     // must prevent it from influencing the selected route.
@@ -133,8 +142,8 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
       mode: "managed",
       managedAgentId: AGENT_ID,
       runtimeAgentId: RUNTIME_AGENT_ID,
-      serverName: route.serverName,
-      serverUrl: "https://sandbox.internal:3000",
+      serverName: route.endpoint.serverName,
+      serverUrl: route.endpoint.registryUrl,
     });
 
     if (redis.quit) await redis.quit();
