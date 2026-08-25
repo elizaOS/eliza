@@ -8,6 +8,15 @@ import type {
   PermissionState,
 } from "@elizaos/shared";
 import {
+  Button,
+  Checkbox,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
+import {
   AlertTriangle,
   CalendarDays,
   Check,
@@ -19,7 +28,6 @@ import {
   Trash2,
   Unplug,
 } from "lucide-react";
-import { Button, Checkbox, NativeSelect } from "@elizaos/ui";
 import {
   type CSSProperties,
   type ReactNode,
@@ -106,18 +114,6 @@ const PANEL_STYLE: CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: 22,
   background: "var(--card)",
-};
-
-const BUTTON_STYLE: CSSProperties = {
-  minHeight: 44,
-  borderRadius: 13,
-  border: "1px solid var(--border)",
-  padding: "0 16px",
-  color: "inherit",
-  background: "var(--bg-muted)",
-  font: "inherit",
-  fontWeight: 650,
-  cursor: "pointer",
 };
 
 const LOCAL_SERVICE_UNAVAILABLE_MESSAGE =
@@ -661,21 +657,26 @@ export function LifeOpsConnectionsView({
             description="Choose only the access that is useful now. Identity scopes (openid, email, profile) identify the selected account; tokens stay in Eliza's protected credential store."
           >
             {connectedAccounts.length > 0 ? (
-              <label className="lifeops-field">
+              <label className="lifeops-field" htmlFor="lifeops-google-account">
                 <span>Active Google account</span>
-                <NativeSelect
+                <Select
                   value={selectedGrantId}
-                  onChange={(event) => setSelectedGrantId(event.target.value)}
+                  onValueChange={setSelectedGrantId}
                 >
-                  {connectedAccounts.map((account) => (
-                    <option
-                      key={grantId(account)}
-                      value={grantId(account) ?? ""}
-                    >
-                      {accountEmail(account)}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  <SelectTrigger id="lifeops-google-account">
+                    <SelectValue placeholder="Choose account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectedAccounts.map((account) => (
+                      <SelectItem
+                        key={grantId(account)}
+                        value={grantId(account) ?? ""}
+                      >
+                        {accountEmail(account)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             ) : (
               <p className="lifeops-empty">No Google account is connected.</p>
@@ -684,11 +685,15 @@ export function LifeOpsConnectionsView({
             <fieldset className="lifeops-options">
               <legend>OAuth access requested</legend>
               {GOOGLE_CAPABILITY_OPTIONS.map((option) => (
-                <label key={option.capability} className="lifeops-check-row">
+                <label
+                  key={option.capability}
+                  className="lifeops-check-row"
+                  htmlFor={`lifeops-capability-${option.capability}`}
+                >
                   <Checkbox
-                    type="checkbox"
+                    id={`lifeops-capability-${option.capability}`}
                     checked={capabilities.has(option.capability)}
-                    onChange={() =>
+                    onCheckedChange={() =>
                       setCapabilities((current) => {
                         const next = new Set(current);
                         if (next.has(option.capability)) {
@@ -764,12 +769,12 @@ export function LifeOpsConnectionsView({
             <fieldset className="lifeops-range">
               <legend>Gmail and calendar history</legend>
               {([7, 30, 90] as const).map((days) => (
-                <label key={days}>
+                <label key={days} htmlFor={`lifeops-seed-range-${days}`}>
                   <Checkbox
-                    type="radio"
+                    id={`lifeops-seed-range-${days}`}
                     name="seed-range"
                     checked={rangeDays === days}
-                    onChange={() => setRangeDays(days)}
+                    onCheckedChange={() => setRangeDays(days)}
                   />
                   {days} days
                 </label>
@@ -779,12 +784,16 @@ export function LifeOpsConnectionsView({
               {[...googleCalendars, ...appleCalendars].map((calendar) => {
                 const key = calendarKey(calendar);
                 return (
-                  <label key={key} className="lifeops-check-row compact">
+                  <label
+                    key={key}
+                    className="lifeops-check-row compact"
+                    htmlFor={`lifeops-calendar-${key}`}
+                  >
                     <Checkbox
-                      type="checkbox"
+                      id={`lifeops-calendar-${key}`}
                       checked={selectedCalendarKeys.has(key)}
                       disabled={busy === `calendar:${key}`}
-                      onChange={() => void toggleCalendar(calendar)}
+                      onCheckedChange={() => void toggleCalendar(calendar)}
                     />
                     <span>
                       <strong>{calendar.summary || "Unnamed calendar"}</strong>
@@ -924,10 +933,7 @@ export function LifeOpsConnectionsView({
               </p>
             </div>
             <div className="lifeops-actions">
-              <Button
-                type="button"
-                onClick={() => adapter.navigate("/inbox")}
-              >
+              <Button type="button" onClick={() => adapter.navigate("/inbox")}>
                 Review inbox drafts
               </Button>
               <Button

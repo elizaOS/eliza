@@ -83,8 +83,6 @@ import {
 } from "../service-normalize-gmail.js";
 
 const GOOGLE_GMAIL_MAILBOX = "me";
-const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
-const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
 const GMAIL_SEED_PAGE_SIZE = 100;
 // A seed walks provider pages until Gmail stops returning a token. This cap
 // only bounds runaway pagination; reaching it fails the seed explicitly rather
@@ -489,7 +487,7 @@ export class GmailDomain {
         side: grant.side,
         mailbox: GOOGLE_GMAIL_MAILBOX,
         grantId: grant.id,
-        maxResults: args.maxResults,
+        maxResults: args.maxResults ?? GMAIL_SEED_PAGE_SIZE,
         historyId,
         cursorStatus,
         fullResyncReason,
