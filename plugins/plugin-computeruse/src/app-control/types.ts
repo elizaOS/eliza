@@ -52,6 +52,7 @@ export interface NativeAppSnapshot {
   elements: NativeAppElement[];
   axText: string;
   focusedWindowBounds?: AppElementBounds;
+  focusedWindowId?: number;
 }
 
 export interface AppStateDiff {
@@ -74,6 +75,7 @@ export interface AppState {
   elements: AppElement[];
   axText: string;
   diff?: AppStateDiff;
+  focusedWindowId?: number;
 }
 
 export type AppActionKind =
