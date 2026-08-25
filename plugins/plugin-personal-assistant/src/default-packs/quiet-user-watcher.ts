@@ -129,11 +129,14 @@ export function deriveQuietObservations(
     }
   }
 
-  // Missed-yesterday-checkin: a one-step streak of `expired` checkin counts.
+  // Missed-yesterday-checkin: a one-step streak of `expired` (or `skipped`)
+  // checkin counts. `skipped` counts too — the pack's documented contract is
+  // "terminal-stated expired or skipped without a follow-up reply", and the
+  // quiet-streak loop above already treats skipped as a no-reply signal.
   for (const streak of summary.streaks) {
     if (
       streak.kind === "checkin" &&
-      streak.outcome === "expired" &&
+      (streak.outcome === "expired" || streak.outcome === "skipped") &&
       streak.consecutive >= 1
     ) {
       observations.push({
