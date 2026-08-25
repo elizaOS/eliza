@@ -58,13 +58,20 @@ const SAFE_COMMANDS = new Set<string>([
 ]);
 
 type ApprovalDecision = {
+  id: string;
+  command: string;
   approved: boolean;
   cancelled: boolean;
+  mode: ApprovalMode;
+  requestedAt: string;
+  resolvedAt: string;
   reason?: string;
 };
 
 type PendingApprovalRecord = PendingApproval & {
   resolve: (result: ApprovalDecision) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
 };
 
 type ApprovalListener = (snapshot: ApprovalSnapshot) => void;
@@ -119,18 +126,51 @@ export class ComputerUseApprovalManager {
   requestApproval(
     command: string,
     parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<ApprovalDecision> {
     const id = `approval_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const requestedAt = new Date().toISOString();
 
     return new Promise((resolve) => {
-      this.pending.set(id, {
+      const cancel = () => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        this.pending.delete(id);
+        resolve({
+          id,
+          command,
+          approved: false,
+          cancelled: true,
+          mode: this.mode,
+          requestedAt,
+          resolvedAt: new Date().toISOString(),
+          reason: "approval request cancelled",
+        });
+        this.emit();
+      };
+      if (signal?.aborted) {
+        resolve({
+          id,
+          command,
+          approved: false,
+          cancelled: true,
+          mode: this.mode,
+          requestedAt,
+          resolvedAt: new Date().toISOString(),
+          reason: "approval request cancelled",
+        });
+        return;
+      }
+      const record: PendingApprovalRecord = {
         id,
         command,
         parameters,
         requestedAt,
         resolve,
-      });
+        ...(signal ? { signal, onAbort: cancel } : {}),
+      };
+      this.pending.set(id, record);
+      signal?.addEventListener("abort", cancel, { once: true });
       this.emit();
     });
   }
@@ -161,7 +201,20 @@ export class ComputerUseApprovalManager {
     }
 
     this.pending.delete(id);
-    pending.resolve({ approved, cancelled: false, reason });
+    if (pending.signal && pending.onAbort) {
+      pending.signal.removeEventListener("abort", pending.onAbort);
+    }
+    const resolvedAt = new Date().toISOString();
+    pending.resolve({
+      id: pending.id,
+      command: pending.command,
+      approved,
+      cancelled: false,
+      mode: this.mode,
+      requestedAt: pending.requestedAt,
+      resolvedAt,
+      reason,
+    });
     this.emit();
 
     return {
@@ -171,14 +224,26 @@ export class ComputerUseApprovalManager {
       cancelled: false,
       mode: this.mode,
       requestedAt: pending.requestedAt,
-      resolvedAt: new Date().toISOString(),
+      resolvedAt,
       ...(reason ? { reason } : {}),
     };
   }
 
   cancelAll(reason?: string): void {
     for (const pending of this.pending.values()) {
-      pending.resolve({ approved: false, cancelled: true, reason });
+      if (pending.signal && pending.onAbort) {
+        pending.signal.removeEventListener("abort", pending.onAbort);
+      }
+      pending.resolve({
+        id: pending.id,
+        command: pending.command,
+        approved: false,
+        cancelled: true,
+        mode: this.mode,
+        requestedAt: pending.requestedAt,
+        resolvedAt: new Date().toISOString(),
+        reason,
+      });
     }
     this.pending.clear();
     this.emit();
