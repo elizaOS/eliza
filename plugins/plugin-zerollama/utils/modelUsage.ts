@@ -51,6 +51,12 @@ export function estimateUsage(prompt: string, response: unknown): OllamaTokenUsa
       // output; an unserializable value is represented explicitly as text.
       responseText = `[unserializable response: ${error instanceof Error ? error.message : String(error)}]`;
     }
+    // JSON.stringify(undefined) returns undefined rather than a string; a
+    // missing response body is a legitimate provider outcome and must be
+    // accounted for instead of crashing the estimation.
+    if (responseText === undefined) {
+      responseText = "[no response]";
+    }
   }
   const promptTokens = estimateTokenCount(prompt);
   const completionTokens = estimateTokenCount(responseText);
