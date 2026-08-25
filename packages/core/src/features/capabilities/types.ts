@@ -302,6 +302,7 @@ export function canonicalizeResourceSelector(
 		const prefix = value.slice(0, -2);
 		if (
 			prefix.length === 0 ||
+			prefix.startsWith("/") ||
 			prefix.endsWith("/") ||
 			prefix.includes("*") ||
 			prefix.includes("//")
@@ -442,16 +443,20 @@ export function intersectGrantConstraints(
 				continue;
 			}
 			if (Array.isArray(existing) && Array.isArray(value)) {
-				// Type-preserving intersection: identical scalars collapse to
-				// one entry; non-scalar items make the combination
-				// incompatible rather than guessed at.
-				const seen = new Set(existing.filter(isScalarConstraintValue));
+				// Type-preserving intersection of scalars only: any
+				// non-scalar member in EITHER array makes the combination
+				// incompatible (deny) — never silently dropped.
+				if (
+					existing.some((item) => !isScalarConstraintValue(item)) ||
+					value.some((item) => !isScalarConstraintValue(item))
+				) {
+					return { ok: false };
+				}
+				const seen = new Set(existing);
 				const kept: unknown[] = [];
 				for (const item of value) {
-					if (isScalarConstraintValue(item) && seen.has(item)) {
-						if (!kept.includes(item)) {
-							kept.push(item);
-						}
+					if (seen.has(item) && !kept.includes(item)) {
+						kept.push(item);
 					}
 				}
 				merged[key] = kept;

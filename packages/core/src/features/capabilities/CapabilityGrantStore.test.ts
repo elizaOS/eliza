@@ -1096,3 +1096,96 @@ describe("RP review round-2 coverage", () => {
 		).rejects.toThrow(/worldId/);
 	});
 });
+
+describe("RP review round-3 coverage", () => {
+	it("rejects leading-slash wildcard selectors like /foo/*", () => {
+		expect(canonicalizeResourceSelector("/foo/*").ok).toBe(false);
+		expect(canonicalizeResourceSelector("foo/*").ok).toBe(true);
+		expect(canonicalizeResourceSelector("a/b/*").ok).toBe(true);
+	});
+
+	it("non-scalar array members make constraints incompatible, never silently dropped", () => {
+		const bad = intersectGrantConstraints([
+			{ constraints: { channels: [{ id: "a" }] } },
+			{ constraints: { channels: [{ id: "a" }] } },
+		]);
+		expect(bad.ok).toBe(false);
+		const mixed = intersectGrantConstraints([
+			{ constraints: { channels: ["a", { id: 1 }] } },
+			{ constraints: { channels: ["a"] } },
+		]);
+		expect(mixed.ok).toBe(false);
+		const okScalars = intersectGrantConstraints([
+			{ constraints: { channels: ["a", "b"] } },
+			{ constraints: { channels: ["b", "a"] } },
+		]);
+		expect(okScalars.ok).toBe(true);
+	});
+
+	it("a throwing onAuditFailure reporter cannot abort the decision", async () => {
+		const grant = await createCapabilityGrant(store.db, {
+			subject: "entity:00000000-0000-4000-8000-00000000e805",
+			agentId: AGENT,
+			worldId: null,
+			capability: "media.read",
+			resourceSelector: "*",
+			effect: "allow",
+			issuer: ISSUER,
+			provenance: "api",
+		});
+		expect(grant.id).toBeTruthy();
+		const result = await authorizeCapability(store.db, {
+			subject: "entity:00000000-0000-4000-8000-00000000e805",
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/ok",
+			onAuditFailure: () => {
+				throw new Error("reporter exploded");
+			},
+		});
+		expect(result.decision).toBe("allow");
+	});
+
+	it("invalid-request audit details carry categorical text, not raw values", async () => {
+		const result = await authorizeCapability(store.db, {
+			subject: "garbage-subject-with-secrets",
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/abc",
+		});
+		expect(result.reasonCode).toBe(CAPABILITY_REASON_CODES.INVALID_REQUEST);
+		const audit = await listCapabilityAudit(store.db, { limit: 30 });
+		const row = audit.find((r) => r.id === result.auditId);
+		expect(row?.details).toContain("raw value withheld");
+		expect(row?.details).not.toContain("garbage-subject-with-secrets");
+	});
+
+	it("grant mutation rolls back when the epoch singleton is missing", async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "capgrants-rollback-"));
+		try {
+			const client = new PGlite(dir);
+			const db = drizzle(client) as unknown as CapabilityStoreDb;
+			await getCapabilityEpoch(db);
+			await client.exec("DELETE FROM capabilities.capability_epoch");
+			await expect(
+				createCapabilityGrant(db, {
+					subject: "entity:00000000-0000-4000-8000-00000000e806",
+					agentId: AGENT,
+					worldId: null,
+					capability: "media.read",
+					resourceSelector: "*",
+					effect: "allow",
+					issuer: ISSUER,
+					provenance: "api",
+				}),
+			).rejects.toThrow(/missing/);
+			const after = await client.query(
+				"SELECT count(*)::int AS n FROM capabilities.capability_grants",
+			);
+			expect((after.rows[0] as { n: number }).n).toBe(0);
+			await client.close();
+		} finally {
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});

@@ -171,8 +171,8 @@ export function ensureCapabilityGrantTables(
 	let pending = ensuredClients.get(key);
 	if (!pending) {
 		pending = runCapabilityDdl(db).catch((error: unknown) => {
-			// A failed bootstrap must be retried by the next call, not cached
-			// as "done" — drop the memo only on failure; success is permanent.
+			// error-policy:J2 — evict the memo so the next call retries the
+			// bootstrap, then rethrow unchanged; callers see the raw failure.
 			if (ensuredClients.get(key) === pending) {
 				ensuredClients.delete(key);
 			}
@@ -228,12 +228,23 @@ export async function getCapabilityEpoch(
 	return row.epoch;
 }
 
-/** Bumps the revocation epoch; every grant mutation calls this. */
+/**
+ * Bumps the revocation epoch inside the caller's transaction; every grant
+ * mutation calls this. A zero-row update means the singleton is missing
+ * (corrupt store state) — throwing here rolls the whole mutation back
+ * rather than committing a grant whose invalidation watermark never moved.
+ */
 async function bumpEpoch(db: CapabilityStoreDb): Promise<void> {
-	await db
+	const rows = (await db
 		.update(capabilityEpoch)
 		.set({ epoch: sql`${capabilityEpoch.epoch} + 1`, updatedAt: new Date() })
-		.where(eq(capabilityEpoch.id, 1));
+		.where(eq(capabilityEpoch.id, 1))
+		.returning()) as Array<{ id: number }>;
+	if (rows.length === 0) {
+		throw new Error(
+			"[capability-grants] capability_epoch row 1 is missing; mutation rolled back (corrupt store state)",
+		);
+	}
 }
 
 export type RevokeGrantResult =

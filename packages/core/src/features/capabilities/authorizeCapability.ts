@@ -55,8 +55,13 @@ async function writeAudit(
 	} catch (error) {
 		// error-policy:J7 — audit-sink failure is reported to the injected
 		// hook (runtime.reportError at the boundary), never blocks the
-		// decision, and never converts a denial into an allow.
-		onAuditFailure?.(error);
+		// decision, and never converts a denial into an allow. A throwing
+		// reporter is swallowed here for the same reason.
+		try {
+			onAuditFailure?.(error);
+		} catch {
+			// The decision already stands; reporter failures must not abort it.
+		}
 	}
 }
 
@@ -175,7 +180,7 @@ export async function authorizeCapability(
 			db,
 			request,
 			CAPABILITY_REASON_CODES.INVALID_REQUEST,
-			`Invalid subject: ${subject.error}`,
+			"Invalid subject: failed canonical-form validation (raw value withheld from audit)",
 			"invalid",
 		);
 	}
@@ -185,7 +190,7 @@ export async function authorizeCapability(
 			db,
 			request,
 			CAPABILITY_REASON_CODES.INVALID_REQUEST,
-			`Invalid capability: ${capability.error}`,
+			"Invalid capability: failed vocabulary validation (raw value withheld from audit)",
 			"invalid",
 		);
 	}
@@ -194,7 +199,7 @@ export async function authorizeCapability(
 			db,
 			request,
 			CAPABILITY_REASON_CODES.INVALID_REQUEST,
-			`Invalid agentId: ${JSON.stringify(request.agentId)}`,
+			"Invalid agentId: not a UUID (raw value withheld from audit)",
 			"invalid",
 		);
 	}
@@ -216,7 +221,7 @@ export async function authorizeCapability(
 			db,
 			request,
 			CAPABILITY_REASON_CODES.INVALID_REQUEST,
-			`Invalid worldId: ${JSON.stringify(request.worldId)}`,
+			"Invalid worldId: not a UUID (raw value withheld from audit)",
 			"invalid",
 		);
 	}
@@ -233,12 +238,14 @@ export async function authorizeCapability(
 	} catch (error) {
 		// error-policy:J4 — a store read failure becomes the structured
 		// STORE_UNAVAILABLE denial (fail closed); the boundary logs it via
-		// runtime.reportError from the decision record.
+		// runtime.reportError from the decision record, and the hook gets
+		// the raw driver error here (J7).
+		request.onAuditFailure?.(error);
 		return denyWithAudit(
 			db,
 			request,
 			CAPABILITY_REASON_CODES.STORE_UNAVAILABLE,
-			`Grant store unavailable: ${error instanceof Error ? error.message : String(error)}`,
+			"Grant store unavailable (driver error message withheld from audit)",
 			"store-unavailable",
 		);
 	}
