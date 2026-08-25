@@ -86,6 +86,17 @@ describe("formatRelativeTime (compact)", () => {
 		expect(formatRelativeTime(NOW + 6 * DAY + 1)).toBe("in 7d");
 		expect(formatRelativeTime(NOW + 7 * DAY - 1)).toBe("in 7d");
 	});
+
+	it("formats Date instances and ISO string representations", () => {
+		expect(formatRelativeTime(new Date(NOW - 5 * MINUTE))).toBe("5m ago");
+		expect(formatRelativeTime(new Date(NOW - 5 * MINUTE).toISOString())).toBe(
+			"5m ago",
+		);
+		expect(formatTimestamp(new Date(NOW - HOUR))).toBe("1 hour ago");
+		expect(formatTimestamp(new Date(NOW - HOUR).toISOString())).toBe(
+			"1 hour ago",
+		);
+	});
 });
 
 describe("formatTimestamp (verbose)", () => {
