@@ -6,7 +6,7 @@
  * the provider query cannot produce fresh evidence.
  */
 import type { UUID } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { TelegramMembershipAuthority } from "./membership";
 import {
   resolveMembershipService,
@@ -46,15 +46,20 @@ export async function bootstrapTelegramMembershipAccount(input: {
       account,
     );
     if (!stored.id || !isUuidLike(stored.id)) {
-      logger.warn(
-        {
-          src: "plugin:telegram",
-          agentId: input.agentId,
-          botTelegramUserId: input.botTelegramUserId,
-        },
+      // The authority service IS configured, but its connector-account store
+      // returned a malformed result. This must NOT degrade to the
+      // absent-authority legacy allow mode (null): throw so the caller marks
+      // the admission gate broken and every group admission fails closed.
+      throw new ElizaError(
         "Telegram membership bootstrap received a non-UUID connector account id",
+        {
+          code: "TELEGRAM_MEMBERSHIP_BOOTSTRAP_INVALID_ACCOUNT",
+          context: {
+            botTelegramUserId: input.botTelegramUserId,
+            storedId: stored.id ?? null,
+          },
+        },
       );
-      return null;
     }
     return stored.id as UUID;
   } catch (error) {
@@ -62,9 +67,13 @@ export async function bootstrapTelegramMembershipAccount(input: {
     // absent connector-account manager: wrap and rethrow so the service
     // records a BROKEN gate (fail-closed group admission) instead of
     // silently degrading to the absent-authority legacy allow mode.
-    throw new Error("Telegram membership connector-account bootstrap failed", {
-      cause: error,
-    });
+    throw new ElizaError(
+      "Telegram membership connector-account bootstrap failed",
+      {
+        code: "TELEGRAM_MEMBERSHIP_BOOTSTRAP_FAILED",
+        cause: error,
+      },
+    );
   }
 }
 

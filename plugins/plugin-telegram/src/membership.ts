@@ -19,7 +19,7 @@ import type {
   MembershipService,
   UUID,
 } from "@elizaos/core";
-import { ChannelType, logger, ServiceType } from "@elizaos/core";
+import { ChannelType, ElizaError, logger, ServiceType } from "@elizaos/core";
 
 /** Evidence freshness window for Telegram point proofs (under the authority's 24h cap). */
 export const TELEGRAM_MEMBERSHIP_TTL_MS = 60 * 60 * 1_000;
@@ -163,6 +163,15 @@ export class TelegramMembershipAuthority {
   private readonly publisherInstanceId: string;
   private readonly scopes = new Map<string, ScopeTracker>();
   private readonly chains = new Map<string, Promise<unknown>>();
+  /**
+   * Bot-removal tombstones by scope key. Once the bot itself has been removed
+   * from a chat, NO further evidence may advance that scope back to current:
+   * a backlogged join/leave/reconcile redelivery after the removal would
+   * otherwise re-authorize stale member facts for a chat the bot can no
+   * longer observe. Only an explicit bot re-add (my_chat_member join) clears
+   * the tombstone, and only after a fresh registration.
+   */
+  private readonly removedScopes = new Map<string, string>();
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -184,6 +193,9 @@ export class TelegramMembershipAuthority {
     );
     this.chains.set(
       key,
+      // error-policy:J5 The chain placeholder must never reject: the same
+      // rejection is already observed by the caller awaiting `run` (returned
+      // below); swallowing it here only keeps the chain link settled.
       run.catch(() => {}),
     );
     return run;
@@ -230,8 +242,9 @@ export class TelegramMembershipAuthority {
         observedAt: new Date().toISOString(),
       });
       if (receipt.operation !== "publisher") {
-        throw new Error(
+        throw new ElizaError(
           `Telegram membership publisher registration returned ${receipt.operation}`,
+          { code: "TELEGRAM_MEMBERSHIP_PUBLISHER_PROTOCOL" },
         );
       }
       const tracker: ScopeTracker = {
@@ -267,8 +280,9 @@ export class TelegramMembershipAuthority {
         observedAt: new Date().toISOString(),
       });
       if (receipt.operation !== "publisher") {
-        throw new Error(
+        throw new ElizaError(
           `Telegram membership publisher takeover returned ${receipt.operation}`,
+          { code: "TELEGRAM_MEMBERSHIP_PUBLISHER_PROTOCOL" },
         );
       }
       const tracker: ScopeTracker = {
@@ -338,8 +352,9 @@ export class TelegramMembershipAuthority {
           throw error;
         }
       }
-      throw new Error(
+      throw new ElizaError(
         `Telegram membership scope stale-degrade exhausted retries for ${input.scope.externalWorldId}`,
+        { code: "TELEGRAM_MEMBERSHIP_DEGRADE_EXHAUSTED" },
       );
     });
   }
@@ -366,6 +381,25 @@ export class TelegramMembershipAuthority {
   }): Promise<boolean> {
     const key = scopeKey(input.scope);
     return this.serialized(key, async () => {
+      // Bot-removal tombstone: once the bot has been removed from this chat,
+      // no evidence (backlogged join redelivery, reconcile) may advance the
+      // scope back to current — the bot cannot observe the chat anymore, so
+      // its stored member facts must stay non-authorizing until the bot is
+      // re-added (which clears the tombstone via clearScopeRemoval).
+      const removalReason = this.removedScopes.get(key);
+      if (removalReason !== undefined) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            chatId: input.scope.externalWorldId,
+            telegramUserId: input.canonicalPrincipalId,
+            removalReason,
+          },
+          "Telegram membership evidence rejected for a bot-removed scope; skipping",
+        );
+        return false;
+      }
       let tracker =
         (await this.ensureRegistered(input.scope)) ??
         (await this.readoptFromHealth(input.scope));
@@ -373,13 +407,23 @@ export class TelegramMembershipAuthority {
       // Out-of-order guard: a fact older than the principal's committed
       // evidence must never overwrite it (an old join with a distinct message
       // id redelivered after a newer leave must not resurrect membership).
+      // STRICT on the dangerous direction: Telegram update dates have
+      // one-second resolution, so an EQUAL timestamp is not newer — only a
+      // strictly newer active observation may replace a committed revocation
+      // (an equal-second join redelivery after a leave must not resurrect;
+      // equal-second revocations remain allowed — they only ever deny).
       const committed = await this.service.getMembership(
         input.scope,
         input.canonicalPrincipalId,
       );
+      const committedAt = committed ? Date.parse(committed.observedAt) : 0;
+      const observedAtMs = Date.parse(input.observedAt);
+      const wouldResurrect =
+        committed?.state === "revoked" && input.state === "active";
       if (
         committed &&
-        Date.parse(input.observedAt) < Date.parse(committed.observedAt)
+        (observedAtMs < committedAt ||
+          (observedAtMs === committedAt && wouldResurrect))
       ) {
         logger.debug(
           {
@@ -438,6 +482,39 @@ export class TelegramMembershipAuthority {
             // error-policy:J4 Pre-commit fencing failure: adopt persisted
             // scope state and re-issue once under a fresh idempotency key.
             tracker = await this.readoptFromHealth(input.scope);
+            // The competing write that broke our fence may have committed
+            // NEWER evidence for THIS principal (e.g. a revocation from
+            // another process): re-run the out-of-order guard against the
+            // now-committed record before retrying, or the retry would
+            // overwrite it and resurrect a revoked principal.
+            const recommitted = await this.service.getMembership(
+              input.scope,
+              input.canonicalPrincipalId,
+            );
+            const recommittedAt = recommitted
+              ? Date.parse(recommitted.observedAt)
+              : 0;
+            const nowResurrects =
+              recommitted?.state === "revoked" && input.state === "active";
+            if (
+              recommitted &&
+              (observedAtMs < recommittedAt ||
+                (observedAtMs === recommittedAt && nowResurrects))
+            ) {
+              logger.debug(
+                {
+                  src: "plugin:telegram",
+                  agentId: this.runtime.agentId,
+                  chatId: input.scope.externalWorldId,
+                  telegramUserId: input.canonicalPrincipalId,
+                  incomingObservedAt: input.observedAt,
+                  committedObservedAt: recommitted.observedAt,
+                  fenceRetry: true,
+                },
+                "Telegram membership retry would overwrite newer committed evidence; skipping",
+              );
+              return false;
+            }
             continue;
           }
           if (code === "MEMBERSHIP_IDEMPOTENCY_CONFLICT") {
@@ -531,9 +608,15 @@ export class TelegramMembershipAuthority {
           // degrade failed: propagate a typed error so the connector layer
           // can mark the admission gate broken (every group admission then
           // fails closed) instead of leaving active evidence authorizing.
-          throw new Error(
+          throw new ElizaError(
             "Telegram membership revocation could not be committed or degraded",
-            { cause: degradeError },
+            {
+              code: "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE",
+              // Root cause is the original evidence failure; the degrade
+              // failure travels as context so both surfaces are diagnosable.
+              cause: error,
+              context: { degradeError: String(degradeError) },
+            },
           );
         }
       }
@@ -583,6 +666,31 @@ export class TelegramMembershipAuthority {
     } catch (error) {
       // error-policy:J4 Reconcile transport failure: report and stay denied
       // rather than fabricating an authoritative roster.
+      this.runtime.reportError("telegram:membership-reconcile", error, {
+        chatId: input.chatId,
+        telegramUserId: input.telegramUserId,
+      });
+      return null;
+    }
+    // Provider-boundary validation: the response must describe the SAME user
+    // we asked about. A mismatched getChatMember reply must never become
+    // evidence for the requested canonical principal (admitting the wrong
+    // principal, or a malformed upstream response fabricating membership).
+    if (
+      member.user?.id === undefined ||
+      String(member.user.id) !== input.telegramUserId
+    ) {
+      const error = new ElizaError(
+        "Telegram getChatMember returned a different user than requested",
+        {
+          code: "TELEGRAM_MEMBERSHIP_SUBJECT_MISMATCH",
+          context: {
+            chatId: input.chatId,
+            requestedTelegramUserId: input.telegramUserId,
+            returnedUserId: member.user?.id,
+          },
+        },
+      );
       this.runtime.reportError("telegram:membership-reconcile", error, {
         chatId: input.chatId,
         telegramUserId: input.telegramUserId,
@@ -723,6 +831,11 @@ export class TelegramMembershipAuthority {
           });
           if (receipt.operation === "health") {
             this.scopes.delete(key);
+            // Tombstone the scope: any further evidence write for this chat
+            // (backlogged redeliveries, reconciles) must NOT advance the
+            // scope back to current — it stays non-authorizing until the
+            // bot is explicitly re-added.
+            this.removedScopes.set(key, input.reason);
             return;
           }
         } catch (error) {
@@ -739,10 +852,29 @@ export class TelegramMembershipAuthority {
           throw error;
         }
       }
-      throw new Error(
+      throw new ElizaError(
         `Telegram membership scope unavailable-degrade exhausted retries for ${input.chatId}`,
+        { code: "TELEGRAM_MEMBERSHIP_DEGRADE_EXHAUSTED" },
       );
     });
+  }
+
+  /**
+   * Clears the bot-removal tombstone for a scope after the bot has been
+   * re-added to the chat (my_chat_member / new_chat_members join carrying
+   * the bot's own id). The next evidence write re-registers the publisher
+   * from persisted health, so re-authorization requires fresh evidence —
+   * pre-removal member facts alone stay non-authorizing because point-query
+   * evidence carries a bounded validUntil.
+   */
+  clearScopeRemoval(input: { chatId: string; chatRoomKey: string }): void {
+    const scope = telegramMembershipScope({
+      agentId: this.runtime.agentId,
+      connectorAccountId: this.connectorAccountId,
+      chatId: input.chatId,
+      chatRoomKey: input.chatRoomKey,
+    });
+    this.removedScopes.delete(scopeKey(scope));
   }
 
   /** Read-only scope health accessor (used by tests and diagnostics). */

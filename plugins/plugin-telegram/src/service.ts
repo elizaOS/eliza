@@ -1117,8 +1117,9 @@ export class TelegramService extends Service {
         manager.bindMembershipGate(gate);
       }
     } catch {
-      // The seeding path already recorded the failure and marked whatever
-      // manager existed broken; this late-binding pass re-marks THIS manager.
+      // error-policy:J2 The seeding path already recorded this gate failure
+      // and reported it; this late-binding pass only re-marks THIS manager
+      // broken so the failure state follows the account's own manager.
       manager.markMembershipGateBroken();
     }
   }
@@ -1893,9 +1894,22 @@ export class TelegramService extends Service {
             reason: `revocation_bootstrap_failed:${event.reason}`,
           });
         } catch (degradeError) {
+          // error-policy:J2 BOTH the entity bootstrap AND the fail-closed
+          // degrade failed: the authority can no longer be trusted for this
+          // account — prior active evidence may still authorize the departed
+          // principal. Mark the admission gate broken so every group
+          // admission fails closed, mirroring the recordEvent failure path.
+          (
+            this.getAccountState(accountId)?.messageManager ??
+            this.messageManager
+          )?.markMembershipGateBroken();
+          this.membershipGateFailures.add(accountId);
+          this.membershipGates.delete(accountId);
           this.runtime.reportError("telegram:membership-entity", degradeError, {
             chatId,
+            accountId,
             telegramUserId: event.telegramUserId,
+            degraded: "gate-broken",
           });
         }
       }
@@ -1990,6 +2004,18 @@ export class TelegramService extends Service {
               observedAt,
             },
           );
+        } else {
+          // The bot itself was (re-)added to the chat: clear the bot-removal
+          // tombstone so fresh evidence can re-establish authority for this
+          // scope. Stored pre-removal facts alone still do not authorize —
+          // point-query evidence carries a bounded validUntil, so admission
+          // requires a fresh join/reconcile observation.
+          (
+            await this.getMembershipGate(accountId)
+          )?.authority.clearScopeRemoval({
+            chatId,
+            chatRoomKey,
+          });
         }
 
         if (this.syncedEntityIds.has(entityId)) {
