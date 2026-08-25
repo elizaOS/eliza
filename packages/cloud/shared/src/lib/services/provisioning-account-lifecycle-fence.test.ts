@@ -104,4 +104,64 @@ describe("provisioning account lifecycle fence", () => {
     expect(result).toBe("created");
     expect(order).toEqual(["admitted", "provider", "released"]);
   });
+
+  test("keeps deletion fenced while provider resolution waits for durable settlement", async () => {
+    let admissionLive = false;
+    let resolveProvider: (() => void) | undefined;
+    let resolveSettlement: (() => void) | undefined;
+    const providerResolved = new Promise<void>((resolve) => {
+      resolveProvider = resolve;
+    });
+    const settlementCommitted = new Promise<void>((resolve) => {
+      resolveSettlement = resolve;
+    });
+    const activateDeletion = mock(async () =>
+      admissionLive ? "provider_work_in_flight" : "activated",
+    );
+
+    const operation = executeProvisioningWithAccountLifecycleAdmission({
+      authority: {
+        organizationId: "10000000-0000-4000-8000-000000000001",
+        operationKind: "agent_provision",
+        operationId: "20000000-0000-4000-8000-000000000001",
+      },
+      acquire: mock(async () => {
+        admissionLive = true;
+        return true;
+      }),
+      execute: async () => {
+        resolveProvider?.();
+        await settlementCommitted;
+        return "durably-recorded";
+      },
+      release: mock(async () => {
+        admissionLive = false;
+      }),
+    });
+
+    await providerResolved;
+    expect(await activateDeletion()).toBe("provider_work_in_flight");
+    resolveSettlement?.();
+    await expect(operation).resolves.toBe("durably-recorded");
+    expect(await activateDeletion()).toBe("activated");
+  });
+
+  test("does not release admission when durable settlement fails", async () => {
+    const release = mock(async () => undefined);
+    await expect(
+      executeProvisioningWithAccountLifecycleAdmission({
+        authority: {
+          organizationId: "10000000-0000-4000-8000-000000000001",
+          operationKind: "agent_provision",
+          operationId: "20000000-0000-4000-8000-000000000001",
+        },
+        acquire: mock(async () => true),
+        execute: async () => {
+          throw new Error("job receipt unavailable");
+        },
+        release,
+      }),
+    ).rejects.toThrow("job receipt unavailable");
+    expect(release).not.toHaveBeenCalled();
+  });
 });

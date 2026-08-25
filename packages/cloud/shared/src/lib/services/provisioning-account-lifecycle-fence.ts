@@ -46,9 +46,7 @@ export async function executeProvisioningWithAccountLifecycleAdmission<T>(input:
   if (!(await acquire(input.authority))) {
     throw new AccountLifecycleFencedError();
   }
-  try {
-    return await input.execute();
-  } finally {
-    await release(input.authority);
-  }
+  const result = await input.execute();
+  await release(input.authority);
+  return result;
 }
