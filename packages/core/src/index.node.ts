@@ -217,6 +217,9 @@ export * from "./markdown";
 // Export media utilities
 export * from "./media";
 export * from "./memory";
+export * from "./messaging/installation-contribution";
+export * from "./messaging/installation-lifecycle";
+export * from "./messaging/installation-service";
 export * from "./messaging/interactions";
 export * from "./messaging/manage-server-authorization";
 export * from "./mobile-device-bridge-service";

@@ -14,6 +14,7 @@ import { v4 } from "uuid";
 import { withCanonicalActionDocs } from "../../action-docs.ts";
 import { createUniqueUuid } from "../../entities.ts";
 import { logger } from "../../logger.ts";
+import { InstallationLifecycleService } from "../../messaging/installation-service.ts";
 import { fetchWithSsrfGuard } from "../../network/index.ts";
 import {
 	imageDescriptionTemplate,
@@ -1483,6 +1484,11 @@ export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
+	// Provider-neutral group installation lifecycle records (#23107).
+	// Lazy-started on first getService, so registering on every runtime is
+	// near-free; connectors (Discord pilot) resolve it at their join/remove
+	// seams and before sending group traffic.
+	InstallationLifecycleService,
 	// Async PII scrub rails (#14808): drains a priority BatchQueue on the core
 	// task scheduler, content-hash idempotent, non-blocking. LOCAL lane.
 	PiiScrubService,
@@ -1614,6 +1620,9 @@ export function createBasicCapabilitiesPlugin(
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
 			await runtime.getService(ChannelTopicsService.serviceType)?.stop();
+			await runtime
+				.getService(InstallationLifecycleService.serviceType)
+				?.stop();
 			await runtime
 				.getService(SensitiveRequestDispatchRegistryService.serviceType)
 				?.stop();

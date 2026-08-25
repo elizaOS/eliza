@@ -55,6 +55,7 @@ export interface ServiceTypeRegistry {
 	RELATIONSHIPS: "relationships";
 	PRINCIPAL: "principal";
 	MEMBERSHIP: "membership";
+	INSTALLATION: "installation";
 	FOLLOW_UP: "follow_up";
 	TRAJECTORIES: "trajectories";
 	SWARM_COORDINATOR: "SWARM_COORDINATOR";
@@ -164,6 +165,7 @@ export const ServiceType = {
 	RELATIONSHIPS: "relationships",
 	PRINCIPAL: "principal",
 	MEMBERSHIP: "membership",
+	INSTALLATION: "installation",
 	FOLLOW_UP: "follow_up",
 	TRAJECTORIES: "trajectories",
 	SWARM_COORDINATOR: "SWARM_COORDINATOR",

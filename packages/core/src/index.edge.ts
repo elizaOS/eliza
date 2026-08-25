@@ -53,6 +53,9 @@ export type { InferenceTurnSummary } from "./inference-timing";
 export * from "./logger";
 export * from "./markdown";
 export * from "./memory";
+export * from "./messaging/installation-contribution";
+export * from "./messaging/installation-lifecycle";
+export * from "./messaging/installation-service";
 export * from "./messaging/interactions";
 export * from "./name-tokens";
 // Literal-host SSRF policy helpers are pure and safe in Workers; DNS pinning

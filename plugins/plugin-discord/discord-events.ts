@@ -26,6 +26,10 @@ import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
+	reportDiscordGuildJoined,
+	reportDiscordGuildRemoved,
+} from "./installation-adapter";
+import {
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
 } from "./message-coalesce";
@@ -84,6 +88,8 @@ export interface DiscordServiceInternals {
 	getChannelType(channel: Channel): Promise<ElizaChannelType>;
 	handleInteractionCreate(interaction: Interaction): Promise<void>;
 	handleGuildCreate(guild: import("discord.js").Guild): Promise<void>;
+	/** Canonical installation lifecycle account id for the active client (stable UUID per Discord account). */
+	discordInstallationAccountId?(): UUID;
 	handleGuildMemberAdd(member: GuildMember): Promise<void>;
 	handleReactionAdd(
 		reaction:
@@ -668,6 +674,17 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	// ── guildCreate ────────────────────────────────────────────────────
 	service.client.on("guildCreate", async (guild) => {
 		try {
+			// Canonical installation lifecycle: report the join before any other
+			// onboarding so a guild the agent cannot durably record still leaves
+			// an honest evidence trail.
+			await reportDiscordGuildJoined(service.runtime, {
+				connectorAccountId:
+					service.discordInstallationAccountId?.() ??
+					createUniqueUuid(service.runtime, "discord-default-account"),
+				externalWorldId: guild.id,
+				guildName: guild.name,
+				worldId: createUniqueUuid(service.runtime, guild.id),
+			});
 			await service.handleGuildCreate(guild);
 		} catch (error) {
 			service.runtime.logger.error(
@@ -677,6 +694,39 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 					error: error instanceof Error ? error.message : String(error),
 				},
 				"Error handling guild create",
+			);
+		}
+	});
+
+	// ── guildDelete ────────────────────────────────────────────────────
+	// Removal seam for the canonical installation lifecycle: stops the record
+	// at the current generation so late events from the dead installation are
+	// fenced (stale-event resurrection guard).
+	service.client.on("guildDelete", async (guild) => {
+		try {
+			await reportDiscordGuildRemoved(service.runtime, {
+				connectorAccountId:
+					service.discordInstallationAccountId?.() ??
+					createUniqueUuid(service.runtime, "discord-default-account"),
+				externalWorldId: guild.id,
+			});
+		} catch (error) {
+			// error-policy:J7 diagnostics must not kill the loop — lifecycle
+			// reporting failure is warned here and escalated via reportError so
+			// the gateway event continues processing.
+			service.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: service.runtime.agentId,
+					guildId: guild.id,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Error reporting guild removal to installation lifecycle",
+			);
+			service.runtime.reportError(
+				"plugin:discord:installation-lifecycle",
+				error,
+				{ guildId: guild.id },
 			);
 		}
 	});

@@ -11,6 +11,7 @@ import {
 	type IAgentRuntime,
 	logger,
 	type Plugin,
+	ServiceType,
 } from "@elizaos/core";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
@@ -19,6 +20,10 @@ import * as discordCoordinationSchema from "./coordination-schema";
 import { discordDataRoutes } from "./data-routes";
 import { DiscordLocalService } from "./discord-local-service";
 import { registerDiscordTargetSource } from "./discord-target-source";
+import {
+	type InstallationLifecycleService,
+	registerDiscordInstallationContribution,
+} from "./installation-adapter";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
@@ -101,6 +106,49 @@ const discordPlugin: Plugin = {
 		const respondOnlyToMentions = runtime.getSetting(
 			"DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
 		) as string;
+
+		// Canonical installation lifecycle (#23107): register the Discord
+		// contribution so the core lifecycle service can answer scope and
+		// activation queries for Discord groups. Runs after the settings reads
+		// so the tiered invite-URL activation is built from
+		// DISCORD_APPLICATION_ID. Service startup only completes after the
+		// runtime's init barrier resolves, and plugin init runs INSIDE that
+		// barrier — awaiting the load promise here would deadlock the boot, so
+		// the registration is fire-and-forget: a sync getService attempt now
+		// (covers an already-started service), then a load-promise callback
+		// for the normal asynchronous start. Never throws into plugin init.
+		try {
+			registerDiscordInstallationContribution(
+				runtime,
+				typeof applicationId === "string" ? applicationId : null,
+			);
+		} catch (err) {
+			logger.warn(
+				{
+					src: "plugin:discord",
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"Installation contribution sync registration failed; deferring to service load",
+			);
+		}
+		runtime
+			.getServiceLoadPromise(ServiceType.INSTALLATION)
+			.then((service) => {
+				registerDiscordInstallationContribution(
+					runtime,
+					typeof applicationId === "string" ? applicationId : null,
+					service as InstallationLifecycleService,
+				);
+			})
+			.catch((err) => {
+				logger.warn(
+					{
+						src: "plugin:discord",
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"Installation lifecycle service unavailable; contribution not registered",
+				);
+			});
 
 		printBanner({
 			pluginName: "plugin-discord",

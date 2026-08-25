@@ -106,6 +106,9 @@ export * from "./inference-timing";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";
+export * from "./messaging/installation-contribution";
+export * from "./messaging/installation-lifecycle";
+export * from "./messaging/installation-service";
 export * from "./messaging/interactions";
 // Vendor-neutral model-gateway resolution (#11536 E1). Pure string logic, no
 // Node deps, so it is browser-safe and exported from both barrels.
