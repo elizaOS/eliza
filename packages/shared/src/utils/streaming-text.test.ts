@@ -132,6 +132,16 @@ describe("streaming text named regressions", () => {
     // appends instead of being dropped.
     expect(mergeStreamingText("ab", "a")).toBe("aba");
     expect(mergeStreamingText("ahbbh", "a")).toBe("ahbbha");
+
+    // Unicode code points outside the BMP occupy two UTF-16 code units but
+    // remain one streamed character. They follow the same append contract.
+    expect(stream([..."😀😀"])).toBe("😀😀");
+    expect(stream([..."😀a😀"])).toBe("😀a😀");
+    expect(resolveStreamingUpdate("😀a", "😀")).toEqual({
+      kind: "append",
+      nextText: "😀a😀",
+      emittedText: "😀",
+    });
   });
 
   it("still ignores genuine multi-character regressive snapshots", () => {
@@ -202,7 +212,7 @@ describe("streaming text fuzz invariants", () => {
   it("treats cumulative snapshots as replacements, not duplicated appends", () => {
     fc.assert(
       fc.property(textArbitrary, textArbitrary, (prefix, suffix) => {
-        fc.pre(!(suffix === "" && prefix.length === 1 && /\S/u.test(prefix)));
+        fc.pre(!(suffix === "" && /^\S$/u.test(prefix)));
         const incoming = `${prefix}${suffix}`;
 
         expect(mergeStreamingText(prefix, incoming)).toBe(incoming);
@@ -219,7 +229,7 @@ describe("streaming text fuzz invariants", () => {
         // not a regressive snapshot, so it is excluded here alongside the
         // existing equality carve-out. Multi-character prefixes remain
         // regressive and are still asserted below.
-        fc.pre(!(prefix.length === 1 && /\S/u.test(prefix)));
+        fc.pre(!/^\S$/u.test(prefix));
         const existing = `${prefix}${suffix}`;
 
         expect(mergeStreamingText(existing, prefix)).toBe(existing);
