@@ -42,22 +42,71 @@ import {
 import { type StartedMocks, startMocks } from "../scripts/start-mocks.ts";
 
 /**
- * Certification records: each executed delivery test appends the row id it
- * certified and the proof kinds its assertions actually discharged. The
- * binding test compares these against every registry row's requiredProofs —
- * deleting a delivery test, a receipt check, or a readback leaves the row
+ * Certification records: proof kinds are recorded BY the assertion helpers
+ * below as they actually execute — a certification can only name a proof
+ * whose assertion ran in this process. The binding test compares these
+ * records against every registry row's requiredProofs, so deleting a
+ * delivery test, a receipt check, or a readback assertion leaves the row
  * uncertified and fails the suite.
  */
 const certifiedRows: Array<{
   rowId: string;
-  proofs: readonly ContentDeliveryProofKind[];
+  proofs: ContentDeliveryProofKind[];
 }> = [];
 
-function certifyRow(
+function proofsFor(rowId: string): ContentDeliveryProofKind[] {
+  let record = certifiedRows.find((r) => r.rowId === rowId);
+  if (!record) {
+    record = { rowId, proofs: [] };
+    certifiedRows.push(record);
+  }
+  return record.proofs;
+}
+
+/** Record a discharged proof kind for a row (idempotent per row+kind). */
+function discharge(rowId: string, proof: ContentDeliveryProofKind): void {
+  const proofs = proofsFor(rowId);
+  if (!proofs.includes(proof)) proofs.push(proof);
+}
+
+/** Assertion wrappers that certify the row only because they ran. */
+
+async function certifiedVerbatimText(
   rowId: string,
-  proofs: readonly ContentDeliveryProofKind[],
-): void {
-  certifiedRows.push({ rowId, proofs: [...proofs] });
+  sourceText: string,
+  deliveredChunks: readonly string[],
+): Promise<void> {
+  await assertVerbatimTextDelivery(sourceText, deliveredChunks);
+  discharge(rowId, "byte-hash");
+}
+
+async function certifiedReceipt(
+  rowId: string,
+  receipt: DeliveryProviderReceipt,
+  payload: string | Uint8Array,
+  expected: { sourceConnector: string; targetConnector: string },
+): Promise<void> {
+  await verifyDeliveryReceipt(receipt, payload, expected);
+  discharge(rowId, "provider-receipt");
+}
+
+async function certifiedBytePreserving(
+  rowId: string,
+  sourceBytes: Uint8Array,
+  deliveredBytes: Uint8Array,
+): Promise<void> {
+  await assertBytePreservingDelivery(sourceBytes, deliveredBytes);
+  discharge(rowId, "byte-hash");
+}
+
+/** Readback: provider-echoed fields / stored bytes proven equal to source. */
+async function certifiedReadback(
+  rowId: string,
+  actual: string | Uint8Array,
+  expected: string | Uint8Array,
+): Promise<void> {
+  expect(actual).toEqual(expected);
+  discharge(rowId, "readback");
 }
 
 let mocks: StartedMocks | null = null;
@@ -190,7 +239,16 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
         String((entry.body as Record<string, unknown>).text ?? ""),
       )
       .join("");
-    assertVerbatimTextDelivery(DISCORD_SOURCE_TEXT, [deliveredText]);
+    await certifiedVerbatimText(
+      "discord-to-telegram.text",
+      DISCORD_SOURCE_TEXT,
+      [deliveredText],
+    );
+    await certifiedReadback(
+      "discord-to-telegram.text",
+      deliveredText,
+      DISCORD_SOURCE_TEXT,
+    );
 
     const receipt: DeliveryProviderReceipt = {
       kind: "provider-receipt",
@@ -204,18 +262,10 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
       observedAt: sendMessageCalls[0]?.createdAt ?? new Date().toISOString(),
       providerEcho: { text: deliveredText },
     };
-    verifyDeliveryReceipt(receipt, deliveredText, {
+    await certifiedReceipt("discord-to-telegram.text", receipt, deliveredText, {
       sourceConnector: "discord",
       targetConnector: "telegram",
     });
-    // Row certified: provider-receipt (verified typed receipt), byte-hash
-    // (hash embedded in the verified receipt), readback (providerEcho text
-    // equals the delivered wire text).
-    certifyRow("discord-to-telegram.text", [
-      "provider-receipt",
-      "byte-hash",
-      "readback",
-    ]);
   });
 
   it("delivers a Discord-sourced file byte-complete through the real core fetch + real Telegram upload + readback", async () => {
@@ -232,7 +282,11 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
       ssrfPolicy: { allowedHostnames: [mockHost] },
       maxBytes: 10 * 1024 * 1024,
     });
-    assertBytePreservingDelivery(FILE_BYTES, fetched.buffer);
+    await certifiedBytePreserving(
+      "discord-to-telegram.file",
+      FILE_BYTES,
+      fetched.buffer,
+    );
 
     // Discord-side wire receipt: the CDN fetch was observed on the ledger.
     const discordLedger = (mocks?.requestLedger() ?? []).filter(
@@ -281,7 +335,12 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
     );
     expect(bytesBack.status).toBe(200);
     const roundTrip = new Uint8Array(await bytesBack.arrayBuffer());
-    assertBytePreservingDelivery(FILE_BYTES, roundTrip);
+    await certifiedBytePreserving(
+      "discord-to-telegram.file",
+      FILE_BYTES,
+      roundTrip,
+    );
+    await certifiedReadback("discord-to-telegram.file", roundTrip, FILE_BYTES);
 
     const receipt: DeliveryProviderReceipt = {
       kind: "provider-receipt",
@@ -295,18 +354,10 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
       observedAt: sendPhotoCalls[0]?.createdAt ?? new Date().toISOString(),
       providerEcho: { sha256: FILE_SHA, byteLength: FILE_BYTES.length },
     };
-    verifyDeliveryReceipt(receipt, FILE_BYTES, {
+    await certifiedReceipt("discord-to-telegram.file", receipt, FILE_BYTES, {
       sourceConnector: "discord",
       targetConnector: "telegram",
     });
-    // Row certified: provider-receipt (verified typed receipt), byte-hash
-    // (assertBytePreservingDelivery on both legs), readback (bytes pulled
-    // back through the provider readback route and proven equal).
-    certifyRow("discord-to-telegram.file", [
-      "provider-receipt",
-      "byte-hash",
-      "readback",
-    ]);
   });
   /**
    * Row binding: the certification records the delivery tests above actually

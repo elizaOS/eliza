@@ -1947,7 +1947,12 @@ function telegramMediaFetchError(reason: string): DynamicFixtureResponse {
  * Malformed bodies return an empty list and the caller answers 400 — never
  * a fabricated upload receipt.
  */
+// Test-only re-export: the adversarial parser unit suite reaches the
+// private parser without making it part of the mock fleet's public API.
+export const parseMultipartPartsForTest = parseMultipartParts;
+
 const MOCK_MAX_MULTIPART_PARTS = 32;
+const MOCK_MAX_MULTIPART_SCAN = 512;
 const MOCK_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 function parseMultipartParts(
@@ -1960,37 +1965,34 @@ function parseMultipartParts(
   const parts: Array<{ name: string; filename?: string; data: Buffer }> = [];
   // A delimiter is the boundary at a line start: preceded by CRLF (or body
   // start) and followed by CRLF (next part) or `--` (closing delimiter).
-  let cursor = raw.indexOf(boundaryLine);
+  // Scan budget bounds delimiter iteration even when parts are skipped as
+  // malformed or over-cap, so a hostile body cannot force unbounded loops.
+  let cursor = -1;
   let atBodyStart = true;
-  while (cursor !== -1 && parts.length < MOCK_MAX_MULTIPART_PARTS) {
+  let scans = 0;
+  while (
+    parts.length < MOCK_MAX_MULTIPART_PARTS &&
+    scans < MOCK_MAX_MULTIPART_SCAN
+  ) {
+    scans += 1;
+    cursor = findDelimiterLine(raw, boundaryLine, atBodyStart ? 0 : cursor + 1);
+    if (cursor === -1) break;
     const afterBoundary = cursor + boundaryLine.length;
     // Closing delimiter terminates parsing.
     if (raw[afterBoundary] === 0x2d && raw[afterBoundary + 1] === 0x2d) break;
-    // A delimiter line must end with CRLF.
-    if (raw[afterBoundary] !== 0x0d || raw[afterBoundary + 1] !== 0x0a) {
-      atBodyStart = false;
-      cursor = raw.indexOf(boundaryLine, cursor + 1);
-      continue;
-    }
-    // A mid-body delimiter must be preceded by CRLF (or sit at body start).
-    if (
-      !atBodyStart &&
-      !(cursor >= 2 && raw[cursor - 2] === 0x0d && raw[cursor - 1] === 0x0a)
-    ) {
-      cursor = raw.indexOf(boundaryLine, cursor + 1);
-      continue;
-    }
+    // findDelimiterLine only returns boundary occurrences followed by CRLF
+    // or the closing `--`; the closing case is handled above.
     const dataStart = afterBoundary + 2;
-    // Part payload ends at the CRLF preceding the NEXT delimiter line.
-    const nextDelimiter = findNextDelimiterLine(raw, boundaryLine, dataStart);
+    // Part payload ends at (and excludes) the CRLF preceding the NEXT
+    // delimiter line; that CRLF belongs to the delimiter, not the payload.
+    const nextDelimiter = findDelimiterLine(raw, boundaryLine, dataStart);
     if (nextDelimiter === -1) break;
     const headerEnd = raw.indexOf(Buffer.from("\r\n\r\n"), dataStart);
-    if (headerEnd !== -1 && headerEnd < nextDelimiter) {
+    if (headerEnd !== -1 && headerEnd < nextDelimiter - 2) {
       const headers = raw.subarray(dataStart, headerEnd).toString("utf8");
       const nameMatch = /name="([^"]*)"/.exec(headers);
       const fileMatch = /filename="([^"]*)"/.exec(headers);
-      // Part data excludes the CRLF that belongs to the next delimiter line.
-      const data = raw.subarray(headerEnd + 4, nextDelimiter);
+      const data = raw.subarray(headerEnd + 4, nextDelimiter - 2);
       if (nameMatch?.[1] && data.length <= MOCK_MAX_UPLOAD_BYTES) {
         parts.push({
           name: nameMatch[1],
@@ -2005,8 +2007,13 @@ function parseMultipartParts(
   return parts;
 }
 
-/** Next index where the boundary appears as a full delimiter LINE (CRLF before, CRLF or `--` after), or -1. */
-function findNextDelimiterLine(
+/**
+ * Next index at or after `from` where the boundary appears as a full
+ * delimiter LINE: followed by CRLF (part delimiter) or `--` (closing
+ * delimiter), AND either at body start (offset 0) or preceded by CRLF.
+ * Boundary bytes inside part content (no CRLF framing) are not delimiters.
+ */
+function findDelimiterLine(
   raw: Buffer,
   boundaryLine: Buffer,
   from: number,
@@ -2016,11 +2023,14 @@ function findNextDelimiterLine(
     const after = candidate + boundaryLine.length;
     const closes = raw[after] === 0x2d && raw[after + 1] === 0x2d;
     const endsLine = raw[after] === 0x0d && raw[after + 1] === 0x0a;
-    const precededByCrlf =
-      candidate >= 2 &&
-      raw[candidate - 2] === 0x0d &&
-      raw[candidate - 1] === 0x0a;
-    if ((closes || endsLine) && precededByCrlf) return candidate;
+    if (closes || endsLine) {
+      const atBodyStart = candidate === 0;
+      const precededByCrlf =
+        candidate >= 2 &&
+        raw[candidate - 2] === 0x0d &&
+        raw[candidate - 1] === 0x0a;
+      if (atBodyStart || precededByCrlf) return candidate;
+    }
     candidate = raw.indexOf(boundaryLine, candidate + 1);
   }
   return -1;
@@ -2150,9 +2160,9 @@ async function telegramDynamicFixture(
           "media URL is not served by this mock fleet",
         );
       }
-      let mediaResponse: Response;
+      let bytes: Buffer;
       try {
-        mediaResponse = await fetch(parsedMediaUrl, {
+        const mediaResponse = await fetch(parsedMediaUrl, {
           signal: AbortSignal.timeout(5_000),
           redirect: "error",
         });
@@ -2161,22 +2171,25 @@ async function telegramDynamicFixture(
             `media fetch returned ${mediaResponse.status}`,
           );
         }
-      } catch (error) {
+        const contentLength = Number(
+          mediaResponse.headers.get("content-length"),
+        );
+        if (
+          Number.isFinite(contentLength) &&
+          contentLength > MOCK_MAX_UPLOAD_BYTES
+        ) {
+          return telegramMediaFetchError("media too large");
+        }
         // error-policy:J1 boundary translation: the provider boundary turns
-        // any fetch failure (timeout, refused, redirect) into a Telegram-style
-        // 400, never a 500 or a fabricated success.
+        // any fetch or body-read failure (timeout, refused, redirect,
+        // aborted mid-body) into a Telegram-style 400, never a 500 or a
+        // fabricated success.
+        bytes = Buffer.from(await mediaResponse.arrayBuffer());
+      } catch (error) {
         return telegramMediaFetchError(
           `media fetch failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const contentLength = Number(mediaResponse.headers.get("content-length"));
-      if (
-        Number.isFinite(contentLength) &&
-        contentLength > MOCK_MAX_UPLOAD_BYTES
-      ) {
-        return telegramMediaFetchError("media too large");
-      }
-      const bytes = Buffer.from(await mediaResponse.arrayBuffer());
       if (bytes.length > MOCK_MAX_UPLOAD_BYTES) {
         return telegramMediaFetchError("media too large");
       }
@@ -4539,6 +4552,10 @@ async function startFixtureServer(
     stop: async () => {
       if (stopped) return;
       stopped = true;
+      // Drop this server's origin from the fleet allowlist BEFORE closing:
+      // the OS may reuse the port, and a stale entry would keep authorizing
+      // an unrelated localhost service for URL-media fetches.
+      fleetOrigins.delete(`http://127.0.0.1:${port}`);
       if (!server.listening) return;
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
