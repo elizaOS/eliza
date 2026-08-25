@@ -329,12 +329,28 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
 };
 
-async function openExternal(url: string): Promise<void> {
+export async function openAndroidCloudSignIn(url: string): Promise<"closed"> {
   const parsed = new URL(url);
   if (parsed.protocol !== "https:") {
     throw new Error("Eliza sign-in must use HTTPS.");
   }
-  await Browser.open({ url: parsed.toString() });
+  let finishBrowser: (() => void) | null = null;
+  const browserFinished = new Promise<void>((resolve) => {
+    finishBrowser = resolve;
+  });
+  // Custom Tabs background the app WebView, so transport polling from that
+  // suspended renderer is unreliable. Resume only after Android reports the
+  // tab closed; the Cloud session is authoritative at that point.
+  const listener = await Browser.addListener("browserFinished", () => {
+    finishBrowser?.();
+  });
+  try {
+    await Browser.open({ url: parsed.toString() });
+    await browserFinished;
+    return "closed";
+  } finally {
+    await listener.remove();
+  }
 }
 
 function renderBootFailure(error: unknown): void {
@@ -357,7 +373,7 @@ export async function bootAndroidCloudApp(): Promise<void> {
         <AndroidCloudApp
           client={androidCloudClient}
           closeExternal={() => Browser.close()}
-          openExternal={openExternal}
+          openExternal={openAndroidCloudSignIn}
           voice={androidCloudVoice}
         />
       </ErrorBoundary>
