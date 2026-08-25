@@ -352,8 +352,8 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.EMBEDDING_DIMENSION).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("384");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
-    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
-    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
   });
 
   test("a previously provisioned agent (cloud key present) keeps the 1536-d cloud default — no #9911 heal", async () => {
@@ -409,22 +409,22 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
   });
 
-  test("preserves explicit per-agent overrides", async () => {
+  test("preserves embedding overrides while replacing stored model values", async () => {
     const { applyManagedAgentInferenceEnvDefaults } = await import("./managed-eliza-config");
 
     const result = applyManagedAgentInferenceEnvDefaults({
       EMBEDDING_DIMENSION: "768",
       ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS: "768",
       ELIZAOS_CLOUD_EMBEDDING_URL: "https://custom.example.com/api/v1",
-      ELIZAOS_CLOUD_SMALL_MODEL: "custom-small",
-      ELIZAOS_CLOUD_LARGE_MODEL: "custom-large",
+      ELIZAOS_CLOUD_SMALL_MODEL: "zai-glm-4.7",
+      ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
     });
 
     expect(result.EMBEDDING_DIMENSION).toBe("768");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("768");
     expect(result.ELIZAOS_CLOUD_EMBEDDING_URL).toBe("https://custom.example.com/api/v1");
-    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("custom-small");
-    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("custom-large");
+    expect(result.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(result.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
   });
 
   test("spreading the helper heals a stale upgrade env that lacks EMBEDDING_DIMENSION", async () => {
@@ -439,6 +439,8 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
       DATABASE_URL: "postgres://agent/own-db",
       ELIZA_API_TOKEN: "agent_existingtoken",
       ELIZAOS_CLOUD_API_KEY: "sk-existing",
+      ELIZAOS_CLOUD_SMALL_MODEL: "zai-glm-4.7",
+      ELIZAOS_CLOUD_LARGE_MODEL: "zai-glm-4.7",
       ELIZA_AGENT_LOCAL_STATE: "1",
       PGLITE_DATA_DIR: "/root/.eliza/.pgdata",
       ELIZA_PLUGIN_SET: "lean-chat",
@@ -453,8 +455,8 @@ describe("applyManagedAgentInferenceEnvDefaults (#8434)", () => {
     expect(healed.EMBEDDING_DIMENSION).toBe("1536");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS).toBe("1536");
     expect(healed.ELIZAOS_CLOUD_EMBEDDING_URL).toBeTruthy();
-    expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBeTruthy();
-    expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBeTruthy();
+    expect(healed.ELIZAOS_CLOUD_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(healed.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gemma-4-31b");
     // ...and the stored env is preserved verbatim (no key rotation, no DB strip,
     // no state flip - the whole point of the narrow helper).
     expect(healed.DATABASE_URL).toBe("postgres://agent/own-db");
