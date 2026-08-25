@@ -171,6 +171,10 @@ export function extractLaunchTarget(
 ): string | null {
 	return (
 		readStringOption(options, "app") ??
+		readStringOption(options, "appName") ??
+		readStringOption(options, "appId") ??
+		readStringOption(options, "target") ??
+		readStringOption(options, "id") ??
 		readStringOption(options, "name") ??
 		extractAfterVerbs(userRequestMessageText(message), LAUNCH_VERBS)
 	);
@@ -180,9 +184,15 @@ export function extractCloseTarget(
 	message: Memory | undefined,
 	options: Record<string, unknown> | undefined,
 ): { runId: string | null; appName: string | null } {
-	const runId = readStringOption(options, "runId");
+	const runId =
+		readStringOption(options, "runId") ??
+		readStringOption(options, "run_id") ??
+		readStringOption(options, "id");
 	const appName =
 		readStringOption(options, "app") ??
+		readStringOption(options, "appName") ??
+		readStringOption(options, "appId") ??
+		readStringOption(options, "target") ??
 		readStringOption(options, "name") ??
 		extractAfterVerbs(userRequestMessageText(message), CLOSE_VERBS);
 	return { runId, appName };

@@ -49,6 +49,11 @@ describe("extractLaunchTarget", () => {
 		expect(
 			extractLaunchTarget(msg("launch calculator"), { name: "wallet" }),
 		).toBe("wallet");
+		expect(extractLaunchTarget(undefined, { appName: "wallet" })).toBe(
+			"wallet",
+		);
+		expect(extractLaunchTarget(undefined, { appId: "wallet" })).toBe("wallet");
+		expect(extractLaunchTarget(undefined, { target: "wallet" })).toBe("wallet");
 		expect(extractLaunchTarget(msg("please open the Calculator app"), {})).toBe(
 			"calculator",
 		);
@@ -76,6 +81,12 @@ describe("extractCloseTarget", () => {
 		).toEqual({
 			runId: "r-1",
 			appName: "calculator",
+		});
+		expect(
+			extractCloseTarget(undefined, { run_id: "r-2", target: "wallet" }),
+		).toEqual({
+			runId: "r-2",
+			appName: "wallet",
 		});
 		expect(extractCloseTarget(msg("kill the Wallet app"), undefined)).toEqual({
 			runId: null,
