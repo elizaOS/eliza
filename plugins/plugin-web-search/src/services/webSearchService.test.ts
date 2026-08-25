@@ -199,6 +199,28 @@ describe("WebSearchService", () => {
                 days: 14,
             })
         );
+
+        await service.searchNews("funding", { freshness: "day" });
+        expect(searchMock).toHaveBeenLastCalledWith(
+            "funding",
+            expect.objectContaining({
+                topic: "news",
+                days: 1,
+            })
+        );
+
+        await service.searchNews("funding", { freshness: "month" });
+        expect(searchMock).toHaveBeenLastCalledWith(
+            "funding",
+            expect.objectContaining({
+                topic: "news",
+                days: 30,
+            })
+        );
+
+        await expect(service.searchNews("funding", { freshness: "year" as never })).rejects.toThrow(
+            'Invalid freshness: expected "day", "week", or "month", got "year"'
+        );
     });
 
     it("derives suggestions and trending searches from Tavily result titles", async () => {

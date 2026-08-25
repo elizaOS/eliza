@@ -202,7 +202,9 @@ function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
         case "month":
             return 30;
         default:
-            return 3;
+            throw new TypeError(
+                `Invalid freshness: expected "day", "week", or "month", got "${freshness}"`
+            );
     }
 }
 
