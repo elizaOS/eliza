@@ -14,8 +14,12 @@ import {
 	deriveAvailableContexts,
 	getActiveRoutingContexts,
 	getActiveRoutingContextsForTurn,
+	getExplicitRoutingContexts,
 	inferContextRoutingFromText,
+	isPageScopedRoutingContext,
 	mergeContextRouting,
+	normalizeRoutingContexts,
+	parseContextList,
 	routingContextsOverlap,
 	shouldIncludeByContext,
 } from "./context-routing.ts";
@@ -326,5 +330,75 @@ describe("mergeContextRouting", () => {
 			(context) => `${context}`.toLowerCase() === "knowledge",
 		).length;
 		expect(countKnowledge).toBe(1);
+	});
+});
+
+describe("parseContextList", () => {
+	it("splits on comma, semicolon, newline and trims", () => {
+		expect(parseContextList("code, browser; wallet\nadmin")).toEqual([
+			"code",
+			"browser",
+			"wallet",
+			"admin",
+		]);
+	});
+
+	it("handles arrays with mixed strings and dedupes case-insensitively", () => {
+		expect(
+			parseContextList(["Code", "code", "  BROWSER  ", "browser"]),
+		).toEqual(["code", "browser"]);
+	});
+
+	it("handles numeric and empty values by stringifying then filtering", () => {
+		expect(parseContextList(["code", 123 as unknown as string])).toEqual([
+			"code",
+			"123",
+		]);
+		expect(parseContextList("")).toEqual([]);
+		expect(parseContextList(null as unknown as string)).toEqual([]);
+	});
+
+	it("normalizes to lowercase and keeps all non-empty contexts", () => {
+		expect(parseContextList("CODE, Invalid-Context!")).toEqual([
+			"code",
+			"invalid-context!",
+		]);
+	});
+});
+
+describe("isPageScopedRoutingContext", () => {
+	it("is true for page and page-* prefixes", () => {
+		expect(isPageScopedRoutingContext("page")).toBe(true);
+		expect(isPageScopedRoutingContext("page-details")).toBe(true);
+		expect(isPageScopedRoutingContext("PAGE")).toBe(true);
+		expect(isPageScopedRoutingContext(" page ")).toBe(true);
+	});
+
+	it("is false for non-page contexts and non-strings", () => {
+		expect(isPageScopedRoutingContext("code")).toBe(false);
+		expect(isPageScopedRoutingContext("general")).toBe(false);
+		expect(isPageScopedRoutingContext(123 as unknown as string)).toBe(false);
+		expect(isPageScopedRoutingContext(null as unknown as string)).toBe(false);
+	});
+});
+
+describe("normalizeRoutingContexts", () => {
+	it("splits, dedupes, and lowercases", () => {
+		expect(normalizeRoutingContexts(["Code", "code, browser"])).toEqual([
+			"code",
+			"browser",
+		]);
+		expect(normalizeRoutingContexts([])).toEqual([]);
+		expect(normalizeRoutingContexts(undefined)).toEqual([]);
+	});
+});
+
+describe("getExplicitRoutingContexts", () => {
+	it("filters out general and page-scoped contexts", () => {
+		expect(
+			getExplicitRoutingContexts(["general", "code", "page", "page-detail"]),
+		).toEqual(["code"]);
+		expect(getExplicitRoutingContexts(["general"])).toEqual([]);
+		expect(getExplicitRoutingContexts(undefined)).toEqual([]);
 	});
 });
