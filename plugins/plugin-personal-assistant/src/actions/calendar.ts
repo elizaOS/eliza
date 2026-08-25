@@ -131,14 +131,21 @@ interface CalendarApprovalQueue {
 }
 
 function approvalSafeLabel(value: string): string {
-  return value
+  const sanitized = value
     .replace(/[\r\n\t]+/g, " ")
-    .replace(/[[\]]/g, "")
+    .replace(/[\[\]]/g, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 160);
+    .trim();
+  if (sanitized.length <= 160) return sanitized;
+  let end = 160;
+  if (end > 0 && end < sanitized.length) {
+    const code = sanitized.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return sanitized.slice(0, end);
 }
-
 function requireApprovalMessageIdentity(message: Memory): {
   messageId: string;
   createdAt: number;
