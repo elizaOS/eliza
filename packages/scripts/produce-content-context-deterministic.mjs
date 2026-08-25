@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
+
 /**
  * Produces deterministic progressive-content evidence from the repository's
  * six production target factories. Every success value is derived from target
  * reads, shared conformance, or an executable fault/mutant runner.
  */
 
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
@@ -13,6 +15,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { createPreparedModelRequestGuard } from "../core/src/runtime/prepared-model-request.ts";
 import {
+  cleanupProgressiveContentProductionFaults,
+  createProgressiveContentProductionFaultExecutors,
   runProgressiveContentFaultRegistry,
   runProgressiveContentMutantRegistry,
   runProgressiveContentStress,
@@ -20,12 +24,17 @@ import {
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../corpus-tools/src/progressive-content-realization.ts";
 import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
+import { createProgressiveContentExternalMutantExecutors } from "../scenario-runner/src/progressive-content-external-mutants.ts";
 import {
   createProgressiveContentProductionFactories,
   createProgressiveContentProductionTarget,
 } from "./lib/progressive-content-production-targets.mjs";
 
 const PAGE_BYTES = 64 * 1024;
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 
 function requiredEnvironment(name) {
   const value = process.env[name];
@@ -54,6 +63,49 @@ async function writeJson(outputDir, name, value) {
     path.join(outputDir, name),
     `${JSON.stringify(value, null, 2)}\n`,
   );
+}
+
+async function runDeterministicScenario(outputDir, commit) {
+  const scenarioRoot = path.join(REPO_ROOT, "packages/scenario-runner");
+  const runDir = path.join(outputDir, "scenario-run");
+  const report = path.join(outputDir, "scenario.json");
+  const native = path.join(outputDir, "scenario-native.jsonl");
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [
+        "--conditions",
+        "eliza-source",
+        "--tsconfig-override",
+        "../../tsconfig.json",
+        "src/cli.ts",
+        "run",
+        "test/scenarios",
+        "--scenario",
+        "deterministic-progressive-content-actions",
+        "--report",
+        report,
+        "--run-dir",
+        runDir,
+        "--export-native",
+        native,
+        "--runId",
+        `content-context-${commit}`,
+      ],
+      {
+        cwd: scenarioRoot,
+        env: { ...process.env, SCENARIO_USE_DETERMINISTIC_MODEL: "1" },
+        stdio: "inherit",
+      },
+    );
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else
+        reject(new Error(`deterministic scenario failed (${signal ?? code})`));
+    });
+  });
+  await Promise.all([fs.chmod(report, 0o600), fs.chmod(native, 0o600)]);
 }
 
 function factoryMap(factories) {
@@ -170,7 +222,7 @@ async function productionMutants(corpusRoot, manifest, factories) {
         if (!adapter) throw new Error("mutant target inventory exhausted");
         return adapter;
       },
-      externalExecutors: {},
+      externalExecutors: createProgressiveContentExternalMutantExecutors(),
     });
   } finally {
     for (const target of targets) {
@@ -207,39 +259,56 @@ async function productionFaults(corpusRoot, manifest, factories) {
       family === "file" && format !== "binary" && format !== "invalid-utf8",
   );
   if (!object) throw new Error("file fault object is absent");
-  return runProgressiveContentFaultRegistry({
-    executors: {
-      unauthorized: faultExecutor(corpusRoot, object, factories, (target) =>
-        target.read({ access: "unauthorized", offset: 0, limit: 1 }),
-      ),
-      "stale-revision": faultExecutor(corpusRoot, object, factories, (target) =>
-        target.read({
-          access: "authorized",
-          offset: 0,
-          limit: 1,
-          expectedRevision: `${target.object.revision}:stale`,
-        }),
-      ),
-      "missing-source": faultExecutor(
-        corpusRoot,
-        object,
-        factories,
-        async (target) => {
-          await target.cleanup();
-          await target.read({ access: "authorized", offset: 0, limit: 1 });
-        },
-      ),
-      "concurrent-cleanup": faultExecutor(
-        corpusRoot,
-        object,
-        factories,
-        async (target) => {
-          await Promise.all([target.cleanup(), target.cleanup()]);
-          await target.read({ access: "authorized", offset: 0, limit: 1 });
-        },
-      ),
-    },
-  });
+  const faultWorkRoot = path.join(
+    path.dirname(requiredEnvironment("ELIZA_CONTENT_CONTEXT_OUTPUT_DIR")),
+    "production-faults",
+  );
+  const productionExecutors =
+    await createProgressiveContentProductionFaultExecutors({
+      workRoot: faultWorkRoot,
+    });
+  try {
+    return await runProgressiveContentFaultRegistry({
+      executors: {
+        ...productionExecutors,
+        unauthorized: faultExecutor(corpusRoot, object, factories, (target) =>
+          target.read({ access: "unauthorized", offset: 0, limit: 1 }),
+        ),
+        "stale-revision": faultExecutor(
+          corpusRoot,
+          object,
+          factories,
+          (target) =>
+            target.read({
+              access: "authorized",
+              offset: 0,
+              limit: 1,
+              expectedRevision: `${target.object.revision}:stale`,
+            }),
+        ),
+        "missing-source": faultExecutor(
+          corpusRoot,
+          object,
+          factories,
+          async (target) => {
+            await target.cleanup();
+            await target.read({ access: "authorized", offset: 0, limit: 1 });
+          },
+        ),
+        "concurrent-cleanup": faultExecutor(
+          corpusRoot,
+          object,
+          factories,
+          async (target) => {
+            await Promise.all([target.cleanup(), target.cleanup()]);
+            await target.read({ access: "authorized", offset: 0, limit: 1 });
+          },
+        ),
+      },
+    });
+  } finally {
+    await cleanupProgressiveContentProductionFaults(faultWorkRoot);
+  }
 }
 
 /** Run the fixed deterministic evidence producer against one verified corpus. */
@@ -484,13 +553,12 @@ export async function produceDeterministicContentContextEvidence() {
   const faults = await productionFaults(corpusRoot, manifest, byFamily);
   await writeJson(outputDir, "faults.json", faults);
 
+  await runDeterministicScenario(outputDir, commit);
+
   const unresolved = [];
   if (mutants.status !== "passed") unresolved.push("cross-seam mutants");
   if (faults.status !== "passed") unresolved.push("full fault matrix");
-  unresolved.push(
-    "deterministic autonomous scenario",
-    "native scenario export",
-  );
+  if (unresolved.length === 0) return;
   throw new Error(
     `deterministic evidence remains incomplete: ${unresolved.join(", ")}`,
   );

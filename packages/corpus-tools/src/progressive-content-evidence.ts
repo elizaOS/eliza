@@ -609,6 +609,107 @@ function scenarioNativeFinal(entry: Record<string, unknown>): boolean {
   }
 }
 
+function deterministicScenarioFailures(
+  report: Record<string, unknown>,
+): string[] {
+  const failures: string[] = [];
+  exactKeys(
+    report,
+    [
+      "completedAtIso",
+      "evidenceSummary",
+      "executionProfile",
+      "failedCount",
+      "passedCount",
+      "providerName",
+      "runId",
+      "scenarios",
+      "skippedCount",
+      "startedAtIso",
+      "totalCostUsd",
+      "totalCount",
+      "totals",
+    ],
+    "deterministic scenario report",
+  );
+  const scenarios = array(report.scenarios, "deterministic scenarios").map(
+    (value) => record(value, "deterministic scenario"),
+  );
+  const scenario = scenarios[0];
+  if (
+    report.executionProfile !== "simulated" ||
+    report.providerName !== "deterministic-model-provider" ||
+    report.totalCount !== 1 ||
+    report.passedCount !== 1 ||
+    report.failedCount !== 0 ||
+    report.skippedCount !== 0 ||
+    scenarios.length !== 1 ||
+    !scenario
+  ) {
+    return ["deterministic scenario aggregate did not pass exactly once"];
+  }
+  exactKeys(
+    scenario,
+    [
+      "actionsCalled",
+      "domain",
+      "durationMs",
+      "evidence",
+      "executionProfile",
+      "failedAssertions",
+      "finalChecks",
+      "id",
+      "modelFixtureDiagnostics",
+      "modelFixtureMode",
+      "providerName",
+      "status",
+      "tags",
+      "title",
+      "turns",
+    ],
+    "deterministic progressive-content scenario",
+  );
+  const actions = array(scenario.actionsCalled, "scenario actions").map(
+    (value) => record(value, "scenario action"),
+  );
+  const actionNames = new Set(actions.map(({ actionName }) => actionName));
+  const finalChecks = array(scenario.finalChecks, "scenario final checks").map(
+    (value) => record(value, "scenario final check"),
+  );
+  const diagnostics = record(
+    scenario.modelFixtureDiagnostics,
+    "scenario fixture diagnostics",
+  );
+  const fixtureCalls = array(diagnostics.calls, "scenario fixture calls");
+  const unexpectedCalls = array(
+    diagnostics.unexpectedCalls,
+    "scenario unexpected fixture calls",
+  );
+  const requiredActions = ["FILE", "DOCUMENT", "ATTACHMENT", "MESSAGE"];
+  if (
+    scenario.id !== "deterministic-progressive-content-actions" ||
+    scenario.status !== "passed" ||
+    scenario.executionProfile !== "simulated" ||
+    scenario.providerName !== "deterministic-model-provider" ||
+    scenario.modelFixtureMode !== "strict-fixtures" ||
+    array(scenario.failedAssertions, "scenario failed assertions").length !==
+      0 ||
+    unexpectedCalls.length !== 0 ||
+    fixtureCalls.length < 3 ||
+    requiredActions.some((name) => !actionNames.has(name)) ||
+    !finalChecks.some(
+      ({ label, status }) =>
+        label === "progressive action ledger is isolated and exact" &&
+        status === "passed",
+    )
+  ) {
+    failures.push(
+      "deterministic production-action scenario lacks strict real-path proof",
+    );
+  }
+  return failures;
+}
+
 function semanticFailures(
   result: ContentContextResult,
   bytes: ContentContextArtifactBytes,
@@ -1349,19 +1450,7 @@ function semanticFailures(
   }
 
   const scenario = json(bytes["scenario.json"], "scenario report");
-  const lateEvidenceFamilies = new Set(
-    array(scenario.lateEvidenceFamilies, "late evidence families"),
-  );
-  if (
-    scenario.status !== "passed" ||
-    scenario.deterministic !== true ||
-    scenario.productionActions !== true ||
-    scenario.strictFixtures !== true ||
-    ["file", "document", "memory", "email", "attachment", "tool-output"].some(
-      (family) => !lateEvidenceFamilies.has(family),
-    )
-  )
-    failures.push("deterministic production-action scenario is incomplete");
+  failures.push(...deterministicScenarioFailures(scenario));
 
   const nativeScenario = jsonLines(
     bytes["scenario-native.jsonl"],
