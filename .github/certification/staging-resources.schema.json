@@ -1,0 +1,1364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "elizaos-staging-resource-ledger"
+    },
+    "schema_version": {
+      "type": "number",
+      "const": 1
+    },
+    "ledger_ref": {
+      "type": "string",
+      "const": "qar-ledger-staging"
+    },
+    "environment": {
+      "type": "string",
+      "const": "STAGING"
+    },
+    "classification": {
+      "type": "string",
+      "const": "PUBLIC_REDACTED"
+    },
+    "policy_version": {
+      "type": "number",
+      "const": 1
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "repository_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "staging_deployment_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      },
+      "required": [
+        "observed_at",
+        "repository_commit",
+        "staging_deployment_commit"
+      ],
+      "additionalProperties": false
+    },
+    "deployment_observation": {
+      "type": "object",
+      "properties": {
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "staging_deployment_commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "evidence_alignment": {
+          "type": "string",
+          "enum": [
+            "ALIGNED",
+            "REVALIDATION_REQUIRED"
+          ]
+        }
+      },
+      "required": [
+        "observed_at",
+        "staging_deployment_commit",
+        "evidence_alignment"
+      ],
+      "additionalProperties": false
+    },
+    "ready_authorization": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "payload_version": {
+              "type": "number",
+              "const": 1
+            },
+            "algorithm": {
+              "type": "string",
+              "const": "Ed25519"
+            },
+            "key_fingerprint": {
+              "type": "string",
+              "const": "3ac9e3e625a9ed2f"
+            },
+            "signed_at": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            "valid_until": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            "payload_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "signature_base64": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9+/]{86}==$"
+            }
+          },
+          "required": [
+            "payload_version",
+            "algorithm",
+            "key_fingerprint",
+            "signed_at",
+            "valid_until",
+            "payload_sha256",
+            "signature_base64"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "resources": {
+      "minItems": 56,
+      "maxItems": 56,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^qar-\\d{4}$"
+          },
+          "coverage_key": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              },
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,63}$"
+              }
+            ]
+          },
+          "record_state": {
+            "type": "string",
+            "const": "TRACKED"
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "kind": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "surface": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "purpose": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "environment": {
+            "type": "string",
+            "const": "STAGING"
+          },
+          "binding_generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "relations": {
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "DEPENDS_ON",
+                    "OWNED_BY",
+                    "USES",
+                    "CONTAINS",
+                    "ROUTES_TO"
+                  ]
+                },
+                "ref": {
+                  "type": "string",
+                  "pattern": "^qar-\\d{4}$"
+                }
+              },
+              "required": [
+                "type",
+                "ref"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "expected_baseline": {
+            "type": "string",
+            "enum": [
+              "REQUIRED",
+              "OPTIONAL",
+              "NOT_REQUIRED"
+            ]
+          },
+          "private_resolver": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "ATTESTED",
+                  "MISSING"
+                ]
+              },
+              "attestation_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^att-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "attestation_ref",
+              "binding_generation",
+              "checked_at"
+            ],
+            "additionalProperties": false
+          },
+          "mapping": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "checked_at",
+              "receipt_ref"
+            ],
+            "additionalProperties": false
+          },
+          "existence": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "state",
+              "checked_at",
+              "receipt_ref"
+            ],
+            "additionalProperties": false
+          },
+          "custody": {
+            "type": "object",
+            "properties": {
+              "primary_role": {
+                "type": "string",
+                "const": "ROLE_STAGING_RESOURCE_PRIMARY"
+              },
+              "primary_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "ASSIGNED",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "backup_role": {
+                "type": "string",
+                "const": "ROLE_STAGING_RESOURCE_BACKUP"
+              },
+              "backup_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "ASSIGNED",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "recovery_role": {
+                "type": "string",
+                "const": "ROLE_STAGING_RESOURCE_RECOVERY"
+              },
+              "recovery_role_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "ASSIGNED",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "mfa_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "recovery_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "binding_generation": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "primary_role",
+              "primary_state",
+              "backup_role",
+              "backup_state",
+              "recovery_role",
+              "recovery_role_state",
+              "mfa_state",
+              "recovery_state",
+              "receipt_ref",
+              "binding_generation",
+              "checked_at"
+            ],
+            "additionalProperties": false
+          },
+          "configuration": {
+            "minItems": 1,
+            "maxItems": 16,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "authority": {
+                  "type": "string",
+                  "enum": [
+                    "UNRESOLVED",
+                    "GITHUB_ACTIONS",
+                    "CLOUDFLARE_WORKER",
+                    "RAILWAY_SERVICE",
+                    "CONTROL_PLANE",
+                    "DATABASE",
+                    "PROVIDER_CONSOLE",
+                    "DEVICE",
+                    "SANDBOX"
+                  ]
+                },
+                "canonical_names": {
+                  "maxItems": 32,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z][A-Z0-9_]{2,79}$"
+                  }
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "UNKNOWN",
+                    "REFERENCE_PRESENT",
+                    "PRESENT",
+                    "MISSING",
+                    "ABSENT",
+                    "PASS",
+                    "FAIL",
+                    "FAIL_CURRENT",
+                    "PARTIAL",
+                    "NOT_RUN",
+                    "NOT_REQUIRED",
+                    "BLOCKED",
+                    "NON_CERTIFIABLE"
+                  ]
+                },
+                "checked_at": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time",
+                      "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "receipt_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "authority",
+                "canonical_names",
+                "state",
+                "checked_at",
+                "receipt_ref"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "permissions": {
+            "type": "object",
+            "properties": {
+              "required_capabilities": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+                }
+              },
+              "observed_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "least_privilege_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "required_capabilities",
+              "observed_state",
+              "least_privilege_state",
+              "checked_at",
+              "receipt_ref"
+            ],
+            "additionalProperties": false
+          },
+          "isolation": {
+            "type": "object",
+            "properties": {
+              "provider_object": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "credentials": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "data": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "runtime": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "production_separation": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "REFERENCE_PRESENT",
+                  "PRESENT",
+                  "MISSING",
+                  "ABSENT",
+                  "PASS",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "PARTIAL",
+                  "NOT_RUN",
+                  "NOT_REQUIRED",
+                  "BLOCKED",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "provider_object",
+              "credentials",
+              "data",
+              "runtime",
+              "production_separation",
+              "checked_at",
+              "receipt_ref"
+            ],
+            "additionalProperties": false
+          },
+          "lifecycle": {
+            "type": "object",
+            "properties": {
+              "reuse_policy": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "SINGLE_USE",
+                  "RESET_BETWEEN_RUNS",
+                  "RENEWABLE",
+                  "PERSISTENT_STAGING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "expiry_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "reset_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "renewal_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "rotation_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "revocation_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "cleanup_state": {
+                "type": "string",
+                "enum": [
+                  "UNKNOWN",
+                  "DOCUMENTED",
+                  "TESTED",
+                  "FAIL",
+                  "MISSING",
+                  "NOT_REQUIRED"
+                ]
+              },
+              "checked_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "receipt_ref": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "reuse_policy",
+              "expiry_state",
+              "reset_state",
+              "renewal_state",
+              "rotation_state",
+              "revocation_state",
+              "cleanup_state",
+              "checked_at",
+              "receipt_ref"
+            ],
+            "additionalProperties": false
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "UNKNOWN",
+                      "REFERENCE_PRESENT",
+                      "PRESENT",
+                      "MISSING",
+                      "ABSENT",
+                      "PASS",
+                      "FAIL",
+                      "FAIL_CURRENT",
+                      "PARTIAL",
+                      "NOT_RUN",
+                      "NOT_REQUIRED",
+                      "BLOCKED",
+                      "NON_CERTIFIABLE"
+                    ]
+                  },
+                  "receipt_ref": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "valid_until": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_commit": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "binding_generation": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reason_code": {
+                    "type": "string",
+                    "enum": [
+                      "EVIDENCE_NOT_COLLECTED",
+                      "NOT_REQUIRED",
+                      "CERTIFIED",
+                      "RESOURCE_ABSENT",
+                      "MAPPING_MISSING",
+                      "CONFIGURATION_MISSING",
+                      "CUSTODY_INCOMPLETE",
+                      "ISOLATION_FAILED",
+                      "LIFECYCLE_INCOMPLETE",
+                      "CURRENT_PROVIDER_FAILURE",
+                      "CURRENT_RUNTIME_FAILURE",
+                      "SMOKE_FAILED",
+                      "DEPENDENCY_BLOCKED",
+                      "PARTIAL_EVIDENCE",
+                      "NON_CERTIFIABLE_STATE",
+                      "CERTIFICATION_FAILED",
+                      "BINDING_REPLACED",
+                      "EVIDENCE_EXPIRED"
+                    ]
+                  }
+                },
+                "required": [
+                  "state",
+                  "receipt_ref",
+                  "observed_at",
+                  "valid_until",
+                  "source_commit",
+                  "binding_generation",
+                  "reason_code"
+                ],
+                "additionalProperties": false
+              },
+              "runtime": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "UNKNOWN",
+                      "REFERENCE_PRESENT",
+                      "PRESENT",
+                      "MISSING",
+                      "ABSENT",
+                      "PASS",
+                      "FAIL",
+                      "FAIL_CURRENT",
+                      "PARTIAL",
+                      "NOT_RUN",
+                      "NOT_REQUIRED",
+                      "BLOCKED",
+                      "NON_CERTIFIABLE"
+                    ]
+                  },
+                  "receipt_ref": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "valid_until": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_commit": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "binding_generation": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reason_code": {
+                    "type": "string",
+                    "enum": [
+                      "EVIDENCE_NOT_COLLECTED",
+                      "NOT_REQUIRED",
+                      "CERTIFIED",
+                      "RESOURCE_ABSENT",
+                      "MAPPING_MISSING",
+                      "CONFIGURATION_MISSING",
+                      "CUSTODY_INCOMPLETE",
+                      "ISOLATION_FAILED",
+                      "LIFECYCLE_INCOMPLETE",
+                      "CURRENT_PROVIDER_FAILURE",
+                      "CURRENT_RUNTIME_FAILURE",
+                      "SMOKE_FAILED",
+                      "DEPENDENCY_BLOCKED",
+                      "PARTIAL_EVIDENCE",
+                      "NON_CERTIFIABLE_STATE",
+                      "CERTIFICATION_FAILED",
+                      "BINDING_REPLACED",
+                      "EVIDENCE_EXPIRED"
+                    ]
+                  }
+                },
+                "required": [
+                  "state",
+                  "receipt_ref",
+                  "observed_at",
+                  "valid_until",
+                  "source_commit",
+                  "binding_generation",
+                  "reason_code"
+                ],
+                "additionalProperties": false
+              },
+              "smoke": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "UNKNOWN",
+                      "REFERENCE_PRESENT",
+                      "PRESENT",
+                      "MISSING",
+                      "ABSENT",
+                      "PASS",
+                      "FAIL",
+                      "FAIL_CURRENT",
+                      "PARTIAL",
+                      "NOT_RUN",
+                      "NOT_REQUIRED",
+                      "BLOCKED",
+                      "NON_CERTIFIABLE"
+                    ]
+                  },
+                  "receipt_ref": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^rct-[a-z0-9][a-z0-9-]{2,79}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "observed_at": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "valid_until": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source_commit": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "binding_generation": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reason_code": {
+                    "type": "string",
+                    "enum": [
+                      "EVIDENCE_NOT_COLLECTED",
+                      "NOT_REQUIRED",
+                      "CERTIFIED",
+                      "RESOURCE_ABSENT",
+                      "MAPPING_MISSING",
+                      "CONFIGURATION_MISSING",
+                      "CUSTODY_INCOMPLETE",
+                      "ISOLATION_FAILED",
+                      "LIFECYCLE_INCOMPLETE",
+                      "CURRENT_PROVIDER_FAILURE",
+                      "CURRENT_RUNTIME_FAILURE",
+                      "SMOKE_FAILED",
+                      "DEPENDENCY_BLOCKED",
+                      "PARTIAL_EVIDENCE",
+                      "NON_CERTIFIABLE_STATE",
+                      "CERTIFICATION_FAILED",
+                      "BINDING_REPLACED",
+                      "EVIDENCE_EXPIRED"
+                    ]
+                  }
+                },
+                "required": [
+                  "state",
+                  "receipt_ref",
+                  "observed_at",
+                  "valid_until",
+                  "source_commit",
+                  "binding_generation",
+                  "reason_code"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "runtime",
+              "smoke"
+            ],
+            "additionalProperties": false
+          },
+          "verdict": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "READY",
+                  "PARTIAL",
+                  "BLOCKED",
+                  "NOT_READY",
+                  "FAIL",
+                  "FAIL_CURRENT",
+                  "ABSENT",
+                  "NON_CERTIFIABLE"
+                ]
+              },
+              "evaluated_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              "reason_codes": {
+                "minItems": 1,
+                "maxItems": 16,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "EVIDENCE_NOT_COLLECTED",
+                    "NOT_REQUIRED",
+                    "CERTIFIED",
+                    "RESOURCE_ABSENT",
+                    "MAPPING_MISSING",
+                    "CONFIGURATION_MISSING",
+                    "CUSTODY_INCOMPLETE",
+                    "ISOLATION_FAILED",
+                    "LIFECYCLE_INCOMPLETE",
+                    "CURRENT_PROVIDER_FAILURE",
+                    "CURRENT_RUNTIME_FAILURE",
+                    "SMOKE_FAILED",
+                    "DEPENDENCY_BLOCKED",
+                    "PARTIAL_EVIDENCE",
+                    "NON_CERTIFIABLE_STATE",
+                    "CERTIFICATION_FAILED",
+                    "BINDING_REPLACED",
+                    "EVIDENCE_EXPIRED"
+                  ]
+                }
+              },
+              "blocker_issues": {
+                "maxItems": 32,
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            "required": [
+              "state",
+              "evaluated_at",
+              "reason_codes",
+              "blocker_issues"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "ref",
+          "coverage_key",
+          "record_state",
+          "profile",
+          "kind",
+          "surface",
+          "purpose",
+          "environment",
+          "binding_generation",
+          "relations",
+          "expected_baseline",
+          "private_resolver",
+          "mapping",
+          "existence",
+          "custody",
+          "configuration",
+          "permissions",
+          "isolation",
+          "lifecycle",
+          "evidence",
+          "verdict"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "format",
+    "schema_version",
+    "ledger_ref",
+    "environment",
+    "classification",
+    "policy_version",
+    "snapshot",
+    "deployment_observation",
+    "ready_authorization",
+    "resources"
+  ],
+  "additionalProperties": false,
+  "$id": "https://github.com/elizaOS/eliza/blob/develop/.github/certification/staging-resources.schema.json"
+}

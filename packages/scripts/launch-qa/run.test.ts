@@ -1,4 +1,7 @@
-// Exercises launch qa run.test automation behavior with deterministic script fixtures.
+/**
+ * Exercises deterministic launch-QA suite selection without spawning the
+ * selected commands.
+ */
 import { describe, expect, test } from "bun:test";
 import { selectTasks } from "./run.mjs";
 
@@ -12,6 +15,16 @@ function options(overrides: Record<string, unknown> = {}) {
 }
 
 describe("launch QA task selection", () => {
+  test("staging-resource ledger is mandatory in quick and release suites", () => {
+    const quickIds = selectTasks(options()).map((task) => task.id);
+    const releaseIds = selectTasks(options({ suite: "release" })).map(
+      (task) => task.id,
+    );
+
+    expect(quickIds).toContain("staging-resource-ledger");
+    expect(releaseIds).toContain("staging-resource-ledger");
+  });
+
   test("only and skip narrow selected gates", () => {
     const ids = selectTasks(
       options({

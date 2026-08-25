@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// Runs launch QA launch qa run automation for release-readiness checks.
+/**
+ * Orchestrates deterministic launch-readiness checks into explicit quick,
+ * release, and nightly suites with per-task logs and a machine-readable
+ * summary.
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -16,6 +20,7 @@ const QUICK_TASK_IDS = new Set([
   "lifeops-focused",
   "cloud-api-key-client",
   "model-data",
+  "staging-resource-ledger",
 ]);
 
 const TASKS = [
@@ -47,6 +52,17 @@ const TASKS = [
     args: ["packages/scripts/launch-qa/check-model-data.mjs", "--json"],
     description:
       "Offline model dataset schema, redaction, and budget validation",
+  },
+  {
+    id: "staging-resource-ledger",
+    tier: 0,
+    command: "node",
+    args: [
+      "packages/scripts/launch-qa/check-staging-resource-ledger.mjs",
+      "--json",
+    ],
+    description:
+      "Staging resource coverage, privacy, evidence, and artifact drift",
   },
   {
     id: "agent-focused",

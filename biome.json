@@ -37,6 +37,7 @@
       "!packages/training/datasets",
       "!packages/training/reports",
       "!packages/training/config/**/*.schema.json",
+      "!.github/certification/staging-resources.schema.json",
       "!packages/training/scripts/publish/templates",
       "!reports",
       "!docs/audits",

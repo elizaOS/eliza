@@ -123,6 +123,9 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
+      - name: Validate staging resource certification ledger
+        run: node packages/scripts/launch-qa/check-staging-resource-ledger.mjs --json
+
       - name: Upload Bun runtime resolution inventory
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
