@@ -641,6 +641,18 @@ export async function zerollamaEmbed(args: {
 }
 
 /** Embed one or many texts via zerollama (`/api/embed`, with `/v1/embeddings` fallback). */
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export async function zerollamaEmbedMany(args: {
   apiBase: string;
   model: string;
@@ -675,7 +687,7 @@ export async function zerollamaEmbedMany(args: {
     // with nothing.
   } else if (nativeResponse.status !== 400 && nativeResponse.status !== 501) {
     throw new ZerollamaHttpError({
-      message: `zerollama /api/embed failed (${nativeResponse.status}): ${nativeRaw.slice(0, 300)}`,
+      message: `zerollama /api/embed failed (${nativeResponse.status}): ${truncateText(nativeRaw, 300)}`,
       statusCode: nativeResponse.status,
       responseBody: nativeRaw,
       url: nativeUrl,
@@ -694,7 +706,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Raw = await readErrorBody(v1Response);
   if (!v1Response.ok) {
     throw new ZerollamaHttpError({
-      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${nativeRaw.slice(0, 160)}; /v1/embeddings ${v1Response.status}: ${v1Raw.slice(0, 160)}) [model=${model}]`,
+      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${truncateText(nativeRaw, 160)}; /v1/embeddings ${v1Response.status}: ${truncateText(v1Raw, 160)}) [model=${model}]`,
       statusCode: v1Response.status,
       responseBody: v1Raw || nativeRaw,
       url: v1Url,
@@ -703,7 +715,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Vectors = parseEmbedVectors(v1Raw, v1Url);
   if (v1Vectors.length === 0 || v1Vectors.some((row) => row.length === 0)) {
     throw new Error(
-      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${nativeRaw.slice(0, 120)})`
+      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${truncateText(nativeRaw, 120)})`
     );
   }
   return v1Vectors;

@@ -77,6 +77,18 @@ function isAiSdkSchema(value: unknown): boolean {
 }
 
 /** Normalize existing AI SDK ToolSets or OpenAI-style tool arrays. */
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export function normalizeNativeTools(tools: unknown): ToolSet | undefined {
   if (!tools) return undefined;
   if (!Array.isArray(tools)) {
@@ -110,7 +122,7 @@ export function normalizeNativeTools(tools: unknown): ToolSet | undefined {
     if (!name) {
       throw new ElizaError("Ollama native tool definition is missing a name", {
         code: "OLLAMA_INVALID_TOOL_DEFINITION",
-        context: { tool: stringifyContent(rawTool).slice(0, 300) },
+        context: { tool: truncateText(stringifyContent(rawTool), 300) },
         severity: "ephemeral",
       });
     }
@@ -207,7 +219,7 @@ export function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | 
   if (toolName) return { type: "tool", toolName };
   throw new ElizaError("Ollama toolChoice does not name a tool", {
     code: "OLLAMA_INVALID_TOOL_CHOICE",
-    context: { toolChoice: stringifyContent(toolChoice).slice(0, 300) },
+    context: { toolChoice: truncateText(stringifyContent(toolChoice), 300) },
     severity: "ephemeral",
   });
 }
