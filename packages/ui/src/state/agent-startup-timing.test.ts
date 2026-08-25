@@ -9,7 +9,7 @@
  * in jsdom (no module mocks).
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_STARTING_SLIDE_MS,
   AGENT_STARTUP_ABSOLUTE_MAX_MS,
@@ -84,12 +84,29 @@ describe("computeAgentDeadlineExtensions", () => {
     expect(extend({ now: START + 980_000 })).toBe(START + 900_000);
   });
 
-  it("clamps epoch-scale deadlines to wait start + 900s", () => {
+  it("slides to the real clock when `now` is omitted (production shape)", () => {
+    // Every production call site in startup-phase-runtime.ts omits `now`;
+    // this pins the Date.now() fallback with fake timers.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(START + 60_000);
+      const out = computeAgentDeadlineExtensions({
+        agentWaitStartedAt: START,
+        agentDeadlineAt: START + 120_000,
+        state: "starting",
+      });
+      expect(out).toBe(START + 60_000 + 180_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("applies epoch-scale slide arithmetic with the cap not binding", () => {
     const epochStart = 1_756_000_000_000;
     // 600s into the wait: now+slide = epochStart+780_000, below the
-    // incoming deadline's ceiling — the slide applies, then the absolute
-    // cap does NOT bind. The expectation pins the slide arithmetic on
-    // epoch-scale numbers where a ms-vs-s unit slip would show.
+    // 900s absolute cap — the slide applies and the cap does not bind.
+    // The expectation pins the slide arithmetic on epoch-scale numbers
+    // where a ms-vs-s unit slip would show.
     const out = computeAgentDeadlineExtensions({
       agentWaitStartedAt: epochStart,
       agentDeadlineAt: epochStart + 120_000,
