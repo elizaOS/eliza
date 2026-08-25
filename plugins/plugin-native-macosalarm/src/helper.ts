@@ -72,6 +72,23 @@ export async function runHelper(
   proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
   proc.stderr.on("data", (chunk: Buffer) => stderrChunks.push(chunk));
 
+  // A helper that crashes, exits early, or never reads stdin closes its read
+  // end before we finish writing the request, and Node emits an `error` event
+  // (EPIPE) on `proc.stdin`. That stream `error` is a distinct channel from the
+  // `proc.on("error")` spawn-failure channel below; without a listener it
+  // escalates to an uncaughtException and takes down the whole agent process.
+  // Because this plugin is auto-enabled on darwin and ALARM is a reachable
+  // action, an early-exiting helper must degrade to a structured failure, not a
+  // fatal crash.
+  proc.stdin.on("error", (err: Error) => {
+    // error-policy:J5 the same failure is observed by the close/no-stdout path
+    // below: if the helper still emitted a valid JSON response it is parsed and
+    // returned, otherwise the "produced no stdout" throw fires and the action
+    // boundary translates it into a structured ActionResult. The stdin pipe
+    // closing is therefore not independently fatal.
+    logger.debug(`[MacosAlarmHelper] stdin write error: ${err.message}`);
+  });
+
   const payload = `${JSON.stringify(request)}\n`;
   proc.stdin.end(payload);
 

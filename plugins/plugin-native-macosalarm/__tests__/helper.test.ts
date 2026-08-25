@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type HelperSpawn, runHelper } from "../src/helper";
 
@@ -126,6 +126,67 @@ describe("runHelper", () => {
     expect(child).toBeDefined();
     expect(child?.killed).toBe(true);
     expect(child?.exitCode !== null || child?.signalCode !== null).toBe(true);
+  });
+
+  describe("early-exiting helper does not escalate stdin EPIPE to a crash", () => {
+    // Regression for #28419: runHelper wrote the request with `proc.stdin.end`
+    // but attached no `error` listener to `proc.stdin`. When the real helper
+    // exits before draining a large stdin, Node emits an EPIPE `error` on the
+    // stdin stream; with no listener that becomes an uncaughtException and kills
+    // the agent process. These cases use a REAL child process (no mocked SUT)
+    // and a guard that fails if any EPIPE escapes to the process boundary.
+    let escaped: unknown[];
+    const onUncaught = (err: unknown) => escaped.push(err);
+
+    beforeEach(() => {
+      escaped = [];
+      process.on("uncaughtException", onUncaught);
+      process.on("unhandledRejection", onUncaught);
+    });
+
+    afterEach(async () => {
+      // Let any late EPIPE from a still-draining pipe surface before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      process.off("uncaughtException", onUncaught);
+      process.off("unhandledRejection", onUncaught);
+      expect(escaped).toEqual([]);
+    });
+
+    // A ~2MB request that overruns the OS pipe buffer, guaranteeing the write is
+    // still pending when the child that never reads stdin exits.
+    const largeRequest = {
+      action: "schedule" as const,
+      id: "alarm-epipe",
+      timeIso: "2026-06-01T07:00:00Z",
+      title: "x".repeat(2_000_000),
+    };
+
+    it("resolves when the helper prints a valid response then exits without reading stdin", async () => {
+      const spawnImpl: HelperSpawn = () =>
+        spawn("sh", [
+          "-c",
+          'printf \'{"success":true,"alarms":[]}\\n\'; exit 0',
+        ]) as never;
+
+      await expect(
+        runHelper(largeRequest, {
+          spawnImpl,
+          binPathOverride: "/tmp/helper",
+        }),
+      ).resolves.toEqual({ success: true, alarms: [] });
+    });
+
+    it("rejects with 'produced no stdout' when the helper exits early and prints nothing", async () => {
+      const spawnImpl: HelperSpawn = () =>
+        spawn("sh", ["-c", "exit 4"]) as never;
+
+      await expect(
+        runHelper(largeRequest, {
+          spawnImpl,
+          binPathOverride: "/tmp/helper",
+        }),
+      ).rejects.toThrow(/produced no stdout \(exit=4\)/);
+    });
   });
 
   it("does not kill the child on the successful (non-timeout) path", async () => {
