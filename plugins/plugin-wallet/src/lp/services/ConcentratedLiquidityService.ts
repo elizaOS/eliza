@@ -70,6 +70,18 @@ export class ConcentratedLiquidityService
     rangeWidthPercent: number,
     _targetUtilization: number = 80,
   ): { priceLower: number; priceUpper: number } {
+    // Fail loud on degenerate width: a non-positive width produces an
+    // inverted or zero-width range (priceLower >= priceUpper), which would
+    // silently break every downstream in-range/utilization decision.
+    if (
+      !Number.isFinite(currentPrice) ||
+      !Number.isFinite(rangeWidthPercent) ||
+      rangeWidthPercent <= 0
+    ) {
+      throw new RangeError(
+        "calculateOptimalRange requires a finite currentPrice and a positive rangeWidthPercent",
+      );
+    }
     // Simple symmetric range calculation
     const halfWidth = rangeWidthPercent / 2;
     const priceLower = currentPrice * (1 - halfWidth / 100);
@@ -97,11 +109,20 @@ export class ConcentratedLiquidityService
     priceLower: number,
     priceUpper: number,
   ): number {
+    const priceRange = priceUpper - priceLower;
+    // Fail loud on a degenerate range: a zero-width or inverted range makes
+    // the utilization formula divide by zero (previously surfaced as
+    // Infinity clamped to 100 — a silent 100% for a range with no width).
+    if (!Number.isFinite(priceRange) || priceRange <= 0) {
+      throw new RangeError(
+        "calculateUtilization requires priceUpper > priceLower",
+      );
+    }
+
     if (!this.isPriceInRange(currentPrice, priceLower, priceUpper)) {
       return 0;
     }
 
-    const priceRange = priceUpper - priceLower;
     const distanceFromLower = currentPrice - priceLower;
     const distanceFromUpper = priceUpper - currentPrice;
 
