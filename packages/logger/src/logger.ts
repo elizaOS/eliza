@@ -18,10 +18,11 @@
  * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
  * Adapts between node and a console-based browser path.
  */
-// Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
   clearEnvCacheForTests: () => {},
   stripAnsi: (str: string): string => stripAnsi(str),
+  parseBooleanFromText: (value: string | undefined | null): boolean =>
+    parseBooleanFromText(value),
   // Core owns the model/tool redactor while this leaf package owns the log
   // sink. Expose a copy only to the cross-package contract test so duplicated
   // credential shapes cannot silently drift between those two boundaries.
@@ -240,7 +241,9 @@ function parseBooleanFromText(value: string | undefined | null): boolean {
     normalized === "true" ||
     normalized === "1" ||
     normalized === "yes" ||
-    normalized === "on"
+    normalized === "on" ||
+    normalized === "enable" ||
+    normalized === "enabled"
   );
 }
 

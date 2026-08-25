@@ -1141,4 +1141,35 @@ describe("file sink permissions", () => {
       }
     },
   );
+
+  describe("parseBooleanFromText", () => {
+    const { parseBooleanFromText } = __loggerTestHooks;
+
+    it("parses truthy boolean strings including enable and enabled", () => {
+      for (const val of [
+        "true",
+        "TRUE",
+        "1",
+        "yes",
+        "YES",
+        "on",
+        "ON",
+        "enable",
+        "ENABLE",
+        "enabled",
+        "ENABLED",
+        " enabled ",
+      ]) {
+        expect(parseBooleanFromText(val)).toBe(true);
+      }
+    });
+
+    it("returns false for falsy and unrecognized strings", () => {
+      for (const val of ["false", "0", "no", "off", "disabled", "maybe", ""]) {
+        expect(parseBooleanFromText(val)).toBe(false);
+      }
+      expect(parseBooleanFromText(null)).toBe(false);
+      expect(parseBooleanFromText(undefined)).toBe(false);
+    });
+  });
 });
