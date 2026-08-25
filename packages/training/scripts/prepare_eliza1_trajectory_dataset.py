@@ -70,20 +70,7 @@ LOG = logging.getLogger("prepare-eliza1-trajectories")
 
 
 def _load_privacy_filter():
-    """Use the LifeOpsBench privacy filter when available, else a local port."""
-    bench_pkg = REPO_ROOT / "packages" / "benchmarks" / "lifeops-bench"
-    if bench_pkg.exists():
-        sys.path.insert(0, str(bench_pkg))
-        try:
-            from eliza_lifeops_bench.ingest.privacy import (  # type: ignore
-                FilterStats,
-                apply_privacy_filter,
-            )
-
-            return apply_privacy_filter, FilterStats
-        except Exception:  # pragma: no cover - fallback covered through behavior
-            LOG.debug("LifeOpsBench privacy filter unavailable", exc_info=True)
-
+    """Build the training-owned privacy filter used for every input format."""
     @dataclass
     class FilterStats:  # type: ignore[no-redef]
         redaction_count: int = 0
@@ -839,31 +826,10 @@ def is_lifeops_result(raw: Any) -> bool:
     return "scenario_id" in rec and isinstance(rec.get("turns"), list) and "total_score" in rec
 
 
-def _scenario_instruction_from_repo() -> dict[str, dict[str, Any]]:
-    bench_pkg = REPO_ROOT / "packages" / "benchmarks" / "lifeops-bench"
-    if not bench_pkg.exists():
-        return {}
-    sys.path.insert(0, str(bench_pkg))
-    try:
-        from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID  # type: ignore
-    except Exception:
-        LOG.debug("could not import LifeOpsBench scenario registry", exc_info=True)
-        return {}
-    out: dict[str, dict[str, Any]] = {}
-    for scenario_id, scenario in SCENARIOS_BY_ID.items():
-        out[str(scenario_id)] = {
-            "instruction": getattr(scenario, "instruction", ""),
-            "name": getattr(scenario, "name", ""),
-            "domain": getattr(getattr(scenario, "domain", None), "value", None),
-            "mode": getattr(getattr(scenario, "mode", None), "value", None),
-        }
-    return out
-
-
 def load_lifeops_scenarios(path: Path | None) -> dict[str, dict[str, Any]]:
-    scenarios = _scenario_instruction_from_repo()
     if path is None:
-        return scenarios
+        return {}
+    scenarios: dict[str, dict[str, Any]] = {}
     payload = json.loads(path.read_text(encoding="utf-8"))
     raw_items = payload.get("scenarios") if isinstance(payload, dict) else payload
     if not isinstance(raw_items, list):

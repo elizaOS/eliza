@@ -25,7 +25,6 @@ DEFAULT_OUTPUT_DIR = Path("artifacts") / "trajectory-collection"
 MANIFEST_NAME = "collection-manifest.json"
 MANIFEST_SCHEMA = "eliza.trajectory_collection_manifest.v1"
 MANIFEST_VERSION = 1
-DEFAULT_LIFEOPS_MAX_COST_USD = 10.0
 NATIVE_EXPORT_FILENAME = "app-trajectories.eliza-native.jsonl"
 OWNED_FILES = (
     "packages/training/scripts/collect_trajectories.py",
@@ -54,7 +53,6 @@ SUITE_CHOICES = {
     "live-scenarios",
     "scenario-benchmark",
     "scenario-runner",
-    "lifeops-bench",
 }
 
 
@@ -92,7 +90,6 @@ class CommandPlan:
     env_requirements: list[EnvRequirement]
     expected_outputs: list[ExpectedOutput]
     provider_label: str
-    supports_cost_cap: bool
     status: str = "planned"
     exit_code: int | None = None
 
@@ -110,7 +107,6 @@ class CollectionPlan:
     dry_run: bool
     provider: str
     model: str | None
-    max_cost_usd: float | None
     suites: list[str]
     commands: list[CommandPlan]
     provider_labels: dict[str, ProviderLabel]
@@ -128,7 +124,6 @@ class CollectionPlan:
             manifest_path=self.manifest_path,
             expected_outputs=expected_outputs,
         )
-        cost_caps = _cost_caps(self.max_cost_usd, self.suites)
         return {
             "schema": MANIFEST_SCHEMA,
             "version": MANIFEST_VERSION,
@@ -143,7 +138,6 @@ class CollectionPlan:
             "provider_label": self.provider,
             "provider_model": self.model,
             "suites": self.suites,
-            "cost_caps": cost_caps,
             "expected_outputs": expected_outputs,
             "downstream_inputs": downstream_inputs,
             "git": self.git,
@@ -153,18 +147,6 @@ class CollectionPlan:
                 "dir": str(self.run_dir),
                 "dryRun": self.dry_run,
                 "suites": self.suites,
-            },
-            "costCaps": {
-                "maxCostUsd": cost_caps["max_cost_usd"],
-                "effectiveMaxCostUsdBySuite": cost_caps[
-                    "effective_max_cost_usd_by_suite"
-                ],
-                "lifeopsBenchEffectiveMaxCostUsd": cost_caps[
-                    "effective_max_cost_usd_by_suite"
-                ]["lifeops-bench"],
-                "lifeopsBenchEnforced": cost_caps["enforced_by_suite"]["lifeops-bench"],
-                "scenarioRunnerEnforced": cost_caps["enforced_by_suite"]["scenario-runner"],
-                "notes": cost_caps["notes"],
             },
             "provider": {
                 "activeLabel": self.provider,
@@ -220,10 +202,7 @@ def _downstream_inputs(
         expected_outputs,
         {"raw_trajectories_dir"},
     )
-    ready_prepare_input_paths = _unique_output_paths(
-        expected_outputs,
-        {"lifeops_bench_results_dir"},
-    )
+    ready_prepare_input_paths: list[str] = []
     native_export_path = run_dir / "exports" / NATIVE_EXPORT_FILENAME
     pending_native_exports = [str(native_export_path)] if raw_trajectory_paths else []
     prepare_input_paths = [*pending_native_exports, *ready_prepare_input_paths]
@@ -285,40 +264,6 @@ def _downstream_inputs(
                 ),
             ],
         }
-    }
-
-
-def _cost_caps(max_cost_usd: float | None, suites: list[str]) -> dict[str, Any]:
-    effective_by_suite = {
-        "live-scenarios": None,
-        "scenario-benchmark": None,
-        "scenario-runner": None,
-        "lifeops-bench": (
-            max_cost_usd
-            if max_cost_usd is not None
-            else (DEFAULT_LIFEOPS_MAX_COST_USD if "lifeops-bench" in suites else None)
-        ),
-    }
-    enforced_by_suite = {
-        "live-scenarios": False,
-        "scenario-benchmark": False,
-        "scenario-runner": False,
-        "lifeops-bench": "lifeops-bench" in suites,
-    }
-    return {
-        "max_cost_usd": max_cost_usd,
-        "effective_max_cost_usd_by_suite": effective_by_suite,
-        "enforced_by_suite": enforced_by_suite,
-        "recorded_only_for_suites": [
-            suite for suite in suites if not enforced_by_suite.get(suite, False)
-        ],
-        "notes": [
-            "LifeOpsBench receives --max-cost-usd.",
-            (
-                "Scenario runner wrappers do not expose a native cost cap; "
-                "the cap is recorded for operator accounting."
-            ),
-        ],
     }
 
 
@@ -394,9 +339,6 @@ def provider_labels() -> dict[str, ProviderLabel]:
                     reason="required only for commands that actually route to Cerebras",
                 ),
             ),
-            notes=(
-                "Pass --model to export CEREBRAS_MODEL for LifeOpsBench cerebras-direct runs.",
-            ),
         ),
         "openai": ProviderLabel(
             label="openai",
@@ -469,31 +411,6 @@ def _scenario_env_requirements() -> list[EnvRequirement]:
     ]
 
 
-def _lifeops_bench_env_requirements(args: argparse.Namespace) -> list[EnvRequirement]:
-    requirements: list[EnvRequirement] = []
-    if args.lifeops_agent == "cerebras-direct":
-        requirements.append(
-            EnvRequirement(
-                name="CEREBRAS_API_KEY",
-                reason="LifeOpsBench cerebras-direct agent requires Cerebras credentials",
-            )
-        )
-    if args.lifeops_mode == "live":
-        requirements.extend(
-            [
-                EnvRequirement(
-                    name="CEREBRAS_API_KEY",
-                    reason="LifeOpsBench live mode simulates the user through the Cerebras client",
-                ),
-                EnvRequirement(
-                    name="ANTHROPIC_API_KEY",
-                    reason="LifeOpsBench live mode expects an explicitly configured judge client",
-                ),
-            ]
-        )
-    return requirements
-
-
 def _common_env(
     *,
     args: argparse.Namespace,
@@ -503,8 +420,6 @@ def _common_env(
     env = {
         "ELIZA_COLLECTION_PROVIDER": args.provider,
         "ELIZA_COLLECTION_RUN_ID": run_id,
-        "ELIZA_LIFEOPS_RUN_ID": run_id,
-        "ELIZA_LIFEOPS_RUN_DIR": str(run_dir),
         "ELIZA_TRAJECTORY_DIR": str(run_dir / "trajectories"),
     }
     if args.model:
@@ -517,8 +432,6 @@ def _common_env(
         if args.provider == "openai":
             env["OPENAI_MODEL"] = args.model
             env["OPENAI_LARGE_MODEL"] = args.model
-    if args.max_cost_usd is not None:
-        env["ELIZA_COLLECTION_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
     return env
 
 
@@ -564,7 +477,6 @@ def _live_scenarios_plan(
             ExpectedOutput("raw_trajectories_dir", str(run_dir / "trajectories"), True),
         ],
         provider_label=args.provider,
-        supports_cost_cap=False,
     )
 
 
@@ -599,7 +511,6 @@ def _scenario_benchmark_plan(
             ExpectedOutput("raw_trajectories_dir", str(run_dir / "trajectories"), True),
         ],
         provider_label=args.provider,
-        supports_cost_cap=False,
     )
 
 
@@ -654,94 +565,6 @@ def _scenario_runner_plan(
             ExpectedOutput("raw_trajectories_dir", str(run_dir / "trajectories"), True),
         ],
         provider_label=args.provider,
-        supports_cost_cap=False,
-    )
-
-
-def _lifeops_bench_plan(
-    *,
-    args: argparse.Namespace,
-    run_dir: Path,
-    env: dict[str, str],
-    env_requirements: list[EnvRequirement],
-) -> CommandPlan:
-    bench_root = REPO_ROOT / "packages/benchmarks/lifeops-bench"
-    output_dir = run_dir / "lifeops-bench"
-    evaluator_model = args.model or "configured-by-collector"
-    judge_model = args.judge_model or "disabled-static-judge"
-    max_cost_usd = (
-        args.max_cost_usd
-        if args.max_cost_usd is not None
-        else DEFAULT_LIFEOPS_MAX_COST_USD
-    )
-    argv = [
-        sys.executable,
-        "-m",
-        "eliza_lifeops_bench",
-        "--agent",
-        args.lifeops_agent,
-        "--mode",
-        args.lifeops_mode,
-        "--evaluator-model",
-        evaluator_model,
-        "--judge-model",
-        judge_model,
-        "--concurrency",
-        str(args.lifeops_concurrency),
-        "--seeds",
-        str(args.lifeops_seeds),
-        "--max-cost-usd",
-        f"{max_cost_usd:g}",
-        "--output-dir",
-        str(output_dir),
-    ]
-    if args.lifeops_domain:
-        argv.extend(["--domain", args.lifeops_domain])
-    if args.lifeops_scenario:
-        argv.extend(["--scenario", args.lifeops_scenario])
-    return CommandPlan(
-        suite="lifeops-bench",
-        label="packages/benchmarks/lifeops-bench CLI",
-        cwd=str(bench_root),
-        argv=argv,
-        env_overrides=env,
-        env_requirements=env_requirements,
-        expected_outputs=[
-            ExpectedOutput("lifeops_bench_results_dir", str(output_dir), True),
-        ],
-        provider_label=args.provider,
-        supports_cost_cap=True,
-    )
-
-
-def _aggregate_plan(
-    *,
-    args: argparse.Namespace,
-    run_dir: Path,
-    run_id: str,
-    env: dict[str, str],
-) -> CommandPlan:
-    return CommandPlan(
-        suite="aggregate",
-        label="scripts/aggregate-lifeops-run.mjs",
-        cwd=str(REPO_ROOT),
-        argv=[
-            "node",
-            "scripts/aggregate-lifeops-run.mjs",
-            "--run-dir",
-            str(run_dir),
-            "--run-id",
-            run_id,
-        ],
-        env_overrides=env,
-        env_requirements=[],
-        expected_outputs=[
-            ExpectedOutput("aggregate_report_markdown", str(run_dir / "report.md")),
-            ExpectedOutput("aggregate_steps_csv", str(run_dir / "steps.csv")),
-            ExpectedOutput("aggregate_scenarios_dir", str(run_dir / "scenarios")),
-        ],
-        provider_label=args.provider,
-        supports_cost_cap=False,
     )
 
 
@@ -768,7 +591,6 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
 
     common_env = _common_env(args=args, run_dir=run_dir, run_id=run_id)
     scenario_env_requirements = _scenario_env_requirements()
-    lifeops_env_requirements = _lifeops_bench_env_requirements(args)
     commands: list[CommandPlan] = []
     if "live-scenarios" in suites:
         commands.append(
@@ -800,30 +622,12 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
                 env_requirements=scenario_env_requirements,
             )
         )
-    if "lifeops-bench" in suites:
-        commands.append(
-            _lifeops_bench_plan(
-                args=args,
-                run_dir=run_dir,
-                env=common_env,
-                env_requirements=lifeops_env_requirements,
-            )
-        )
-    if args.aggregate and any(
-        suite in suites
-        for suite in ("live-scenarios", "scenario-benchmark", "scenario-runner")
-    ):
-        commands.append(
-            _aggregate_plan(args=args, run_dir=run_dir, run_id=run_id, env=common_env)
-        )
 
     validation_errors: list[str] = []
     if not suites:
         validation_errors.append("at least one suite is required")
     if unknown_suites:
         validation_errors.append(f"unknown suite(s): {', '.join(unknown_suites)}")
-    if args.max_cost_usd is not None and args.max_cost_usd <= 0:
-        validation_errors.append("--max-cost-usd must be greater than 0")
     if not provider.runnable and not args.dry_run:
         validation_errors.append(
             f"provider label {provider.label!r} is a config placeholder and cannot be executed"
@@ -833,13 +637,11 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
             "provider label 'anthropic' requires --model to avoid an Opus default"
         )
     active_model = (args.model or "").lower()
-    judge_model = (args.judge_model or "").lower()
-    if not args.dry_run and ("opus" in active_model or "opus" in judge_model):
+    if not args.dry_run and "opus" in active_model:
         validation_errors.append("refusing to execute Opus; use dry-run for Opus labels only")
     if (
         not args.dry_run
         and "opus" not in active_model
-        and "opus" not in judge_model
     ):
         effective_env = dict(os.environ)
         effective_env.update(common_env)
@@ -849,15 +651,6 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
                 "refusing to execute Opus from environment: "
                 + ", ".join(blocked_env_keys)
             )
-    if (
-        not args.dry_run
-        and "lifeops-bench" in suites
-        and args.lifeops_mode == "live"
-        and not args.judge_model
-    ):
-        validation_errors.append(
-            "lifeops-bench live mode requires --judge-model; no Opus default is allowed"
-        )
 
     plan = CollectionPlan(
         run_id=run_id,
@@ -866,7 +659,6 @@ def build_plan(args: argparse.Namespace) -> CollectionPlan:
         dry_run=args.dry_run,
         provider=args.provider,
         model=args.model,
-        max_cost_usd=args.max_cost_usd,
         suites=suites,
         commands=commands,
         provider_labels=labels,
@@ -985,7 +777,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="live-scenarios",
         help=(
             "Comma-separated suites: live-scenarios, scenario-benchmark, "
-            "scenario-runner, lifeops-bench."
+            "scenario-runner."
         ),
     )
     parser.add_argument(
@@ -1009,28 +801,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actually run planned commands. Required for non-dry collection.",
     )
     parser.add_argument(
-        "--max-cost-usd",
-        "--cost-cap-usd",
-        dest="max_cost_usd",
-        type=float,
-        default=None,
-        help="Run-level cost cap. Passed to LifeOpsBench; recorded for other suites.",
-    )
-    parser.add_argument(
         "--continue-on-error",
         action="store_true",
         help="Continue executing later suites after a suite fails or is blocked.",
     )
-    parser.add_argument(
-        "--aggregate",
-        action="store_true",
-        help="After scenario suites, run scripts/aggregate-lifeops-run.mjs.",
-    )
-
     scenario = parser.add_argument_group("scenario runner options")
     scenario.add_argument(
         "--scenario-root",
-        default="plugins/app-lifeops/test/scenarios",
+        default="packages/scenario-runner/test/scenarios",
         help="Scenario directory for the direct scenario-runner suite.",
     )
     scenario.add_argument(
@@ -1045,43 +823,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Additional direct scenario-runner file glob. Repeatable.",
     )
 
-    bench = parser.add_argument_group("lifeops-bench options")
-    bench.add_argument(
-        "--lifeops-agent",
-        default="perfect",
-        help=(
-            "LifeOpsBench --agent value. Use cerebras-direct only when that "
-            "backend is intentionally configured."
-        ),
-    )
-    bench.add_argument(
-        "--lifeops-mode",
-        choices=("static", "live"),
-        default="static",
-        help="LifeOpsBench mode. Defaults to static to avoid accidental live judge calls.",
-    )
-    bench.add_argument(
-        "--lifeops-domain",
-        default=None,
-        help="Optional LifeOpsBench --domain filter.",
-    )
-    bench.add_argument(
-        "--lifeops-scenario",
-        default=None,
-        help="Optional LifeOpsBench --scenario filter.",
-    )
-    bench.add_argument("--lifeops-seeds", type=int, default=1, help="LifeOpsBench --seeds.")
-    bench.add_argument(
-        "--lifeops-concurrency",
-        type=int,
-        default=4,
-        help="LifeOpsBench --concurrency.",
-    )
-    bench.add_argument(
-        "--judge-model",
-        default=None,
-        help="LifeOpsBench judge model label for live mode. Opus labels are dry-run only.",
-    )
     return parser
 
 

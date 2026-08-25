@@ -35,7 +35,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import logging
 import os
@@ -44,6 +43,12 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+
+SCRIPTS_ROOT = Path(__file__).resolve().parent
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from lib.results_store import ResultsStore
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO_ROOT = ROOT.parent.parent
@@ -73,20 +78,6 @@ BENCHMARK_PROMPT_SOURCES: dict[str, str] = {
     ELIZA_HARNESS_ACTION_SELECTION: "data/final/test.jsonl",
     "hermes": "data/final/test.jsonl",
 }
-
-
-def _load_results_store_class():
-    module_name = "_eliza_benchmark_vs_cerebras_results_store"
-    if module_name in sys.modules:
-        return sys.modules[module_name].ResultsStore
-    rs_path = REPO_ROOT / "packages" / "benchmarks" / "lib" / "results_store.py"
-    spec = importlib.util.spec_from_file_location(module_name, rs_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"could not load ResultsStore from {rs_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module.ResultsStore
 
 
 def _now_millis() -> int:
@@ -143,14 +134,13 @@ def record_results_to_store(
     cerebras_model: str,
     ts: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Append benchmark_vs_cerebras results to the shared ResultsStore.
+    """Append benchmark_vs_cerebras results to the training-owned ResultsStore.
 
     Eliza tier benchmark accuracy rows are recorded as trained model rows using
     the tier's checkpoint path as provenance. Cerebras rows are recorded under
     ``cerebras/<model>`` when the script produced a quality proxy for the same
     benchmark prompt set.
     """
-    ResultsStore = _load_results_store_class()
     store = ResultsStore(db_path=db_path)
     recorded: list[dict[str, Any]] = []
     recorded_ts = ts if ts is not None else _now_millis()
@@ -793,7 +783,7 @@ def main() -> int:
     ap.add_argument(
         "--results-db",
         help=(
-            "Optional shared benchmark ResultsStore SQLite path. When set, "
+            "Optional training ResultsStore SQLite path. When set, "
             "benchmark scores are appended for matrix/trending viewers."
         ),
     )

@@ -3,8 +3,7 @@
 Architecture:
     drive_eliza.py
         ↓ HTTP POST /api/benchmark/message
-    eliza benchmark server (started by `startBenchmarkServer()` in
-        eliza/packages/lifeops-bench/src/server.ts)
+    running Eliza benchmark-compatible server
         ↓ runs the FULL agent pipeline:
             shouldRespond → context_routing → action_planner → response
         ↓ each model call writes to the trajectory_collector service
@@ -32,10 +31,7 @@ Sub-agent capture (closes M8 / W1-T1 + W1-T2 + W1-T3):
     with the existing trajectory mergers.
 
 Usage:
-    # 1. Start the eliza benchmark server (separate process):
-    cd /home/shaw/eliza && bun run --cwd packages/lifeops-bench src/server.ts
-
-    # 2. Run this driver:
+    # Run against an explicitly started benchmark-compatible server:
     .venv/bin/python scripts/synth/drive_eliza.py \\
         --scenarios scripts/synth/scenarios/all.jsonl \\
         --base-url http://localhost:7777 \\
@@ -52,7 +48,7 @@ Usage:
         --orchestrator-url http://localhost:31337 \\
         --output-dir data/synthesized/with_subagents/
 
-    # 3. After the run, the trajectory-export-cron will flush JSONL.
+    # After the run, the trajectory-export-cron will flush JSONL.
     #    Or trigger immediately:
     curl -X POST localhost:7777/api/benchmark/diagnostics \\
         -H "Authorization: Bearer $ELIZA_BENCH_TOKEN"

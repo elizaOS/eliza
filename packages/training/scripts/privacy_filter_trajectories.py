@@ -215,10 +215,8 @@ class RuntimeConfig:
 def default_patterns(*, redact_env_secrets: bool = False) -> list[PatternSpec]:
     """Return ordered regex patterns used by the local privacy pass.
 
-    Credential and geo rules are a Python port of
-    plugins/app-training/src/core/privacy-filter.ts. Contact-like rules come
-    from plugins/app-lifeops/src/default-packs/lint.ts plus the app-training
-    handle pattern.
+    The training package owns these credential, geo, and contact-like rules so
+    historical datasets can be filtered without importing an application.
     """
 
     patterns = [

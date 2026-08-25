@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import build_eliza1_benchmark_matrix as matrix
-
-
-def _load_results_store():
-    module_name = "_test_matrix_results_store"
-    if module_name in sys.modules:
-        return sys.modules[module_name].ResultsStore
-    rs_path = Path(__file__).resolve().parents[2] / "benchmarks" / "lib" / "results_store.py"
-    spec = importlib.util.spec_from_file_location(module_name, rs_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module.ResultsStore
-
-
-ResultsStore = _load_results_store()
+from lib.results_store import ResultsStore
 
 
 def test_build_artifact_computes_improvement_and_reference_delta() -> None:

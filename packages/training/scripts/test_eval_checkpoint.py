@@ -1,13 +1,12 @@
 """Tests for `scripts/eval_checkpoint.py` results-store integration.
 
 Exercises only the `record_to_results_store` write path — we don't
-spin up the full native tool-call benchmark subprocess here. The shared W0-X5
+spin up the full native tool-call benchmark subprocess here. The training-owned
 SQLite results store is exercised against a tmp-path SQLite file.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import sys
 from pathlib import Path
 
@@ -15,36 +14,14 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import eval_checkpoint  # noqa: E402
-
-
-def _load_results_store():
-    """Load ResultsStore directly by file path to avoid shadowing the
-    training package's local ``lib`` namespace with the benchmarks one.
-
-    ``scripts/lib/`` and ``packages/benchmarks/lib/`` collide on package
-    name; pytest's collection of training tests already imports the
-    former. Direct file-path loading keeps the two isolated.
-    """
-    module_name = "_eliza_test_results_store"
-    if module_name in sys.modules:
-        return sys.modules[module_name].ResultsStore
-    rs_path = HERE.parent.parent / "benchmarks" / "lib" / "results_store.py"
-    spec = importlib.util.spec_from_file_location(module_name, rs_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module.ResultsStore
-
-
-ResultsStore = _load_results_store()
+from lib.results_store import ResultsStore, default_db_path  # noqa: E402
 
 
 def _fake_result(step: int = 250) -> dict:
     return {
         "step": step,
         "checkpoint_dir": "/tmp/checkpoint-250",
-        "format_ok": 0.82,
+        "structure_ok": 0.82,
         "content_ok": 0.74,
         "tokens_per_sec": 95.0,
         "peak_vram_mb": 18432,
@@ -85,7 +62,7 @@ def test_record_to_results_store_inserts_row(tmp_path: Path) -> None:
     assert abs(run.score - 0.78) < 1e-9
     raw = run.raw()
     assert raw["step"] == 250
-    assert raw["format_ok"] == 0.82
+    assert raw["structure_ok"] == 0.82
     assert raw["content_ok"] == 0.74
     assert raw["registry_key"] == "gemma4-e2b"
 
@@ -123,3 +100,21 @@ def test_record_to_results_store_uses_benchmark_id_constant() -> None:
     # The constant is the contract — any change cascades to dashboards
     # that filter rows by benchmark id. Lock it down here.
     assert eval_checkpoint.CHECKPOINT_EVAL_BENCHMARK_ID == "eliza_checkpoint_eval"
+
+
+def test_record_to_results_store_accepts_main_result_shape(tmp_path: Path) -> None:
+    result = _fake_result()
+    assert "structure_ok" in result and "format_ok" not in result
+    row_id = eval_checkpoint.record_to_results_store(
+        result,
+        db_path=tmp_path / "main-shape.db",
+        dataset_version="v1",
+        code_commit="abc",
+    )
+    assert row_id > 0
+
+
+def test_default_db_path_preserves_historical_location(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("ELIZA_BENCHMARK_RESULTS_DB", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert default_db_path() == tmp_path / ".eliza" / "benchmarks" / "results.db"

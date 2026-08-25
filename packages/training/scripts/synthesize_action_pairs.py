@@ -4,15 +4,13 @@ Generates ~50k synthetic native format training records targeting the
 elizaOS-native prompt/action surface that is currently uncovered by the
 real corpora. Inputs:
 
-  - data/prompts/registry-v2.json   (482 prompts: core, plugin, lifeops,
-                                     inline-action)
+  - data/prompts/registry-v2.json   (core, plugin, and inline-action prompts)
   - data/prompts/actions-catalog.json (111 plugin actions)
 
 Outputs (jsonl, one record per line; flat eliza shape per SCHEMA.md):
 
   data/synthesized/action_pairs/core-prompts.jsonl
   data/synthesized/action_pairs/plugin-prompts.jsonl
-  data/synthesized/action_pairs/lifeops.jsonl
   data/synthesized/action_pairs/actions-catalog.jsonl
 
 Strategy: rule-based — no LLM API key required. Per template we sample a
@@ -1883,117 +1881,6 @@ def gen_shell_command_extraction(encoder: ExpectedResponseEncoder, rng: random.R
         )
 
 
-# ─── lifeops generator ─────────────────────────────────────────────────
-
-# Common lifeops phrasing variants so we can produce diverse user messages
-# from the embedded "User message" line in each lifeops template.
-LIFEOPS_PARAPHRASE_PREFIXES = [
-    "",
-    "hey, ",
-    "real quick: ",
-    "could you please — ",
-    "todo: ",
-    "fyi: ",
-    "umm, ",
-    "ok so ",
-    "yo, ",
-    "thinking: ",
-]
-LIFEOPS_PARAPHRASE_SUFFIXES = [
-    "",
-    " thanks!",
-    " — when you can",
-    " (no rush)",
-    "?",
-    " please",
-    " 🙏",
-    " whenever",
-    "...",
-    " — let me know",
-]
-
-
-_LIFEOPS_USER_RE = re.compile(r"User message:\s*(.+?)(?:\n\nExpected|$)", re.DOTALL)
-_LIFEOPS_ACTION_RE = re.compile(r"Expected (?:primary )?action:\s*(\w+)")
-_LIFEOPS_ACCEPTABLE_RE = re.compile(r'"acceptableActions":\s*\[([^\]]*)\]')
-_LIFEOPS_FORBIDDEN_RE = re.compile(r'"forbiddenActions":\s*\[([^\]]*)\]')
-
-
-def gen_lifeops(encoder: ExpectedResponseEncoder, rng: random.Random,
-                lifeops_entries: list[dict], per_template: int) -> Iterable[dict]:
-    for entry in lifeops_entries:
-        tmpl = entry["template"]
-        m_user = _LIFEOPS_USER_RE.search(tmpl)
-        m_action = _LIFEOPS_ACTION_RE.search(tmpl)
-        if not m_user:
-            continue
-        base_msg = m_user.group(1).strip()
-        # Determine expected action label and acceptable / forbidden
-        expected_action = None
-        if m_action:
-            ea = m_action.group(1).strip()
-            if ea.upper() != "REPLY":
-                expected_action = ea
-        # Use the first example to read acceptableActions / forbiddenActions
-        example = (entry.get("examples") or [None])[0]
-        acceptable: list[str] = []
-        forbidden: list[str] = []
-        if example:
-            try:
-                ex = json.loads(example)
-                if isinstance(ex, dict):
-                    if ex.get("expectedAction") and not expected_action:
-                        expected_action = ex["expectedAction"]
-                    acceptable = ex.get("acceptableActions") or []
-                    forbidden = ex.get("forbiddenActions") or []
-            except Exception:  # noqa: BLE001
-                pass
-
-        for i in range(per_template):
-            prefix = LIFEOPS_PARAPHRASE_PREFIXES[i % len(LIFEOPS_PARAPHRASE_PREFIXES)]
-            suffix = LIFEOPS_PARAPHRASE_SUFFIXES[(i // len(LIFEOPS_PARAPHRASE_PREFIXES))
-                                                 % len(LIFEOPS_PARAPHRASE_SUFFIXES)]
-            paraphrased = f"{prefix}{base_msg}{suffix}".strip()
-
-            # Phase-2 planner envelope. The action-pair signal (acceptable /
-            # forbidden) rides under metadata so a downstream DPO/preference
-            # pipeline can recover it without polluting the SFT supervised
-            # target.
-            primary = expected_action or ACTION_REPLY
-            expected = {
-                "thought": f"User wants {entry['task_id'].split('.', 2)[1].replace('-', ' ')}; pick action {primary}.",
-                "actions": [{"name": primary, "params": {}}],
-                "providers": [],
-                "text": "",
-                "simple": False,
-            }
-            available = [ACTION_TASK_CALL, ACTION_REPLY]
-            if expected_action:
-                available.append(expected_action)
-            # task_type=agent_trace when there's a non-REPLY action to take;
-            # task_type=reply when the canonical action is REPLY only.
-            tt = "reply" if primary == ACTION_REPLY else "agent_trace"
-
-            yield build_record(
-                encoder=encoder, task_id=tt,
-                user_msg=paraphrased,
-                expected=expected,
-                available_actions=available,
-                source_dataset="synth-action-pairs-lifeops",
-                rng=rng,
-                extra_md={
-                    "lifeops_scenario": entry["task_id"].split(".", 2)[1],
-                    "lifeops_variant": entry["task_id"].rsplit(".", 1)[-1],
-                    "lifeops_task_id": entry["task_id"],
-                    # Preference-signal metadata — survives the SFT pack but
-                    # is invisible to the supervised target.
-                    "expected_action": expected_action,
-                    "acceptable_actions": acceptable,
-                    "forbidden_actions": forbidden,
-                },
-            )
-
-
 # ─── action catalog generator ──────────────────────────────────────────
 
 def _action_phrasings(action_name: str, plugin: str, params: list[dict]) -> list[str]:
@@ -2543,8 +2430,6 @@ def main() -> int:
                     help="examples per core prompt template")
     ap.add_argument("--plugin-per", type=int, default=100,
                     help="examples per plugin prompt template")
-    ap.add_argument("--lifeops-per", type=int, default=50,
-                    help="examples per lifeops scenario variant")
     ap.add_argument("--action-with-params-per", type=int, default=100,
                     help="examples per action that has structured params")
     ap.add_argument("--action-no-params-per", type=int, default=30,
@@ -2561,7 +2446,6 @@ def main() -> int:
     core_entries = [e for e in registry["entries"] if e["source_kind"] == "core"]
     inline_action_entries = [e for e in registry["entries"] if e["source_kind"] == "action"]
     plugin_entries = [e for e in registry["entries"] if e["source_kind"] == "plugin"]
-    lifeops_entries = [e for e in registry["entries"] if e["source_kind"] == "lifeops"]
 
     encoder = JsonExpectedResponseEncoder()
     counts: dict[str, int] = {}
@@ -2617,18 +2501,7 @@ def main() -> int:
         counts["plugin-prompts"] = n
         log.info("  wrote %d plugin records (skipped: %s)", n, skipped_plugins)
 
-        # C. lifeops (410 × 50)
-        log.info("Synthesizing lifeops (%d × %d ≈ %d)",
-                 len(lifeops_entries), args.lifeops_per,
-                 len(lifeops_entries) * args.lifeops_per)
-        lifeops_records: list[dict] = list(
-            gen_lifeops(encoder, rng, lifeops_entries, args.lifeops_per)
-        )
-        n = write_jsonl(lifeops_records, OUT_DIR / "lifeops.jsonl")
-        counts["lifeops"] = n
-        log.info("  wrote %d lifeops records", n)
-
-        # D. action catalog
+        # C. action catalog
         actions = actions_data["actions"]
         with_params = [a for a in actions if a.get("parameters")]
         no_params = [a for a in actions if not a.get("parameters")]

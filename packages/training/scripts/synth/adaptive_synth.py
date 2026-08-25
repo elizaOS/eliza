@@ -4,7 +4,7 @@ Builds on the W1-S1 multi-turn project simulator. The one-shot synth
 (``together_synth.py``, ``drive_eliza.py``) and the W1-S1 simulator both
 generate trajectories from generic seeds. This module closes the loop:
 
-  1. read recent benchmark failures (from the W0-X5 ``ResultsStore``
+  1. read recent benchmark failures (from the training-owned ``ResultsStore``
      SQLite DB at ``~/.eliza/benchmarks/results.db``, OR from JSON
      artifacts written by older benchmark adapters),
   2. for each failure, ask an LLM "author" to produce N variation
@@ -27,7 +27,7 @@ Strict layering, no business logic in the CLI:
   - :class:`FailureSource` (Protocol) — yields :class:`BenchmarkFailure`
     rows. Two concrete implementations ship here:
 
-    * :class:`ResultsStoreFailureSource` reads the W0-X5 SQLite DB.
+    * :class:`ResultsStoreFailureSource` reads the training SQLite DB.
     * :class:`JsonArtifactFailureSource` reads JSON / JSONL files.
 
   - :class:`VariationAuthor` (Protocol) — given a :class:`BenchmarkFailure`,
@@ -110,57 +110,11 @@ from synth.project_simulator import (  # noqa: E402
     TurnDecider,
     TurnRecord,
 )
+from lib.results_store import ResultsStore, default_db_path  # noqa: E402
 
 SYNTH_KIND = "failure_derived"
 
 log = logging.getLogger("synth.adaptive_synth")
-
-
-_RESULTS_STORE_MODULE_NAME = "_adaptive_synth_results_store"
-
-
-def _load_results_store() -> tuple[type, "Callable[[], Path]"]:
-    """Load the W0-X5 ``ResultsStore`` lazily from its absolute path.
-
-    The repo layout puts the canonical ResultsStore at
-    ``packages/benchmarks/lib/results_store.py``. ``packages/training``
-    also has a (different) ``benchmarks/`` directory (eliza1_gates),
-    so we cannot safely add the parent ``packages`` dir to ``sys.path``
-    — the training-local ``benchmarks`` package would shadow the
-    sibling one. We load by absolute file path via ``importlib.util``
-    instead and register the loaded module in ``sys.modules`` so
-    dataclasses referenced by string annotations resolve cleanly.
-    Raises ImportError on failure (no silent fallback).
-    """
-    import importlib.util
-
-    cached = sys.modules.get(_RESULTS_STORE_MODULE_NAME)
-    if cached is not None:
-        return cached.ResultsStore, cached.default_db_path
-
-    repo_root = SCRIPTS_ROOT.parent.parent  # .../packages/
-    target = repo_root / "benchmarks" / "lib" / "results_store.py"
-    if not target.is_file():
-        raise ImportError(
-            f"ResultsStoreFailureSource: could not find {target}"
-        )
-    spec = importlib.util.spec_from_file_location(
-        _RESULTS_STORE_MODULE_NAME, target
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(
-            f"ResultsStoreFailureSource: importlib could not build a spec "
-            f"for {target}"
-        )
-    module = importlib.util.module_from_spec(spec)
-    # Register before exec so dataclass(slots / __module__ lookups succeed.
-    sys.modules[_RESULTS_STORE_MODULE_NAME] = module
-    try:
-        spec.loader.exec_module(module)
-    except Exception:
-        sys.modules.pop(_RESULTS_STORE_MODULE_NAME, None)
-        raise
-    return module.ResultsStore, module.default_db_path
 
 
 # ─────────────────────────── domain types ────────────────────────────
@@ -168,7 +122,7 @@ def _load_results_store() -> tuple[type, "Callable[[], Path]"]:
 
 @dataclass(frozen=True)
 class BenchmarkFailure:
-    """A single failed benchmark run pulled from the W0-X5 store or JSON.
+    """A single failed benchmark run pulled from the training store or JSON.
 
     ``run_id`` is the unique identifier used to populate
     ``derived_from`` on every generated trajectory. ``failed_tasks`` is
@@ -258,7 +212,7 @@ def _extract_failed_tasks(raw: Mapping[str, Any]) -> tuple[Mapping[str, Any], ..
 
 
 class ResultsStoreFailureSource:
-    """Pull failures from the W0-X5 SQLite ResultsStore.
+    """Pull failures from the training-owned SQLite ResultsStore.
 
     Failures are runs whose aggregate score is strictly below the
     ``threshold`` passed to :meth:`list_failures`, recorded at or after
@@ -267,12 +221,6 @@ class ResultsStoreFailureSource:
     """
 
     def __init__(self, db_path: str | Path | None = None):
-        # Load lazily so test environments without ``benchmarks.lib``
-        # on sys.path still load this module. Load directly from the
-        # sibling-package path to avoid colliding with
-        # ``packages/training/benchmarks/`` (eliza1_gates), which
-        # shadows the top-level ``benchmarks`` package name.
-        ResultsStore, default_db_path = _load_results_store()
         self._ResultsStore = ResultsStore
         self._db_path = Path(db_path) if db_path is not None else default_db_path()
 
@@ -888,7 +836,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["results-db", "json"],
         default="results-db",
         help=(
-            "Failure source: 'results-db' (W0-X5 ResultsStore SQLite) or "
+            "Failure source: 'results-db' (training ResultsStore SQLite) or "
             "'json' (a directory of JSON/JSONL artifacts)."
         ),
     )
@@ -898,7 +846,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Override the ResultsStore DB path. Defaults to the path "
-            "resolved by benchmarks.lib.results_store.default_db_path()."
+            "resolved by lib.results_store.default_db_path()."
         ),
     )
     ap.add_argument(
