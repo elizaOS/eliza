@@ -30,6 +30,7 @@ afterAll(() => {
 // Imported after env is set so resolveStateDir resolves to the temp dir.
 const {
   persistMediaBytes,
+  persistMediaStream,
   persistDataUrl,
   isStoredMediaUrl,
   serveMediaFile,
@@ -969,6 +970,45 @@ describe("readStoredMediaBytes fast-fail (#12265)", () => {
 });
 
 describe("readStoredMediaByteRange", () => {
+  it("streams and deduplicates a multi-page attachment without changing identity", async () => {
+    const source = Buffer.concat([
+      Buffer.from("stream-start\n"),
+      Buffer.alloc(150_000, 7),
+      Buffer.from("\nstream-end"),
+    ]);
+    let largestChunk = 0;
+    async function* chunks() {
+      for (let offset = 0; offset < source.byteLength; offset += 16_384) {
+        const chunk = source.subarray(offset, offset + 16_384);
+        largestChunk = Math.max(largestChunk, chunk.byteLength);
+        yield chunk;
+      }
+    }
+    const streamed = await persistMediaStream(
+      chunks(),
+      "application/octet-stream",
+    );
+    const buffered = persistMediaBytes(source, "application/octet-stream");
+    expect(largestChunk).toBeLessThanOrEqual(16_384);
+    expect(streamed).toEqual(buffered);
+    expect(readStoredMediaBytes(streamed.fileName)).toEqual(source);
+  });
+
+  it("removes its private pending file when the source fails", async () => {
+    async function* broken() {
+      yield Buffer.from("partial");
+      throw new Error("source failed");
+    }
+    await expect(
+      persistMediaStream(broken(), "application/octet-stream"),
+    ).rejects.toMatchObject({ code: "MEDIA_STORE_WRITE_FAILED" });
+    expect(
+      fs
+        .readdirSync(path.join(stateDir, "media"))
+        .filter((name) => name.startsWith(".pending-")),
+    ).toEqual([]);
+  });
+
   it("reassembles binary media through bounded pages and supports exact EOF", () => {
     const bytes = Buffer.concat([
       Buffer.from([0, 255, 1, 254]),
