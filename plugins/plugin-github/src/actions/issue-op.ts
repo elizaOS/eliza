@@ -418,6 +418,46 @@ export const issueOpAction: Action = {
       return { success: false, error: err };
     }
 
+    const number = requireNumber(options, "number");
+    if (op === "create") {
+      const title = requireString(options, "title");
+      if (!title) {
+        const err = "GITHUB_ISSUE_OP create requires title";
+        await callback?.({ text: err });
+        return { success: false, error: err };
+      }
+    } else if (op === "assign") {
+      const assignees = requireStringArray(options, "assignees");
+      if (!number || !assignees || assignees.length === 0) {
+        const err =
+          "GITHUB_ISSUE_OP assign requires number (integer) and assignees (non-empty string[])";
+        await callback?.({ text: err });
+        return { success: false, error: err };
+      }
+    } else if (op === "close" || op === "reopen") {
+      if (!number) {
+        const err = `GITHUB_ISSUE_OP ${op} requires number (integer)`;
+        await callback?.({ text: err });
+        return { success: false, error: err };
+      }
+    } else if (op === "comment") {
+      const body = requireString(options, "body");
+      if (!number || !body) {
+        const err =
+          "GITHUB_ISSUE_OP comment requires number (integer) and body";
+        await callback?.({ text: err });
+        return { success: false, error: err };
+      }
+    } else if (op === "label") {
+      const labels = requireStringArray(options, "labels");
+      if (!number || !labels || labels.length === 0) {
+        const err =
+          "GITHUB_ISSUE_OP label requires number (integer) and labels (non-empty string[])";
+        await callback?.({ text: err });
+        return { success: false, error: err };
+      }
+    }
+
     const preview = buildPreview(
       op,
       repo,
@@ -429,7 +469,7 @@ export const issueOpAction: Action = {
       runtime,
       message,
       actionName: "GITHUB_ISSUE_OP",
-      pendingKey: `${op}:${repo}`,
+      pendingKey: number ? `${op}:${repo}:${number}` : `${op}:${repo}`,
       prompt,
       callback,
     });
