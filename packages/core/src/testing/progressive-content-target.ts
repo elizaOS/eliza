@@ -179,6 +179,13 @@ function targetBindingSha256(input: {
 				objectId: input.target.object.id,
 				family: input.target.family,
 				adapterId: input.adapterId,
+				sourceSha256: input.target.object.sourceSha256,
+				sourceRevision: input.target.realization.sourceRevision,
+				nativeRevision: input.target.object.revision,
+				authorizationMode: input.target.realization.authorizationMode,
+				authorizationScopeDigest:
+					input.target.realization.authorizationScopeDigest,
+				cleanupIdentity: input.target.realization.cleanupIdentity,
 				resolverBindingSha256: input.target.realization.resolverBindingSha256,
 			}),
 		)
@@ -210,6 +217,19 @@ export async function runProgressiveContentTargetConformance(input: {
 		input.target.realization.reference.revision !== input.target.object.revision
 	) {
 		throw new TypeError("target native revision differs from its reference");
+	}
+	const expectedAuthorizationScopeDigest = createHash("sha256")
+		.update(input.target.object.authorizationScope)
+		.digest("hex");
+	if (
+		input.target.realization.authorizationScopeDigest !==
+			expectedAuthorizationScopeDigest ||
+		!input.target.realization.sourceRevision ||
+		!input.target.realization.reference.ref ||
+		!input.target.realization.cleanupIdentity ||
+		!/^[0-9a-f]{64}$/u.test(input.target.realization.resolverBindingSha256)
+	) {
+		throw new TypeError("target realization binding is invalid");
 	}
 	const binding = targetBindingSha256(input);
 	const receipts: ProgressiveContentTargetReceipt[] = [];
