@@ -90,7 +90,10 @@ describe("GET browser-workspace (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ mode: "web", tabs: [] });
+    expect((await res.json()) as Record<string, unknown>).toEqual({
+      mode: "web",
+      tabs: [],
+    });
   });
 });
 
@@ -136,7 +139,7 @@ describe("GET memories/feed (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       memories: [],
       count: 0,
       limit: 50,
@@ -153,7 +156,10 @@ describe("GET memories/stats (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ total: 0, byType: {} });
+    expect((await res.json()) as Record<string, unknown>).toEqual({
+      total: 0,
+      byType: {},
+    });
   });
 });
 
@@ -165,7 +171,7 @@ describe("GET documents (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       documents: [],
       total: 0,
       limit: 100,
@@ -182,7 +188,7 @@ describe("GET documents/facets (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       counts: {
         all: 0,
         doc: 0,
@@ -203,7 +209,7 @@ describe("GET relationships/people (designed-empty stub)", () => {
       ENV,
     );
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
+    expect((await res.json()) as Record<string, unknown>).toEqual({
       data: [],
       stats: { totalPeople: 0, totalRelationships: 0, totalIdentities: 0 },
     });
