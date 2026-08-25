@@ -59,9 +59,14 @@ function validateDueDate(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const match = LOCAL_DATE_RE.exec(value.trim());
   if (!match) return null;
+  const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  if (month < 1 || month > 12) return null;
+  // error-policy:J3 — a shape-valid but nonexistent date (2026-02-31,
+  // 2026-04-31, 2026-02-29 in a non-leap year) must not reach scheduling.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) return null;
   return match[0];
 }
 
@@ -88,6 +93,34 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 
 function parseTimeOfDay(value: string): string | null {
   const normalized = value.trim().toLowerCase();
+
+  // 12-hour clock first: "3:00 pm" must parse as 15:00, not be swallowed
+  // by the 24h branch as 03:00 (which silently moves the event to 3 AM).
+  const clockMatch = normalized.match(
+    /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(noon|midnight)\b/,
+  );
+  if (clockMatch) {
+    if (clockMatch[4] === "noon") {
+      return "12:00";
+    }
+    if (clockMatch[4] === "midnight") {
+      return "00:00";
+    }
+    const rawHour = Number(clockMatch[1]);
+    const minute = Number(clockMatch[2] ?? "0");
+    if (rawHour < 1 || rawHour > 12 || minute > 59) {
+      return null;
+    }
+    const meridiem = clockMatch[3];
+    const hour =
+      meridiem === "am"
+        ? rawHour % 12
+        : rawHour % 12 === 0
+          ? 12
+          : (rawHour % 12) + 12;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
   const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b/);
   if (hhmmMatch) {
     const hour = Number(hhmmMatch[1]);
@@ -104,28 +137,7 @@ function parseTimeOfDay(value: string): string | null {
     }
   }
 
-  const clockMatch = normalized.match(
-    /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b|\b(noon|midnight)\b/,
-  );
-  if (!clockMatch) {
-    return null;
-  }
-  if (clockMatch[4] === "noon") {
-    return "12:00";
-  }
-  if (clockMatch[4] === "midnight") {
-    return "00:00";
-  }
-  const rawHour = Number(clockMatch[1]);
-  const minute = Number(clockMatch[2] ?? "0");
-  const meridiem = clockMatch[3];
-  const hour =
-    meridiem === "am"
-      ? rawHour % 12
-      : rawHour % 12 === 0
-        ? 12
-        : (rawHour % 12) + 12;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return null;
 }
 
 function validateTitle(value: unknown): string | null {
