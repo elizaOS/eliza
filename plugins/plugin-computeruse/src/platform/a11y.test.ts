@@ -1,3 +1,9 @@
+/**
+ * Verifies cross-platform accessibility capability detection and extraction
+ * degradation. The tests mock native command boundaries while preserving the
+ * platform-specific success, failure, and unsupported-platform contracts.
+ */
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -6,10 +12,14 @@ const mocks = vi.hoisted(() => ({
   commandExists: vi.fn(() => false),
 }));
 
-vi.mock("node:child_process", () => ({
-  default: { execSync: mocks.execSync },
-  execSync: mocks.execSync,
-}));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    default: { ...actual.default, execSync: mocks.execSync },
+    execSync: mocks.execSync,
+  };
+});
 vi.mock("./helpers.js", () => ({
   currentPlatform: mocks.currentPlatform,
   commandExists: mocks.commandExists,
