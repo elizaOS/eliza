@@ -165,7 +165,7 @@ describe("progressive content corpus", () => {
       rootSeed: "scale-seed",
       generatorRevision: "test-revision",
     });
-    expect(manifest.objects).toHaveLength(18);
+    expect(manifest.objects).toHaveLength(30);
     expect(new Set(manifest.objects.map(({ family }) => family))).toEqual(
       new Set([
         "file",
@@ -184,15 +184,34 @@ describe("progressive content corpus", () => {
       "attachment",
       "tool-output",
     ] as const) {
-      const sizes = manifest.objects
-        .filter((object) => object.family === family)
+      const objects = manifest.objects.filter(
+        (object) => object.family === family,
+      );
+      const readableSizes = objects
+        .filter(
+          ({ format }) => format !== "binary" && format !== "invalid-utf8",
+        )
         .map(({ byteLength }) => byteLength)
         .sort((left, right) => left - right);
-      expect(sizes).toEqual([1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024]);
+      expect(readableSizes).toEqual([
+        1024 * 1024,
+        10 * 1024 * 1024,
+        100 * 1024 * 1024,
+      ]);
+      expect(
+        objects
+          .filter(({ format }) => format === "binary")
+          .map(({ byteLength }) => byteLength),
+      ).toEqual([4_096]);
+      expect(
+        objects
+          .filter(({ format }) => format === "invalid-utf8")
+          .map(({ byteLength }) => byteLength),
+      ).toEqual([4_097]);
     }
     expect(
       manifest.objects.reduce((total, object) => total + object.byteLength, 0),
-    ).toBe(666 * 1024 * 1024);
+    ).toBe(666 * 1024 * 1024 + 6 * (4_096 + 4_097));
     await expect(verifyProgressiveContentCorpus(root)).resolves.toEqual(
       manifest,
     );
