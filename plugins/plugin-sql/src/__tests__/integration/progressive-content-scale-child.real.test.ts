@@ -28,6 +28,19 @@ interface ScaleChildReport {
   readonly afterRestartRead: MemorySample;
   readonly afterCleanup: MemorySample;
   readonly peak: MemorySample;
+  readonly resourceAssessment:
+    | {
+        readonly status: "resource-limit";
+        readonly code: "PGLITE_PROGRESSIVE_INGESTION_RSS_LIMIT_EXCEEDED";
+        readonly phase: "ingestion";
+        readonly ceilingBytes: number;
+        readonly observedBytes: number;
+      }
+    | {
+        readonly status: "within-limit";
+        readonly ceilingBytes: number;
+        readonly observedBytes: number;
+      };
   readonly deltas: {
     readonly ingestion: MemorySample;
     readonly coldRead: MemorySample;
@@ -87,7 +100,16 @@ describe("progressive SQL scale child", () => {
         sourceBytes: SCALE_BYTES,
         restartVerified: true,
         cleanupVerified: true,
+        resourceAssessment: {
+          status: "resource-limit",
+          code: "PGLITE_PROGRESSIVE_INGESTION_RSS_LIMIT_EXCEEDED",
+          phase: "ingestion",
+          ceilingBytes: READ_RSS_CEILING_BYTES,
+        },
       });
+      expect(report.resourceAssessment.observedBytes).toBeGreaterThan(
+        report.resourceAssessment.ceilingBytes
+      );
       expect(report.databaseRows).toBeGreaterThan(100);
       expect(report.storageAfterIngestion).toMatchObject({
         databaseBytes: expect.any(Number),
