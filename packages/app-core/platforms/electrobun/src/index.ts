@@ -278,10 +278,11 @@ function buildApiRequestHeaders(contentType?: string): Record<string, string> {
   }
   let apiToken = resolveApiToken(process.env);
   if (!apiToken && preparedDesktopRuntime?.mode === "external") {
-    apiToken = resolveQualifiedExternalToken(
-      preparedDesktopRuntime,
-      preparedDesktopRuntime.externalApi.base,
-    );
+    apiToken =
+      resolveQualifiedExternalToken(
+        preparedDesktopRuntime,
+        preparedDesktopRuntime.externalApi.base,
+      ) ?? null;
   }
   if (!apiToken) {
     const rt = resolveDesktopRuntime();
