@@ -27,7 +27,9 @@ import {
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
 } from "../../corpus-tools/src/progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../corpus-tools/src/progressive-content-realization.ts";
+import { createProgressiveContentLiveTrajectoryEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-live-trajectory-evidence-fixture.ts";
 import { createProgressiveContentPostgresEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-postgres-evidence-fixture.ts";
+import { createProgressiveContentScenarioNativeEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-scenario-native-evidence-fixture.ts";
 import { createProgressiveContentSoakEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-soak-evidence-fixture.ts";
 import { createBundle } from "../../evidence/src/bundle.ts";
 import {
@@ -88,37 +90,10 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
 }
 
 function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
-  return Array.from({ length: 5 }, (_, repetition) =>
-    ["file", "document", "memory", "email", "attachment", "tool-output"].map(
-      (family) =>
-        JSON.stringify({
-          repetition,
-          family,
-          status: "passed",
-          commit,
-          corpusManifestSha256,
-          providerQualified: true,
-          provider: "openai",
-          model: "gpt-5.4",
-          continuationDiscovered: true,
-          lateEvidenceRecovered: true,
-          exactAnswer: true,
-          answerLeakageDetected: false,
-          canaryLeakageDetected: false,
-          toolCalls: 2,
-          noProgressReads: 0,
-          latencyMs: 100,
-          inputTokens: 1_000,
-          outputTokens: 100,
-          costUsd: 0.01,
-          controllerDecision: "qualified",
-          observerEvidenceSha256: "d".repeat(64),
-          trajectorySha256: "e".repeat(64),
-        }),
-    ),
-  )
-    .flat()
-    .join("\n");
+  return createProgressiveContentLiveTrajectoryEvidenceFixture(
+    commit,
+    corpusManifestSha256,
+  );
 }
 
 function validPostgresEvidence(
@@ -468,25 +443,8 @@ function evidenceValues() {
     "soak.json": validSoakEvidence(commit, manifestSha256),
     "postgres.json": validPostgresEvidence(objects, manifestSha256),
     "scenario.json": validDeterministicScenarioReport(),
-    "scenario-native.jsonl": `${JSON.stringify({
-      format: "eliza_native_v1",
-      scenarioStatus: "passed",
-      stepType: "planner",
-      privacyAttestation: { passed: true },
-      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
-    })}\n${JSON.stringify({
-      format: "eliza_native_v1",
-      scenarioStatus: "passed",
-      stepType: "evaluator",
-      privacyAttestation: { passed: true },
-      response: {
-        text: JSON.stringify({
-          success: true,
-          decision: "FINISH",
-          messageToUser: "Done.",
-        }),
-      },
-    })}\n`,
+    "scenario-native.jsonl":
+      createProgressiveContentScenarioNativeEvidenceFixture(),
     "trajectories.jsonl": validLiveTrajectories(commit, manifestSha256),
     "e2e.json": {
       schemaVersion: CONTENT_CONTEXT_E2E_SCHEMA_VERSION,

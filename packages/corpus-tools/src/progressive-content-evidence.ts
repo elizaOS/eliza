@@ -734,15 +734,132 @@ function soakLifecycleFailures(soak: Record<string, unknown>): string[] {
 }
 
 function passingScenarioNativeRow(entry: Record<string, unknown>): boolean {
-  const attestation =
-    entry.privacyAttestation && typeof entry.privacyAttestation === "object"
-      ? (entry.privacyAttestation as Record<string, unknown>)
-      : null;
-  return (
-    entry.format === "eliza_native_v1" &&
-    entry.scenarioStatus === "passed" &&
-    attestation?.passed === true
-  );
+  try {
+    exactKeys(
+      entry,
+      [
+        "agentId",
+        "batchId",
+        "boundary",
+        "callId",
+        "callIndex",
+        "format",
+        "metadata",
+        "modelType",
+        "privacyAttestation",
+        "provider",
+        "purpose",
+        "request",
+        "response",
+        "scenarioId",
+        "scenarioStatus",
+        "schemaVersion",
+        "stepId",
+        "stepIndex",
+        "stepType",
+        "timestamp",
+        "trajectoryId",
+      ],
+      "scenario native row",
+    );
+    const stepTypes = ["messageHandler", "planner", "evaluation"];
+    if (!stepTypes.includes(String(entry.stepType))) return false;
+    const attestation = record(
+      entry.privacyAttestation,
+      "scenario native privacy attestation",
+    );
+    exactKeys(
+      attestation,
+      [
+        "schema",
+        "version",
+        "source",
+        "redacted",
+        "reviewed",
+        "passed",
+        "attestationPath",
+      ],
+      "scenario native privacy attestation",
+    );
+    const request = record(entry.request, "scenario native request");
+    exactKeys(
+      request,
+      entry.stepType === "evaluation"
+        ? ["messages", "providerOptions", "tools"]
+        : ["messages", "providerOptions", "toolChoice", "tools"],
+      "scenario native request",
+    );
+    const response = record(entry.response, "scenario native response");
+    exactKeys(
+      response,
+      entry.stepType === "planner" ? ["text", "toolCalls"] : ["text"],
+      "scenario native response",
+    );
+    const metadata = record(entry.metadata, "scenario native metadata");
+    const metadataKeys = [
+      "task_type",
+      "source_dataset",
+      "trajectory_id",
+      "step_id",
+      "call_id",
+      "agent_id",
+      "source_run_id",
+      "source_room_id",
+      "scenario_id",
+      "source_stage_kind",
+      ...(entry.stepType === "planner" || entry.stepType === "evaluation"
+        ? ["source_stage_iteration"]
+        : []),
+      "source_model_type",
+      ...(entry.stepType === "planner" ? [] : ["source_provider"]),
+      "trajectory_status",
+      "scenario_status",
+      "privacy_attestation",
+    ];
+    exactKeys(metadata, metadataKeys, "scenario native metadata");
+    return (
+      entry.format === "eliza_native_v1" &&
+      entry.schemaVersion === 1 &&
+      entry.boundary === "vercel_ai_sdk.generateText" &&
+      entry.scenarioStatus === "passed" &&
+      entry.scenarioId === "deterministic-progressive-content-actions" &&
+      typeof entry.agentId === "string" &&
+      entry.agentId.length > 0 &&
+      entry.batchId === null &&
+      typeof entry.callId === "string" &&
+      entry.callId.length > 0 &&
+      typeof entry.callIndex === "number" &&
+      Number.isSafeInteger(entry.callIndex) &&
+      entry.callIndex >= 0 &&
+      typeof entry.modelType === "string" &&
+      entry.modelType.length > 0 &&
+      (entry.provider === null || typeof entry.provider === "string") &&
+      typeof entry.purpose === "string" &&
+      entry.purpose.length > 0 &&
+      typeof entry.stepId === "string" &&
+      entry.stepId.length > 0 &&
+      typeof entry.stepIndex === "number" &&
+      Number.isSafeInteger(entry.stepIndex) &&
+      entry.stepIndex >= 0 &&
+      typeof entry.timestamp === "number" &&
+      Number.isSafeInteger(entry.timestamp) &&
+      entry.timestamp > 0 &&
+      typeof entry.trajectoryId === "string" &&
+      entry.trajectoryId.length > 0 &&
+      array(request.messages, "scenario native messages").length > 0 &&
+      Array.isArray(request.tools) &&
+      typeof response.text === "string" &&
+      attestation.schema === "eliza.privacy_filter_attestation.v1" &&
+      attestation.version === 1 &&
+      attestation.source === "scenario_native_export" &&
+      attestation.redacted === true &&
+      attestation.reviewed === true &&
+      attestation.passed === true &&
+      canonicalJson(metadata.privacy_attestation) === canonicalJson(attestation)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function scenarioNativeToolCall(entry: Record<string, unknown>): boolean {
@@ -752,7 +869,7 @@ function scenarioNativeToolCall(entry: Record<string, unknown>): boolean {
 }
 
 function scenarioNativeFinal(entry: Record<string, unknown>): boolean {
-  if (!passingScenarioNativeRow(entry) || entry.stepType !== "evaluator") {
+  if (!passingScenarioNativeRow(entry) || entry.stepType !== "evaluation") {
     return false;
   }
   const response = record(entry.response, "scenario native response");
@@ -1771,10 +1888,13 @@ function semanticFailures(
     "scenario native export",
   );
   if (
+    nativeScenario.some((entry) => !passingScenarioNativeRow(entry)) ||
     !nativeScenario.some(scenarioNativeToolCall) ||
     !nativeScenario.some(scenarioNativeFinal)
   )
-    failures.push("scenario native export lacks tool and final events");
+    failures.push(
+      "scenario native export contains invalid rows or lacks tool and final events",
+    );
 
   const trajectories = jsonLines(bytes["trajectories.jsonl"], "trajectories");
   const repetitions = new Set(trajectories.map(({ repetition }) => repetition));
