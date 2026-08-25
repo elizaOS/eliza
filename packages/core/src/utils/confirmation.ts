@@ -131,7 +131,11 @@ export async function requireConfirmation(
 			? args.ttlMs
 			: DEFAULT_TTL_MS;
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
-	const userId = String(args.message.entityId);
+	const userId = String(
+		args.message.entityId ??
+			(args.message as { userId?: unknown }).userId ??
+			"",
+	);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
 	const userText = readUserText(args.message);
 
@@ -151,7 +155,7 @@ export async function requireConfirmation(
 		if (args.callback) {
 			await args.callback({
 				text: args.prompt,
-				source: args.message.content.source,
+				source: args.message.content?.source,
 			});
 		}
 		return { status: "pending" };

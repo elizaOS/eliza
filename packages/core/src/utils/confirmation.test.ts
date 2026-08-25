@@ -229,4 +229,31 @@ describe("confirmation utilities", () => {
 		expect(llmConfirmedFlagIsAuthoritative(1)).toBe(false);
 		expect(llmConfirmedFlagIsAuthoritative({})).toBe(false);
 	});
+
+	it("falls back to userId when entityId is missing and handles optional source", async () => {
+		const runtime = createMockRuntime();
+		const callback = vi.fn();
+		const message = {
+			userId: "legacy-user-456",
+			content: { text: "delete resource" },
+		} as unknown as Memory;
+
+		const decision = await requireConfirmation({
+			runtime,
+			message,
+			actionName: "DELETE_RESOURCE",
+			pendingKey: "res:1",
+			prompt: "Delete resource 1?",
+			callback,
+		});
+
+		expect(decision.status).toBe("pending");
+		expect(callback).toHaveBeenCalledWith({
+			text: "Delete resource 1?",
+			source: undefined,
+		});
+		expect(
+			runtime.cacheStore.has("confirmation:legacy-user-456:DELETE_RESOURCE:res:1"),
+		).toBe(true);
+	});
 });
