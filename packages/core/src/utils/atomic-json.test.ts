@@ -134,5 +134,13 @@ describe("atomic-json", () => {
 				TypeError,
 			);
 		});
+
+		it("rejects undefined value with TypeError", async () => {
+			const target = path.join(tempDir, "undefined.json");
+			await expect(writeJsonAtomic(target, undefined)).rejects.toThrow(
+				TypeError,
+			);
+			expect(() => writeJsonAtomicSync(target, undefined)).toThrow(TypeError);
+		});
 	});
 });

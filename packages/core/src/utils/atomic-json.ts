@@ -61,6 +61,9 @@ function tmpPathFor(filePath: string): string {
 
 function serialize(value: unknown, opts: NormalizedWriteOptions): string {
 	const body = JSON.stringify(value, null, opts.indent);
+	if (body === undefined) {
+		throw new TypeError("Cannot serialize undefined to JSON");
+	}
 	return opts.trailingNewline ? `${body}\n` : body;
 }
 
