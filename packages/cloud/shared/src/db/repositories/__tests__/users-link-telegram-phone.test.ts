@@ -28,6 +28,11 @@ import { eq } from "drizzle-orm";
 import { isUniqueConstraintError } from "../../../lib/utils/db-errors";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { organizations } from "../../schemas/organizations";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupJoinChallenges,
+  personalSharedGroupParticipants,
+} from "../../schemas/personal-shared-groups";
 import { userIdentities } from "../../schemas/user-identities";
 import { users } from "../../schemas/users";
 import { usersRepository } from "../users";
@@ -77,7 +82,14 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity (real PGlite)", () => {
       return;
     }
     try {
-      const schema = { organizations, users, userIdentities };
+      const schema = {
+        organizations,
+        users,
+        userIdentities,
+        personalSharedGroupBindings,
+        personalSharedGroupParticipants,
+        personalSharedGroupJoinChallenges,
+      };
       const { apply } = await pushSchema(schema as never, dbWrite as never);
       await apply();
     } catch (error) {

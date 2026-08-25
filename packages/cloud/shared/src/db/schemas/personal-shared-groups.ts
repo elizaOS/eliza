@@ -20,6 +20,15 @@ import { users } from "./users";
 export type PersonalSharedGroupPlatform = "telegram" | "blooio";
 export type PersonalSharedGroupBindingState = "active" | "suspended" | "revoked";
 export type PersonalSharedGroupResponsePolicy = "mention_only" | "ambient";
+/**
+ * `all_adults` v1 is an owner-configured quorum of independently authenticated
+ * adult principals. It does not claim that the provider exposes a complete or
+ * designated adult-membership roster; that audience-attestation work remains
+ * a separate policy layer.
+ */
+export type PersonalSharedGroupConsentMode = "single_owner" | "all_adults";
+export type PersonalSharedGroupConsentProvenance = "owner_binding" | "authenticated_dm";
+export type PersonalSharedGroupJoinChallengeStage = "authenticate" | "confirm";
 export type PersonalSharedGroupDeliveryAttemptState = "committed" | "uncertain" | "reconciled";
 
 export const personalSharedGroupClaims = pgTable(
@@ -38,6 +47,11 @@ export const personalSharedGroupClaims = pgTable(
     project: text("project").notNull(),
     connector_account_id: text("connector_account_id").notNull(),
     issued_to_platform_user_id: text("issued_to_platform_user_id").notNull(),
+    consent_mode: text("consent_mode")
+      .$type<PersonalSharedGroupConsentMode>()
+      .notNull()
+      .default("single_owner"),
+    required_principal_count: integer("required_principal_count").notNull().default(1),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumed_at: timestamp("consumed_at", { withTimezone: true }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -46,6 +60,11 @@ export const personalSharedGroupClaims = pgTable(
     platform_check: check(
       "personal_shared_group_claims_platform_check",
       sql`${table.platform} IN ('telegram', 'blooio')`,
+    ),
+    consent_config_check: check(
+      "personal_shared_group_claims_consent_config_check",
+      sql`(${table.consent_mode} = 'single_owner' AND ${table.required_principal_count} = 1)
+        OR (${table.consent_mode} = 'all_adults' AND ${table.required_principal_count} BETWEEN 2 AND 32)`,
     ),
     expires_idx: index("personal_shared_group_claims_expires_idx").on(table.expires_at),
     owner_idx: index("personal_shared_group_claims_owner_idx").on(
@@ -76,6 +95,12 @@ export const personalSharedGroupBindings = pgTable(
       .$type<PersonalSharedGroupResponsePolicy>()
       .notNull()
       .default("mention_only"),
+    consent_mode: text("consent_mode")
+      .$type<PersonalSharedGroupConsentMode>()
+      .notNull()
+      .default("single_owner"),
+    required_principal_count: integer("required_principal_count").notNull().default(1),
+    consent_version: bigint("consent_version", { mode: "number" }).notNull().default(1),
     authority_version: bigint("authority_version", { mode: "number" }).notNull().default(1),
     delivery_lease_source_id: text("delivery_lease_source_id"),
     delivery_lease_token: uuid("delivery_lease_token"),
@@ -103,6 +128,11 @@ export const personalSharedGroupBindings = pgTable(
       "personal_shared_group_bindings_policy_check",
       sql`${table.response_policy} IN ('mention_only', 'ambient')`,
     ),
+    consent_config_check: check(
+      "personal_shared_group_bindings_consent_config_check",
+      sql`(${table.consent_mode} = 'single_owner' AND ${table.required_principal_count} = 1)
+        OR (${table.consent_mode} = 'all_adults' AND ${table.required_principal_count} BETWEEN 2 AND 32)`,
+    ),
     provider_chat_unique: uniqueIndex("personal_shared_group_bindings_provider_chat_uidx").on(
       table.platform,
       table.project,
@@ -112,6 +142,75 @@ export const personalSharedGroupBindings = pgTable(
     owner_idx: index("personal_shared_group_bindings_owner_idx").on(
       table.owner_user_id,
       table.state,
+    ),
+  }),
+);
+
+/**
+ * Hashed, single-use, actor-bound join handshakes.
+ *
+ * `provider_thread_id` is the normalized provider sub-thread identity. An
+ * empty string means the provider event had no sub-thread, which remains an
+ * exact value rather than a wildcard during confirmation.
+ */
+export const personalSharedGroupJoinChallenges = pgTable(
+  "personal_shared_group_join_challenges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code_hash: text("code_hash").notNull().unique(),
+    stage: text("stage").$type<PersonalSharedGroupJoinChallengeStage>().notNull(),
+    binding_id: uuid("binding_id")
+      .notNull()
+      .references(() => personalSharedGroupBindings.id, { onDelete: "cascade" }),
+    consent_version: bigint("consent_version", { mode: "number" }).notNull(),
+    platform: text("platform").$type<PersonalSharedGroupPlatform>().notNull(),
+    project: text("project").notNull(),
+    connector_account_id: text("connector_account_id").notNull(),
+    provider_chat_id: text("provider_chat_id").notNull(),
+    provider_thread_id: text("provider_thread_id").notNull().default(""),
+    issued_to_platform_user_id: text("issued_to_platform_user_id").notNull(),
+    source_message_id: text("source_message_id").notNull(),
+    linked_user_id: uuid("linked_user_id").references(() => users.id, {
+      onDelete: "cascade",
+    }),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumed_at: timestamp("consumed_at", { withTimezone: true }),
+    consumed_by_source_message_id: text("consumed_by_source_message_id"),
+    superseded_at: timestamp("superseded_at", { withTimezone: true }),
+    superseded_by_source_message_id: text("superseded_by_source_message_id"),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    stage_check: check(
+      "personal_shared_group_join_challenges_stage_check",
+      sql`${table.stage} IN ('authenticate', 'confirm')`,
+    ),
+    platform_check: check(
+      "personal_shared_group_join_challenges_platform_check",
+      sql`${table.platform} IN ('telegram', 'blooio')`,
+    ),
+    linked_user_stage_check: check(
+      "personal_shared_group_join_challenges_linked_user_stage_check",
+      sql`(${table.stage} = 'authenticate' AND ${table.linked_user_id} IS NULL)
+        OR (${table.stage} = 'confirm' AND ${table.linked_user_id} IS NOT NULL)`,
+    ),
+    superseded_source_check: check(
+      "personal_shared_group_join_challenges_superseded_source_check",
+      sql`(${table.superseded_at} IS NULL) = (${table.superseded_by_source_message_id} IS NULL)`,
+    ),
+    binding_stage_idx: index("personal_shared_group_join_challenges_binding_stage_idx").on(
+      table.binding_id,
+      table.stage,
+    ),
+    expires_idx: index("personal_shared_group_join_challenges_expires_idx").on(table.expires_at),
+    linked_user_idx: index("personal_shared_group_join_challenges_linked_user_idx").on(
+      table.linked_user_id,
+    ),
+    source_unique: uniqueIndex("personal_shared_group_join_challenges_source_uidx").on(
+      table.binding_id,
+      table.stage,
+      table.issued_to_platform_user_id,
+      table.source_message_id,
     ),
   }),
 );
@@ -173,6 +272,11 @@ export const personalSharedGroupParticipants = pgTable(
     ordinal: integer("ordinal").notNull(),
     /** Connector-supplied name that passed the resolution rules, else null. */
     display_name: text("display_name"),
+    /** Authenticated Eliza account; never model-facing or returned by status APIs. */
+    linked_user_id: uuid("linked_user_id").references(() => users.id),
+    consented_at: timestamp("consented_at", { withTimezone: true }),
+    consent_provenance: text("consent_provenance").$type<PersonalSharedGroupConsentProvenance>(),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
     first_seen_at: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     last_seen_at: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -185,6 +289,15 @@ export const personalSharedGroupParticipants = pgTable(
       "personal_shared_group_participants_display_name_check",
       sql`${table.display_name} IS NULL OR (length(${table.display_name}) > 0 AND length(${table.display_name}) <= 128)`,
     ),
+    consent_provenance_check: check(
+      "personal_shared_group_participants_consent_provenance_check",
+      sql`${table.consent_provenance} IS NULL OR ${table.consent_provenance} IN ('owner_binding', 'authenticated_dm')`,
+    ),
+    consent_shape_check: check(
+      "personal_shared_group_participants_consent_shape_check",
+      sql`(${table.linked_user_id} IS NULL AND ${table.consented_at} IS NULL AND ${table.consent_provenance} IS NULL)
+        OR (${table.linked_user_id} IS NOT NULL AND ${table.consented_at} IS NOT NULL AND ${table.consent_provenance} IS NOT NULL)`,
+    ),
     actor_unique: uniqueIndex("personal_shared_group_participants_actor_uidx").on(
       table.binding_id,
       table.platform_user_id,
@@ -193,6 +306,13 @@ export const personalSharedGroupParticipants = pgTable(
     ordinal_unique: uniqueIndex("personal_shared_group_participants_ordinal_uidx").on(
       table.binding_id,
       table.ordinal,
+    ),
+    linked_user_unique: uniqueIndex("personal_shared_group_participants_linked_user_uidx").on(
+      table.binding_id,
+      table.linked_user_id,
+    ),
+    linked_user_idx: index("personal_shared_group_participants_linked_user_idx").on(
+      table.linked_user_id,
     ),
   }),
 );
@@ -248,6 +368,12 @@ export type PersonalSharedGroupClaim = InferSelectModel<typeof personalSharedGro
 export type NewPersonalSharedGroupClaim = InferInsertModel<typeof personalSharedGroupClaims>;
 export type PersonalSharedGroupBinding = InferSelectModel<typeof personalSharedGroupBindings>;
 export type NewPersonalSharedGroupBinding = InferInsertModel<typeof personalSharedGroupBindings>;
+export type PersonalSharedGroupJoinChallenge = InferSelectModel<
+  typeof personalSharedGroupJoinChallenges
+>;
+export type NewPersonalSharedGroupJoinChallenge = InferInsertModel<
+  typeof personalSharedGroupJoinChallenges
+>;
 export type PersonalSharedGroupDeliveryReceipt = InferSelectModel<
   typeof personalSharedGroupDeliveryReceipts
 >;
