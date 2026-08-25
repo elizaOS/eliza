@@ -159,7 +159,7 @@ const contextInspectorEvidenceSeedRoute: Route = {
       endTrajectory(trajectoryId: string, status: "completed"): Promise<void>;
       flushWriteQueue(trajectoryId?: string): Promise<void>;
       logLlmCall(params: Record<string, unknown>): void;
-      startStep(trajectoryId: string): string;
+      startStep(trajectoryId: string, state: { timestamp: number }): string;
       startTrajectory(
         agentId: string,
         options: { metadata: Record<string, unknown>; source: string },
@@ -176,7 +176,9 @@ const contextInspectorEvidenceSeedRoute: Route = {
         roomId,
         metadata: { conversationId, roomId },
       });
-      const stepId = service.startStep(trajectoryId);
+      const stepId = service.startStep(trajectoryId, {
+        timestamp: Date.now(),
+      });
       const view = buildReadView({
         reference: {
           kind: index % 2 === 0 ? "email" : "file",
@@ -234,6 +236,143 @@ const contextInspectorEvidenceSeedRoute: Route = {
       trajectoryIds.push(trajectoryId);
     }
     return json(200, { count: trajectoryIds.length, conversationId });
+  },
+};
+
+type ContextInspectorDatabaseStateRow = {
+  llmCallCount: number | string;
+  materializedTrajectoryCount: number | string;
+  snapshotBytes: number | string;
+  stepCount: number | string;
+  trajectoryCount: number | string;
+};
+
+type ContextInspectorStepStateRow = {
+  indexedStepCount: number | string;
+  normalizedStepCount: number | string;
+};
+
+function parseDatabaseCount(value: number | string, field: string): number {
+  const count = typeof value === "number" ? value : Number.parseInt(value, 10);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error(
+      `Invalid ${field} returned by the evidence database query.`,
+    );
+  }
+  return count;
+}
+
+const contextInspectorEvidenceDatabaseStateRoute: Route = {
+  type: "GET",
+  path: "/api/device-e2e/context-inspector/database-state",
+  rawPath: true,
+  name: "device-e2e-context-inspector-database-state",
+  routeHandler: async (ctx) => {
+    const json = (status: number, body: unknown) => ({
+      status,
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/json; charset=utf-8",
+      },
+      body,
+    });
+    if (process.env.ELIZA_UI_SMOKE_CONTEXT_INSPECTOR !== "1") {
+      return json(404, {
+        error: "Context inspector database evidence is disabled.",
+      });
+    }
+
+    const adapter = ctx.runtime.adapter as
+      | {
+          constructor?: { name?: string };
+          getRawConnection?: () => unknown;
+        }
+      | undefined;
+    const connection = adapter?.getRawConnection?.() as
+      | {
+          constructor?: { name?: string };
+          query?: <TRow extends Record<string, unknown>>(
+            sql: string,
+            params?: unknown[],
+          ) => Promise<{ rows: TRow[] }>;
+        }
+      | undefined;
+    if (!connection || typeof connection.query !== "function") {
+      return json(503, { error: "PGlite evidence connection unavailable." });
+    }
+    if (adapter?.constructor?.name !== "PgliteDatabaseAdapter") {
+      return json(503, { error: "Real PGlite evidence adapter unavailable." });
+    }
+
+    const trajectoryResult =
+      await connection.query<ContextInspectorDatabaseStateRow>(
+        `SELECT
+         count(*)::int AS "trajectoryCount",
+         COALESCE(sum(step_count), 0)::int AS "stepCount",
+         COALESCE(sum(llm_call_count), 0)::int AS "llmCallCount",
+         count(*) FILTER (WHERE steps_json <> '[]')::int
+           AS "materializedTrajectoryCount",
+         COALESCE(sum(pg_column_size(steps_json)), 0)::int AS "snapshotBytes"
+       FROM trajectories
+       WHERE agent_id = $1 AND source = $2`,
+        [ctx.runtime.agentId, "context-inspector-e2e"],
+      );
+    const stepResult = await connection.query<ContextInspectorStepStateRow>(
+      `SELECT
+         (SELECT count(*)::int
+          FROM trajectory_step_index AS step_index
+          INNER JOIN trajectories AS indexed_trajectory
+            ON indexed_trajectory.id = step_index.trajectory_id
+          WHERE indexed_trajectory.agent_id = $1
+            AND indexed_trajectory.source = $2) AS "indexedStepCount",
+         (SELECT count(*)::int
+          FROM trajectory_steps AS step
+          INNER JOIN trajectories AS normalized_trajectory
+            ON normalized_trajectory.id = step.trajectory_id
+          WHERE normalized_trajectory.agent_id = $1
+            AND normalized_trajectory.source = $2) AS "normalizedStepCount"`,
+      [ctx.runtime.agentId, "context-inspector-e2e"],
+    );
+    const trajectory = trajectoryResult.rows[0];
+    const step = stepResult.rows[0];
+    if (!trajectory || !step) {
+      throw new Error(
+        "Context inspector database evidence query returned no row.",
+      );
+    }
+
+    return json(200, {
+      schema: "eliza.context-inspector-db-state/v1",
+      runId: process.env.ELIZA_UI_SMOKE_RUN_ID?.trim() || null,
+      sourceSha: process.env.GITHUB_SHA?.trim() || null,
+      engine: "pglite",
+      adapter: adapter.constructor.name,
+      source: "context-inspector-e2e",
+      counts: {
+        trajectories: parseDatabaseCount(
+          trajectory.trajectoryCount,
+          "trajectoryCount",
+        ),
+        declaredSteps: parseDatabaseCount(trajectory.stepCount, "stepCount"),
+        indexedSteps: parseDatabaseCount(
+          step.indexedStepCount,
+          "indexedStepCount",
+        ),
+        normalizedStepRows: parseDatabaseCount(
+          step.normalizedStepCount,
+          "normalizedStepCount",
+        ),
+        llmCalls: parseDatabaseCount(trajectory.llmCallCount, "llmCallCount"),
+        materializedTrajectories: parseDatabaseCount(
+          trajectory.materializedTrajectoryCount,
+          "materializedTrajectoryCount",
+        ),
+        snapshotBytes: parseDatabaseCount(
+          trajectory.snapshotBytes,
+          "snapshotBytes",
+        ),
+      },
+    });
   },
 };
 
@@ -350,6 +489,7 @@ async function main(): Promise<void> {
       deviceE2eUploadImageRoute,
       rubyHighEvidenceActionRoute,
       contextInspectorEvidenceSeedRoute,
+      contextInspectorEvidenceDatabaseStateRoute,
     ],
   };
   // Route coverage exercises the real dynamic view registry, so the host must
