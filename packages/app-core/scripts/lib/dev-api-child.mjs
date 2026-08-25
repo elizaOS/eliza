@@ -46,7 +46,7 @@ export function buildDevApiChildEnv(baseEnv) {
   return result;
 }
 
-export function buildDevApiChildArgs({ runtime, entryPath, watch = false }) {
+function buildDevApiChildArgs({ runtime, entryPath, watch = false }) {
   if (runtime !== "bun" && runtime !== "node") {
     throw new TypeError(`Unsupported development API runtime: ${runtime}`);
   }
