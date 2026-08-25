@@ -15,6 +15,7 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   ANDROID_PLAY_ALLOWED_PERMISSIONS,
+  androidManifestMetadataValueFromAapt,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidGeneratedBuildTargetProperties,
   createAndroidPlayManifestPolicy,
@@ -61,6 +62,30 @@ const AAPT_MANIFEST = `
           A: android:name(0x01010003)="android.support.FILE_PROVIDER_PATHS" (Raw: "android.support.FILE_PROVIDER_PATHS")
 `;
 
+const AAPT_SYSTEM_METADATA = `
+  E: application (line=1)
+    E: meta-data (line=2)
+      A: android:name(0x01010003)="firebase_messaging_auto_init_enabled" (Raw: "firebase_messaging_auto_init_enabled")
+      A: android:value(0x01010024)=(type 0x12)0x0
+    E: meta-data (line=3)
+      A: android:name(0x01010003)="firebase_analytics_collection_enabled" (Raw: "firebase_analytics_collection_enabled")
+      A: android:value(0x01010024)=(type 0x12)0x0
+`;
+
+const AAPT_NESTED_AND_DUPLICATE_METADATA = `
+  E: application (line=1)
+    E: service (line=2)
+      E: meta-data (line=3)
+        A: android:name(0x01010003)="firebase_messaging_auto_init_enabled" (Raw: "firebase_messaging_auto_init_enabled")
+        A: android:value(0x01010024)=(type 0x12)0x0
+    E: meta-data (line=4)
+      A: android:name(0x01010003)="firebase_messaging_auto_init_enabled" (Raw: "firebase_messaging_auto_init_enabled")
+      A: android:value(0x01010024)=(type 0x12)0x0
+    E: meta-data (line=5)
+      A: android:name(0x01010003)="firebase_messaging_auto_init_enabled" (Raw: "firebase_messaging_auto_init_enabled")
+      A: android:value(0x01010024)=(type 0x12)0xffffffff
+`;
+
 describe("Android Play manifest policy", () => {
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
     const base = "org.gradle.jvmargs=-Xmx4g\nelizaCloudBuild=false\n";
@@ -98,6 +123,45 @@ describe("Android Play manifest policy", () => {
       queryPackages: [],
       targetSdkVersion: "36",
     });
+  });
+
+  it("reads disabled system metadata values from AAPT xmltree evidence", () => {
+    expect(
+      androidManifestMetadataValueFromAapt(
+        AAPT_SYSTEM_METADATA,
+        "firebase_messaging_auto_init_enabled",
+      ),
+    ).toBe("false");
+    expect(
+      androidManifestMetadataValueFromAapt(
+        AAPT_SYSTEM_METADATA,
+        "firebase_analytics_collection_enabled",
+      ),
+    ).toBe("false");
+    expect(
+      androidManifestMetadataValueFromAapt(
+        AAPT_SYSTEM_METADATA,
+        "missing_metadata",
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects nested-only and duplicate application metadata evidence", () => {
+    const nestedOnly = AAPT_NESTED_AND_DUPLICATE_METADATA.split(
+      "    E: meta-data (line=4)",
+    )[0];
+    expect(
+      androidManifestMetadataValueFromAapt(
+        nestedOnly,
+        "firebase_messaging_auto_init_enabled",
+      ),
+    ).toBeNull();
+    expect(
+      androidManifestMetadataValueFromAapt(
+        AAPT_NESTED_AND_DUPLICATE_METADATA,
+        "firebase_messaging_auto_init_enabled",
+      ),
+    ).toBeNull();
   });
 
   it("accepts only the exact release policy evidence", () => {

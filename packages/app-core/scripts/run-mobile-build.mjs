@@ -130,12 +130,15 @@ import { resolveAndroidGradleCommandsForTarget } from "./mobile/android-gradle.m
 import {
   appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
+  applyAndroidBackupPolicy,
   applyAndroidCleartextPolicy,
+  ensureAndroidApplicationMetadataValue,
   ensureAndroidMainActivityShortcutsMetadata,
   ensureAndroidMainActivityUrlSchemeFilter,
   ensureAndroidPermissionRemovalMarkers,
   ensureElizaOsActivityFilters,
   ensureManifestApplicationClosedBeforeTopLevelEntries,
+  hasAndroidApplicationMetadataValue,
   hasAndroidPermissionRequest,
   patchAndroidAppActionsXmlResource,
   removeAndroidPermissionRequests,
@@ -177,12 +180,15 @@ export {
   ANDROID_APP_ACTION_SHORTCUT_IDS,
   appendMissingAndroidManifestBlock,
   appendMissingApplicationBlock,
+  applyAndroidBackupPolicy,
   applyAndroidCleartextPolicy,
+  ensureAndroidApplicationMetadataValue,
   ensureAndroidMainActivityShortcutsMetadata,
   ensureAndroidMainActivityUrlSchemeFilter,
   ensureAndroidPermissionRemovalMarkers,
   ensureElizaOsActivityFilters,
   ensureManifestApplicationClosedBeforeTopLevelEntries,
+  hasAndroidApplicationMetadataValue,
   hasAndroidPermissionRequest,
   patchAndroidAppActionsXmlResource,
   removeAndroidPermissionRequests,
@@ -2928,7 +2934,12 @@ export function ensureElizaBootReceiverManifest(xml, androidPackage) {
   );
 }
 
-function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
+function overlayAndroid({
+  includeAospRoleLaunchers = false,
+  includeHomeRole = includeAospRoleLaunchers,
+  disableBackup = false,
+  disableFirebaseAutoInit = false,
+} = {}) {
   assertSharedTreeOnlyForEliza("overlay Java sources");
   const templateJavaRoot = path.join(
     platformsDir,
@@ -3124,6 +3135,15 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       xml = withLocalCleartext;
       dirty = true;
     }
+    if (disableBackup) {
+      const withBackupDisabled = applyAndroidBackupPolicy(xml, {
+        allowBackup: false,
+      });
+      if (withBackupDisabled !== xml) {
+        xml = withBackupDisabled;
+        dirty = true;
+      }
+    }
     if (!xml.includes("<queries>")) {
       xml = xml.replace(
         /(\s*)<application/,
@@ -3137,7 +3157,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
     const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
-      enabled: includeAospRoleLaunchers,
+      enabled: includeHomeRole,
     });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;
@@ -3155,6 +3175,26 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     if (withShortcutsMetadata !== xml) {
       xml = withShortcutsMetadata;
       dirty = true;
+    }
+    if (disableFirebaseAutoInit) {
+      const firebaseMessagingDisabled = ensureAndroidApplicationMetadataValue(
+        xml,
+        "firebase_messaging_auto_init_enabled",
+        "false",
+      );
+      if (firebaseMessagingDisabled !== xml) {
+        xml = firebaseMessagingDisabled;
+        dirty = true;
+      }
+      const firebaseAnalyticsDisabled = ensureAndroidApplicationMetadataValue(
+        xml,
+        "firebase_analytics_collection_enabled",
+        "false",
+      );
+      if (firebaseAnalyticsDisabled !== xml) {
+        xml = firebaseAnalyticsDisabled;
+        dirty = true;
+      }
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
     const gatewayServicePattern =
@@ -7305,6 +7345,34 @@ function auditAndroidSystemSource(
         failures.push(`AndroidManifest.xml is missing ${marker}`);
       }
     }
+    if (!/android:allowBackup="false"/.test(xml)) {
+      failures.push("AndroidManifest.xml does not disable application backup");
+    }
+    if (!/android:usesCleartextTraffic="false"/.test(xml)) {
+      failures.push(
+        "AndroidManifest.xml does not disable global cleartext traffic",
+      );
+    }
+    for (const metadataName of [
+      "firebase_messaging_auto_init_enabled",
+      "firebase_analytics_collection_enabled",
+    ]) {
+      if (!hasAndroidApplicationMetadataValue(xml, metadataName, "false")) {
+        failures.push(`AndroidManifest.xml does not set ${metadataName}=false`);
+      }
+    }
+  }
+
+  const googleServicesPath = path.join(
+    androidDir,
+    "app",
+    "google-services.json",
+  );
+  if (
+    fs.existsSync(googleServicesPath) &&
+    fs.statSync(googleServicesPath).size > 0
+  ) {
+    failures.push("android-system must not include app/google-services.json");
   }
 
   const capabilityManifestPath = path.join(
@@ -7992,14 +8060,42 @@ function auditAndroidSystemArtifact({ androidSdkRoot, javaHome } = {}) {
   // non-LP3 AOSP services. WRITE_SECURE_SETTINGS is the LP3-only manifest
   // delta; the remaining private boundary is enforced by component/action/DEX
   // markers below.
-  assertAndroidArtifactOmitsLp3ManifestMarkers(
-    dumpAndroidArtifactManifest(aapt, artifact),
-    {
-      appId: APP.appId,
-      label: "ordinary AOSP",
-      permissions: ["WRITE_SECURE_SETTINGS"],
-    },
-  );
+  const manifestText = dumpAndroidArtifactManifest(aapt, artifact);
+  assertAndroidArtifactOmitsLp3ManifestMarkers(manifestText, {
+    appId: APP.appId,
+    label: "ordinary AOSP",
+    permissions: ["WRITE_SECURE_SETTINGS"],
+  });
+  const manifestEvidence = androidPlayManifestEvidenceFromAapt(manifestText);
+  if (
+    manifestEvidence.application.allowBackup !== "false" ||
+    manifestEvidence.application.usesCleartextTraffic !== "false"
+  ) {
+    throw mobileBuildError(
+      "[mobile-build] android-system artifact must disable backup and global cleartext traffic.",
+      {
+        code: "ANDROID_SYSTEM_APPLICATION_POLICY_FAILED",
+        context: { application: manifestEvidence.application, artifact },
+      },
+    );
+  }
+  for (const metadataName of [
+    "firebase_messaging_auto_init_enabled",
+    "firebase_analytics_collection_enabled",
+  ]) {
+    if (
+      androidManifestMetadataValueFromAapt(manifestText, metadataName) !==
+      "false"
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] android-system artifact does not set ${metadataName}=false.`,
+        {
+          code: "ANDROID_SYSTEM_FIREBASE_POLICY_FAILED",
+          context: { artifact, metadataName },
+        },
+      );
+    }
+  }
   auditAndroidArtifactDexLp3Policy(artifact, entries, javaHome, {
     debug: false,
     expectedPresent: false,
@@ -9224,6 +9320,51 @@ function parseAaptAttributeValue(encodedValue) {
     return typedValue[2].toLowerCase() === "0x0" ? "false" : "true";
   }
   return String(Number.parseInt(typedValue[2], 16));
+}
+
+/** Reads one application meta-data value from AAPT's indented xmltree output. */
+export function androidManifestMetadataValueFromAapt(
+  manifestText,
+  metadataName,
+) {
+  const elements = [];
+  const stack = [];
+
+  for (const line of String(manifestText).split(/\r?\n/)) {
+    const element = line.match(/^(\s*)E: ([^\s(]+)(?:\s|$)/);
+    if (element) {
+      const indent = element[1].length;
+      while (stack.length > 0 && stack.at(-1).indent >= indent) stack.pop();
+      const current = {
+        indent,
+        name: element[2],
+        parentName: stack.at(-1)?.name ?? null,
+        metadataName: null,
+        metadataValue: null,
+      };
+      elements.push(current);
+      stack.push(current);
+      continue;
+    }
+    const current = stack.at(-1);
+    if (current?.name !== "meta-data") continue;
+    const attribute = line.match(
+      /^(\s*)A: ([^=(]+?)(?:\(0x[0-9a-f]+\))?=(.*)$/i,
+    );
+    if (!attribute || attribute[1].length <= current.indent) continue;
+    const attributeName = attribute[2].trim().split(":").at(-1);
+    if (attributeName === "name")
+      current.metadataName = parseAaptAttributeValue(attribute[3]);
+    if (attributeName === "value")
+      current.metadataValue = parseAaptAttributeValue(attribute[3]);
+  }
+  const matches = elements.filter(
+    (element) =>
+      element.name === "meta-data" &&
+      element.parentName === "application" &&
+      element.metadataName === metadataName,
+  );
+  return matches.length === 1 ? matches[0].metadataValue : null;
 }
 
 /** Converts AAPT's indented xmltree output into the policy evidence shape. */

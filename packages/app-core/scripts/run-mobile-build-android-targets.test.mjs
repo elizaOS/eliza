@@ -50,6 +50,11 @@ describe("Android mobile build target table", () => {
         ELIZA_ANDROID_HOST_E2E_BUILD: "1",
         ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1",
       },
+      overlayOptions: {
+        includeAospRoleLaunchers: false,
+        includeHomeRole: true,
+        disableFirebaseAutoInit: true,
+      },
       cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
       gradle: {
         flags: ["-PelizaStripAgentAssets=true"],
@@ -98,7 +103,12 @@ describe("Android mobile build target table", () => {
       target: "android-system",
       webTarget: "android-system",
       buildMobileAgentBundle: true,
-      cleartextPolicy: { allowCleartext: true, label: "AOSP" },
+      overlayOptions: {
+        includeAospRoleLaunchers: true,
+        disableBackup: true,
+        disableFirebaseAutoInit: true,
+      },
+      cleartextPolicy: { allowCleartext: false, label: "AOSP" },
       agentRuntime: { bunChannel: "canary", objective: true },
     });
   });

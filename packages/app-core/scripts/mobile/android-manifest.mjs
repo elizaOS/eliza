@@ -397,3 +397,62 @@ export function applyAndroidCleartextPolicy(xml, { allowCleartext }) {
     `<application\n        android:usesCleartextTraffic="${value}"`,
   );
 }
+
+export function applyAndroidBackupPolicy(xml, { allowBackup }) {
+  const value = allowBackup ? "true" : "false";
+  if (/android:allowBackup="(?:true|false)"/.test(xml)) {
+    return xml.replace(
+      /android:allowBackup="(?:true|false)"/g,
+      `android:allowBackup="${value}"`,
+    );
+  }
+  return xml.replace(
+    "<application",
+    `<application\n        android:allowBackup="${value}"`,
+  );
+}
+
+function androidApplicationMetadataEntries(xml, metadataName) {
+  const entries = [];
+  const stack = [];
+  const tokenPattern =
+    /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<![^>]*>|<\/?([A-Za-z_][\w:.-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*>/g;
+
+  for (const match of xml.matchAll(tokenPattern)) {
+    const token = match[0];
+    const tagName = match[1];
+    if (!tagName) continue;
+    if (token.startsWith("</")) {
+      while (stack.length > 0) {
+        if (stack.pop() === tagName) break;
+      }
+      continue;
+    }
+
+    const parentName = stack.at(-1) ?? null;
+    if (tagName === "meta-data" && parentName === "application") {
+      const name = token.match(/\bandroid:name\s*=\s*(["'])(.*?)\1/)?.[2];
+      if (name === metadataName) {
+        entries.push({
+          value:
+            token.match(/\bandroid:value\s*=\s*(["'])(.*?)\1/)?.[2] ?? null,
+        });
+      }
+    }
+    if (!/\/\s*>$/.test(token)) stack.push(tagName);
+  }
+  return entries;
+}
+
+export function ensureAndroidApplicationMetadataValue(xml, name, value) {
+  if (androidApplicationMetadataEntries(xml, name).length > 0) return xml;
+  return xml.replace(
+    "</application>",
+    `        <meta-data\n            android:name="${name}"\n            android:value="${String(value)}" />\n    </application>`,
+  );
+}
+
+export function hasAndroidApplicationMetadataValue(xml, name, value) {
+  const entries = androidApplicationMetadataEntries(xml, name);
+  return entries.length === 1 && entries[0].value === String(value);
+}

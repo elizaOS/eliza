@@ -590,8 +590,11 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+def servicesJSON = file('google-services.json')
+if (project.findProperty('elizaAospBuild') == 'true' && servicesJSON.exists() && servicesJSON.length() > 0) {
+    throw new GradleException('android-system must not include google-services.json')
+}
 try {
-    def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
     }

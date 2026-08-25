@@ -2,11 +2,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyAndroidBackupPolicy,
   applyAndroidCleartextPolicy,
+  ensureAndroidApplicationMetadataValue,
   ensureAndroidMainActivityUrlSchemeFilter,
   ensureAndroidPermissionRemovalMarkers,
   ensureElizaOsActivityFilters,
   ensureManifestApplicationClosedBeforeTopLevelEntries,
+  hasAndroidApplicationMetadataValue,
   hasAndroidPermissionRequest,
   removeAndroidPermissionRequests,
   removeApplicationComponentBlock,
@@ -102,6 +105,80 @@ describe("Android manifest XML helpers", () => {
         urlScheme: "example",
       }),
     ).toBe(withScheme);
+  });
+
+  it("hardens backup and detects explicit disabled application metadata", () => {
+    const hardened = applyAndroidBackupPolicy(
+      manifest.replace(
+        "<application>",
+        `<application>
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />`,
+      ),
+      { allowBackup: false },
+    );
+
+    expect(hardened).toContain('android:allowBackup="false"');
+    expect(
+      hasAndroidApplicationMetadataValue(
+        hardened,
+        "firebase_messaging_auto_init_enabled",
+        "false",
+      ),
+    ).toBe(true);
+    expect(
+      hasAndroidApplicationMetadataValue(
+        hardened,
+        "firebase_messaging_auto_init_enabled",
+        "true",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not accept component metadata or duplicate application values", () => {
+    const nestedOnly = manifest.replace(
+      '<service android:name="com.example.ElizaAgentService">',
+      `<service android:name="com.example.ElizaAgentService">
+            <meta-data
+                android:name="firebase_messaging_auto_init_enabled"
+                android:value="false" />`,
+    );
+    expect(
+      hasAndroidApplicationMetadataValue(
+        nestedOnly,
+        "firebase_messaging_auto_init_enabled",
+        "false",
+      ),
+    ).toBe(false);
+
+    const applicationScoped = ensureAndroidApplicationMetadataValue(
+      nestedOnly,
+      "firebase_messaging_auto_init_enabled",
+      "false",
+    );
+    expect(
+      hasAndroidApplicationMetadataValue(
+        applicationScoped,
+        "firebase_messaging_auto_init_enabled",
+        "false",
+      ),
+    ).toBe(true);
+
+    const duplicate = applicationScoped.replace(
+      "</application>",
+      `        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="true" />
+    </application>`,
+    );
+    expect(
+      hasAndroidApplicationMetadataValue(
+        duplicate,
+        "firebase_messaging_auto_init_enabled",
+        "false",
+      ),
+    ).toBe(false);
   });
 
   it("strips comments containing removed markers before source audits", () => {
