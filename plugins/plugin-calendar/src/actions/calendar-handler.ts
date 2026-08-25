@@ -132,7 +132,8 @@ function collectRecentConversationTexts(args: {
   runtime: IAgentRuntime;
   message?: Memory;
   state: State | undefined;
-  limit: number;
+  /** @deprecated Complete conversation context is always returned. */
+  limit?: number;
 }): Promise<string[]> {
   return deps().recentConversationTexts(args);
 }

@@ -487,22 +487,28 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         sourceSha256,
       }),
     });
+    const control = readView.slice.hasMore
+      ? (() => {
+          if (limit === undefined) {
+            throw new ElizaError("Unbounded Gmail read unexpectedly requires continuation", {
+              code: "GMAIL_READ_INVALID_CONTINUATION",
+            });
+          }
+          return {
+            action: "read_message" as const,
+            source: "gmail" as const,
+            reference,
+            offset: readView.slice.nextOffset as number,
+            limit,
+            unit,
+            expectedRevision: revision,
+          };
+        })()
+      : undefined;
     return {
       text: page.text,
       readView,
-      ...(readView.slice.hasMore
-        ? {
-            control: {
-              action: "read_message" as const,
-              source: "gmail" as const,
-              reference,
-              offset: readView.slice.nextOffset as number,
-              ...(limit === undefined ? {} : { limit }),
-              unit,
-              expectedRevision: revision,
-            },
-          }
-        : {}),
+      ...(control ? { control } : {}),
     };
   }
 
