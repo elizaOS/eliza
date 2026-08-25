@@ -925,10 +925,10 @@ describe("conversation-route chat idempotency wiring", () => {
           responseMessages: [persisted],
           persistedResponseMessageIds: [persistedId],
           terminalFailure: {
-            kind: "coding_tool_failure",
-            message: "Shell execution failed.",
-            transient: true,
-            code: "SHELL_UNAVAILABLE",
+            kind: "coding_verification_failed",
+            message: "Typecheck still fails after repair.",
+            transient: false,
+            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
           },
         };
       },
@@ -943,12 +943,12 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(
       storedMemories.find((memory) => memory.id === persistedId)?.content,
     ).toMatchObject({
-      failureKind: "coding_tool_failure",
+      failureKind: "coding_verification_failed",
       terminalFailure: {
-        kind: "coding_tool_failure",
-        message: "Shell execution failed.",
-        transient: true,
-        code: "SHELL_UNAVAILABLE",
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       },
     });
   });
@@ -1182,10 +1182,10 @@ describe("conversation-route chat idempotency wiring", () => {
           responseContent: null,
           responseMessages: [],
           terminalFailure: {
-            kind: "coding_tool_failure",
-            message: "Shell execution failed.",
-            transient: true,
-            code: "SHELL_UNAVAILABLE",
+            kind: "coding_verification_failed",
+            message: "Typecheck still fails after repair.",
+            transient: false,
+            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
           },
           mode: "actions" as const,
         };
@@ -1202,13 +1202,13 @@ describe("conversation-route chat idempotency wiring", () => {
     );
     expect(firstDone).toMatchObject({
       type: "done",
-      fullText: "Shell execution failed.",
-      failureKind: "coding_tool_failure",
+      fullText: "Typecheck still fails after repair.",
+      failureKind: "coding_verification_failed",
       terminalFailure: {
-        kind: "coding_tool_failure",
-        message: "Shell execution failed.",
-        transient: true,
-        code: "SHELL_UNAVAILABLE",
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       },
       messageId: expect.any(String),
     });
@@ -1216,10 +1216,11 @@ describe("conversation-route chat idempotency wiring", () => {
       (memory) => memory.id === firstDone?.messageId,
     );
     expect(receipt?.content).toMatchObject({
-      failureKind: "coding_tool_failure",
+      failureKind: "coding_verification_failed",
       terminalFailure: {
-        kind: "coding_tool_failure",
-        transient: true,
+        kind: "coding_verification_failed",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       },
     });
     const persistsAfterFailure = createMemory.mock.calls.length;
@@ -1233,13 +1234,13 @@ describe("conversation-route chat idempotency wiring", () => {
       parseDataFrames(retry.record).find((frame) => frame.type === "done"),
     ).toMatchObject({
       type: "done",
-      fullText: "Shell execution failed.",
-      failureKind: "coding_tool_failure",
+      fullText: "Typecheck still fails after repair.",
+      failureKind: "coding_verification_failed",
       terminalFailure: {
-        kind: "coding_tool_failure",
-        message: "Shell execution failed.",
-        transient: true,
-        code: "SHELL_UNAVAILABLE",
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
       },
       messageId: firstDone?.messageId,
       userMessageId: firstDone?.userMessageId,

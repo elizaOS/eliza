@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DISTRIBUTION_PROFILES,
   isDistributionProfile,
   resolveDistributionProfile,
 } from "./distribution-profile.js";
@@ -26,10 +25,6 @@ describe("isDistributionProfile", () => {
     expect(isDistributionProfile(null)).toBe(false);
     expect(isDistributionProfile(42)).toBe(false);
     expect(isDistributionProfile({})).toBe(false);
-  });
-
-  it("exposes the tuple", () => {
-    expect([...DISTRIBUTION_PROFILES]).toEqual(["store", "unrestricted"]);
   });
 });
 

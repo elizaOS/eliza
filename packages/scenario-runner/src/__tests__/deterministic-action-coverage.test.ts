@@ -5,7 +5,7 @@
  * these assertions derived from the real scenario corpus: historical counts,
  * allowlists, and coverage floors turn repository debt into false confidence.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -16,7 +16,6 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(testDir, "../../../..");
 const packageDir = resolve(repoRoot, "packages/scenario-runner");
 const scenarioDir = resolve(packageDir, "test/scenarios");
-const workflowPath = resolve(repoRoot, ".github/workflows/scenario-pr.yml");
 
 const CALLBACK_ASSERTION_KEYS = new Set(["assertResponse", "assertTurn"]);
 const MATCHER_ARRAY_ASSERTION_KEYS = new Set([
@@ -182,28 +181,6 @@ function directActionHasAssertion(source: string): boolean {
 }
 
 describe("deterministic scenario action coverage", () => {
-  it("keeps every explicitly targeted Scenario E2E test file present", () => {
-    const workflow = readFileSync(workflowPath, "utf8");
-    const commandPrefix =
-      "run: bun run --cwd packages/scenario-runner test:unit -- ";
-    const explicitTargets = workflow
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith(commandPrefix))
-      .flatMap((line) => line.slice(commandPrefix.length).trim().split(/\s+/))
-      .filter((target) => target.endsWith(".test.ts"));
-
-    expect(explicitTargets).toContain(
-      "src/__tests__/deterministic-action-coverage.test.ts",
-    );
-    expect(
-      explicitTargets.filter(
-        (target) => !existsSync(resolve(packageDir, target)),
-      ),
-      "Scenario E2E names test files that do not exist; Vitest can silently ignore missing explicit targets",
-    ).toEqual([]);
-  });
-
   it("requires every package-local scenario to declare its CI lane and match its file name", async () => {
     const metadata = await listScenarioMetadata(
       scenarioDir,

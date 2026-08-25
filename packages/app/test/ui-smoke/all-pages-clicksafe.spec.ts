@@ -370,6 +370,7 @@ const APP_TOOL_ROUTE_PROBES: readonly RouteProbe[] = DIRECT_ROUTE_CASES.map(
   (routeCase) => ({
     name: `app tool ${routeCase.name}`,
     path: routeCase.path,
+    expectedUrl: routeCase.expectedUrl,
     readyChecks:
       "readyChecks" in routeCase
         ? routeCase.readyChecks
@@ -505,6 +506,7 @@ function installPageIssueGuards(page: Page): string[] {
 
 async function installDesktopPermissionsBridge(page: Page): Promise<void> {
   await page.addInitScript((permissions) => {
+    const secureStore = new Map<string, string>();
     const existing = window.__ELIZA_ELECTROBUN_RPC__;
     window.__ELIZA_ELECTROBUN_RPC__ = {
       request: {
@@ -529,6 +531,28 @@ async function installDesktopPermissionsBridge(page: Page): Promise<void> {
         permissionsGetAll: async () => permissions,
         permissionsIsShellEnabled: async () => false,
         permissionsGetPlatform: async () => "linux",
+        // The injected RPC marker declares a complete desktop host, so its
+        // protected-storage boundary must exist too. Keep credentials inside
+        // this native-boundary stand-in rather than letting the renderer's
+        // fail-closed storage bridge report the deliberately incomplete host.
+        secureStoreGet: async (params) => {
+          const { kind } = params as { kind: string };
+          return secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" };
+        },
+        secureStoreSet: async (params) => {
+          const { kind, value } = params as { kind: string; value: string };
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async (params) => {
+          const { kind } = params as { kind: string };
+          const deleted = secureStore.delete(kind);
+          return deleted
+            ? { ok: true, deleted: true }
+            : { ok: false, reason: "not_found" };
+        },
       },
       onMessage: existing?.onMessage ?? (() => {}),
       offMessage: existing?.offMessage ?? (() => {}),

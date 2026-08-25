@@ -17,6 +17,7 @@ import {
 	type Content,
 	createUniqueUuid,
 	type Memory,
+	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
@@ -74,7 +75,15 @@ function makeDurableHarness(): DurableHarness {
 	// Canonical room state backing the delivery-audience attestation: the
 	// manager calls ensureConnection before attesting, so the store mirrors
 	// what the connector declared and survives simulated restarts.
-	const rooms = new Map<UUID, { id: UUID; type?: string }>();
+	const rooms = new Map<
+		UUID,
+		{
+			id: UUID;
+			type?: string;
+			serverId?: string;
+			messageServerId?: UUID;
+		}
+	>();
 	const participantsByRoom = new Map<UUID, UUID[]>();
 
 	const indexMemory = (memory: Memory, id: UUID, tableName: string) => {
@@ -100,8 +109,19 @@ function makeDurableHarness(): DurableHarness {
 			key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS" ? "false" : undefined,
 		getService: () => null,
 		ensureConnection: vi.fn(
-			async (params: { entityId: UUID; roomId: UUID; type?: string }) => {
-				rooms.set(params.roomId, { id: params.roomId, type: params.type });
+			async (params: {
+				entityId: UUID;
+				roomId: UUID;
+				type?: string;
+				serverId?: string;
+				messageServerId?: UUID;
+			}) => {
+				rooms.set(params.roomId, {
+					id: params.roomId,
+					type: params.type,
+					serverId: params.serverId,
+					messageServerId: params.messageServerId,
+				});
 				participantsByRoom.set(params.roomId, [params.entityId, AGENT_ID]);
 			},
 		),
@@ -202,7 +222,10 @@ function makeDiscordService(
 	return {
 		client,
 		accountId: "default",
-		getChannelType: async () => ChannelType.DM,
+		getChannelType: async (channel: { type?: number }) =>
+			channel.type === DiscordChannelType.DM
+				? ChannelType.DM
+				: ChannelType.GROUP,
 		discordSettings: {
 			autoReply: true,
 			dmPolicy: "open",
@@ -218,7 +241,11 @@ function makeDiscordService(
 	};
 }
 
-function makeInbound(channel: unknown, messageId: string): DiscordMessage {
+function makeInbound(
+	channel: unknown,
+	messageId: string,
+	guild?: { id: string; name: string; ownerId: string },
+): DiscordMessage {
 	return {
 		id: messageId,
 		content: "hello",
@@ -233,7 +260,7 @@ function makeInbound(channel: unknown, messageId: string): DiscordMessage {
 		},
 		member: null,
 		channel,
-		guild: undefined,
+		guild,
 		interaction: null,
 		reference: undefined,
 		embeds: [],
@@ -270,6 +297,32 @@ async function turnState(
 }
 
 describe("Discord durable turn / outbox state machine", () => {
+	it("persists the inbound guild room binding", async () => {
+		const messageId = "666000000000000999";
+		const guildId = "999000000000000000";
+		const harness = makeDurableHarness();
+		const channel = {
+			...makeDmChannel(harness.sends),
+			name: "release-status",
+			type: DiscordChannelType.GuildText,
+		};
+
+		await restartManager(harness).handleMessage(
+			makeInbound(channel, messageId, {
+				id: guildId,
+				name: "Destination B",
+				ownerId: "444000000000000000",
+			}),
+		);
+
+		await expect(
+			harness.runtime.getRoom(roomIdFor(CHANNEL_ID)),
+		).resolves.toMatchObject({
+			serverId: guildId,
+			messageServerId: stringToUuid(guildId),
+		});
+	});
+
 	it("(a) crash after inbound persist before dispatch: redelivery resumes and replies exactly once", async () => {
 		const messageId = "666000000000001000";
 		const harness = makeDurableHarness();
