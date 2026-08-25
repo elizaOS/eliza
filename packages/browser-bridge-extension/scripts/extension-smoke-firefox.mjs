@@ -204,7 +204,7 @@ async function runInstalledFirefoxSmoke() {
     );
     // Firefox BiDi reports the explicitly opened extension tab as about:blank
     // even while its extension DOM is loaded, so identify it by the real DOM.
-    const popupPage = await waitForInstalledPairingGuide(browser);
+    let popupPage = await waitForInstalledPairingGuide(browser);
     // Firefox BiDi can report no clickable geometry for an installed
     // extension page whose protocol URL is stale even though its DOM is live.
     const pairingConfig = {
