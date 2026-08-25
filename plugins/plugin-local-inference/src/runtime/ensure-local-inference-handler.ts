@@ -24,6 +24,7 @@
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	canonicalPromptForModelCall,
 	fetchRemoteMedia,
 	type GenerateTextParams,
 	getInferencePriorityGate,
@@ -412,39 +413,13 @@ function engineGenerateArgsFromParams(
 	maxTokensPerStep?: number;
 	voiceOutput?: "user-visible" | "internal";
 } {
-	const renderContent = (content: unknown): string => {
-		if (typeof content === "string") return content;
-		if (Array.isArray(content)) {
-			return content
-				.map((part) => {
-					if (typeof part === "string") return part;
-					if (
-						part &&
-						typeof part === "object" &&
-						typeof (part as { text?: unknown }).text === "string"
-					) {
-						return (part as { text: string }).text;
-					}
-					return "";
-				})
-				.filter(Boolean)
-				.join("\n");
-		}
-		return "";
-	};
+	const promptFromMessages =
+		params.messages && params.messages.length > 0
+			? canonicalPromptForModelCall({ messages: params.messages })
+			: "";
 	const promptFromSegments =
 		params.promptSegments && params.promptSegments.length > 0
 			? params.promptSegments.map((segment) => segment.content).join("")
-			: "";
-	const promptFromMessages =
-		!promptFromSegments && params.messages && params.messages.length > 0
-			? params.messages
-					.map((message) => {
-						const content = renderContent(message.content);
-						return content ? `${message.role}:\n${content}` : "";
-					})
-					.filter(Boolean)
-					.join("\n\n")
 			: "";
 	const streamStructured = params.streamStructured === true;
 	// Surface per-token chunks to the caller only when it requested streaming.
@@ -456,7 +431,7 @@ function engineGenerateArgsFromParams(
 			? (chunk: string) => params.onStreamChunk?.(chunk)
 			: undefined;
 	return {
-		prompt: params.prompt ?? (promptFromSegments || promptFromMessages),
+		prompt: params.prompt ?? (promptFromMessages || promptFromSegments),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
 		cacheKey,
 		signal: params.signal,

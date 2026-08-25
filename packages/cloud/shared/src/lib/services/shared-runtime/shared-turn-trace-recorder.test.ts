@@ -115,6 +115,45 @@ describe("recordSharedTurnTrace gating", () => {
     expect(insertTrace).not.toHaveBeenCalled();
   });
 
+  test("retains authenticated voice diagnostics even when the general sample is zero", async () => {
+    const inserted: NewSharedTurnTraceRow[] = [];
+    const insertTrace = mock(async (trace: NewSharedTurnTraceRow) => {
+      inserted.push(trace);
+    });
+    const historyProvenance = {
+      channelId: "private-room",
+      channelType: "VOICE_DM",
+      channelSource: "client_chat",
+      messages: [
+        {
+          id: "message-1",
+          role: "user" as const,
+          createdAt: 1_787_860_800_000,
+          interrupted: false,
+        },
+      ],
+    };
+    const recorded = await recordSharedTurnTrace(
+      {
+        insertTrace,
+        env: {
+          SHARED_TURN_TRACES_ENABLED: "true",
+          SHARED_TURN_TRACES_SAMPLE: "0",
+        },
+      },
+      summaryFixture({ historyProvenance }),
+      { forceRecord: true },
+    );
+    expect(recorded).toBe(true);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].stages).toEqual({
+      finishReason: "reply",
+      stages: [{ name: "model" }],
+      historyProvenance,
+    });
+    expect(JSON.stringify(inserted[0])).not.toContain("message content");
+  });
+
   test("persists a sampled trace with tenant scope, timing, and compact payloads", async () => {
     const inserted: NewSharedTurnTraceRow[] = [];
     const insertTrace = mock(async (trace: NewSharedTurnTraceRow) => {

@@ -115,6 +115,53 @@ describe("provider TEXT_SMALL / TEXT_LARGE dispatch", () => {
 		);
 	});
 
+	it("prefers complete chat history over prompt segments and preserves native tool parts", async () => {
+		const generate = vi.fn(async () => "ok");
+		const handlers = createLocalInferenceModelHandlers();
+		const runtime = runtimeWithService({ generate });
+
+		await handlers[ModelType.TEXT_LARGE]?.(runtime as never, {
+			messages: [
+				{ role: "system", content: "You are a coding agent." },
+				{
+					role: "assistant",
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "call-1",
+							toolName: "SHELL",
+							input: { command: "go test ./..." },
+						},
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{
+							type: "tool-result",
+							toolCallId: "call-1",
+							toolName: "SHELL",
+							output: { type: "text", value: "PASS\nok package" },
+						},
+					],
+				},
+				{ role: "user", content: "verification_feedback: continue" },
+			],
+			promptSegments: [{ content: "STALE_SEGMENT_SENTINEL" }],
+		} as never);
+
+		const prompt = String(generate.mock.calls[0]?.[0]?.prompt);
+		expect(prompt).not.toContain("STALE_SEGMENT_SENTINEL");
+		expect(prompt).toContain(
+			'assistant:\n[{"type":"tool-call","toolCallId":"call-1","toolName":"SHELL","input":{"command":"go test ./..."}}]',
+		);
+		expect(prompt).toContain(
+			'tool:\n[{"type":"tool-result","toolCallId":"call-1","toolName":"SHELL","output":{"type":"text","value":"PASS\\nok package"}}]',
+		);
+		expect(prompt.match(/PASS\\nok package/g)).toHaveLength(1);
+		expect(prompt).toContain("user:\nverification_feedback: continue");
+	});
+
 	it("emits a typed LOCAL_INFERENCE_UNAVAILABLE error when no loader is registered (runtime then falls through to next provider)", async () => {
 		const handlers = createLocalInferenceModelHandlers();
 		let caught: unknown;

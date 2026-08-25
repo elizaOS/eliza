@@ -21,6 +21,7 @@ import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import {
 	composeToolDiagnosticRedactor,
+	projectCompleteToolArgsForModel,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	type ToolDiagnosticTextRedactor,
@@ -76,6 +77,7 @@ import {
 	buildStageChatMessages,
 	normalizePromptSegments,
 	renderContextObject,
+	segmentBlock,
 } from "./context-renderer";
 import { runEvaluator } from "./evaluator";
 import {
@@ -381,6 +383,7 @@ async function runPlannerLoopIterations(
 		: plannerContext;
 	const trajectory: PlannerTrajectory = {
 		context: trajectoryContext,
+		modelBaseContext: trajectoryContext,
 		codingMode,
 		steps: postToolReplySeed
 			? [
@@ -395,6 +398,9 @@ async function runPlannerLoopIterations(
 		plannedQueue: [],
 		evaluatorOutputs: [],
 	};
+	trajectory.modelHistory = trajectoryStepsToMessages(trajectory.steps, {
+		redactText: redactDiagnosticText,
+	});
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
 	let codingVerificationDeferrals = 0;
@@ -682,6 +688,7 @@ async function runPlannerLoopIterations(
 							: params.toolChoice,
 					recorder: params.recorder,
 					trajectoryId: params.trajectoryId,
+					cacheConversationId: params.cacheConversationId,
 					parentStageId: params.parentStageId,
 					providerAttributionState: params.providerAttributionState,
 					iteration,
@@ -867,8 +874,8 @@ async function runPlannerLoopIterations(
 					terminalMessage: finalMessage,
 					terminalOnly: true,
 				});
-				trajectory.context = appendTerminalPlannerOutputEvent({
-					context: trajectory.context,
+				appendTerminalPlannerOutputEvent({
+					trajectory,
 					iteration,
 					message: finalMessage,
 				});
@@ -884,12 +891,12 @@ async function runPlannerLoopIterations(
 						redactDiagnosticText,
 					) as EvaluatorOutput,
 				);
-				trajectory.context = appendEvaluationEvent({
-					context: trajectory.context,
+				appendEvaluatorContextEvent(
+					trajectory,
+					gated,
 					iteration,
-					evaluator: gated,
 					redactDiagnosticText,
-				});
+				);
 				const gateStartedAt = Date.now();
 				await recordGatedEvaluationStage({
 					runtime: params.runtime,
@@ -1016,8 +1023,8 @@ async function runPlannerLoopIterations(
 					terminalMessage: plannerOutput.messageToUser,
 					terminalOnly: true,
 				});
-				trajectory.context = appendTerminalPlannerOutputEvent({
-					context: trajectory.context,
+				appendTerminalPlannerOutputEvent({
+					trajectory,
 					iteration,
 					message: plannerOutput.messageToUser,
 				});
@@ -1052,12 +1059,12 @@ async function runPlannerLoopIterations(
 							redactDiagnosticText,
 						) as EvaluatorOutput,
 					);
-					trajectory.context = appendEvaluationEvent({
-						context: trajectory.context,
-						iteration,
+					appendEvaluatorContextEvent(
+						trajectory,
 						evaluator,
+						iteration,
 						redactDiagnosticText,
-					});
+					);
 					const protocolFailureRelay =
 						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
 					if (protocolFailureRelay) {
@@ -1168,8 +1175,8 @@ async function runPlannerLoopIterations(
 						observed: terminalOnlyContinuations,
 					});
 					trajectory.plannedQueue.length = 0;
-					trajectory.context = appendTerminalContinuationEvent({
-						context: trajectory.context,
+					appendTerminalContinuationEvent({
+						trajectory,
 						iteration,
 						terminalOnlyContinuations,
 						message: plannerOutput.messageToUser,
@@ -1330,12 +1337,12 @@ async function runPlannerLoopIterations(
 						redactDiagnosticText,
 					) as EvaluatorOutput,
 				);
-				trajectory.context = appendEvaluationEvent({
-					context: trajectory.context,
+				appendEvaluatorContextEvent(
+					trajectory,
+					terminalEvaluator,
 					iteration,
-					evaluator: terminalEvaluator,
 					redactDiagnosticText,
-				});
+				);
 				if (shouldRecordTerminalEvaluation) {
 					const terminalEvalStartedAt = Date.now();
 					await recordGatedEvaluationStage({
@@ -1427,8 +1434,8 @@ async function runPlannerLoopIterations(
 					},
 					"Planner called unavailable tools; retrying without executing them",
 				);
-				trajectory.context = appendUnavailableToolCallEvent({
-					context: trajectory.context,
+				appendUnavailableToolCallEvent({
+					trajectory,
 					iteration,
 					invalidToolCalls: unavailable.invalid,
 					tools: params.tools,
@@ -1476,7 +1483,7 @@ async function runPlannerLoopIterations(
 							"different tool or different arguments.",
 					);
 				}
-				trajectory.context = appendContextEvent(trajectory.context, {
+				appendPlannerModelFeedbackEvent(trajectory, {
 					id: `redundant-tool-call:${iteration}`,
 					type: "instruction",
 					source: "planner-loop",
@@ -1548,7 +1555,7 @@ async function runPlannerLoopIterations(
 						`The per-turn memory search budget (${config.maxMemorySearchRounds}) is spent.`,
 					);
 				}
-				trajectory.context = appendContextEvent(trajectory.context, {
+				appendPlannerModelFeedbackEvent(trajectory, {
 					id: `memory-search-budget:${iteration}`,
 					type: "instruction",
 					source: "planner-loop",
@@ -1694,6 +1701,14 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
+		if (trajectory.plannedQueue.length > 0) {
+			appendPendingToolQueueFeedbackEvent(
+				trajectory,
+				iteration,
+				redactDiagnosticText,
+			);
+		}
+
 		if (
 			latestResult?.success === true &&
 			latestResult.modelReplyRequired === true &&
@@ -1726,12 +1741,12 @@ async function runPlannerLoopIterations(
 					redactDiagnosticText,
 				) as EvaluatorOutput,
 			);
-			trajectory.context = appendEvaluationEvent({
-				context: trajectory.context,
+			appendEvaluatorContextEvent(
+				trajectory,
+				gated,
 				iteration,
-				evaluator: gated,
 				redactDiagnosticText,
-			});
+			);
 			await recordGatedEvaluationStage({
 				runtime: params.runtime,
 				recorder: params.recorder,
@@ -1845,11 +1860,10 @@ async function runPlannerLoopIterations(
 				})
 			) {
 				silentFailedFinishRecoveries++;
-				trajectory.context = appendSilentFailedFinishRecoveryEvent({
-					context: trajectory.context,
+				appendSilentFailedFinishRecoveryEvent({
+					trajectory,
 					iteration,
 					evaluator,
-					trajectory,
 				});
 				continue;
 			}
@@ -1908,6 +1922,71 @@ function normalizePlannerContext(context: ContextObject): ContextObject {
 			};
 }
 
+/**
+ * Retains a loop-generated event for observability and appends its complete
+ * model representation after the existing assistant/tool suffix. The initial
+ * turn context stays immutable, so every later request within the same model
+ * stage has the preceding same-stage request as a byte-identical prefix.
+ */
+function appendPlannerModelFeedbackEvent(
+	trajectory: PlannerTrajectory,
+	event: ContextEvent,
+): void {
+	trajectory.context = appendContextEvent(trajectory.context, event);
+	if (!trajectory.modelHistory) return;
+	const rendered = renderContextObject({
+		id: `model-feedback:${event.id}`,
+		events: [event],
+	});
+	const content = rendered.promptSegments
+		.map(segmentBlock)
+		.filter((block) => block.length > 0)
+		.join("\n\n");
+	if (content.length > 0) {
+		trajectory.modelHistory.push({ role: "user", content });
+	}
+}
+
+function appendPlannerToolStepToModelHistory(
+	trajectory: PlannerTrajectory,
+	step: PlannerStep,
+	redactText: ToolDiagnosticTextRedactor,
+): void {
+	if (!trajectory.modelHistory) return;
+	trajectory.modelHistory.push(
+		...trajectoryStepsToMessages([step], { redactText }),
+	);
+}
+
+function appendPendingToolQueueFeedbackEvent(
+	trajectory: PlannerTrajectory,
+	iteration: number,
+	redactText: ToolDiagnosticTextRedactor,
+): void {
+	const pendingCalls = trajectory.plannedQueue.map((toolCall) => ({
+		id: toolCall.id ?? toolCall.name,
+		name: toolCall.name,
+		params:
+			projectCompleteToolArgsForModel(toolCall.params ?? {}, redactText) ?? {},
+		status: "queued" as const,
+	}));
+	appendPlannerModelFeedbackEvent(trajectory, {
+		id: `pending-tool-queue:${iteration}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt: Date.now(),
+		content: [
+			"pending_tool_calls:",
+			stringifyForModel(pendingCalls),
+			"The listed calls came from the same planner response and have not executed yet. Decide NEXT_RECOMMENDED with the selected call id to execute one, FINISH only if every pending call is unnecessary, or CONTINUE to discard this queue and replan.",
+		].join("\n"),
+		metadata: {
+			iteration,
+			pendingToolCallIds: pendingCalls.map((call) => call.id),
+		},
+	});
+}
+
 function renderPlannerModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
@@ -1919,7 +1998,9 @@ function renderPlannerModelInput(params: {
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 } {
-	const renderedContext = renderContextObject(params.context);
+	const renderedContext = renderContextObject(
+		params.trajectory.modelBaseContext ?? params.context,
+	);
 	const template = params.template ?? plannerTemplate;
 	const instructions = (
 		params.codingMode
@@ -1928,9 +2009,11 @@ function renderPlannerModelInput(params: {
 					template.split("context_object:")[0] ?? template,
 				)
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
-		redactText: composeToolDiagnosticRedactor(params.runtime),
-	});
+	const stepMessages =
+		params.trajectory.modelHistory ??
+		trajectoryStepsToMessages(params.trajectory.steps, {
+			redactText: composeToolDiagnosticRedactor(params.runtime),
+		});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
 	// available_actions block rendered into the prompt. Routing hints stay as a
@@ -2456,6 +2539,7 @@ async function callPlanner(params: {
 	toolChoice?: ToolChoice;
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
+	cacheConversationId?: string;
 	parentStageId?: string;
 	providerAttributionState?: PlannerLoopParams["providerAttributionState"];
 	iteration?: number;
@@ -2512,7 +2596,9 @@ async function callPlanner(params: {
 			promptSegments: renderedInput.promptSegments,
 			provider: params.provider,
 			hasTools,
-			conversationId: params.trajectoryId,
+			conversationId: params.cacheConversationId
+				? `${params.cacheConversationId}:planner`
+				: params.trajectoryId,
 		}),
 	};
 	const configuredMaxTokens = resolvePlannerMaxTokens(
@@ -2906,24 +2992,24 @@ async function evaluateTrajectory(
 		effects: params.evaluatorEffects,
 		recorder: params.recorder,
 		trajectoryId: params.trajectoryId,
+		cacheConversationId: params.cacheConversationId,
 		parentStageId: params.parentStageId,
 		iteration,
 		onUsage: params.onModelUsage,
 	});
 }
 
-function appendEvaluationEvent(args: {
-	context: ContextObject;
+function evaluationContextEvent(args: {
 	iteration: number;
 	evaluator: EvaluatorOutput;
 	redactDiagnosticText?: ToolDiagnosticTextRedactor;
-}): ContextObject {
+}): ContextEvent {
 	const createdAt = Date.now();
 	const evaluator = projectToolDiagnosticValue(
 		args.evaluator,
 		args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
 	) as EvaluatorOutput;
-	return appendContextEvent(args.context, {
+	return {
 		id: `evaluation:${args.iteration}:${createdAt}`,
 		type: "evaluation",
 		source: "planner-loop",
@@ -2938,7 +3024,7 @@ function appendEvaluationEvent(args: {
 			protocolFailure: evaluator.protocolFailure,
 			parseError: evaluator.parseError,
 		},
-	});
+	};
 }
 
 function appendEvaluatorContextEvent(
@@ -2947,19 +3033,21 @@ function appendEvaluatorContextEvent(
 	iteration: number,
 	redactDiagnosticText?: ToolDiagnosticTextRedactor,
 ): void {
-	trajectory.context = appendEvaluationEvent({
-		context: trajectory.context,
-		iteration,
-		evaluator,
-		redactDiagnosticText,
-	});
+	appendPlannerModelFeedbackEvent(
+		trajectory,
+		evaluationContextEvent({
+			iteration,
+			evaluator,
+			redactDiagnosticText,
+		}),
+	);
 }
 
 function appendTerminalPlannerOutputEvent(args: {
-	context: ContextObject;
+	trajectory: PlannerTrajectory;
 	iteration: number;
 	message?: string;
-}): ContextObject {
+}): void {
 	const createdAt = Date.now();
 	const unsafe = isUnsafeUserVisibleText(args.message);
 	const content = [
@@ -2970,7 +3058,7 @@ function appendTerminalPlannerOutputEvent(args: {
 			? "note: This output looked like internal planning or attempted tool-call text. It must not be shown directly to the user."
 			: "note: Evaluate whether this user-visible output actually completes the request.",
 	].join("\n");
-	return appendContextEvent(args.context, {
+	appendPlannerModelFeedbackEvent(args.trajectory, {
 		id: `terminal-planner-output:${args.iteration}:${createdAt}`,
 		type: "segment",
 		source: "planner-loop",
@@ -2993,11 +3081,11 @@ function appendTerminalPlannerOutputEvent(args: {
 }
 
 function appendTerminalContinuationEvent(args: {
-	context: ContextObject;
+	trajectory: PlannerTrajectory;
 	iteration: number;
 	terminalOnlyContinuations: number;
 	message?: string;
-}): ContextObject {
+}): void {
 	const createdAt = Date.now();
 	const unsafe = isUnsafeUserVisibleText(args.message);
 	const content = [
@@ -3008,7 +3096,7 @@ function appendTerminalContinuationEvent(args: {
 			: "The evaluator found the previous terminal planner output partial. Emit native toolCalls for remaining work.",
 		'If the user asked you to save, schedule, send, update, remember, or complete something, do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened.',
 	].join("\n");
-	return appendContextEvent(args.context, {
+	appendPlannerModelFeedbackEvent(args.trajectory, {
 		id: `terminal-planner-retry:${args.iteration}:${createdAt}`,
 		type: "segment",
 		source: "planner-loop",
@@ -3033,11 +3121,11 @@ function appendTerminalContinuationEvent(args: {
 }
 
 function appendUnavailableToolCallEvent(args: {
-	context: ContextObject;
+	trajectory: PlannerTrajectory;
 	iteration: number;
 	invalidToolCalls: readonly PlannerToolCall[];
 	tools?: ToolDefinition[];
-}): ContextObject {
+}): void {
 	const createdAt = Date.now();
 	const exposed = Array.from(exposedToolNameSet(args.tools) ?? []).sort();
 	const invalid = args.invalidToolCalls.map((toolCall) => toolCall.name);
@@ -3047,7 +3135,7 @@ function appendUnavailableToolCallEvent(args: {
 		`available_tools: ${JSON.stringify(exposed)}`,
 		"The previous planner output called tools that were not exposed for this turn. Retry using only available_tools, or return a terminal REPLY if no exposed tool fits.",
 	].join("\n");
-	return appendContextEvent(args.context, {
+	appendPlannerModelFeedbackEvent(args.trajectory, {
 		id: `unavailable-tool-call-retry:${args.iteration}:${createdAt}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -3062,11 +3150,10 @@ function appendUnavailableToolCallEvent(args: {
 }
 
 function appendSilentFailedFinishRecoveryEvent(args: {
-	context: ContextObject;
+	trajectory: PlannerTrajectory;
 	iteration: number;
 	evaluator: EvaluatorOutput;
-	trajectory: PlannerTrajectory;
-}): ContextObject {
+}): void {
 	const createdAt = Date.now();
 	const failedStep = latestFailedToolStep(args.trajectory);
 	const failedToolName = failedStep?.toolCall?.name;
@@ -3085,7 +3172,7 @@ function appendSilentFailedFinishRecoveryEvent(args: {
 	]
 		.filter((line): line is string => line !== null)
 		.join("\n");
-	return appendContextEvent(args.context, {
+	appendPlannerModelFeedbackEvent(args.trajectory, {
 		id: `silent-failed-finish-retry:${args.iteration}:${createdAt}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -3210,11 +3297,17 @@ async function executeQueuedToolCall(params: {
 		});
 	}
 
-	params.trajectory.steps.push({
+	const completedStep: PlannerStep = {
 		iteration: params.iteration,
 		toolCall: params.toolCall,
 		result,
-	});
+	};
+	params.trajectory.steps.push(completedStep);
+	appendPlannerToolStepToModelHistory(
+		params.trajectory,
+		completedStep,
+		redactDiagnosticText,
+	);
 	params.trajectory.context = {
 		...params.trajectory.context,
 		plannedQueue: (params.trajectory.context.plannedQueue ?? []).map((entry) =>
@@ -4568,7 +4661,7 @@ function handleRequiredToolPlannerMiss(params: {
 		},
 		"Planner returned terminal output before satisfying a required tool call; retrying",
 	);
-	params.trajectory.context = appendContextEvent(params.trajectory.context, {
+	appendPlannerModelFeedbackEvent(params.trajectory, {
 		id: `required-tool-retry:${params.iteration}:${params.reason}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -4908,7 +5001,7 @@ async function finishWithForcedSynthesis(params: {
 			},
 		};
 	}
-	trajectory.context = appendContextEvent(trajectory.context, {
+	appendPlannerModelFeedbackEvent(trajectory, {
 		id: `force-synthesis:${iteration}`,
 		type: "instruction",
 		source: "planner-loop",
@@ -4941,6 +5034,7 @@ async function finishWithForcedSynthesis(params: {
 		tools: undefined,
 		recorder: loop.recorder,
 		trajectoryId: loop.trajectoryId,
+		cacheConversationId: loop.cacheConversationId,
 		parentStageId: loop.parentStageId,
 		providerAttributionState: loop.providerAttributionState,
 		iteration,
@@ -6167,7 +6261,7 @@ function failedStepCauseForPrompt(step: PlannerStep): string | undefined {
  *
  * On any single ambiguity the function returns `null` and the caller falls
  * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
- * preserves trajectory observability: `appendEvaluationEvent` still records
+ * preserves trajectory observability: the evaluator event still records
  * the decision in the context event stream, `trajectory.evaluatorOutputs` still
  * gets the entry, and the loop's return value still carries `evaluator` in the
  * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
