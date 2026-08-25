@@ -179,18 +179,13 @@ jobs:
         packages/cloud
         packages/app
         packages/app-core
+        packages/scripts
         package.json
         bun.lock
         bunfig.toml
         turbo.json
         tsconfig.json
         tsconfig.base.json
-        packages/scripts/build-core.mjs
-        packages/scripts/build-core-packages.mjs
-        packages/scripts/ci-await-bun-release-server.mjs
-        packages/scripts/ci-fetch-bun-release.mjs
-        packages/scripts/lib/repository-file-integrity.mjs
-        packages/scripts/lib/workspaces.mjs
         .github/actions/cloud-setup-test-env
         .github/scripts/install-playwright-browsers.sh
         .github/develop-surface-graph.json

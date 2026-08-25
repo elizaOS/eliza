@@ -131,7 +131,7 @@ describe("PR Static Smoke workflow", () => {
         "packages/cloud",
         "packages/app",
         "packages/app-core",
-        "packages/scripts/lib/workspaces.mjs",
+        "packages/scripts",
         ".github/actions/cloud-setup-test-env",
         ".github/develop-surface-graph.json",
         ".github/workflows/develop-full.yml",
