@@ -98,7 +98,6 @@ export interface CreateHealthActionRunnerOptions {
     runtime: IAgentRuntime;
     message: Memory;
     state: State | undefined;
-    limit: number;
   }) => Promise<string[]>;
   runJsonModel: (
     args: HealthActionRunJsonModelArgs,
