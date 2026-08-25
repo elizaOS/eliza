@@ -474,7 +474,17 @@ async function actionCreate({
   if (!content) {
     return failure("missing_param", "content is required for action=create");
   }
-  const status = readStatus(params.status) ?? "pending";
+  let status: TodoStatus = "pending";
+  if (params.status !== undefined && params.status !== null) {
+    const parsed = readStatus(params.status);
+    if (!parsed) {
+      return failure(
+        "invalid_param",
+        `status must be one of: ${TODO_STATUSES.join(", ")}`,
+      );
+    }
+    status = parsed;
+  }
   const activeForm = readString(params.activeForm);
   const parentTodoId = readString(params.parentTodoId);
   const input: Omit<CreateTodoInput, "entityId" | "agentId"> = {
@@ -531,8 +541,16 @@ async function actionUpdate({
   if (content !== undefined) patch.content = content;
   const activeForm = readString(params.activeForm);
   if (activeForm !== undefined) patch.activeForm = activeForm;
-  const status = readStatus(params.status);
-  if (status !== undefined) patch.status = status;
+  if (params.status !== undefined && params.status !== null) {
+    const status = readStatus(params.status);
+    if (!status) {
+      return failure(
+        "invalid_param",
+        `status must be one of: ${TODO_STATUSES.join(", ")}`,
+      );
+    }
+    patch.status = status;
+  }
   const detachParent = readBoolean(params.detachParent) ?? false;
   if (detachParent && Object.hasOwn(params, "parentTodoId")) {
     return failure(

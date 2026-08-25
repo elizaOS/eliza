@@ -627,9 +627,20 @@ describe("TODO action", () => {
       });
       expect(result.text).toBe(expected);
       // markCanonicalCallback only preserves the do-not-paraphrase reply when
-      // the delivered text matches userFacingText byte for byte.
       expect(result.userFacingText).toBe(expected);
       expect(delivered).toEqual([expected]);
+    });
+
+    it("rejects invalid status on create with invalid_param error", async () => {
+      const { result } = await confirm({
+        action: "create",
+        content: "Buy trash bags",
+        status: "invalid_status",
+      });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain(
+        "invalid_param: status must be one of: pending, in_progress, completed, cancelled",
+      );
     });
 
     it.each([
@@ -651,6 +662,19 @@ describe("TODO action", () => {
       expect(result.text).toBe(expected);
       expect(result.userFacingText).toBe(expected);
       expect(delivered).toEqual([expected]);
+    });
+
+    it("rejects invalid status on update with invalid_param error", async () => {
+      const id = await seed("Buy trash bags");
+      const { result } = await confirm({
+        action: "update",
+        id,
+        status: "done",
+      });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain(
+        "invalid_param: status must be one of: pending, in_progress, completed, cancelled",
+      );
     });
 
     it("complete and cancel name the state the store committed", async () => {
