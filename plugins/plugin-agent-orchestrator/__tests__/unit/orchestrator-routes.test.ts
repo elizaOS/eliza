@@ -33,6 +33,12 @@ const acpStub = {
     }),
   sendToSession: () => Promise.resolve(),
   stopSession: () => Promise.resolve(),
+  getSession: (sessionId: string) =>
+    Promise.resolve(
+      sessionId === "session-1"
+        ? { id: sessionId, status: "ready", metadata: {} }
+        : null,
+    ),
 };
 
 function makeService(): OrchestratorTaskService {

@@ -2920,6 +2920,40 @@ describe("AcpService", () => {
     expect(client.prompt).toHaveBeenCalledTimes(1);
   });
 
+  it("claims a promptable session before an idle reclaim can race a follow-up", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-reclaim-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    const client = firstNativeClient();
+    let enterBeforeStop: () => void = () => undefined;
+    const beforeStopEntered = new Promise<void>((resolve) => {
+      enterBeforeStop = resolve;
+    });
+    let releaseBeforeStop: () => void = () => undefined;
+    const beforeStopGate = new Promise<void>((resolve) => {
+      releaseBeforeStop = resolve;
+    });
+
+    const reclaim = service.stopPromptableSession(sessionId, async () => {
+      enterBeforeStop();
+      await beforeStopGate;
+    });
+    await beforeStopEntered;
+
+    await expect(service.sendPrompt(sessionId, "follow up")).rejects.toThrow(
+      /already busy/,
+    );
+    expect(client.prompt).not.toHaveBeenCalled();
+    releaseBeforeStop();
+    await expect(reclaim).resolves.toBe(true);
+    expect(client.closeSession).toHaveBeenCalledWith("protocol-session");
+    expect((await service.getSession(sessionId))?.status).toBe("stopped");
+  });
+
   it("native cancel settles from the original prompt's cancelled terminal result", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
     await service.start();

@@ -228,6 +228,7 @@ import {
 import {
   AdmissionQueueFullError,
   type ApprovalPreset,
+  isSessionPromptable,
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
@@ -5156,12 +5157,13 @@ export class OrchestratorTaskService extends Service {
       senderKind: "user",
       direction: "stdin",
     });
-    const active = doc.sessions.filter(
+    let active = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
     const forwardedTo: string[] = [];
     const failedTo: Array<{ sessionId: string; error: string }> = [];
     const acp = this.acp();
+    if (acp) active = await this.liveTaskSessions(doc, acp);
     if (!acp) {
       const error = "ACP service unavailable";
       if (active.length > 0) {
@@ -5332,9 +5334,12 @@ export class OrchestratorTaskService extends Service {
       return this.getTask(taskId);
     }
 
+    const acp = this.acp();
+    const liveSessions = acp ? await this.liveTaskSessions(doc, acp) : [];
     const sessionId =
       input.sessionId ??
       source?.sessionId ??
+      liveSessions.at(-1)?.sessionId ??
       latestActiveSession(doc)?.sessionId;
     if (!sessionId) {
       throw new RecoveryConflictError(
@@ -5343,7 +5348,10 @@ export class OrchestratorTaskService extends Service {
     }
     const session = doc.sessions.find((item) => item.sessionId === sessionId);
     if (!session) throw new RecoveryConflictError("Session not found");
-    if (TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+    if (
+      TERMINAL_TASK_SESSION_STATUSES.has(session.status) &&
+      !liveSessions.some((item) => item.sessionId === sessionId)
+    ) {
       throw new RecoveryConflictError(
         "Cannot retry in a terminal session; use new-session mode",
       );
@@ -6710,14 +6718,14 @@ export class OrchestratorTaskService extends Service {
   private async stopActiveSessions(
     doc: OrchestratorTaskDocument,
   ): Promise<void> {
-    const active = doc.sessions.filter(
+    const durableActive = doc.sessions.filter(
       (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
     );
-    if (active.length === 0) return;
     const acp = this.acp();
     if (!acp) {
+      if (durableActive.length === 0) return;
       await Promise.all(
-        active.map((session) =>
+        durableActive.map((session) =>
           this.store.updateSession(session.sessionId, {
             status: "stop_failed",
           }),
@@ -6728,6 +6736,8 @@ export class OrchestratorTaskService extends Service {
         "ACP service unavailable; cannot stop active sessions",
       );
     }
+    const active = await this.liveTaskSessions(doc, acp);
+    if (active.length === 0) return;
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
       active.map(async (session) => {
@@ -6750,10 +6760,12 @@ export class OrchestratorTaskService extends Service {
           });
           return;
         }
-        await this.store.updateSession(session.sessionId, {
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+          await this.store.updateSession(session.sessionId, {
+            status: "stopped",
+            stoppedAt: Date.now(),
+          });
+        }
       }),
     );
     if (failures.length > 0) {
@@ -6767,6 +6779,26 @@ export class OrchestratorTaskService extends Service {
         }`,
       );
     }
+  }
+
+  /** Resolve task-session consumers against current ACP state when available. */
+  private async liveTaskSessions(
+    doc: OrchestratorTaskDocument,
+    acp: AcpService,
+  ): Promise<OrchestratorTaskSession[]> {
+    const live: OrchestratorTaskSession[] = [];
+    for (const session of doc.sessions) {
+      const current = await acp.getSession(session.sessionId);
+      if (current && !TERMINAL_SESSION_STATUSES.has(current.status)) {
+        live.push(session);
+      } else if (
+        !current &&
+        !TERMINAL_TASK_SESSION_STATUSES.has(session.status)
+      ) {
+        live.push(session);
+      }
+    }
+    return live;
   }
 
   // ---- stuck-task reaper -------------------------------------------------
@@ -7275,7 +7307,7 @@ export class OrchestratorTaskService extends Service {
     const sessions = await acp.listSessions();
     const candidates: Array<{ id: string; createdAt: number }> = [];
     for (const session of sessions) {
-      if (TERMINAL_SESSION_STATUSES.has(session.status)) continue;
+      if (!isSessionPromptable(session.status)) continue;
       // Resolve via `resolveTaskId`, not the in-memory `sessionTaskIndex`
       // directly: after a parent restart the index is empty but pre-restart
       // keepAlive sessions are still live, so the session→task mapping only
@@ -7306,10 +7338,15 @@ export class OrchestratorTaskService extends Service {
     const victim = candidates[0];
     if (!victim) return false;
     try {
-      // Mark the stop administrative BEFORE stopping so the swarm
-      // coordinator's `stopped` synthesis reads it as lifecycle plumbing.
-      await markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim");
-      await acp.stopSession(victim.id);
+      const taskId = await this.resolveTaskId(victim.id);
+      if (!taskId) return false;
+      const owner = await this.store.getTask(taskId);
+      if (!owner || !TERMINAL_TASK_STATUSES.has(owner.task.status))
+        return false;
+      const stopped = await acp.stopPromptableSession(victim.id, () =>
+        markSessionAdministrativelyStopped(acp, victim.id, "idle_reclaim"),
+      );
+      if (!stopped) return false;
       this.log("info", "reclaimed idle keepAlive session for queued task", {
         sessionId: victim.id,
       });
