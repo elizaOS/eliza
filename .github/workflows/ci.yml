@@ -120,6 +120,9 @@ jobs:
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 
+      - name: Build core contract for script tests
+        run: bun run build:core
+
       - name: Script contract tests
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"

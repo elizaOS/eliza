@@ -287,8 +287,7 @@ export function ProviderAccountRow({
                   key={chip.key}
                   className={cn(
                     "rounded px-1.5 py-px text-2xs font-medium",
-                    chip.tone === "chat" &&
-                      "bg-accent-subtle text-accent-muted",
+                    chip.tone === "chat" && "bg-accent-subtle text-txt-strong",
                     chip.tone === "coding" && "bg-bg-accent text-muted-strong",
                     chip.tone === "muted" && "bg-bg-accent text-muted",
                   )}

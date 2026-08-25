@@ -579,9 +579,10 @@ function PdfTile({
       <iframe
         src={src}
         title={frameTitle}
-        // Sandbox the embedded document: allow it to be treated as same-origin
-        // so the native viewer's resources load, but grant no script/forms/etc.
-        sandbox="allow-same-origin"
+        // Chromium's built-in PDF viewer requires scripts. Keep the document
+        // in an opaque origin and grant no forms, navigation, or same-origin
+        // access so PDF bytes cannot reach application state.
+        sandbox="allow-scripts"
         className="block h-[28rem] w-full border-0 bg-brand-white"
       />
     </figure>

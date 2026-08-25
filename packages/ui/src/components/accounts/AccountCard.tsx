@@ -213,8 +213,8 @@ export function AccountCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5 transition-opacity",
-        !account.enabled && "opacity-60",
+        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5",
+        !account.enabled && "bg-muted/10",
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -330,6 +330,7 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={testBusy || saving}
+            aria-label={t("accounts.test", { defaultValue: "Test" })}
             onClick={() => void onTest()}
             className="h-7 px-2 text-xs"
           >
@@ -344,6 +345,7 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={refreshBusy || saving}
+            aria-label={t("accounts.refresh", { defaultValue: "Refresh" })}
             onClick={() => void onRefreshUsage()}
             className="h-7 px-2 text-xs"
           >
