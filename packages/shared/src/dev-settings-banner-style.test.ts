@@ -56,6 +56,19 @@ describe("colorizeDevSettingsBanner", () => {
     }
   });
 
+  it("skips when FORCE_COLOR is 0", () => {
+    const prev = process.env.FORCE_COLOR;
+    process.env.FORCE_COLOR = "0";
+    try {
+      expect(colorizeDevSettingsBanner("\u256D\u2500\u256E")).toBe(
+        "\u256D\u2500\u256E",
+      );
+    } finally {
+      if (prev === undefined) delete process.env.FORCE_COLOR;
+      else process.env.FORCE_COLOR = prev;
+    }
+  });
+
   it("handles multiline", () => {
     const prev = process.env.NO_COLOR;
     process.env.NO_COLOR = "1";

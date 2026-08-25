@@ -26,7 +26,7 @@ function makeOverlayApp(overrides: Partial<OverlayApp> = {}): OverlayApp {
   };
 }
 
-describe("overlay app registry", () => {
+describe("overlay-app registry", () => {
   it("registers and retrieves overlay apps by name", () => {
     const app = makeOverlayApp({ name: "app-one", displayName: "App One" });
     registerOverlayApp(app);
@@ -35,10 +35,29 @@ describe("overlay app registry", () => {
     expect(isOverlayApp("nonexistent-app")).toBe(false);
     expect(getOverlayApp("app-one")).toBe(app);
     expect(getOverlayApp("nonexistent-app")).toBeUndefined();
-    expect(getAllOverlayApps()).toContain(app);
   });
 
-  it("filters out androidOnly apps on non-AOSP platforms", () => {
+  it("lists all registered apps", () => {
+    registerOverlayApp(makeOverlayApp({ name: "app-a", displayName: "A" }));
+    registerOverlayApp(makeOverlayApp({ name: "app-b", displayName: "B" }));
+    const all = getAllOverlayApps();
+    expect(all.some((a) => a.name === "app-a")).toBe(true);
+    expect(all.some((a) => a.name === "app-b")).toBe(true);
+  });
+
+  it("overwrites on re-registration of the same name", () => {
+    registerOverlayApp(
+      makeOverlayApp({ name: "app-dup", displayName: "Original" }),
+    );
+    registerOverlayApp(
+      makeOverlayApp({ name: "app-dup", displayName: "Updated" }),
+    );
+    expect(getOverlayApp("app-dup")?.displayName).toBe("Updated");
+  });
+});
+
+describe("availability filtering", () => {
+  it("hides androidOnly apps on non-AOSP platforms", () => {
     const genericApp = makeOverlayApp({
       name: "generic-app",
       androidOnly: false,
@@ -51,7 +70,6 @@ describe("overlay app registry", () => {
     registerOverlayApp(genericApp);
     registerOverlayApp(aospApp);
 
-    // Desktop/web platform
     const webAvailable = getAvailableOverlayApps({
       platform: "web",
       aospAndroid: false,
@@ -61,7 +79,6 @@ describe("overlay app registry", () => {
       false,
     );
 
-    // Stock Android (non-AOSP Eliza fork)
     const stockAndroidAvailable = getAvailableOverlayApps({
       platform: "android",
       aospAndroid: false,
@@ -72,16 +89,32 @@ describe("overlay app registry", () => {
     expect(
       stockAndroidAvailable.some((a) => a.name === "aosp-privileged-app"),
     ).toBe(false);
+  });
 
-    // AOSP ElizaOS Android build
+  it("shows androidOnly apps on AOSP Android", () => {
+    const aospApp = makeOverlayApp({
+      name: "aosp-privileged-app-2",
+      androidOnly: true,
+    });
+    registerOverlayApp(aospApp);
+
     const aospAvailable = getAvailableOverlayApps({
       platform: "android",
       aospAndroid: true,
     });
-    expect(aospAvailable.some((a) => a.name === "generic-app")).toBe(true);
-    expect(aospAvailable.some((a) => a.name === "aosp-privileged-app")).toBe(
+    expect(aospAvailable.some((a) => a.name === "aosp-privileged-app-2")).toBe(
       true,
     );
+  });
+
+  it("accepts a plain platform string", () => {
+    const aospApp = makeOverlayApp({
+      name: "aosp-plain-string-app",
+      androidOnly: true,
+    });
+    registerOverlayApp(aospApp);
+    const apps = getAvailableOverlayApps("android");
+    expect(apps.some((a) => a.name === "aosp-plain-string-app")).toBe(false);
   });
 
   it("evaluates isAospAndroid predicate with platform context", () => {
@@ -94,7 +127,22 @@ describe("overlay app registry", () => {
     expect(isAospAndroid({ platform: "ios", aospAndroid: true })).toBe(false);
   });
 
-  it("converts OverlayApp to RegistryAppInfo format", () => {
+  it("detects AOSP from user agent", () => {
+    expect(
+      isAospAndroid({
+        platform: "android",
+        userAgent: "Mozilla ElizaOS/1.2.3",
+      }),
+    ).toBe(true);
+    expect(
+      isAospAndroid({ platform: "android", userAgent: "Mozilla plain" }),
+    ).toBe(false);
+    expect(isAospAndroid({ platform: "web" })).toBe(false);
+  });
+});
+
+describe("registry info conversion", () => {
+  it("maps overlay app fields into RegistryAppInfo", () => {
     const app = makeOverlayApp({
       name: "converter-test-app",
       displayName: "Converter Test",
@@ -127,5 +175,12 @@ describe("overlay app registry", () => {
         v2Version: null,
       },
     });
+  });
+
+  it("defaults heroImage to null", () => {
+    const info = overlayAppToRegistryInfo(
+      makeOverlayApp({ name: "plain-app" }),
+    );
+    expect(info.heroImage).toBeNull();
   });
 });

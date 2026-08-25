@@ -1,5 +1,9 @@
+/**
+ * Unit tests for deterministic string hashing utility.
+ */
+
 import { describe, expect, it } from "vitest";
-import { hashString } from "../string-hash.ts";
+import { hashString } from "./string-hash.js";
 
 describe("hashString", () => {
   it("is deterministic for the same input", () => {

@@ -1,5 +1,9 @@
+/**
+ * Unit tests for untrusted email content wrapper and instruction injection fencing.
+ */
+
 import { describe, expect, it } from "vitest";
-import { wrapUntrustedEmailContent } from "../wrap-untrusted-email-content.ts";
+import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content.js";
 
 describe("wrapUntrustedEmailContent", () => {
   it("fences content with the untrusted boundary", () => {

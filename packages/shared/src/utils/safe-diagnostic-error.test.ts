@@ -9,11 +9,15 @@ import {
 } from "./safe-diagnostic-error.js";
 
 describe("readDiagnosticProperty", () => {
-  it("reads own property", () => {
+  it("reads own property and functions", () => {
     expect(readDiagnosticProperty({ a: 42 }, "a")).toBe(42);
+    function named() {
+      return undefined;
+    }
+    expect(readDiagnosticProperty(named, "name")).toBe("named");
   });
 
-  it("returns undefined for non-container", () => {
+  it("returns undefined for non-container and primitives", () => {
     expect(readDiagnosticProperty(null, "a")).toBeUndefined();
     expect(readDiagnosticProperty(42, "a")).toBeUndefined();
     expect(readDiagnosticProperty("hello", "a")).toBeUndefined();
@@ -45,9 +49,16 @@ describe("formatDiagnosticError", () => {
     expect(out).toContain("fail");
   });
 
-  it("handles null and undefined", () => {
+  it("handles null and undefined and empty string", () => {
     expect(formatDiagnosticError(null)).toBe("null");
     expect(formatDiagnosticError(undefined)).toBe("undefined");
+    expect(formatDiagnosticError("")).toBe("");
+  });
+
+  it("prefers stack, then message, then coercion", () => {
+    expect(formatDiagnosticError({ stack: "at x", message: "m" })).toBe("at x");
+    expect(formatDiagnosticError({ message: "m" })).toBe("m");
+    expect(formatDiagnosticError(42)).toBe("42");
   });
 
   it("handles object with message", () => {
@@ -56,7 +67,7 @@ describe("formatDiagnosticError", () => {
     expect(out.length).toBeGreaterThan(0);
   });
 
-  it("handles throwing toString", () => {
+  it("handles throwing toString and hostile objects without throwing", () => {
     const obj = {
       toString(): string {
         throw new Error("toString boom");
@@ -64,5 +75,19 @@ describe("formatDiagnosticError", () => {
     };
     const out = formatDiagnosticError(obj);
     expect(typeof out).toBe("string");
+
+    const hostile = {
+      get stack() {
+        throw new Error("trap");
+      },
+      get message() {
+        throw new Error("trap");
+      },
+      toString() {
+        throw new Error("trap");
+      },
+    };
+    expect(() => formatDiagnosticError(hostile)).not.toThrow();
+    expect(typeof formatDiagnosticError(hostile)).toBe("string");
   });
 });
