@@ -136,6 +136,17 @@ export type AgentActivationPhase =
   | "active"
   | "blocked";
 
+/** Content-addressed, generation-bound route published after activation readiness. */
+export interface AgentActivationEndpointEnvelopeV1 {
+  version: 1;
+  generation: string;
+  kind: "dedicated-sandbox";
+  serverName: string;
+  registryUrl: string;
+  bridgeUrl: string;
+  healthUrl: string;
+}
+
 export interface AgentActivationReceipt {
   schemaVersion: 1;
   generation: string;
@@ -203,6 +214,10 @@ export const agentSandboxes = pgTable(
     activation_image_digest: text("activation_image_digest"),
     activation_token_hash: text("activation_token_hash"),
     activation_token_ciphertext: text("activation_token_ciphertext"),
+    activation_endpoint_envelope: jsonb(
+      "activation_endpoint_envelope",
+    ).$type<AgentActivationEndpointEnvelopeV1>(),
+    activation_endpoint_sha256: text("activation_endpoint_sha256"),
     activation_boot_id: uuid("activation_boot_id"),
     activation_authority_published_at: timestamp("activation_authority_published_at", {
       withTimezone: true,
@@ -587,6 +602,41 @@ export const agentSandboxes = pgTable(
           AND ${table.activation_completed_at} IS NULL
         ))
       )) IS TRUE`,
+    ),
+    activation_endpoint_check: check(
+      "agent_sandboxes_activation_endpoint_v1_check",
+      sql`(((${table.activation_endpoint_envelope} IS NULL
+          AND ${table.activation_endpoint_sha256} IS NULL)
+        OR (${table.activation_endpoint_envelope} IS NOT NULL
+          AND ${table.activation_endpoint_sha256} ~ '^[0-9a-f]{64}$'
+          AND jsonb_typeof(${table.activation_endpoint_envelope}) = 'object'
+          AND ${table.activation_endpoint_envelope} ?& ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]
+          AND (${table.activation_endpoint_envelope} - ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
+          AND jsonb_typeof(${table.activation_endpoint_envelope}->'version') = 'number'
+          AND ${table.activation_endpoint_envelope}->>'version' = '1'
+          AND ${table.activation_endpoint_envelope}->>'generation' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND ${table.activation_endpoint_envelope}->>'generation' = ${table.activation_generation}::text
+          AND jsonb_typeof(${table.activation_endpoint_envelope}->'generation') = 'string'
+          AND ${table.activation_endpoint_envelope}->>'kind' = 'dedicated-sandbox'
+          AND jsonb_typeof(${table.activation_endpoint_envelope}->'kind') = 'string'
+          AND ${table.activation_endpoint_envelope}->>'serverName' =
+            'sandbox-' || ${table.activation_generation}::text
+          AND jsonb_typeof(${table.activation_endpoint_envelope}->'serverName') = 'string'
+          AND (${table.activation_endpoint_envelope}->>'registryUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.activation_endpoint_envelope}->>'bridgeUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.activation_endpoint_envelope}->>'healthUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND octet_length(${table.activation_endpoint_envelope}->>'registryUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.activation_endpoint_envelope}->>'bridgeUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.activation_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096))
+        AND (${table.activation_purpose} IS DISTINCT FROM 'restore'
+          OR ${table.activation_phase} NOT IN ('restart_attested', 'active')
+          OR ${table.activation_endpoint_envelope} IS NOT NULL)) IS TRUE`,
     ),
     deletion_intent_pair_check: check(
       "agent_sandboxes_deletion_intent_pair_check",

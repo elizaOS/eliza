@@ -9,6 +9,10 @@
 
 import { Buffer } from "node:buffer";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import {
+  agentActivationEndpointEnvelopesEqual,
+  parseAgentActivationEndpointAuthority,
+} from "../../lib/services/agent-activation-endpoint-authority";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
@@ -17,7 +21,12 @@ import {
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../schemas/agent-backup-catalog";
-import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import {
+  type AgentActivationEndpointEnvelopeV1,
+  type AgentSandbox,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../schemas/agent-sandboxes";
 import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
@@ -43,6 +52,8 @@ export interface RecordAgentBackupRestoreQuarantinedContainerInput {
   claimGeneration: string;
   containerId: string;
   expectedActivationTokenSha256: string;
+  expectedEndpointEnvelope: AgentActivationEndpointEnvelopeV1;
+  expectedEndpointSha256: string;
 }
 
 export interface AgentBackupRestoreQuarantineResult {
@@ -91,7 +102,38 @@ function requireTokenCiphertext(value: string): string {
 function immutableOperationAuthorityMatches(
   operation: AgentBackupRestoreOperation,
   authority: AgentBackupRestoreOperation,
+  writeOnceContainerAuthority?: Readonly<{
+    containerId: string;
+    endpointEnvelope: AgentActivationEndpointEnvelopeV1;
+    endpointSha256: string;
+  }>,
 ): boolean {
+  const exactContainerAuthority =
+    operation.expected_container_id === authority.expected_container_id &&
+    operation.expected_endpoint_sha256 === authority.expected_endpoint_sha256 &&
+    ((operation.expected_endpoint_envelope === null &&
+      authority.expected_endpoint_envelope === null) ||
+      (operation.expected_endpoint_envelope !== null &&
+        authority.expected_endpoint_envelope !== null &&
+        agentActivationEndpointEnvelopesEqual(
+          operation.expected_endpoint_envelope,
+          authority.expected_endpoint_envelope,
+        )));
+  const acceptedWriteOnceTransition = Boolean(
+    writeOnceContainerAuthority &&
+      authority.phase === "vault_seeded" &&
+      authority.expected_container_id === null &&
+      authority.expected_endpoint_envelope === null &&
+      authority.expected_endpoint_sha256 === null &&
+      operation.phase === "container_created" &&
+      operation.expected_container_id === writeOnceContainerAuthority.containerId &&
+      operation.expected_endpoint_sha256 === writeOnceContainerAuthority.endpointSha256 &&
+      operation.expected_endpoint_envelope !== null &&
+      agentActivationEndpointEnvelopesEqual(
+        operation.expected_endpoint_envelope,
+        writeOnceContainerAuthority.endpointEnvelope,
+      ),
+  );
   return (
     operation.organization_id === authority.organization_id &&
     operation.agent_id === authority.agent_id &&
@@ -109,7 +151,8 @@ function immutableOperationAuthorityMatches(
     operation.expected_node_history_id === authority.expected_node_history_id &&
     operation.expected_node_record_id === authority.expected_node_record_id &&
     operation.expected_node_incarnation === authority.expected_node_incarnation &&
-    operation.expected_image_digest === authority.expected_image_digest
+    operation.expected_image_digest === authority.expected_image_digest &&
+    (exactContainerAuthority || acceptedWriteOnceTransition)
   );
 }
 
@@ -186,7 +229,11 @@ function isExactOpenReplay(params: {
     params.sandbox.activation_container_id === null &&
     params.sandbox.activation_node_id === null &&
     params.sandbox.activation_image_digest === null &&
-    params.sandbox.activation_boot_id === null
+    params.sandbox.activation_boot_id === null &&
+    params.sandbox.activation_endpoint_envelope === null &&
+    params.sandbox.activation_endpoint_sha256 === null &&
+    params.operation.expected_endpoint_envelope === null &&
+    params.operation.expected_endpoint_sha256 === null
   );
 }
 
@@ -196,10 +243,28 @@ function isExactContainerReplay(params: {
   tokenSha256: string;
   containerId: string;
   nodeId: string;
+  endpointEnvelope: Readonly<AgentActivationEndpointEnvelopeV1>;
+  endpointSha256: string;
 }): boolean {
   const { sandbox, operation } = params;
+  const operationEndpoint = parseAgentActivationEndpointAuthority(
+    operation.expected_endpoint_envelope,
+    operation.expected_endpoint_sha256,
+    operation.restore_attempt_id,
+  );
+  const sandboxEndpoint = parseAgentActivationEndpointAuthority(
+    sandbox.activation_endpoint_envelope,
+    sandbox.activation_endpoint_sha256,
+    operation.restore_attempt_id,
+  );
   return (
     hasCompleteTargetAuthority(operation) &&
+    operationEndpoint !== null &&
+    sandboxEndpoint !== null &&
+    operation.expected_endpoint_sha256 === params.endpointSha256 &&
+    sandbox.activation_endpoint_sha256 === params.endpointSha256 &&
+    agentActivationEndpointEnvelopesEqual(operationEndpoint, params.endpointEnvelope) &&
+    agentActivationEndpointEnvelopesEqual(sandboxEndpoint, params.endpointEnvelope) &&
     hasCommonRestoreQuarantineAuthority(params) &&
     sandbox.activation_phase === "restore_pending" &&
     sandbox.activation_container_id === params.containerId &&
@@ -286,8 +351,12 @@ export async function openAgentBackupRestoreQuarantine(
     if (operation.phase !== "reserved") {
       conflict(`Restore quarantine cannot open while operation is in ${operation.phase}`);
     }
-    if (operation.expected_container_id !== null) {
-      conflict("Restore quarantine cannot open with pre-existing container authority");
+    if (
+      operation.expected_container_id !== null ||
+      operation.expected_endpoint_envelope !== null ||
+      operation.expected_endpoint_sha256 !== null
+    ) {
+      conflict("Restore quarantine cannot open with pre-existing container or endpoint authority");
     }
 
     const [lease] = await tx
@@ -426,6 +495,8 @@ export async function openAgentBackupRestoreQuarantine(
         activation_container_id: null,
         activation_node_id: null,
         activation_image_digest: null,
+        activation_endpoint_envelope: null,
+        activation_endpoint_sha256: null,
         activation_token_hash: tokenSha256,
         activation_token_ciphertext: tokenCiphertext,
         activation_boot_id: null,
@@ -499,6 +570,15 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
   if (!hasCompleteTargetAuthority(operationAuthority)) {
     conflict("Quarantined container requires complete reserved target authority");
   }
+  const endpointEnvelope = parseAgentActivationEndpointAuthority(
+    input.expectedEndpointEnvelope,
+    input.expectedEndpointSha256,
+    operationAuthority.restore_attempt_id,
+  );
+  if (!endpointEnvelope) {
+    conflict("Quarantined container endpoint authority is invalid or non-canonical");
+  }
+  const endpointSha256 = input.expectedEndpointSha256;
 
   return dbWrite.transaction(async (tx) => {
     const [backup] = await tx
@@ -539,7 +619,14 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
       .where(eq(agentBackupRestoreOperations.id, operationId))
       .for("update")
       .limit(1);
-    if (!operation || !immutableOperationAuthorityMatches(operation, operationAuthority)) {
+    if (
+      !operation ||
+      !immutableOperationAuthorityMatches(operation, operationAuthority, {
+        containerId,
+        endpointEnvelope,
+        endpointSha256,
+      })
+    ) {
       conflict("Restore operation authority changed before container lock");
     }
     if (!hasCompleteTargetAuthority(operation)) {
@@ -640,6 +727,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           tokenSha256,
           containerId,
           nodeId: node.node_id,
+          endpointEnvelope,
+          endpointSha256,
         })
       ) {
         conflict("Quarantined container replay authority mismatch");
@@ -657,6 +746,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
 
     if (
       operation.expected_container_id !== null ||
+      operation.expected_endpoint_envelope !== null ||
+      operation.expected_endpoint_sha256 !== null ||
       operation.claim_owner !== input.ownerId ||
       operation.claim_generation !== claimGeneration ||
       operation.claim_expires_at === null ||
@@ -670,7 +761,9 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
       sandbox.activation_container_id !== null ||
       sandbox.activation_node_id !== null ||
       sandbox.activation_image_digest !== null ||
-      sandbox.activation_boot_id !== null
+      sandbox.activation_boot_id !== null ||
+      sandbox.activation_endpoint_envelope !== null ||
+      sandbox.activation_endpoint_sha256 !== null
     ) {
       conflict("Quarantined container mutable activation authority diverged");
     }
@@ -684,6 +777,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
         activation_node_id: node.node_id,
         activation_image_digest: operation.expected_image_digest,
         activation_boot_id: operation.expected_node_incarnation,
+        activation_endpoint_envelope: endpointEnvelope,
+        activation_endpoint_sha256: endpointSha256,
         updated_at: databaseNow,
       })
       .where(
@@ -700,6 +795,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           isNull(agentSandboxes.activation_node_id),
           isNull(agentSandboxes.activation_image_digest),
           isNull(agentSandboxes.activation_boot_id),
+          isNull(agentSandboxes.activation_endpoint_envelope),
+          isNull(agentSandboxes.activation_endpoint_sha256),
           isNull(agentSandboxes.deleted_at),
           sql`${agentSandboxes.lifecycle_revision} < 9223372036854775807`,
         ),
@@ -713,6 +810,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
         phase: "container_created",
         resume_phase: null,
         expected_container_id: containerId,
+        expected_endpoint_envelope: endpointEnvelope,
+        expected_endpoint_sha256: endpointSha256,
         claim_owner: null,
         claim_generation: null,
         claim_expires_at: null,
@@ -725,6 +824,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
           eq(agentBackupRestoreOperations.claim_owner, input.ownerId),
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
           isNull(agentBackupRestoreOperations.expected_container_id),
+          isNull(agentBackupRestoreOperations.expected_endpoint_envelope),
+          isNull(agentBackupRestoreOperations.expected_endpoint_sha256),
           eq(
             agentBackupRestoreOperations.expected_node_history_id,
             operation.expected_node_history_id,
@@ -749,6 +850,8 @@ export async function recordAgentBackupRestoreQuarantinedContainer(
         tokenSha256,
         containerId,
         nodeId: node.node_id,
+        endpointEnvelope,
+        endpointSha256,
       })
     ) {
       conflict("Quarantined container operation CAS was lost");

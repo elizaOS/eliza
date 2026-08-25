@@ -3,6 +3,10 @@
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray } from "drizzle-orm";
 import {
+  agentActivationEndpointEnvelopesEqual,
+  parseAgentActivationEndpointAuthority,
+} from "../../lib/services/agent-activation-endpoint-authority";
+import {
   assertAgentBackupCatalogTransition,
   requireBoundedIdentity,
   requireSha256Hex,
@@ -26,7 +30,12 @@ import {
   agentNodeIncarnationHistories,
   agentVaultKeySeedReceipts,
 } from "../schemas/agent-backup-restore-history";
-import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
+import {
+  type AgentActivationEndpointEnvelopeV1,
+  type AgentSandbox,
+  agentSandboxBackups,
+  agentSandboxes,
+} from "../schemas/agent-sandboxes";
 import { agentVaultKeyBackupBindings } from "../schemas/agent-vault-key-authority";
 import { type DockerNode, dockerNodes } from "../schemas/docker-nodes";
 import {
@@ -105,6 +114,19 @@ function operationMatchesRuntimeTarget(
   return (
     operation.expected_container_id === containerId &&
     operation.expected_image_digest === imageDigest
+  );
+}
+
+function operationMatchesPublicationEndpoint(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  input: Readonly<RecordAgentActivationPublicationInput>,
+): boolean {
+  return requiredEndpointAuthoritiesMatch(
+    operation.restore_attempt_id,
+    operation.expected_endpoint_envelope,
+    operation.expected_endpoint_sha256,
+    input.expectedEndpointEnvelope,
+    input.expectedEndpointSha256,
   );
 }
 
@@ -361,6 +383,8 @@ export interface RecordAgentActivationPublicationInput {
   expectedNodeIncarnation: string;
   expectedNodeHistoryId: string;
   expectedTokenSha256: string;
+  expectedEndpointEnvelope?: Readonly<AgentActivationEndpointEnvelopeV1> | null;
+  expectedEndpointSha256?: string | null;
 }
 
 function validatePublicationInput(input: RecordAgentActivationPublicationInput): void {
@@ -376,12 +400,65 @@ function validatePublicationInput(input: RecordAgentActivationPublicationInput):
   if (!/^[0-9a-f]{64}$/.test(input.expectedContainerId)) {
     throw new Error("expectedContainerId must be a lowercase 64-character container id");
   }
+  const hasEndpointEnvelope = input.expectedEndpointEnvelope != null;
+  const hasEndpointSha256 = input.expectedEndpointSha256 != null;
+  if (
+    hasEndpointEnvelope !== hasEndpointSha256 ||
+    (hasEndpointEnvelope &&
+      !parseAgentActivationEndpointAuthority(
+        input.expectedEndpointEnvelope,
+        input.expectedEndpointSha256,
+        input.activationGeneration,
+      ))
+  ) {
+    conflict("Activation publication endpoint authority is incomplete or invalid");
+  }
+}
+
+function inputEndpointAuthority(
+  input: Readonly<RecordAgentActivationPublicationInput>,
+): Readonly<AgentActivationEndpointEnvelopeV1> | null {
+  return parseAgentActivationEndpointAuthority(
+    input.expectedEndpointEnvelope,
+    input.expectedEndpointSha256,
+    input.activationGeneration,
+  );
+}
+
+function requiredEndpointAuthoritiesMatch(
+  generation: string,
+  leftEnvelope: unknown,
+  leftSha256: unknown,
+  rightEnvelope: unknown,
+  rightSha256: unknown,
+): boolean {
+  const left = parseAgentActivationEndpointAuthority(leftEnvelope, leftSha256, generation);
+  const right = parseAgentActivationEndpointAuthority(rightEnvelope, rightSha256, generation);
+  return (
+    left !== null &&
+    right !== null &&
+    leftSha256 === rightSha256 &&
+    agentActivationEndpointEnvelopesEqual(left, right)
+  );
 }
 
 function publicationMatchesInput(
   publication: AgentActivationPublication,
   input: RecordAgentActivationPublicationInput,
 ): boolean {
+  const endpointMatches =
+    publication.purpose === "restore"
+      ? requiredEndpointAuthoritiesMatch(
+          publication.activation_generation,
+          publication.endpoint_envelope,
+          publication.endpoint_sha256,
+          input.expectedEndpointEnvelope,
+          input.expectedEndpointSha256,
+        )
+      : publication.endpoint_envelope === null &&
+        publication.endpoint_sha256 === null &&
+        input.expectedEndpointEnvelope == null &&
+        input.expectedEndpointSha256 == null;
   return (
     publication.id === input.publicationId &&
     publication.organization_id === input.organizationId &&
@@ -392,7 +469,8 @@ function publicationMatchesInput(
     publication.docker_node_record_id === input.expectedNodeRecordId &&
     publication.node_incarnation === input.expectedNodeIncarnation &&
     publication.node_history_id === input.expectedNodeHistoryId &&
-    publication.token_sha256 === input.expectedTokenSha256
+    publication.token_sha256 === input.expectedTokenSha256 &&
+    endpointMatches
   );
 }
 
@@ -400,6 +478,19 @@ function publicationMatchesMutableSandbox(
   publication: Readonly<AgentActivationPublication>,
   sandbox: Readonly<AgentSandbox>,
 ): boolean {
+  const endpointMatches =
+    publication.purpose === "restore"
+      ? requiredEndpointAuthoritiesMatch(
+          publication.activation_generation,
+          publication.endpoint_envelope,
+          publication.endpoint_sha256,
+          sandbox.activation_endpoint_envelope,
+          sandbox.activation_endpoint_sha256,
+        )
+      : publication.endpoint_envelope === null &&
+        publication.endpoint_sha256 === null &&
+        sandbox.activation_endpoint_envelope === null &&
+        sandbox.activation_endpoint_sha256 === null;
   return (
     publication.previous_activation_generation === sandbox.activation_previous_generation &&
     publication.lifecycle_revision === sandbox.activation_lifecycle_revision &&
@@ -413,7 +504,8 @@ function publicationMatchesMutableSandbox(
     publication.node_incarnation === sandbox.activation_boot_id &&
     publication.image_digest === sandbox.activation_image_digest &&
     publication.token_sha256 === sandbox.activation_token_hash &&
-    publication.funding_revision === sandbox.activation_funding_revision
+    publication.funding_revision === sandbox.activation_funding_revision &&
+    endpointMatches
   );
 }
 
@@ -525,6 +617,15 @@ async function recordRestoreActivationPublication(
   if (!operationMatchesRuntimeTarget(operation, input.expectedContainerId, authority.imageDigest)) {
     conflict("Restore publication differs from its durable operation target");
   }
+  const endpointAuthority = inputEndpointAuthority(input);
+  const endpointSha256 = input.expectedEndpointSha256;
+  if (
+    !endpointAuthority ||
+    typeof endpointSha256 !== "string" ||
+    !operationMatchesPublicationEndpoint(operation, input)
+  ) {
+    conflict("Restore publication differs from its durable endpoint authority");
+  }
 
   const [concurrentPublication] = await tx
     .select()
@@ -607,6 +708,13 @@ async function recordRestoreActivationPublication(
     sandbox.activation_container_id !== input.expectedContainerId ||
     sandbox.activation_boot_id !== input.expectedNodeIncarnation ||
     sandbox.activation_token_hash !== input.expectedTokenSha256 ||
+    !requiredEndpointAuthoritiesMatch(
+      operation.restore_attempt_id,
+      operation.expected_endpoint_envelope,
+      operation.expected_endpoint_sha256,
+      sandbox.activation_endpoint_envelope,
+      sandbox.activation_endpoint_sha256,
+    ) ||
     !operationMatchesRuntimeTarget(
       operation,
       sandbox.activation_container_id,
@@ -682,6 +790,8 @@ async function recordRestoreActivationPublication(
       image_digest: sandbox.activation_image_digest,
       token_sha256: sandbox.activation_token_hash,
       funding_revision: sandbox.activation_funding_revision,
+      endpoint_envelope: endpointAuthority,
+      endpoint_sha256: endpointSha256,
     })
     .returning();
   if (!publication) conflict("Activation publication insert returned no row");
@@ -754,6 +864,9 @@ export async function recordAgentActivationPublication(
         manifestSha256: activationAuthority.manifestSha256,
         imageDigest: activationAuthority.imageDigest,
       });
+    }
+    if (input.expectedEndpointEnvelope != null || input.expectedEndpointSha256 != null) {
+      conflict("Non-restore activation publication cannot carry endpoint authority");
     }
 
     const [sandbox] = await tx
@@ -853,6 +966,8 @@ export async function recordAgentActivationPublication(
         image_digest: sandbox.activation_image_digest,
         token_sha256: sandbox.activation_token_hash,
         funding_revision: sandbox.activation_funding_revision,
+        endpoint_envelope: null,
+        endpoint_sha256: null,
       })
       .returning();
     if (!publication) conflict("Activation publication insert returned no row");
@@ -1338,7 +1453,18 @@ export async function commitAgentBackupRestore(
       expectedNodeHistoryId: publication.node_history_id,
     });
     if (
-      !operationMatchesRuntimeTarget(operation, publication.container_id, publication.image_digest)
+      !operationMatchesRuntimeTarget(
+        operation,
+        publication.container_id,
+        publication.image_digest,
+      ) ||
+      !requiredEndpointAuthoritiesMatch(
+        operation.restore_attempt_id,
+        operation.expected_endpoint_envelope,
+        operation.expected_endpoint_sha256,
+        publication.endpoint_envelope,
+        publication.endpoint_sha256,
+      )
     ) {
       conflict("Final restore chain differs from its durable operation target");
     }
@@ -1404,7 +1530,14 @@ export async function commitAgentBackupRestore(
       sandbox.activation_node_id !== publication.node_id ||
       sandbox.activation_image_digest !== publication.image_digest ||
       sandbox.activation_token_hash !== publication.token_sha256 ||
-      sandbox.activation_lifecycle_revision !== publication.lifecycle_revision
+      sandbox.activation_lifecycle_revision !== publication.lifecycle_revision ||
+      !requiredEndpointAuthoritiesMatch(
+        publication.activation_generation,
+        publication.endpoint_envelope,
+        publication.endpoint_sha256,
+        sandbox.activation_endpoint_envelope,
+        sandbox.activation_endpoint_sha256,
+      )
     ) {
       conflict("Final restore lost exact current sandbox activation authority");
     }

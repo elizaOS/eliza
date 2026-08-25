@@ -12,6 +12,11 @@
 
 import { Buffer } from "node:buffer";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import {
+  agentActivationEndpointEnvelopesEqual,
+  hashAgentActivationEndpointEnvelope,
+  parseAgentActivationEndpointAuthority,
+} from "../../lib/services/agent-activation-endpoint-authority";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import type { DbTransaction } from "../client";
@@ -146,15 +151,33 @@ function hasExactRecoverableRestoreQuarantine(
   if (sandbox.activation_phase === "container_pending") {
     return (
       operation.expected_container_id === null &&
+      operation.expected_endpoint_envelope === null &&
+      operation.expected_endpoint_sha256 === null &&
       sandbox.activation_container_id === null &&
       sandbox.activation_node_id === null &&
       sandbox.activation_image_digest === null &&
-      sandbox.activation_boot_id === null
+      sandbox.activation_boot_id === null &&
+      sandbox.activation_endpoint_envelope === null &&
+      sandbox.activation_endpoint_sha256 === null
     );
   }
+  const operationEndpoint = parseAgentActivationEndpointAuthority(
+    operation.expected_endpoint_envelope,
+    operation.expected_endpoint_sha256,
+    operation.restore_attempt_id,
+  );
+  const sandboxEndpoint = parseAgentActivationEndpointAuthority(
+    sandbox.activation_endpoint_envelope,
+    sandbox.activation_endpoint_sha256,
+    operation.restore_attempt_id,
+  );
   return (
     sandbox.activation_phase === "restore_pending" &&
     operation.expected_container_id !== null &&
+    operationEndpoint !== null &&
+    sandboxEndpoint !== null &&
+    operation.expected_endpoint_sha256 === sandbox.activation_endpoint_sha256 &&
+    agentActivationEndpointEnvelopesEqual(operationEndpoint, sandboxEndpoint) &&
     sandbox.activation_container_id === operation.expected_container_id &&
     sandbox.activation_node_id === operation.expected_node_id &&
     sandbox.activation_image_digest === operation.expected_image_digest &&
@@ -210,6 +233,8 @@ async function clearRecoverableRestoreQuarantine(
       activation_container_id: null,
       activation_node_id: null,
       activation_image_digest: null,
+      activation_endpoint_envelope: null,
+      activation_endpoint_sha256: null,
       activation_token_hash: null,
       activation_token_ciphertext: null,
       activation_boot_id: null,
@@ -245,6 +270,8 @@ async function clearRecoverableRestoreQuarantine(
       activationContainerId: agentSandboxes.activation_container_id,
       activationNodeId: agentSandboxes.activation_node_id,
       activationImageDigest: agentSandboxes.activation_image_digest,
+      activationEndpointEnvelope: agentSandboxes.activation_endpoint_envelope,
+      activationEndpointSha256: agentSandboxes.activation_endpoint_sha256,
       activationTokenHash: agentSandboxes.activation_token_hash,
       activationTokenCiphertext: agentSandboxes.activation_token_ciphertext,
       activationBootId: agentSandboxes.activation_boot_id,
@@ -1374,6 +1401,31 @@ export async function advanceAgentBackupRestoreOperation(params: {
       );
     }
 
+    const endpointAuthorityRequired = toRank >= PHASE_ORDER.indexOf("container_created");
+    const endpointAuthority = endpointAuthorityRequired
+      ? parseAgentActivationEndpointAuthority(
+          operation.expected_endpoint_envelope,
+          operation.expected_endpoint_sha256,
+          operation.restore_attempt_id,
+        )
+      : null;
+    if (endpointAuthorityRequired && !endpointAuthority) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot reach a container phase without complete endpoint authority",
+      );
+    }
+    const endpointAuthorityCas = endpointAuthority
+      ? and(
+          isNotNull(agentBackupRestoreOperations.expected_endpoint_envelope),
+          isNotNull(agentBackupRestoreOperations.expected_endpoint_sha256),
+          eq(agentBackupRestoreOperations.expected_endpoint_envelope, endpointAuthority),
+          eq(
+            agentBackupRestoreOperations.expected_endpoint_sha256,
+            hashAgentActivationEndpointEnvelope(endpointAuthority),
+          ),
+        )
+      : undefined;
+
     if (resuming && operation.resume_phase !== params.toPhase) {
       throw new AgentBackupCatalogConflictError(
         `Restore operation must resume ${operation.resume_phase}, not ${params.toPhase}`,
@@ -1419,6 +1471,7 @@ export async function advanceAgentBackupRestoreOperation(params: {
           resumingRecordedContainer
             ? isNotNull(agentBackupRestoreOperations.expected_container_id)
             : undefined,
+          endpointAuthorityCas,
         ),
       )
       .returning();

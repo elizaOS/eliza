@@ -26,7 +26,11 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
-import { agentBackupCatalogAuthorities, agentSandboxBackups } from "./agent-sandboxes";
+import {
+  type AgentActivationEndpointEnvelopeV1,
+  agentBackupCatalogAuthorities,
+  agentSandboxBackups,
+} from "./agent-sandboxes";
 import { organizations } from "./organizations";
 
 export { agentBackupCatalogAuthorities } from "./agent-sandboxes";
@@ -441,6 +445,10 @@ export const agentBackupRestoreOperations = pgTable(
     expected_node_id: text("expected_node_id"),
     expected_container_id: text("expected_container_id"),
     expected_image_digest: text("expected_image_digest"),
+    expected_endpoint_envelope: jsonb(
+      "expected_endpoint_envelope",
+    ).$type<AgentActivationEndpointEnvelopeV1>(),
+    expected_endpoint_sha256: text("expected_endpoint_sha256"),
     capacity_state: text("capacity_state").$type<AgentCapacityOwnershipState>(),
     capacity_reserved_at: timestamp("capacity_reserved_at", { withTimezone: true }),
     capacity_settled_at: timestamp("capacity_settled_at", { withTimezone: true }),
@@ -585,6 +593,39 @@ export const agentBackupRestoreOperations = pgTable(
             AND ${table.expected_node_record_id} IS NOT NULL
             AND ${table.expected_node_incarnation} IS NOT NULL
             AND ${table.expected_image_digest} IS NOT NULL))
+      ) IS TRUE`,
+    ),
+    expected_endpoint_check: check(
+      "agent_backup_restore_operations_endpoint_v1_check",
+      sql`((${table.expected_endpoint_envelope} IS NULL
+          AND ${table.expected_endpoint_sha256} IS NULL)
+        OR (${table.expected_endpoint_envelope} IS NOT NULL
+          AND ${table.expected_endpoint_sha256} ~ '^[0-9a-f]{64}$'
+          AND jsonb_typeof(${table.expected_endpoint_envelope}) = 'object'
+          AND ${table.expected_endpoint_envelope} ?& ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]
+          AND (${table.expected_endpoint_envelope} - ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
+          AND jsonb_typeof(${table.expected_endpoint_envelope}->'version') = 'number'
+          AND ${table.expected_endpoint_envelope}->>'version' = '1'
+          AND ${table.expected_endpoint_envelope}->>'generation' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND ${table.expected_endpoint_envelope}->>'generation' = ${table.restore_attempt_id}::text
+          AND jsonb_typeof(${table.expected_endpoint_envelope}->'generation') = 'string'
+          AND ${table.expected_endpoint_envelope}->>'kind' = 'dedicated-sandbox'
+          AND jsonb_typeof(${table.expected_endpoint_envelope}->'kind') = 'string'
+          AND ${table.expected_endpoint_envelope}->>'serverName' =
+            'sandbox-' || ${table.restore_attempt_id}::text
+          AND jsonb_typeof(${table.expected_endpoint_envelope}->'serverName') = 'string'
+          AND (${table.expected_endpoint_envelope}->>'registryUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.expected_endpoint_envelope}->>'bridgeUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.expected_endpoint_envelope}->>'healthUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND octet_length(${table.expected_endpoint_envelope}->>'registryUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.expected_endpoint_envelope}->>'bridgeUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.expected_endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096)
       ) IS TRUE`,
     ),
     capacity_shape_check: check(

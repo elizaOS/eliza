@@ -30,6 +30,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { hashAgentActivationEndpointEnvelope } from "../../../lib/services/agent-activation-endpoint-authority";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   agentBackupRestoreLeases,
@@ -125,6 +126,16 @@ const CLEANUP_DIGEST = "d".repeat(64);
 const RESTORE_HANDOFF_DIGEST = "7".repeat(64);
 const IMAGE_DIGEST = `sha256:${"6".repeat(64)}`;
 const CONTAINER_NAME = `agent-${AGENT_ID}`;
+const ACTIVE_RESTORE_ENDPOINT = Object.freeze({
+  version: 1,
+  generation: ACTIVATION_GENERATION,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${ACTIVATION_GENERATION}`,
+  registryUrl: `https://sandbox-${ACTIVATION_GENERATION}.example.test/api`,
+  bridgeUrl: "http://100.64.0.5:3000",
+  healthUrl: "http://100.64.0.5:3000/health",
+} as const);
+const ACTIVE_RESTORE_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(ACTIVE_RESTORE_ENDPOINT);
 let restoreManifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
 function activationPublicationFixture(input: {
@@ -1722,6 +1733,78 @@ describe("agent sandbox replacement attempts", () => {
     await expect(
       dbWrite.transaction((tx) => admitAndStartAgentSandboxReplacementInTransaction(tx, input)),
     ).rejects.toMatchObject({ code: "AGENT_SANDBOX_REPLACEMENT_ATTEMPT_CONFLICT" });
+  });
+
+  test("clears the prior restore endpoint while rotating the next activation", async () => {
+    await seedRestoreCapacityAuthority();
+    const completedLifecycleRevision = await completeCurrentActivationForAdmission();
+    const restoreLifecycleRevision = (BigInt(completedLifecycleRevision) + 1n).toString();
+    const restorePublication = activationPublicationFixture({
+      id: ACTIVATION_PUBLICATION_ID,
+      generation: ACTIVATION_GENERATION,
+      lifecycleRevision: Number(restoreLifecycleRevision),
+      nodeRecordId: PREVIOUS_NODE_RECORD_ID,
+      nodeId: "old-node",
+      nodeIncarnation: PREVIOUS_NODE_INCARNATION,
+      nodeHistoryId: PREVIOUS_NODE_HISTORY_ID,
+      containerId: PREVIOUS_CONTAINER_ID,
+    });
+    const restoreReceipt = {
+      ...restorePublication.activation_receipt,
+      purpose: "restore" as const,
+      backupId: BACKUP_ID,
+      backupHash: restoreManifestFixture.digest,
+      manifestHash: restoreManifestFixture.digest,
+      freshAuthorization: null,
+    };
+    await dbWrite
+      .delete(agentActivationPublications)
+      .where(eq(agentActivationPublications.id, ACTIVATION_PUBLICATION_ID));
+    await dbWrite.insert(agentActivationPublications).values({
+      ...restorePublication,
+      purpose: "restore",
+      backup_id: BACKUP_ID,
+      backup_manifest_sha256: restoreManifestFixture.digest,
+      activation_receipt: restoreReceipt,
+      endpoint_envelope: ACTIVE_RESTORE_ENDPOINT,
+      endpoint_sha256: ACTIVE_RESTORE_ENDPOINT_SHA256,
+    });
+    const [activeRestore] = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_purpose: "restore",
+        activation_backup_id: BACKUP_ID,
+        activation_backup_hash: restoreManifestFixture.digest,
+        activation_receipt: restoreReceipt,
+        activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        activation_endpoint_envelope: ACTIVE_RESTORE_ENDPOINT,
+        activation_endpoint_sha256: ACTIVE_RESTORE_ENDPOINT_SHA256,
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID))
+      .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+    expect(activeRestore?.lifecycleRevision.toString()).toBe(restoreLifecycleRevision);
+    const expectedLifecycleRevision = activeRestore?.lifecycleRevision.toString();
+    if (!expectedLifecycleRevision) throw new Error("Expected active restore fixture");
+
+    await expect(
+      dbWrite.transaction((tx) =>
+        admitAndStartAgentSandboxReplacementInTransaction(
+          tx,
+          admissionInput({ expectedLifecycleRevision }),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      startInput: { activationGeneration: NEXT_ACTIVATION_GENERATION },
+    });
+    expect(
+      (await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, AGENT_ID)))[0],
+    ).toMatchObject({
+      activation_generation: NEXT_ACTIVATION_GENERATION,
+      activation_purpose: "provision",
+      activation_phase: "container_pending",
+      activation_endpoint_envelope: null,
+      activation_endpoint_sha256: null,
+    });
   });
 
   test("adopts provider success after admission against the immutable previous publication", async () => {

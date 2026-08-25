@@ -22,6 +22,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import { hashAgentActivationEndpointEnvelope } from "../../../lib/services/agent-activation-endpoint-authority";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
@@ -87,6 +88,25 @@ const CONTAINER_B = "2".repeat(64);
 const OLD_CONTAINER = "3".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x44).toString("base64");
 const CLEANUP_PROOF_SHA = "9".repeat(64);
+
+const endpointAuthority = (
+  generation = RESTORE_ATTEMPT_ID,
+  registryUrl = "https://registry.restore-target.invalid/v1",
+) => {
+  const expectedEndpointEnvelope = {
+    version: 1,
+    generation,
+    kind: "dedicated-sandbox",
+    serverName: `sandbox-${generation}`,
+    registryUrl,
+    bridgeUrl: "http://restore-target.invalid:3000",
+    healthUrl: "http://restore-target.invalid:3000/health",
+  } as const;
+  return {
+    expectedEndpointEnvelope,
+    expectedEndpointSha256: hashAgentActivationEndpointEnvelope(expectedEndpointEnvelope),
+  } as const;
+};
 
 let schemaFailure = "";
 let operationId = "";
@@ -287,6 +307,7 @@ async function seedFixture(): Promise<void> {
   const publishedAt = new Date("2026-08-20T08:00:00.000Z");
   const dispatchedAt = new Date("2026-08-20T08:00:01.000Z");
   const completedAt = new Date("2026-08-20T08:00:02.000Z");
+  const previousEndpoint = endpointAuthority(PREVIOUS_ACTIVATION_GENERATION);
   await dbWrite.insert(agentSandboxes).values({
     id: AGENT_ID,
     organization_id: ORG_ID,
@@ -307,6 +328,8 @@ async function seedFixture(): Promise<void> {
     activation_container_id: OLD_CONTAINER,
     activation_node_id: "canonical-node",
     activation_image_digest: CANONICAL_IMAGE_DIGEST,
+    activation_endpoint_envelope: previousEndpoint.expectedEndpointEnvelope,
+    activation_endpoint_sha256: previousEndpoint.expectedEndpointSha256,
     activation_token_hash: OTHER_TOKEN_SHA,
     activation_token_ciphertext: "old-ciphertext",
     activation_boot_id: PREVIOUS_BOOT_ID,
@@ -468,6 +491,8 @@ function expectActivationAuthorityCleared(sandbox: typeof agentSandboxes.$inferS
     sandbox.activation_container_id,
     sandbox.activation_node_id,
     sandbox.activation_image_digest,
+    sandbox.activation_endpoint_envelope,
+    sandbox.activation_endpoint_sha256,
     sandbox.activation_token_hash,
     sandbox.activation_token_ciphertext,
     sandbox.activation_boot_id,
@@ -478,7 +503,7 @@ function expectActivationAuthorityCleared(sandbox: typeof agentSandboxes.$inferS
     sandbox.activation_consent_lifecycle_revision,
     sandbox.activation_consent_head_backup_id,
     sandbox.activation_consent_head_backup_hash,
-  ]).toEqual(Array.from({ length: 22 }, () => null));
+  ]).toEqual(Array.from({ length: 24 }, () => null));
 }
 
 async function openNextRestoreQuarantine(): Promise<{
@@ -667,12 +692,14 @@ describe("restore activation quarantine", () => {
         sandbox.activation_container_id,
         sandbox.activation_node_id,
         sandbox.activation_image_digest,
+        sandbox.activation_endpoint_envelope,
+        sandbox.activation_endpoint_sha256,
         sandbox.activation_boot_id,
         sandbox.activation_authority_published_at,
         sandbox.activation_funding_revision,
         sandbox.activation_dispatched_at,
         sandbox.activation_completed_at,
-      ]).toEqual(Array.from({ length: 10 }, () => null));
+      ]).toEqual(Array.from({ length: 12 }, () => null));
       expect({
         sandbox_id: sandbox.sandbox_id,
         node_id: sandbox.node_id,
@@ -741,6 +768,7 @@ describe("restore activation quarantine", () => {
         claimGeneration,
         containerId: CONTAINER_A,
         expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
       });
       await makeRecoveryEligible();
 
@@ -752,6 +780,12 @@ describe("restore activation quarantine", () => {
       const after = await readRows();
       expectActivationAuthorityCleared(after.sandbox);
       expect(after.operation.expected_container_id).toBe(CONTAINER_A);
+      expect(after.operation.expected_endpoint_envelope).toEqual(
+        endpointAuthority().expectedEndpointEnvelope,
+      );
+      expect(after.operation.expected_endpoint_sha256).toBe(
+        endpointAuthority().expectedEndpointSha256,
+      );
       expect(after.operation.capacity_state).toBe("released");
       expect(after.node.allocated_count).toBe(0);
     },
@@ -871,7 +905,7 @@ describe("restore activation quarantine", () => {
         .set({ expected_container_id: CONTAINER_A })
         .where(eq(agentBackupRestoreOperations.id, operationId));
       await expect(openAgentBackupRestoreQuarantine(openInput())).rejects.toThrow(
-        "pre-existing container authority",
+        "pre-existing container or endpoint authority",
       );
       await dbWrite
         .update(agentBackupRestoreOperations)
@@ -1015,6 +1049,53 @@ describe("restore activation quarantine", () => {
   );
 
   test(
+    "rejects forged, wrong-generation, and unsafe endpoint authority before binding",
+    async () => {
+      const claimGeneration = await openAndClaimVaultSeeded();
+      const base = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration,
+        containerId: CONTAINER_A,
+        expectedActivationTokenSha256: TOKEN_SHA,
+      } as const;
+
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...base,
+          ...endpointAuthority(),
+          expectedEndpointSha256: OTHER_SHA,
+        }),
+      ).rejects.toThrow("endpoint authority is invalid or non-canonical");
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...base,
+          ...endpointAuthority(NEXT_RESTORE_ATTEMPT_ID),
+        }),
+      ).rejects.toThrow("endpoint authority is invalid or non-canonical");
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...base,
+          ...endpointAuthority(
+            RESTORE_ATTEMPT_ID,
+            "https://user:password@registry.restore-target.invalid/v1",
+          ),
+        }),
+      ).rejects.toThrow("endpoint authority is invalid or non-canonical");
+
+      const after = await readRows();
+      expect(after.sandbox.activation_phase).toBe("container_pending");
+      expect(after.sandbox.activation_endpoint_envelope).toBeNull();
+      expect(after.sandbox.activation_endpoint_sha256).toBeNull();
+      expect(after.operation.phase).toBe("vault_seeded");
+      expect(after.operation.expected_container_id).toBeNull();
+      expect(after.operation.expected_endpoint_envelope).toBeNull();
+      expect(after.operation.expected_endpoint_sha256).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
     "records one exact container atomically, clears the claim, and replays without rewind",
     async () => {
       const claimGeneration = await openAndClaimVaultSeeded();
@@ -1024,6 +1105,7 @@ describe("restore activation quarantine", () => {
         claimGeneration,
         containerId: CONTAINER_A,
         expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
       } as const;
       const results = await Promise.all([
         recordAgentBackupRestoreQuarantinedContainer(request),
@@ -1041,6 +1123,10 @@ describe("restore activation quarantine", () => {
       expect(sandbox.activation_node_id).toBe("restore-target");
       expect(sandbox.activation_image_digest).toBe(IMAGE_DIGEST);
       expect(sandbox.activation_boot_id).toBe(TARGET_NODE_INCARNATION);
+      expect(sandbox.activation_endpoint_envelope).toEqual(
+        endpointAuthority().expectedEndpointEnvelope,
+      );
+      expect(sandbox.activation_endpoint_sha256).toBe(endpointAuthority().expectedEndpointSha256);
       expect(sandbox.activation_lifecycle_revision).toBe(BigInt(sandbox.lifecycle_revision));
       expect(sandbox.lifecycle_revision).toBe(9);
       expect(sandbox.activation_authority_published_at).toBeNull();
@@ -1052,6 +1138,10 @@ describe("restore activation quarantine", () => {
       expect(sandbox.status).toBe("running");
       expect(operation.phase).toBe("container_created");
       expect(operation.expected_container_id).toBe(CONTAINER_A);
+      expect(operation.expected_endpoint_envelope).toEqual(
+        endpointAuthority().expectedEndpointEnvelope,
+      );
+      expect(operation.expected_endpoint_sha256).toBe(endpointAuthority().expectedEndpointSha256);
       expect(operation.claim_owner).toBeNull();
       expect(operation.claim_generation).toBeNull();
       expect(operation.claim_expires_at).toBeNull();
@@ -1061,6 +1151,15 @@ describe("restore activation quarantine", () => {
         recordAgentBackupRestoreQuarantinedContainer({
           ...request,
           containerId: CONTAINER_B,
+        }),
+      ).rejects.toThrow("replay authority mismatch");
+      await expect(
+        recordAgentBackupRestoreQuarantinedContainer({
+          ...request,
+          ...endpointAuthority(
+            RESTORE_ATTEMPT_ID,
+            "https://divergent-registry.restore-target.invalid/v1",
+          ),
         }),
       ).rejects.toThrow("replay authority mismatch");
       expect((await readRows()).operation.expected_container_id).toBe(CONTAINER_A);
@@ -1080,6 +1179,63 @@ describe("restore activation quarantine", () => {
   );
 
   test(
+    "fails closed when durable operation or mutable sandbox endpoint authority diverges",
+    async () => {
+      const claimGeneration = await openAndClaimVaultSeeded();
+      const request = {
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration,
+        containerId: CONTAINER_A,
+        expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
+      } as const;
+      await recordAgentBackupRestoreQuarantinedContainer(request);
+      const divergent = endpointAuthority(
+        RESTORE_ATTEMPT_ID,
+        "https://divergent-registry.restore-target.invalid/v1",
+      );
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          expected_endpoint_envelope: divergent.expectedEndpointEnvelope,
+          expected_endpoint_sha256: divergent.expectedEndpointSha256,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+      await expect(recordAgentBackupRestoreQuarantinedContainer(request)).rejects.toThrow(
+        "replay authority mismatch",
+      );
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          expected_endpoint_envelope: request.expectedEndpointEnvelope,
+          expected_endpoint_sha256: request.expectedEndpointSha256,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operationId));
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          activation_endpoint_envelope: divergent.expectedEndpointEnvelope,
+          activation_endpoint_sha256: divergent.expectedEndpointSha256,
+          activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        })
+        .where(eq(agentSandboxes.id, AGENT_ID));
+      await expect(recordAgentBackupRestoreQuarantinedContainer(request)).rejects.toThrow(
+        "replay authority mismatch",
+      );
+
+      const after = await readRows();
+      expect(after.operation.expected_endpoint_sha256).toBe(request.expectedEndpointSha256);
+      expect(after.sandbox.activation_endpoint_sha256).toBe(divergent.expectedEndpointSha256);
+      expect(after.operation.phase).toBe("container_created");
+      expect(after.operation.expected_container_id).toBe(CONTAINER_A);
+    },
+    TIMEOUT,
+  );
+
+  test(
     "allows only one concurrent divergent container contender",
     async () => {
       const claimGeneration = await openAndClaimVaultSeeded();
@@ -1088,6 +1244,7 @@ describe("restore activation quarantine", () => {
         ownerId: "restore-worker",
         claimGeneration,
         expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
       } as const;
       const outcomes = await Promise.allSettled([
         recordAgentBackupRestoreQuarantinedContainer({ ...base, containerId: CONTAINER_A }),
@@ -1117,6 +1274,7 @@ describe("restore activation quarantine", () => {
         claimGeneration,
         containerId: CONTAINER_A,
         expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
       } as const;
       await dbWrite
         .update(dockerNodes)
@@ -1144,6 +1302,7 @@ describe("restore activation quarantine", () => {
         claimGeneration,
         containerId: CONTAINER_A,
         expectedActivationTokenSha256: TOKEN_SHA,
+        ...endpointAuthority(),
       } as const;
       await dbWrite
         .update(dockerNodes)

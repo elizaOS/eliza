@@ -21,6 +21,7 @@ import {
   createAgentBackupManifestV3,
 } from "@elizaos/shared";
 import { eq, sql } from "drizzle-orm";
+import { hashAgentActivationEndpointEnvelope } from "../../../lib/services/agent-activation-endpoint-authority";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -113,6 +114,16 @@ const SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000d046";
 const FINAL_RECEIPT_ID = "00000000-0000-4000-8000-00000000d047";
 const RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000d048";
 const RESTORE_CONTAINER_ID = "e".repeat(64);
+const RESTORE_ENDPOINT_ENVELOPE = Object.freeze({
+  version: 1,
+  generation: TARGET_ACTIVATION_GENERATION,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${TARGET_ACTIVATION_GENERATION}`,
+  registryUrl: `https://sandbox-${TARGET_ACTIVATION_GENERATION}.example.test/api`,
+  bridgeUrl: "http://100.64.0.48:3000",
+  healthUrl: "http://100.64.0.48:3000/health",
+} as const);
+const RESTORE_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(RESTORE_ENDPOINT_ENVELOPE);
 const SHA = "a".repeat(64);
 const RECEIPT_SHA = "b".repeat(64);
 const CONTENT_SHA = "c".repeat(64);
@@ -214,7 +225,7 @@ async function insertActiveSandbox(): Promise<void> {
   });
 }
 
-async function publishInitialSourceActivation() {
+async function stageInitialSourceActivation() {
   const sourceNode = await dockerNodesRepository.create({
     id: SOURCE_NODE_RECORD_ID,
     node_id: "restore-source-node",
@@ -245,6 +256,11 @@ async function publishInitialSourceActivation() {
     expectedNodeHistoryId: sourceNode.current_node_history_id,
     expectedTokenSha256: SHA,
   } as const;
+  return { input, sourceNode };
+}
+
+async function publishInitialSourceActivation() {
+  const { input, sourceNode } = await stageInitialSourceActivation();
   const recorded = await recordAgentActivationPublication(input);
   const [mutableSandbox] = await dbWrite
     .select()
@@ -320,12 +336,24 @@ async function insertActivationGraphRow(
     lifecycleRevision: bigint;
   }>,
 ): Promise<void> {
+  const endpointEnvelope =
+    source.purpose === "restore" && source.endpoint_envelope
+      ? Object.freeze({
+          ...source.endpoint_envelope,
+          generation: input.generation,
+          serverName: `sandbox-${input.generation}`,
+        })
+      : null;
   await dbWrite.insert(agentActivationPublications).values({
     ...source,
     id: input.id,
     activation_generation: input.generation,
     previous_activation_generation: input.previousGeneration,
     lifecycle_revision: input.lifecycleRevision,
+    endpoint_envelope: endpointEnvelope,
+    endpoint_sha256: endpointEnvelope
+      ? hashAgentActivationEndpointEnvelope(endpointEnvelope)
+      : null,
     activation_receipt: {
       ...source.activation_receipt,
       generation: input.generation,
@@ -1010,6 +1038,33 @@ describe("strict restore catalogue authority", () => {
     });
   });
 
+  test("rejects endpoint authority on the first non-restore publication without mutation", async () => {
+    const { input } = await stageInitialSourceActivation();
+    const nonRestoreEndpoint = Object.freeze({
+      ...RESTORE_ENDPOINT_ENVELOPE,
+      generation: input.activationGeneration,
+      serverName: `sandbox-${input.activationGeneration}`,
+    });
+    const endpointInput = {
+      ...input,
+      expectedEndpointEnvelope: nonRestoreEndpoint,
+      expectedEndpointSha256: hashAgentActivationEndpointEnvelope(nonRestoreEndpoint),
+    };
+    await expect(recordAgentActivationPublication(endpointInput)).rejects.toThrow(
+      "Non-restore activation publication cannot carry endpoint authority",
+    );
+    expect(await dbWrite.select().from(agentActivationPublications)).toHaveLength(0);
+
+    await expect(recordAgentActivationPublication(input)).resolves.toMatchObject({
+      replayed: false,
+      publication: { endpoint_envelope: null, endpoint_sha256: null },
+    });
+    await expect(recordAgentActivationPublication(input)).resolves.toMatchObject({
+      replayed: true,
+      publication: { endpoint_envelope: null, endpoint_sha256: null },
+    });
+  });
+
   test("rejects a persisted activation-publication fork or disconnected root", async () => {
     const source = await publishInitialSourceActivation();
     await insertActivationGraphRow(source.recorded.publication, {
@@ -1650,7 +1705,11 @@ describe("strict restore catalogue authority", () => {
     });
     await dbWrite
       .update(agentBackupRestoreOperations)
-      .set({ expected_container_id: RESTORE_CONTAINER_ID })
+      .set({
+        expected_container_id: RESTORE_CONTAINER_ID,
+        expected_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        expected_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
+      })
       .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
     await dbWrite
       .update(agentSandboxes)
@@ -1692,6 +1751,8 @@ describe("strict restore catalogue authority", () => {
         activation_token_ciphertext: "sealed-target-restore-token",
         activation_boot_id: TARGET_NODE_INCARNATION,
         activation_funding_revision: 3n,
+        activation_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
         activation_authority_published_at: null,
         activation_dispatched_at: null,
         activation_completed_at: null,
@@ -1709,6 +1770,8 @@ describe("strict restore catalogue authority", () => {
       expectedNodeIncarnation: TARGET_NODE_INCARNATION,
       expectedNodeHistoryId: restoreTargetHistoryId,
       expectedTokenSha256: SHA,
+      expectedEndpointEnvelope: RESTORE_ENDPOINT_ENVELOPE,
+      expectedEndpointSha256: RESTORE_ENDPOINT_SHA256,
     } as const;
 
     // A restore-shaped sandbox can have a restart receipt, appear ready, and
@@ -1764,6 +1827,10 @@ describe("strict restore catalogue authority", () => {
     ]);
     expect([publicationFirst.replayed, publicationReplay.replayed].sort()).toEqual([false, true]);
     expect(publicationFirst.publication.id).toBe(publicationReplay.publication.id);
+    expect(publicationFirst.publication).toMatchObject({
+      endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+      endpoint_sha256: RESTORE_ENDPOINT_SHA256,
+    });
     await dbWrite
       .update(agentBackupRestoreOperations)
       .set({ phase: "restart_attested" })
@@ -1822,11 +1889,24 @@ describe("strict restore catalogue authority", () => {
         expectedTokenSha256: CONTENT_SHA,
       }),
     ).rejects.toThrow("replay mismatch");
+    const divergentEndpoint = Object.freeze({
+      ...RESTORE_ENDPOINT_ENVELOPE,
+      bridgeUrl: "http://100.64.0.49:3000",
+    });
+    await expect(
+      recordAgentActivationPublication({
+        ...publicationInput,
+        expectedEndpointEnvelope: divergentEndpoint,
+        expectedEndpointSha256: hashAgentActivationEndpointEnvelope(divergentEndpoint),
+      }),
+    ).rejects.toThrow("replay mismatch");
     await expect(
       recordAgentActivationPublication({
         ...publicationInput,
         publicationId: "00000000-0000-4000-8000-00000000d066",
         activationGeneration: ACTIVATION_GENERATION,
+        expectedEndpointEnvelope: null,
+        expectedEndpointSha256: null,
       }),
     ).rejects.toThrow("replay mismatch");
     expect(await dbWrite.select().from(agentActivationPublications)).toHaveLength(3);
@@ -1870,6 +1950,27 @@ describe("strict restore catalogue authority", () => {
     await dbWrite
       .update(agentSandboxes)
       .set({ activation_boot_id: TARGET_NODE_INCARNATION })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    const divergentMutableEndpoint = Object.freeze({
+      ...RESTORE_ENDPOINT_ENVELOPE,
+      healthUrl: "http://100.64.0.49:3000/health",
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_endpoint_envelope: divergentMutableEndpoint,
+        activation_endpoint_sha256: hashAgentActivationEndpointEnvelope(divergentMutableEndpoint),
+      })
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    await expect(authorizeAgentActivationDispatch(publicationInput)).rejects.toThrow(
+      "lost current mutable authority",
+    );
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        activation_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
+      })
       .where(eq(agentSandboxes.id, AGENT_ID));
     const seedInput = {
       receiptId: SEED_RECEIPT_ID,
@@ -2163,16 +2264,32 @@ describe("strict restore catalogue authority", () => {
       .set({ phase: "finalized", completed_at: finalizedAt, receipt_digest: CIPHERTEXT_SHA })
       .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
 
+    const divergentGeneration = "00000000-0000-4000-8000-00000000d077";
+    const divergentGenerationEndpoint = Object.freeze({
+      ...RESTORE_ENDPOINT_ENVELOPE,
+      generation: divergentGeneration,
+      serverName: `sandbox-${divergentGeneration}`,
+    });
     await dbWrite
       .update(agentSandboxes)
-      .set({ activation_generation: "00000000-0000-4000-8000-00000000d077" })
+      .set({
+        activation_generation: divergentGeneration,
+        activation_endpoint_envelope: divergentGenerationEndpoint,
+        activation_endpoint_sha256: hashAgentActivationEndpointEnvelope(
+          divergentGenerationEndpoint,
+        ),
+      })
       .where(eq(agentSandboxes.id, AGENT_ID));
     await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
       "differs from mutable or durable operation authority",
     );
     await dbWrite
       .update(agentSandboxes)
-      .set({ activation_generation: TARGET_ACTIVATION_GENERATION })
+      .set({
+        activation_generation: TARGET_ACTIVATION_GENERATION,
+        activation_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
+      })
       .where(eq(agentSandboxes.id, AGENT_ID));
 
     const newerPublicationId = "00000000-0000-4000-8000-00000000d078";
@@ -2279,7 +2396,11 @@ describe("strict restore catalogue authority", () => {
     });
     await dbWrite
       .update(agentBackupRestoreOperations)
-      .set({ expected_container_id: RESTORE_CONTAINER_ID })
+      .set({
+        expected_container_id: RESTORE_CONTAINER_ID,
+        expected_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        expected_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
+      })
       .where(eq(agentBackupRestoreOperations.id, opened.operation.id));
 
     const { a2HistoryId } = await rearmVaultTargetNodeThroughActualAba();
@@ -2325,6 +2446,8 @@ describe("strict restore catalogue authority", () => {
         activation_token_ciphertext: "sealed-aba-restore-token",
         activation_boot_id: TARGET_NODE_INCARNATION,
         activation_funding_revision: 2n,
+        activation_endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        activation_endpoint_sha256: RESTORE_ENDPOINT_SHA256,
         activation_authority_published_at: null,
         activation_dispatched_at: null,
         activation_completed_at: null,
@@ -2342,6 +2465,8 @@ describe("strict restore catalogue authority", () => {
       expectedNodeIncarnation: TARGET_NODE_INCARNATION,
       expectedNodeHistoryId: a2HistoryId,
       expectedTokenSha256: SHA,
+      expectedEndpointEnvelope: RESTORE_ENDPOINT_ENVELOPE,
+      expectedEndpointSha256: RESTORE_ENDPOINT_SHA256,
     } as const;
     await expect(recordAgentActivationPublication(publicationInput)).rejects.toThrow(
       "durable operation target",
@@ -2387,6 +2512,8 @@ describe("strict restore catalogue authority", () => {
         image_digest: `sha256:${SHA}`,
         token_sha256: SHA,
         funding_revision: 2n,
+        endpoint_envelope: RESTORE_ENDPOINT_ENVELOPE,
+        endpoint_sha256: RESTORE_ENDPOINT_SHA256,
       })
       .returning();
     if (!publication) throw new Error("adversarial A2 publication fixture is missing");

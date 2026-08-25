@@ -17,6 +17,7 @@ import {
 import { agentBackupRestoreLeases } from "./agent-backup-catalog";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
 import {
+  type AgentActivationEndpointEnvelopeV1,
   type AgentActivationPurpose,
   type AgentActivationReceipt,
   agentSandboxBackups,
@@ -47,6 +48,8 @@ export const agentActivationPublications = pgTable(
     backup_manifest_sha256: text("backup_manifest_sha256"),
     activation_receipt: jsonb("activation_receipt").$type<AgentActivationReceipt>().notNull(),
     activation_receipt_sha256: text("activation_receipt_sha256").notNull(),
+    endpoint_envelope: jsonb("endpoint_envelope").$type<AgentActivationEndpointEnvelopeV1>(),
+    endpoint_sha256: text("endpoint_sha256"),
     container_id: text("container_id").notNull(),
     node_history_id: uuid("node_history_id").notNull(),
     docker_node_record_id: uuid("docker_node_record_id").notNull(),
@@ -109,6 +112,40 @@ export const agentActivationPublications = pgTable(
         AND ${table.image_digest} ~ '^sha256:[0-9a-f]{64}$'
         AND ${table.token_sha256} ~ '^[0-9a-f]{64}$'
         AND ${table.funding_revision} >= 0) IS TRUE`,
+    ),
+    endpoint_check: check(
+      "agent_activation_publications_endpoint_v1_check",
+      sql`((${table.purpose} = 'restore'
+          AND ${table.endpoint_envelope} IS NOT NULL
+          AND ${table.endpoint_sha256} ~ '^[0-9a-f]{64}$'
+          AND jsonb_typeof(${table.endpoint_envelope}) = 'object'
+          AND ${table.endpoint_envelope} ?& ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]
+          AND (${table.endpoint_envelope} - ARRAY['version','generation','kind',
+            'serverName','registryUrl','bridgeUrl','healthUrl']::text[]) = '{}'::jsonb
+          AND jsonb_typeof(${table.endpoint_envelope}->'version') = 'number'
+          AND ${table.endpoint_envelope}->>'version' = '1'
+          AND ${table.endpoint_envelope}->>'generation' ~
+            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND ${table.endpoint_envelope}->>'generation' = ${table.activation_generation}::text
+          AND jsonb_typeof(${table.endpoint_envelope}->'generation') = 'string'
+          AND ${table.endpoint_envelope}->>'kind' = 'dedicated-sandbox'
+          AND jsonb_typeof(${table.endpoint_envelope}->'kind') = 'string'
+          AND ${table.endpoint_envelope}->>'serverName' =
+            'sandbox-' || ${table.activation_generation}::text
+          AND jsonb_typeof(${table.endpoint_envelope}->'serverName') = 'string'
+          AND (${table.endpoint_envelope}->>'registryUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.endpoint_envelope}->>'bridgeUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND (${table.endpoint_envelope}->>'healthUrl') ~
+            '^https?://[^/@?#[:space:][:cntrl:]]+(/[^?#[:space:][:cntrl:]]*)?$'
+          AND octet_length(${table.endpoint_envelope}->>'registryUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.endpoint_envelope}->>'bridgeUrl') BETWEEN 1 AND 4096
+          AND octet_length(${table.endpoint_envelope}->>'healthUrl') BETWEEN 1 AND 4096)
+        OR (${table.purpose} <> 'restore'
+          AND ${table.endpoint_envelope} IS NULL
+          AND ${table.endpoint_sha256} IS NULL)) IS TRUE`,
     ),
   }),
 );

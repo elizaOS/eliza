@@ -2082,6 +2082,8 @@ export async function admitAndStartAgentSandboxReplacementInTransaction(
       activation_container_id: null,
       activation_node_id: null,
       activation_image_digest: null,
+      activation_endpoint_envelope: null,
+      activation_endpoint_sha256: null,
       activation_token_hash: admission.activationTokenSha256,
       activation_token_ciphertext: admission.activationTokenCiphertext,
       activation_boot_id: null,

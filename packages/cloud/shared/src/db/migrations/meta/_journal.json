@@ -2213,6 +2213,20 @@
       "when": 1794254400023,
       "tag": "0332_agent_replacement_previous_placement_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 316,
+      "version": "7",
+      "when": 1794254400024,
+      "tag": "0333_agent_restore_endpoint_authority_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 317,
+      "version": "7",
+      "when": 1794254400025,
+      "tag": "0334_agent_restore_endpoint_authority_contract",
+      "breakpoints": true
     }
   ]
 }

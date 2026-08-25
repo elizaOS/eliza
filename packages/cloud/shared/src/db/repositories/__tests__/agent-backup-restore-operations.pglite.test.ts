@@ -28,6 +28,7 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { and, eq, sql } from "drizzle-orm";
+import { hashAgentActivationEndpointEnvelope } from "../../../lib/services/agent-activation-endpoint-authority";
 import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
@@ -86,6 +87,17 @@ const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
 const RECOVERY_REOPEN_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f015";
 const RECOVERY_REOPEN_LEASE_ID = "00000000-0000-4000-8000-00000000f016";
 const RECOVERY_REOPEN_FENCE = "00000000-0000-4000-8000-00000000f017";
+
+const EXPECTED_ENDPOINT_ENVELOPE = {
+  version: 1,
+  generation: ATTEMPT_ID,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${ATTEMPT_ID}`,
+  registryUrl: "https://registry.restore-target.invalid/v1",
+  bridgeUrl: "http://restore-target.invalid:3000",
+  healthUrl: "http://restore-target.invalid:3000/health",
+} as const;
+const EXPECTED_ENDPOINT_SHA256 = hashAgentActivationEndpointEnvelope(EXPECTED_ENDPOINT_ENVELOPE);
 let schemaFailure = "";
 let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
@@ -401,6 +413,8 @@ async function recordQuarantinedContainerFixture(
     .set({
       phase: "container_created",
       expected_container_id: CONTAINER,
+      expected_endpoint_envelope: EXPECTED_ENDPOINT_ENVELOPE,
+      expected_endpoint_sha256: EXPECTED_ENDPOINT_SHA256,
       claim_owner: null,
       claim_generation: null,
       claim_expires_at: null,
@@ -1566,6 +1580,8 @@ describe("restore operation spine", () => {
       genericAdvance.indexOf(".where(", genericAdvanceMutationStart),
     );
     expect(genericAdvanceMutation).not.toContain("expected_container_id");
+    expect(genericAdvanceMutation).not.toContain("expected_endpoint_envelope");
+    expect(genericAdvanceMutation).not.toContain("expected_endpoint_sha256");
     expect(genericAdvance).toContain('params.toPhase === "container_created"');
     expect(genericAdvance).toContain('"recordedIdentity" in params');
   });
@@ -1754,6 +1770,8 @@ describe("restore operation spine", () => {
       });
       expect(restoring.phase).toBe("restoring");
       expect(restoring.expected_container_id).toBe(CONTAINER);
+      expect(restoring.expected_endpoint_envelope).toEqual(EXPECTED_ENDPOINT_ENVELOPE);
+      expect(restoring.expected_endpoint_sha256).toBe(EXPECTED_ENDPOINT_SHA256);
     },
     TIMEOUT,
   );
@@ -1823,6 +1841,8 @@ describe("restore operation spine", () => {
       expect(failed.phase).toBe("failed_retryable");
       expect(failed.resume_phase).toBe("container_created");
       expect(failed.expected_container_id).toBe(CONTAINER);
+      expect(failed.expected_endpoint_envelope).toEqual(EXPECTED_ENDPOINT_ENVELOPE);
+      expect(failed.expected_endpoint_sha256).toBe(EXPECTED_ENDPOINT_SHA256);
 
       const retry = await claimAgentBackupRestoreOperation({
         operationId: operation.id,
@@ -1839,6 +1859,8 @@ describe("restore operation spine", () => {
       expect(resumed.phase).toBe("container_created");
       expect(resumed.resume_phase).toBeNull();
       expect(resumed.expected_container_id).toBe(failed.expected_container_id);
+      expect(resumed.expected_endpoint_envelope).toEqual(failed.expected_endpoint_envelope);
+      expect(resumed.expected_endpoint_sha256).toBe(failed.expected_endpoint_sha256);
       expect(resumed.claim_owner).toBeNull();
     },
     TIMEOUT,
@@ -1898,6 +1920,60 @@ describe("restore operation spine", () => {
         .from(agentBackupRestoreOperations)
         .where(eq(agentBackupRestoreOperations.id, operation.id));
       expect(afterResume).toEqual(beforeResume);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses container-phase progression without one exact content-addressed endpoint",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const claim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ expected_endpoint_sha256: OTHER_CAPACITY_RELEASE_RECEIPT_SHA })
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          fromPhase: "container_created",
+          toPhase: "restoring",
+        }),
+      ).rejects.toThrow("without complete endpoint authority");
+
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ expected_endpoint_envelope: null, expected_endpoint_sha256: null })
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          fromPhase: "container_created",
+          toPhase: "restoring",
+        }),
+      ).rejects.toThrow("without complete endpoint authority");
+
+      const [after] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(after?.phase).toBe("container_created");
+      expect(after?.claim_generation).toBe(claim.claimGeneration);
+      expect(after?.expected_container_id).toBe(CONTAINER);
     },
     TIMEOUT,
   );
