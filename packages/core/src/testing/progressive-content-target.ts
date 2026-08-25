@@ -265,15 +265,61 @@ export async function runProgressiveContentTargetConformance(input: {
 		});
 	};
 
+	let realizedPage: ProgressiveConformancePage | undefined;
+	let realizedCode: string | undefined;
+	try {
+		realizedPage = await input.target.read({
+			access: "authorized",
+			offset: 0,
+			limit: Math.min(
+				input.pageBytes ?? 64 * 1024,
+				Math.max(1, input.target.object.byteLength),
+			),
+			expectedRevision: input.target.object.revision,
+		});
+	} catch (error) {
+		realizedCode = errorCode(error) ?? "untyped";
+	}
+	const afterWarmup = validateSnapshot(await input.target.inspect());
+	const realizedDigest = realizedPage
+		? createHash("sha256").update(realizedPage.bytes).digest("hex")
+		: undefined;
+	const realizedPassed =
+		initial.present &&
+		afterWarmup.present &&
+		!realizedCode &&
+		realizedPage !== undefined &&
+		realizedPage.view.reference.ref ===
+			input.target.realization.reference.ref &&
+		realizedPage.view.reference.revision === input.target.object.revision &&
+		realizedPage.view.slice.range.start === 0 &&
+		realizedPage.view.slice.range.end === realizedPage.bytes.byteLength &&
+		realizedPage.view.slice.sliceSha256 === realizedDigest &&
+		realizedPage.sourceWork.parentScans === 0 &&
+		realizedPage.sourceWork.bytesRead <=
+			realizedPage.bytes.byteLength * 2 + (input.pageBytes ?? 64 * 1024) &&
+		realizedPage.sourceWork.readCalls <= 2 &&
+		realizedPage.sourceWork.rowsRead <= 8;
 	receipts.push({
 		schemaVersion: PROGRESSIVE_CONTENT_TARGET_RECEIPT_SCHEMA_VERSION,
 		targetBindingSha256: binding,
 		phase: "realized",
 		restartScope: input.target.realization.restartScope,
 		before: initial,
-		after: initial,
-		probe: { access: "authorized", offset: 0, limit: 1 },
-		status: initial.present ? "passed" : "failed",
+		after: afterWarmup,
+		probe: {
+			access: "authorized",
+			offset: 0,
+			limit: Math.min(
+				input.pageBytes ?? 64 * 1024,
+				Math.max(1, input.target.object.byteLength),
+			),
+			...(realizedPage
+				? { sliceSha256: realizedPage.view.slice.sliceSha256 }
+				: {}),
+			...(realizedCode ? { errorCode: realizedCode } : {}),
+		},
+		status: realizedPassed ? "passed" : "failed",
 	});
 	await receipt(
 		"authorization",
