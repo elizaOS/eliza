@@ -112,6 +112,12 @@ Use the narrowest shared lifecycle owner that fits:
 - `SelectableTile` owns controlled settings choices with a leading visual,
   centered label, pressed state, and selected indicator. Selected state must
   not add visible `ON` or `OFF` copy.
+- `AuthResultShell` owns the full-page background, centered card, and content
+  geometry for public authentication outcomes. Result pages supply only their
+  state-specific icon, copy, and actions.
+- `ConnectionCapabilityTile` owns the icon, title, and description hierarchy
+  used by connector setup grids. Provider screens supply translated content
+  and provider-specific icon paint.
 - `StatusBadge` owns status paint. Domain adapters map typed domain states to a
   canonical tone and label; they do not reproduce badge classes.
 
@@ -125,7 +131,9 @@ the same behavior and state lifecycle. Dependency similarity alone is not a
 pattern. `scripts/molecule-contracts.json` records the exact owner, composition
 signals, consumer floor, and required consumers for established shared
 molecules. The audit fails when any of those contracts drift, including for
-molecules that compose only one canonical atom.
+molecules that compose only one or no canonical atoms. Rendered stories and
+the app visual audit own geometry proof; source-text class assertions are not
+an acceptable substitute for rendered behavior.
 
 Structural duplicate discovery is a separate review queue. The molecular
 inventory records a final disposition and rationale for every detected cluster;

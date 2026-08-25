@@ -98,6 +98,13 @@ function* walk(directory) {
   }
 }
 
+export function listMaintainedSourceFiles() {
+  return [
+    ...walk(path.join(repoRoot, "packages")),
+    ...walk(path.join(repoRoot, "plugins")),
+  ];
+}
+
 function componentName(node) {
   if (ts.isFunctionDeclaration(node) && node.name) return node.name.text;
   if (ts.isClassDeclaration(node) && node.name) return node.name.text;

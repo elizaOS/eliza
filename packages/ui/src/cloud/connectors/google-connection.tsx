@@ -18,6 +18,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function GoogleConnection() {
@@ -174,39 +175,31 @@ export function GoogleConnection() {
       setupContent={
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="size-6 mx-auto mb-2 text-accent" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.gmail", { defaultValue: "Gmail" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.gmailDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="size-6 mx-auto mb-2 text-txt" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Users className="size-6 mx-auto mb-2 text-accent" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.contacts", { defaultValue: "Contacts" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.contactsDesc", {
-                  defaultValue: "Access contacts",
-                })}
-              </p>
-            </div>
+            <ConnectionCapabilityTile
+              icon={<Mail className="size-6 text-accent" aria-hidden />}
+              title={t("cloud.google.gmail", { defaultValue: "Gmail" })}
+              description={t("cloud.google.gmailDesc", {
+                defaultValue: "Send & read emails",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Calendar className="size-6 text-txt" aria-hidden />}
+              title={t("cloud.google.calendar", {
+                defaultValue: "Calendar",
+              })}
+              description={t("cloud.google.calendarDesc", {
+                defaultValue: "Manage events",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Users className="size-6 text-accent" aria-hidden />}
+              title={t("cloud.google.contacts", {
+                defaultValue: "Contacts",
+              })}
+              description={t("cloud.google.contactsDesc", {
+                defaultValue: "Access contacts",
+              })}
+            />
           </div>
 
           <ConnectionCallout

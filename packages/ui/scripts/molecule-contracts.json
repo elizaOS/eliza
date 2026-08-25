@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "contracts": [
     {
+      "id": "auth-result-shell",
+      "owner": "packages/ui/src/cloud/public-pages/pages/auth/auth-result-shell.tsx",
+      "symbol": "AuthResultShell",
+      "requiredAtomicDependencies": [],
+      "requiredRenderedTags": ["main"],
+      "requiredConsumerFiles": [
+        "packages/ui/src/cloud/public-pages/pages/auth/auth-error-page.tsx",
+        "packages/ui/src/cloud/public-pages/pages/auth/auth-success-page.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Full-page surface, centered card, and content geometry for authentication results."
+    },
+    {
+      "id": "connection-capability-tile",
+      "owner": "packages/ui/src/cloud/connectors/connection-capability-tile.tsx",
+      "symbol": "ConnectionCapabilityTile",
+      "requiredAtomicDependencies": [],
+      "requiredRenderedTags": ["p"],
+      "requiredConsumerFiles": [
+        "packages/ui/src/cloud/connectors/google-connection.tsx",
+        "packages/ui/src/cloud/connectors/microsoft-connection.tsx"
+      ],
+      "minimumMaintainedReferences": 2,
+      "responsibility": "Icon, title, and description hierarchy for connector capability grids."
+    },
+    {
       "id": "content-state",
       "owner": "packages/ui/src/components/composites/page-panel/content-state.tsx",
       "symbol": "ContentState",
