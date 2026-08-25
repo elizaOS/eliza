@@ -71,6 +71,14 @@ describe("sanitizeJsonObject", () => {
     expect(sanitizeJsonObject(false)).toBe(false);
   });
 
+  it("handles sparse arrays correctly and preserves serialization parity", () => {
+    const sparse: (number | undefined)[] = [1];
+    sparse[2] = 3;
+    const sanitized = sanitizeJsonObject(sparse);
+    expect(sanitized).toEqual([1, undefined, 3]);
+    expect(JSON.stringify(sanitized)).toBe(JSON.stringify(sparse));
+  });
+
   it("handles Date instances, BigInt primitives, and non-finite numbers", () => {
     const date = new Date("2026-08-17T00:00:00.000Z");
     expect(sanitizeJsonObject(date)).toBe("2026-08-17T00:00:00.000Z");
