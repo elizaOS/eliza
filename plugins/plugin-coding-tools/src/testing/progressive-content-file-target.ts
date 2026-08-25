@@ -214,6 +214,7 @@ export async function createProgressiveFileTargetFactory(input: {
         reference: initialView.reference,
         sourceRevision: object.sourceRevision,
         authorizationMode: "capability" as const,
+        restartScope: "resolver" as const,
         authorizationScopeDigest: createHash("sha256")
           .update(object.authorizationScope)
           .digest("hex"),

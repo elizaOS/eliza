@@ -17,6 +17,8 @@ import {
 	runProgressiveContentConformance,
 } from "./progressive-content-conformance";
 
+export type { ProgressiveContentConformanceReport } from "./progressive-content-conformance";
+
 export const PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION =
 	"elizaos.progressive-content.target-factory.v1" as const;
 export const PROGRESSIVE_CONTENT_TARGET_RECEIPT_SCHEMA_VERSION =
@@ -54,6 +56,7 @@ export interface ProgressiveContentTargetObject {
 	readonly byteLength: number;
 	readonly sourceSha256: string;
 	readonly sourceRevision: string;
+	readonly format: string;
 	readonly authorizationScope: string;
 	readonly canaries: ProgressiveConformanceObject["canaries"];
 }
@@ -62,6 +65,7 @@ export interface ProgressiveContentTargetRealization {
 	readonly reference: ReadView["reference"];
 	readonly sourceRevision: string;
 	readonly authorizationMode: "principal" | "capability";
+	readonly restartScope: "resolver" | "process";
 	readonly authorizationScopeDigest: string;
 	readonly cleanupIdentity: string;
 	readonly resolverBindingSha256: string;
@@ -113,6 +117,7 @@ export interface ProgressiveContentTargetReceipt {
 		| "authorization"
 		| "isolation"
 		| "cleanup";
+	readonly restartScope?: ProgressiveContentTargetRealization["restartScope"];
 	readonly before: ProgressiveContentTargetSnapshot;
 	readonly after: ProgressiveContentTargetSnapshot;
 	readonly probe: {
@@ -252,6 +257,7 @@ export async function runProgressiveContentTargetConformance(input: {
 		schemaVersion: PROGRESSIVE_CONTENT_TARGET_RECEIPT_SCHEMA_VERSION,
 		targetBindingSha256: binding,
 		phase: "realized",
+		restartScope: input.target.realization.restartScope,
 		before: initial,
 		after: initial,
 		probe: { access: "authorized", offset: 0, limit: 1 },
@@ -300,6 +306,7 @@ export async function runProgressiveContentTargetConformance(input: {
 				schemaVersion: PROGRESSIVE_CONTENT_TARGET_RECEIPT_SCHEMA_VERSION,
 				targetBindingSha256: binding,
 				phase: "restart",
+				restartScope: input.target.realization.restartScope,
 				before,
 				after,
 				probe: {

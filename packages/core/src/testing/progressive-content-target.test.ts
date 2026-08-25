@@ -37,6 +37,7 @@ function targetFixture(): ProgressiveContentTarget {
 			},
 			sourceRevision: revision,
 			authorizationMode: "principal",
+			restartScope: "process",
 			authorizationScopeDigest: createHash("sha256")
 				.update("room:authorized")
 				.digest("hex"),
