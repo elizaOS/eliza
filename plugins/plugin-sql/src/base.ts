@@ -16,6 +16,7 @@ import {
   type AppendConnectorAccountAuditEventParams,
   actorFromAccessContext,
   advanceWorldMetadataRevision,
+  appendWorldMetadataRoleAudit,
   ChannelType,
   type Component,
   type ConnectorAccountAuditEventRecord,
@@ -5289,10 +5290,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         });
       }
 
+      const replacementMetadata = params.audit
+        ? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+            actorEntityId: params.audit.actorEntityId,
+            targetEntityId: params.audit.targetEntityId,
+            previousRole: params.audit.previousRole,
+            newRole: params.audit.newRole,
+            source: params.audit.source,
+            roomId: params.audit.roomId,
+          })
+        : params.replacementMetadata;
       await tx
         .update(worldTable)
         .set({
-          metadata: advanceWorldMetadataRevision(params.replacementMetadata, storedRevision),
+          metadata: advanceWorldMetadataRevision(replacementMetadata, storedRevision),
         })
         .where(eq(worldTable.id, params.worldId));
       return { status: "updated" as const };

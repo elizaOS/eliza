@@ -10,6 +10,8 @@ import { isPlainObject } from "../utils/type-guards";
 /** Adapter-owned optimistic revision stored with each world's metadata. */
 export const WORLD_METADATA_REVISION_KEY =
 	"__eliza_world_metadata_revision" as const;
+/** Immutable role-write history retained with the world authority snapshot. */
+export const WORLD_METADATA_ROLE_AUDIT_KEY = "__eliza_role_audit" as const;
 
 /**
  * Compare JSON values with PostgreSQL jsonb semantics: object key order is
@@ -141,6 +143,21 @@ export function advanceWorldMetadataRevision(
 	}
 	const replacement = structuredClone(metadata ?? {}) as Metadata;
 	replacement[WORLD_METADATA_REVISION_KEY] = currentRevision + 1;
+	return replacement;
+}
+
+/** Preserve authority history even when connector-owned log rows are deleted. */
+export function appendWorldMetadataRoleAudit(
+	metadata: Metadata | undefined,
+	audit: Record<string, unknown>,
+): Metadata {
+	const replacement = structuredClone(metadata ?? {}) as Metadata;
+	const prior = replacement[WORLD_METADATA_ROLE_AUDIT_KEY];
+	const entries = Array.isArray(prior) ? prior : [];
+	replacement[WORLD_METADATA_ROLE_AUDIT_KEY] = [
+		...entries,
+		structuredClone(audit),
+	] as never;
 	return replacement;
 }
 

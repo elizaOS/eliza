@@ -109,6 +109,7 @@ import {
 } from "./document-list-query";
 import {
 	advanceWorldMetadataRevision,
+	appendWorldMetadataRoleAudit,
 	getWorldMetadataRevision,
 	initializeWorldMetadataRevision,
 	requireFreshWorldMetadataRevision,
@@ -1816,10 +1817,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// replacement metadata is not cloneable the method must throw with
 		// the world untouched AND no audit row appended (a committed audit
 		// without its metadata change would be a false authority record).
+		const replacementMetadata = audit
+			? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+					actorEntityId: audit.actorEntityId,
+					targetEntityId: audit.targetEntityId,
+					previousRole: audit.previousRole,
+					newRole: audit.newRole,
+					source: audit.source,
+					roomId: audit.roomId,
+				})
+			: params.replacementMetadata;
 		const replacementWorld: World = {
 			...existing,
 			metadata: advanceWorldMetadataRevision(
-				params.replacementMetadata,
+				replacementMetadata,
 				storedRevision,
 			) as World["metadata"],
 		};

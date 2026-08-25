@@ -18,6 +18,7 @@ import {
   type AccessContext,
   type Agent,
   advanceWorldMetadataRevision,
+  appendWorldMetadataRoleAudit,
   type Component,
   type Content,
   canRequesterManageDocumentDirectGrants,
@@ -1722,10 +1723,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     // replacement must throw with the world untouched and NO audit row left
     // behind (a committed audit without its metadata change would be a false
     // authority record).
+    const replacementMetadata = audit
+      ? appendWorldMetadataRoleAudit(params.replacementMetadata, {
+          actorEntityId: audit.actorEntityId,
+          targetEntityId: audit.targetEntityId,
+          previousRole: audit.previousRole,
+          newRole: audit.newRole,
+          source: audit.source,
+          roomId: audit.roomId,
+        })
+      : params.replacementMetadata;
     const replacementWorld: World = {
       ...stored,
       metadata: advanceWorldMetadataRevision(
-        params.replacementMetadata,
+        replacementMetadata,
         storedRevision
       ) as World["metadata"],
     };
