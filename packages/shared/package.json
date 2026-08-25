@@ -20,8 +20,7 @@
   ],
   "files": [
     "dist",
-    "assets",
-    "assets-classic"
+    "assets"
   ],
   "engines": {
     "node": ">=24.0.0"

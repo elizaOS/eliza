@@ -240,6 +240,7 @@ export interface PlannerTrajectory {
 export interface PlannerTerminalFailure {
 	kind:
 		| "coding_mutation_unverified"
+		| "coding_verification_failed"
 		| "coding_tool_failure"
 		| ActionFailureKind;
 	transient: boolean;

@@ -350,6 +350,8 @@ export class SharedRuntimeConversation {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
+  private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
+  private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
   private prewarm: Promise<void> | undefined;
@@ -939,6 +941,35 @@ export class SharedRuntimeConversation {
     } satisfies ChunkedArchivedMessage);
   }
 
+  private async checkpointPendingHistory(
+    messages: SharedTurnMessage[],
+  ): Promise<void> {
+    await this.state.storage.transaction(async (txn) => {
+      for (const message of messages) {
+        const key = archiveMessageKey(message);
+        const encoded = new TextEncoder().encode(JSON.stringify(message));
+        if (encoded.byteLength <= HISTORY_ARCHIVE_CHUNK_BYTES) {
+          await txn.put(key, message);
+          continue;
+        }
+        const chunkCount = Math.ceil(
+          encoded.byteLength / HISTORY_ARCHIVE_CHUNK_BYTES,
+        );
+        for (let index = 0; index < chunkCount; index += 1) {
+          const start = index * HISTORY_ARCHIVE_CHUNK_BYTES;
+          await txn.put(
+            `${HISTORY_ARCHIVE_BODY_PREFIX}${key.slice(HISTORY_ARCHIVE_PREFIX.length)}:${index}`,
+            encoded.slice(start, start + HISTORY_ARCHIVE_CHUNK_BYTES),
+          );
+        }
+        await txn.put(key, {
+          kind: "chunked-history-message",
+          chunkCount,
+        } satisfies ChunkedArchivedMessage);
+      }
+    });
+  }
+
   private async loadArchivedHistory(): Promise<SharedTurnMessage[]> {
     const archived = await this.state.storage.list<
       SharedTurnMessage | ChunkedArchivedMessage
@@ -994,6 +1025,8 @@ export class SharedRuntimeConversation {
   }
 
   private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
+    const pendingKey = (agentId: string, channelId: string) =>
+      `${agentId}\u0000${channelId}`;
     return {
       load: async (agentId, channelId, _queryText) => {
         const current = await this.loadConversation(
@@ -1001,16 +1034,42 @@ export class SharedRuntimeConversation {
           channelId,
           startEmpty,
         );
-        return await this.loadCompleteHistory(current);
+        return mergeSharedRuntimeHistoryMessages(
+          await this.loadCompleteHistory(current),
+          this.pendingHistory.get(pendingKey(agentId, channelId)) ?? [],
+          Number.MAX_SAFE_INTEGER,
+        );
+      },
+      stagePending: (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        this.pendingHistory.set(
+          key,
+          mergeSharedRuntimeHistoryMessages(
+            this.pendingHistory.get(key) ?? [],
+            messages,
+            Number.MAX_SAFE_INTEGER,
+          ),
+        );
+        this.pendingHistoryCheckpoint = this.pendingHistoryCheckpoint.then(
+          async () => {
+            await this.checkpointPendingHistory(messages);
+          },
+        );
       },
       merge: async (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        const pending = this.pendingHistory.get(key) ?? [];
         const current = await this.loadConversation(
           agentId,
           channelId,
           startEmpty,
         );
         const merged = mergeSharedRuntimeHistoryMessages(
-          await this.loadCompleteHistory(current),
+          mergeSharedRuntimeHistoryMessages(
+            await this.loadCompleteHistory(current),
+            pending,
+            Number.MAX_SAFE_INTEGER,
+          ),
           messages,
           Number.MAX_SAFE_INTEGER,
         );
@@ -1035,6 +1094,14 @@ export class SharedRuntimeConversation {
         // response-body cancel/finalize path can attempt the write again.
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
         this.conversation = snapshot;
+        if (pending.length > 0) {
+          const persistedKeys = new Set(pending.map(archiveMessageKey));
+          const remaining = (this.pendingHistory.get(key) ?? []).filter(
+            (message) => !persistedKeys.has(archiveMessageKey(message)),
+          );
+          if (remaining.length > 0) this.pendingHistory.set(key, remaining);
+          else this.pendingHistory.delete(key);
+        }
         this.scheduleMirror({ ...snapshot, history: merged });
         // Refresh the idle-expiry deadline on every save. Personal rooms are
         // exempt: their archive keys have no Postgres copy, so expiry could
@@ -1867,16 +1934,52 @@ export class SharedRuntimeConversation {
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       release();
     };
+    const cancelOffQueue = (reason: string): void => {
+      // Calling reader.cancel synchronously fences the old generation before
+      // the room queue advances. Its promise includes interrupted-history and
+      // billing finalization, which can cross storage/provider boundaries and
+      // must not hold later realtime turns behind the coordinator deadline.
+      const cancellation = reader.cancel(reason);
+      const cancellationOutcome = cancellation.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      const checkpoint = this.pendingHistoryCheckpoint;
+      this.state.waitUntil(
+        (async () => {
+          let checkpointLanded = false;
+          try {
+            // Only the lossless interrupted-turn checkpoint holds admission.
+            // Full history merge, billing, and provider teardown remain off
+            // queue after a restart-safe recovery record exists.
+            await checkpoint;
+            checkpointLanded = true;
+            settle();
+            const cancellationError = await cancellationOutcome;
+            if (cancellationError !== null) throw cancellationError;
+          } catch (error) {
+            // error-policy:J7 a failed checkpoint keeps this object fail-closed;
+            // Workers resets it after the failed storage output gate, and the
+            // next instance admits only from the prior durable snapshot.
+            const { logger } = await import("@/lib/utils/logger");
+            logger.warn(
+              "[SharedRuntimeConversation] off-queue stream cancellation failed",
+              {
+                reason,
+                phase: checkpointLanded ? "finalization" : "checkpoint",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            if (!checkpointLanded) throw error;
+          }
+        })(),
+      );
+    };
     const armStallTimer = () => {
       if (settled) return;
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        reader
-          .cancel("shared-runtime room stream stalled past backstop")
-          // error-policy:J6 canceling an already-errored reader is teardown
-          // only; the lock release below is the recovery that matters.
-          .catch(() => undefined)
-          .finally(settle);
+        cancelOffQueue("shared-runtime room stream stalled past backstop");
       }, this.streamStallTimeoutMs);
     };
     armStallTimer();
@@ -1898,12 +2001,8 @@ export class SharedRuntimeConversation {
           controller.error(error);
         }
       },
-      cancel: async (reason) => {
-        try {
-          await reader.cancel(reason);
-        } finally {
-          settle();
-        }
+      cancel: (reason) => {
+        cancelOffQueue(String(reason));
       },
     });
     return new Response(body, {
