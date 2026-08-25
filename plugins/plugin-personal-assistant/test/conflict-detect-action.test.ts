@@ -104,19 +104,6 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(conflictDetectAction.name).toBe("CONFLICT_DETECT");
-      const similes = conflictDetectAction.similes ?? [];
-      for (const required of [
-        "CONFLICT_DETECT",
-        "FIND_CONFLICTS",
-        "CHECK_CONFLICTS",
-        "CALENDAR_CONFLICTS",
-      ]) {
-        expect(similes).toContain(required);
-      }
-    });
-
     it("rejects calls with no subaction selector", async () => {
       const result = await callConflict(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);

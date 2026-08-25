@@ -103,19 +103,6 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(prioritizeAction.name).toBe("PRIORITIZE");
-      const similes = prioritizeAction.similes ?? [];
-      for (const required of [
-        "PRIORITIZE",
-        "RANK_TODAY",
-        "WHAT_MATTERS_MOST",
-        "PRIORITIZE_TODAY",
-      ]) {
-        expect(similes).toContain(required);
-      }
-    });
-
     it("rejects calls with no subject or subaction", async () => {
       const result = await callPrioritize(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);

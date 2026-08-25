@@ -44,13 +44,12 @@ packages/docs/
 
 ## Tests
 
-`test/docs.test.js` uses Node's built-in test runner. It validates:
+`test/docs.test.ts` uses Node's built-in test runner. It validates:
 
-- `docs.json` is valid and has required Mintlify fields.
 - Navigation tabs and groups contain no duplicate labels or pages.
 - Every page referenced in navigation exists on disk.
 - No unlisted content page is hidden outside navigation.
-- All markdown files are non-empty and have structurally valid frontmatter.
+- Markdown frontmatter is structurally valid when present.
 - Internal links, local assets, repository paths, and GitHub source links resolve.
 - Documented Bun scripts and Cloud API paths exist in their source packages.
 

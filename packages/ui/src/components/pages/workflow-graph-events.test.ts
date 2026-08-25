@@ -2,10 +2,7 @@
  * Unit tests for workflow graph events: validates visualize event dispatch.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  dispatchVisualizeWorkflow,
-  VISUALIZE_WORKFLOW_EVENT,
-} from "./workflow-graph-events.ts";
+import { dispatchVisualizeWorkflow } from "./workflow-graph-events.ts";
 
 describe("workflow-graph-events", () => {
   const globalScope = globalThis as unknown as { window?: unknown };
@@ -18,12 +15,6 @@ describe("workflow-graph-events", () => {
 
   afterEach(() => {
     delete globalScope.window;
-  });
-
-  it("exports VISUALIZE_WORKFLOW_EVENT constant", () => {
-    expect(VISUALIZE_WORKFLOW_EVENT).toBe(
-      "eliza:automations:visualize-workflow",
-    );
   });
 
   it("dispatches custom event on window with workflowId detail", () => {

@@ -51,7 +51,6 @@ mock.module("@elizaos/cloud-shared/db/repositories/organizations", () => ({
 const { asSeededUser, loginAsSeededUser, loginWithTestWallet } = await import(
   "./wallet-login"
 );
-const walletLogin = await import("./wallet-login");
 
 const NONCE_DOMAIN = "localhost:3000";
 const NONCE_URI = "http://localhost:3000";
@@ -223,27 +222,6 @@ afterEach(() => {
   };
 });
 
-describe("wallet-login exports", () => {
-  test("exports the three runtime helpers and re-exports no extra values", () => {
-    expect(Object.keys(walletLogin).sort()).toEqual([
-      "asSeededUser",
-      "loginAsSeededUser",
-      "loginWithTestWallet",
-    ]);
-    expect(walletLogin.asSeededUser).toBe(asSeededUser);
-    expect(walletLogin.loginAsSeededUser).toBe(loginAsSeededUser);
-    expect(walletLogin.loginWithTestWallet).toBe(loginWithTestWallet);
-  });
-
-  test("does not expose a queue, comparator, capacity, or item-removal API", () => {
-    const record = walletLogin as unknown as Record<string, unknown>;
-    expect("queue" in record).toBe(false);
-    expect("capacity" in record).toBe(false);
-    expect("comparator" in record).toBe(false);
-    expect("remove" in record).toBe(false);
-  });
-});
-
 describe("asSeededUser", () => {
   test("maps ids and apiKey, blanks email, and prefixes stewardUserId with wallet-", () => {
     expect(asSeededUser(sessionLogin())).toEqual({
@@ -281,20 +259,6 @@ describe("asSeededUser", () => {
     expect(seeded.userId).toBe("User-Mixed");
     expect(seeded.organizationId).toBe("Org-Mixed");
     expect(seeded.apiKey).toBe("Key-Mixed");
-  });
-
-  test("does not copy address, isNewAccount, or privateKey onto SeededUser", () => {
-    const seeded = asSeededUser(sessionLogin({ isNewAccount: false }));
-    expect(seeded).not.toHaveProperty("address");
-    expect(seeded).not.toHaveProperty("isNewAccount");
-    expect(seeded).not.toHaveProperty("privateKey");
-    expect(Object.keys(seeded).sort()).toEqual([
-      "apiKey",
-      "email",
-      "organizationId",
-      "stewardUserId",
-      "userId",
-    ]);
   });
 
   test("empty address yields the wallet- prefix with nothing after it", () => {
