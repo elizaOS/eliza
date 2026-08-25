@@ -122,6 +122,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.min\(Math\.floor\(request\.limit\),\s*500\)/,
 		/INBOX_CACHE_(?:WARM|READ|FULL)_LIMIT/,
 	],
+	"plugins/plugin-inbox/src/inbox/message-fetcher.ts": [
+		/opts\.limit\s*\?\?\s*50/,
+		/for\s*\(const msg of triageFeed\.messages\.slice/,
+	],
 	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
 	"packages/training/scripts/rl/tokenization_utils.py": [
 		/masks\s*=\s*masks\[:/,

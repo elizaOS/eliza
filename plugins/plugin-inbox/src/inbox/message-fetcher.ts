@@ -545,7 +545,7 @@ export async function fetchGmailMessages(
     return { messages: [], status: sourceStatus };
   }
 
-  const limit = opts.limit ?? 50;
+  const limit = opts.limit;
 
   // When no grantId is supplied, the service-side getGmailTriage already
   // aggregates across every Google grant and tags each summary with grantId
@@ -555,9 +555,10 @@ export async function fetchGmailMessages(
   try {
     triageFeed = await source.getGmailTriage(
       INTERNAL_URL,
-      opts.grantId
-        ? { grantId: opts.grantId, maxResults: limit }
-        : { maxResults: limit },
+      {
+        ...(opts.grantId ? { grantId: opts.grantId } : {}),
+        ...(limit === undefined ? {} : { maxResults: limit }),
+      },
     );
   } catch (error) {
     logger.warn(
@@ -569,7 +570,9 @@ export async function fetchGmailMessages(
   const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   const results: InboundMessage[] = [];
-  for (const msg of triageFeed.messages.slice(0, limit)) {
+  const messages =
+    limit === undefined ? triageFeed.messages : triageFeed.messages.slice(0, limit);
+  for (const msg of messages) {
     const messageId = requireNonEmptyString(msg.id, "Gmail message id");
     const externalId = requireNonEmptyString(
       msg.externalId,
@@ -632,11 +635,12 @@ export async function fetchXDmMessages(
     return { messages: [], status: sourceStatus };
   }
 
-  const limit = opts.limit ?? 50;
+  const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    await source.syncXDms({ limit });
-    dms = await source.getXDms({ limit });
+    const page = limit === undefined ? undefined : { limit };
+    await source.syncXDms(page);
+    dms = await source.getXDms(page);
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
@@ -724,16 +728,16 @@ export async function fetchAllMessages(
   const gmailResultPromise =
     includeGmail && opts.gmailSource
       ? fetchGmailMessages(opts.gmailSource, {
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
-          grantId: opts.gmailGrantId,
+          ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+          ...(opts.limit === undefined ? {} : { limit: opts.limit }),
+          ...(opts.gmailGrantId ? { grantId: opts.gmailGrantId } : {}),
         })
       : Promise.resolve<InboxSourceFetchResult | null>(null);
   const xDmResultPromise = includeXDm
     ? opts.xDmSource
       ? fetchXDmMessages(opts.xDmSource, {
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
+          ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+          ...(opts.limit === undefined ? {} : { limit: opts.limit }),
         })
       : Promise.resolve<InboxSourceFetchResult>({
           messages: [],
@@ -747,9 +751,9 @@ export async function fetchAllMessages(
   const includeChat = !chatSources || chatSources.length > 0;
   const chatResultPromise: Promise<InboxSourceFetchResult | null> = includeChat
     ? fetchChatMessages(runtime, {
-        sources: chatSources,
-        sinceIso: opts.sinceIso,
-        limit: opts.limit,
+        ...(chatSources === undefined ? {} : { sources: chatSources }),
+        ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+        ...(opts.limit === undefined ? {} : { limit: opts.limit }),
       }).then(
         (messages): InboxSourceFetchResult => ({
           messages,

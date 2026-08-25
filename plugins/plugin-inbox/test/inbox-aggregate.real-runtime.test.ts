@@ -47,6 +47,7 @@ import {
   toInboxMessages,
 } from "../src/inbox/aggregate.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
+import { fetchGmailMessages } from "../src/inbox/message-fetcher.ts";
 
 // ---------------------------------------------------------------------------
 // Host-seam implementations (contract-true, in-memory)
@@ -288,6 +289,22 @@ function inboundChat(
 // ---------------------------------------------------------------------------
 
 describe("aggregate builders", () => {
+  it("keeps every Gmail message when the caller omits pagination", async () => {
+    const source = new FakeConnectorSources(
+      Array.from({ length: 501 }, (_, index) =>
+        gmailSummary({
+          id: `gmail-${index}`,
+          subject: `Subject ${index}`,
+          snippet: `Complete body ${index}`,
+        }),
+      ),
+    );
+
+    const result = await fetchGmailMessages(source, {});
+
+    expect(result.messages).toHaveLength(501);
+  });
+
   it("normalizeInboxChannel accepts known channels case-insensitively and rejects the rest", () => {
     expect(normalizeInboxChannel("gmail")).toBe("gmail");
     expect(normalizeInboxChannel("  Discord  ")).toBe("discord");
