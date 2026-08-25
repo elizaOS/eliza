@@ -61,8 +61,11 @@ function coerceCloudBalance(value: unknown): number | null {
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number.parseFloat(trimmed);
+    // Fixed-precision decimals only; reject numeric prefixes, hex, and
+    // exponent notation so malformed upstream values cannot fabricate a
+    // credit figure (e.g. "12abc" -> 12, "0x10" -> 0 via parseFloat).
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
