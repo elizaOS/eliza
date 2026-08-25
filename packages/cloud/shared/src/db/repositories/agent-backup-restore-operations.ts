@@ -14,6 +14,7 @@ import { Buffer } from "node:buffer";
 import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { requireBoundedIdentity } from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
+import type { DbTransaction } from "../client";
 import { dbWrite } from "../helpers";
 import {
   type AgentBackupRestoreOperation,
@@ -21,7 +22,7 @@ import {
   agentBackupRestoreLeases,
   agentBackupRestoreOperations,
 } from "../schemas/agent-backup-catalog";
-import { agentSandboxBackups } from "../schemas/agent-sandboxes";
+import { type AgentSandbox, agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { dockerNodes, PLACEABLE_NODE_STATE } from "../schemas/docker-nodes";
 import {
   AgentBackupCatalogConflictError,
@@ -78,6 +79,20 @@ export interface ReserveAgentBackupRestoreTargetResult {
   replayed: boolean;
 }
 
+export interface ReleaseAgentBackupRestoreCapacityResult {
+  operation: Readonly<AgentBackupRestoreOperation>;
+  replayed: boolean;
+}
+
+export interface RecoverAgentBackupRestoreCapacityAfterCrashResult {
+  operation: Readonly<AgentBackupRestoreOperation>;
+  replayed: boolean;
+}
+
+const CAPACITY_CRASH_RECOVERY_ERROR_CODE = "RESTORE_CAPACITY_RECOVERED_AFTER_CRASH";
+const CAPACITY_CRASH_RECOVERY_ERROR =
+  "Restore capacity was released after the lease and worker claim became non-live";
+
 function requireOwnerId(value: string): string {
   requireBoundedIdentity(value, "ownerId");
   if (Buffer.byteLength(value, "utf8") > 255) {
@@ -98,6 +113,152 @@ function requireUuid(value: string, field: string): string {
     throw new AgentBackupCatalogConflictError(`${field} must be a canonical lowercase UUID`);
   }
   return value;
+}
+
+function hasExactRecoverableRestoreQuarantine(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  sandbox: Readonly<AgentSandbox>,
+): boolean {
+  const hasCommonAuthority =
+    sandbox.activation_generation === operation.restore_attempt_id &&
+    sandbox.activation_lifecycle_revision !== null &&
+    sandbox.activation_lifecycle_revision >= 0n &&
+    sandbox.activation_lifecycle_revision <= BigInt(sandbox.lifecycle_revision) &&
+    sandbox.activation_purpose === "restore" &&
+    sandbox.activation_backup_id === operation.backup_id &&
+    sandbox.activation_backup_hash === operation.expected_manifest_sha256 &&
+    typeof sandbox.activation_token_hash === "string" &&
+    /^[0-9a-f]{64}$/.test(sandbox.activation_token_hash) &&
+    typeof sandbox.activation_token_ciphertext === "string" &&
+    Buffer.byteLength(sandbox.activation_token_ciphertext, "utf8") >= 1 &&
+    Buffer.byteLength(sandbox.activation_token_ciphertext, "utf8") <= 16_384 &&
+    sandbox.activation_receipt === null &&
+    sandbox.activation_receipt_hash === null &&
+    sandbox.activation_authority_published_at === null &&
+    sandbox.activation_funding_revision === null &&
+    sandbox.activation_dispatched_at === null &&
+    sandbox.activation_completed_at === null &&
+    sandbox.activation_consent_lifecycle_revision === null &&
+    sandbox.activation_consent_head_backup_id === null &&
+    sandbox.activation_consent_head_backup_hash === null;
+  if (!hasCommonAuthority) return false;
+
+  if (sandbox.activation_phase === "container_pending") {
+    return (
+      operation.expected_container_id === null &&
+      sandbox.activation_container_id === null &&
+      sandbox.activation_node_id === null &&
+      sandbox.activation_image_digest === null &&
+      sandbox.activation_boot_id === null
+    );
+  }
+  return (
+    sandbox.activation_phase === "restore_pending" &&
+    operation.expected_container_id !== null &&
+    sandbox.activation_container_id === operation.expected_container_id &&
+    sandbox.activation_node_id === operation.expected_node_id &&
+    sandbox.activation_image_digest === operation.expected_image_digest &&
+    sandbox.activation_boot_id === operation.expected_node_incarnation
+  );
+}
+
+async function lockRecoverableRestoreQuarantine(
+  tx: DbTransaction,
+  operation: Readonly<AgentBackupRestoreOperation>,
+): Promise<Readonly<AgentSandbox> | null> {
+  const [sandbox] = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.id, operation.agent_id),
+        eq(agentSandboxes.organization_id, operation.organization_id),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (!sandbox || sandbox.activation_generation !== operation.restore_attempt_id) {
+    return null;
+  }
+  if (!hasExactRecoverableRestoreQuarantine(operation, sandbox)) {
+    throw new AgentBackupCatalogConflictError(
+      "Restore quarantine cleanup authority diverged from its operation",
+    );
+  }
+  return sandbox;
+}
+
+async function clearRecoverableRestoreQuarantine(
+  tx: DbTransaction,
+  operation: Readonly<AgentBackupRestoreOperation>,
+  sandbox: Readonly<AgentSandbox> | null,
+  databaseNow: Date,
+): Promise<void> {
+  if (!sandbox) return;
+  const [cleared] = await tx
+    .update(agentSandboxes)
+    .set({
+      activation_generation: null,
+      activation_previous_generation: null,
+      activation_lifecycle_revision: null,
+      activation_purpose: null,
+      activation_phase: null,
+      activation_backup_id: null,
+      activation_backup_hash: null,
+      activation_receipt: null,
+      activation_receipt_hash: null,
+      activation_container_id: null,
+      activation_node_id: null,
+      activation_image_digest: null,
+      activation_token_hash: null,
+      activation_token_ciphertext: null,
+      activation_boot_id: null,
+      activation_authority_published_at: null,
+      activation_funding_revision: null,
+      activation_dispatched_at: null,
+      activation_completed_at: null,
+      activation_consent_lifecycle_revision: null,
+      activation_consent_head_backup_id: null,
+      activation_consent_head_backup_hash: null,
+      updated_at: databaseNow,
+    })
+    .where(
+      and(
+        eq(agentSandboxes.id, sandbox.id),
+        eq(agentSandboxes.organization_id, operation.organization_id),
+        eq(agentSandboxes.lifecycle_revision, sandbox.lifecycle_revision),
+        eq(agentSandboxes.activation_generation, operation.restore_attempt_id),
+        eq(agentSandboxes.activation_purpose, "restore"),
+      ),
+    )
+    .returning({
+      id: agentSandboxes.id,
+      activationGeneration: agentSandboxes.activation_generation,
+      activationPreviousGeneration: agentSandboxes.activation_previous_generation,
+      activationLifecycleRevision: agentSandboxes.activation_lifecycle_revision,
+      activationPurpose: agentSandboxes.activation_purpose,
+      activationPhase: agentSandboxes.activation_phase,
+      activationBackupId: agentSandboxes.activation_backup_id,
+      activationBackupHash: agentSandboxes.activation_backup_hash,
+      activationReceipt: agentSandboxes.activation_receipt,
+      activationReceiptHash: agentSandboxes.activation_receipt_hash,
+      activationContainerId: agentSandboxes.activation_container_id,
+      activationNodeId: agentSandboxes.activation_node_id,
+      activationImageDigest: agentSandboxes.activation_image_digest,
+      activationTokenHash: agentSandboxes.activation_token_hash,
+      activationTokenCiphertext: agentSandboxes.activation_token_ciphertext,
+      activationBootId: agentSandboxes.activation_boot_id,
+      activationAuthorityPublishedAt: agentSandboxes.activation_authority_published_at,
+      activationFundingRevision: agentSandboxes.activation_funding_revision,
+      activationDispatchedAt: agentSandboxes.activation_dispatched_at,
+      activationCompletedAt: agentSandboxes.activation_completed_at,
+      activationConsentLifecycleRevision: agentSandboxes.activation_consent_lifecycle_revision,
+      activationConsentHeadBackupId: agentSandboxes.activation_consent_head_backup_id,
+      activationConsentHeadBackupHash: agentSandboxes.activation_consent_head_backup_hash,
+    });
+  if (!cleared || Object.entries(cleared).some(([key, value]) => key !== "id" && value !== null)) {
+    throw new AgentBackupCatalogConflictError("Restore quarantine cleanup lost its sandbox CAS");
+  }
 }
 
 function requireCanonicalUint64(value: string, field: string): bigint {
@@ -585,18 +746,28 @@ export async function reserveAgentBackupRestoreTarget(params: {
     if (targetAlreadyRecorded) {
       if (
         operation.expected_node_record_id !== target.nodeRecordId ||
+        operation.expected_node_id !== target.nodeId ||
         operation.expected_node_incarnation !== target.nodeIncarnation ||
         operation.expected_node_history_id !== target.nodeHistoryId ||
-        operation.expected_image_digest !== target.imageDigest
+        operation.expected_image_digest !== target.imageDigest ||
+        operation.capacity_state !== "reserved" ||
+        operation.capacity_reserved_at === null ||
+        operation.capacity_settled_at !== null ||
+        operation.capacity_settlement_receipt_digest !== null
       ) {
         throw new AgentBackupCatalogConflictError("Restore target replay authority mismatch");
       }
       return { operation: Object.freeze(operation), target, replayed: true };
     }
     if (
+      operation.expected_node_id !== null ||
       operation.expected_node_incarnation !== null ||
       operation.expected_node_history_id !== null ||
-      operation.expected_image_digest !== null
+      operation.expected_image_digest !== null ||
+      operation.capacity_state !== null ||
+      operation.capacity_reserved_at !== null ||
+      operation.capacity_settled_at !== null ||
+      operation.capacity_settlement_receipt_digest !== null
     ) {
       throw new AgentBackupCatalogConflictError("Restore target authority is only partially set");
     }
@@ -641,9 +812,12 @@ export async function reserveAgentBackupRestoreTarget(params: {
       .update(agentBackupRestoreOperations)
       .set({
         expected_node_record_id: target.nodeRecordId,
+        expected_node_id: target.nodeId,
         expected_node_incarnation: target.nodeIncarnation,
         expected_node_history_id: target.nodeHistoryId,
         expected_image_digest: target.imageDigest,
+        capacity_state: "reserved",
+        capacity_reserved_at: databaseNow,
         updated_at: databaseNow,
       })
       .where(
@@ -652,9 +826,11 @@ export async function reserveAgentBackupRestoreTarget(params: {
           eq(agentBackupRestoreOperations.phase, operation.phase),
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
           sql`${agentBackupRestoreOperations.expected_node_record_id} IS NULL`,
+          sql`${agentBackupRestoreOperations.expected_node_id} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_node_incarnation} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_node_history_id} IS NULL`,
           sql`${agentBackupRestoreOperations.expected_image_digest} IS NULL`,
+          sql`${agentBackupRestoreOperations.capacity_state} IS NULL`,
         ),
       )
       .returning();
@@ -662,6 +838,421 @@ export async function reserveAgentBackupRestoreTarget(params: {
       throw new AgentBackupCatalogConflictError("Restore target reservation lost its CAS");
     }
     return { operation: Object.freeze(reservedOperation), target, replayed: false };
+  });
+}
+
+/**
+ * Release a restore-owned slot before it has been handed to a replacement.
+ * The exact Docker-node occurrence, the durable ownership transition, and the
+ * counter decrement commit together. A same-receipt retry observes the retained
+ * terminal settlement and never decrements twice.
+ */
+export async function releaseAgentBackupRestoreCapacity(params: {
+  operationId: string;
+  ownerId: string;
+  claimGeneration: string;
+  settlementReceiptDigest: string;
+}): Promise<ReleaseAgentBackupRestoreCapacityResult> {
+  const operationId = requireUuid(params.operationId, "operationId");
+  const claimGeneration = requireUuid(params.claimGeneration, "claimGeneration");
+  const settlementReceiptDigest = requireSha256(
+    params.settlementReceiptDigest,
+    "settlementReceiptDigest",
+  );
+  requireOwnerId(params.ownerId);
+
+  return await dbWrite.transaction(async (tx) => {
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, operationId))
+      .for("update")
+      .limit(1);
+    if (!operation) {
+      throw new AgentBackupCatalogConflictError("Restore operation is missing");
+    }
+    if (operation.capacity_state === "released") {
+      if (operation.capacity_settlement_receipt_digest !== settlementReceiptDigest) {
+        throw new AgentBackupCatalogConflictError("Restore capacity release replay mismatch");
+      }
+      return { operation: Object.freeze(operation), replayed: true };
+    }
+    if (operation.capacity_state === "handed_off") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity was already handed to its replacement",
+      );
+    }
+    if (
+      operation.capacity_state !== "reserved" ||
+      operation.capacity_reserved_at === null ||
+      operation.expected_node_record_id === null ||
+      operation.expected_node_id === null ||
+      operation.expected_node_incarnation === null ||
+      operation.expected_node_history_id === null
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore capacity is not durably reserved");
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.agent_id, operation.agent_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
+    const quarantine = await lockRecoverableRestoreQuarantine(tx, operation);
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, operation.expected_node_record_id))
+      .for("update")
+      .limit(1);
+    const exactCurrentOccurrence = Boolean(
+      node &&
+        node.node_id === operation.expected_node_id &&
+        node.node_incarnation === operation.expected_node_incarnation &&
+        node.current_node_history_id === operation.expected_node_history_id,
+    );
+    if (node && exactCurrentOccurrence) {
+      await proveExactAgentNodeOccurrenceForLockedNode(
+        tx,
+        node,
+        operation.expected_node_incarnation,
+        operation.expected_node_history_id,
+      );
+    }
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at !== null || lease.expires_at <= databaseNow) {
+      throw new AgentBackupCatalogConflictError("Restore lease is expired or released");
+    }
+    if (
+      operation.claim_owner !== params.ownerId ||
+      operation.claim_generation !== claimGeneration ||
+      operation.claim_expires_at === null ||
+      operation.claim_expires_at <= databaseNow
+    ) {
+      throw new AgentBackupCatalogConflictError("Restore operation claim is not live");
+    }
+    if (node && exactCurrentOccurrence && node.allocated_count < 1) {
+      throw new AgentBackupCatalogConflictError("Restore capacity counter is already empty");
+    }
+
+    await clearRecoverableRestoreQuarantine(tx, operation, quarantine, databaseNow);
+    if (node && exactCurrentOccurrence) {
+      const [releasedNode] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: databaseNow,
+        })
+        .where(
+          and(
+            eq(dockerNodes.id, operation.expected_node_record_id),
+            eq(dockerNodes.node_id, operation.expected_node_id),
+            eq(dockerNodes.node_incarnation, operation.expected_node_incarnation),
+            eq(dockerNodes.current_node_history_id, operation.expected_node_history_id),
+            sql`${dockerNodes.allocated_count} > 0`,
+          ),
+        )
+        .returning({ id: dockerNodes.id });
+      if (!releasedNode) {
+        throw new AgentBackupCatalogConflictError("Restore capacity release lost its node CAS");
+      }
+    }
+
+    const [releasedOperation] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({
+        capacity_state: "released",
+        capacity_settled_at: databaseNow,
+        capacity_settlement_receipt_digest: settlementReceiptDigest,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operationId),
+          eq(agentBackupRestoreOperations.capacity_state, "reserved"),
+          eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+        ),
+      )
+      .returning();
+    if (!releasedOperation) {
+      throw new AgentBackupCatalogConflictError("Restore capacity release lost its owner CAS");
+    }
+    return { operation: Object.freeze(releasedOperation), replayed: false };
+  });
+}
+
+function isExactCapacityCrashRecoveryReplay(
+  operation: Readonly<AgentBackupRestoreOperation>,
+  cleanupProofDigest: string,
+): boolean {
+  return (
+    operation.phase === "failed_terminal" &&
+    operation.resume_phase === null &&
+    operation.claim_owner === null &&
+    operation.claim_generation === null &&
+    operation.claim_expires_at === null &&
+    operation.capacity_state === "released" &&
+    operation.capacity_reserved_at !== null &&
+    operation.capacity_settled_at !== null &&
+    operation.capacity_settlement_receipt_digest === cleanupProofDigest &&
+    operation.next_attempt_at.getTime() === operation.capacity_settled_at.getTime() &&
+    operation.last_error_code === CAPACITY_CRASH_RECOVERY_ERROR_CODE &&
+    operation.last_error === CAPACITY_CRASH_RECOVERY_ERROR &&
+    operation.last_failure_generation === operation.lease_generation &&
+    operation.last_failure_digest === cleanupProofDigest &&
+    operation.receipt_digest === null &&
+    operation.completed_at === null
+  );
+}
+
+/**
+ * Recover a slot retained by a crashed restore worker only after both of its
+ * execution authorities are dead. The supplied digest is durable proof that
+ * cleanup, or absence of the old occurrence, was established out of band.
+ *
+ * This is deliberately separate from the live-claim release path above. It
+ * cannot extend or impersonate a claim: the immutable lease generation is
+ * reused only as the terminal failure-replay generation, and the operation is
+ * closed in the same transaction that settles its capacity owner.
+ */
+export async function recoverAgentBackupRestoreCapacityAfterCrash(params: {
+  operationId: string;
+  cleanupProofDigest: string;
+}): Promise<RecoverAgentBackupRestoreCapacityAfterCrashResult> {
+  const operationId = requireUuid(params.operationId, "operationId");
+  const cleanupProofDigest = requireSha256(params.cleanupProofDigest, "cleanupProofDigest");
+
+  return await dbWrite.transaction(async (tx) => {
+    const [operation] = await tx
+      .select()
+      .from(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.id, operationId))
+      .for("update")
+      .limit(1);
+    if (!operation) {
+      throw new AgentBackupCatalogConflictError("Restore operation is missing");
+    }
+    const targetNodeRecordId = operation.expected_node_record_id;
+    const targetNodeId = operation.expected_node_id;
+    const targetNodeIncarnation = operation.expected_node_incarnation;
+    const targetNodeHistoryId = operation.expected_node_history_id;
+    if (
+      targetNodeRecordId === null ||
+      targetNodeId === null ||
+      targetNodeIncarnation === null ||
+      targetNodeHistoryId === null ||
+      operation.expected_image_digest === null ||
+      operation.capacity_reserved_at === null
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery lacks exact target authority",
+      );
+    }
+    if (operation.phase === "failed_terminal") {
+      if (!isExactCapacityCrashRecoveryReplay(operation, cleanupProofDigest)) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore capacity crash recovery replay mismatch",
+        );
+      }
+      return { operation: Object.freeze(operation), replayed: true };
+    }
+    if (operation.phase === "finalized") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery cannot reopen a finalized operation",
+      );
+    }
+    if (operation.capacity_state === "handed_off") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity was already handed to its replacement",
+      );
+    }
+    const capacityWasAlreadyReleased = operation.capacity_state === "released";
+    if (capacityWasAlreadyReleased) {
+      if (
+        operation.capacity_settled_at === null ||
+        operation.capacity_settlement_receipt_digest !== cleanupProofDigest
+      ) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore capacity crash recovery release proof mismatch",
+        );
+      }
+    } else if (
+      operation.capacity_state !== "reserved" ||
+      operation.capacity_settled_at !== null ||
+      operation.capacity_settlement_receipt_digest !== null
+    ) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery requires reserved or exactly released ownership",
+      );
+    }
+
+    const [lease] = await tx
+      .select()
+      .from(agentBackupRestoreLeases)
+      .where(
+        and(
+          eq(agentBackupRestoreLeases.id, operation.lease_id),
+          eq(agentBackupRestoreLeases.organization_id, operation.organization_id),
+          eq(agentBackupRestoreLeases.agent_id, operation.agent_id),
+          eq(agentBackupRestoreLeases.backup_id, operation.backup_id),
+          eq(agentBackupRestoreLeases.operation_id, operation.expected_operation_id),
+          eq(
+            agentBackupRestoreLeases.activation_generation,
+            operation.expected_activation_generation,
+          ),
+          eq(agentBackupRestoreLeases.lifecycle_revision, operation.expected_lifecycle_revision),
+          eq(agentBackupRestoreLeases.expected_manifest_sha256, operation.expected_manifest_sha256),
+          eq(agentBackupRestoreLeases.copy_role, operation.copy_role),
+          eq(agentBackupRestoreLeases.restore_attempt_id, operation.restore_attempt_id),
+          eq(agentBackupRestoreLeases.owner_id, operation.lease_owner_id),
+          eq(agentBackupRestoreLeases.generation, operation.lease_generation),
+          eq(agentBackupRestoreLeases.catalog_epoch, operation.catalog_epoch),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!lease) {
+      throw new AgentBackupCatalogConflictError("Restore lease fence was lost");
+    }
+
+    const quarantine = await lockRecoverableRestoreQuarantine(tx, operation);
+    const [node] = await tx
+      .select()
+      .from(dockerNodes)
+      .where(eq(dockerNodes.id, targetNodeRecordId))
+      .for("update")
+      .limit(1);
+    const exactCurrentOccurrence = Boolean(
+      node &&
+        node.node_id === targetNodeId &&
+        node.node_incarnation === targetNodeIncarnation &&
+        node.current_node_history_id === targetNodeHistoryId,
+    );
+    if (node && exactCurrentOccurrence) {
+      await proveExactAgentNodeOccurrenceForLockedNode(
+        tx,
+        node,
+        targetNodeIncarnation,
+        targetNodeHistoryId,
+      );
+    }
+
+    const databaseNow = await readPostLockDatabaseNow(tx);
+    if (lease.released_at === null && lease.expires_at > databaseNow) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery requires a non-live lease",
+      );
+    }
+    const claimIsAbsent =
+      operation.claim_owner === null &&
+      operation.claim_generation === null &&
+      operation.claim_expires_at === null;
+    const claimIsExpired =
+      operation.claim_owner !== null &&
+      operation.claim_generation !== null &&
+      operation.claim_expires_at !== null &&
+      operation.claim_expires_at <= databaseNow;
+    if (!claimIsAbsent && !claimIsExpired) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery requires a non-live claim",
+      );
+    }
+
+    if (!capacityWasAlreadyReleased && node && exactCurrentOccurrence && node.allocated_count < 1) {
+      throw new AgentBackupCatalogConflictError("Restore capacity counter is already empty");
+    }
+
+    await clearRecoverableRestoreQuarantine(tx, operation, quarantine, databaseNow);
+    if (!capacityWasAlreadyReleased && node && exactCurrentOccurrence) {
+      const [releasedNode] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: databaseNow,
+        })
+        .where(
+          and(
+            eq(dockerNodes.id, targetNodeRecordId),
+            eq(dockerNodes.node_id, targetNodeId),
+            eq(dockerNodes.node_incarnation, targetNodeIncarnation),
+            eq(dockerNodes.current_node_history_id, targetNodeHistoryId),
+            sql`${dockerNodes.allocated_count} > 0`,
+          ),
+        )
+        .returning({ id: dockerNodes.id });
+      if (!releasedNode) {
+        throw new AgentBackupCatalogConflictError(
+          "Restore capacity crash recovery lost its node CAS",
+        );
+      }
+    }
+
+    const recoverySettlementAt = operation.capacity_settled_at ?? databaseNow;
+    const [recovered] = await tx
+      .update(agentBackupRestoreOperations)
+      .set({
+        phase: "failed_terminal",
+        resume_phase: null,
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+        next_attempt_at: recoverySettlementAt,
+        ...(capacityWasAlreadyReleased
+          ? {}
+          : {
+              capacity_state: "released" as const,
+              capacity_settled_at: recoverySettlementAt,
+              capacity_settlement_receipt_digest: cleanupProofDigest,
+            }),
+        last_error_code: CAPACITY_CRASH_RECOVERY_ERROR_CODE,
+        last_error: CAPACITY_CRASH_RECOVERY_ERROR,
+        last_failure_generation: operation.lease_generation,
+        last_failure_digest: cleanupProofDigest,
+        updated_at: databaseNow,
+      })
+      .where(
+        and(
+          eq(agentBackupRestoreOperations.id, operationId),
+          eq(agentBackupRestoreOperations.phase, operation.phase),
+          eq(agentBackupRestoreOperations.lease_generation, operation.lease_generation),
+          capacityWasAlreadyReleased
+            ? and(
+                eq(agentBackupRestoreOperations.capacity_state, "released"),
+                eq(agentBackupRestoreOperations.capacity_settled_at, recoverySettlementAt),
+                eq(
+                  agentBackupRestoreOperations.capacity_settlement_receipt_digest,
+                  cleanupProofDigest,
+                ),
+              )
+            : and(
+                eq(agentBackupRestoreOperations.capacity_state, "reserved"),
+                sql`${agentBackupRestoreOperations.capacity_settled_at} IS NULL`,
+                sql`${agentBackupRestoreOperations.capacity_settlement_receipt_digest} IS NULL`,
+              ),
+          sql`(${agentBackupRestoreOperations.claim_expires_at} IS NULL
+            OR ${agentBackupRestoreOperations.claim_expires_at} <= ${databaseNow})`,
+        ),
+      )
+      .returning();
+    if (!recovered) {
+      throw new AgentBackupCatalogConflictError(
+        "Restore capacity crash recovery lost its operation CAS",
+      );
+    }
+    return { operation: Object.freeze(recovered), replayed: false };
   });
 }
 
@@ -762,12 +1353,24 @@ export async function advanceAgentBackupRestoreOperation(params: {
     if (
       targetAuthorityRequired &&
       (operation.expected_node_record_id === null ||
+        operation.expected_node_id === null ||
         operation.expected_node_incarnation === null ||
         operation.expected_node_history_id === null ||
-        operation.expected_image_digest === null)
+        operation.expected_image_digest === null ||
+        operation.capacity_state === null)
     ) {
       throw new AgentBackupCatalogConflictError(
         "Restore operation cannot leave target reservation without complete target authority",
+      );
+    }
+    if (targetAuthorityRequired && operation.capacity_state === "released") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot advance after releasing target capacity",
+      );
+    }
+    if (params.toPhase === "finalized" && operation.capacity_state !== "handed_off") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore finalization requires capacity handed to the adopted sandbox",
       );
     }
 
@@ -802,10 +1405,16 @@ export async function advanceAgentBackupRestoreOperation(params: {
           targetAuthorityRequired
             ? and(
                 isNotNull(agentBackupRestoreOperations.expected_node_record_id),
+                isNotNull(agentBackupRestoreOperations.expected_node_id),
                 isNotNull(agentBackupRestoreOperations.expected_node_incarnation),
                 isNotNull(agentBackupRestoreOperations.expected_node_history_id),
                 isNotNull(agentBackupRestoreOperations.expected_image_digest),
+                isNotNull(agentBackupRestoreOperations.capacity_state),
+                sql`${agentBackupRestoreOperations.capacity_state} <> 'released'`,
               )
+            : undefined,
+          params.toPhase === "finalized"
+            ? eq(agentBackupRestoreOperations.capacity_state, "handed_off")
             : undefined,
           resumingRecordedContainer
             ? isNotNull(agentBackupRestoreOperations.expected_container_id)
@@ -978,6 +1587,16 @@ export async function failAgentBackupRestoreOperation(params: {
         `Restore operation is in ${operation.phase} and cannot pin a resume at ${params.resumePhase}`,
       );
     }
+    if (params.retryable && operation.capacity_state === "released") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot become retryable after releasing target capacity",
+      );
+    }
+    if (!params.retryable && operation.capacity_state === "reserved") {
+      throw new AgentBackupCatalogConflictError(
+        "Restore operation cannot become terminal while it still owns capacity",
+      );
+    }
 
     const [failed] = await tx
       .update(agentBackupRestoreOperations)
@@ -997,6 +1616,9 @@ export async function failAgentBackupRestoreOperation(params: {
         and(
           eq(agentBackupRestoreOperations.id, operationId),
           eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+          params.retryable
+            ? sql`${agentBackupRestoreOperations.capacity_state} IS DISTINCT FROM 'released'`
+            : sql`${agentBackupRestoreOperations.capacity_state} IS DISTINCT FROM 'reserved'`,
         ),
       )
       .returning();

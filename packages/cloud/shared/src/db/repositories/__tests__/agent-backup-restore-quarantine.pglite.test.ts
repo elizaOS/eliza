@@ -43,7 +43,10 @@ import type { AgentBackupRestoreLeaseAuthorityReceipt } from "../agent-backup-re
 import {
   advanceAgentBackupRestoreOperation,
   claimAgentBackupRestoreOperation,
+  failAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
+  recoverAgentBackupRestoreCapacityAfterCrash,
+  releaseAgentBackupRestoreCapacity,
   reserveAgentBackupRestoreTarget,
 } from "../agent-backup-restore-operations";
 import {
@@ -69,6 +72,9 @@ const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000e110";
 const VAULT_GENERATION_ID = "00000000-0000-4000-8000-00000000e111";
 const SOURCE_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000e112";
 const KEY_BUNDLE_GENERATION_ID = "00000000-0000-4000-8000-00000000e113";
+const NEXT_RESTORE_ATTEMPT_ID = "00000000-0000-4000-8000-00000000e114";
+const NEXT_LEASE_ID = "00000000-0000-4000-8000-00000000e115";
+const NEXT_LEASE_GENERATION = "00000000-0000-4000-8000-00000000e116";
 const HASH = "a".repeat(64);
 const OTHER_SHA = "b".repeat(64);
 const IMAGE_DIGEST = `sha256:${"c".repeat(64)}`;
@@ -80,6 +86,7 @@ const CONTAINER_A = "1".repeat(64);
 const CONTAINER_B = "2".repeat(64);
 const OLD_CONTAINER = "3".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(92, 0x44).toString("base64");
+const CLEANUP_PROOF_SHA = "9".repeat(64);
 
 let schemaFailure = "";
 let operationId = "";
@@ -429,6 +436,112 @@ async function openAndClaimVaultSeeded(): Promise<string> {
   return claim.claimGeneration;
 }
 
+async function makeRecoveryEligible(): Promise<void> {
+  const endedAt = new Date(Date.now() - 60_000);
+  await dbWrite
+    .update(agentBackupRestoreLeases)
+    .set({ released_at: endedAt, expires_at: endedAt })
+    .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+  const [operation] = await dbWrite
+    .select({ claimOwner: agentBackupRestoreOperations.claim_owner })
+    .from(agentBackupRestoreOperations)
+    .where(eq(agentBackupRestoreOperations.id, operationId));
+  if (operation?.claimOwner !== null) {
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ claim_expires_at: endedAt })
+      .where(eq(agentBackupRestoreOperations.id, operationId));
+  }
+}
+
+function expectActivationAuthorityCleared(sandbox: typeof agentSandboxes.$inferSelect): void {
+  expect([
+    sandbox.activation_generation,
+    sandbox.activation_previous_generation,
+    sandbox.activation_lifecycle_revision,
+    sandbox.activation_purpose,
+    sandbox.activation_phase,
+    sandbox.activation_backup_id,
+    sandbox.activation_backup_hash,
+    sandbox.activation_receipt,
+    sandbox.activation_receipt_hash,
+    sandbox.activation_container_id,
+    sandbox.activation_node_id,
+    sandbox.activation_image_digest,
+    sandbox.activation_token_hash,
+    sandbox.activation_token_ciphertext,
+    sandbox.activation_boot_id,
+    sandbox.activation_authority_published_at,
+    sandbox.activation_funding_revision,
+    sandbox.activation_dispatched_at,
+    sandbox.activation_completed_at,
+    sandbox.activation_consent_lifecycle_revision,
+    sandbox.activation_consent_head_backup_id,
+    sandbox.activation_consent_head_backup_hash,
+  ]).toEqual(Array.from({ length: 22 }, () => null));
+}
+
+async function openNextRestoreQuarantine(): Promise<{
+  operationId: string;
+  claimGeneration: string;
+}> {
+  const createdAt = new Date(Date.now() - 60_000);
+  const expiresAt = new Date(Date.now() + 600_000);
+  const [lease] = await dbWrite
+    .insert(agentBackupRestoreLeases)
+    .values({
+      id: NEXT_LEASE_ID,
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      backup_id: BACKUP_ID,
+      operation_id: BACKUP_OPERATION_ID,
+      activation_generation: SOURCE_ACTIVATION_GENERATION,
+      lifecycle_revision: 4n,
+      expected_manifest_sha256: manifestFixture.digest,
+      copy_role: "primary",
+      restore_attempt_id: NEXT_RESTORE_ATTEMPT_ID,
+      owner_id: "next-restore-worker",
+      generation: NEXT_LEASE_GENERATION,
+      catalog_epoch: 3n,
+      created_at: createdAt,
+      expires_at: expiresAt,
+    })
+    .returning();
+  if (!lease) throw new Error("next restore lease fixture was not inserted");
+  const opened = await openAgentBackupRestoreOperation({
+    authority: leaseAuthorityReceipt(lease, createdAt),
+    leaseId: lease.id,
+  });
+  const claim = await claimAgentBackupRestoreOperation({
+    operationId: opened.operation.id,
+    ownerId: lease.owner_id,
+    claimMs: 60_000,
+  });
+  const [node] = await dbWrite
+    .select()
+    .from(dockerNodes)
+    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+  if (!node?.current_node_history_id) throw new Error("next restore target is missing");
+  await reserveAgentBackupRestoreTarget({
+    operationId: opened.operation.id,
+    ownerId: lease.owner_id,
+    claimGeneration: claim.claimGeneration,
+    targetNodeRecordId: TARGET_NODE_RECORD_ID,
+    targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    targetNodeHistoryId: node.current_node_history_id,
+  });
+  const reopened = await openAgentBackupRestoreQuarantine({
+    operationId: opened.operation.id,
+    ownerId: lease.owner_id,
+    claimGeneration: claim.claimGeneration,
+    activationTokenSha256: OTHER_TOKEN_SHA,
+    activationTokenCiphertext: "next-test-only-field-ciphertext-v1",
+  });
+  expect(reopened.replayed).toBe(false);
+  expect(reopened.sandbox.activation_generation).toBe(NEXT_RESTORE_ATTEMPT_ID);
+  return { operationId: opened.operation.id, claimGeneration: claim.claimGeneration };
+}
+
 async function readRows() {
   const [sandbox] = await dbWrite
     .select()
@@ -575,6 +688,146 @@ describe("restore activation quarantine", () => {
       expect(operation.claim_generation).toBe(initialClaimGeneration);
       expect(operation.expected_node_history_id).toBe(node.current_node_history_id);
       expect(node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "recovers an opened quarantine atomically and lets a real next restore reopen it",
+    async () => {
+      await openAgentBackupRestoreQuarantine(openInput());
+      await makeRecoveryEligible();
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId,
+        cleanupProofDigest: CLEANUP_PROOF_SHA,
+      });
+      expect(recovered.replayed).toBe(false);
+      expect(recovered.operation).toMatchObject({
+        phase: "failed_terminal",
+        capacity_state: "released",
+        capacity_settlement_receipt_digest: CLEANUP_PROOF_SHA,
+      });
+      const afterRecovery = await readRows();
+      expectActivationAuthorityCleared(afterRecovery.sandbox);
+      expect(afterRecovery.node.allocated_count).toBe(0);
+
+      const next = await openNextRestoreQuarantine();
+      const afterReopen = await readRows();
+      expect(afterReopen.sandbox.activation_generation).toBe(NEXT_RESTORE_ATTEMPT_ID);
+      expect(afterReopen.sandbox.activation_phase).toBe("container_pending");
+      expect(afterReopen.node.allocated_count).toBe(1);
+
+      const replay = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId,
+        cleanupProofDigest: CLEANUP_PROOF_SHA,
+      });
+      expect(replay.replayed).toBe(true);
+      const afterOldReplay = await readRows();
+      expect(afterOldReplay.sandbox.activation_generation).toBe(NEXT_RESTORE_ATTEMPT_ID);
+      expect(afterOldReplay.sandbox.activation_phase).toBe("container_pending");
+      expect(next.operationId).not.toBe(operationId);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "clears every quarantined container field during exact crash recovery",
+    async () => {
+      const claimGeneration = await openAndClaimVaultSeeded();
+      await recordAgentBackupRestoreQuarantinedContainer({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration,
+        containerId: CONTAINER_A,
+        expectedActivationTokenSha256: TOKEN_SHA,
+      });
+      await makeRecoveryEligible();
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId,
+        cleanupProofDigest: CLEANUP_PROOF_SHA,
+      });
+      expect(recovered.replayed).toBe(false);
+      const after = await readRows();
+      expectActivationAuthorityCleared(after.sandbox);
+      expect(after.operation.expected_container_id).toBe(CONTAINER_A);
+      expect(after.operation.capacity_state).toBe("released");
+      expect(after.node.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "rejects divergent old quarantine authority without a partial capacity release",
+    async () => {
+      await openAgentBackupRestoreQuarantine(openInput());
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          activation_backup_hash: OTHER_SHA,
+          activation_lifecycle_revision: sql`${agentSandboxes.lifecycle_revision} + 1`,
+        })
+        .where(eq(agentSandboxes.id, AGENT_ID));
+      await makeRecoveryEligible();
+
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId,
+          cleanupProofDigest: CLEANUP_PROOF_SHA,
+        }),
+      ).rejects.toThrow("quarantine cleanup authority diverged");
+      const after = await readRows();
+      expect(after.sandbox.activation_generation).toBe(RESTORE_ATTEMPT_ID);
+      expect(after.sandbox.activation_backup_hash).toBe(OTHER_SHA);
+      expect(after.operation.phase).toBe("reserved");
+      expect(after.operation.capacity_state).toBe("reserved");
+      expect(after.node.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "live release clears quarantine before terminal failure and permits the next restore",
+    async () => {
+      await openAgentBackupRestoreQuarantine(openInput());
+      const released = await releaseAgentBackupRestoreCapacity({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: initialClaimGeneration,
+        settlementReceiptDigest: CLEANUP_PROOF_SHA,
+      });
+      expect(released.replayed).toBe(false);
+      const afterRelease = await readRows();
+      expectActivationAuthorityCleared(afterRelease.sandbox);
+      expect(afterRelease.node.allocated_count).toBe(0);
+
+      const terminal = await failAgentBackupRestoreOperation({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: initialClaimGeneration,
+        retryable: false,
+        resumePhase: "reserved",
+        errorCode: "RESTORE_ABORTED_AFTER_CLEANUP",
+        error: "test-only exact remote cleanup completed",
+        failureDigest: CLEANUP_PROOF_SHA,
+        retryDelayMs: 0,
+      });
+      expect(terminal.phase).toBe("failed_terminal");
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ released_at: new Date() })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      await openNextRestoreQuarantine();
+      expect((await readRows()).sandbox.activation_generation).toBe(NEXT_RESTORE_ATTEMPT_ID);
+      const releaseReplay = await releaseAgentBackupRestoreCapacity({
+        operationId,
+        ownerId: "restore-worker",
+        claimGeneration: initialClaimGeneration,
+        settlementReceiptDigest: CLEANUP_PROOF_SHA,
+      });
+      expect(releaseReplay.replayed).toBe(true);
+      expect((await readRows()).sandbox.activation_generation).toBe(NEXT_RESTORE_ATTEMPT_ID);
     },
     TIMEOUT,
   );

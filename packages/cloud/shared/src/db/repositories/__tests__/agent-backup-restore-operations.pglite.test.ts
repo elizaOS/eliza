@@ -55,6 +55,8 @@ import {
   failAgentBackupRestoreOperation,
   heartbeatAgentBackupRestoreOperation,
   openAgentBackupRestoreOperation,
+  recoverAgentBackupRestoreCapacityAfterCrash,
+  releaseAgentBackupRestoreCapacity,
   reserveAgentBackupRestoreTarget as reserveAgentBackupRestoreTargetRepository,
 } from "../agent-backup-restore-operations";
 import { dockerNodesRepository } from "../docker-nodes";
@@ -71,6 +73,8 @@ const FENCE = "00000000-0000-4000-8000-00000000f008";
 const SHA = "a".repeat(64);
 const CONTAINER = "b".repeat(64);
 const RECEIPT_SHA = "d".repeat(64);
+const CAPACITY_RELEASE_RECEIPT_SHA = "e".repeat(64);
+const OTHER_CAPACITY_RELEASE_RECEIPT_SHA = "f".repeat(64);
 const KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x44).toString(
   "base64",
 );
@@ -79,6 +83,9 @@ const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f010";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f011";
 const OTHER_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000f012";
 const OTHER_NODE_INCARNATION = "00000000-0000-4000-8000-00000000f013";
+const RECOVERY_REOPEN_ATTEMPT_ID = "00000000-0000-4000-8000-00000000f015";
+const RECOVERY_REOPEN_LEASE_ID = "00000000-0000-4000-8000-00000000f016";
+const RECOVERY_REOPEN_FENCE = "00000000-0000-4000-8000-00000000f017";
 let schemaFailure = "";
 let manifestFixture: Readonly<{ canonicalDraft: string; digest: string }>;
 
@@ -327,6 +334,59 @@ async function openAndClaim(): Promise<{
   return { operationId: operation.id, claimGeneration: claim.claimGeneration };
 }
 
+async function makeCrashRecoveryEligible(operationId: string): Promise<void> {
+  const authorityEndedAt = new Date(Date.now() - 60_000);
+  await dbWrite
+    .update(agentBackupRestoreLeases)
+    .set({ released_at: authorityEndedAt, expires_at: authorityEndedAt })
+    .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+  const [operation] = await dbWrite
+    .select({ claimGeneration: agentBackupRestoreOperations.claim_generation })
+    .from(agentBackupRestoreOperations)
+    .where(eq(agentBackupRestoreOperations.id, operationId));
+  if (!operation) {
+    throw new Error("restore operation is missing");
+  }
+  if (operation.claimGeneration !== null) {
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ claim_expires_at: authorityEndedAt })
+      .where(eq(agentBackupRestoreOperations.id, operationId));
+  }
+}
+
+async function openReplacementRestoreOperationAfterRecovery() {
+  const createdAt = new Date(Date.now() - 60_000);
+  const expiresAt = new Date(Date.now() + 600_000);
+  await dbWrite.insert(agentBackupRestoreLeases).values({
+    created_at: createdAt,
+    id: RECOVERY_REOPEN_LEASE_ID,
+    organization_id: ORG_ID,
+    agent_id: AGENT_ID,
+    backup_id: BACKUP_ID,
+    operation_id: OPERATION_ID,
+    activation_generation: ACTIVATION_GENERATION,
+    lifecycle_revision: 7n,
+    expected_manifest_sha256: manifestFixture.digest,
+    copy_role: "primary",
+    restore_attempt_id: RECOVERY_REOPEN_ATTEMPT_ID,
+    owner_id: "restore-worker",
+    generation: RECOVERY_REOPEN_FENCE,
+    catalog_epoch: 3n,
+    expires_at: expiresAt,
+  });
+  return await openAgentBackupRestoreOperation({
+    authority: {
+      ...authorityReceipt(),
+      restoreAttemptId: RECOVERY_REOPEN_ATTEMPT_ID,
+      leaseId: RECOVERY_REOPEN_LEASE_ID,
+      fencingToken: RECOVERY_REOPEN_FENCE,
+      expiresAt,
+    },
+    leaseId: RECOVERY_REOPEN_LEASE_ID,
+  });
+}
+
 /**
  * Test-only stand-in for the separately proven quarantine writer. Keeping this
  * as a direct fixture lets this suite exercise later generic phases without
@@ -560,11 +620,519 @@ describe("restore operation spine", () => {
       });
       expect(reserved.target.nodeHistoryId).toMatch(/^[0-9a-f-]{36}$/);
       expect(reserved.operation.expected_node_record_id).toBe(TARGET_NODE_RECORD_ID);
+      expect(reserved.operation.expected_node_id).toBe("restore-target-a");
       expect(reserved.operation.expected_node_incarnation).toBe(TARGET_NODE_INCARNATION);
       expect(reserved.operation.expected_node_history_id).toBe(reserved.target.nodeHistoryId);
       expect(reserved.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      expect(reserved.operation.capacity_state).toBe("reserved");
+      expect(reserved.operation.capacity_reserved_at).toBeInstanceOf(Date);
+      expect(reserved.operation.capacity_settled_at).toBeNull();
+      expect(reserved.operation.capacity_settlement_receipt_digest).toBeNull();
+      expect(replay.operation.expected_node_id).toBe(reserved.operation.expected_node_id);
+      expect(replay.operation.capacity_reserved_at).toEqual(
+        reserved.operation.capacity_reserved_at,
+      );
       const [node] = await dbWrite.select().from(dockerNodes);
       expect(node?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "releases exact capacity once and accepts only an identical settlement replay",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+
+      const released = await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(released.replayed).toBe(false);
+      expect(released.operation.capacity_state).toBe("released");
+      expect(released.operation.capacity_reserved_at).toEqual(
+        reserved.operation.capacity_reserved_at,
+      );
+      expect(reserved.operation.capacity_reserved_at).toBeInstanceOf(Date);
+      expect(released.operation.capacity_settled_at).toBeInstanceOf(Date);
+      expect(released.operation.capacity_settled_at?.getTime()).toBeGreaterThanOrEqual(
+        reserved.operation.capacity_reserved_at?.getTime() ?? 0,
+      );
+      expect(released.operation.capacity_settlement_receipt_digest).toBe(
+        CAPACITY_RELEASE_RECEIPT_SHA,
+      );
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+
+      const replay = await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(replay.replayed).toBe(true);
+      expect(replay.operation.capacity_settled_at).toEqual(released.operation.capacity_settled_at);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+
+      await expect(
+        releaseAgentBackupRestoreCapacity({
+          ...authority,
+          ownerId: "restore-worker",
+          settlementReceiptDigest: OTHER_CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("release replay mismatch");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "settles retained ownership without decrementing a replacement node occurrence",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      const replacementOccurrence = await dockerNodesRepository.attestNodeIncarnation({
+        id: TARGET_NODE_RECORD_ID,
+        nodeId: "restore-target-a",
+        expectedIncarnation: TARGET_NODE_INCARNATION,
+        expectedHostKeyFingerprint: "SHA256:test-only-host-key",
+        observedIncarnation: OTHER_NODE_INCARNATION,
+      });
+      expect(replacementOccurrence.current_node_history_id).not.toBe(
+        reserved.operation.expected_node_history_id,
+      );
+      expect(replacementOccurrence.allocated_count).toBe(1);
+
+      const released = await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(released.operation.capacity_state).toBe("released");
+      const [currentNode] = await dbWrite
+        .select()
+        .from(dockerNodes)
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      expect(currentNode?.node_incarnation).toBe(OTHER_NODE_INCARNATION);
+      expect(currentNode?.current_node_history_id).toBe(
+        replacementOccurrence.current_node_history_id,
+      );
+      expect(currentNode?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "recovers orphaned capacity once, replays exact proof, and releases one-open authority",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      await failAgentBackupRestoreOperation({
+        ...authority,
+        ownerId: "restore-worker",
+        retryable: true,
+        resumePhase: "reserved",
+        errorCode: "WORKER_CRASHED",
+        error: "worker response was lost",
+        failureDigest: SHA,
+        retryDelayMs: 60_000,
+      });
+      await makeCrashRecoveryEligible(authority.operationId);
+
+      await expect(
+        releaseAgentBackupRestoreCapacity({
+          ...authority,
+          ownerId: "restore-worker",
+          settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("lease is expired or released");
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: "not-a-digest",
+        }),
+      ).rejects.toThrow("cleanupProofDigest must be a lowercase sha256 digest");
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: authority.operationId,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(recovered.replayed).toBe(false);
+      expect(recovered.operation).toMatchObject({
+        phase: "failed_terminal",
+        resume_phase: null,
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+        capacity_state: "released",
+        capacity_reserved_at: reserved.operation.capacity_reserved_at,
+        capacity_settlement_receipt_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+        last_error_code: "RESTORE_CAPACITY_RECOVERED_AFTER_CRASH",
+        last_failure_generation: FENCE,
+        last_failure_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      const capacitySettledAt = recovered.operation.capacity_settled_at;
+      if (!capacitySettledAt) throw new Error("crash recovery settlement timestamp is missing");
+      expect(capacitySettledAt).toBeInstanceOf(Date);
+      expect(recovered.operation.next_attempt_at).toEqual(capacitySettledAt);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+
+      const replay = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: authority.operationId,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(replay.replayed).toBe(true);
+      expect(replay.operation.capacity_settled_at).toEqual(recovered.operation.capacity_settled_at);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: OTHER_CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("replay mismatch");
+
+      const reopened = await openReplacementRestoreOperationAfterRecovery();
+      expect(reopened.replayed).toBe(false);
+      expect(reopened.operation).toMatchObject({
+        backup_id: BACKUP_ID,
+        restore_attempt_id: RECOVERY_REOPEN_ATTEMPT_ID,
+        phase: "reserved",
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "terminalizes a crash after exact release without decrementing capacity twice",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      const released = await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(released.operation.phase).toBe("reserved");
+      expect(released.operation.capacity_state).toBe("released");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+      await makeCrashRecoveryEligible(authority.operationId);
+
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: OTHER_CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("release proof mismatch");
+      const [stillOpen] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(stillOpen).toMatchObject({ phase: "reserved", capacity_state: "released" });
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: authority.operationId,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(recovered.replayed).toBe(false);
+      expect(recovered.operation).toMatchObject({
+        phase: "failed_terminal",
+        resume_phase: null,
+        claim_owner: null,
+        claim_generation: null,
+        claim_expires_at: null,
+        capacity_state: "released",
+        capacity_settled_at: released.operation.capacity_settled_at,
+        capacity_settlement_receipt_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+        last_error_code: "RESTORE_CAPACITY_RECOVERED_AFTER_CRASH",
+        last_failure_generation: FENCE,
+        last_failure_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(recovered.operation.next_attempt_at).toEqual(released.operation.capacity_settled_at);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+
+      const replay = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: authority.operationId,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(replay.replayed).toBe(true);
+      expect(replay.operation.capacity_settled_at).toEqual(released.operation.capacity_settled_at);
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses crash recovery while either the exact lease or claim remains live",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ claim_expires_at: new Date(Date.now() - 60_000) })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("requires a non-live lease");
+
+      await dbWrite
+        .update(agentBackupRestoreLeases)
+        .set({ released_at: new Date() })
+        .where(eq(agentBackupRestoreLeases.id, LEASE_ID));
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ claim_expires_at: new Date(Date.now() + 600_000) })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("requires a non-live claim");
+
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(operation?.phase).toBe("reserved");
+      expect(operation?.capacity_state).toBe("reserved");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "settles crash recovery without decrementing capacity owned by a replacement boot",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      const replacementOccurrence = await dockerNodesRepository.attestNodeIncarnation({
+        id: TARGET_NODE_RECORD_ID,
+        nodeId: "restore-target-a",
+        expectedIncarnation: TARGET_NODE_INCARNATION,
+        expectedHostKeyFingerprint: "SHA256:test-only-host-key",
+        observedIncarnation: OTHER_NODE_INCARNATION,
+      });
+      expect(replacementOccurrence.current_node_history_id).not.toBe(
+        reserved.operation.expected_node_history_id,
+      );
+      await makeCrashRecoveryEligible(authority.operationId);
+
+      const recovered = await recoverAgentBackupRestoreCapacityAfterCrash({
+        operationId: authority.operationId,
+        cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      expect(recovered.operation.phase).toBe("failed_terminal");
+      const [currentNode] = await dbWrite
+        .select()
+        .from(dockerNodes)
+        .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+      expect(currentNode).toMatchObject({
+        node_incarnation: OTHER_NODE_INCARNATION,
+        current_node_history_id: replacementOccurrence.current_node_history_id,
+        allocated_count: 1,
+      });
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses handed-off ownership",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      if (!reserved.operation.capacity_reserved_at) {
+        throw new Error("restore capacity reservation timestamp is missing");
+      }
+      const settledAt = new Date(
+        Math.max(Date.now(), reserved.operation.capacity_reserved_at.getTime()),
+      );
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          capacity_state: "handed_off",
+          capacity_settled_at: settledAt,
+          capacity_settlement_receipt_digest: RECEIPT_SHA,
+        })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await makeCrashRecoveryEligible(authority.operationId);
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("already handed to its replacement");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses incoherent terminal recovery history",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      const reserved = await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      if (!reserved.operation.capacity_reserved_at) {
+        throw new Error("restore capacity reservation timestamp is missing");
+      }
+      const settledAt = new Date(
+        Math.max(Date.now(), reserved.operation.capacity_reserved_at.getTime()),
+      );
+      await makeCrashRecoveryEligible(authority.operationId);
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          phase: "failed_terminal",
+          claim_owner: null,
+          claim_generation: null,
+          claim_expires_at: null,
+          next_attempt_at: settledAt,
+          capacity_state: "released",
+          capacity_settled_at: settledAt,
+          capacity_settlement_receipt_digest: CAPACITY_RELEASE_RECEIPT_SHA,
+          last_error_code: "UNRELATED_TERMINAL_FAILURE",
+          last_error: "unrelated terminal fixture",
+          last_failure_generation: FENCE,
+          last_failure_digest: OTHER_CAPACITY_RELEASE_RECEIPT_SHA,
+        })
+        .where(eq(agentBackupRestoreOperations.id, authority.operationId));
+      await expect(
+        recoverAgentBackupRestoreCapacityAfterCrash({
+          operationId: authority.operationId,
+          cleanupProofDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+        }),
+      ).rejects.toThrow("replay mismatch");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "requires terminal failure after exact release and rejects a retryable dead end",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      const failure = {
+        ...authority,
+        ownerId: "restore-worker",
+        retryable: false,
+        resumePhase: "reserved" as const,
+        errorCode: "RESTORE_ABORTED",
+        error: "restore cannot continue",
+        failureDigest: SHA,
+        retryDelayMs: 0,
+      };
+
+      await expect(failAgentBackupRestoreOperation(failure)).rejects.toThrow(
+        "cannot become terminal while it still owns capacity",
+      );
+      const [stillReserved] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(stillReserved?.phase).toBe("reserved");
+      expect(stillReserved?.capacity_state).toBe("reserved");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(1);
+
+      await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+      await expect(
+        failAgentBackupRestoreOperation({ ...failure, retryable: true }),
+      ).rejects.toThrow("cannot become retryable after releasing target capacity");
+      const [stillReleased] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(stillReleased).toMatchObject({
+        phase: "reserved",
+        resume_phase: null,
+        capacity_state: "released",
+        claim_owner: "restore-worker",
+        claim_generation: authority.claimGeneration,
+      });
+      const terminal = await failAgentBackupRestoreOperation(failure);
+      expect(terminal.phase).toBe("failed_terminal");
+      expect(terminal.capacity_state).toBe("released");
+      expect((await dbWrite.select().from(dockerNodes))[0]?.allocated_count).toBe(0);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses restore phase progression after releasing target capacity",
+    async () => {
+      await seedTargetNode();
+      const authority = await openAndClaim();
+      await reserveAgentBackupRestoreTarget({
+        ...authority,
+        ownerId: "restore-worker",
+        targetNodeRecordId: TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      });
+      await releaseAgentBackupRestoreCapacity({
+        ...authority,
+        ownerId: "restore-worker",
+        settlementReceiptDigest: CAPACITY_RELEASE_RECEIPT_SHA,
+      });
+
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          ...authority,
+          ownerId: "restore-worker",
+          fromPhase: "reserved",
+          toPhase: "vault_seeded",
+        }),
+      ).rejects.toThrow("cannot advance after releasing target capacity");
+      const [operation] = await dbWrite.select().from(agentBackupRestoreOperations);
+      expect(operation?.phase).toBe("reserved");
+      expect(operation?.capacity_state).toBe("released");
     },
     TIMEOUT,
   );
@@ -930,7 +1498,7 @@ describe("restore operation spine", () => {
     TIMEOUT,
   );
 
-  test("keeps open and target reservation on the canonical multi-authority lock order", () => {
+  test("keeps restore ownership writers on the canonical multi-authority lock order", () => {
     const source = readFileSync(
       join(import.meta.dir, "..", "agent-backup-restore-operations.ts"),
       "utf8",
@@ -960,6 +1528,32 @@ describe("restore operation spine", () => {
       "proveExactAgentNodeOccurrenceForLockedNode(",
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(",
+    ]);
+
+    const release = source.slice(
+      source.indexOf("export async function releaseAgentBackupRestoreCapacity"),
+      source.indexOf("function isExactCapacityCrashRecoveryReplay"),
+    );
+    expectTokensInOrder(release, [
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      "lockRecoverableRestoreQuarantine(",
+      ".from(dockerNodes)",
+      "readPostLockDatabaseNow(",
+      "clearRecoverableRestoreQuarantine(",
+    ]);
+
+    const recovery = source.slice(
+      source.indexOf("export async function recoverAgentBackupRestoreCapacityAfterCrash"),
+      source.indexOf("export async function advanceAgentBackupRestoreOperation"),
+    );
+    expectTokensInOrder(recovery, [
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      "lockRecoverableRestoreQuarantine(",
+      ".from(dockerNodes)",
+      "readPostLockDatabaseNow(",
+      "clearRecoverableRestoreQuarantine(",
     ]);
 
     const genericAdvance = source.slice(
@@ -1078,7 +1672,7 @@ describe("restore operation spine", () => {
         containerOnlyError = error;
       }
       expect((containerOnlyError as { cause?: { constraint?: string } }).cause?.constraint).toBe(
-        "agent_backup_restore_operations_expected_shape_check",
+        "agent_backup_restore_operations_capacity_shape_check",
       );
 
       await reserveAgentBackupRestoreTarget({
@@ -1496,7 +2090,7 @@ describe("restore operation spine", () => {
   );
 
   test(
-    "finalization requires a receipt digest and every other phase refuses one",
+    "finalization requires both a receipt digest and prior capacity handoff",
     async () => {
       await seedLease();
       const { operation } = await openAgentBackupRestoreOperation({
@@ -1518,6 +2112,42 @@ describe("restore operation spine", () => {
           toPhase: "finalized",
         }),
       ).rejects.toThrow("Finalization requires a receipt digest");
+
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: claim.claimGeneration,
+          fromPhase: "published",
+          toPhase: "finalized",
+          receiptDigest: SHA,
+        }),
+      ).rejects.toThrow("requires capacity handed to the adopted sandbox");
+      const [beforeHandoff] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(beforeHandoff?.phase).toBe("published");
+      expect(beforeHandoff?.capacity_state).toBe("reserved");
+      if (!beforeHandoff?.capacity_reserved_at) {
+        throw new Error("published restore fixture is missing its capacity reservation timestamp");
+      }
+
+      // The replacement-attempt suite proves the transactional sender/receiver
+      // handoff. This fixture supplies that already-proven precondition so this
+      // repository suite can isolate finalization's own gate.
+      const [handedOff] = await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({
+          capacity_state: "handed_off",
+          capacity_settled_at: new Date(
+            Math.max(Date.now(), beforeHandoff.capacity_reserved_at.getTime()),
+          ),
+          capacity_settlement_receipt_digest: RECEIPT_SHA,
+        })
+        .where(eq(agentBackupRestoreOperations.id, operation.id))
+        .returning();
+      expect(handedOff?.capacity_state).toBe("handed_off");
 
       const finalized = await advanceAgentBackupRestoreOperation({
         operationId: operation.id,

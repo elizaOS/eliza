@@ -53,12 +53,13 @@ describe("dormant restore API boundary", () => {
       "releaseAgentBackupRestoreLease",
       "loadAgentBackupRestoreSourceV3",
       "createOrRotateAgentVaultKeyGeneration",
-      "loadCurrentAgentVaultKeyAuthority",
       "bindAgentBackupVaultKeyGeneration",
       "withAgentBackupRestoreVaultPassphrase",
       "openAgentBackupRestoreOperation",
       "claimAgentBackupRestoreOperation",
       "reserveAgentBackupRestoreTarget",
+      "releaseAgentBackupRestoreCapacity",
+      "recoverAgentBackupRestoreCapacityAfterCrash",
       "advanceAgentBackupRestoreOperation",
       "openAgentBackupRestoreQuarantine",
       "recordAgentBackupRestoreQuarantinedContainer",
@@ -66,6 +67,10 @@ describe("dormant restore API boundary", () => {
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
       "commitAgentBackupRestore",
+      "startAgentSandboxReplacementAttemptInTransaction",
+      "recordAgentSandboxReplacementIntentInTransaction",
+      "commitAgentSandboxReplacementLifecycleAdoptionInTransaction",
+      "recordAgentSandboxReplacementCleanupProvenInTransaction",
     ]) {
       const occurrences = sources.flatMap(({ path, source }) =>
         source.includes(symbol) ? [path] : [],
@@ -87,6 +92,22 @@ describe("dormant restore API boundary", () => {
         `${symbol} gained a production call site`,
       ).toHaveLength(expectedInvocationLikeOccurrences);
     }
+    // Capture already consumes current vault authority in one deliberately
+    // narrow production adapter; restore must not add another caller here.
+    const currentVaultAuthoritySources = sources
+      .filter(({ source }) => source.includes("loadCurrentAgentVaultKeyAuthority"))
+      .map(({ path }) => path)
+      .sort();
+    expect(currentVaultAuthoritySources).toEqual(
+      [
+        join(import.meta.dir, "repositories/agent-vault-key-authority.ts"),
+        join(import.meta.dir, "../lib/services/agent-backup-capture-v3-vault-authority.ts"),
+      ].sort(),
+    );
+    expect(
+      production.match(/\bloadCurrentAgentVaultKeyAuthority\s*\(/g) ?? [],
+      "Current vault authority gained an unexpected production caller",
+    ).toHaveLength(3);
     expect(readFileSync(join(import.meta.dir, "index.ts"), "utf8")).not.toMatch(
       /agent-backup-restore|agent-vault-key-authority/,
     );
