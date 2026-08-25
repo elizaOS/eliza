@@ -6,7 +6,7 @@
  */
 
 import { client } from "@elizaos/ui/api";
-import { openDesktopAppWindow } from "@elizaos/ui/bridge";
+import { isElectrobunRuntime, openDesktopAppWindow } from "@elizaos/ui/bridge";
 import {
   type ReactElement,
   useCallback,
@@ -162,6 +162,7 @@ export interface ComputerUseSessionsViewProps {
   openFloatingWindow?: () => Promise<boolean>;
   snapshotPollMs?: number;
   framePollMs?: number;
+  desktopRuntime?: boolean;
 }
 
 const defaultApi: ComputerUseSessionsViewApi = {
@@ -361,6 +362,7 @@ export function ComputerUseSessionsView({
   openFloatingWindow = defaultOpenFloatingWindow,
   snapshotPollMs = SNAPSHOT_POLL_MS,
   framePollMs = FRAME_POLL_MS,
+  desktopRuntime = isElectrobunRuntime(),
 }: ComputerUseSessionsViewProps = {}): ReactElement {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [frames, setFrames] = useState<Record<string, SessionFrame>>({});
@@ -544,23 +546,17 @@ export function ComputerUseSessionsView({
   return (
     <section className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div>
-          <h1 className="text-base font-semibold">Computer sessions</h1>
-          {!shortLandscape ? (
-            <p className="text-xs text-muted-foreground">
-              Sessions connect and update automatically. Controls only appear
-              when they are relevant.
-            </p>
-          ) : null}
-        </div>
-        <button
-          className="min-h-11 rounded-lg bg-orange-500 px-4 text-sm font-medium text-white hover:bg-orange-600"
-          data-agent-id="computer-sessions-open-floating"
-          onClick={() => void openFloating()}
-          type="button"
-        >
-          Open floating
-        </button>
+        <h1 className="text-base font-semibold">Computer sessions</h1>
+        {desktopRuntime ? (
+          <button
+            className="min-h-11 rounded-lg bg-orange-500 px-4 text-sm font-medium text-white hover:bg-orange-600"
+            data-agent-id="computer-sessions-open-floating"
+            onClick={() => void openFloating()}
+            type="button"
+          >
+            Open floating
+          </button>
+        ) : null}
       </header>
 
       {actionError ? (
@@ -671,12 +667,6 @@ export function ComputerUseSessionsView({
                   </div>
                 </div>
                 <p className="truncate">
-                  Sequence {selected.sequence}
-                  {selected.cursor
-                    ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
-                    : " · Cursor pending"}
-                </p>
-                <p className="truncate">
                   {selected.lastError
                     ? `Error: ${selected.lastError}`
                     : selected.lastCommand
@@ -761,14 +751,8 @@ export function ComputerUseSessionsView({
                       session={session}
                     />
 
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <span>Sequence {session.sequence}</span>
-                      <span className="text-right">
-                        {session.cursor
-                          ? `Cursor ${Math.round(session.cursor.x)}, ${Math.round(session.cursor.y)}`
-                          : "Cursor pending"}
-                      </span>
-                      <span className="col-span-2 truncate">
+                    <div className="text-xs text-muted-foreground">
+                      <span className="block truncate">
                         {session.lastError
                           ? `Error: ${session.lastError}`
                           : session.lastCommand
