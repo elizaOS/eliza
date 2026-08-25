@@ -5,7 +5,13 @@ import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
+import {
+  PROGRESSIVE_CONTENT_ANCHOR_TIME,
+  PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+  progressiveContentManifestDigest,
+} from "./progressive-content.ts";
 import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
 
 export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
   "elizaos.content-context.result.v3" as const;
@@ -461,9 +467,65 @@ function semanticFailures(
 ): string[] {
   const failures: string[] = [];
   const manifest = json(bytes["corpus-manifest.json"], "corpus manifest");
-  const objects = array(manifest.objects, "corpus objects").map((value) =>
-    record(value, "corpus object"),
+  exactKeys(
+    manifest,
+    [
+      "schemaVersion",
+      "generatorRevision",
+      "rootSeed",
+      "anchorTime",
+      "profile",
+      "publication",
+      "objects",
+      "formatFixtures",
+      "logicalBytes",
+      "manifestSha256",
+    ],
+    "corpus manifest",
   );
+  const objects = array(manifest.objects, "corpus objects").map(
+    (value, index) => {
+      const object = record(value, `corpus object ${index}`);
+      exactKeys(
+        object,
+        [
+          "id",
+          "family",
+          "format",
+          "relativePath",
+          "byteLength",
+          "sourceSha256",
+          "revision",
+          "authorizationScope",
+          "coordinateSystem",
+          "canaries",
+        ],
+        `corpus object ${index}`,
+      );
+      return object;
+    },
+  );
+  const formatFixtures = array(
+    manifest.formatFixtures,
+    "corpus format fixtures",
+  );
+  if (
+    manifest.schemaVersion !== PROGRESSIVE_CONTENT_SCHEMA_VERSION ||
+    manifest.generatorRevision !== result.generatorRevision ||
+    result.generatorRevision !== result.commit ||
+    manifest.anchorTime !== PROGRESSIVE_CONTENT_ANCHOR_TIME ||
+    manifest.profile !== "scale" ||
+    manifest.publication !== "private-atomic-manifest-last-v1" ||
+    typeof manifest.rootSeed !== "string" ||
+    manifest.rootSeed.length === 0 ||
+    typeof manifest.logicalBytes !== "number" ||
+    !Number.isSafeInteger(manifest.logicalBytes) ||
+    manifest.logicalBytes < 0 ||
+    !Array.isArray(formatFixtures) ||
+    progressiveContentManifestDigest(manifest) !== manifest.manifestSha256
+  ) {
+    failures.push("corpus manifest identity or policy is invalid");
+  }
   for (const family of [
     "file",
     "document",
@@ -495,6 +557,28 @@ function semanticFailures(
   const realizationEntries = array(ledger.entries, "realization entries").map(
     (value) => record(value, "realization entry"),
   );
+  const realizationCounts = record(ledger.counts, "realization counts");
+  const computedRealizationCounts = {
+    verified: realizationEntries.filter(({ status }) => status === "verified")
+      .length,
+    unsupported: realizationEntries.filter(
+      ({ status }) => status === "unsupported",
+    ).length,
+    pending: realizationEntries.filter(({ status }) => status === "pending")
+      .length,
+    failed: realizationEntries.filter(({ status }) => status === "failed")
+      .length,
+  };
+  if (
+    ledger.schemaVersion !== PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION ||
+    ledger.corpusSchemaVersion !== PROGRESSIVE_CONTENT_SCHEMA_VERSION ||
+    ledger.generatorRevision !== result.generatorRevision ||
+    Object.entries(computedRealizationCounts).some(
+      ([status, count]) => realizationCounts[status] !== count,
+    )
+  ) {
+    failures.push("realization ledger schema, revision, or counts are invalid");
+  }
   const objectsById = new Map(objects.map((object) => [object.id, object]));
   if (objectsById.size !== objects.length)
     failures.push("corpus object identities are duplicated");

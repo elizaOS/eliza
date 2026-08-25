@@ -7,6 +7,11 @@ import {
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
 import {
+  PROGRESSIVE_CONTENT_ANCHOR_TIME,
+  PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+  progressiveContentManifestDigest,
+} from "./progressive-content.ts";
+import {
   buildContentContextResult,
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
@@ -14,8 +19,54 @@ import {
   type ContentContextRequiredArtifact,
   validateContentContextResult,
 } from "./progressive-content-evidence.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
 
-const manifestSha = "b".repeat(64);
+const fixtureCommit = "a".repeat(40);
+const fixtureObjects = [
+  "file",
+  "document",
+  "memory",
+  "email",
+  "attachment",
+  "tool-output",
+].flatMap((family) =>
+  [1024 * 1024, 10 * 1024 * 1024].map((byteLength) => {
+    const id = `${family}-${byteLength}`;
+    return {
+      id,
+      family,
+      byteLength,
+      sourceSha256: "c".repeat(64),
+      revision: `revision-${family}-${byteLength}`,
+      authorizationScope: `scope-${family}`,
+      format:
+        family === "memory" && byteLength === 10 * 1024 * 1024
+          ? "binary"
+          : family === "email" && byteLength === 1024 * 1024
+            ? "invalid-utf8"
+            : "lf-lines",
+      relativePath: `objects/${family}/${id}.txt`,
+      coordinateSystem: "utf8-byte-start-inclusive-end-exclusive",
+      canaries: [],
+    };
+  }),
+);
+const unsignedManifest = {
+  schemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
+  generatorRevision: fixtureCommit,
+  rootSeed: "content-context:test",
+  anchorTime: PROGRESSIVE_CONTENT_ANCHOR_TIME,
+  profile: "scale",
+  publication: "private-atomic-manifest-last-v1",
+  objects: fixtureObjects,
+  formatFixtures: [],
+  logicalBytes: fixtureObjects.reduce(
+    (total, object) => total + object.byteLength,
+    0,
+  ),
+};
+const manifestSha = progressiveContentManifestDigest(unsignedManifest);
+const fixtureManifest = { ...unsignedManifest, manifestSha256: manifestSha };
 const steadyResourceSample = {
   rssBytes: 100 * 1024 * 1024,
   heapUsedBytes: 40 * 1024 * 1024,
@@ -326,36 +377,17 @@ function validPostgresEvidence(
 }
 
 function evidence() {
-  const objects = [
-    "file",
-    "document",
-    "memory",
-    "email",
-    "attachment",
-    "tool-output",
-  ].flatMap((family) =>
-    [1024 * 1024, 10 * 1024 * 1024].map((byteLength) => ({
-      id: `${family}-${byteLength}`,
-      family,
-      byteLength,
-      sourceSha256: "c".repeat(64),
-      revision: `revision-${family}-${byteLength}`,
-      authorizationScope: `scope-${family}`,
-      format:
-        family === "memory" && byteLength === 10 * 1024 * 1024
-          ? "binary"
-          : family === "email" && byteLength === 1024 * 1024
-            ? "invalid-utf8"
-            : "lf-lines",
-    })),
-  );
+  const objects = fixtureObjects.map((object) => ({ ...object }));
   const values: Record<ContentContextRequiredArtifact, unknown> = {
     "corpus-manifest.json": {
-      manifestSha256: manifestSha,
+      ...fixtureManifest,
       objects,
     },
     "native-realization-ledger.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
+      corpusSchemaVersion: PROGRESSIVE_CONTENT_SCHEMA_VERSION,
       corpusManifestSha256: manifestSha,
+      generatorRevision: fixtureCommit,
       entries: objects.map((object) => ({
         status: "verified",
         objectId: object.id,
@@ -369,6 +401,12 @@ function evidence() {
           maxReadBytes: 64 * 1024,
         },
       })),
+      counts: {
+        verified: objects.length,
+        unsupported: 0,
+        pending: 0,
+        failed: 0,
+      },
     },
     "conformance.json": {
       reports: objects.map((object) => ({
@@ -589,9 +627,9 @@ function evidence() {
   }
   const result = {
     schemaVersion: CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
-    commit: "a".repeat(40),
+    commit: fixtureCommit,
     corpusManifestSha256: manifestSha,
-    generatorRevision: "test-revision",
+    generatorRevision: fixtureCommit,
     status: "passed" as const,
     artifacts: CONTENT_CONTEXT_REQUIRED_ARTIFACTS.map((name) => ({
       name,
@@ -847,6 +885,28 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/does not cover every corpus object/u);
+  });
+
+  it("rejects forged realization counts and stale generator identity", () => {
+    const original = evidence();
+    const ledger = JSON.parse(
+      new TextDecoder().decode(
+        original.bytes["native-realization-ledger.json"],
+      ),
+    ) as {
+      generatorRevision: string;
+      counts: { verified: number };
+    };
+    ledger.generatorRevision = "stale-revision";
+    ledger.counts.verified += 1;
+    const changed = replaceArtifact(
+      original,
+      "native-realization-ledger.json",
+      ledger,
+    );
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/realization ledger schema, revision, or counts are invalid/u);
   });
 
   it("rejects empty and duplicate exact-coverage collections", () => {
