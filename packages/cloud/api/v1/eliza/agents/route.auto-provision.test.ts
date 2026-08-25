@@ -214,6 +214,9 @@ test("GET returns an owner-safe error summary without internal stack frames", as
 test.each([
   "ENOENT [/srv/eliza/agents/agent-1/config.json]",
   "ENOENT: //srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app(/srv/eliza/agents/agent-1/config.json)",
+  "Provider https://api.eliza.app,C:\\eliza\\agents\\agent-1\\config.json",
 ])(
   "GET withholds formatted server paths from the list DTO: %s",
   async (message) => {

@@ -190,6 +190,21 @@ describe("publicJobErrorSummary — API boundary", () => {
     );
   });
 
+  test.each([
+    "Provider https://api.eliza.app?debug=/srv/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app(/srv/eliza/agents/9c1/config.json)",
+    "Provider https://api.eliza.app,C:\\eliza\\agents\\9c1\\config.json",
+    "Provider https://api.eliza.app?debug=%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",
+    "Provider https://api.eliza.app?debug=%E0%A4%A/srv/eliza/agents/9c1/config.json",
+  ])("withholds a host path carried beside or inside a public URL: %s", (message) => {
+    const stored = jobErrorText(new Error(message));
+    const summary = publicJobErrorSummary(stored) ?? "";
+    expect(summary).toBe(
+      "The operation failed. Retry from Eliza Cloud or contact support if it continues.",
+    );
+    expect(summary).not.toContain("9c1");
+  });
+
   test("null and empty stay null", () => {
     expect(publicJobErrorSummary(null)).toBeNull();
     expect(publicJobErrorSummary(undefined)).toBeNull();

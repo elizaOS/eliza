@@ -32,6 +32,46 @@ const TRUNCATION_SUFFIX = "\n… truncated";
 const MAX_CAUSE_DEPTH = 4;
 const PUBLIC_INTERNAL_ERROR =
   "The operation failed. Retry from Eliza Cloud or contact support if it continues.";
+const NETWORK_URL_PATTERN =
+  /\b(?:https?|wss?):\/\/(?:\[[0-9a-f:.%]+\]|[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)(?::\d{1,5})?(?:[/?#][^\s'"`<>[\]]*)?/giu;
+const FILE_URL_PATTERN = /\bfile:\/\//iu;
+const DRIVE_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u;
+const UNC_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u;
+const POSIX_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u;
+const URL_METADATA_HOST_ROOT_PATTERN =
+  /(?:^|[=([{,;\s])\/+\b(?:dev|etc|home|media|mnt|opt|private|proc|root|run|srv|sys|tmp|usr|var|users|volumes)(?:[\\/]|$)/iu;
+
+function decodeUrlMetadata(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // error-policy:J3 malformed percent encoding is an explicit unsafe result.
+    return null;
+  }
+}
+
+/** Detect host-path syntax carried inside otherwise public URL metadata. */
+function networkUrlContainsHostPath(urlToken: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(urlToken);
+  } catch {
+    // error-policy:J3 a malformed URL-shaped token fails closed at this public boundary.
+    return true;
+  }
+
+  const candidates = [url.pathname, url.hash.slice(1), ...url.searchParams.values()];
+  return candidates.some((candidate) => {
+    const decoded = decodeUrlMetadata(candidate);
+    if (decoded === null) return true;
+    return (
+      FILE_URL_PATTERN.test(decoded) ||
+      DRIVE_PATH_PATTERN.test(decoded) ||
+      UNC_PATH_PATTERN.test(decoded) ||
+      URL_METADATA_HOST_ROOT_PATTERN.test(decoded)
+    );
+  });
+}
 
 /**
  * Stored diagnostics may put a host path in the error message itself, before
@@ -41,17 +81,26 @@ const PUBLIC_INTERNAL_ERROR =
  * preserving arbitrary operator text.
  */
 function containsAbsolutePath(text: string): boolean {
-  // A network URL contains `//` and path slashes but is not a host filesystem
-  // path. Neutralize the complete URL token, including query values and doubled
-  // URL-path separators, while leaving bracket-adjacent text available to the
-  // host-path checks. `file:` stays private and every unknown scheme fails
-  // closed through the checks below.
-  const withoutNetworkUrls = text.replace(/\b(?:https?|wss?):\/\/[^\s'"`<>[\]]+/giu, "network:");
+  if (FILE_URL_PATTERN.test(text) || DRIVE_PATH_PATTERN.test(text) || UNC_PATH_PATTERN.test(text)) {
+    return true;
+  }
+
+  // A network URL contains `//` and path slashes but is not itself a host
+  // filesystem path. Inspect decoded query/fragment metadata before masking the
+  // URL: public route values such as `/v1/chat` remain valid, while known host
+  // roots and drive/UNC forms fail closed. The authority grammar deliberately
+  // stops before adjacent `(`, `[`, or `,` host-path delimiters.
+  let embeddedHostPath = false;
+  const withoutNetworkUrls = text.replace(NETWORK_URL_PATTERN, (urlToken) => {
+    if (networkUrlContainsHostPath(urlToken)) embeddedHostPath = true;
+    return "network:";
+  });
+  if (embeddedHostPath) return true;
+
   return (
-    /\bfile:\/\//iu.test(text) ||
-    /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u.test(withoutNetworkUrls) ||
-    /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u.test(withoutNetworkUrls) ||
-    /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u.test(withoutNetworkUrls)
+    POSIX_PATH_PATTERN.test(withoutNetworkUrls) ||
+    DRIVE_PATH_PATTERN.test(withoutNetworkUrls) ||
+    UNC_PATH_PATTERN.test(withoutNetworkUrls)
   );
 }
 
