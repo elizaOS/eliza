@@ -317,4 +317,24 @@ describe("decideInterruptionWithModel", () => {
     // Invalid action → regex fallback (mid-turn relevant → queue).
     expect(decision.action).toBe("queue");
   });
+
+  it("preserves surrogate pairs when parsing model verdict reasons", async () => {
+    // "x" (1 char) + "⚡" (2 chars * 100 = 200 chars) -> bisects at index 160
+    const emojis = "x" + "⚡".repeat(100);
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "interrupt", reason: emojis }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      { ...base, text: "stop now", sessionBusy: true },
+    );
+    expect(decision.action).toBe("interrupt");
+    for (const char of decision.reason) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

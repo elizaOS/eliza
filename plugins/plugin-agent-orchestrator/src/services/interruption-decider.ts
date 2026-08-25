@@ -166,10 +166,22 @@ export function decideInterruption(
 // redirect"). The regex decision remains the fallback whenever the model is
 // unavailable or returns an unparseable verdict, so behavior only ever improves.
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
   const label = input.agentLabel?.trim() || input.agentType;
   const work = input.taskContext?.trim()
-    ? input.taskContext.trim().slice(0, 500)
+    ? truncateText(input.taskContext.trim(), 500)
     : "a coding task";
   const state = input.sessionBusy
     ? "MID-TURN (actively generating or running a tool right now)"
@@ -193,7 +205,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     `State: ${state}`,
     `Room: ${room}`,
     "",
-    `Incoming message: """${input.text.trim().slice(0, 800)}"""`,
+    `Incoming message: """${truncateText(input.text.trim(), 800)}"""`,
     "",
     "Choose EXACTLY one action:",
     '- "interrupt": stop or change direction RIGHT NOW — an explicit halt ("stop", "cancel", "wait"), or a redirect that invalidates the work in progress ("no, use Postgres not MySQL", "scrap that, start over"). Reserve for genuine halts/redirects worth cancelling live work for.',
@@ -225,7 +237,7 @@ function parseInterruptionVerdict(raw: string): InterruptionDecision | null {
   }
   const detail =
     typeof obj.reason === "string" && obj.reason.trim()
-      ? obj.reason.trim().slice(0, 160)
+      ? truncateText(obj.reason.trim(), 160)
       : "verdict";
   return { action, reason: `model: ${detail}` };
 }
