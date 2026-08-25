@@ -48,6 +48,37 @@ describe("isBuffer", () => {
 	});
 });
 
+describe("fromHex edge cases", () => {
+	it("throws on odd-length hex string", () => {
+		expect(() => fromHex("abc")).toThrow(/odd-length/);
+		expect(() => fromHex("a")).toThrow(/odd-length/);
+		expect(() => fromHex("48 65 6c 6c 6")).toThrow(/odd-length/);
+		expect(() => fromHex("fff")).toThrow(/odd-length/);
+	});
+
+	it("throws on non-string input", () => {
+		expect(() =>
+			(fromHex as unknown as (v: unknown) => unknown)(123 as unknown as string),
+		).toThrow(/must be a string/);
+		expect(() =>
+			(fromHex as unknown as (v: unknown) => unknown)(
+				null as unknown as string,
+			),
+		).toThrow(/must be a string/);
+		expect(() =>
+			(fromHex as unknown as (v: unknown) => unknown)(
+				undefined as unknown as string,
+			),
+		).toThrow(/must be a string/);
+	});
+
+	it("accepts even-length hex after cleaning separators", () => {
+		expect(bufferToString(fromHex("48-65:6c 6c 6f"))).toBe("Hello");
+		expect(bufferToString(fromHex(""))).toBe("");
+		expect(toHex(fromHex("00ff"))).toBe("00ff");
+	});
+});
+
 describe("byte ops", () => {
 	it("alloc fills zeros; fromBytes preserves values", () => {
 		expect(toHex(alloc(4))).toBe("00000000");
