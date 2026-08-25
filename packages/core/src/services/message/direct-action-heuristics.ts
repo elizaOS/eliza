@@ -1141,15 +1141,13 @@ export function inferDirectCurrentRequestCandidateActions(
 }
 
 /**
- * Explicit multi-digit arithmetic in the message ("whats 3847 times 292",
- * "1,234 * 56"). Deterministically detectable, and worth routing: models
- * reliably miscompute once any operand reaches three digits (live
- * 2026-08-24: three different wrong products for one ask), while the
- * CALCULATE action is exact. Two-digit mental math stays on the simple path
- * — it is fast and demonstrated reliable — so the detector requires at
- * least one operand of three or more digits (separators ignored).
+ * Recognizes explicit arithmetic independently of operand width while keeping
+ * punctuation-heavy prose conversational unless its shape or wording makes
+ * calculation intent unambiguous.
  */
 const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
+// Match the longest overlapping symbol first so exponentiation wins over
+// multiplication.
 const STRONG_ARITHMETIC_OPERATOR =
 	"(?:\\*\\*|[*×÷^%]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
 const AMBIGUOUS_ARITHMETIC_OPERATOR = "(?:[+\\-/]|[xX])";
@@ -1172,23 +1170,13 @@ const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
 	"iu",
 );
 
-function looksLikeMultiDigitArithmetic(text: string): boolean {
-	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
-	const hasLargeOperand = (left: string, right: string) =>
-		digits(left) >= 3 || digits(right) >= 3;
-	const strongMatch = STRONG_ARITHMETIC_EXPRESSION_RE.exec(text);
-	if (
-		strongMatch &&
-		hasLargeOperand(strongMatch[1] ?? "", strongMatch[2] ?? "")
-	) {
+function looksLikeExplicitArithmetic(text: string): boolean {
+	if (STRONG_ARITHMETIC_EXPRESSION_RE.test(text)) {
 		return true;
 	}
 
 	const ambiguousMatch = AMBIGUOUS_ARITHMETIC_EXPRESSION_RE.exec(text);
-	if (
-		!ambiguousMatch ||
-		!hasLargeOperand(ambiguousMatch[1] ?? "", ambiguousMatch[5] ?? "")
-	) {
+	if (!ambiguousMatch) {
 		return false;
 	}
 	const operator = ambiguousMatch[3] ?? "";
@@ -1236,7 +1224,7 @@ export function inferDirectCurrentRequestCandidateInference(
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
 	}
-	if (looksLikeMultiDigitArithmetic(messageText)) {
+	if (looksLikeExplicitArithmetic(messageText)) {
 		const calculateAction = findCalculateActionName(actions);
 		if (calculateAction) {
 			return { names: [calculateAction], kind: "calculate" };

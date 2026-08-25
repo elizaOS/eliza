@@ -1,16 +1,8 @@
 /**
- * CALCULATE — deterministic arithmetic for the chat surface. Language models
- * reliably miscompute multi-digit arithmetic (live 2026-08-24: "3847 times
- * 292" drew three different wrong products across the simple and planner
- * paths), and the chat action surface carries no other compute tool: shell is
- * gate-rejected from chat and a coding sub-agent is a build, not a
- * calculator. The handler parses the expression itself — recursive descent,
- * no eval/Function — so the result is arithmetic, not model recall.
- *
- * Integer-only expressions (+ - * % and non-negative integer ^) evaluate in
- * BigInt and are exact within the explicit resource boundary below. Anything
- * involving division or decimals evaluates in floats and says so. Unsupported
- * or oversized input is a typed rejection — never a guess or partial result.
+ * Provides deterministic chat arithmetic through a recursive-descent parser,
+ * without eval or Function. Integer-only expressions use exact BigInt results;
+ * division and decimals use a disclosed float lane. Unsupported or oversized
+ * input returns a typed rejection rather than a guess or partial result.
  */
 import type {
 	Action,
@@ -248,15 +240,15 @@ export const calculateAction: Action = {
 	name: "CALCULATE",
 	contexts: ["general"],
 	description:
-		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ parentheses, decimals, unary minus) deterministically. Use for ANY multi-digit arithmetic instead of computing in your head — model mental math is unreliable and supported integer results are exact.",
+		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ ** parentheses, decimals, unary minus) deterministically. Use for explicit arithmetic instead of computing from model recall; supported integer results are exact.",
 	descriptionCompressed:
-		"exact arithmetic eval; use for any multi-digit math instead of mental math",
+		"exact arithmetic evaluation for explicit math requests",
 	similes: ["MATH", "COMPUTE", "ARITHMETIC", "MULTIPLY", "DIVIDE", "EVAL_MATH"],
 	parameters: [
 		{
 			name: "expression",
 			description:
-				'The bare numeric expression to evaluate, e.g. "3847 * 292" or "(12.5 + 3) / 4". Numbers and + - * / % ^ ( ) only — no words, no variables.',
+				'The bare numeric expression to evaluate, e.g. "3847 * 292" or "(12.5 + 3) / 4". Numbers and + - * / % ^ ** ( ) only — no words, no variables.',
 			required: true,
 			schema: { type: "string" as const },
 		},

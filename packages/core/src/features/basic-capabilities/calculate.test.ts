@@ -1,7 +1,6 @@
 /**
- * CALCULATE action: deterministic recursive-descent arithmetic (BigInt-exact
- * integer lane, disclosed float lane), typed rejection of unparseable input,
- * and general-context reachability. Deterministic unit harness; no model.
+ * Exercises CALCULATE parsing, typed failures, action registration, and direct
+ * routing through production code with a deterministic harness and no model.
  */
 import { describe, expect, it } from "vitest";
 import { inferDirectCurrentRequestCandidateActions } from "../../services/message/direct-action-heuristics.ts";
@@ -10,12 +9,16 @@ import { calculateAction, evaluateArithmetic } from "./actions/calculate.ts";
 import { basicActions } from "./index.ts";
 
 describe("evaluateArithmetic", () => {
-	it("computes the live-incident product exactly", () => {
-		// 2026-08-24: the model produced 1,123,186 / 1,122,824 for this ask.
+	it("computes integer products exactly", () => {
 		expect(evaluateArithmetic("3847 * 292")).toEqual({
 			text: "1123324",
 			exact: true,
 		});
+	});
+
+	it("matches exponentiation before multiplication", () => {
+		expect(evaluateArithmetic("2 ** 3 * 4").text).toBe("32");
+		expect(evaluateArithmetic("2 * 3 ** 2").text).toBe("18");
 	});
 
 	it("honors precedence, parentheses, and unary minus", () => {
@@ -106,8 +109,14 @@ describe("CALCULATE action", () => {
 describe("deterministic arithmetic routing", () => {
 	const actions = [{ name: "CALCULATE", similes: [], tags: [] }];
 
-	it("routes explicit multi-digit arithmetic to CALCULATE", () => {
+	it("routes explicit arithmetic to CALCULATE regardless of operand width", () => {
 		for (const text of [
+			"whats 17 times 23",
+			"17*23",
+			"2**3",
+			"calculate 7+8",
+			"what is 9/3?",
+			"calculate 4 x 5",
 			"whats 3847 times 292",
 			"3847 * 292?",
 			"1,234 divided by 7 pls",
@@ -124,12 +133,14 @@ describe("deterministic arithmetic routing", () => {
 		}
 	});
 
-	it("leaves two-digit mental math and ordinary prose on the simple path", () => {
+	it("leaves non-calculation numeric prose on the conversational path", () => {
 		for (const text of [
-			"whats 17 times 23",
 			"see you at 10 - 11 tomorrow",
+			"the meeting runs from 9 to 10 tomorrow",
 			"i walked 5 x this week",
+			"take this medicine 3 times a day",
 			"no math here at all",
+			"meet me on 8/25/2026",
 			"our 2024-2025 plan is attached",
 			"our 2024 - 2025 plan is attached",
 			"ISO 9001-2015 certification",
