@@ -132,6 +132,12 @@ export async function getSavedLogin(
   domain: string,
   username: string,
 ): Promise<SavedLogin | null> {
+  if (domain.trim().length === 0) {
+    throw new TypeError("getSavedLogin: domain required");
+  }
+  if (username.length === 0) {
+    throw new TypeError("getSavedLogin: username required");
+  }
   const key = loginKey(domain, username);
   const has = await vault.has(key);
   if (!has) return null;
@@ -177,6 +183,12 @@ export async function deleteSavedLogin(
   domain: string,
   username: string,
 ): Promise<void> {
+  if (domain.trim().length === 0) {
+    throw new TypeError("deleteSavedLogin: domain required");
+  }
+  if (username.length === 0) {
+    throw new TypeError("deleteSavedLogin: username required");
+  }
   await vault.remove(loginKey(domain, username));
 }
 

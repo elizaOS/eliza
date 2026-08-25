@@ -245,6 +245,21 @@ describe("credentials — delete", () => {
       deleteSavedLogin(test.vault, "nope.com", "ghost"),
     ).resolves.toBeUndefined();
   });
+
+  it("rejects empty domain or username with TypeError", async () => {
+    await expect(getSavedLogin(test.vault, "", "alice")).rejects.toThrow(
+      /domain required/,
+    );
+    await expect(getSavedLogin(test.vault, "github.com", "")).rejects.toThrow(
+      /username required/,
+    );
+    await expect(deleteSavedLogin(test.vault, "", "alice")).rejects.toThrow(
+      /domain required/,
+    );
+    await expect(
+      deleteSavedLogin(test.vault, "github.com", ""),
+    ).rejects.toThrow(/username required/);
+  });
 });
 
 describe("credentials — autoallow", () => {
