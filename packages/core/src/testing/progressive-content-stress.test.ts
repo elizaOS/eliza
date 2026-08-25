@@ -43,7 +43,7 @@ function targetFixture(
 		realization: {
 			reference: {
 				kind: "file",
-				ref: "file:stress-target",
+				ref: "file:object-1",
 				revision: fixture.object.revision,
 				resumability: "restart-safe",
 			},
@@ -53,7 +53,7 @@ function targetFixture(
 			authorizationScopeDigest: createHash("sha256")
 				.update(fixture.object.authorizationScope)
 				.digest("hex"),
-			cleanupIdentity: "file:stress-target",
+			cleanupIdentity: "file:object-1",
 			resolverBindingSha256: fixture.object.revision,
 		},
 		async read({ access, offset, limit, expectedRevision }) {
@@ -110,6 +110,40 @@ describe("progressive content stress", () => {
 			report.cases.every(({ sourceWork }) => sourceWork.parentScans === 0),
 		).toBe(true);
 		expect(report.resources.fileDescriptorGrowth).toBe(1);
+	});
+
+	it("rejects self-consistent bytes that change for a repeated offset", async () => {
+		const adapter = progressiveConformanceAdapter();
+		const originalRead = adapter.read.bind(adapter);
+		let offsetZeroReads = 0;
+		adapter.read = async (request) => {
+			const page = await originalRead(request);
+			if (request.offset !== 0) return page;
+			offsetZeroReads += 1;
+			if (offsetZeroReads === 1) return page;
+			const bytes = Uint8Array.from(page.bytes);
+			bytes[0] = (bytes[0] ?? 0) ^ 0xff;
+			return {
+				...page,
+				bytes,
+				view: {
+					...page.view,
+					slice: {
+						...page.view.slice,
+						sliceSha256: createHash("sha256").update(bytes).digest("hex"),
+					},
+				},
+			};
+		};
+		const report = await runProgressiveContentStress({
+			adapterId: "production-changing-page-target",
+			target: targetFixture(adapter),
+			concurrency: [1, 8],
+			operationsPerWorker: 2,
+			measureResources: () => stableResource,
+		});
+		expect(report.status).toBe("failed");
+		expect(report.cases[1]?.failures).not.toHaveLength(0);
 	});
 
 	it("requires the positive leak control for a passing soak", async () => {
