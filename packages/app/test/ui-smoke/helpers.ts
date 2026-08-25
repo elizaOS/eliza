@@ -3261,6 +3261,47 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/context-inspector?**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Cache-Control": "no-store" },
+      body: JSON.stringify({
+        schemaVersion: "elizaos.context-inspector/v1",
+        entries: [
+          {
+            reference: "ctx_0123456789abcdef0123",
+            kind: "document",
+            range: { unit: "byte", start: 4096, end: 8192, total: 65536 },
+            completeness: "partial-recoverable",
+            omissionReason: "token-budget",
+            retentionState: "policy-managed",
+          },
+        ],
+        tokenBudgets: [
+          {
+            usedTokens: 4096,
+            limitTokens: 131072,
+            reservedTokens: 8192,
+            state: "within-budget",
+          },
+        ],
+        page: {
+          offset: 0,
+          limit: 20,
+          hasPrevious: false,
+          hasMore: false,
+          nextOffset: null,
+        },
+        state: "available",
+      }),
+    });
+  });
+
   await page.route("**/api/trajectories**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {

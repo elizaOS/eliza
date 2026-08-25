@@ -1764,7 +1764,16 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         });
 
         await page.setViewportSize({ width: vp.width, height: vp.height });
-        await seedAppStorage(page);
+        await seedAppStorage(
+          page,
+          view.id === "context-inspector"
+            ? {
+              "eliza:chat:activeConversationId":
+                "00000000-0000-4000-8000-000000000123",
+              "eliza:developerMode": "1",
+            }
+            : {},
+        );
         await installDefaultAppRoutes(page);
         const remoteBundleProof = await forceRemoteBundleAuditRoute(page, view);
         await openAppPath(page, remoteBundleProof?.auditPath ?? view.path);
