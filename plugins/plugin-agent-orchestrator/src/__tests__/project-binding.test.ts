@@ -19,6 +19,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  assertProjectIdRegistered,
   bindProjectCloudApp,
   findProjectByWorkdir,
   resolveBoundProjectCloudAppId,
@@ -46,6 +47,13 @@ describe("project-binding", () => {
     expect(
       resolveTaskProjectId({ projectId: "unregistered" }, env),
     ).toBeUndefined();
+  });
+
+  it("fails closed for an explicit stale project id", () => {
+    expect(() => assertProjectIdRegistered("stale-project", env)).toThrowError(
+      expect.objectContaining({ code: "PROJECT_NOT_FOUND" }),
+    );
+    expect(assertProjectIdRegistered(undefined, env)).toBeUndefined();
   });
 
   it("binds by realpath match of the workdir against a registered project", () => {
