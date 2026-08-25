@@ -10,6 +10,7 @@ import process from "node:process";
 import { createProgressiveSqlTargetFactory } from "../src/testing/progressive-content-sql-targets.ts";
 
 const PAGE_BYTES = 64 * 1024;
+const MAX_RSS_GROWTH_BYTES = 128 * 1024 * 1024;
 const FAMILIES = new Set(["document", "memory", "email"]);
 
 function parseArgs(argv) {
@@ -201,6 +202,24 @@ async function run(options) {
     const storageAfterCleanup = await storageSample(dataRoot);
     clearInterval(sampler);
     peak = maxMemory(peak, memorySample());
+    const observedRssGrowthBytes = Math.max(
+      0,
+      phasePeaks.ingestion.rssBytes - baseline.rssBytes,
+    );
+    const resourceAssessment =
+      observedRssGrowthBytes > MAX_RSS_GROWTH_BYTES
+        ? {
+            status: "resource-limit",
+            code: "PGLITE_PROGRESSIVE_INGESTION_RSS_LIMIT_EXCEEDED",
+            phase: "ingestion",
+            ceilingBytes: MAX_RSS_GROWTH_BYTES,
+            observedBytes: observedRssGrowthBytes,
+          }
+        : {
+            status: "within-limit",
+            ceilingBytes: MAX_RSS_GROWTH_BYTES,
+            observedBytes: observedRssGrowthBytes,
+          };
     return {
       schemaVersion: "elizaos.progressive-content.sql-scale-child.v1",
       backend: "pglite",
@@ -226,6 +245,7 @@ async function run(options) {
       },
       peak,
       phasePeaks,
+      resourceAssessment,
       storageAfterIngestion,
       storageBeforeCleanup,
       storageAfterCleanup,
