@@ -94,7 +94,8 @@ export class ProgressiveNativeRealizationError extends Error {
   }
 }
 
-async function boundedSource(
+/** Open one verified corpus object through a source-work-counted bounded reader. */
+export async function openProgressiveContentBoundedSource(
   corpusRoot: string,
   object: ProgressiveContentObject,
 ): Promise<{
@@ -225,7 +226,10 @@ export async function realizeProgressiveContentCorpus(input: {
       });
       continue;
     }
-    const opened = await boundedSource(input.corpusRoot, object);
+    const opened = await openProgressiveContentBoundedSource(
+      input.corpusRoot,
+      object,
+    );
     try {
       const realized = await declaration.realize({
         object,

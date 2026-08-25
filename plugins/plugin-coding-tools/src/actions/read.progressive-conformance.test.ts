@@ -48,6 +48,7 @@ describe("READ progressive-content conformance", () => {
         byteLength: bytes.byteLength,
         sourceSha256,
         sourceRevision: sourceSha256,
+        format: "unicode-text",
         authorizationScope: "file-target-room",
         canaries,
       },
