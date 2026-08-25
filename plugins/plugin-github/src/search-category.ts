@@ -78,6 +78,8 @@ function hasSearchCategory(runtime: IAgentRuntime, category: string): boolean {
     runtime.getSearchCategory(category, { includeDisabled: true });
     return true;
   } catch {
+    // error-policy:J4 explicit user-facing degrade — an unregistered search
+    // category throws from getSearchCategory; translate to false for idempotent registration.
     return false;
   }
 }
