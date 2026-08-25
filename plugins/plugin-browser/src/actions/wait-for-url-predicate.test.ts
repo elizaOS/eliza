@@ -54,4 +54,29 @@ describe("buildWaitForUrlPredicate", () => {
     expect(predicate.kind).toBe("substring");
     expect(predicate.test("https://anything.example")).toBe(false);
   });
+
+  it("is deterministic across repeated calls when pattern has global flag", () => {
+    const predicate = buildWaitForUrlPredicate("/auth\\/callback/g");
+    expect(predicate.kind).toBe("regex");
+    const url = "https://example.com/auth/callback";
+    expect(predicate.test(url)).toBe(true);
+    expect(predicate.test(url)).toBe(true);
+    expect(predicate.test(url)).toBe(true);
+  });
+
+  it("is deterministic across repeated calls when pattern has sticky flag", () => {
+    const predicate = buildWaitForUrlPredicate("/callback/y");
+    expect(predicate.kind).toBe("regex");
+    const url = "https://example.com/callback";
+    expect(predicate.test(url)).toBe(true);
+    expect(predicate.test(url)).toBe(true);
+  });
+
+  it("preserves other flags while stripping global and sticky", () => {
+    const predicate = buildWaitForUrlPredicate("/callback/gi");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test("https://example.com/CALLBACK")).toBe(true);
+    expect(predicate.test("https://example.com/CALLBACK")).toBe(true);
+    expect(predicate.test("https://example.com/other")).toBe(false);
+  });
 });

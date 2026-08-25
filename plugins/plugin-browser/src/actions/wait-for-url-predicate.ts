@@ -27,7 +27,8 @@ const REGEX_LITERAL = /^\/(.+)\/([a-z]*)$/i;
 
 function compileRegex(source: string, flags: string): RegExp | null {
   try {
-    return new RegExp(source, flags);
+    const sanitizedFlags = flags.replace(/[gy]/g, "");
+    return new RegExp(source, sanitizedFlags);
   } catch {
     return null;
   }
@@ -54,7 +55,10 @@ export function buildWaitForUrlPredicate(pattern: string): WaitForUrlPredicate {
       return {
         pattern,
         kind: "regex",
-        test: (url: string) => compiled.test(url),
+        test: (url: string) => {
+          compiled.lastIndex = 0;
+          return compiled.test(url);
+        },
       };
     }
     // Invalid regex literal: fall through to substring on the raw pattern.
