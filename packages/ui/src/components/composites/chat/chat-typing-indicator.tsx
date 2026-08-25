@@ -275,12 +275,8 @@ export function TurnStatus({
       role="status"
       aria-live="polite"
     >
-      <MarkerIcon>
-        <Spinner
-          size={14}
-          data-testid="turn-status-spinner"
-          className="text-white/70 motion-reduce:animate-none"
-        />
+      <MarkerIcon className="[&_svg]:text-white/70 motion-reduce:[&_svg]:animate-none">
+        <Spinner size={14} data-testid="turn-status-spinner" />
       </MarkerIcon>
       <MarkerContent className="inline-flex items-baseline text-sm-tight font-medium tabular-nums">
         <span

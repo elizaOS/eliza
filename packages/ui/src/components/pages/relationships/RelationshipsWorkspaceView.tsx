@@ -270,8 +270,8 @@ export function RelationshipsWorkspaceView({
 
       {graphError && !graph ? (
         <PagePanel.Empty
-          variant="panel"
-          className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
+          variant={embedded ? "panel" : "workspace"}
+          className={embedded ? "min-h-[18rem]" : undefined}
           title={t("relationships.failedToLoad", {
             defaultValue: "Relationships failed to load",
           })}
@@ -283,7 +283,8 @@ export function RelationshipsWorkspaceView({
         />
       ) : !graph || graph.people.length === 0 ? (
         <PagePanel.Empty
-          className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
+          variant={embedded ? "panel" : "workspace"}
+          className={embedded ? "min-h-[18rem]" : undefined}
           icon={<Network className="size-6" aria-hidden />}
           title={
             search || platform !== "all"

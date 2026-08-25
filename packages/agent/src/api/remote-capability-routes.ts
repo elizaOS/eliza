@@ -592,7 +592,7 @@ function appendTrustAuditRecord(
         ...decision,
       })),
     },
-  ].slice(-50);
+  ];
 }
 
 function isTrustAuditRecord(

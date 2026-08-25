@@ -70,7 +70,6 @@ export const adminChatProvider: Provider = {
 			const adminUUID = stringToUuid(adminUserId);
 			const adminMessages = await runtime.getMemories({
 				entityId: adminUUID,
-				limit: 15,
 				unique: false,
 				tableName: "memories",
 			});

@@ -1492,6 +1492,7 @@ describe("buildModelMetadata (RUNTIME_MODEL_CONTEXT self-report)", () => {
     expect(md?.RESPONSE_HANDLER).toEqual({
       displayModelSettings: ["ELIZA_CLI_CODEX_MODEL"],
       displayModelDefault: "gpt-5.5",
+      contextWindowTokens: 1_048_576,
     });
   });
 });

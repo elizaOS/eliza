@@ -184,7 +184,6 @@ export class LlmEntityRecognizer implements PiiEntityRecognizer {
 		for (const chunk of chunkText(text, this.chunkChars)) {
 			const completion = await this.generate({
 				prompt: buildPiiExtractionPrompt(chunk.text),
-				maxTokens: 512,
 				temperature: 0,
 			});
 			const reported = parseReportedEntities(completion);

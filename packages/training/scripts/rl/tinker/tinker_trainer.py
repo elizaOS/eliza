@@ -319,8 +319,6 @@ def _build_trade_canonical_sample(
 
 def _extract_trade_canonical_samples(
     traj: dict[str, Any],
-    *,
-    max_examples_per_trajectory: int,
 ) -> list[dict[str, Any]]:
     steps = traj.get("steps") or []
     if not isinstance(steps, list):
@@ -599,8 +597,6 @@ def _build_trust_natural_sample(
 
 def _extract_trust_canonical_samples(
     traj: dict[str, Any],
-    *,
-    max_examples_per_trajectory: int,
 ) -> list[dict[str, Any]]:
     """Extract trust-relevant training samples from a trajectory."""
     steps = traj.get("steps") or []
@@ -625,8 +621,6 @@ def _extract_trust_canonical_samples(
 
 def _extract_trust_natural_samples(
     traj: dict[str, Any],
-    *,
-    max_examples_per_trajectory: int,
 ) -> list[dict[str, Any]]:
     steps = traj.get("steps") or []
     if not isinstance(steps, list):
@@ -735,19 +729,7 @@ class TinkerTrainingConfig(BaseModel):
     )
     min_agents_per_window: int = Field(default=2, description="Minimum agents per window")
     min_actions_per_trajectory: int = Field(default=3, description="Minimum actions per trajectory")
-    max_steps_per_trajectory: int = Field(
-        default=20,
-        description="Deprecated compatibility field; complete trajectories are retained",
-    )
-    max_trajectories: int = Field(
-        default=1000,
-        description="Deprecated compatibility field; complete snapshot is paged",
-    )
     max_token_length: int = Field(default=4096, description="Maximum sequence length")
-    max_trade_examples_per_trajectory: int = Field(
-        default=3,
-        description="Deprecated compatibility field; every trade decision is retained",
-    )
     alignment_passes: int = Field(
         default=2,
         description="Extra supervised alignment passes on canonical Action/Reason samples",
@@ -776,7 +758,6 @@ class TinkerTrainingConfig(BaseModel):
     )
 
     # Inference settings
-    inference_max_tokens: int = Field(default=512, description="Max tokens for inference")
     inference_temperature: float = Field(default=0.7, description="Temperature for inference")
 
 
@@ -823,7 +804,7 @@ class FeedTinkerTrainer:
             lora_rank=config.lora_rank,
             resume_from_state=config.resume_from_state,
             learning_rate=config.learning_rate,
-            default_max_tokens=config.inference_max_tokens,
+            max_context_tokens=config.max_token_length,
             default_temperature=config.inference_temperature,
         )
         self.tinker_client = FeedTinkerClient(self.tinker_config)
@@ -1161,7 +1142,6 @@ Your goal is to make profitable trading decisions based on market analysis."""
                 },
                 {"role": "user", "content": judge_prompt},
             ],
-            max_tokens=500,
             temperature=self.config.judge_temperature,
         )
 
@@ -1241,18 +1221,9 @@ Your goal is to make profitable trading decisions based on market analysis."""
         valid_advantages: list[float] = []
 
         for traj, advantage in zip(trajectories, advantages, strict=False):
-            trade_samples = _extract_trade_canonical_samples(
-                traj,
-                max_examples_per_trajectory=self.config.max_trade_examples_per_trajectory,
-            )
-            trust_samples = _extract_trust_canonical_samples(
-                traj,
-                max_examples_per_trajectory=self.config.max_trade_examples_per_trajectory,
-            )
-            trust_natural_samples = _extract_trust_natural_samples(
-                traj,
-                max_examples_per_trajectory=self.config.max_trade_examples_per_trajectory,
-            )
+            trade_samples = _extract_trade_canonical_samples(traj)
+            trust_samples = _extract_trust_canonical_samples(traj)
+            trust_natural_samples = _extract_trust_natural_samples(traj)
             all_samples = trade_samples + trust_natural_samples + trust_samples
             if not all_samples:
                 continue

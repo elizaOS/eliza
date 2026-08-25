@@ -201,14 +201,10 @@ function SectionNavTabButton({
       onClick={() => {
         if (!isActive) onSelect();
       }}
-      variant="ghost"
-      size="sm"
-      className={cn(
-        "h-auto shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        isActive
-          ? "bg-accent/15 text-accent"
-          : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-      )}
+      variant="selection"
+      size="compact"
+      data-state={isActive ? "on" : "off"}
+      className="shrink-0"
       {...agentProps}
     >
       {label}

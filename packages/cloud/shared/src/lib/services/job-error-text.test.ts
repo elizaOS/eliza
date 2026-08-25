@@ -2,7 +2,7 @@
  * Durable-storage contract for `jobs.error` (#23117 review).
  *
  * Four properties are load-bearing and each is pinned against the real
- * formatter: the text never escapes the advertised ceiling, hostile throws
+ * formatter: complete error evidence survives, hostile throws
  * cannot make the formatter itself throw (it runs before the failed job is
  * written back), credentials are scrubbed before the value becomes durable,
  * and the public API summary carries no stack frames.
@@ -15,25 +15,21 @@ import {
   publicJobErrorSummary,
 } from "./job-error-text";
 
-const MAX = 4_000;
-
-describe("jobErrorText — ceiling", () => {
-  test("caps at exactly the advertised maximum, suffix included", () => {
+describe("jobErrorText — completeness", () => {
+  test("preserves a long stack and message", () => {
     const error = new Error("x".repeat(10_000));
     const text = jobErrorText(error);
-    expect(text.length).toBeLessThanOrEqual(MAX);
-    expect(text.endsWith("… truncated")).toBe(true);
+    expect(text).toContain("x".repeat(10_000));
   });
 
-  test("the same ceiling applies to pre-formatted text that bypasses jobErrorText", () => {
+  test("pre-formatted text that bypasses jobErrorText remains complete", () => {
     const text = finalizeJobErrorText("y".repeat(10_000));
-    expect(text.length).toBeLessThanOrEqual(MAX);
+    expect(text).toBe("y".repeat(10_000));
   });
 
   test("leaves a short stack untouched", () => {
     const text = jobErrorText(new Error("value.toISOString is not a function"));
     expect(text).toContain("value.toISOString is not a function");
-    expect(text.endsWith("… truncated")).toBe(false);
   });
 });
 
@@ -110,7 +106,15 @@ describe("jobErrorText — cause chain", () => {
     const b = new Error("b", { cause: a });
     (a as { cause?: unknown }).cause = b;
     expect(() => jobErrorText(a)).not.toThrow();
-    expect(jobErrorText(a).length).toBeLessThanOrEqual(MAX);
+    expect(jobErrorText(a)).toContain("[circular]");
+  });
+
+  test("retains cause chains beyond the retired depth window", () => {
+    let error: Error = new Error("root-cause");
+    for (let depth = 0; depth < 10; depth += 1) {
+      error = new Error(`layer-${depth}`, { cause: error });
+    }
+    expect(jobErrorText(error)).toContain("root-cause");
   });
 });
 

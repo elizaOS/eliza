@@ -419,6 +419,43 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
   };
 }
 
+test("buffered bridge releases the room before its response body is consumed", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const object = new SharedRuntimeConversation(
+    makeState(new Map<string, unknown>(), []) as never,
+    {} as never,
+  );
+
+  const firstResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "bridge",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "buffered-first",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+
+  const second = makeInvoke(object)("buffered-second");
+  await expect(
+    Promise.race([
+      second,
+      new Promise<"queue-blocked">((resolve) =>
+        setTimeout(() => resolve("queue-blocked"), 100),
+      ),
+    ]),
+  ).resolves.not.toBe("queue-blocked");
+  await firstResponse.arrayBuffer();
+});
+
 async function pushOperation(
   object: { fetch(request: Request): Promise<Response> },
   body: Record<string, unknown>,

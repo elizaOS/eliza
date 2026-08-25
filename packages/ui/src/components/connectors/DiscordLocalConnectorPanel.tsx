@@ -253,7 +253,6 @@ export function DiscordLocalConnectorPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() => {
               void refreshStatus();
             }}
@@ -267,7 +266,6 @@ export function DiscordLocalConnectorPanel() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
               onClick={() => {
                 void handleDisconnect();
               }}
@@ -283,7 +281,6 @@ export function DiscordLocalConnectorPanel() {
             <Button
               variant="default"
               size="sm"
-              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
               onClick={() => {
                 void handleAuthorize();
               }}
@@ -447,7 +444,7 @@ export function DiscordLocalConnectorPanel() {
                   <Button
                     variant="default"
                     size="sm"
-                    className="h-8 shrink-0 rounded-sm px-4 text-xs-tight font-semibold sm:self-end"
+                    className="shrink-0 sm:self-end"
                     onClick={() => {
                       void handleSaveSubscriptions();
                     }}

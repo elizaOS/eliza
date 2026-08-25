@@ -1,5 +1,10 @@
 # @elizaos/plugin-web-search
 
+Search requests use Tavily's full documented 20-result provider window when a
+caller does not request a smaller result count. Tavily does not expose a result
+cursor, so non-zero offsets and requests above that external hard maximum are
+rejected explicitly instead of returning a misleading partial page.
+
 Adds live web search to an Eliza agent via the [Tavily](https://tavily.com/) API.
 
 ## What it does
@@ -113,4 +118,3 @@ bun run --cwd plugins/plugin-web-search typecheck  # type-check only
 
 - [`@elizaos/core`](https://github.com/elizaOS/eliza) — elizaOS runtime interfaces
 - [`@tavily/core`](https://www.npmjs.com/package/@tavily/core) — Tavily search client
-

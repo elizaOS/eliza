@@ -178,13 +178,8 @@ function numberParam(value: unknown): number | undefined {
 	return undefined;
 }
 
-function clampLimit(
-	value: number | undefined,
-	fallback: number,
-	max: number,
-): number {
-	const base = value ?? fallback;
-	return Math.max(1, Math.min(max, Math.floor(base)));
+function requestedLimit(value: number | undefined): number | undefined {
+	return value === undefined ? undefined : Math.max(1, Math.floor(value));
 }
 
 function normalizeComparable(value: unknown): string {
@@ -361,7 +356,7 @@ type ConnectorWithHooks = MessageConnector & {
 		context: MessageConnectorQueryContext,
 		opts: {
 			target: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -372,7 +367,7 @@ type ConnectorWithHooks = MessageConnector & {
 		opts: {
 			query: string;
 			target?: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -3046,11 +3041,6 @@ async function handleSend(
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
-const CHANNEL_READ_DEFAULT_LIMIT = 50;
-const CHANNEL_READ_MAX_LIMIT = 200;
-const MEMORY_READ_DEFAULT_BYTES = 4096;
-const MEMORY_READ_MAX_BYTES = 64 * 1024;
-
 function memoryReadFailure(
 	code: string,
 	text: string,
@@ -3104,13 +3094,11 @@ function memoryScopeAllowsSameRoomRead(
 function safeMemoryReadInteger(
 	value: number | undefined,
 	label: "offset" | "limit",
-	fallback: number,
+	fallback?: number,
 ): number | undefined {
 	if (value === undefined) return fallback;
 	if (!Number.isSafeInteger(value) || value < 0) return undefined;
-	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
-		return undefined;
-	}
+	if (label === "limit" && value < 1) return undefined;
 	return value;
 }
 
@@ -3175,15 +3163,14 @@ async function handleReadStoredMemory(
 	}
 
 	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
-	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
-		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
-	);
-	if (offset === undefined || limit === undefined) {
+	const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+	if (
+		offset === undefined ||
+		(params.limit !== undefined && limit === undefined)
+	) {
 		return memoryReadFailure(
 			"MESSAGE_MEMORY_INVALID_RANGE",
-			`Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+			"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
 		);
 	}
 
@@ -3196,7 +3183,8 @@ async function handleReadStoredMemory(
 			{ totalBytes: bytes.length },
 		);
 	}
-	let end = Math.min(offset + limit, bytes.length);
+	let end =
+		limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
 	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
 	if (end === offset && offset < bytes.length) {
 		return memoryReadFailure(
@@ -3268,11 +3256,11 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
 	target: TargetInfo,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ) {
 	return {
 		target,
-		limit,
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -3283,7 +3271,7 @@ async function fetchRecentMessagesFromConnector(
 	connector: ConnectorWithHooks,
 	context: MessageConnectorQueryContext,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ): Promise<Memory[]> {
 	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
 	const recent = await connector.listRecentTargets(context);
@@ -3347,11 +3335,7 @@ async function handleReadChannel(
 	const source = sourceFromParams(params, message);
 	const accountId = accountIdFromParams(params, message);
 	const channel = textParam(params.channel) ?? textParam(params.target);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		CHANNEL_READ_DEFAULT_LIMIT,
-		CHANNEL_READ_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const range = textParam(params.range);
 
 	// Prefer in-process connector fetchMessages when available.
@@ -3408,7 +3392,8 @@ async function handleReadChannel(
 					params,
 					limit,
 				);
-				memories = memories.sort(compareMemoryByCreatedAtDesc).slice(0, limit);
+				memories = memories.sort(compareMemoryByCreatedAtDesc);
+				if (limit !== undefined) memories = memories.slice(0, limit);
 			}
 			return opSuccess(
 				"read_channel",
@@ -3468,7 +3453,7 @@ async function handleReadChannel(
 			});
 		}
 		memories.sort(compareMemoryByCreatedAtDesc);
-		const limited = memories.slice(0, limit);
+		const limited = limit === undefined ? memories : memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
 			limited.length
@@ -3501,7 +3486,7 @@ async function handleReadChannel(
 		const queryParams: Parameters<IAgentRuntime["getMemories"]>[0] = {
 			tableName: "messages",
 			roomId: room.id,
-			count: limit,
+			...(limit === undefined ? {} : { count: limit }),
 			...(range === "dates"
 				? {
 						start: parseDateParam(textParam(params.from)),
@@ -3515,7 +3500,9 @@ async function handleReadChannel(
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
 
 		const raw = (await runtime.getMemories(queryParams)) as Memory[];
-		const memories = raw.slice(0, limit).reverse();
+		const memories = (
+			limit === undefined ? raw : raw.slice(0, limit)
+		).reverse();
 		return opSuccess(
 			"read_channel",
 			`Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
@@ -3544,9 +3531,6 @@ async function handleReadChannel(
 // graph snapshot) and aggregates their conversations from all rooms the
 // person participates in, regardless of platform.
 // ---------------------------------------------------------------------------
-
-const READ_WITH_CONTACT_DEFAULT_LIMIT = 15;
-const READ_WITH_CONTACT_MAX_LIMIT = 50;
 
 type RelationshipsPersonSummary = {
 	primaryEntityId: UUID;
@@ -3593,11 +3577,7 @@ async function handleReadWithContact(
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
 	const platform = textParam(params.platform);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		READ_WITH_CONTACT_DEFAULT_LIMIT,
-		READ_WITH_CONTACT_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 
 	if (!contact && !entityId) {
 		return opFailure(
@@ -3620,7 +3600,6 @@ async function handleReadWithContact(
 	try {
 		const snapshot = await relationships.getGraphSnapshot({
 			search: (entityId ?? contact ?? "").trim(),
-			limit: 5,
 		});
 		const candidates = snapshot.people;
 		if (entityId) {
@@ -3678,7 +3657,7 @@ async function handleReadWithContact(
 				const memories = (await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
-					count: limit,
+					...(limit === undefined ? {} : { count: limit }),
 				} as Parameters<IAgentRuntime["getMemories"]>[0])) as Memory[];
 				if (memories.length === 0) continue;
 				const last = memories[0];
@@ -3732,8 +3711,6 @@ async function handleReadWithContact(
 // op=search — connector passthrough OR semantic conversation search.
 // ---------------------------------------------------------------------------
 
-const SEARCH_DEFAULT_LIMIT = 20;
-const SEARCH_MAX_LIMIT = 50;
 const SEARCH_MATCH_THRESHOLD = 0.6;
 
 const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
@@ -3806,11 +3783,7 @@ async function handleSearch(
 			"INVALID_PARAMETERS",
 			"MESSAGE op=search requires a query.",
 		);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		SEARCH_DEFAULT_LIMIT,
-		SEARCH_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const source = sourceFromParams(params, message);
 	const entityId = textParam(params.entityId);
 
@@ -3862,7 +3835,7 @@ async function handleSearch(
 				const memories = (await searchMessages(context, {
 					query,
 					target: resolved.target,
-					limit,
+					...(limit === undefined ? {} : { limit }),
 					cursor: textParam(params.cursor),
 					before: textParam(params.before),
 					after: textParam(params.after),
@@ -3902,16 +3875,17 @@ async function handleSearch(
 			query,
 			agentId: runtime.agentId,
 			deliveryMessage: message,
-			count: limit + 10,
+			...(limit === undefined ? {} : { count: limit + 10 }),
 			matchThreshold: SEARCH_MATCH_THRESHOLD,
 			...(entityId ? { entityId: entityId as UUID } : {}),
 			source,
 		});
 
-		const results = recall.items
+		const matchingResults = recall.items
 			.map((item) => item.memory)
-			.filter((m) => m.content.text)
-			.slice(0, limit);
+			.filter((m) => m.content.text);
+		const results =
+			limit === undefined ? matchingResults : matchingResults.slice(0, limit);
 		return opSuccess(
 			"search",
 			conversationSearchText(query, results.length, recall.availability),

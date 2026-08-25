@@ -98,7 +98,7 @@ export function AccountDeletionDialog({
       <div className="space-y-2 text-right">
         <Button
           size="sm"
-          variant="outline"
+          variant="dangerOutline"
           disabled
           data-testid="delete-account-trigger"
         >
@@ -129,7 +129,6 @@ export function AccountDeletionDialog({
           size="sm"
           variant="outline"
           disabled
-          className="border-danger/40 text-danger"
           data-testid="delete-account-trigger"
         >
           {status.state === "transfer_required"
@@ -153,8 +152,7 @@ export function AccountDeletionDialog({
     <>
       <Button
         size="sm"
-        variant="outline"
-        className="border-danger/40 text-danger"
+        variant="dangerOutline"
         data-testid="delete-account-trigger"
         onClick={() => setOpen(true)}
       >

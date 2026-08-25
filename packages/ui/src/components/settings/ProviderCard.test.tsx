@@ -42,7 +42,7 @@ describe("ProviderCard — serving vs inspecting", () => {
     const tile = screen.getByRole("button", { name: "Eliza Cloud, Active" });
     expect(tile.getAttribute("aria-current")).toBe("true");
     expect(tile.getAttribute("aria-pressed")).toBe("true");
-    expect(tile.className).toContain("bg-accent/8");
+    expect(tile.dataset.providerPresentation).toBe("current");
     expect(screen.getByText("Active")).toBeTruthy();
   });
 
@@ -53,8 +53,7 @@ describe("ProviderCard — serving vs inspecting", () => {
     });
     expect(tile.getAttribute("aria-current")).toBeNull();
     expect(tile.getAttribute("aria-pressed")).toBe("true");
-    expect(tile.className).not.toContain("bg-accent");
-    expect(tile.className).toContain("border-txt/20");
+    expect(tile.dataset.providerPresentation).toBe("selected");
     expect(screen.getByText("Not signed in")).toBeTruthy();
     expect(screen.queryByText("Active")).toBeNull();
   });
@@ -79,6 +78,6 @@ describe("ProviderCard — serving vs inspecting", () => {
     });
     expect(tile.getAttribute("aria-current")).toBe("true");
     expect(tile.getAttribute("aria-pressed")).toBe("false");
-    expect(tile.className).toContain("bg-accent/8");
+    expect(tile.dataset.providerPresentation).toBe("current");
   });
 });

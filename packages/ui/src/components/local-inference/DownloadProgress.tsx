@@ -5,6 +5,7 @@
 
 import type { DownloadJob } from "../../api/client-local-inference";
 import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Progress } from "../ui/progress";
 import { formatBytes, formatEta, progressPercent } from "./hub-utils";
 
 interface DownloadProgressProps {
@@ -19,22 +20,13 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
 
   return (
     <div className="w-full">
-      <div
-        className="h-2 w-full overflow-hidden rounded-sm bg-bg-muted"
-        role="progressbar"
+      <Progress
         aria-label={t("downloadprogress.ariaLabel", {
           model: job.modelId,
           defaultValue: "Download progress for {{model}}",
         })}
-        aria-valuenow={pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div
-          className="h-full w-full origin-left bg-primary transition-transform duration-300"
-          style={{ transform: `scaleX(${pct / 100})` }}
-        />
-      </div>
+        value={pct}
+      />
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
         <span>
           {t("downloadprogress.progress", {

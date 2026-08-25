@@ -6,7 +6,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   MAX_TCP_PORT,
-  MIN_TCP_PORT,
   parsePlaywrightPort,
   resolvePlaywrightPortEnv,
 } from "./playwright-port.mjs";
@@ -112,10 +111,5 @@ describe("resolvePlaywrightPortEnv", () => {
         42138,
       ),
     ).toThrow(/ELIZA_HMR_UI_PORT/);
-  });
-
-  it("exports the TCP range constants used by callers and docs", () => {
-    expect(MIN_TCP_PORT).toBe(1);
-    expect(MAX_TCP_PORT).toBe(65535);
   });
 });

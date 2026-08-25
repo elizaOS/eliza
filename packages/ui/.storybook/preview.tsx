@@ -2,7 +2,7 @@
  * Global Storybook preview: theme-by-class decorator and the shared providers
  * (tooltip, translation) every story renders inside.
  */
-import { TooltipProvider } from "@elizaos/ui/components/ui/tooltip";
+import { TooltipProvider } from "@elizaos/ui";
 import { withThemeByClassName } from "@storybook/addon-themes";
 import type { Preview } from "@storybook/react";
 import type { ReactNode } from "react";
