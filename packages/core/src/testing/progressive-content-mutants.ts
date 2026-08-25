@@ -138,6 +138,11 @@ export type ProgressiveContentExternalMutantId = Exclude<
 	ProgressiveContentMutantId
 >;
 
+export interface ProgressiveContentExternalMutantExecutor {
+	/** Execute the mutated production seam; the owning oracle must reject it. */
+	execute(): void | Promise<void>;
+}
+
 export interface ProgressiveContentMutantRegistryReport {
 	readonly schemaVersion: typeof PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION;
 	readonly required: number;
@@ -297,7 +302,7 @@ export async function runProgressiveContentMutantRegistry(input: {
 	readonly externalExecutors: Partial<
 		Record<
 			ProgressiveContentExternalMutantId,
-			() => Promise<readonly string[]> | readonly string[]
+			ProgressiveContentExternalMutantExecutor
 		>
 	>;
 	readonly performanceCeilings?: Partial<ProgressiveContentPerformanceCeilings>;
@@ -334,10 +339,17 @@ export async function runProgressiveContentMutantRegistry(input: {
 			} else {
 				executed += 1;
 				try {
-					failureVectors = [...new Set(await executor())];
+					await executor.execute();
+					failureVectors = ["MUTANT_NOT_OBSERVED"];
 				} catch (error) {
+					const vector =
+						error && typeof error === "object"
+							? (error as { vector?: unknown }).vector
+							: undefined;
 					failureVectors = [
-						`executor-error:${error instanceof Error ? error.name : "unknown"}`,
+						typeof vector === "string" && vector.length > 0
+							? vector
+							: `executor-error:${error instanceof Error ? error.name : "unknown"}`,
 					];
 				}
 			}
