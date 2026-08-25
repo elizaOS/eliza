@@ -423,6 +423,15 @@ describe("serve-path security headers (stored-XSS defence)", () => {
     );
     expect(sniffMarkupMime(Buffer.from([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
   });
+
+  it("detects SVG/HTML even when padded with excess leading whitespace", () => {
+    const paddedSvg = Buffer.from(" ".repeat(65) + "<svg onload=alert(1)></svg>");
+    expect(sniffMarkupMime(paddedSvg)).toBe("image/svg+xml");
+    const paddedHtml = Buffer.from("\n".repeat(80) + "<html><body>hi</body></html>");
+    expect(sniffMarkupMime(paddedHtml)).toBe("text/html");
+    const paddedXmlSvg = Buffer.from(" ".repeat(70) + "<?xml version='1.0'?><svg/>");
+    expect(sniffMarkupMime(paddedXmlSvg)).toBe("image/svg+xml");
+  });
 });
 
 describe("selectMediaToEvict", () => {
