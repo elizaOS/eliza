@@ -64,13 +64,17 @@ async function muteControl(
   label: string,
 ): Promise<void> {
   try {
-    const handle = await page.waitForSelector(selectors[0], {
-      timeout: MUTE_PROBE_TIMEOUT_MS,
-    });
-    if (handle) {
-      await input.click(page, handle);
-      logger.info(`[GoogleMeetJoin] ${label} toggled off`);
-    }
+    // Race the FULL ordered selector list, not just selectors[0]: the
+    // structural selectors rotate between Meet releases, and a missed
+    // toggle leaves the mic/camera unmuted while logging "already off".
+    const { handle } = await waitForAnySelector(
+      page,
+      selectors,
+      MUTE_PROBE_TIMEOUT_MS,
+      label,
+    );
+    await input.click(page, handle);
+    logger.info(`[GoogleMeetJoin] ${label} toggled off`);
   } catch {
     logger.info(`[GoogleMeetJoin] ${label} already off or not present`);
   }
