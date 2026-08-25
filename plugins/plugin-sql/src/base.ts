@@ -2329,8 +2329,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (
       !Number.isSafeInteger(params.offset) ||
       params.offset < 0 ||
-      !Number.isSafeInteger(params.limit) ||
-      params.limit < 1
+      (params.limit !== undefined && (!Number.isSafeInteger(params.limit) || params.limit < 1))
     ) {
       throw new ElizaError(
         "Document range read requires a non-negative offset and positive limit",
@@ -2372,6 +2371,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               FROM grouped_lines
               GROUP BY unit_index
             )`;
+      const rangeFilter =
+        params.limit === undefined
+          ? sql`unit_index >= ${params.offset}`
+          : sql`unit_index >= ${params.offset}
+              AND unit_index < ${params.offset + params.limit}`;
       const result = await tx.execute(sql`
         WITH authorized AS (
           SELECT content->>'text' AS source_text, metadata
@@ -2383,8 +2387,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           COALESCE(
             string_agg(unit_text, '' ORDER BY unit_index)
               FILTER (
-                WHERE unit_index >= ${params.offset}
-                  AND unit_index < ${params.offset + params.limit}
+                WHERE ${rangeFilter}
               ),
             ''
           ) AS text,
@@ -2410,7 +2413,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return {
         text: typeof row.text === "string" ? row.text : "",
         start,
-        end: Math.min(start + params.limit, total),
+        end: params.limit === undefined ? total : Math.min(start + params.limit, total),
         total,
         documentRevision: Number(row.document_revision ?? 0),
         ...(typeof row.revision_attempt_id === "string"

@@ -115,9 +115,7 @@ const outputCompletenessBoundaryCalls: Record<string, readonly RegExp[]> = {
 };
 
 const guardedSources: Record<string, readonly RegExp[]> = {
-	"plugins/plugin-inbox/src/actions/inbox.ts": [
-		/:\s*50;/,
-	],
+	"plugins/plugin-inbox/src/actions/inbox.ts": [/:\s*50;/],
 	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
 	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
 		/DEFAULT_INBOX_LIMIT/,
@@ -127,6 +125,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-inbox/src/inbox/message-fetcher.ts": [
 		/opts\.limit\s*\?\?\s*50/,
 		/for\s*\(const msg of triageFeed\.messages\.slice/,
+	],
+	"plugins/plugin-inbox/src/inbox/unsubscribe-service.ts": [
+		/DEFAULT_SCAN_MAX_MESSAGES/,
+		/MAX_SENDERS_RETURNED/,
+		/Math\.min\(\s*1000/,
+	],
+	"plugins/plugin-finances/src/services/subscriptions-service.ts": [
+		/MAX_AUDIT_MESSAGES/,
 	],
 	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
 	"packages/training/scripts/rl/tokenization_utils.py": [
@@ -160,9 +166,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/\.slice\(-50\)/,
 		/maxTokens:\s*260/,
 	],
-	"packages/agent/src/api/diagnostics-routes.ts": [
-		/entries\.slice\(-\d+\)/,
-	],
+	"packages/agent/src/api/diagnostics-routes.ts": [/entries\.slice\(-\d+\)/],
 	"packages/agent/src/api/remote-capability-routes.ts": [
 		/appendTrustAuditRecord[\s\S]{0,700}\.slice\(-\d+\)/,
 	],
@@ -170,9 +174,7 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/pushWithBatchEvict\(\s*state\.logBuffer/,
 		/state\.logBuffer\.splice\(/,
 	],
-	"packages/agent/src/api/server-helpers-auth.ts": [
-		/rawAuth\.slice\(/,
-	],
+	"packages/agent/src/api/server-helpers-auth.ts": [/rawAuth\.slice\(/],
 	"packages/agent/scripts/live-sandbox-smoke.ts": [
 		/this\.stderr[^\n]*\.slice\(/,
 	],
@@ -204,9 +206,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/this\.events\.splice\(/,
 		/value\.slice\(0,\s*50\)/,
 	],
-	"packages/app-core/platforms/electrobun/src/native/browser-bridge-broker-server.ts": [
-		/stderr[^\n]*\.slice\(/,
-	],
+	"packages/app-core/platforms/electrobun/src/native/browser-bridge-broker-server.ts":
+		[/stderr[^\n]*\.slice\(/],
 	"packages/app-core/platforms/electrobun/src/native/permissions.ts": [
 		/stderr\.trim\(\)\.slice\(/,
 	],
@@ -245,6 +246,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/maxResults:\s*opts\.limit\s*\?\?\s*50/,
 		/maxResults:\s*filters\.limit\s*\?\?\s*25/,
 		/listMessages\(runtime,\s*\{\s*limit:\s*100\s*\}\)/,
+		/truncateWellFormed/,
+		/clip\(draft\.body/,
+		/GMAIL_READ_(?:DEFAULT|MAX)_(?:BYTES|UNITS)/,
+		/GMAIL_READ_UNIT_TOO_LARGE/,
+	],
+	"plugins/plugin-google-workspace/src/people.ts": [
+		/normalizedPageSize\(params\.maxResults,\s*MAX_SEARCH_PAGE_SIZE\)/,
+		/return\s+results\.slice\(0,\s*pageSize\)/,
 	],
 	"plugins/plugin-personal-assistant/src/lifeops/domains/gmail-service.ts": [
 		/DEFAULT_GMAIL_(?:TRIAGE_MAX_RESULTS|SEARCH_LIMIT)/,
@@ -268,6 +277,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/pullWhatsAppRecent\(limit\s*=\s*25/,
 		/Math\.min\(Math\.max\(1,\s*Math\.floor\(limit\)\),\s*500\)/,
 	],
+	"plugins/plugin-personal-assistant/src/lifeops/domains/reminders-service.ts":
+		[
+			/getMemoriesByRoomIds\(\{[\s\S]{0,160}limit:\s*50/,
+			/collectNearbyReminderTitles\(\{[\s\S]{0,240}limit:\s*3/,
+			/titles\.length\s*>=\s*args\.limit/,
+		],
 	"plugins/plugin-personal-assistant/src/lifeops/service.ts": [
 		/pullWhatsAppRecent\(limit\s*=\s*25/,
 	],
@@ -280,6 +295,13 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/database/inMemoryAdapter.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
+		/const limit = params\.limit \?\? 100;[\s\S]{0,200}connectorAccountsById/,
+	],
+	"packages/core/src/connectors/account-manager.ts": [
+		/listConnectorAccounts\(\{[\s\S]{0,120}limit:\s*500/,
+	],
+	"plugins/plugin-sql/src/stores/connectorAccount.store.ts": [
+		/const limit = params\.limit \?\? 100/,
 	],
 	"plugins/plugin-inmemorydb/adapter.ts": [
 		/params\.count\s*\?\?\s*params\.limit\s*\?\?\s*10/,
@@ -291,10 +313,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-web-search/src/services/webSearchService.ts": [
 		/maxResults:\s*options\?\.limit\s*\?\?\s*3/,
 	],
-	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java": [
-		/getInt\("maxTokens",\s*48\)/,
-		/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
-	],
+	"packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoicePlugin.java":
+		[
+			/getInt\("maxTokens",\s*48\)/,
+			/maxTokens\s*!=\s*null\s*\?\s*maxTokens\s*:\s*48/,
+		],
 	"packages/cloud/shared/src/lib/utils/ai-json-parse.ts": [
 		/truncateWellFormed/,
 		/toWellFormedUnicode\(extracted\),\s*200/,
@@ -346,6 +369,25 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/Math\.min\(Math\.floor\(limit\),\s*200\)/,
 		/Math\.max\(limit,\s*100\)/,
 	],
+	"plugins/plugin-discord/service.ts": [
+		/Math\.max\(params\.limit\s*\?\?\s*100,\s*100\)/,
+		/\.slice\(0,\s*params\.limit\s*\?\?\s*25\)/,
+		/Math\.min\(Number\(params\.limit\),\s*100\)/,
+	],
+	"plugins/plugin-discord/triage-adapter.ts": [
+		/DEFAULT_LIST_LIMIT/,
+		/MAX_CHANNELS_PER_SWEEP/,
+		/PER_CHANNEL_FETCH_CAP/,
+		/truncateWellFormed/,
+		/SNIPPET_LENGTH/,
+		/clip\((?:text|draft\.body)/,
+	],
+	"plugins/plugin-slack/src/service.ts": [
+		/normalizeConnectorLimit\(params\.limit,\s*25\)/,
+		/Math\.max\(requestedLimit,\s*100\)/,
+		/readHistory\(channelId,\s*\{\s*limit:\s*10\s*\}/,
+		/conversations\.replies\(\{[\s\S]{0,120}limit:\s*10/,
+	],
 	"plugins/plugin-x/src/services/x.service.ts": [
 		/clampLimit\(params\.limit,\s*20,\s*100\)/,
 		/clampLimit\(params\.limit,\s*25,\s*50\)/,
@@ -362,6 +404,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-x/src/client/tweets.ts": [
 		/while\s*\(totalFetched\s*<\s*maxTweets\)/,
+	],
+	"plugins/plugin-x/src/utils.ts": [
+		/Falling back to truncated Tweet/,
+		/truncateToCompleteSentence/,
+	],
+	"packages/logger/src/logger.ts": [
+		/MAX_PROMPT_LOG_CHARS/,
+		/\[TRUNCATED[^\]]*more chars\]/,
 	],
 	"packages/core/src/action-docs.ts": [
 		/import\s*\{\s*compressPromptDescription/,
@@ -417,16 +467,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/capped at 20/,
 		/\.slice\([^)]*20/,
 	],
-	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts": [
-		/NUDGE_MAX_OUTPUT_TOKENS/,
-		/maxOutputTokens:/,
-	],
-	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts": [
-		/maxOutputTokens:\s*\d+/,
-	],
-	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts": [
-		/maxOutputTokens:\s*\d+/,
-	],
+	"packages/cloud/shared/src/lib/services/eliza-app/connection-enforcement.ts":
+		[/NUDGE_MAX_OUTPUT_TOKENS/, /maxOutputTokens:/],
+	"packages/cloud/shared/src/lib/services/discord-automation/app-automation.ts":
+		[/maxOutputTokens:\s*\d+/],
+	"packages/cloud/shared/src/lib/services/telegram-automation/app-automation.ts":
+		[/maxOutputTokens:\s*\d+/],
 	"packages/cloud/shared/src/lib/services/doordash-browser-run.ts": [
 		/\.slice\(0,\s*20\)/,
 		/\.slice\(0,\s*100\)/,
@@ -466,9 +512,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"packages/cloud/shared/src/lib/steward-sync.ts": [
 		/error\.stack[^\n]*\.slice\(/,
 	],
-	"packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts": [
-		/params\.error\.slice\(/,
-	],
+	"packages/cloud/shared/src/db/repositories/agent-backup-restore-operations.ts":
+		[/params\.error\.slice\(/],
 	"packages/cloud/shared/src/lib/services/room-title.ts": [
 		/result\.text[\s\S]{0,240}\.slice\(/,
 		/result\.text[\s\S]{0,240}\.split\("\\n"\)/,
@@ -477,19 +522,18 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		[/text\.trim\(\)\.slice\(0,\s*280\)/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-chat.ts":
 		[/maxOutputTokens:\s*512/],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-turn-trace-recorder.ts": [
-		/MAX_ACTION_STAGES/,
-		/actionResults[^\n]*\.slice\(/,
-	],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-turn-trace-recorder.ts":
+		[/MAX_ACTION_STAGES/, /actionResults[^\n]*\.slice\(/],
 	"packages/cloud/shared/src/lib/services/shared-runtime/shared-facts.ts": [
 		/SHARED_FACTS_MAX_PER_TURN/,
 	],
-	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-timing.ts": [
-		/MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS/,
-		/MAX_SHARED_PROVIDER_TIMING_CALL_COUNT/,
-		/modelCalls\.length\s*</,
-		/contextIds[\s\S]{0,240}\.slice\(/,
-	],
+	"packages/cloud/shared/src/lib/services/shared-runtime/shared-runtime-timing.ts":
+		[
+			/MAX_SHARED_PROVIDER_TIMING_RECORDED_CALLS/,
+			/MAX_SHARED_PROVIDER_TIMING_CALL_COUNT/,
+			/modelCalls\.length\s*</,
+			/contextIds[\s\S]{0,240}\.slice\(/,
+		],
 	"packages/core/src/runtime/evaluator.ts": [
 		/MAX_EVALUATOR_INPUT_CHARS/,
 		/chars truncated/,
@@ -524,7 +568,20 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/core/src/features/documents/service.ts": [
 		/limit:\s*(?:20|40|1_000)[,\n]/,
+		/options\.limit[\s\S]{0,160}:\s*25/,
+		/Math\.min\(Math\.floor\(options\.limit\),\s*DOCUMENT_LIST_MAX_LIMIT\)/,
 	],
+	"packages/core/src/features/documents/actions.ts": [
+		/DOCUMENT_READ_DEFAULT_LIMIT/,
+		/value\s*>\s*100/,
+		/Document read limit exceeds 100/,
+	],
+	"packages/core/src/features/documents/llm.ts": [
+		/MAX_OUTPUT_TOKENS/,
+		/maxOutputTokens\s*:/,
+	],
+	"packages/core/src/features/documents/types.ts": [/MAX_OUTPUT_TOKENS/],
+	"packages/core/src/features/documents/config.ts": [/MAX_OUTPUT_TOKENS/],
 	"packages/core/src/features/documents/provider.ts": [
 		/PINNED_DOCUMENT_(?:TOKEN_BUDGET|TRUNCATION_MARKER)/,
 		/truncateWellFormed/,
@@ -605,6 +662,12 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
 		/formatCandidates[\s\S]{0,300}\.slice\(0,/,
+		/MEMORY_READ_(?:DEFAULT|MAX)_BYTES/,
+	],
+	"packages/core/src/features/working-memory/readAttachmentAction.ts": [
+		/ATTACHMENT_READ_(?:TOTAL_PAGE|MAX_ITEM)_BYTES/,
+		/fairLimit/,
+		/maximum page size/,
 	],
 	"packages/cloud/shared/src/lib/eliza/plugin-oauth/actions/oauth.ts": [
 		/active\.slice\(0,/,
@@ -727,14 +790,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/CALL_LOG_LIMIT/,
 		/listRecentCalls\(\{\s*limit:/,
 	],
-	"plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt": [
-		/getInt\("limit"\)\s*\?:\s*\d+/,
-		/limit\s*>\s*\d+/,
-	],
-	"plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt": [
-		/getInt\("limit"\)\s*\?:\s*\d+/,
-		/limit\s*>\s*\d+/,
-	],
+	"plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts/ContactsPlugin.kt":
+		[/getInt\("limit"\)\s*\?:\s*\d+/, /limit\s*>\s*\d+/],
+	"plugins/plugin-native-phone/android/src/main/java/ai/eliza/plugins/phone/PhonePlugin.kt":
+		[/getInt\("limit"\)\s*\?:\s*\d+/, /limit\s*>\s*\d+/],
 	"plugins/plugin-relationships/src/providers/entity-graph.ts": [
 		/MAX_ENTITIES/,
 		/MAX_EDGES/,
@@ -802,6 +861,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	"plugins/plugin-agent-orchestrator/src/services/acp-service.ts": [
 		/wellFormed\.length\s*>\s*500/,
 		/truncateWellFormed\(wellFormed,\s*200\)/,
+		/STDERR_CAP_BYTES/,
+		/capStderr\(/,
 	],
 	"packages/skills/src/formatter.ts": [/raw\.slice\(0,\s*1024\)/],
 	"plugins/plugin-personal-assistant/src/actions/autofill.ts": [
@@ -859,15 +920,6 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"plugins/plugin-google-workspace/src/gmail-message-connector.ts": [
 		/SUBJECT_MAX_LENGTH/,
-	],
-	"plugins/plugin-google-workspace/src/lifeops-message-adapter.ts": [
-		/truncateWellFormed/,
-		/clip\(draft\.body/,
-	],
-	"plugins/plugin-discord/triage-adapter.ts": [
-		/truncateWellFormed/,
-		/SNIPPET_LENGTH/,
-		/clip\((?:text|draft\.body)/,
 	],
 	"plugins/plugin-discord/slash-commands.ts": [
 		/cleanedAnswer\.slice\(/,
@@ -944,6 +996,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 	],
 	"packages/agent/src/runtime/prompt-optimization.ts": [
 		/actionCompactionEnabled/,
+		/requestedOutputTokens\s*\?\?\s*metadata\.maxTokens/,
+		/Math\.min\([\s\S]{0,120}configuredOutputTokens/,
 	],
 	"packages/agent/src/runtime/trajectory-internals.ts": [
 		/maxTokens:\s*512/,
@@ -1144,6 +1198,23 @@ describe("prompt integrity policy", () => {
 				);
 			}
 		}
+	});
+
+	it("does not silently overwrite source-audit rules with duplicate keys", () => {
+		const source = readFileSync(fileURLToPath(import.meta.url), "utf8");
+		const declarationStart = source.indexOf("const guardedSources");
+		const declarationEnd = source.indexOf("\n};", declarationStart);
+		const declaration = source.slice(declarationStart, declarationEnd);
+		const paths = [...declaration.matchAll(/^\s*"([^"]+)":\s*\[/gmu)].map(
+			(match) => match[1],
+		);
+		const seen = new Set<string>();
+		const duplicates = paths.filter((path) => {
+			if (seen.has(path)) return true;
+			seen.add(path);
+			return false;
+		});
+		expect(duplicates).toEqual([]);
 	});
 
 	it("keeps both computer-use emitters behind the shared rejection boundary", () => {

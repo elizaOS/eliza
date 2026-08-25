@@ -185,6 +185,28 @@ describe("ATTACHMENT read delivery selection", () => {
 		expect(JSON.stringify(result?.promptData)).not.toContain(PAGE_MARKER);
 	});
 
+	it("passes complete selected attachment content when pagination was not requested", async () => {
+		const completeText = `${"a".repeat(100_000)}COMPLETE-ATTACHMENT-END`;
+		const attachment = {
+			...makeAttachment(),
+			id: "complete-attachment",
+			text: completeText,
+		};
+		const { result, calls } = await runRead({
+			modelResponse: SUMMARY,
+			text: "read the attachment",
+			attachments: [attachment],
+			handlerParams: { attachmentId: attachment.id },
+		});
+
+		expect(calls[0]?.prompt).toContain("COMPLETE-ATTACHMENT-END");
+		expect(result?.text).toBe(completeText);
+		expect(
+			(result?.data as { readView: { slice: { completeness: string } } })
+				.readView.slice.completeness,
+		).toBe("complete");
+	});
+
 	it("a real question next to the link answers the question, not a page take", async () => {
 		const { calls } = await runRead({
 			modelResponse: "It supports encrypted hourly backups.",
@@ -340,7 +362,7 @@ describe("ATTACHMENT read delivery selection", () => {
 		{ offset: Buffer.byteLength(STORED_PAGE) + 1 },
 		{ offset: Number.MAX_SAFE_INTEGER + 1 },
 		{ limit: 0 },
-		{ limit: 64 * 1024 + 1 },
+		{ limit: Number.MAX_SAFE_INTEGER + 1 },
 	])("fails explicitly for an invalid attachment range %#", async (range) => {
 		const { result, calls } = await runRead({
 			modelResponse: SUMMARY,
@@ -351,9 +373,7 @@ describe("ATTACHMENT read delivery selection", () => {
 			},
 		});
 		expect(result?.success).toBe(false);
-		expect(result?.error).toMatch(
-			/safe integer|maximum page size|offset exceeds the source/u,
-		);
+		expect(result?.error).toMatch(/safe integer|offset exceeds the source/u);
 		expect(calls).toHaveLength(0);
 	});
 

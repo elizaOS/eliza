@@ -45,7 +45,7 @@ function harness(text: string) {
 		readDocumentRange: vi.fn(
 			async (
 				_documentId: UUID,
-				params: { unit: "line" | "fragment"; offset: number; limit: number },
+				params: { unit: "line" | "fragment"; offset: number; limit?: number },
 			) => {
 				const lines =
 					currentText.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
@@ -63,12 +63,17 @@ function harness(text: string) {
 									return fragments;
 								}, [])
 								.filter(Boolean);
+				const selected =
+					params.limit === undefined
+						? units.slice(params.offset)
+						: units.slice(params.offset, params.offset + params.limit);
 				return {
-					text: units
-						.slice(params.offset, params.offset + params.limit)
-						.join(""),
+					text: selected.join(""),
 					start: params.offset,
-					end: Math.min(params.offset + params.limit, units.length),
+					end:
+						params.limit === undefined
+							? units.length
+							: Math.min(params.offset + params.limit, units.length),
 					total: units.length,
 					documentRevision: currentRevision,
 					revisionAttemptId: `native-secret-${currentRevision}`,
@@ -98,6 +103,32 @@ function harness(text: string) {
 }
 
 describe("DOCUMENT progressive read", () => {
+	it("returns the complete document when pagination was not requested", async () => {
+		const source = Array.from(
+			{ length: 501 },
+			(_, index) => `line-${index}\n`,
+		).join("");
+		const { runtime, service } = harness(source);
+
+		const result = await documentAction.handler?.(
+			runtime,
+			request(),
+			undefined,
+			options({ action: "read", documentId: DOCUMENT_ID }),
+		);
+
+		expect(result?.text).toBe(source);
+		expect(service.readDocumentRange).toHaveBeenCalledWith(
+			DOCUMENT_ID,
+			{ unit: "line", offset: 0 },
+			request(),
+		);
+		expect(
+			(result?.data as { readView: { slice: { completeness: string } } })
+				.readView.slice.completeness,
+		).toBe("complete");
+	});
+
 	it("reads late line pages exactly and carries only ReadView metadata in structured data", async () => {
 		const lines = Array.from(
 			{ length: 205 },
@@ -232,7 +263,7 @@ describe("DOCUMENT progressive read", () => {
 		{ offset: Number.MAX_SAFE_INTEGER + 1 },
 		{ limit: -1 },
 		{ limit: 0 },
-		{ limit: 101 },
+		{ limit: Number.MAX_SAFE_INTEGER + 1 },
 	])("fails explicitly for an invalid read range %#", async (range) => {
 		const { runtime } = harness("one\ntwo\n");
 		const result = await documentAction.handler?.(

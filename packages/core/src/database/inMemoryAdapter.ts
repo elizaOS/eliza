@@ -937,14 +937,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 							return fragments;
 						}, [])
 						.filter((fragment) => fragment.length > 0);
-		const text = units
-			.slice(params.offset, params.offset + params.limit)
-			.join("");
+		const selected =
+			params.limit === undefined
+				? units.slice(params.offset)
+				: units.slice(params.offset, params.offset + params.limit);
+		const text = selected.join("");
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 		return {
 			text,
 			start: params.offset,
-			end: Math.min(params.offset + params.limit, units.length),
+			end:
+				params.limit === undefined
+					? units.length
+					: Math.min(params.offset + params.limit, units.length),
 			total: units.length,
 			documentRevision:
 				typeof metadata.documentRevision === "number"
@@ -2417,8 +2422,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<ConnectorAccountRecord[]> {
 		const agentId = params.agentId ?? DEFAULT_UUID;
 		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
-		return Array.from(this.connectorAccountsById.values())
+		const accounts = Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
 			.filter((account) => account.deletedAt == null)
 			.filter(
@@ -2436,15 +2440,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 						: 0;
 				return bTime - aTime || a.id.localeCompare(b.id);
 			})
-			.slice(offset, offset + limit)
-			.map((account) => ({
-				...account,
-				scopes: [...account.scopes],
-				purpose: [...account.purpose],
-				capabilities: [...account.capabilities],
-				profile: cloneConnectorJsonObject(account.profile),
-				metadata: cloneConnectorJsonObject(account.metadata),
-			}));
+			.slice(offset);
+		const selected =
+			params.limit === undefined ? accounts : accounts.slice(0, params.limit);
+		return selected.map((account) => ({
+			...account,
+			scopes: [...account.scopes],
+			purpose: [...account.purpose],
+			capabilities: [...account.capabilities],
+			profile: cloneConnectorJsonObject(account.profile),
+			metadata: cloneConnectorJsonObject(account.metadata),
+		}));
 	}
 
 	async getConnectorAccount(

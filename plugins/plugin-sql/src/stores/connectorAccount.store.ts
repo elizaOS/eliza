@@ -223,15 +223,16 @@ export class ConnectorAccountStore implements Store {
       if (params.status) {
         conditions.push(eq(connectorAccountsTable.status, params.status));
       }
-      const limit = params.limit ?? 100;
       const offset = params.offset ?? 0;
-      const rows = await this.db
+      const orderedQuery = this.db
         .select()
         .from(connectorAccountsTable)
         .where(and(...conditions))
-        .orderBy(desc(connectorAccountsTable.updatedAt), connectorAccountsTable.id)
-        .limit(limit)
-        .offset(offset);
+        .orderBy(desc(connectorAccountsTable.updatedAt), connectorAccountsTable.id);
+      const rows =
+        params.limit === undefined
+          ? await orderedQuery.offset(offset)
+          : await orderedQuery.limit(params.limit).offset(offset);
       return rows.map(mapAccountRow);
     }, "ConnectorAccountStore.listAccounts");
   }

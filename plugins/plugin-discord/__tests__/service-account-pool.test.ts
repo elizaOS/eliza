@@ -136,12 +136,17 @@ function makeDiscordGraph() {
 			// REST fetch — see getConnectorChatContext); fetch remains for the
 			// message operations that do address single messages by id.
 			cache: new Collection(messages),
-			fetch: vi.fn(async (arg?: string | { limit?: number }) => {
-				if (typeof arg === "string") {
-					return messages.get(arg);
-				}
-				return new Collection(messages);
-			}),
+			fetch: vi.fn(
+				async (
+					arg?: string | { limit?: number; before?: string; after?: string },
+				) => {
+					if (typeof arg === "string") {
+						return messages.get(arg);
+					}
+					if (arg?.before || arg?.after) return new Collection();
+					return new Collection(messages);
+				},
+			),
 		},
 		threads: {
 			create: vi.fn(async () => ({
@@ -1099,6 +1104,37 @@ describe("DiscordService account-scoped primitives", () => {
 				},
 			]),
 		);
+	});
+
+	it("paginates complete connector history when limit is omitted", async () => {
+		const { graph, runtime, service } = makeService();
+		const all = Array.from({ length: 201 }, (_, index) =>
+			makeMessage({
+				id: String(900_000_000_000_000_000n - BigInt(index)),
+				content: `message ${index}`,
+				createdTimestamp: 2_000_000 - index,
+			}),
+		);
+		graph.textChannel.messages.fetch = vi.fn(
+			async (params: { before?: string; limit?: number }) => {
+				const start = params.before
+					? all.findIndex((message) => message.id === params.before) + 1
+					: 0;
+				const page = all.slice(start, start + (params.limit ?? 100));
+				return new Collection(page.map((message) => [message.id, message]));
+			},
+		);
+
+		const result = await service.fetchConnectorMessages(
+			{
+				runtime,
+				target: { source: "discord", channelId: graph.textChannel.id },
+			},
+			{ target: { source: "discord", channelId: graph.textChannel.id } },
+		);
+
+		expect(result).toHaveLength(201);
+		expect(graph.textChannel.messages.fetch).toHaveBeenCalledTimes(4);
 	});
 
 	it("serves chat-context history from the gateway cache without a REST fetch or room read", async () => {

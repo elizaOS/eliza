@@ -270,7 +270,7 @@ describe("DOCUMENT structural extraction on hardened messages", () => {
 		);
 		expect(service.readDocumentRange).toHaveBeenCalledWith(
 			DOC_ID,
-			{ unit: "line", offset: 0, limit: 100 },
+			{ unit: "line", offset: 0 },
 			memory,
 		);
 		expect(res.text).not.toContain("SECURITY NOTICE");

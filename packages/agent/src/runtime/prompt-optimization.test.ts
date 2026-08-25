@@ -419,6 +419,39 @@ describe("installPromptOptimizations", () => {
     expect(promptOptimizationOf(payload)?.outputReserveTokens).toBeUndefined();
   });
 
+  it("does not turn model-capacity metadata into an outbound output cap", async () => {
+    const { runtime, calls } = installRecordingRuntime({
+      models: {
+        providers: {
+          test: {
+            models: [
+              {
+                id: "metadata-capped-model",
+                name: "Metadata capped model",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 1_000_000,
+                maxTokens: 4_096,
+              },
+            ],
+          },
+        },
+      },
+    } as ElizaConfig);
+    await callModel(runtime, ModelType.TEXT_LARGE, {
+      prompt: "preserve the provider's complete output",
+      model: "metadata-capped-model",
+    });
+    const payload = payloadAt(calls, 0) as {
+      maxTokens?: number;
+      maxOutputTokens?: number;
+    };
+    expect(payload.maxTokens).toBeUndefined();
+    expect(payload.maxOutputTokens).toBeUndefined();
+    expect(promptOptimizationOf(payload)?.outputReserveTokens).toBeUndefined();
+  });
+
   it("injects active-view awareness into the last user message, not the first", async () => {
     setActiveViewContext(VIEW);
     const { runtime, calls } = installRecordingRuntime();

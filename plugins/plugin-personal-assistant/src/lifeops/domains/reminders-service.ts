@@ -993,7 +993,6 @@ function collectNearbyReminderTitles(args: {
   currentAnchorAt: string | null;
   occurrences: LifeOpsOccurrenceView[];
   events: Array<{ id: string; title: string; startAt: string }>;
-  limit: number;
 }): string[] {
   if (!args.currentAnchorAt) return [];
   const anchorMs = Date.parse(args.currentAnchorAt);
@@ -1006,7 +1005,6 @@ function collectNearbyReminderTitles(args: {
     if (occMs !== null && Math.abs(occMs - anchorMs) <= windowMs) {
       titles.push(occ.title);
     }
-    if (titles.length >= args.limit) return titles;
   }
   for (const event of args.events) {
     if (event.id === args.currentOwnerId) continue;
@@ -1014,7 +1012,6 @@ function collectNearbyReminderTitles(args: {
     if (Math.abs(eventMs - anchorMs) <= windowMs) {
       titles.push(event.title);
     }
-    if (titles.length >= args.limit) return titles;
   }
   return titles;
 }
@@ -1385,7 +1382,6 @@ export class RemindersDomain {
       const memories = await this.ctx.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
-        limit: 50,
       });
       if (!Array.isArray(memories) || memories.length === 0) {
         return noResponse;
@@ -5328,7 +5324,6 @@ export class RemindersDomain {
           currentAnchorAt: occurrence.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition,
@@ -5399,7 +5394,6 @@ export class RemindersDomain {
           currentAnchorAt: reminder.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: null,
@@ -5453,7 +5447,6 @@ export class RemindersDomain {
           currentAnchorAt: occurrence.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: definitionsById.get(occurrence.definitionId) ?? null,
@@ -5493,7 +5486,6 @@ export class RemindersDomain {
           currentAnchorAt: event.startAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: null,

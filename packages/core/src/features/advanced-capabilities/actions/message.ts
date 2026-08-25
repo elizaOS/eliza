@@ -3041,9 +3041,6 @@ async function handleSend(
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
-const MEMORY_READ_DEFAULT_BYTES = 4096;
-const MEMORY_READ_MAX_BYTES = 64 * 1024;
-
 function memoryReadFailure(
 	code: string,
 	text: string,
@@ -3097,13 +3094,11 @@ function memoryScopeAllowsSameRoomRead(
 function safeMemoryReadInteger(
 	value: number | undefined,
 	label: "offset" | "limit",
-	fallback: number,
+	fallback?: number,
 ): number | undefined {
 	if (value === undefined) return fallback;
 	if (!Number.isSafeInteger(value) || value < 0) return undefined;
-	if (label === "limit" && (value < 1 || value > MEMORY_READ_MAX_BYTES)) {
-		return undefined;
-	}
+	if (label === "limit" && value < 1) return undefined;
 	return value;
 }
 
@@ -3168,15 +3163,14 @@ async function handleReadStoredMemory(
 	}
 
 	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
-	const limit = safeMemoryReadInteger(
-		numberParam(params.limit),
-		"limit",
-		MEMORY_READ_DEFAULT_BYTES,
-	);
-	if (offset === undefined || limit === undefined) {
+	const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+	if (
+		offset === undefined ||
+		(params.limit !== undefined && limit === undefined)
+	) {
 		return memoryReadFailure(
 			"MESSAGE_MEMORY_INVALID_RANGE",
-			`Stored-message offset must be a nonnegative safe integer and limit must be 1-${MEMORY_READ_MAX_BYTES} bytes.`,
+			"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
 		);
 	}
 
@@ -3189,7 +3183,8 @@ async function handleReadStoredMemory(
 			{ totalBytes: bytes.length },
 		);
 	}
-	let end = Math.min(offset + limit, bytes.length);
+	let end =
+		limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
 	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
 	if (end === offset && offset < bytes.length) {
 		return memoryReadFailure(
@@ -3458,8 +3453,7 @@ async function handleReadChannel(
 			});
 		}
 		memories.sort(compareMemoryByCreatedAtDesc);
-		const limited =
-			limit === undefined ? memories : memories.slice(0, limit);
+		const limited = limit === undefined ? memories : memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
 			limited.length
@@ -3506,8 +3500,9 @@ async function handleReadChannel(
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
 
 		const raw = (await runtime.getMemories(queryParams)) as Memory[];
-		const memories =
-			(limit === undefined ? raw : raw.slice(0, limit)).reverse();
+		const memories = (
+			limit === undefined ? raw : raw.slice(0, limit)
+		).reverse();
 		return opSuccess(
 			"read_channel",
 			`Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
@@ -3890,9 +3885,7 @@ async function handleSearch(
 			.map((item) => item.memory)
 			.filter((m) => m.content.text);
 		const results =
-			limit === undefined
-				? matchingResults
-				: matchingResults.slice(0, limit);
+			limit === undefined ? matchingResults : matchingResults.slice(0, limit);
 		return opSuccess(
 			"search",
 			conversationSearchText(query, results.length, recall.availability),

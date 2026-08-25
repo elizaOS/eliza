@@ -766,8 +766,6 @@ async function handleSearch(
 	});
 }
 
-const DOCUMENT_READ_DEFAULT_LIMIT = 100;
-
 type DocumentReadUnit = "line" | "fragment";
 
 function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
@@ -819,10 +817,10 @@ function requiredReadInteger(
 			context: { field: label },
 		});
 	}
-	if (label === "limit" && (value < 1 || value > 100)) {
-		throw new ElizaError("Document read limit exceeds 100 units", {
+	if (label === "limit" && value < 1) {
+		throw new ElizaError("Document read limit must be positive", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: label, maximum: 100 },
+			context: { field: label },
 		});
 	}
 	return value;
@@ -873,27 +871,26 @@ async function handleRead(
 	const unit: DocumentReadUnit =
 		params.unit === "fragment" ? "fragment" : "line";
 	const offset = requiredReadInteger(params.offset, "offset", 0);
-	const limit = requiredReadInteger(
-		params.limit,
-		"limit",
-		DOCUMENT_READ_DEFAULT_LIMIT,
-	);
-	const bounded = await service.readDocumentRange(
+	const limit =
+		params.limit === undefined
+			? undefined
+			: requiredReadInteger(params.limit, "limit", 1);
+	const documentRange = await service.readDocumentRange(
 		documentId,
-		{ unit, offset, limit },
+		{ unit, offset, ...(limit === undefined ? {} : { limit }) },
 		message,
 	);
-	if (!bounded) {
+	if (!documentRange) {
 		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
-	if (offset > bounded.total) {
+	if (offset > documentRange.total) {
 		throw new ElizaError("Document read offset exceeds the source", {
 			code: "DOCUMENT_READ_INVALID_RANGE",
-			context: { field: "offset", total: bounded.total },
+			context: { field: "offset", total: documentRange.total },
 		});
 	}
-	const page = documentReadPage(bounded, documentId, unit);
+	const page = documentReadPage(documentRange, documentId, unit);
 	if (
 		page.view.slice.range.start > 0 &&
 		(typeof params.expectedRevision !== "string" ||
@@ -1214,8 +1211,9 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
+	const requestedLimit = getLimit(params.limit, 0);
 	const listResult = await service.listDocumentsDetailed(message, {
-		limit: getLimit(params.limit, 25),
+		...(requestedLimit > 0 ? { limit: requestedLimit } : {}),
 		offset,
 		query,
 		scope,

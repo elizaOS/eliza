@@ -3721,6 +3721,29 @@ describe("AcpService", () => {
     );
   });
 
+  it("preserves complete subprocess stderr in a failed prompt result", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "complete-stderr",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    const completeStderr = `STDERR-BEGIN-${"x".repeat(100_000)}-STDERR-END`;
+    prompt.proc.stderr.emit("data", Buffer.from(completeStderr));
+    prompt.proc.emit("close", 2, null);
+
+    await expect(sent).resolves.toMatchObject({ error: completeStderr });
+  });
+
   it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
     const service = new AcpService(runtime());
     const classify = (

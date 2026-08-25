@@ -569,6 +569,18 @@ function normalizeDiscordConnectorQuery(value: string): string {
 		.toLowerCase();
 }
 
+function normalizeRequestedConnectorLimit(
+	limit: number | undefined,
+): number | undefined {
+	if (limit === undefined) return undefined;
+	if (!Number.isSafeInteger(limit) || limit <= 0) {
+		throw new RangeError(
+			"Discord connector limit must be a positive safe integer",
+		);
+	}
+	return limit;
+}
+
 function scoreDiscordConnectorMatch(
 	query: string,
 	id: string,
@@ -3071,34 +3083,63 @@ export class DiscordService extends Service implements IDiscordService {
 			params.target,
 			params,
 		);
-		const limit = Number.isFinite(params.limit)
-			? Math.max(1, Math.min(Number(params.limit), 100))
-			: 25;
-		const fetchParams: { limit: number; before?: string; after?: string } = {
-			limit,
-		};
-		if (params.before ?? params.cursor) {
-			fetchParams.before = params.before ?? params.cursor;
-		}
-		if (params.after) {
-			fetchParams.after = params.after;
-		}
-
-		const fetched = await channel.messages.fetch(fetchParams);
-		const memories: Memory[] = [];
-		for (const discordMessage of fetched.values()) {
-			const memory = await this.buildMemoryFromMessage(
-				discordMessage as Message,
-				{ accountId },
+		const requestedLimit = normalizeRequestedConnectorLimit(params.limit);
+		let before = params.before ?? params.cursor;
+		const afterBoundary = params.after;
+		if (before && afterBoundary) {
+			throw new RangeError(
+				"Discord message reads cannot combine before/cursor with after",
 			);
-			if (memory) {
-				memories.push(memory);
-			}
 		}
-		return memories.sort(
+		if (afterBoundary && !/^\d+$/.test(afterBoundary)) {
+			throw new RangeError("Discord after must be a snowflake message id");
+		}
+		const memories: Memory[] = [];
+		const seenCursors = new Set<string>();
+		while (requestedLimit === undefined || memories.length < requestedLimit) {
+			const pageLimit = Math.min(
+				100,
+				requestedLimit === undefined ? 100 : requestedLimit - memories.length,
+			);
+			const fetched = await channel.messages.fetch({
+				limit: pageLimit,
+				...(before ? { before } : {}),
+			});
+			const page = Array.from(fetched.values()) as Message[];
+			if (page.length === 0) break;
+			const eligible = afterBoundary
+				? page.filter((message) => BigInt(message.id) > BigInt(afterBoundary))
+				: page;
+			for (const discordMessage of eligible) {
+				const memory = await this.buildMemoryFromMessage(discordMessage, {
+					accountId,
+				});
+				if (memory) memories.push(memory);
+			}
+			if (
+				afterBoundary &&
+				page.some((message) => BigInt(message.id) <= BigInt(afterBoundary))
+			) {
+				break;
+			}
+			const cursorMessage = page.reduce((selected, candidate) => {
+				return candidate.createdTimestamp < selected.createdTimestamp
+					? candidate
+					: selected;
+			});
+			if (seenCursors.has(cursorMessage.id)) {
+				throw new Error("Discord message pagination repeated a cursor");
+			}
+			seenCursors.add(cursorMessage.id);
+			before = cursorMessage.id;
+		}
+		const sorted = memories.sort(
 			(left, right) =>
 				Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
 		);
+		return requestedLimit === undefined
+			? sorted
+			: sorted.slice(0, requestedLimit);
 	}
 
 	public async searchConnectorMessages(
@@ -3110,23 +3151,25 @@ export class DiscordService extends Service implements IDiscordService {
 			return [];
 		}
 		const author = params.author?.trim().toLowerCase();
+		const requestedLimit = normalizeRequestedConnectorLimit(params.limit);
 		const memories = await this.fetchConnectorMessages(context, {
 			...params,
-			limit: Math.max(params.limit ?? 100, 100),
+			limit: undefined,
 		});
-		return memories
-			.filter((memory) => {
-				const text = String(memory.content.text ?? "").toLowerCase();
-				const name = String(memory.content.name ?? "").toLowerCase();
-				const metadata = memory.metadata as Record<string, unknown> | undefined;
-				const sender = metadata?.sender as Record<string, unknown> | undefined;
-				const username = String(sender?.username ?? "").toLowerCase();
-				const matchesQuery = text.includes(query) || name.includes(query);
-				const matchesAuthor =
-					!author || name.includes(author) || username.includes(author);
-				return matchesQuery && matchesAuthor;
-			})
-			.slice(0, params.limit ?? 25);
+		const matches = memories.filter((memory) => {
+			const text = String(memory.content.text ?? "").toLowerCase();
+			const name = String(memory.content.name ?? "").toLowerCase();
+			const metadata = memory.metadata as Record<string, unknown> | undefined;
+			const sender = metadata?.sender as Record<string, unknown> | undefined;
+			const username = String(sender?.username ?? "").toLowerCase();
+			const matchesQuery = text.includes(query) || name.includes(query);
+			const matchesAuthor =
+				!author || name.includes(author) || username.includes(author);
+			return matchesQuery && matchesAuthor;
+		});
+		return requestedLimit === undefined
+			? matches
+			: matches.slice(0, requestedLimit);
 	}
 
 	public async reactConnectorMessage(

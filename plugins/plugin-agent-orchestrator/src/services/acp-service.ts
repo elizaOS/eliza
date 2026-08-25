@@ -242,7 +242,6 @@ type RunResult = {
   durationMs: number;
 };
 
-const STDERR_CAP_BYTES = 64 * 1024;
 const KILL_GRACE_MS = 5_000;
 // TTL for a per-spawn model lease when neither the spawn nor the service config
 // a timeout — mirrors ACPX_DEFAULT_TIMEOUT_MS (per-prompt) so a lease outlives a
@@ -4179,9 +4178,7 @@ export class AcpService extends Service {
           // from EventEmitter's data listener would crash the host process.
           protocolError = errorMessage(err);
           stopReason = "error";
-          record.stderr = capStderr(
-            `${record.stderr}\nACP protocol error: ${protocolError}`,
-          );
+          record.stderr = `${record.stderr}\nACP protocol error: ${protocolError}`;
           this.log("warn", "invalid acpx prompt result", {
             sessionId: opts.sessionId,
             error: protocolError,
@@ -4213,14 +4210,14 @@ export class AcpService extends Service {
       });
 
       proc.stderr.on("data", (chunk: Buffer) => {
-        record.stderr = capStderr(record.stderr + chunk.toString("utf8"));
+        record.stderr += chunk.toString("utf8");
       });
 
       proc.on("error", (err: NodeJS.ErrnoException) => {
-        record.stderr = capStderr(record.stderr + errorMessage(err));
+        record.stderr += errorMessage(err);
         if (err.code === "ENOENT") {
           const message = `acpx CLI not found at ${this.cliPath}. Set ELIZA_ACP_CLI or npm install -g acpx@latest.`;
-          record.stderr = capStderr(`${record.stderr}\n${message}`);
+          record.stderr = `${record.stderr}\n${message}`;
           if (opts.sessionId)
             this.emitSessionEvent(opts.sessionId, "error", {
               message,
@@ -6187,8 +6184,8 @@ export function normalizeToolOutput(rawOutput: unknown): string {
 
 /**
  * Render a Codex exec record (`{ call_id, command, exit_code, … }`) as a compact
- * one-liner: `$ <command joined> → exit <exit_code>` plus a capped stdout/stderr
- * tail when present. Returns undefined for anything that is not an exec record
+ * one-liner: `$ <command joined> → exit <exit_code>` plus complete stdout/stderr
+ * when present. Returns undefined for anything that is not an exec record
  * (must have BOTH call_id AND command), so non-record output is unaffected.
  */
 function execRecordOneLiner(value: unknown): string | undefined {
@@ -6285,11 +6282,6 @@ function isAuthText(text: string): boolean {
   return /authenticate|unauthorized|\b401\b|login|required auth|api key|invalid_grant/i.test(
     text,
   );
-}
-
-function capStderr(text: string): string {
-  if (Buffer.byteLength(text, "utf8") <= STDERR_CAP_BYTES) return text;
-  return text.slice(-STDERR_CAP_BYTES);
 }
 
 function preview(text: string): string {

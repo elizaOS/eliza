@@ -89,9 +89,6 @@ export function completeAttachmentContent(content: string): string {
 	return content;
 }
 
-const ATTACHMENT_READ_TOTAL_PAGE_BYTES = 16 * 1024;
-const ATTACHMENT_READ_MAX_ITEM_BYTES = 64 * 1024;
-
 type PagedAttachmentRecord = AttachmentRecord & {
 	readView: ReadView;
 };
@@ -113,6 +110,14 @@ function readNonnegativeInteger(
 	return value as number;
 }
 
+function readOptionalPositiveInteger(
+	params: Record<string, unknown>,
+	key: string,
+): number | undefined {
+	if (params[key] === undefined) return undefined;
+	return readNonnegativeInteger(params, key, 1, 1);
+}
+
 function attachmentRevision(record: AttachmentRecord): string {
 	return `attachment:${createHash("sha256")
 		.update(record.attachment.id)
@@ -124,7 +129,7 @@ function attachmentRevision(record: AttachmentRecord): string {
 function pageAttachmentRecord(params: {
 	record: AttachmentRecord;
 	offset: number;
-	limit: number;
+	limit?: number;
 }): PagedAttachmentRecord {
 	const source = Buffer.from(params.record.content, "utf8");
 	if (params.offset > source.length) {
@@ -143,7 +148,10 @@ function pageAttachmentRecord(params: {
 			context: { attachmentId: params.record.attachment.id, offset: start },
 		});
 	}
-	let end = Math.min(start + params.limit, source.length);
+	let end =
+		params.limit === undefined
+			? source.length
+			: Math.min(start + params.limit, source.length);
 	while (end > start && end < source.length && (source[end] & 0xc0) === 0x80) {
 		end -= 1;
 	}
@@ -184,24 +192,7 @@ function pageAttachmentRecords(
 	params: Record<string, unknown>,
 ): PagedAttachmentRecord[] {
 	const offset = readNonnegativeInteger(params, "offset", 0);
-	const requestedLimit = readNonnegativeInteger(params, "limit", 0, 1);
-	const fairLimit = Math.max(
-		1,
-		Math.floor(ATTACHMENT_READ_TOTAL_PAGE_BYTES / Math.max(records.length, 1)),
-	);
-	const limit = Math.min(
-		requestedLimit > 0 ? requestedLimit : fairLimit,
-		ATTACHMENT_READ_MAX_ITEM_BYTES,
-	);
-	if (requestedLimit > ATTACHMENT_READ_MAX_ITEM_BYTES) {
-		throw new ElizaError(
-			"Attachment read limit exceeds the maximum page size",
-			{
-				code: "ATTACHMENT_READ_INVALID_RANGE",
-				context: { maximum: ATTACHMENT_READ_MAX_ITEM_BYTES },
-			},
-		);
-	}
+	const limit = readOptionalPositiveInteger(params, "limit");
 	return records.map((record) =>
 		pageAttachmentRecord({ record, offset, limit }),
 	);
@@ -1220,12 +1211,11 @@ export const readAttachmentAction: Action = {
 		{
 			name: "limit",
 			description:
-				"Maximum UTF-8 bytes per selected attachment. Multiple attachments each receive the same fair page allowance.",
+				"Optional UTF-8 byte page size per selected attachment. Omit to read the complete content.",
 			required: false,
 			schema: {
 				type: "number" as const,
 				minimum: 1,
-				maximum: ATTACHMENT_READ_MAX_ITEM_BYTES,
 			},
 		},
 		{

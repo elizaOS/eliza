@@ -85,7 +85,7 @@ export interface DocumentRequesterContext {
  * context, never a row predicate; document ownership filters are explicit.
  */
 export interface DocumentListQueryParams extends DocumentRequesterContext {
-	limit: number;
+	limit?: number;
 	offset: number;
 	cursor?: DocumentListCursor;
 	query?: string;
@@ -102,22 +102,23 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
-/** Exact unit used by an authorized bounded document read. */
+/** Exact unit used by an authorized document read. */
 export type DocumentRangeUnit = "line" | "fragment";
 
 /**
- * Authorized bounded document read. Offsets and limits count exact retained
- * line or paragraph-like fragment units, never JavaScript string code units.
+ * Authorized document read. Offsets and caller-requested limits count exact
+ * retained line or paragraph-like fragment units, never JavaScript string code
+ * units. Omitting `limit` returns the complete remainder of the source.
  */
 export interface DocumentRangeReadParams extends DocumentRequesterContext {
 	documentId: UUID;
 	unit: DocumentRangeUnit;
 	offset: number;
-	limit: number;
+	limit?: number;
 }
 
 /**
- * Bounded source projection returned by a native adapter. The source
+ * Source projection returned by a native adapter. The source
  * fingerprint is an adapter-internal change detector and must be wrapped in an
  * opaque public revision before it leaves DocumentService.
  */
@@ -1162,7 +1163,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * authorization, counts, or pagination guarantees.
 	 */
 	readonly documentListQueryCapability: 4;
-	/** Native bounded source projection; absent adapters must fail explicitly. */
+	/** Native source projection with optional caller-requested pagination. */
 	readonly documentRangeReadCapability?: 1;
 	queryDocuments(
 		params: DocumentListQueryParams,
