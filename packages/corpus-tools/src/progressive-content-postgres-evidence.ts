@@ -1,56 +1,57 @@
-/** Validates real-Postgres evidence against production storage ownership and bounded-read contracts. */
+/** Validates real-PostgreSQL evidence emitted by the shared production target harness. */
 
 export const CONTENT_CONTEXT_POSTGRES_SCHEMA_VERSION =
-  "elizaos.content-context.postgres.v3" as const;
+  "elizaos.content-context.postgres.v4" as const;
 
 export const CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS = [
   {
     family: "file",
+    adapterId: "coding-tools-file-production-v3",
     authoritativeStore: "filesystem",
     productionMethod: "READ.byteWindow",
-    binaryPolicy: "native-bytes",
+    binaryPolicy: "typed-rejection",
     postgresBacked: false,
-    expectedIndexNames: [],
   },
   {
     family: "document",
+    adapterId: "plugin-sql-postgres-document-production-v1",
     authoritativeStore: "document-store",
     productionMethod: "DatabaseAdapter.readDocumentRange",
     binaryPolicy: "typed-rejection",
     postgresBacked: true,
-    expectedIndexNames: ["idx_document_source_byte_seek"],
   },
   {
     family: "memory",
+    adapterId: "plugin-sql-postgres-memory-production-v1",
     authoritativeStore: "memory-store",
     productionMethod: "DatabaseAdapter.readMessageContentRange",
     binaryPolicy: "typed-rejection",
     postgresBacked: true,
-    expectedIndexNames: ["idx_message_content_byte_seek"],
   },
   {
     family: "email",
+    adapterId: "plugin-sql-postgres-email-production-v1",
     authoritativeStore: "message-store",
     productionMethod: "DatabaseAdapter.readMessageContentRange",
     binaryPolicy: "typed-rejection",
     postgresBacked: true,
-    expectedIndexNames: ["idx_message_content_byte_seek"],
   },
   {
     family: "attachment",
+    adapterId: "agent-content-addressed-media-production-v1",
     authoritativeStore: "content-addressed-media",
-    productionMethod: "media-store.readStoredMediaByteRange",
+    productionMethod: "media-store.persistMediaStream/readStoredMediaByteRange",
     binaryPolicy: "native-bytes",
     postgresBacked: false,
-    expectedIndexNames: [],
   },
   {
     family: "tool-output",
+    adapterId: "coding-tools-shell-output-artifact-production-v1",
     authoritativeStore: "filesystem",
-    productionMethod: "readShellOutputArtifactPage",
+    productionMethod:
+      "shell-output-artifact.persistShellOutputByteArtifact/readShellOutputArtifactBytePage",
     binaryPolicy: "native-bytes",
     postgresBacked: false,
-    expectedIndexNames: [],
   },
 ] as const;
 
@@ -100,13 +101,379 @@ function finiteNonnegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-function mappingFor(family: string) {
-  return CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.find(
-    (mapping) => mapping.family === family,
-  );
+function digest(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value);
 }
 
-/** Reject fixture-shaped reports and evidence-only SQL tables before bundling. */
+function validateSnapshot(value: unknown, label: string): EvidenceRecord {
+  const snapshot = record(value, label);
+  exactKeys(
+    snapshot,
+    [
+      "resolverGeneration",
+      "present",
+      "ownedBytes",
+      "databaseRows",
+      "temporaryArtifacts",
+      "walBytes",
+    ],
+    label,
+  );
+  if (
+    typeof snapshot.resolverGeneration !== "string" ||
+    snapshot.resolverGeneration.length === 0 ||
+    typeof snapshot.present !== "boolean" ||
+    !safeNonnegative(snapshot.ownedBytes) ||
+    !safeNonnegative(snapshot.databaseRows) ||
+    !safeNonnegative(snapshot.temporaryArtifacts) ||
+    !safeNonnegative(snapshot.walBytes)
+  ) {
+    throw new TypeError(`${label} is invalid`);
+  }
+  return snapshot;
+}
+
+function validateReceiptSet(
+  value: unknown,
+  label: string,
+  postgresBacked: boolean,
+): void {
+  const receipts = array(value, `${label} receipts`).map((entry, index) =>
+    record(entry, `${label} receipt ${index}`),
+  );
+  const phases = [
+    "realized",
+    "authorization",
+    "isolation",
+    "restart",
+    "cleanup",
+  ];
+  if (
+    receipts.length !== phases.length ||
+    phases.some(
+      (phase) =>
+        receipts.filter((receipt) => receipt.phase === phase).length !== 1,
+    )
+  ) {
+    throw new TypeError(
+      `${label} lifecycle receipts are incomplete or duplicated`,
+    );
+  }
+  let binding: string | undefined;
+  for (const receipt of receipts) {
+    const hasRestartScope =
+      receipt.phase === "realized" || receipt.phase === "restart";
+    exactKeys(
+      receipt,
+      [
+        "schemaVersion",
+        "targetBindingSha256",
+        "phase",
+        ...(hasRestartScope ? ["restartScope"] : []),
+        "before",
+        "after",
+        "probe",
+        "status",
+      ],
+      `${label} ${String(receipt.phase)} receipt`,
+    );
+    if (
+      receipt.schemaVersion !==
+        "elizaos.progressive-content.target-receipt.v1" ||
+      !digest(receipt.targetBindingSha256) ||
+      receipt.status !== "passed" ||
+      (hasRestartScope &&
+        !["resolver", "process"].includes(String(receipt.restartScope)))
+    ) {
+      throw new TypeError(`${label} receipt identity or status is invalid`);
+    }
+    binding ??= receipt.targetBindingSha256;
+    if (receipt.targetBindingSha256 !== binding) {
+      throw new TypeError(`${label} receipts do not bind one target`);
+    }
+    const before = validateSnapshot(
+      receipt.before,
+      `${label} ${String(receipt.phase)} before`,
+    );
+    const after = validateSnapshot(
+      receipt.after,
+      `${label} ${String(receipt.phase)} after`,
+    );
+    const probe = record(
+      receipt.probe,
+      `${label} ${String(receipt.phase)} probe`,
+    );
+    const optionalProbeKeys = Object.hasOwn(probe, "errorCode")
+      ? ["access", "offset", "limit", "errorCode"]
+      : Object.hasOwn(probe, "sliceSha256")
+        ? ["access", "offset", "limit", "sliceSha256"]
+        : ["access", "offset", "limit"];
+    exactKeys(
+      probe,
+      optionalProbeKeys,
+      `${label} ${String(receipt.phase)} probe`,
+    );
+    if (!safeNonnegative(probe.offset) || !safeNonnegative(probe.limit)) {
+      throw new TypeError(`${label} receipt probe range is invalid`);
+    }
+    if (
+      receipt.phase === "realized" &&
+      (before.present !== true || after.present !== true)
+    ) {
+      throw new TypeError(
+        `${label} was not observed present after realization`,
+      );
+    }
+    if (
+      receipt.phase === "authorization" &&
+      (probe.access !== "unauthorized" || typeof probe.errorCode !== "string")
+    ) {
+      throw new TypeError(`${label} authorization denial was not observed`);
+    }
+    if (
+      receipt.phase === "isolation" &&
+      (probe.access !== "isolated" || typeof probe.errorCode !== "string")
+    ) {
+      throw new TypeError(`${label} isolation denial was not observed`);
+    }
+    if (
+      receipt.phase === "restart" &&
+      (before.present !== true ||
+        after.present !== true ||
+        before.resolverGeneration === after.resolverGeneration)
+    ) {
+      throw new TypeError(`${label} resolver restart was not observed`);
+    }
+    if (
+      receipt.phase === "cleanup" &&
+      (before.present !== true ||
+        after.present !== false ||
+        after.ownedBytes !== 0 ||
+        after.databaseRows !== 0 ||
+        after.temporaryArtifacts !== 0 ||
+        after.walBytes !== 0)
+    ) {
+      throw new TypeError(`${label} cleanup transition was not observed`);
+    }
+    if (
+      postgresBacked &&
+      receipt.phase === "realized" &&
+      (!safeNonnegative(after.databaseRows) || after.databaseRows < 1)
+    ) {
+      throw new TypeError(`${label} did not observe PostgreSQL rows`);
+    }
+  }
+}
+
+function validateTargetHarness(
+  value: unknown,
+  expected: {
+    readonly corpusManifestSha256: string;
+    readonly objects: readonly ExpectedObject[];
+  },
+): number {
+  const harness = record(value, "PostgreSQL target harness");
+  exactKeys(
+    harness,
+    [
+      "schemaVersion",
+      "corpusManifestSha256",
+      "generatorRevision",
+      "status",
+      "factories",
+      "entries",
+    ],
+    "PostgreSQL target harness",
+  );
+  if (
+    harness.schemaVersion !== "elizaos.progressive-content.target-harness.v1" ||
+    harness.corpusManifestSha256 !== expected.corpusManifestSha256 ||
+    harness.status !== "passed" ||
+    typeof harness.generatorRevision !== "string" ||
+    harness.generatorRevision.length === 0
+  ) {
+    throw new TypeError(
+      "PostgreSQL target harness identity or status is invalid",
+    );
+  }
+  const factories = array(harness.factories, "PostgreSQL target factories").map(
+    (entry, index) => record(entry, `PostgreSQL target factory ${index}`),
+  );
+  if (factories.length !== CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.length) {
+    throw new TypeError("PostgreSQL target factories are incomplete");
+  }
+  for (const mapping of CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS) {
+    const factory = factories.find(({ family }) => family === mapping.family);
+    if (!factory)
+      throw new TypeError(`${mapping.family} target factory is absent`);
+    exactKeys(
+      factory,
+      [
+        "family",
+        "adapterId",
+        "authoritativeStore",
+        "productionMethod",
+        "binaryPolicy",
+      ],
+      `${mapping.family} target factory`,
+    );
+    if (
+      factory.adapterId !== mapping.adapterId ||
+      factory.authoritativeStore !== mapping.authoritativeStore ||
+      factory.productionMethod !== mapping.productionMethod ||
+      factory.binaryPolicy !== mapping.binaryPolicy
+    ) {
+      throw new TypeError(
+        `${mapping.family} target factory differs from production`,
+      );
+    }
+  }
+  const expectedById = new Map(
+    expected.objects.map((object) => [object.id, object] as const),
+  );
+  const entries = array(harness.entries, "PostgreSQL target entries").map(
+    (entry, index) => record(entry, `PostgreSQL target entry ${index}`),
+  );
+  if (entries.length !== expected.objects.length) {
+    throw new TypeError("PostgreSQL target object coverage is incomplete");
+  }
+  const seen = new Set<string>();
+  let observedPostgresRows = 0;
+  for (const entry of entries) {
+    const object = expectedById.get(String(entry.objectId));
+    const mapping = CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.find(
+      ({ family }) => family === object?.family,
+    );
+    if (
+      !object ||
+      !mapping ||
+      seen.has(object.id) ||
+      entry.family !== object.family ||
+      entry.adapterId !== mapping.adapterId ||
+      entry.sourceSha256 !== object.sourceSha256 ||
+      entry.sourceRevision !== object.revision ||
+      entry.sourceBytes !== object.byteLength
+    ) {
+      throw new TypeError(
+        "PostgreSQL target entry differs from its corpus object",
+      );
+    }
+    const sourceWork = record(entry.sourceWork, `${object.id} source work`);
+    exactKeys(
+      sourceWork,
+      ["readCalls", "bytesRead", "maxReadBytes"],
+      `${object.id} source work`,
+    );
+    if (
+      !safeNonnegative(sourceWork.readCalls) ||
+      !safeNonnegative(sourceWork.bytesRead) ||
+      !safeNonnegative(sourceWork.maxReadBytes) ||
+      sourceWork.maxReadBytes > 64 * 1024
+    ) {
+      throw new TypeError(`${object.id} source work is invalid or unbounded`);
+    }
+    const typedRejection =
+      mapping.binaryPolicy === "typed-rejection" &&
+      (object.format === "binary" || object.format === "invalid-utf8");
+    if (typedRejection) {
+      exactKeys(
+        entry,
+        [
+          "objectId",
+          "family",
+          "adapterId",
+          "status",
+          "sourceSha256",
+          "sourceRevision",
+          "sourceBytes",
+          "sourceWork",
+          "code",
+          "rejectionCode",
+        ],
+        `${object.id} typed rejection`,
+      );
+      const expectedCode =
+        object.format === "binary"
+          ? "CONTENT_BINARY_UNSUPPORTED"
+          : "CONTENT_INVALID_UTF8";
+      if (
+        entry.status !== "typed-rejected" ||
+        entry.code !== expectedCode ||
+        entry.rejectionCode !== expectedCode ||
+        sourceWork.bytesRead > 64 * 1024
+      ) {
+        throw new TypeError(`${object.id} typed rejection is invalid`);
+      }
+    } else {
+      exactKeys(
+        entry,
+        [
+          "objectId",
+          "family",
+          "adapterId",
+          "status",
+          "sourceSha256",
+          "sourceRevision",
+          "nativeRevision",
+          "sourceBytes",
+          "sourceWork",
+          "realization",
+          "conformance",
+          "receipts",
+        ],
+        `${object.id} verified target`,
+      );
+      if (
+        entry.status !== "verified" ||
+        typeof entry.nativeRevision !== "string" ||
+        sourceWork.bytesRead !== object.byteLength ||
+        (object.byteLength > 0 && sourceWork.readCalls < 1)
+      ) {
+        throw new TypeError(`${object.id} verified target is incomplete`);
+      }
+      const conformance = record(entry.conformance, `${object.id} conformance`);
+      if (
+        conformance.status !== "passed" ||
+        conformance.adapterId !== mapping.adapterId ||
+        conformance.objectId !== object.id ||
+        conformance.reassembledSha256 !== object.sourceSha256 ||
+        conformance.cleanupVerified !== true ||
+        conformance.postCleanupProbeVerified !== true
+      ) {
+        throw new TypeError(
+          `${object.id} conformance did not pass the real target`,
+        );
+      }
+      validateReceiptSet(entry.receipts, object.id, mapping.postgresBacked);
+      if (mapping.postgresBacked) {
+        const realized = array(entry.receipts, `${object.id} receipts`)
+          .map((receipt) => record(receipt, `${object.id} receipt`))
+          .find(({ phase }) => phase === "realized");
+        const snapshot = validateSnapshot(
+          realized?.after,
+          `${object.id} realized after`,
+        );
+        observedPostgresRows += Number(snapshot.databaseRows);
+      }
+    }
+    seen.add(object.id);
+  }
+  for (const mapping of CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS) {
+    if (
+      !entries.some(
+        ({ family, status }) =>
+          family === mapping.family && status === "verified",
+      )
+    ) {
+      throw new TypeError(
+        `${mapping.family} has no receipt-bearing verified target`,
+      );
+    }
+  }
+  return observedPostgresRows;
+}
+
+/** Reject reports that omit exact target receipts or real indexed seek observations. */
 export function validateProgressiveContentPostgresEvidence(
   value: unknown,
   expected: {
@@ -115,7 +482,7 @@ export function validateProgressiveContentPostgresEvidence(
     readonly objects: readonly ExpectedObject[];
   },
 ): void {
-  const report = record(value, "Postgres report");
+  const report = record(value, "PostgreSQL report");
   exactKeys(
     report,
     [
@@ -127,13 +494,11 @@ export function validateProgressiveContentPostgresEvidence(
       "server",
       "command",
       "performance",
-      "familyMappings",
-      "sharedVectors",
-      "objects",
-      "negativeVectors",
+      "targetHarness",
+      "indexVectors",
       "cleanup",
     ],
-    "Postgres report",
+    "PostgreSQL report",
   );
   if (
     report.schemaVersion !== CONTENT_CONTEXT_POSTGRES_SCHEMA_VERSION ||
@@ -142,10 +507,41 @@ export function validateProgressiveContentPostgresEvidence(
     report.commit !== expected.commit ||
     report.corpusManifestSha256 !== expected.corpusManifestSha256
   ) {
-    throw new TypeError("Postgres report identity or status is invalid");
+    throw new TypeError("PostgreSQL report identity or status is invalid");
   }
-
-  const performance = record(report.performance, "Postgres performance");
+  const server = record(report.server, "PostgreSQL server");
+  exactKeys(server, ["version", "versionNum"], "PostgreSQL server");
+  if (
+    typeof server.version !== "string" ||
+    !/^PostgreSQL\s/u.test(server.version) ||
+    !safeNonnegative(server.versionNum) ||
+    server.versionNum < 120_000
+  ) {
+    throw new TypeError("PostgreSQL server version is invalid");
+  }
+  const command = record(report.command, "PostgreSQL command");
+  exactKeys(command, ["executable", "argv", "cwd"], "PostgreSQL command");
+  const argv = array(command.argv, "PostgreSQL command argv");
+  if (
+    command.executable !== "bun" ||
+    command.cwd !== "." ||
+    argv[0] !== "packages/scripts/produce-content-context-postgres.mjs" ||
+    argv.filter((entry) => entry === `--commit=${expected.commit}`).length !==
+      1 ||
+    argv.some(
+      (entry) =>
+        typeof entry !== "string" ||
+        /postgres(?:ql)?:\/\//iu.test(entry) ||
+        /(?:password|secret|token)=/iu.test(entry),
+    )
+  ) {
+    throw new TypeError("PostgreSQL command is not exact or leaks credentials");
+  }
+  const observedPostgresRows = validateTargetHarness(
+    report.targetHarness,
+    expected,
+  );
+  const performance = record(report.performance, "PostgreSQL performance");
   exactKeys(
     performance,
     [
@@ -159,9 +555,9 @@ export function validateProgressiveContentPostgresEvidence(
       "externalStartBytes",
       "externalEndBytes",
       "databaseSizeBytes",
-      "totalPostgresRows",
+      "observedPostgresRows",
     ],
-    "Postgres performance",
+    "PostgreSQL performance",
   );
   if (
     !finiteNonnegative(performance.durationMs) ||
@@ -180,135 +576,63 @@ export function validateProgressiveContentPostgresEvidence(
     !safeNonnegative(performance.externalEndBytes) ||
     !safeNonnegative(performance.databaseSizeBytes) ||
     performance.databaseSizeBytes < 1 ||
-    !safeNonnegative(performance.totalPostgresRows) ||
-    performance.totalPostgresRows < 1
+    performance.observedPostgresRows !== observedPostgresRows ||
+    observedPostgresRows < 1
   ) {
-    throw new TypeError("Postgres performance metrics are invalid");
+    throw new TypeError("PostgreSQL performance observations are invalid");
   }
-
-  const server = record(report.server, "Postgres server");
-  exactKeys(server, ["version", "versionNum"], "Postgres server");
-  if (
-    typeof server.version !== "string" ||
-    !/^PostgreSQL\s/u.test(server.version) ||
-    !safeNonnegative(server.versionNum) ||
-    server.versionNum < 120_000
-  ) {
-    throw new TypeError("Postgres server version is invalid");
-  }
-
-  const command = record(report.command, "Postgres command");
-  exactKeys(command, ["executable", "argv", "cwd"], "Postgres command");
-  const argv = array(command.argv, "Postgres command argv");
-  if (
-    command.executable !== "bun" ||
-    command.cwd !== "." ||
-    argv[0] !== "packages/scripts/produce-content-context-postgres.mjs" ||
-    argv.filter((entry) => entry === `--commit=${expected.commit}`).length !==
-      1 ||
-    argv.some(
-      (entry) =>
-        typeof entry !== "string" ||
-        /postgres(?:ql)?:\/\//iu.test(entry) ||
-        /(?:password|secret|token)=/iu.test(entry),
-    )
-  ) {
-    throw new TypeError("Postgres command is not exact or leaks credentials");
-  }
-
-  const familyMappings = array(
-    report.familyMappings,
-    "Postgres family mappings",
-  ).map((entry, index) => record(entry, `Postgres family mapping ${index}`));
-  if (
-    familyMappings.length !== CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.length ||
-    new Set(familyMappings.map(({ family }) => family)).size !==
-      familyMappings.length
-  ) {
-    throw new TypeError(
-      "Postgres family mappings are incomplete or duplicated",
-    );
-  }
-  for (const expectedMapping of CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS) {
-    const mapping = familyMappings.find(
-      ({ family }) => family === expectedMapping.family,
-    );
-    if (!mapping)
-      throw new TypeError(`${expectedMapping.family} mapping is absent`);
-    exactKeys(
-      mapping,
-      [
-        "family",
-        "authoritativeStore",
-        "productionMethod",
-        "binaryPolicy",
-        "postgresRows",
-      ],
-      `${expectedMapping.family} mapping`,
-    );
-    if (
-      mapping.authoritativeStore !== expectedMapping.authoritativeStore ||
-      mapping.productionMethod !== expectedMapping.productionMethod ||
-      mapping.binaryPolicy !== expectedMapping.binaryPolicy ||
-      !safeNonnegative(mapping.postgresRows) ||
-      (expectedMapping.postgresBacked
-        ? mapping.postgresRows < 1
-        : mapping.postgresRows !== 0)
-    ) {
-      throw new TypeError(
-        `${expectedMapping.family} mapping violates production storage ownership`,
-      );
-    }
-  }
-
-  const vectors = array(report.sharedVectors, "Postgres shared vectors").map(
-    (entry, index) => record(entry, `Postgres shared vector ${index}`),
+  const vectors = array(report.indexVectors, "PostgreSQL index vectors").map(
+    (entry, index) => record(entry, `PostgreSQL index vector ${index}`),
   );
-  const postgresFamilies = CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.filter(
+  const postgresMappings = CONTENT_CONTEXT_POSTGRES_FAMILY_MAPPINGS.filter(
     ({ postgresBacked }) => postgresBacked,
   );
   if (
-    vectors.length !== postgresFamilies.length ||
+    vectors.length !== postgresMappings.length ||
     new Set(vectors.map(({ family }) => family)).size !== vectors.length
   ) {
-    throw new TypeError("Postgres shared vectors are incomplete or duplicated");
+    throw new TypeError(
+      "PostgreSQL index vectors are incomplete or duplicated",
+    );
   }
-  for (const mapping of postgresFamilies) {
+  for (const mapping of postgresMappings) {
     const vector = vectors.find(({ family }) => family === mapping.family);
     if (!vector)
-      throw new TypeError(`${mapping.family} shared vector is absent`);
+      throw new TypeError(`${mapping.family} index vector is absent`);
     exactKeys(
       vector,
       [
         "family",
-        "status",
+        "adapterId",
         "productionMethod",
-        "authorizationDenied",
-        "isolationDenied",
-        "restartVerified",
-        "indexNames",
+        "plannerSettings",
         "seekPlan",
       ],
-      `${mapping.family} shared vector`,
+      `${mapping.family} index vector`,
     );
     if (
-      vector.status !== "passed" ||
-      vector.productionMethod !== mapping.productionMethod ||
-      vector.authorizationDenied !== true ||
-      vector.isolationDenied !== true ||
-      vector.restartVerified !== true ||
-      JSON.stringify(
-        array(vector.indexNames, `${mapping.family} index names`),
-      ) !== JSON.stringify(mapping.expectedIndexNames)
+      vector.adapterId !== mapping.adapterId ||
+      vector.productionMethod !== mapping.productionMethod
     ) {
-      throw new TypeError(`${mapping.family} shared vector is incomplete`);
+      throw new TypeError(
+        `${mapping.family} index vector differs from its target factory`,
+      );
     }
-    const seekPlan = record(
-      vector.seekPlan,
-      `${mapping.family} indexed seek plan`,
+    const plannerSettings = record(
+      vector.plannerSettings,
+      `${mapping.family} planner settings`,
     );
     exactKeys(
-      seekPlan,
+      plannerSettings,
+      ["enableSeqscan"],
+      `${mapping.family} planner settings`,
+    );
+    if (plannerSettings.enableSeqscan !== false) {
+      throw new TypeError(`${mapping.family} planner settings are invalid`);
+    }
+    const plan = record(vector.seekPlan, `${mapping.family} seek plan`);
+    exactKeys(
+      plan,
       [
         "indexName",
         "nodeTypes",
@@ -318,191 +642,33 @@ export function validateProgressiveContentPostgresEvidence(
         "planningTimeMs",
         "executionTimeMs",
       ],
-      `${mapping.family} indexed seek plan`,
+      `${mapping.family} seek plan`,
     );
-    const nodeTypes = array(
-      seekPlan.nodeTypes,
-      `${mapping.family} indexed seek node types`,
-    );
+    const expectedIndex =
+      mapping.family === "document"
+        ? "idx_document_source_byte_seek"
+        : "idx_message_content_byte_seek";
+    const nodes = array(plan.nodeTypes, `${mapping.family} seek nodes`);
     if (
-      seekPlan.indexName !== mapping.expectedIndexNames[0] ||
-      !nodeTypes.every((node) => typeof node === "string") ||
-      !nodeTypes.some((node) => /Index/u.test(String(node))) ||
-      !safeNonnegative(seekPlan.actualRows) ||
-      seekPlan.actualRows < 1 ||
-      !safeNonnegative(seekPlan.sharedHitBlocks) ||
-      !safeNonnegative(seekPlan.sharedReadBlocks) ||
-      !finiteNonnegative(seekPlan.planningTimeMs) ||
-      !finiteNonnegative(seekPlan.executionTimeMs)
+      plan.indexName !== expectedIndex ||
+      !nodes.some((node) => typeof node === "string" && /Index/u.test(node)) ||
+      !safeNonnegative(plan.actualRows) ||
+      plan.actualRows < 1 ||
+      !safeNonnegative(plan.sharedHitBlocks) ||
+      !safeNonnegative(plan.sharedReadBlocks) ||
+      !finiteNonnegative(plan.planningTimeMs) ||
+      !finiteNonnegative(plan.executionTimeMs)
     ) {
       throw new TypeError(`${mapping.family} indexed seek plan is invalid`);
     }
   }
-
-  const expectedById = new Map(
-    expected.objects.map((object) => [object.id, object] as const),
+  const cleanup = record(report.cleanup, "PostgreSQL cleanup");
+  exactKeys(
+    cleanup,
+    ["databaseDropped", "postDropProbe"],
+    "PostgreSQL cleanup",
   );
-  const objects = array(report.objects, "Postgres objects").map(
-    (entry, index) => record(entry, `Postgres object ${index}`),
-  );
-  if (objects.length !== expected.objects.length) {
-    throw new TypeError("Postgres object coverage is incomplete");
-  }
-  const seen = new Set<string>();
-  for (const object of objects) {
-    exactKeys(
-      object,
-      [
-        "objectId",
-        "family",
-        "sourceBytes",
-        "sourceSha256",
-        "revision",
-        "authorizationScope",
-        "disposition",
-        "postgresRows",
-        "reassembledSha256",
-        "rejectionCode",
-        "storageWrites",
-        "authorizationVerified",
-        "isolationVerified",
-        "restartVerified",
-        "durationMs",
-        "sourceWork",
-      ],
-      "Postgres object",
-    );
-    const expectedObject = expectedById.get(String(object.objectId));
-    const mapping = mappingFor(String(object.family));
-    const typedRejection =
-      mapping?.binaryPolicy === "typed-rejection" &&
-      (expectedObject?.format === "binary" ||
-        expectedObject?.format === "invalid-utf8");
-    const expectedRejectionCode =
-      expectedObject?.format === "binary"
-        ? "CONTENT_BINARY_UNSUPPORTED"
-        : "CONTENT_INVALID_UTF8";
-    if (
-      !expectedObject ||
-      !mapping ||
-      seen.has(expectedObject.id) ||
-      object.family !== expectedObject.family ||
-      object.sourceBytes !== expectedObject.byteLength ||
-      object.sourceSha256 !== expectedObject.sourceSha256 ||
-      object.revision !== expectedObject.revision ||
-      object.authorizationScope !== expectedObject.authorizationScope ||
-      object.reassembledSha256 !==
-        (typedRejection ? null : expectedObject.sourceSha256) ||
-      object.rejectionCode !==
-        (typedRejection ? expectedRejectionCode : null) ||
-      object.authorizationVerified !== true ||
-      object.isolationVerified !== true ||
-      object.restartVerified !== true ||
-      !finiteNonnegative(object.durationMs) ||
-      !safeNonnegative(object.postgresRows) ||
-      object.disposition !==
-        (typedRejection
-          ? "typed-rejected"
-          : mapping.postgresBacked
-            ? "postgres-text-reassembled"
-            : "native-store-reassembled") ||
-      !safeNonnegative(object.storageWrites) ||
-      (typedRejection
-        ? object.postgresRows !== 0 || object.storageWrites !== 0
-        : mapping.postgresBacked
-          ? object.postgresRows < 1 || object.storageWrites < 1
-          : object.postgresRows !== 0 || object.storageWrites !== 0)
-    ) {
-      throw new TypeError("Postgres object differs from its corpus or mapping");
-    }
-    const work = record(object.sourceWork, "Postgres object source work");
-    exactKeys(
-      work,
-      [
-        "pageBytes",
-        "bytesRead",
-        "readCalls",
-        "rowsRead",
-        "parentScans",
-        "readAmplification",
-      ],
-      "Postgres object source work",
-    );
-    if (
-      !safeNonnegative(work.pageBytes) ||
-      work.pageBytes < 1 ||
-      work.pageBytes > 64 * 1024 ||
-      !safeNonnegative(work.bytesRead) ||
-      !safeNonnegative(work.readCalls) ||
-      !safeNonnegative(work.rowsRead) ||
-      work.parentScans !== 0 ||
-      typeof work.readAmplification !== "number" ||
-      !Number.isFinite(work.readAmplification) ||
-      (typedRejection
-        ? work.readAmplification < 0 || work.readAmplification > 1
-        : work.readAmplification < 1 || work.readAmplification > 2) ||
-      work.bytesRead > expectedObject.byteLength * 2 + work.pageBytes ||
-      (typedRejection
-        ? work.readCalls < 1 || work.bytesRead > work.pageBytes
-        : work.readCalls <
-          Math.ceil(expectedObject.byteLength / work.pageBytes))
-    ) {
-      throw new TypeError(
-        "Postgres object source work is unbounded or fabricated",
-      );
-    }
-    seen.add(expectedObject.id);
-  }
-
-  const negativeVectors = array(
-    report.negativeVectors,
-    "Postgres negative vectors",
-  ).map((entry, index) => record(entry, `Postgres negative vector ${index}`));
-  const expectedNegativeKeys = postgresFamilies.flatMap(({ family }) =>
-    ["binary", "invalid-utf8"].map((format) => `${family}:${format}`),
-  );
-  const actualNegativeKeys = negativeVectors.map(
-    ({ family, format }) => `${String(family)}:${String(format)}`,
-  );
-  if (
-    negativeVectors.length !== expectedNegativeKeys.length ||
-    new Set(actualNegativeKeys).size !== actualNegativeKeys.length ||
-    expectedNegativeKeys.some((key) => !actualNegativeKeys.includes(key))
-  ) {
-    throw new TypeError(
-      "Postgres negative vectors are incomplete or duplicated",
-    );
-  }
-  for (const vector of negativeVectors) {
-    exactKeys(
-      vector,
-      [
-        "family",
-        "format",
-        "status",
-        "rejectionCode",
-        "postgresRows",
-        "storageWrites",
-      ],
-      "Postgres negative vector",
-    );
-    const expectedRejectionCode =
-      vector.format === "binary"
-        ? "CONTENT_BINARY_UNSUPPORTED"
-        : "CONTENT_INVALID_UTF8";
-    if (
-      vector.status !== "passed" ||
-      vector.rejectionCode !== expectedRejectionCode ||
-      vector.postgresRows !== 0 ||
-      vector.storageWrites !== 0
-    ) {
-      throw new TypeError("Postgres negative vector is not fail-closed");
-    }
-  }
-
-  const cleanup = record(report.cleanup, "Postgres cleanup");
-  exactKeys(cleanup, ["databaseDropped", "postDropProbe"], "Postgres cleanup");
   if (cleanup.databaseDropped !== true || cleanup.postDropProbe !== "absent") {
-    throw new TypeError("Postgres cleanup is incomplete");
+    throw new TypeError("PostgreSQL database cleanup is incomplete");
   }
 }

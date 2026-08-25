@@ -1,8 +1,8 @@
 /**
- * Realizes document, stored-memory, and email corpus objects in private
- * disk-backed PGlite databases. Ingestion reads at most one 64 KiB source page,
- * publishes immutable UTF-8 segments before their parent, and serves every
- * continuation through the adapter's authorized indexed range methods.
+ * Realizes document, stored-memory, and email corpus objects in PGlite or
+ * PostgreSQL. Ingestion reads at most one 64 KiB source page, publishes
+ * immutable UTF-8 segments before their parent, and serves every continuation
+ * through the adapter's authorized indexed range methods.
  */
 
 import { createHash } from "node:crypto";
@@ -20,6 +20,8 @@ import {
 import { and, count, eq, inArray, sql, sum } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 import { DatabaseMigrationService } from "../migration-service";
+import { PgDatabaseAdapter } from "../pg/adapter";
+import { PostgresConnectionManager } from "../pg/manager";
 import { PgliteDatabaseAdapter } from "../pglite/adapter";
 import { PGliteClientManager } from "../pglite/manager";
 import * as schema from "../schema";
@@ -31,6 +33,23 @@ const SOURCE_READ_BYTES = SOURCE_PAGE_BYTES - 4;
 const TARGET_NAMESPACE = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
 const SQL_FAMILIES = ["document", "memory", "email"] as const;
 type ProgressiveSqlFamily = (typeof SQL_FAMILIES)[number];
+type ProgressiveSqlAdapter = PgliteDatabaseAdapter | PgDatabaseAdapter;
+
+interface ProgressiveSqlBackend {
+  readonly cleanupIdentityPrefix: "pglite" | "postgres";
+  readonly open: (agentId: UUID) => Promise<{
+    readonly adapter: ProgressiveSqlAdapter;
+    readonly database: DrizzleDatabase;
+  }>;
+  readonly restart: (
+    adapter: ProgressiveSqlAdapter,
+    agentId: UUID
+  ) => Promise<{
+    readonly adapter: ProgressiveSqlAdapter;
+    readonly database: DrizzleDatabase;
+  }>;
+  readonly removeStorage: () => Promise<void>;
+}
 
 class ProgressiveSqlTargetError extends Error {
   constructor(
@@ -146,14 +165,13 @@ async function stageUtf8Source(input: {
   };
 }
 
-async function openAdapter(dataDir: string, agentId: UUID, migrate: boolean) {
-  const manager = new PGliteClientManager({ dataDir });
-  await manager.initialize();
-  const adapter = new PgliteDatabaseAdapter(agentId, manager);
+async function openPostgresAdapter(connectionString: string, agentId: UUID, migrate: boolean) {
+  const manager = new PostgresConnectionManager(connectionString);
+  const adapter = new PgDatabaseAdapter(agentId, manager);
   await adapter.init();
   if (migrate) {
-    const migrations = new DatabaseMigrationService();
-    await migrations.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
+    const migrations = new DatabaseMigrationService({ databaseBackend: "postgres" });
+    await migrations.initializeWithDatabase(manager.getDatabase() as DrizzleDatabase);
     migrations.discoverAndRegisterPluginSchemas([
       { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
     ]);
@@ -162,7 +180,7 @@ async function openAdapter(dataDir: string, agentId: UUID, migrate: boolean) {
   return adapter;
 }
 
-async function seedAuthorization(adapter: PgliteDatabaseAdapter, ids: TargetIds): Promise<void> {
+async function seedAuthorization(adapter: ProgressiveSqlAdapter, ids: TargetIds): Promise<void> {
   const createdAt = Date.now();
   await adapter.createAgent({
     id: ids.agentId,
@@ -396,7 +414,8 @@ function referenceFor(
 
 function targetFactory(input: {
   readonly family: ProgressiveSqlFamily;
-  readonly dataRoot: string;
+  readonly adapterIdPrefix: "plugin-sql-pglite" | "plugin-sql-postgres";
+  readonly createBackend: (objectId: string) => Promise<ProgressiveSqlBackend>;
   readonly injectBeforeParentCommit?: () => Promise<void>;
 }): ProgressiveContentTargetFactory {
   const stores = {
@@ -407,7 +426,7 @@ function targetFactory(input: {
   return {
     schemaVersion: PROGRESSIVE_CONTENT_TARGET_FACTORY_SCHEMA_VERSION,
     family: input.family,
-    adapterId: `plugin-sql-pglite-${input.family}-production-v1`,
+    adapterId: `${input.adapterIdPrefix}-${input.family}-production-v1`,
     authoritativeStore: stores[input.family],
     productionMethod:
       input.family === "document"
@@ -422,8 +441,10 @@ function targetFactory(input: {
         throw new ProgressiveSqlTargetError("CONTENT_BINARY_UNSUPPORTED");
       }
       const ids = idsFor(object.id);
-      const dataDir = await fs.mkdtemp(path.join(input.dataRoot, `${input.family}-`));
-      let adapter = await openAdapter(dataDir, ids.agentId, true);
+      const backend = await input.createBackend(object.id);
+      let opened = await backend.open(ids.agentId);
+      let adapter = opened.adapter;
+      let database = opened.database;
       let active = true;
       let generation = 1;
       const createdAt = Date.now();
@@ -470,13 +491,13 @@ function targetFactory(input: {
         // error-policy:J2 verify the database transaction removed every staged
         // row before translating the realization failure at this test boundary.
         if (rowIds.length > 0) {
-          const rollback = await (adapter.getDatabase() as DrizzleDatabase)
+          const rollback = await database
             .select({ rows: count(memoryTable.id) })
             .from(memoryTable)
             .where(inArray(memoryTable.id, rowIds));
           if (Number(rollback[0]?.rows ?? 0) !== 0) {
             await adapter.close();
-            await fs.rm(dataDir, { recursive: true });
+            await backend.removeStorage();
             throw new ProgressiveSqlTargetError(
               "PROGRESSIVE_STAGING_ROLLBACK_INCOMPLETE",
               "Failed progressive-content publication retained staged rows"
@@ -486,7 +507,7 @@ function targetFactory(input: {
         // error-policy:J6 rollback is verified; remove only the factory-owned
         // private database realization before preserving the original error.
         await adapter.close();
-        await fs.rm(dataDir, { recursive: true });
+        await backend.removeStorage();
         throw error;
       }
 
@@ -629,7 +650,7 @@ function targetFactory(input: {
           authorizationMode: "principal",
           restartScope: "resolver",
           authorizationScopeDigest: sha256(object.authorizationScope),
-          cleanupIdentity: `pglite:${sha256(dataDir)}`,
+          cleanupIdentity: `${backend.cleanupIdentityPrefix}:${ids.objectId}`,
           resolverBindingSha256: sha256(
             `${input.family}:${ids.objectId}:${ids.agentId}:${object.sourceSha256}`
           ),
@@ -637,8 +658,9 @@ function targetFactory(input: {
         read,
         async restart() {
           if (!active) throw new ProgressiveSqlTargetError("CONTENT_NOT_FOUND");
-          await adapter.close();
-          adapter = await openAdapter(dataDir, ids.agentId, false);
+          opened = await backend.restart(adapter, ids.agentId);
+          adapter = opened.adapter;
+          database = opened.database;
           generation += 1;
         },
         async inspect() {
@@ -652,8 +674,7 @@ function targetFactory(input: {
               walBytes: 0,
             };
           }
-          const db = adapter.getDatabase() as DrizzleDatabase;
-          const aggregates = await db
+          const aggregates = await database
             .select({
               rows: count(memoryTable.id),
               bytes: sum(sql<number>`octet_length(COALESCE(${memoryTable.content}->>'text', ''))`),
@@ -674,9 +695,14 @@ function targetFactory(input: {
         async cleanup() {
           if (!active) return;
           await adapter.deleteMemories(rowIds);
+          await adapter.deleteRoom(ids.roomId);
+          await adapter.deleteRoom(ids.isolatedRoomId);
+          await adapter.deleteEntity(ids.requesterId);
+          await adapter.deleteEntity(ids.unauthorizedId);
+          await adapter.deleteAgent(ids.agentId);
           await adapter.close();
           active = false;
-          await fs.rm(dataDir, { recursive: true });
+          await backend.removeStorage();
         },
       };
       return target;
@@ -690,7 +716,83 @@ export async function createProgressiveSqlTargetFactories(input: {
 }): Promise<readonly ProgressiveContentTargetFactory[]> {
   await fs.mkdir(input.dataRoot, { recursive: true, mode: 0o700 });
   const dataRoot = await fs.realpath(input.dataRoot);
-  return SQL_FAMILIES.map((family) => targetFactory({ family, dataRoot }));
+  return SQL_FAMILIES.map((family) =>
+    targetFactory({
+      family,
+      adapterIdPrefix: "plugin-sql-pglite",
+      async createBackend() {
+        const dataDir = await fs.mkdtemp(path.join(dataRoot, `${family}-`));
+        let manager: PGliteClientManager | undefined;
+        return {
+          cleanupIdentityPrefix: "pglite",
+          async open(agentId) {
+            manager = new PGliteClientManager({ dataDir });
+            await manager.initialize();
+            const adapter = new PgliteDatabaseAdapter(agentId, manager);
+            await adapter.init();
+            const migrations = new DatabaseMigrationService();
+            await migrations.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
+            migrations.discoverAndRegisterPluginSchemas([
+              { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
+            ]);
+            await migrations.runAllPluginMigrations();
+            return {
+              adapter,
+              database: adapter.getDatabase() as DrizzleDatabase,
+            };
+          },
+          async restart(_adapter, agentId) {
+            if (!manager) throw new ProgressiveSqlTargetError("CONTENT_NOT_FOUND");
+            const adapter = new PgliteDatabaseAdapter(agentId, manager);
+            await adapter.init();
+            return {
+              adapter,
+              database: adapter.getDatabase() as DrizzleDatabase,
+            };
+          },
+          async removeStorage() {
+            await fs.rm(dataDir, { recursive: true });
+          },
+        };
+      },
+    })
+  );
+}
+
+/** Create SQL-owned target factories backed by one caller-owned PostgreSQL database. */
+export async function createProgressivePostgresSqlTargetFactories(input: {
+  readonly connectionString: string;
+}): Promise<readonly ProgressiveContentTargetFactory[]> {
+  const bootstrapAgentId = targetUuid(input.connectionString, "migration-bootstrap");
+  const bootstrap = await openPostgresAdapter(input.connectionString, bootstrapAgentId, true);
+  await bootstrap.close();
+  return SQL_FAMILIES.map((family) =>
+    targetFactory({
+      family,
+      adapterIdPrefix: "plugin-sql-postgres",
+      async createBackend() {
+        return {
+          cleanupIdentityPrefix: "postgres",
+          async open(agentId) {
+            const adapter = await openPostgresAdapter(input.connectionString, agentId, false);
+            return {
+              adapter,
+              database: adapter.getManager().getDatabase() as DrizzleDatabase,
+            };
+          },
+          async restart(adapter, agentId) {
+            await adapter.close();
+            const reopened = await openPostgresAdapter(input.connectionString, agentId, false);
+            return {
+              adapter: reopened,
+              database: reopened.getManager().getDatabase() as DrizzleDatabase,
+            };
+          },
+          async removeStorage() {},
+        };
+      },
+    })
+  );
 }
 
 /** Create one SQL-owned target factory for focused adapter and backend tests. */
@@ -706,8 +808,43 @@ export async function createProgressiveSqlTargetFactory(input: {
   await fs.mkdir(input.dataRoot, { recursive: true, mode: 0o700 });
   const dataRoot = await fs.realpath(input.dataRoot);
   return targetFactory({
-    dataRoot,
     family: input.family as ProgressiveSqlFamily,
+    adapterIdPrefix: "plugin-sql-pglite",
+    async createBackend() {
+      const dataDir = await fs.mkdtemp(path.join(dataRoot, `${input.family}-`));
+      let manager: PGliteClientManager | undefined;
+      return {
+        cleanupIdentityPrefix: "pglite",
+        async open(agentId) {
+          manager = new PGliteClientManager({ dataDir });
+          await manager.initialize();
+          const adapter = new PgliteDatabaseAdapter(agentId, manager);
+          await adapter.init();
+          const migrations = new DatabaseMigrationService();
+          await migrations.initializeWithDatabase(adapter.getDatabase() as DrizzleDatabase);
+          migrations.discoverAndRegisterPluginSchemas([
+            { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
+          ]);
+          await migrations.runAllPluginMigrations();
+          return {
+            adapter,
+            database: adapter.getDatabase() as DrizzleDatabase,
+          };
+        },
+        async restart(_adapter, agentId) {
+          if (!manager) throw new ProgressiveSqlTargetError("CONTENT_NOT_FOUND");
+          const adapter = new PgliteDatabaseAdapter(agentId, manager);
+          await adapter.init();
+          return {
+            adapter,
+            database: adapter.getDatabase() as DrizzleDatabase,
+          };
+        },
+        async removeStorage() {
+          await fs.rm(dataDir, { recursive: true });
+        },
+      };
+    },
     ...(input.injectBeforeParentCommit
       ? { injectBeforeParentCommit: input.injectBeforeParentCommit }
       : {}),
