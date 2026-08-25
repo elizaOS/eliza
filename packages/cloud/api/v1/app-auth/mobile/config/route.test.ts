@@ -9,6 +9,7 @@ const registration = {
   redirectUri: "https://eliza.app/auth/callback" as const,
   scopes: ["cloud:user"] as const,
 };
+let googleReady = false;
 
 mock.module("../_registration", () => ({
   requireRegisteredMobileApp: mock(async () => ({
@@ -39,6 +40,15 @@ mock.module("@/lib/utils/logger", () => ({
     warn: mock(() => undefined),
   },
 }));
+mock.module("@/lib/services/mobile-google-auth", () => ({
+  resolveMobileGoogleAuthReadiness: mock(() =>
+    googleReady
+      ? {
+          serverClientId: "google-web-client.apps.googleusercontent.com",
+        }
+      : null,
+  ),
+}));
 
 const { default: app } = await import("./route");
 
@@ -66,6 +76,22 @@ describe("GET /api/v1/app-auth/mobile/config", () => {
       app: { name: "Eliza mobile" },
     });
     expect(JSON.stringify(body)).not.toContain(INTERNAL_APP_ID);
+  });
+
+  test("advertises native Google only after the backend readiness gate passes", async () => {
+    googleReady = false;
+    const unavailable = await app.request(`/?${query()}`);
+    expect(await unavailable.json()).toMatchObject({ google: null });
+
+    googleReady = true;
+    const ready = await app.request(`/?${query()}`);
+    expect(await ready.json()).toMatchObject({
+      google: {
+        native: true,
+        serverClientId: "google-web-client.apps.googleusercontent.com",
+      },
+    });
+    googleReady = false;
   });
 
   test("rejects a different native client before returning metadata", async () => {

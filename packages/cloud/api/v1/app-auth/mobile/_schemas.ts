@@ -43,3 +43,10 @@ export const mobileAppAuthAckSchema = mobileAppAuthClientBindingSchema.extend({
   credentialId: z.string().uuid(),
   secret: z.string().min(1).max(512),
 });
+
+export const mobileAppAuthGoogleSchema = mobileAppAuthPkceBindingSchema.extend({
+  googleIdToken: z.string().min(100).max(16_384),
+  nonce: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+export const mobileAppAuthGoogleNonceSchema = mobileAppAuthPkceBindingSchema;
