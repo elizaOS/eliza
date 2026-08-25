@@ -348,7 +348,21 @@ export { _resetSharedVaultForTesting, mirrorPluginSensitiveToVault };
 
 function maskValue(value: string): string {
   if (value.length <= 8) return "****";
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  let prefixEnd = 4;
+  if (prefixEnd > 0 && prefixEnd < value.length) {
+    const code = value.charCodeAt(prefixEnd - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      prefixEnd -= 1;
+    }
+  }
+  let suffixStart = value.length - 4;
+  if (suffixStart > 0 && suffixStart < value.length) {
+    const code = value.charCodeAt(suffixStart - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      suffixStart += 1;
+    }
+  }
+  return `${value.slice(0, prefixEnd)}...${value.slice(suffixStart)}`;
 }
 
 function normalizePluginCategory(value: string | undefined): PluginCategory {
