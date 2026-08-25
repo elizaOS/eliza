@@ -27,9 +27,13 @@ export interface EnsureConnectionParams {
 	source: string;
 	type?: ChannelType | string;
 	channelId?: string;
+	/** Raw connector server/guild id retained for exact destination binding. */
+	serverId?: string;
 	messageServerId?: UUID;
 	userId?: UUID;
 	metadata?: Record<string, JsonValue>;
+	/** Room-scoped connector metadata such as the selected account id. */
+	roomMetadata?: Record<string, JsonValue>;
 }
 
 export interface EnsureConnectionsParams {
@@ -278,8 +282,10 @@ export async function ensureConnections(
 			source,
 			type: roomType,
 			channelId: c.channelId ?? c.roomId,
+			serverId: c.serverId,
 			messageServerId: c.messageServerId,
 			worldId,
+			metadata: c.roomMetadata,
 		};
 		roomMap.set(c.roomId, room);
 

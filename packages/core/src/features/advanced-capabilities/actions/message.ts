@@ -15,9 +15,11 @@
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
+import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
 import {
 	deterministicOwnerEntityId,
 	resolveCanonicalOwnerIdForMessage,
@@ -43,6 +45,8 @@ import type {
 	Media,
 	Memory,
 	MessageConnector,
+	MessageConnectorManageServerAuthorization,
+	MessageConnectorManageServerDestination,
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
 	MessageTargetKind,
@@ -432,12 +436,19 @@ type ConnectorWithHooks = MessageConnector & {
 		runtime: IAgentRuntime,
 		query: { userId?: string; username?: string; handle?: string },
 	) => Promise<unknown> | unknown;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
 	manageServerHandler?: (
 		runtime: IAgentRuntime,
 		payload: {
 			target?: TargetInfo;
 			operation: string;
 			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
 			params?: Record<string, unknown>;
 		},
 	) =>
@@ -4718,8 +4729,20 @@ async function handleManageServer(
 	);
 	if ("error" in selection) return selection.error;
 	const connector = selection.connector;
+	if (!connector.accountId) {
+		return opFailure(
+			op,
+			"ACCOUNT_ID_REQUIRED",
+			"Server management requires an explicitly account-scoped connector.",
+		);
+	}
+	const selectedAccountId = connector.accountId;
 	const handler = connector.manageServerHandler;
-	if (typeof handler !== "function") {
+	const resolveDestination = connector.resolveManageServerDestination;
+	if (
+		typeof handler !== "function" ||
+		typeof resolveDestination !== "function"
+	) {
 		return opFailure(
 			op,
 			"NOT_SUPPORTED",
@@ -4739,16 +4762,51 @@ async function handleManageServer(
 	for (const key of MANAGE_SERVER_FORWARDED_PARAMS) {
 		if (params[key] !== undefined) forwarded[key] = params[key];
 	}
-	const serverId =
+	let serverId =
 		textParam(params.serverId) ??
 		textParam(params.server) ??
 		textParam(params.guildId) ??
 		resolved.target?.serverId;
+	if (!serverId) {
+		const currentRoom = await runtime.getRoom(message.roomId);
+		serverId =
+			currentRoom?.source === connector.source
+				? currentRoom.serverId
+				: undefined;
+	}
+	if (!serverId) {
+		return opFailure(
+			op,
+			"SERVER_ID_REQUIRED",
+			"MESSAGE op=manage_server requires an exact platform serverId or a current room with an exact persisted server binding.",
+		);
+	}
 	try {
-		const result = await handler(runtime, {
+		const destination = await resolveDestination(runtime, {
 			target: resolved.target,
-			operation,
 			serverId,
+		});
+		if (
+			destination.source !== connector.source ||
+			destination.accountId !== selectedAccountId ||
+			destination.target.accountId !== selectedAccountId
+		) {
+			return opFailure(
+				op,
+				"DESTINATION_CONNECTOR_MISMATCH",
+				"The resolved server destination does not match the selected connector source and account.",
+			);
+		}
+		const authorization = await authorizeManageServerDestination(
+			runtime,
+			message.entityId,
+			destination,
+		);
+		const result = await handler(runtime, {
+			target: destination.target,
+			operation,
+			serverId: destination.serverId,
+			authorization,
 			params: forwarded,
 		});
 		return opSuccess(op, result.summary, {
@@ -4758,6 +4816,14 @@ async function handleManageServer(
 		});
 	} catch (error) {
 		// error-policy:J1 Connector failures become structured action failures.
+		if (error instanceof ElizaError) {
+			logger.error(`[MESSAGE/${op}] ${error.message}`);
+			return opFailure(
+				op,
+				error.code,
+				`MESSAGE op=${op} failed: ${error.message}`,
+			);
+		}
 		return opErrorWrap(op, error);
 	}
 }

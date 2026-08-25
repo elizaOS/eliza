@@ -38,6 +38,7 @@ export interface EnsureConnectionParams {
 	worldId?: UUID;
 	userId?: UUID;
 	metadata?: Metadata;
+	roomMetadata?: Metadata;
 }
 
 export interface ICompatRuntime

@@ -1209,6 +1209,7 @@ export class DiscordLocalService extends Service {
 			source: DISCORD_LOCAL_SERVICE_NAME,
 			type: roomType,
 			channelId,
+			serverId: serverKey,
 			messageServerId: stringToUuid(
 				`discord-local-server:${serverKey}`,
 			) as UUID,
@@ -1217,6 +1218,7 @@ export class DiscordLocalService extends Service {
 				discordChannelId: channelId,
 				...(guildId ? { discordServerId: guildId } : {}),
 			},
+			roomMetadata: { accountId: this.accountId },
 		} as EnsureConnectionArg);
 
 		const attachments: Media[] = (message.attachments ?? []).flatMap(

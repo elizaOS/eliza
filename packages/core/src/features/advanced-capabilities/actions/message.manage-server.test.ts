@@ -12,12 +12,19 @@ import type {
 	ActionResult,
 	IAgentRuntime,
 	Memory,
+	MessageConnectorManageServerAuthorization,
+	UUID,
 } from "../../../types/index.ts";
+import { stringToUuid } from "../../../utils.ts";
 import { inferOp, messageAction } from "./message.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 const ROOM_ID = "00000000-0000-0000-0000-0000000000bb";
 const SENDER_ID = "00000000-0000-0000-0000-0000000000cc";
+const LINKED_ID = "00000000-0000-0000-0000-0000000000dd";
+const DESTINATION_WORLD_ID = "00000000-0000-0000-0000-0000000000ee";
+const DESTINATION_ROOM_ID = "00000000-0000-0000-0000-0000000000ff";
+const ACCOUNT_ID = "primary";
 
 const baseMessage = {
 	id: "00000000-0000-0000-0000-0000000000aa",
@@ -31,6 +38,7 @@ const baseMessage = {
 type ManageCall = {
 	operation: string;
 	serverId?: string;
+	authorization: MessageConnectorManageServerAuthorization;
 	params?: Record<string, unknown>;
 };
 
@@ -39,7 +47,17 @@ function harness(options?: {
 		params: ManageCall,
 	) => Promise<{ summary: string; data?: Record<string, unknown> }>;
 	omitHandler?: boolean;
+	authorizedEntityId?: UUID | null;
+	includeBinding?: boolean;
+	bindingAccountId?: string;
+	resolverAccountId?: string;
+	verifiedRelatedEntityIds?: UUID[];
 }) {
+	let activeServerId = "123456789012345678";
+	const authorizedEntityId =
+		options?.authorizedEntityId === undefined
+			? (SENDER_ID as UUID)
+			: options.authorizedEntityId;
 	const calls: ManageCall[] = [];
 	const manageServerHandler = options?.omitHandler
 		? undefined
@@ -49,12 +67,14 @@ function harness(options?: {
 					params: {
 						operation: string;
 						serverId?: string;
+						authorization: MessageConnectorManageServerAuthorization;
 						params?: Record<string, unknown>;
 					},
 				) => {
 					const call = {
 						operation: params.operation,
 						serverId: params.serverId,
+						authorization: params.authorization,
 						params: params.params,
 					};
 					calls.push(call);
@@ -68,13 +88,72 @@ function harness(options?: {
 		getMessageConnectors: () => [
 			{
 				source: "discord",
+				accountId: ACCOUNT_ID,
 				label: "Discord",
 				capabilities: ["manage_server"],
 				supportedTargetKinds: ["channel"],
 				contexts: [],
+				resolveManageServerDestination: async (_runtime, params) => {
+					activeServerId = params.serverId;
+					const accountId = options?.resolverAccountId ?? ACCOUNT_ID;
+					return {
+						source: "discord",
+						accountId,
+						serverId: activeServerId,
+						messageServerId: stringToUuid(activeServerId),
+						destinationWorldId: DESTINATION_WORLD_ID as UUID,
+						target: {
+							source: "discord",
+							accountId,
+							serverId: activeServerId,
+						},
+					};
+				},
 				...(manageServerHandler ? { manageServerHandler } : {}),
 			},
 		],
+		getWorld: async (worldId: UUID) =>
+			worldId === DESTINATION_WORLD_ID
+				? {
+						id: DESTINATION_WORLD_ID as UUID,
+						agentId: AGENT_ID as UUID,
+						messageServerId: stringToUuid(activeServerId),
+						metadata: authorizedEntityId
+							? {
+									roles: { [authorizedEntityId]: "ADMIN" },
+									roleSources: { [authorizedEntityId]: "manual" },
+								}
+							: {},
+					}
+				: null,
+		getRooms: async (worldId: UUID) =>
+			worldId === DESTINATION_WORLD_ID && options?.includeBinding !== false
+				? [
+						{
+							id: DESTINATION_ROOM_ID as UUID,
+							worldId: DESTINATION_WORLD_ID as UUID,
+							agentId: AGENT_ID as UUID,
+							source: "discord",
+							type: "GROUP",
+							serverId: activeServerId,
+							messageServerId: stringToUuid(activeServerId),
+							metadata: {
+								accountId: options?.bindingAccountId ?? ACCOUNT_ID,
+							},
+						},
+					]
+				: [],
+		getRoomsForParticipant: async (entityId: UUID) =>
+			entityId === AGENT_ID || entityId === authorizedEntityId
+				? [DESTINATION_ROOM_ID as UUID]
+				: [],
+		getService: (serviceType: string) =>
+			serviceType === "relationships" && options?.verifiedRelatedEntityIds
+				? ({
+						getVerifiedMemberEntityIds: async () =>
+							options.verifiedRelatedEntityIds ?? [],
+					} as never)
+				: null,
 		reportError: () => undefined,
 	});
 	return { runtime, calls, manageServerHandler };
@@ -234,5 +313,87 @@ describe("MESSAGE op=manage_server routing", () => {
 			entries: [{ kind: "channel", action: "created", name: "general" }],
 		});
 		expect(result.data?.operation).toBe("apply_template");
+	});
+
+	it("denies a source-world ADMIN turn targeting an unauthorized world B", async () => {
+		// The outer MESSAGE action role gate has already admitted this turn as an
+		// ADMIN in world A. This contract test starts at its manage_server handler
+		// and proves that source authority is not reused for destination world B.
+		const { runtime, calls } = harness({ authorizedEntityId: null });
+		const result = await invoke(runtime, {
+			action: "delete_channel",
+			source: "discord",
+			accountId: ACCOUNT_ID,
+			serverId: "223456789012345678",
+			channelId: "323456789012345678",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data?.error).toBe("MANAGE_SERVER_DESTINATION_NOT_AUTHORIZED");
+		expect(calls).toHaveLength(0);
+	});
+
+	it("allows a verified linked identity that is ADMIN and a member in world B", async () => {
+		const { runtime, calls } = harness({
+			authorizedEntityId: LINKED_ID as UUID,
+			verifiedRelatedEntityIds: [LINKED_ID as UUID],
+		});
+		const result = await invoke(runtime, {
+			action: "create_channel",
+			source: "discord",
+			accountId: ACCOUNT_ID,
+			serverId: "223456789012345678",
+			name: "linked-admin",
+		});
+		expect(result.success).toBe(true);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.authorization).toMatchObject({
+			requesterEntityId: SENDER_ID,
+			authorizedEntityId: LINKED_ID,
+			role: "ADMIN",
+			destinationWorldId: DESTINATION_WORLD_ID,
+		});
+	});
+
+	it("fails closed when the exact destination room binding is missing", async () => {
+		const { runtime, calls } = harness({ includeBinding: false });
+		const result = await invoke(runtime, {
+			action: "create_role",
+			source: "discord",
+			accountId: ACCOUNT_ID,
+			serverId: "223456789012345678",
+			name: "ops",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data?.error).toBe("MANAGE_SERVER_DESTINATION_UNBOUND");
+		expect(calls).toHaveLength(0);
+	});
+
+	it("fails closed when the exact room belongs to another connector account", async () => {
+		const { runtime, calls } = harness({ bindingAccountId: "secondary" });
+		const result = await invoke(runtime, {
+			action: "create_invite",
+			source: "discord",
+			accountId: ACCOUNT_ID,
+			serverId: "223456789012345678",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data?.error).toBe(
+			"MANAGE_SERVER_DESTINATION_ACCOUNT_MISMATCH",
+		);
+		expect(calls).toHaveLength(0);
+	});
+
+	it("rejects a resolver result for a different selected account", async () => {
+		const { runtime, calls } = harness({ resolverAccountId: "secondary" });
+		const result = await invoke(runtime, {
+			action: "create_channel",
+			source: "discord",
+			accountId: ACCOUNT_ID,
+			serverId: "223456789012345678",
+			name: "wrong-account",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data?.error).toBe("DESTINATION_CONNECTOR_MISMATCH");
+		expect(calls).toHaveLength(0);
 	});
 });

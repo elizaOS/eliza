@@ -16,6 +16,7 @@ import {
 	type Character,
 	type Content,
 	createUniqueUuid,
+	ElizaError,
 	type EventPayload,
 	getConnectorAdminWhitelist,
 	type IAgentRuntime,
@@ -25,6 +26,8 @@ import {
 	MemoryType,
 	type MessageConnectorChatContext,
 	type MessageConnectorCreateThreadParams,
+	type MessageConnectorManageServerAuthorization,
+	type MessageConnectorManageServerDestination,
 	type MessageConnectorPostToThreadParams,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
@@ -151,6 +154,10 @@ import {
 	resolveGuildManagementGates,
 	type TemplateStateStore,
 } from "./guild-management";
+import {
+	resolveDiscordManageServerDestination,
+	revalidateDiscordManageServerAuthorization,
+} from "./guild-management-authorization";
 import type { GuildTemplate } from "./guild-templates";
 import {
 	extractDiscordOwnerUserIds,
@@ -508,12 +515,19 @@ type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
 		runtime: IAgentRuntime,
 		params: ConnectorUserLookupParams,
 	) => Promise<unknown>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
 	manageServerHandler?: (
 		runtime: IAgentRuntime,
 		params: {
 			target?: TargetInfo;
 			operation: string;
 			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
 			params?: Record<string, unknown>;
 		},
 	) => Promise<{ summary: string; data?: Record<string, unknown> }>;
@@ -2090,6 +2104,7 @@ export class DiscordService extends Service implements IDiscordService {
 								name: dmRecipient.name,
 								source: "discord",
 								channelId: targetChannel.id,
+								serverId,
 								messageServerId: stringToUuid(serverId),
 								type: channelType,
 								worldId,
@@ -2097,6 +2112,7 @@ export class DiscordService extends Service implements IDiscordService {
 								metadata: {
 									accountId,
 								},
+								roomMetadata: { accountId },
 							});
 						}
 						const dedupeParams = {
@@ -2253,6 +2269,7 @@ export class DiscordService extends Service implements IDiscordService {
 							name: clientUser.displayName || clientUser.username || undefined,
 							source: "discord",
 							channelId: targetChannel.id,
+							serverId,
 							messageServerId: stringToUuid(serverId),
 							type: channelType,
 							worldId,
@@ -2260,6 +2277,7 @@ export class DiscordService extends Service implements IDiscordService {
 							metadata: {
 								accountId,
 							},
+							roomMetadata: { accountId },
 						});
 					} catch (error) {
 						// error-policy:J1 local persistence boundary keeps provider
@@ -3578,6 +3596,7 @@ export class DiscordService extends Service implements IDiscordService {
 			channelId: channel.id,
 			worldId,
 			serverId: guild?.id,
+			messageServerId: guild?.id ? stringToUuid(guild.id) : undefined,
 			metadata: {
 				accountId,
 				discordChannelId: channel.id,
@@ -3614,6 +3633,14 @@ export class DiscordService extends Service implements IDiscordService {
 		this.removeAllowedChannel(channel.id, accountId);
 	}
 
+	public resolveManageConnectorServerDestination(
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string; accountId?: string },
+	): MessageConnectorManageServerDestination {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		return resolveDiscordManageServerDestination(runtime, params, accountId);
+	}
+
 	/**
 	 * Structural guild management entry point for the message tool
 	 * (`MESSAGE op=manage_server source=discord`). Fail-closed: every write
@@ -3627,6 +3654,7 @@ export class DiscordService extends Service implements IDiscordService {
 			target?: TargetInfo;
 			operation: string;
 			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
 			params?: Record<string, unknown>;
 			accountId?: string;
 		},
@@ -3636,7 +3664,31 @@ export class DiscordService extends Service implements IDiscordService {
 		if (!client?.isReady()) {
 			throw new Error(`Discord client is not ready for account ${accountId}.`);
 		}
-		const guild = await this.resolveManagementGuild(client, params);
+		if (
+			params.serverId !== params.authorization.serverId ||
+			params.target?.serverId !== params.authorization.serverId
+		) {
+			throw new ElizaError(
+				"Discord guild-management parameters do not match the trusted destination authorization.",
+				{
+					code: "DISCORD_MANAGE_SERVER_PROVENANCE_MISMATCH",
+					context: { accountId },
+				},
+			);
+		}
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			params.authorization.serverId,
+		);
+		const guild = await client.guilds.fetch(params.authorization.serverId);
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			guild.id,
+		);
 		const gates = this.getGuildManagementGates(accountId);
 		const raw = params.params ?? {};
 		const request: GuildManagementRequest = {
@@ -3700,47 +3752,6 @@ export class DiscordService extends Service implements IDiscordService {
 			summary: receipt.summary,
 			data: receipt as unknown as Record<string, unknown>,
 		};
-	}
-
-	private async resolveManagementGuild(
-		client: DiscordJsClient,
-		params: {
-			target?: TargetInfo;
-			serverId?: string;
-			params?: Record<string, unknown>;
-		},
-	): Promise<Guild> {
-		const requested =
-			params.serverId?.trim() || params.target?.serverId?.trim() || undefined;
-		if (requested) {
-			if (DISCORD_SNOWFLAKE_PATTERN.test(requested)) {
-				const byId = await client.guilds.fetch(requested).catch(() => null);
-				if (byId) return byId;
-			}
-			const normalized = normalizeDiscordConnectorQuery(requested);
-			const byName = client.guilds.cache.find(
-				(guild) => guild.name.toLowerCase() === normalized,
-			);
-			if (byName) return byName;
-			throw new Error(
-				`Discord server "${requested}" was not found among the bot's guilds.`,
-			);
-		}
-		const channelId =
-			params.target?.channelId ?? stringOrUndefined(params.params?.channelId);
-		if (channelId) {
-			const channel = await client.channels.fetch(channelId).catch(() => null);
-			const guild =
-				channel && "guild" in channel ? (channel.guild as Guild) : null;
-			if (guild) return guild;
-		}
-		if (client.guilds.cache.size === 1) {
-			const only = client.guilds.cache.first();
-			if (only) return only;
-		}
-		throw new Error(
-			"Discord server management requires a serverId (guild id or exact name) when the bot is in multiple guilds.",
-		);
 	}
 
 	/**
@@ -4150,6 +4161,15 @@ export class DiscordService extends Service implements IDiscordService {
 								runtime,
 								scopedFetchParams(params),
 							),
+						resolveManageServerDestination: (runtime, params) =>
+							serviceInstance.resolveManageConnectorServerDestination(runtime, {
+								...params,
+								accountId:
+									accountIdFromRecord(params.target) ??
+									accountId ??
+									defaultAccountId,
+								target: params.target ? scopedTarget(params.target) : undefined,
+							}),
 						manageServerHandler: (runtime, params) =>
 							serviceInstance.manageConnectorServer(runtime, {
 								...params,

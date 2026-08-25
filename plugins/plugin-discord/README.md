@@ -242,6 +242,28 @@ operations:
 - `list_templates`, `apply_template` (idempotent, non-destructive guild
   template reconcile)
 
+Management requests must identify the destination with the exact Discord guild
+snowflake persisted as the room's `serverId`; guild display names are never an
+authorization or lookup key. For example:
+
+```json
+{
+  "action": "create_channel",
+  "source": "discord",
+  "accountId": "primary",
+  "serverId": "123456789012345678",
+  "name": "release-status"
+}
+```
+
+Before Discord is queried or changed, core requires a verified identity related
+to the requester to be both a member and `ADMIN` or `OWNER` in that exact
+destination world. The destination must also have an exact Discord room binding
+for the selected connector account (`room.source`, raw guild `room.serverId`,
+and `room.metadata.accountId`). The Discord connector independently revalidates
+the same binding, membership, and role immediately before mutation, so revoked,
+unbound, cross-account, and cross-guild requests fail closed.
+
 **Every structural write fails closed.** The `actions.channels`,
 `actions.roles`, `actions.permissions`, and `actions.moderation` gates all
 default to OFF and must be explicitly enabled:

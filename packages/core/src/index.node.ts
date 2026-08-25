@@ -217,6 +217,7 @@ export * from "./markdown";
 export * from "./media";
 export * from "./memory";
 export * from "./messaging/interactions";
+export * from "./messaging/manage-server-authorization";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";

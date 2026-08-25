@@ -380,8 +380,33 @@ export interface MessageConnectorManageServerParams {
 	operation: string;
 	/** Platform server/guild id the operation applies to. */
 	serverId?: string;
+	/** Trusted authorization minted by core for the exact destination binding. */
+	authorization: MessageConnectorManageServerAuthorization;
 	/** Bounded operation arguments; the connector validates every field. */
 	params?: Record<string, unknown>;
+}
+
+/** Exact connector destination resolved before any server-management write. */
+export interface MessageConnectorManageServerDestination {
+	source: string;
+	accountId: string;
+	serverId: string;
+	messageServerId: UUID;
+	destinationWorldId: UUID;
+	target: TargetInfo;
+}
+
+/**
+ * Trusted destination authorization carried from core to the connector. The
+ * connector must independently revalidate this envelope immediately before
+ * mutation; it is provenance, not a reusable capability grant.
+ */
+export interface MessageConnectorManageServerAuthorization
+	extends MessageConnectorManageServerDestination {
+	requesterEntityId: UUID;
+	authorizedEntityId: UUID;
+	role: "ADMIN" | "OWNER";
+	bindingRoomIds: UUID[];
 }
 
 /** Structured result of a connector server-management operation. */
@@ -494,6 +519,12 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
 	) => Promise<Memory | undefined>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
 	manageServerHandler?: (
 		runtime: IAgentRuntime,
 		params: MessageConnectorManageServerParams,
@@ -903,10 +934,12 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		name,
 		source,
 		channelId,
+		serverId,
 		messageServerId,
 		type,
 		worldId,
 		userId,
+		roomMetadata,
 	}: {
 		entityId: UUID;
 		roomId: UUID;
@@ -916,11 +949,13 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldName?: string;
 		source?: string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		type?: ChannelType | string;
 		worldId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
+		roomMetadata?: Record<string, JsonValue>;
 	}): Promise<void>;
 
 	ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;

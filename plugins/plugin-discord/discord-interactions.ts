@@ -153,6 +153,7 @@ export async function handleInteractionCreate(
 		name,
 		source: "discord",
 		channelId: interactionChannelId,
+		serverId,
 		messageServerId: serverId ? stringToUuid(serverId) : undefined,
 		type,
 		worldId: createUniqueUuid(service.runtime, serverId ?? roomId) as UUID,
@@ -162,6 +163,7 @@ export async function handleInteractionCreate(
 			...buildDiscordWorldMetadata(service.runtime, interaction.guild?.ownerId),
 			accountId,
 		},
+		roomMetadata: { accountId },
 	});
 
 	if (interaction.isCommand()) {
@@ -356,7 +358,7 @@ export async function handleInteractionCreate(
 export async function buildStandardizedRooms(
 	service: InteractionServiceInternals,
 	guild: Guild,
-	_worldId: UUID,
+	worldId: UUID,
 ): Promise<Room[]> {
 	const accountId = service.accountId ?? "default";
 	const rooms: Room[] = [];
@@ -415,6 +417,9 @@ export async function buildStandardizedRooms(
 				type: channelType,
 				channelId: channel.id,
 				source: "discord",
+				serverId: guild.id,
+				messageServerId: stringToUuid(guild.id),
+				worldId,
 				/**
 				 * Channel topic exposed via metadata for plugin-content-seeder
 				 */
@@ -697,7 +702,7 @@ export async function onReady(
 						id: worldId,
 						name: fullGuild.name,
 						agentId: service.runtime.agentId,
-						serverId: fullGuild.id,
+						messageServerId: stringToUuid(fullGuild.id),
 						metadata: {
 							...buildDiscordWorldMetadata(service.runtime, fullGuild.ownerId),
 							accountId,
