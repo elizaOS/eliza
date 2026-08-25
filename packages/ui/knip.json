@@ -7,12 +7,16 @@
     "src/App.tsx",
     "src/app-navigate-view.ts",
     "src/app-shell-registry.ts",
+    "src/auth-status.ts",
     "src/browser.ts",
     "src/build-variant.ts",
     "src/agent-surface/index.ts",
     "src/api/index.ts",
     "src/bridge/index.ts",
     "src/chat/index.ts",
+    "src/cloud/applications/WebAppsStudio.tsx",
+    "src/cloud/join/index.ts",
+    "src/cloud/public-pages/index.ts",
     "src/cloud-ui/index.ts",
     "src/components/index.ts",
     "src/config/index.ts",
@@ -22,6 +26,7 @@
     "src/hooks/index.ts",
     "src/i18n/index.ts",
     "src/layouts/index.ts",
+    "src/native-transcript/core.ts",
     "src/native-transcript/index.ts",
     "src/navigation/index.ts",
     "src/os-intent/index.ts",
@@ -66,6 +71,10 @@
     "*.config.{ts,mts,mjs}",
     "scripts/**/*.{ts,mts,mjs}"
   ],
-  "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
+  "ignoreDependencies": [
+    "@metamask/connect-evm",
+    "@simplewebauthn/browser",
+    "pixelmatch"
+  ],
   "vitest": false
 }
