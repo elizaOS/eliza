@@ -56,6 +56,18 @@ interface MeetPaginationState {
   seenPageTokens: Set<string>;
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function createMeetPaginationState(): MeetPaginationState {
   return { pageCount: 0, seenPageTokens: new Set<string>() };
 }
@@ -562,7 +574,7 @@ function durationMinutes(conference: GoogleMeetConferenceRecord): number {
   return Math.max(0, Math.round((end - start) / 60000));
 }
 
-function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
+export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   summary: string;
   keyPoints: string[];
   actionItems: GoogleMeetReport["actionItems"];
@@ -581,7 +593,7 @@ function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const summary = sentences.slice(0, 3).join(" ") || plainText.slice(0, 500);
+  const summary = truncateText(sentences.slice(0, 3).join(" ") || plainText, 500);
   const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
   const actionItems = lines
     .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))
