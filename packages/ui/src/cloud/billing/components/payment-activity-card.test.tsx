@@ -515,4 +515,97 @@ describe("PaymentActivityCard refund and dispute rendering", () => {
       "succeeded",
     );
   });
+
+  it("shows reversal detail for a row carrying only a shortfall or a support escalation, matching the detail surface", async () => {
+    // The list's reversal gate must cover the same authoritative field set
+    // the detail surface renders: a row with all four classic totals zero,
+    // policyEffect: null, but a real unrecoveredShortfallUsd (or a
+    // contact_support escalation) is a reversed payment per the authority.
+    // The old gate hid both facts in the list while detail showed them
+    // (#26752 review r6).
+    apiMock.mockResolvedValueOnce({
+      states: [
+        stateRow({
+          id: "payment_request:shortfall-only",
+          surface: "payment_request",
+          authorityId: "pr_shortfall",
+          unrecoveredShortfallUsd: 5,
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("payment-state-row");
+    expect(screen.getByTestId("payment-reversal-detail")).toBeTruthy();
+    expect(screen.getByTestId("shortfall-amount").textContent).toContain("5");
+    cleanup();
+
+    // A row whose ONLY reversal signal is a support escalation also gets the
+    // reversal block (it renders the contact-support line inside it).
+    apiMock.mockReset();
+    apiMock.mockResolvedValueOnce({
+      states: [
+        stateRow({
+          id: "payment_request:support-only",
+          surface: "payment_request",
+          authorityId: "pr_support",
+          supportState: "contact_support",
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("payment-state-row");
+    expect(screen.getByTestId("payment-reversal-detail")).toBeTruthy();
+    expect(screen.getByText(/Contact support for this payment/i)).toBeTruthy();
+    cleanup();
+
+    // Control: a plain success row with none of the reversal signals shows
+    // no reversal detail — the gate additions did not over-capture.
+    apiMock.mockReset();
+    apiMock.mockResolvedValueOnce({ states: [stateRow()] });
+    render(
+      <MemoryRouter>
+        <PaymentActivityCard />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("payment-state-row");
+    expect(screen.queryByTestId("payment-reversal-detail")).toBeNull();
+  });
+
+  it("rejects timestamps that do not round-trip the server's ISO serialization", async () => {
+    // The server serializes every eventTime with toISOString(), so the
+    // canonical round-trip is the transport contract: "0" parses to a 2000
+    // date, "2024-02-30" silently normalizes to March 1, and a date-only
+    // or offset form renders an altered timestamp. None may enter the
+    // ready state (#26752 review r6).
+    const nonCanonical: Record<string, unknown>[] = [
+      { ...stateRow(), eventTime: "0" },
+      { ...stateRow(), eventTime: "2024-02-30T00:00:00.000Z" },
+      { ...stateRow(), eventTime: "2024-01-01" },
+      { ...stateRow(), eventTime: "2024-01-01T00:00:00.000+05:00" },
+    ];
+    for (const row of nonCanonical) {
+      apiMock.mockReset();
+      apiMock.mockResolvedValueOnce({ states: [row] });
+      render(
+        <MemoryRouter>
+          <PaymentActivityCard />
+        </MemoryRouter>,
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await screen.findByText(/Payment activity could not be loaded/i);
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.getByText(/malformed/i)).toBeTruthy();
+      // eslint-disable-next-line no-await-in-loop
+      expect(screen.queryByTestId("payment-state-row")).toBeNull();
+      cleanup();
+    }
+  });
 });
