@@ -3,7 +3,9 @@
  * configuration before a runtime or database is started.
  */
 
-export const MEMORY_HORIZON_SIZES = [500, 1_000, 5_000, 10_000] as const;
+export const MEMORY_HORIZON_SIZES = [
+  500, 1_000, 5_000, 10_000, 100_000,
+] as const;
 
 export type MemoryHorizonSize = (typeof MEMORY_HORIZON_SIZES)[number];
 
