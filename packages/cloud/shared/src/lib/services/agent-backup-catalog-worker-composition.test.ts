@@ -260,6 +260,10 @@ describe("backup catalogue enabled provider graph", () => {
     const createPublicationSource = mock(() => resolveSource);
     const createPublicationExecutor = mock(() => publicationExecutor);
     const createJanitor = mock(() => janitor);
+    const accountDeletionBackup = Object.freeze({});
+    const accountDeletionSpool = Object.freeze({});
+    const createAccountDeletionBackup = mock(() => accountDeletionBackup);
+    const createAccountDeletionSpool = mock(() => accountDeletionSpool);
     const runCycle = mock(async () => runtimeSummary());
     const composition = await createAgentBackupCatalogWorkerEnabledComposition({
       env: enabledEnv(),
@@ -272,6 +276,8 @@ describe("backup catalogue enabled provider graph", () => {
         createPublicationSource: createPublicationSource as never,
         createPublicationExecutor: createPublicationExecutor as never,
         createJanitor: createJanitor as never,
+        createAccountDeletionBackup: createAccountDeletionBackup as never,
+        createAccountDeletionSpool: createAccountDeletionSpool as never,
         runCycle: runCycle as never,
       },
     });
@@ -286,6 +292,14 @@ describe("backup catalogue enabled provider graph", () => {
     expect(createPublicationSource).toHaveBeenCalledTimes(1);
     expect(createPublicationExecutor).toHaveBeenCalledTimes(1);
     expect(createJanitor).toHaveBeenCalledTimes(1);
+    expect(createAccountDeletionBackup).toHaveBeenCalledWith(registry);
+    expect(createAccountDeletionSpool).toHaveBeenCalledWith(
+      expect.objectContaining({ stateDirectory: "/var/lib/eliza-backup-catalog/spool" }),
+    );
+    expect(composition.accountDeletionAuthorities).toEqual({
+      backup: accountDeletionBackup,
+      spool: accountDeletionSpool,
+    });
     expect(createContextResolver.mock.calls[0]?.[0]).toMatchObject({
       keyBundle,
       spool: { stateDirectory: "/var/lib/eliza-backup-catalog/spool" },

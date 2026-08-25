@@ -13,6 +13,8 @@ import {
 } from "@elizaos/core/security/kms";
 import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/shared";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
+import { createAccountDeletionBackupAuthority } from "./account-deletion-backup-authority";
+import { createAccountDeletionSpoolAuthority } from "./account-deletion-spool-authority";
 import {
   type AgentBackupCaptureV3LegacyWriterDrainReceipt,
   createAgentBackupCaptureV2CatalogExecutor,
@@ -70,6 +72,8 @@ export interface AgentBackupCatalogWorkerEnabledCompositionDependencies {
   createPublicationSource: typeof createAgentBackupCaptureV3PublicationSourceResolver;
   createPublicationExecutor: typeof createAgentBackupCatalogPublicationExecutor;
   createJanitor: typeof createAgentBackupCaptureV3SpoolCleanupJanitor;
+  createAccountDeletionBackup: typeof createAccountDeletionBackupAuthority;
+  createAccountDeletionSpool: typeof createAccountDeletionSpoolAuthority;
   runCycle: typeof runAgentBackupCatalogRuntimeCycle;
 }
 
@@ -350,6 +354,8 @@ const DEFAULT_DEPENDENCIES: AgentBackupCatalogWorkerEnabledCompositionDependenci
   createPublicationSource: createAgentBackupCaptureV3PublicationSourceResolver,
   createPublicationExecutor: createAgentBackupCatalogPublicationExecutor,
   createJanitor: createAgentBackupCaptureV3SpoolCleanupJanitor,
+  createAccountDeletionBackup: createAccountDeletionBackupAuthority,
+  createAccountDeletionSpool: createAccountDeletionSpoolAuthority,
   runCycle: runAgentBackupCatalogRuntimeCycle,
 };
 
@@ -389,8 +395,13 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
     spool: config.spool,
     batchSize: config.spoolCleanupBatchSize,
   });
+  const accountDeletionAuthorities = Object.freeze({
+    backup: dependencies.createAccountDeletionBackup(registry),
+    spool: dependencies.createAccountDeletionSpool(config.spool),
+  });
   return Object.freeze({
     enabled: true,
+    accountDeletionAuthorities,
     runCycle: (signal?: AbortSignal) =>
       dependencies.runCycle({
         config: config.runtime,

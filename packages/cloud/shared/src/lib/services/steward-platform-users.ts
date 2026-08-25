@@ -19,6 +19,8 @@ export interface StewardPlatformUserLifecycleResult {
   userId: string;
 }
 
+export type StewardPlatformUserState = "active" | "deactivated" | "absent";
+
 type StewardPlatformUserResponse =
   | {
       ok: true;
@@ -30,6 +32,13 @@ type StewardPlatformUserResponse =
       ok: false;
       error?: string;
     };
+
+interface StewardPlatformUserInspectionResponse {
+  ok?: boolean;
+  data?: { deactivatedAt?: unknown };
+  deactivatedAt?: unknown;
+  error?: unknown;
+}
 
 async function readStewardPlatformUserResponse(
   response: Response,
@@ -151,6 +160,50 @@ export async function deactivateStewardPlatformUser(
   return await mutateStewardPlatformUser(userId, "PATCH", "/deactivate", {
     deactivated: true,
   });
+}
+
+/** Restores Steward login only after a deletion recovery credential is consumed. */
+export async function reactivateStewardPlatformUser(
+  userId: string,
+): Promise<StewardPlatformUserLifecycleResult> {
+  return await mutateStewardPlatformUser(userId, "PATCH", "/deactivate", {
+    deactivated: false,
+  });
+}
+
+/** Reads canonical Steward state so ambiguous lifecycle calls are never replayed blind. */
+export async function inspectStewardPlatformUser(
+  userId: string,
+): Promise<StewardPlatformUserState> {
+  const response = await fetch(
+    `${getStewardApiUrl()}/platform/users/${encodeURIComponent(userId)}`,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Steward-Platform-Key": getStewardPlatformKey(),
+      },
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (response.status === 404) return "absent";
+  let payload: StewardPlatformUserInspectionResponse;
+  try {
+    payload = (await response.json()) as StewardPlatformUserInspectionResponse;
+  } catch (error) {
+    // error-policy:J2 a malformed provider inspection cannot be interpreted as absence.
+    throw new Error(`Steward user inspection returned ${response.status} and malformed JSON`, {
+      cause: error,
+    });
+  }
+  if (!response.ok || payload.ok === false) {
+    throw new Error(
+      typeof payload.error === "string"
+        ? payload.error
+        : `Steward user inspection returned ${response.status}`,
+    );
+  }
+  const deactivatedAt = payload.data?.deactivatedAt ?? payload.deactivatedAt;
+  return typeof deactivatedAt === "string" && deactivatedAt.length > 0 ? "deactivated" : "active";
 }
 
 async function deleteStewardPersonalTenant(userId: string): Promise<void> {
