@@ -323,6 +323,18 @@ async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
   };
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export const manageBrowserBridgeAction: Action = {
   name: ACTION_NAME,
   contexts: ["browser", "files", "connectors", "settings"],
@@ -400,11 +412,8 @@ export const manageBrowserBridgeAction: Action = {
         }
       }
     } catch (err) {
-      const text =
-        `Failed MANAGE_BROWSER_BRIDGE ${subaction}: ${describeError(err)}`.slice(
-          0,
-          MAX_BROWSER_BRIDGE_TEXT_LENGTH,
-        );
+      const rawText = `Failed MANAGE_BROWSER_BRIDGE ${subaction}: ${describeError(err)}`;
+      const text = truncateText(rawText, MAX_BROWSER_BRIDGE_TEXT_LENGTH);
       logger.warn(`[${ACTION_NAME}] ${text}`);
       return {
         text,
