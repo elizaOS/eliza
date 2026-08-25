@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 /**
  * Built-in `DefaultMessageService` (the runtime's `IMessageService` singleton) and
  * the helpers it composes, implementing the full inbound-message pipeline: memory
@@ -1883,7 +1895,7 @@ export function subAgentCompletionRelayBody(
 	if (!body) return undefined;
 	const maxLength = 1500;
 	return body.length > maxLength
-		? `${body.slice(0, maxLength - 1).trimEnd()}…`
+		? `${truncateUtf16Safe(body, maxLength - 1).trimEnd()}…`
 		: body;
 }
 
@@ -2225,7 +2237,7 @@ function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	return normalized.length > 80 ? `${truncateUtf16Safe(normalized, 77)}...` : normalized;
 }
 
 function senderIdentityName(value: unknown): string | undefined {

@@ -317,6 +317,23 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 		expect(capped).toMatch(/…$/);
 	});
 
+	
+	it("preserves UTF-16 surrogate pairs in subAgentCompletionRelayBody truncation", () => {
+		// "🔥" is 2 code units. 1000 repeats = 2000 units > 1500
+		// maxLength - 1 = 1499 (odd), bisecting a surrogate pair
+		const longEmoji = "🔥".repeat(1000);
+		const capped = subAgentCompletionRelayBody(`${RELAY_HEADER}\n${longEmoji}`);
+		expect(capped).toBeDefined();
+		expect(capped).toMatch(/…$/);
+		for (const char of capped as string) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
+
 	it("a failed relay turn delivers the completed result instead of the canned line", async () => {
 		// Same failing-turn harness as above (tool result carries nothing
 		// user-facing, every later model call dies) — but the TRIGGERING message
