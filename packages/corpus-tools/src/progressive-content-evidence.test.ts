@@ -3,6 +3,11 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  PROGRESSIVE_CONTENT_FAULT_CASES,
+  PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+} from "../../core/src/testing/progressive-content-faults.ts";
+import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
@@ -521,25 +526,22 @@ function evidence() {
       ],
     },
     "faults.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
       status: "passed",
-      required: 6,
-      executed: 6,
-      catalog: [
-        "unauthorized",
-        "revoked-authorization",
-        "stale-revision",
-        "missing-source",
-        "tampered-reference",
-        "concurrent-cleanup",
-      ],
-      results: [
-        "unauthorized",
-        "revoked-authorization",
-        "stale-revision",
-        "missing-source",
-        "tampered-reference",
-        "concurrent-cleanup",
-      ].map((id) => ({ id, status: "passed" })),
+      required: PROGRESSIVE_CONTENT_FAULT_CASES.length,
+      executed: PROGRESSIVE_CONTENT_FAULT_CASES.length,
+      catalog: PROGRESSIVE_CONTENT_FAULT_CASES.map(([id]) => id),
+      results: PROGRESSIVE_CONTENT_FAULT_CASES.map(
+        ([id, stage, expectedCode]) => ({
+          id,
+          stage,
+          expectedCode,
+          forbiddenEffects: PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+          status: "passed",
+          observedCode: expectedCode,
+          observedEffects: [],
+        }),
+      ),
     },
     "stress.json": {
       status: "passed",
@@ -1079,6 +1081,25 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(pattern);
+  });
+
+  it("rejects fault rows with forged codes or omitted forbidden effects", () => {
+    const original = evidence();
+    const report = JSON.parse(
+      new TextDecoder().decode(original.bytes["faults.json"]),
+    ) as {
+      results: Array<Record<string, unknown>>;
+    };
+    report.results[0] = {
+      ...report.results[0],
+      expectedCode: "FORGED_SUCCESS",
+      observedCode: "FORGED_SUCCESS",
+      forbiddenEffects: [],
+    };
+    const changed = replaceArtifact(original, "faults.json", report);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/fault matrix/u);
   });
 
   it("rejects Postgres evidence that copies native stores into SQL", () => {
