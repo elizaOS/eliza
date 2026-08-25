@@ -525,3 +525,22 @@ describe("parseSlackMessageLink", () => {
     ).toBeNull();
   });
 });
+
+describe("truncateText", () => {
+  it("preserves UTF-16 surrogate pairs during truncation", () => {
+    // "🔥" is 2 code units. 20 repeats = 40 units
+    const longEmoji = "🔥".repeat(20);
+    // maxLength 10 -> maxLength - 1 (for ellipsis "…") = 9 (odd). Should truncate to 8 units (4 emojis) + "…" = 9 chars
+    const result = truncateText(longEmoji, 10);
+    expect(result.endsWith("…")).toBe(true);
+    expect(result.length).toBe(9);
+    for (const char of result) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+

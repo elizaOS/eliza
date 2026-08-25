@@ -479,6 +479,18 @@ export function isPrivateChannel(channel: SlackChannel): boolean {
 /**
  * Truncates text to a maximum length with an ellipsis
  */
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export function truncateText(
   text: string,
   maxLength: number,
@@ -487,7 +499,7 @@ export function truncateText(
   if (text.length <= maxLength) {
     return text;
   }
-  return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+  return truncateUtf16Safe(text, maxLength - ellipsis.length) + ellipsis;
 }
 
 /**
