@@ -569,10 +569,24 @@ describe("dockerPlatformFlag", () => {
 });
 
 describe("extractDockerCreateContainerId", () => {
-  test("picks the hex id line, ignores warnings, truncates to 12", () => {
-    const out = "WARNING: something\n" + "a".repeat(64);
-    expect(extractDockerCreateContainerId(out)).toBe("aaaaaaaaaaaa");
-    expect(() => extractDockerCreateContainerId("no id here")).toThrow(/invalid container id/);
+  test("preserves the complete lowercase Docker id from the final output line", () => {
+    const containerId = "0123456789abcdef".repeat(4);
+    const out = `WARNING: something\n${containerId}\n`;
+    expect(extractDockerCreateContainerId(out)).toBe(containerId);
+  });
+
+  test("rejects short, uppercase, malformed, and non-final Docker ids", () => {
+    const validContainerId = "0123456789abcdef".repeat(4);
+    for (const output of [
+      validContainerId.slice(0, 12),
+      validContainerId.toUpperCase(),
+      `${validContainerId.slice(0, -1)}g`,
+      `${validContainerId}\nunexpected trailing output`,
+      "no id here",
+      "",
+    ]) {
+      expect(() => extractDockerCreateContainerId(output)).toThrow(/invalid container id/);
+    }
   });
 });
 

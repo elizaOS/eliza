@@ -643,23 +643,15 @@ export function extractDockerCreateContainerId(output: string): string {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  let containerId: string | undefined;
-  for (let index = lines.length - 1; index >= 0; index--) {
-    const line = lines[index]!;
-    if (/^[0-9a-f]{12,64}$/i.test(line)) {
-      containerId = line;
-      break;
-    }
-  }
+  const containerId = lines.at(-1);
 
-  if (!containerId) {
-    const lastLine = lines.at(-1);
+  if (!containerId || !/^[0-9a-f]{64}$/.test(containerId)) {
     throw new Error(
-      `[docker-sandbox] docker create returned an invalid container id: ${JSON.stringify(lastLine ?? "")}`,
+      `[docker-sandbox] docker create returned an invalid container id: ${JSON.stringify(containerId ?? "")}`,
     );
   }
 
-  return containerId.slice(0, 12);
+  return containerId;
 }
 
 // ---------------------------------------------------------------------------
