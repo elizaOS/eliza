@@ -54,4 +54,17 @@ describe("buildWaitForUrlPredicate", () => {
     expect(predicate.kind).toBe("substring");
     expect(predicate.test("https://anything.example")).toBe(false);
   });
+
+  it("remains stateless and deterministic across repeated evaluations with g or y flags", () => {
+    const predicate = buildWaitForUrlPredicate("/auth\\/callback/g");
+    expect(predicate.kind).toBe("regex");
+    expect(predicate.test("https://example.com/auth/callback")).toBe(true);
+    expect(predicate.test("https://example.com/auth/callback")).toBe(true);
+    expect(predicate.test("https://example.com/auth/callback")).toBe(true);
+
+    const stickyPredicate = buildWaitForUrlPredicate("/auth/y");
+    expect(stickyPredicate.kind).toBe("regex");
+    expect(stickyPredicate.test("https://example.com/auth")).toBe(true);
+    expect(stickyPredicate.test("https://example.com/auth")).toBe(true);
+  });
 });
