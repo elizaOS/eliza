@@ -270,6 +270,18 @@ function snapshotCallerToken(
   });
 }
 
+/** Validate and detach a caller token before a coordinator crosses an await. */
+export function normalizeAgentBackupOperationLaneCallerToken(
+  token: AgentBackupOperationLaneCallerToken,
+): Readonly<AgentBackupOperationLaneCallerToken> {
+  return snapshotCallerToken(token);
+}
+
+/** Share the lane's exact lease bounds with atomic admission coordinators. */
+export function normalizeAgentBackupOperationLaneLeaseMs(value: unknown): number {
+  return requireLeaseMs(value);
+}
+
 function snapshotExecution(
   execution: AgentBackupOperationLaneExecution,
 ): Readonly<AgentBackupOperationLaneExecution> {

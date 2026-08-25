@@ -117,4 +117,55 @@ describe("agent backup global lock order", () => {
       "scheduler reservation",
     );
   });
+
+  test("capture admission locks the global lane before its exact source authority", () => {
+    const admission = source("agent-backup-operation-admission.ts");
+    const sourceLockStart = admission.indexOf(
+      "async function lockExactSourceAuthorityInTransaction",
+    );
+    const sourceLockEnd = admission.indexOf("function assertCatalogueReplay", sourceLockStart);
+    expect(sourceLockStart).toBeGreaterThanOrEqual(0);
+    expect(sourceLockEnd).toBeGreaterThan(sourceLockStart);
+    const sourceLocks = admission.slice(sourceLockStart, sourceLockEnd);
+    const sourceAnchors = [
+      ".from(agentSandboxes)",
+      ".from(organizations)",
+      ".from(agentActivationPublications)",
+      ".from(dockerNodes)",
+      ".from(agentNodeIncarnationHistories)",
+    ];
+    let previous = -1;
+    for (const anchor of sourceAnchors) {
+      const index = sourceLocks.indexOf(anchor, previous + 1);
+      expect(index, `capture admission: missing ordered lock anchor ${anchor}`).toBeGreaterThan(
+        previous,
+      );
+      previous = index;
+    }
+    const publicationReadStart = sourceLocks.indexOf(".from(agentActivationPublications)");
+    const nodeLockStart = sourceLocks.indexOf(".from(dockerNodes)", publicationReadStart);
+    expect(
+      sourceLocks.slice(publicationReadStart, nodeLockStart),
+      "immutable activation publication must not be row-locked after the sandbox",
+    ).not.toContain('.for("');
+
+    const claim = exportedFunction(
+      admission,
+      "claimNextAgentBackupOperationAdmission",
+      "renewAgentBackupOperationAdmission",
+    );
+    expectOrder(
+      claim,
+      "lockAgentBackupOperationLaneInTransaction(tx)",
+      "lockNextDueBackupInTransaction(tx)",
+      "capture admission",
+    );
+    const renew = exportedFunction(admission, "renewAgentBackupOperationAdmission");
+    expectOrder(
+      renew,
+      "renewAgentBackupOperationLaneInTransaction(tx",
+      "lockBackupByTargetInTransaction(tx",
+      "capture admission renewal",
+    );
+  });
 });
