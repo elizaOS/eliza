@@ -2,18 +2,29 @@
  * Feature-detection and small audio helpers (MediaRecorder support) for the voice surface.
  */
 export function supportsMediaRecorder(): boolean {
-  return typeof window !== "undefined" && "MediaRecorder" in window;
+  return (
+    typeof window !== "undefined" &&
+    typeof window.MediaRecorder === "function" &&
+    typeof window.MediaRecorder.isTypeSupported === "function"
+  );
 }
 
 export function supportsGetUserMedia(): boolean {
-  return !!(
+  return (
     typeof window !== "undefined" &&
-    navigator.mediaDevices &&
-    navigator.mediaDevices.getUserMedia
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getUserMedia === "function"
   );
 }
 
 export function getSupportedMimeType(): string {
+  if (
+    typeof MediaRecorder === "undefined" ||
+    typeof MediaRecorder.isTypeSupported !== "function"
+  ) {
+    return "";
+  }
+
   const types = [
     "audio/webm;codecs=opus",
     "audio/webm",
