@@ -11,6 +11,10 @@
  *
  * `/api/apps/hero/:slug` is reachable without an owner role. SVG heroes are
  * XML and can carry script; they must not execute on the dashboard origin.
+ * Every state-changing app operation (launch, install, create, relaunch,
+ * stop, permission grants, directory registration) requires the OWNER or
+ * ADMIN role via canManageApps; run steering and heartbeat stay USER-tier
+ * by design because embedded viewers interact with already-launched apps.
  */
 import type { Dirent } from "node:fs";
 import { promises as fs } from "node:fs";
@@ -579,7 +583,7 @@ function sanitizeFavoriteAppNames(value: unknown): string[] {
   return apps;
 }
 
-function canLaunchApps(
+function canManageApps(
   actorRole: AppsRouteActorRole | null | undefined,
 ): boolean {
   return actorRole === "OWNER" || actorRole === "ADMIN";
@@ -1187,6 +1191,10 @@ export async function handleAppsRoutes(
     }
 
     if (subroute === "stop") {
+      if (!canManageApps(actorRole)) {
+        error(res, "App stop requires OWNER or ADMIN role", 403);
+        return true;
+      }
       const pluginManager = getPluginManager();
       const result = await appManager.stop(pluginManager, "", runId, null);
       json(res, result);
@@ -1215,7 +1223,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
-      if (!canLaunchApps(actorRole)) {
+      if (!canManageApps(actorRole)) {
         error(res, "App launch requires OWNER or ADMIN role", 403);
         return true;
       }
@@ -1248,6 +1256,10 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/install") {
     try {
+      if (!canManageApps(actorRole)) {
+        error(res, "App install requires OWNER or ADMIN role", 403);
+        return true;
+      }
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
       if (rawBody === null) return true;
       const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
@@ -1321,6 +1333,10 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/stop") {
+    if (!canManageApps(actorRole)) {
+      error(res, "App stop requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
@@ -1543,6 +1559,12 @@ export async function handleAppsRoutes(
       error(res, "slug is required");
       return true;
     }
+    // GET is a read-only permission view; PUT replaces the owner's grant
+    // decision and must stay behind the same role gate as launch/install.
+    if (method === "PUT" && !canManageApps(actorRole)) {
+      error(res, "App permission changes require OWNER or ADMIN role", 403);
+      return true;
+    }
     const runtimeWithRegistry = runtime as {
       getService?: (type: string) => {
         getPermissionsView?: (slug: string) => Promise<unknown>;
@@ -1604,6 +1626,14 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
+    if (!canManageApps(actorRole)) {
+      error(
+        res,
+        "App registration from a host directory requires OWNER or ADMIN role",
+        403,
+      );
+      return true;
+    }
     // Body validation goes through PostLoadFromDirectoryRequestSchema
     // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
     // The browser-safe schema handles the structural wire contract. The host
@@ -1748,6 +1778,10 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/create") {
+    if (!canManageApps(actorRole)) {
+      error(res, "App creation requires OWNER or ADMIN role", 403);
+      return true;
+    }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawBody === null) return true;
     const parsed = PostCreateAppRequestSchema.safeParse(rawBody);

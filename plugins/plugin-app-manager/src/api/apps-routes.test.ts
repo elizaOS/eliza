@@ -87,6 +87,7 @@ async function callRoute(args: {
   favoriteApps?: FavoriteAppsStore;
   getPluginManager?: AppsRouteContext["getPluginManager"];
   actorRole?: AppsRouteActorRole | null;
+  runtime?: unknown;
 }): Promise<{
   handled: boolean;
   res: CapturedResponse;
@@ -105,7 +106,7 @@ async function callRoute(args: {
     appManager,
     favoriteApps: args.favoriteApps,
     actorRole: args.actorRole,
-    runtime: null,
+    runtime: args.runtime ?? null,
     getPluginManager:
       args.getPluginManager ??
       (() =>
@@ -153,6 +154,7 @@ describe("handleAppsRoutes", () => {
     const result = await callRoute({
       method: "POST",
       pathname: "/api/apps/load-from-directory",
+      actorRole: "OWNER",
       body: { directory: "apps" },
     });
 
@@ -516,4 +518,236 @@ describe("handleAppsRoutes", () => {
       await rm(packageDir, { recursive: true, force: true });
     }
   });
+});
+
+describe("app management role gates", () => {
+  const deniedRoles = [undefined, null, "USER", "GUEST"] as const;
+
+  function createPluginManagerWithInstallSpy() {
+    const installPlugin = vi.fn(async () => ({
+      success: true as const,
+      pluginName: "@elizaos/plugin-demo",
+      version: "1.0.0",
+      installPath: "/tmp/plugins/@elizaos/plugin-demo",
+      requiresRestart: false,
+    }));
+    return {
+      installPlugin,
+      asContext: () =>
+        ({
+          installPlugin,
+          getInstalledPlugins: vi.fn(async () => []),
+          searchPlugins: vi.fn(async () => []),
+          refreshRegistry: vi.fn(async () => new Map()),
+        }) as never,
+    };
+  }
+
+  it.each(deniedRoles)(
+    "denies %s actor from installing apps before any side effect",
+    async (actorRole) => {
+      const pluginManager = createPluginManagerWithInstallSpy();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/install",
+        getPluginManager: pluginManager.asContext,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App install requires OWNER or ADMIN role",
+      });
+      expect(pluginManager.installPlugin).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows an OWNER actor to install apps", async () => {
+    const pluginManager = createPluginManagerWithInstallSpy();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/install",
+      getPluginManager: pluginManager.asContext,
+      actorRole: "OWNER",
+      body: { name: "@elizaos/plugin-demo" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(pluginManager.installPlugin).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(deniedRoles)(
+    "denies %s actor from stopping apps by name before any side effect",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/stop",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App stop requires OWNER or ADMIN role",
+      });
+      expect(appManager.stop).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows an OWNER actor to stop apps by name", async () => {
+    const appManager = createAppManager();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/stop",
+      appManager,
+      actorRole: "OWNER",
+      body: { name: "@elizaos/plugin-demo" },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(appManager.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(deniedRoles)(
+    "denies %s actor from stopping app runs before any side effect",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/runs/run-123/stop",
+        appManager,
+        actorRole,
+        body: {},
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App stop requires OWNER or ADMIN role",
+      });
+      expect(appManager.stop).not.toHaveBeenCalled();
+    },
+  );
+
+  it("allows an OWNER actor to stop app runs", async () => {
+    const appManager = createAppManager();
+
+    const result = await callRoute({
+      method: "POST",
+      pathname: "/api/apps/runs/run-123/stop",
+      appManager,
+      actorRole: "OWNER",
+      body: {},
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(appManager.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(deniedRoles)(
+    "denies %s actor from replacing app permission grants",
+    async (actorRole) => {
+      // runtime is null in this harness; without the gate the PUT branch
+      // would fall through to the AppRegistryService lookup and answer 503.
+      // A 403 proves the role gate precedes any registry interaction.
+      const result = await callRoute({
+        method: "PUT",
+        pathname: "/api/apps/permissions/demo-app",
+        actorRole,
+        body: { namespaces: ["fs", "net"] },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App permission changes require OWNER or ADMIN role",
+      });
+    },
+  );
+
+  it("allows an OWNER actor to replace app permission grants through a registered registry", async () => {
+    const setGrantedNamespaces = vi.fn(async () => ({
+      ok: true as const,
+      view: { slug: "demo-app", granted: ["net"] },
+    }));
+    const runtime = {
+      getService: vi.fn((name: string) =>
+        name === "app-registry"
+          ? { getPermissionsView: vi.fn(), setGrantedNamespaces }
+          : null,
+      ),
+    };
+
+    const result = await callRoute({
+      method: "PUT",
+      pathname: "/api/apps/permissions/demo-app",
+      actorRole: "OWNER",
+      runtime,
+      body: { namespaces: ["net"] },
+    });
+
+    expect(result.handled).toBe(true);
+    expect(result.res.status).toBe(200);
+    expect(setGrantedNamespaces).toHaveBeenCalledWith(
+      "demo-app",
+      ["net"],
+      "user",
+    );
+  });
+
+  it.each(deniedRoles)(
+    "denies %s actor from registering host directories as apps",
+    async (actorRole) => {
+      const appManager = createAppManager();
+
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/load-from-directory",
+        appManager,
+        actorRole,
+        body: { directory: "/tmp/some-apps-dir" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error:
+          "App registration from a host directory requires OWNER or ADMIN role",
+      });
+    },
+  );
+
+  it.each(deniedRoles)(
+    "denies %s actor from creating apps before invoking the APP action",
+    async (actorRole) => {
+      // The create branch fabricates an agent-self message so the APP
+      // action's ownership check would pass once invoked; the route-level
+      // gate is what keeps non-owner callers from reaching that point.
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/create",
+        actorRole,
+        body: { intent: "build and publish an interactive page" },
+      });
+
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App creation requires OWNER or ADMIN role",
+      });
+    },
+  );
 });
