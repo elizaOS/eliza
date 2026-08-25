@@ -11,9 +11,17 @@ describe("parseDurationMs", () => {
   it("converts each unit suffix to milliseconds", () => {
     expect(parseDurationMs("500ms")).toBe(500);
     expect(parseDurationMs("2s")).toBe(2000);
+    expect(parseDurationMs("30sec")).toBe(30_000);
+    expect(parseDurationMs("30seconds")).toBe(30_000);
     expect(parseDurationMs("3m")).toBe(180_000);
+    expect(parseDurationMs("5mins")).toBe(300_000);
+    expect(parseDurationMs("5minutes")).toBe(300_000);
     expect(parseDurationMs("1h")).toBe(3_600_000);
+    expect(parseDurationMs("2hours")).toBe(7_200_000);
     expect(parseDurationMs("1d")).toBe(86_400_000);
+    expect(parseDurationMs("3days")).toBe(259_200_000);
+    expect(parseDurationMs("1w")).toBe(604_800_000);
+    expect(parseDurationMs("2weeks")).toBe(1_209_600_000);
     expect(parseDurationMs("1.5s")).toBe(1500);
   });
 
