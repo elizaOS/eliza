@@ -13,7 +13,7 @@ function isFeatureEnabled(
 ): boolean {
   const f = (config?.features as Record<string, unknown> | undefined)?.[key];
   if (f === true) return true;
-  if (f && typeof f === "object" && f !== null) {
+  if (f && typeof f === "object" && f !== null && !Array.isArray(f)) {
     return (f as Record<string, unknown>).enabled !== false;
   }
   return false;
@@ -21,10 +21,16 @@ function isFeatureEnabled(
 
 /**
  * Enable when `config.features.vision` is truthy, or when the user has
- * explicitly chosen a vision provider via `config.media.vision.provider`.
+ * explicitly chosen a vision provider via `config.media.vision.provider`
+ * (honoring an explicit `media.vision.enabled: false` disable switch, matching
+ * the plugin's inline predicate in `index.ts`).
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   if (isFeatureEnabled(ctx.config, "vision")) return true;
-  const visionProvider = ctx.config?.media?.vision?.provider;
-  return typeof visionProvider === "string" && visionProvider.length > 0;
+  const visionMedia = ctx.config?.media?.vision as
+    | { enabled?: unknown; provider?: unknown }
+    | undefined;
+  if (!visionMedia || visionMedia.enabled === false) return false;
+  const visionProvider = visionMedia.provider;
+  return typeof visionProvider === "string" && visionProvider.trim().length > 0;
 }
