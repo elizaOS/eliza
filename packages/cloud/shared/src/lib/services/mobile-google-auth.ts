@@ -26,6 +26,7 @@ export const MOBILE_GOOGLE_AUTH_NONCE_TTL_SECONDS = MOBILE_APP_AUTH_CODE_TTL_SEC
 export interface MobileGoogleAuthEnv extends RedisFactoryEnv, StewardUrlEnv {
   ENVIRONMENT?: string;
   GOOGLE_CLIENT_ID?: string;
+  MOBILE_GOOGLE_SERVER_CLIENT_ID?: string;
   STEWARD_JWT_SECRET?: string;
   STEWARD_SESSION_SECRET?: string;
   STEWARD_REQUEST_SIGNING_SECRET?: string;
@@ -92,7 +93,8 @@ export function resolveMobileGoogleAuthReadiness(
   if (!exactEnvironment(env.ENVIRONMENT) || env.MOCK_REDIS === "1" || !hasRedisConfig(env)) {
     return null;
   }
-  const serverClientId = configuredString(env.GOOGLE_CLIENT_ID);
+  const serverClientId =
+    configuredString(env.MOBILE_GOOGLE_SERVER_CLIENT_ID) ?? configuredString(env.GOOGLE_CLIENT_ID);
   const tenantId = configuredString(env.STEWARD_TENANT_ID);
   const stewardRequestSigningSecret = configuredString(env.STEWARD_REQUEST_SIGNING_SECRET);
   const stewardSessionSecret = configuredString(
