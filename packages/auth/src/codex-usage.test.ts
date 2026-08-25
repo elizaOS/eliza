@@ -136,12 +136,33 @@ describe("fetchCodexUsage — success parsing", () => {
     expect(seen[0]?.["User-Agent"]).toBe("codex-cli");
     expect(seen[1]).not.toHaveProperty("ChatGPT-Account-Id");
   });
+
+  it("filters out empty plan_type and invalid email strings without @", async () => {
+    const usage = await fetchCodexUsage(
+      "tok",
+      "a",
+      fetchReturning(
+        jsonResponse({
+          plan_type: "",
+          email: "notanemail",
+        }),
+      ),
+    );
+    expect(usage.planType).toBeUndefined();
+    expect(usage.email).toBeUndefined();
+  });
 });
 
 describe("fetchCodexUsage — typed failures (never fabricated data)", () => {
-  it.each([[401], [429], [503]])(
-    "throws a typed http_error carrying status %s in context and message",
-    async (status) => {
+  it.each([
+    [401, "fatal"],
+    [403, "fatal"],
+    [429, "fatal"],
+    [500, "ephemeral"],
+    [503, "ephemeral"],
+  ])(
+    "throws a typed http_error carrying status %s and severity %s",
+    async (status, expectedSeverity) => {
       const err = await fetchCodexUsage(
         "tok",
         "a",
@@ -151,6 +172,7 @@ describe("fetchCodexUsage — typed failures (never fabricated data)", () => {
       const typed = err as ElizaError;
       expect(typed.code).toBe("codex_usage.http_error");
       expect(typed.context?.status).toBe(status);
+      expect(typed.severity).toBe(expectedSeverity);
       // Callers (rate-limit regexes, dashboards) read the status from the message.
       expect(typed.message).toContain(String(status));
     },
