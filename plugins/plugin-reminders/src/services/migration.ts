@@ -53,6 +53,15 @@ export interface TableMigrationResult {
     | "already-migrated";
 }
 
+export function parseSqlBoolean(value: unknown): boolean {
+  if (value === true || value === 1) return true;
+  if (typeof value === "string") {
+    const norm = value.trim().toLowerCase();
+    return norm === "true" || norm === "t" || norm === "1";
+  }
+  return false;
+}
+
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
@@ -64,7 +73,7 @@ async function sourceTableExists(
   const rows = await exec(
     `SELECT to_regclass('${SOURCE_SCHEMA}.${table}') IS NOT NULL AS present`,
   );
-  return rows[0]?.present === true || rows[0]?.present === "true";
+  return parseSqlBoolean(rows[0]?.present);
 }
 
 async function targetTableIsEmpty(
@@ -74,7 +83,7 @@ async function targetTableIsEmpty(
   const rows = await exec(
     `SELECT NOT EXISTS (SELECT 1 FROM ${TARGET_SCHEMA}.${quoteIdent(table)}) AS empty`,
   );
-  return rows[0]?.empty === true || rows[0]?.empty === "true";
+  return parseSqlBoolean(rows[0]?.empty);
 }
 
 const MIGRATION_MARKER_TABLE = "reminders_migration_state";
@@ -98,7 +107,7 @@ async function migrationMarkerExists(
        WHERE table_name = '${table}'
      ) AS done`,
   );
-  return rows[0]?.done === true || rows[0]?.done === "true";
+  return parseSqlBoolean(rows[0]?.done);
 }
 
 async function writeMigrationMarker(

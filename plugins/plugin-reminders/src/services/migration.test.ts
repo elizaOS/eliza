@@ -4,6 +4,7 @@ import {
   MIGRATED_REMINDER_TABLES,
   migrateReminderTable,
   migrateReminderTables,
+  parseSqlBoolean,
   type SqlExecutor,
 } from "./migration.ts";
 
@@ -160,5 +161,37 @@ describe("one-shot migration marker (2026-08-16 phantom routine rows)", () => {
     const firstRegclass = log.findIndex((s) => s.includes("to_regclass"));
     expect(markerCreate).toBeGreaterThanOrEqual(0);
     expect(markerCreate).toBeLessThan(firstRegclass);
+  });
+
+  it("handles postgres wire protocol boolean representations (t, 1, true)", async () => {
+    const exec = fakeExec([
+      [/reminders_migration_state[\s\S]*table_name = /, [{ done: "f" }]],
+      [/to_regclass/, [{ present: "t" }]],
+      [/SELECT NOT EXISTS/, [{ empty: 1 }]],
+    ]);
+    const r = await migrateReminderTable(exec, "life_reminder_plans");
+    expect(r.outcome).toBe("copied");
+  });
+});
+
+describe("parseSqlBoolean", () => {
+  it("recognizes standard boolean and SQL wire truthy formats", () => {
+    expect(parseSqlBoolean(true)).toBe(true);
+    expect(parseSqlBoolean(1)).toBe(true);
+    expect(parseSqlBoolean("true")).toBe(true);
+    expect(parseSqlBoolean("TRUE")).toBe(true);
+    expect(parseSqlBoolean("t")).toBe(true);
+    expect(parseSqlBoolean("T")).toBe(true);
+    expect(parseSqlBoolean("1")).toBe(true);
+  });
+
+  it("returns false for falsy and unrecognized inputs", () => {
+    expect(parseSqlBoolean(false)).toBe(false);
+    expect(parseSqlBoolean(0)).toBe(false);
+    expect(parseSqlBoolean("false")).toBe(false);
+    expect(parseSqlBoolean("f")).toBe(false);
+    expect(parseSqlBoolean("0")).toBe(false);
+    expect(parseSqlBoolean(null)).toBe(false);
+    expect(parseSqlBoolean(undefined)).toBe(false);
   });
 });
