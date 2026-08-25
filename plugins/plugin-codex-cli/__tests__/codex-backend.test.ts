@@ -328,4 +328,116 @@ describe("CodexBackend", () => {
     expect(body).not.toHaveProperty("temperature");
     expect(body).not.toHaveProperty("max_output_tokens");
   });
+
+  it("forwards a json_schema responseFormat as text.format.type json_schema carrying the schema", async () => {
+    const bodies: unknown[] = [];
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return sseResponse([
+          'event: response.completed\ndata: {"response":{"stop_reason":"stop"}}\n\n',
+        ]);
+      }) as typeof fetch,
+    });
+
+    // Regression for #28168: a `json_schema` responseFormat previously reached
+    // the Responses API as NO structured-output constraint (isJsonResponse
+    // returned false for it and the body.text type only allowed json_object),
+    // so guaranteed-schema requests silently degraded to free-form text.
+    const schema = {
+      type: "object",
+      properties: { answer: { type: "string" } },
+      required: ["answer"],
+      additionalProperties: false,
+    };
+    await backend.generate({
+      prompt: "give me an answer",
+      responseFormat: { type: "json_schema", schema },
+    });
+
+    const body = bodies[0] as { text?: { format?: Record<string, unknown> } };
+    expect(body.text).toBeDefined();
+    expect(body.text?.format?.type).toBe("json_schema");
+    // The Responses API requires a `name` on json_schema formats; the schema is
+    // forwarded verbatim and strict defaults to true for guaranteed conformance.
+    expect(body.text?.format?.name).toBe("response");
+    expect(body.text?.format?.schema).toEqual(schema);
+    expect(body.text?.format?.strict).toBe(true);
+  });
+
+  it("honors a caller-supplied json_schema name and strict flag", async () => {
+    const bodies: unknown[] = [];
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return sseResponse([
+          'event: response.completed\ndata: {"response":{"stop_reason":"stop"}}\n\n',
+        ]);
+      }) as typeof fetch,
+    });
+
+    await backend.generate({
+      prompt: "plan",
+      responseFormat: {
+        type: "json_schema",
+        name: "planner_route",
+        schema: { type: "object" },
+        strict: false,
+      },
+    });
+
+    const body = bodies[0] as { text?: { format?: Record<string, unknown> } };
+    expect(body.text?.format).toEqual({
+      type: "json_schema",
+      name: "planner_route",
+      schema: { type: "object" },
+      strict: false,
+    });
+  });
+
+  it("still maps a json_object responseFormat to text.format.type json_object", async () => {
+    const bodies: unknown[] = [];
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return sseResponse([
+          'event: response.completed\ndata: {"response":{"stop_reason":"stop"}}\n\n',
+        ]);
+      }) as typeof fetch,
+    });
+
+    await backend.generate({ prompt: "hi", responseFormat: { type: "json_object" } });
+
+    const body = bodies[0] as { text?: { format?: Record<string, unknown> } };
+    expect(body.text).toEqual({ format: { type: "json_object" } });
+  });
+
+  it("leaves body.text undefined when no responseFormat is requested", async () => {
+    const bodies: unknown[] = [];
+    const backend = new CodexBackend({
+      authPath: "/tmp/auth.json",
+      jitterMaxMs: 0,
+      loadAuth: async () => auth,
+      fetchImpl: (async (_url: string | URL | Request, init?: RequestInit) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return sseResponse([
+          'event: response.completed\ndata: {"response":{"stop_reason":"stop"}}\n\n',
+        ]);
+      }) as typeof fetch,
+    });
+
+    await backend.generate({ prompt: "hi" });
+
+    const body = bodies[0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("text");
+  });
 });

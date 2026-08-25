@@ -8,7 +8,9 @@
  * pre-request jitter. A 401 triggers exactly one OAuth refresh-and-retry. The
  * base URL is restricted to chatgpt.com or localhost to prevent token
  * exfiltration, and temperature/max_output_tokens are never sent because the
- * gpt-5.x reasoning models reject them with a 400.
+ * gpt-5.x reasoning models reject them with a 400. A caller's structured-output
+ * constraint is forwarded as `text.format` for both `json_object` and
+ * `json_schema` responseFormats so schema-conforming JSON is actually requested.
  * Function-call `arguments` JSON is type-checked by the bounded walker in
  * `codex-json-value.ts`.
  */
@@ -69,7 +71,7 @@ export interface CodexGenerateParams {
   onTextDelta?: (delta: string) => void;
   responseFormat?:
     | { type: "json_object" | "text" }
-    | { type: "json_schema"; schema: Record<string, unknown> }
+    | { type: "json_schema"; name?: string; schema: Record<string, unknown>; strict?: boolean }
     | string;
 }
 
@@ -97,7 +99,11 @@ interface CodexResponseBody {
   stream: true;
   tools?: OpenAITool[];
   tool_choice?: "auto" | "none" | "required" | { type: "function"; name: string };
-  text?: { format: { type: "json_object" } };
+  text?: {
+    format:
+      | { type: "json_object" }
+      | { type: "json_schema"; name: string; schema: Record<string, unknown>; strict?: boolean };
+  };
   // NB: the ChatGPT codex backend rejects `temperature` and `max_output_tokens`
   // (gpt-5.x reasoning models) with 400 "Unsupported parameter" — never include
   // them in the request body.
@@ -178,7 +184,19 @@ export class CodexBackend {
     // never sends them. The runtime's planner/response-handler calls always pass
     // maxTokens (and often temperature), so forwarding them 400'd every codex
     // turn → empty result → no reply. Never send them to the codex backend.
-    if (isJsonResponse(params.responseFormat)) body.text = { format: { type: "json_object" } };
+    // Structured-output constraints. The Responses API accepts either
+    // `text.format = { type: "json_object" }` (free-form JSON) or
+    // `text.format = { type: "json_schema", name, schema, strict }` (schema-
+    // conforming JSON). A `json_schema` responseFormat must be forwarded as
+    // json_schema — not silently downgraded to json_object or dropped — or the
+    // caller's guaranteed-schema request reaches the model as no constraint at
+    // all and downstream strict-JSON parsing fails on free-form text.
+    const schemaFormat = jsonSchemaFormat(params.responseFormat);
+    if (schemaFormat) {
+      body.text = { format: schemaFormat };
+    } else if (isJsonResponse(params.responseFormat)) {
+      body.text = { format: { type: "json_object" } };
+    }
 
     let auth = await this.loadAuth(this.authPath);
     let res = await this.postResponses(auth, body, params.abortSignal);
@@ -565,6 +583,25 @@ function numOrZero(value: unknown): number {
 
 function isJsonResponse(responseFormat: CodexGenerateParams["responseFormat"]): boolean {
   return responseFormat === "json_object" || (typeof responseFormat === "object" && responseFormat?.type === "json_object");
+}
+
+/**
+ * Translate a `json_schema` responseFormat into the Responses API's
+ * `text.format` shape. The API requires a `name` on json_schema formats, so a
+ * stable default is supplied when the caller did not name the schema. Returns
+ * undefined for non-schema formats so the json_object branch can handle them.
+ */
+function jsonSchemaFormat(
+  responseFormat: CodexGenerateParams["responseFormat"],
+): { type: "json_schema"; name: string; schema: Record<string, unknown>; strict?: boolean } | undefined {
+  if (typeof responseFormat !== "object" || responseFormat === null) return undefined;
+  if (responseFormat.type !== "json_schema") return undefined;
+  return {
+    type: "json_schema",
+    name: responseFormat.name ?? "response",
+    schema: responseFormat.schema,
+    strict: responseFormat.strict ?? true,
+  };
 }
 
 function toCodexToolChoice(
