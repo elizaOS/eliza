@@ -34,11 +34,11 @@ describe("DATABASE action read-only guard", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("collapses block-comment-split mutation keywords", () => {
+  it("rejects block-comment-split mutation keywords", () => {
     expect(checkReadOnly("DE/* */LETE FROM memories")).toMatchObject({
       ok: false,
       reason:
-        '"DELETE" is a mutation keyword. Set allowWrites:true to execute mutations.',
+        "Block comments between identifier characters are not allowed in read-only mode.",
     });
   });
 

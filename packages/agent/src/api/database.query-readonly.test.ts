@@ -45,6 +45,31 @@ function responseRecorder(): RecordedResponse {
 }
 
 describe("POST /api/database/query read-only guard", () => {
+  it("rejects a block-comment token separator before query execution", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], fields: [] });
+    const runtime = {
+      adapter: { db: { execute: query, query } },
+    } as unknown as AgentRuntime;
+    const res = responseRecorder();
+
+    await expect(
+      handleDatabaseRoute(
+        jsonPost({ sql: "DELETE/**/FROM memories", readOnly: true }),
+        res,
+        runtime,
+        "/api/database/query",
+      ),
+    ).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body)).toMatchObject({
+      error: expect.stringContaining(
+        "Block comments between identifier characters",
+      ),
+    });
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it("rejects executable text after a line-comment marker inside a string", async () => {
     const query = vi.fn();
     const runtime = { adapter: { db: { query } } } as unknown as AgentRuntime;

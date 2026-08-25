@@ -169,6 +169,7 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
     }
 
     if (sql.startsWith("/*", i)) {
+      const commentStart = i;
       let depth = 1;
       i += 2;
       while (i < sql.length && depth > 0) {
@@ -185,7 +186,17 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
       if (depth !== 0) {
         return { ok: false, reason: "Unterminated block comment." };
       }
-      // Empty replacement deliberately makes split policy keywords visible.
+      if (
+        isAsciiIdentifierPart(sql[commentStart - 1]) &&
+        isAsciiIdentifierPart(sql[i])
+      ) {
+        return {
+          ok: false,
+          reason:
+            "Block comments between identifier characters are not allowed in read-only mode.",
+        };
+      }
+      appendOutside(" ");
       continue;
     }
 
