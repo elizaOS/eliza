@@ -312,3 +312,40 @@ describe("Instagram connector accounts", () => {
     }
   );
 });
+
+describe("truncateInstagramComment UTF-16 surrogate safety", () => {
+  it("preserves UTF-16 surrogate pairs when truncating long comments", async () => {
+    // MAX_COMMENT_LENGTH is 2200.
+    // 2196 ASCII chars + "🔥" (2 code units) = 2198.
+    // Truncating limit is 2200 - 3 = 2197.
+    // Index 2197 lands right on the high surrogate of "🔥".
+    // Surrogate safe back-off ensures we take index 2196, avoiding splitting the emoji.
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => 101);
+    Object.assign(service, {
+      defaultAccountId: "default",
+      instagramConfig: { accountId: "default", username: "user", password: "password" },
+      isRunning: true,
+      postComment,
+    });
+
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+    const longText = "a".repeat(996) + "🔥".repeat(10);
+    await service.handleSendPost(runtime, {
+      text: longText,
+      metadata: { mediaId: "123" },
+    } as Content);
+
+    expect(postComment).toHaveBeenCalledTimes(1);
+    const sentText = postComment.mock.calls[0][1];
+    expect(sentText).toBe(`${"a".repeat(996)}...`);
+    for (const char of sentText) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
