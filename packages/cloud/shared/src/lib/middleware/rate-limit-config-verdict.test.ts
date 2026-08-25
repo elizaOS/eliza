@@ -87,6 +87,17 @@ describe("applyRateLimitMultiplier", () => {
     }
   });
 
+  test("prefix-parsed and non-canonical multiplier is ignored", () => {
+    for (const RATE_LIMIT_MULTIPLIER of ["1e2", "0x10", "10abc", "25e", "1,000", " 1", "1.5"]) {
+      expect(
+        applyRateLimitMultiplier(config, {
+          NODE_ENV: "development",
+          RATE_LIMIT_MULTIPLIER,
+        } as never),
+      ).toEqual(config);
+    }
+  });
+
   test("production never scales limits", () => {
     expect(
       applyRateLimitMultiplier(config, {

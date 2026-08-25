@@ -715,10 +715,11 @@ export function rateLimit(
 
 function multiplier(env: Bindings): number {
   if (env.NODE_ENV === "production") return 1;
-  const raw = env.RATE_LIMIT_MULTIPLIER;
+  const raw = env.RATE_LIMIT_MULTIPLIER?.trim();
   if (!raw) return 1;
+  if (!/^\d+$/.test(raw)) return 1;
   const n = Number.parseInt(raw, 10);
-  return Number.isNaN(n) || n < 1 ? 1 : n;
+  return Number.isNaN(n) || n < 1 || !Number.isSafeInteger(n) ? 1 : n;
 }
 
 export const RateLimitPresets = {
