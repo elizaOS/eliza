@@ -2940,6 +2940,7 @@ export const INVALID_TRACER_PROVIDER = {};
       },
       ...[
         ["button", "button.tsx"],
+        ["error-boundary", "error-boundary.tsx"],
         ["input", "input.tsx"],
         ["textarea", "textarea.tsx"],
         ["native-select", "native-select.tsx"],

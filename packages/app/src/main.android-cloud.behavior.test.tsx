@@ -41,7 +41,7 @@ vi.mock("@elizaos/ui/android-cloud/AndroidCloudApp", () => ({
   ANDROID_CLOUD_CONVERSATION_ID_KEY: "eliza:android-cloud-conversation-id",
   AndroidCloudApp: () => null,
 }));
-vi.mock("@elizaos/ui/components/ui/error-boundary", () => ({
+vi.mock("@elizaos/ui/error-boundary", () => ({
   ErrorBoundary: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@elizaos/ui/styles", () => ({}));

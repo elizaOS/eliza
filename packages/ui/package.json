@@ -168,6 +168,11 @@
       "import": "./dist/components/ui/dropdown-menu.js",
       "default": "./dist/components/ui/dropdown-menu.js"
     },
+    "./error-boundary": {
+      "types": "./dist/components/ui/error-boundary.d.ts",
+      "import": "./dist/components/ui/error-boundary.js",
+      "default": "./dist/components/ui/error-boundary.js"
+    },
     "./input": {
       "types": "./dist/components/ui/input.d.ts",
       "import": "./dist/components/ui/input.js",

@@ -57,7 +57,7 @@ describe("Android Play account-deletion contract", () => {
     );
     expect(entry).toContain("getOrCreateDeletionAdmissionCredential");
     expect(entry).toContain("persistDeletionCapabilities");
-    expect(entry).toContain('from "@elizaos/ui/components/ui/error-boundary"');
+    expect(entry).toContain('from "@elizaos/ui/error-boundary"');
     expect(entry).not.toContain('from "@elizaos/ui"');
     expect(entry).not.toContain("Math.random");
     expect(entry).not.toContain("statusAccessEstablished");

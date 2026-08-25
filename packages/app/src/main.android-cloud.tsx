@@ -30,7 +30,7 @@ import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
 } from "@elizaos/ui/android-cloud/android-cloud-client";
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import { ErrorBoundary } from "@elizaos/ui/error-boundary";
 import "@elizaos/ui/styles";
 import React from "react";
 import { createRoot } from "react-dom/client";
