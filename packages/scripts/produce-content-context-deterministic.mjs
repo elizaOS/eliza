@@ -18,11 +18,12 @@ import {
   runProgressiveContentStress,
 } from "../core/src/testing/index.ts";
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
-import {
-  openProgressiveContentBoundedSource,
-  PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION,
-} from "../corpus-tools/src/progressive-content-realization.ts";
+import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../corpus-tools/src/progressive-content-realization.ts";
 import { runProgressiveContentTargetHarness } from "../corpus-tools/src/progressive-content-target-harness.ts";
+import {
+  createProgressiveContentProductionFactories,
+  createProgressiveContentProductionTarget,
+} from "./lib/progressive-content-production-targets.mjs";
 
 const PAGE_BYTES = 64 * 1024;
 
@@ -55,67 +56,16 @@ async function writeJson(outputDir, name, value) {
   );
 }
 
-async function productionFactories(root) {
-  process.env.ELIZA_STATE_DIR = path.join(root, "state");
-  await fs.mkdir(process.env.ELIZA_STATE_DIR, { recursive: true, mode: 0o700 });
-  const [fileModule, toolModule, attachmentModule, sqlModule] =
-    await Promise.all([
-      import(
-        "../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts"
-      ),
-      import(
-        "../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts"
-      ),
-      import("../agent/src/testing/progressive-content-attachment-target.ts"),
-      import(
-        "../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts"
-      ),
-    ]);
-  const file = await fileModule.createProgressiveFileTargetFactory({
-    targetRoot: path.join(root, "file"),
-    agentId: "content-context-file-agent",
-  });
-  const sql = await sqlModule.createProgressiveSqlTargetFactories({
-    dataRoot: path.join(root, "sql"),
-  });
-  const attachment =
-    attachmentModule.createProgressiveAttachmentTargetFactory();
-  const toolOutput = toolModule.createProgressiveToolOutputTargetFactory({
-    agentId: "content-context-tool-agent",
-  });
-  return [file, ...sql, attachment, toolOutput];
-}
-
 function factoryMap(factories) {
   return new Map(factories.map((factory) => [factory.family, factory]));
 }
 
 async function createTarget(corpusRoot, object, factories) {
-  const factory = factories.get(object.family);
-  if (!factory) throw new Error(`factory missing for ${object.family}`);
-  const opened = await openProgressiveContentBoundedSource(corpusRoot, object);
-  try {
-    const target = await factory.create({
-      object: {
-        id: object.id,
-        family: object.family,
-        byteLength: object.byteLength,
-        sourceSha256: object.sourceSha256,
-        sourceRevision: object.revision,
-        format: object.format,
-        authorizationScope: object.authorizationScope,
-        canaries: object.canaries,
-      },
-      source: opened.source,
-    });
-    if (!opened.exactCoverage()) {
-      await target.cleanup();
-      throw new Error(`target did not consume ${object.id} exactly once`);
-    }
-    return target;
-  } finally {
-    await opened.close();
-  }
+  return createProgressiveContentProductionTarget({
+    corpusRoot,
+    object,
+    factories: [...factories.values()],
+  });
 }
 
 async function traverseTarget(target, object) {
@@ -311,7 +261,9 @@ export async function produceDeterministicContentContextEvidence() {
   }
   const workRoot = path.join(path.dirname(outputDir), "native-targets");
   await fs.mkdir(workRoot, { recursive: true, mode: 0o700 });
-  const factories = await productionFactories(workRoot);
+  const factories = await createProgressiveContentProductionFactories({
+    workRoot,
+  });
   const byFamily = factoryMap(factories);
   const harness = await runProgressiveContentTargetHarness({
     corpusRoot,

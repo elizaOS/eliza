@@ -1,121 +1,75 @@
-/** Tests the production soak factory boundary without shortening or fabricating a soak run. */
+/** Proves the scheduled soak accepts only a verified corpus and fixed repository targets. */
 
 import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  CONTENT_CONTEXT_SOAK_FACTORY_SCHEMA_VERSION,
   parseSoakArgs,
   produceContentContextSoak,
-  validateSoakFactoryModule,
 } from "../run-content-context-soak.mjs";
 
-const families = [
-  "file",
-  "document",
-  "memory",
-  "email",
-  "attachment",
-  "tool-output",
-] as const;
-
-function contract(selected: readonly string[] = families) {
-  const realizations = {
-    file: ["filesystem", "typed-rejection"],
-    document: ["document-store", "typed-rejection"],
-    memory: ["memory-store", "typed-rejection"],
-    email: ["message-store", "typed-rejection"],
-    attachment: ["content-addressed-media", "native-bytes"],
-    "tool-output": ["filesystem", "native-bytes"],
-  };
-  return {
-    schemaVersion: CONTENT_CONTEXT_SOAK_FACTORY_SCHEMA_VERSION,
-    production: true,
-    targets: selected.map((family, index) => ({
-      family,
-      adapterId: `production-adapter-${index}`,
-      authoritativeStore: realizations[family]?.[0],
-      binaryPolicy: realizations[family]?.[1],
-      productionMethod: `${family}-native-realization`,
-      create: async () => ({}),
-    })),
-    measureResources: async () => ({}),
-  };
-}
-
 describe("content-context soak producer", () => {
-  it("requires every execution input", () => {
-    expect(() => parseSoakArgs([])).toThrow(/factory-module is required/u);
+  it("requires a corpus root, output, and exact commit", () => {
+    expect(() => parseSoakArgs([])).toThrow(/corpus-root is required/u);
     expect(
       parseSoakArgs([
-        "--factory-module=/private/factories.mjs",
-        "--corpus-manifest=/private/manifest.json",
+        "--corpus-root=/private/corpus",
         "--out=/private/soak.json",
         `--commit=${"a".repeat(40)}`,
       ]),
-    ).toMatchObject({ out: "/private/soak.json" });
+    ).toEqual({
+      corpusRoot: "/private/corpus",
+      out: "/private/soak.json",
+      commit: "a".repeat(40),
+    });
   });
 
-  it("fails with a typed error when the operator production module is absent", async () => {
+  it("rejects caller-selected factory modules", () => {
+    expect(() =>
+      parseSoakArgs([
+        "--factory-module=/private/lookalike.mjs",
+        "--corpus-root=/private/corpus",
+        "--out=/private/soak.json",
+        `--commit=${"a".repeat(40)}`,
+      ]),
+    ).toThrow(/unsupported soak argument/u);
+  });
+
+  it("fails before target creation when the corpus is not verified", async () => {
     const root = await fs.mkdtemp(
-      path.join(os.tmpdir(), "content-soak-missing-"),
+      path.join(os.tmpdir(), "content-soak-invalid-"),
     );
     try {
-      const manifest = path.join(root, "manifest.json");
-      await fs.writeFile(
-        manifest,
-        `${JSON.stringify({ manifestSha256: "b".repeat(64) })}\n`,
-        { mode: 0o600 },
-      );
+      await fs.writeFile(path.join(root, "manifest.json"), "{}\n", {
+        mode: 0o600,
+      });
+      const output = path.join(root, "soak.json");
       await expect(
         produceContentContextSoak({
-          factoryModule: path.join(root, "missing-production-factories.mjs"),
-          corpusManifest: manifest,
-          out: path.join(root, "soak.json"),
+          corpusRoot: root,
+          out: output,
           commit: "a".repeat(40),
         }),
-      ).rejects.toMatchObject({ code: "SOAK_INPUT_UNAVAILABLE" });
-      await expect(fs.stat(path.join(root, "soak.json"))).rejects.toMatchObject(
-        {
-          code: "ENOENT",
-        },
-      );
+      ).rejects.toThrow(/manifest|schema|invalid/u);
+      await expect(fs.stat(output)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(
+        (await fs.readdir(root)).some((name) =>
+          name.startsWith(".content-context-soak-"),
+        ),
+      ).toBe(false);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
 
-  it("accepts only exact six-family production contracts", async () => {
-    const validated = validateSoakFactoryModule(contract());
-    expect(validated.targets).toHaveLength(6);
-    await expect(validated.targets[0].create()).rejects.toThrow(
-      /bound production target/u,
-    );
-    for (const invalid of [
-      contract([]),
-      contract(families.slice(0, 5)),
-      contract([...families.slice(0, 5), "file"]),
-    ])
-      expect(() => validateSoakFactoryModule(invalid)).toThrow(
-        /exact families|each required family/u,
-      );
-  });
-
-  it("rejects fixture-shaped and duplicate adapter declarations", () => {
-    const fixture = contract();
-    fixture.targets[0].adapterId = "file-fixture-adapter";
-    expect(() => validateSoakFactoryModule(fixture)).toThrow(/non-fixture/u);
-
-    const duplicate = contract();
-    duplicate.targets[1].adapterId = duplicate.targets[0].adapterId;
-    expect(() => validateSoakFactoryModule(duplicate)).toThrow(/unique/u);
-
-    const sqlBinary = contract();
-    sqlBinary.targets[0].authoritativeStore = "document-store";
-    sqlBinary.targets[0].binaryPolicy = "typed-rejection";
-    expect(() => validateSoakFactoryModule(sqlBinary)).toThrow(
-      /exact families/u,
-    );
+  it("rejects a non-exact commit before reading the corpus", async () => {
+    await expect(
+      produceContentContextSoak({
+        corpusRoot: "/does/not/exist",
+        out: "/does/not/matter",
+        commit: "short",
+      }),
+    ).rejects.toMatchObject({ code: "SOAK_COMMIT_INVALID" });
   });
 });
