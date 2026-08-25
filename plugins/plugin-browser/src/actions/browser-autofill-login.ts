@@ -161,6 +161,18 @@ function buildAutofillScript(args: {
 `;
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function narrowSnippetResult(raw: unknown): {
   filled: boolean;
   fillReason: string | null;
@@ -176,7 +188,7 @@ function narrowSnippetResult(raw: unknown): {
   let fillReason: string | null = null;
   const reasonVal = "reason" in obj ? obj.reason : undefined;
   if (typeof reasonVal === "string") {
-    fillReason = reasonVal.slice(0, MAX_FILL_REASON_CHARS);
+    fillReason = truncateText(reasonVal, MAX_FILL_REASON_CHARS);
   }
   return { filled, fillReason };
 }

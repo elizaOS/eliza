@@ -126,4 +126,28 @@ describe("executeBrowserAutofillLogin", () => {
     expect(result.text).toContain("Filled login on example.com");
     expect(JSON.stringify(result)).not.toContain("vault-password");
   });
+
+  it("truncates fillReason without bisecting surrogate pairs", async () => {
+    const emojis = "🔐".repeat(200); // 400 code units > 256
+    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
+      ok: false,
+      reason: emojis,
+    });
+
+    const result = await executeBrowserAutofillLogin({} as never, undefined, {
+      parameters: { domain: "example.com", username: "alice" },
+    } as never);
+
+    expect(result.success).toBe(false);
+    expect(result.data).toBeDefined();
+    const data = result.data as { fillReason?: string | null };
+    expect(data.fillReason).toBeDefined();
+    for (const char of data.fillReason ?? "") {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
