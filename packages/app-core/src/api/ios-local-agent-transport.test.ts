@@ -503,12 +503,16 @@ describe("iOS local agent transport bridge", () => {
         key === "eliza:mobile-runtime-mode" ? "local" : null,
     });
 
-    const { isIosInProcessLocalAgentUrl } = await import(
-      "./ios-local-agent-transport"
-    );
+    const { isIosInProcessLocalAgentBase, isIosInProcessLocalAgentUrl } =
+      await import("./ios-local-agent-transport");
 
     expect(
       isIosInProcessLocalAgentUrl("http://127.0.0.1:31337/api/health"),
+    ).toBe(true);
+    expect(
+      isIosInProcessLocalAgentBase(
+        `http://127.0.0.1:31337${"/".repeat(100_000)}`,
+      ),
     ).toBe(true);
   });
 

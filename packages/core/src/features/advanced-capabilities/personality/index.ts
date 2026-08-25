@@ -14,7 +14,6 @@ export type { CharacterFileManager } from "./services/character-file-manager.ts"
 export type { PersonalityStore } from "./services/personality-store.ts";
 export { getPersonalityStore } from "./services/personality-store.ts";
 export * from "./types.ts";
-export * from "./verbosity-enforcer.ts";
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.

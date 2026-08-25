@@ -1,6 +1,11 @@
-// Renders the tap-in PTY terminal used by the coding cockpit.
+/**
+ * Runs the Cockpit's tap-in PTY session and exposes its lifecycle controls to
+ * the active view agent surface without bypassing the server's PTY policy.
+ */
+
+import { Button } from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 
@@ -38,6 +43,40 @@ type InteractivePtyClient = typeof client & {
 };
 
 const ptyClient = client as InteractivePtyClient;
+
+function TerminalRecoveryButton({
+  id,
+  label,
+  description,
+  onClick,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  onClick: () => void;
+}) {
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id,
+    role: "button",
+    label,
+    group: "cockpit-terminal",
+    description,
+    onActivate: onClick,
+  });
+  return (
+    <Button
+      ref={ref}
+      type="button"
+      size="sm"
+      data-testid={id}
+      onClick={onClick}
+      style={{ marginTop: 10 }}
+      {...agentProps}
+    >
+      {label.startsWith("Restart") ? "Restart" : "Retry"}
+    </Button>
+  );
+}
 
 /**
  * The "tap-in, drive it directly" pillar of the cockpit: launches a REAL
@@ -159,6 +198,15 @@ export function CockpitInteractiveTerminal({
     if (id) void ptyClient.stopPtySession(id);
     onClose?.();
   }, [onClose]);
+  const { ref: closeRef, agentProps: closeAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-terminal-close",
+      role: "button",
+      label: "Close interactive terminal",
+      group: "cockpit-terminal",
+      description: "Stop the terminal session and return to the cockpit",
+      onActivate: close,
+    });
 
   return (
     <div
@@ -185,17 +233,13 @@ export function CockpitInteractiveTerminal({
       >
         <span>{headerLabel}</span>
         <Button
-          unstyled
+          ref={closeRef}
+          variant="transparent"
+          size="inlineIcon"
           type="button"
           data-testid="cockpit-terminal-close"
           onClick={close}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "inherit",
-            cursor: "pointer",
-            fontSize: 12,
-          }}
+          {...closeAgentProps}
         >
           ✕
         </Button>
@@ -230,17 +274,12 @@ export function CockpitInteractiveTerminal({
               {kind} session ended
               {exitCode !== null ? ` (exit ${exitCode})` : ""}.
             </div>
-            <Button
-              type="button"
-              size="sm"
-              data-testid="cockpit-terminal-restart"
+            <TerminalRecoveryButton
+              id="cockpit-terminal-restart"
+              label="Restart interactive terminal"
+              description="Start a new terminal after the prior session ended"
               onClick={retry}
-              style={{
-                marginTop: 10,
-              }}
-            >
-              Restart
-            </Button>
+            />
           </div>
         ) : null}
 
@@ -254,17 +293,12 @@ export function CockpitInteractiveTerminal({
             }}
           >
             <div>{error}</div>
-            <Button
-              type="button"
-              size="sm"
-              data-testid="cockpit-terminal-retry"
+            <TerminalRecoveryButton
+              id="cockpit-terminal-retry"
+              label="Retry interactive terminal"
+              description="Retry starting the interactive terminal after an error"
               onClick={retry}
-              style={{
-                marginTop: 10,
-              }}
-            >
-              Retry
-            </Button>
+            />
           </div>
         ) : null}
 

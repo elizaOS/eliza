@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
-import { relationshipTable } from "../../schema";
+import { agentTable, relationshipTable } from "../../schema";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -86,6 +86,43 @@ describe("Relationship Integration Tests", () => {
         entityIds: [testEntityId, testTargetEntityId],
       });
       expect(relationships).toHaveLength(1);
+    });
+
+    it("returns the creating agent's relationship when another agent owns the same pair", async () => {
+      const otherAgentId = uuidv4() as UUID;
+      const otherRelationshipId = uuidv4() as UUID;
+      const database = adapter.getDatabase() as DrizzleDatabase;
+      await database.insert(agentTable).values({
+        id: otherAgentId,
+        name: "Other relationship owner",
+      });
+      await database.insert(relationshipTable).values({
+        id: otherRelationshipId,
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+        agentId: otherAgentId,
+        tags: ["other-agent"],
+      });
+
+      const createdIds = await adapter.createRelationships([
+        {
+          sourceEntityId: testEntityId,
+          targetEntityId: testTargetEntityId,
+          tags: ["current-agent"],
+        },
+      ]);
+
+      expect(createdIds).toHaveLength(1);
+      expect(createdIds[0]).not.toBe(otherRelationshipId);
+      const currentRelationship = await adapter.getRelationship({
+        sourceEntityId: testEntityId,
+        targetEntityId: testTargetEntityId,
+      });
+      expect(currentRelationship).toMatchObject({
+        id: createdIds[0],
+        agentId: testAgentId,
+        tags: ["current-agent"],
+      });
     });
 
     it("should update an existing relationship", async () => {

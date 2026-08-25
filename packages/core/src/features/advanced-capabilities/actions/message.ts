@@ -7,17 +7,29 @@
  * search, list_channels, list_servers, react, edit, delete, pin, join, leave,
  * get_user) call MessageConnector hooks directly. read_with_contact resolves a
  * person via the relationships graph and views their conversations across every
- * connected platform. Triage / inbox / draft ops delegate to the triage actions
- * in features/messaging/triage.
+ * connected platform. list_worlds/list_rooms use the durable runtime topology,
+ * verified identity clusters, and owner-private disclosure revalidation. Triage /
+ * inbox / draft ops delegate to the triage actions in features/messaging/triage.
  */
 
 import { searchCanonicalConversationMemories } from "../../../access-control/provenance-envelope.ts";
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { createUniqueUuid, findEntityByName } from "../../../entities.ts";
+import { ElizaError } from "../../../errors.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
+import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
-import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
+import { authorizeManageServerDestination } from "../../../messaging/manage-server-authorization.ts";
+import {
+	deterministicOwnerEntityId,
+	resolveCanonicalOwnerIdForMessage,
+} from "../../../roles.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
+import {
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	revalidateOwnerExclusiveDisclosure,
+} from "../../../security/trusted-delivery-audience.ts";
 import {
 	resolveMutedTargetFlags,
 	resolveMutedWorldFlags,
@@ -33,6 +45,8 @@ import type {
 	Media,
 	Memory,
 	MessageConnector,
+	MessageConnectorManageServerAuthorization,
+	MessageConnectorManageServerDestination,
 	MessageConnectorQueryContext,
 	MessageConnectorTarget,
 	MessageTargetKind,
@@ -41,8 +55,11 @@ import type {
 	State,
 	TargetInfo,
 	UUID,
+	World,
 } from "../../../types/index.ts";
 import {
+	buildContentReference,
+	buildReadSlice,
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
 	inspectSendHandlerResult,
@@ -52,7 +69,9 @@ import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { requireConfirmation } from "../../../utils/confirmation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
+import { createHash } from "../../../utils/crypto-compat.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
@@ -63,7 +82,12 @@ import { scheduleDraftSendAction } from "../../messaging/triage/actions/schedule
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
-import { MANAGE_OPERATION_KINDS } from "../../messaging/triage/types.ts";
+import { getDefaultTriageService } from "../../messaging/triage/triage-service.ts";
+import {
+	ALL_MESSAGE_SOURCES,
+	MANAGE_OPERATION_KINDS,
+	type MessageSource,
+} from "../../messaging/triage/types.ts";
 import {
 	refreshMessageConnectorActionDescription,
 	trustedConnectorAccountId,
@@ -78,10 +102,13 @@ export const MESSAGE_OPS = [
 	"send",
 	"read_channel",
 	"read_with_contact",
+	"read_message",
 	"search",
 	"list_channels",
 	"list_servers",
 	"list_connections",
+	"list_worlds",
+	"list_rooms",
 	"join",
 	"leave",
 	"react",
@@ -89,6 +116,7 @@ export const MESSAGE_OPS = [
 	"delete",
 	"pin",
 	"get_user",
+	"manage_server",
 	// Inbox / triage / draft ops (delegated to triage actions)
 	"triage",
 	"list_inbox",
@@ -103,12 +131,18 @@ export const MESSAGE_OPS = [
 
 export type MessageOperation = (typeof MESSAGE_OPS)[number];
 
-const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
+const MESSAGE_CONTEXTS = [
+	"messaging",
+	"email",
+	"contacts",
+	"connectors",
+	"world",
+];
 
 const MESSAGE_DESCRIPTION =
-	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts. Use action. Public feed publishing uses POST.";
+	"Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action send read_channel read_with_contact search list_channels list_servers list_connections join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft connections platforms reachable";
+	"primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -144,13 +178,8 @@ function numberParam(value: unknown): number | undefined {
 	return undefined;
 }
 
-function clampLimit(
-	value: number | undefined,
-	fallback: number,
-	max: number,
-): number {
-	const base = value ?? fallback;
-	return Math.max(1, Math.min(max, Math.floor(base)));
+function requestedLimit(value: number | undefined): number | undefined {
+	return value === undefined ? undefined : Math.max(1, Math.floor(value));
 }
 
 function normalizeComparable(value: unknown): string {
@@ -185,6 +214,9 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	read_room: "read_channel",
 	read_chat: "read_channel",
 	read_with_contact: "read_with_contact",
+	read_message: "read_message",
+	read_email: "read_message",
+	read_email_body: "read_message",
 	read_dms: "read_with_contact",
 	conversation_with: "read_with_contact",
 	chat_with: "read_with_contact",
@@ -202,6 +234,10 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	connected_platforms: "list_connections",
 	where_am_i_connected: "list_connections",
 	what_am_i_connected_to: "list_connections",
+	search_worlds: "list_worlds",
+	find_worlds: "list_worlds",
+	search_rooms: "list_rooms",
+	find_rooms: "list_rooms",
 	react_to_message: "react",
 	reaction: "react",
 	edit_message: "edit",
@@ -247,6 +283,31 @@ const OP_ALIASES: Record<string, MessageOperation> = {
 	unsubscribe: "manage",
 	block_sender: "manage",
 	mark_read: "manage",
+	// Structural server management verbs route to manage_server; the concrete
+	// verb is preserved via params.operation (or the raw action string).
+	manage_guild: "manage_server",
+	server_management: "manage_server",
+	guild_management: "manage_server",
+	create_channel: "manage_server",
+	create_category: "manage_server",
+	edit_channel: "manage_server",
+	delete_channel: "manage_server",
+	create_role: "manage_server",
+	edit_role: "manage_server",
+	delete_role: "manage_server",
+	edit_permissions: "manage_server",
+	edit_channel_permissions: "manage_server",
+	assign_role: "manage_server",
+	remove_role: "manage_server",
+	create_invite: "manage_server",
+	kick_member: "manage_server",
+	ban_member: "manage_server",
+	unban_member: "manage_server",
+	timeout_member: "manage_server",
+	apply_template: "manage_server",
+	apply_server_template: "manage_server",
+	list_templates: "manage_server",
+	list_server_templates: "manage_server",
 };
 
 function normalizeOp(value: unknown): MessageOperation | undefined {
@@ -295,7 +356,7 @@ type ConnectorWithHooks = MessageConnector & {
 		context: MessageConnectorQueryContext,
 		opts: {
 			target: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -306,7 +367,7 @@ type ConnectorWithHooks = MessageConnector & {
 		opts: {
 			query: string;
 			target?: TargetInfo;
-			limit: number;
+			limit?: number;
 			cursor?: string;
 			before?: string;
 			after?: string;
@@ -370,6 +431,24 @@ type ConnectorWithHooks = MessageConnector & {
 		runtime: IAgentRuntime,
 		query: { userId?: string; username?: string; handle?: string },
 	) => Promise<unknown> | unknown;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		payload: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+		},
+	) =>
+		| Promise<{ summary: string; data?: Record<string, unknown> }>
+		| { summary: string; data?: Record<string, unknown> };
 	contentShaping?: {
 		postProcess?: (text: string) => string;
 		constraints?: { maxLength?: number };
@@ -716,7 +795,6 @@ async function resolveOptionalTarget(
 						"TARGET_AMBIGUOUS",
 						`Target ambiguous for ${connector.label}. Choose one of:\n` +
 							sorted
-								.slice(0, 8)
 								.map(
 									(t, i) =>
 										`${i + 1}. ${t.label ?? targetLabel(t.target)} (${t.kind ?? "target"})`,
@@ -923,23 +1001,64 @@ function inferSourceFromTarget(
 	connectors: ConnectorWithHooks[],
 ): { target?: string; source?: string } {
 	if (!target) return {};
-	const prefixMatch = target.match(
-		/^([a-z0-9_-][a-z0-9 _-]{1,40})\s*[:/]\s*(.+)$/i,
-	);
-	if (prefixMatch?.[1] && prefixMatch[2]) {
-		const connector = findConnectorBySource(connectors, prefixMatch[1]);
-		if (connector)
-			return { source: connector.source, target: prefixMatch[2].trim() };
+	const prefix = splitConnectorPrefix(target);
+	if (prefix) {
+		const connector = findConnectorBySource(connectors, prefix.source);
+		if (connector) return { source: connector.source, target: prefix.target };
 	}
-	const onMatch = target.match(
-		/^(.+?)\s+(?:on|via|through)\s+([a-z0-9 _-]{2,40})$/i,
-	);
-	if (onMatch?.[1] && onMatch[2]) {
-		const connector = findConnectorBySource(connectors, onMatch[2]);
-		if (connector)
-			return { source: connector.source, target: onMatch[1].trim() };
+	const suffix = splitConnectorSuffix(target);
+	if (suffix) {
+		const connector = findConnectorBySource(connectors, suffix.source);
+		if (connector) return { source: connector.source, target: suffix.target };
 	}
 	return { target };
+}
+
+function isConnectorName(value: string, min: number, max: number): boolean {
+	if (value.length < min || value.length > max) return false;
+	for (const char of value) {
+		if (!/[A-Za-z0-9 _-]/.test(char)) return false;
+	}
+	return true;
+}
+
+function splitConnectorPrefix(
+	target: string,
+): { source: string; target: string } | null {
+	for (let cursor = 1; cursor < target.length && cursor <= 42; cursor += 1) {
+		if (target[cursor] !== ":" && target[cursor] !== "/") continue;
+		const source = target.slice(0, cursor).trimEnd();
+		const remainder = target.slice(cursor + 1).trim();
+		if (
+			remainder &&
+			isConnectorName(source, 2, 41) &&
+			/[A-Za-z0-9_-]/.test(source[0])
+		) {
+			return { source, target: remainder };
+		}
+	}
+	return null;
+}
+
+function splitConnectorSuffix(
+	target: string,
+): { source: string; target: string } | null {
+	const lower = target.toLowerCase();
+	for (let cursor = 1; cursor < target.length; cursor += 1) {
+		if (!/\s/u.test(target[cursor - 1])) continue;
+		for (const keyword of ["on", "via", "through"]) {
+			if (
+				!lower.startsWith(keyword, cursor) ||
+				!/(?:\s)/u.test(target[cursor + keyword.length] ?? "")
+			)
+				continue;
+			const left = target.slice(0, cursor).trim();
+			const source = target.slice(cursor + keyword.length).trim();
+			if (left && isConnectorName(source, 2, 40))
+				return { source, target: left };
+		}
+	}
+	return null;
 }
 
 function inferSourceFromText(
@@ -985,7 +1104,7 @@ function recentTextFromState(state: State | undefined): string {
 	]
 		.filter((v): v is string => typeof v === "string")
 		.join("\n");
-	return chunks.slice(-4000);
+	return chunks;
 }
 
 function inferTargetFromRecentConversation(
@@ -1685,7 +1804,6 @@ function dedupeCandidates(candidates: SendCandidate[]): SendCandidate[] {
 
 function formatCandidates(candidates: SendCandidate[]): string {
 	return candidates
-		.slice(0, 6)
 		.map((c, i) => {
 			const kind = c.kind ? ` kind=${c.kind}` : "";
 			return `${i + 1}. ${c.label} source=${c.connector.source}${kind} score=${c.score.toFixed(2)} target=${JSON.stringify(c.target)}`;
@@ -1755,7 +1873,7 @@ async function resolveAdminTarget(
 	if (!connector) return null;
 	const ownerId =
 		(await resolveCanonicalOwnerIdForMessage(runtime, message)) ??
-		stringToUuid(`${runtime.character.name ?? runtime.agentId}-admin-entity`);
+		deterministicOwnerEntityId(runtime.agentId);
 	const target = {
 		source: connector.source,
 		accountId: connector.accountId ?? accountId,
@@ -2126,10 +2244,11 @@ function applyContentShaping(
 	connector: ConnectorWithHooks,
 	content: Content,
 ): Content {
-	let text = typeof content.text === "string" ? content.text : "";
+	let text =
+		typeof content.text === "string" ? toWellFormedUnicode(content.text) : "";
 	const shaping = connector.contentShaping;
 	if (text && typeof shaping?.postProcess === "function")
-		text = shaping.postProcess(text);
+		text = toWellFormedUnicode(shaping.postProcess(text));
 	const maxLength = shaping?.constraints?.maxLength;
 	if (
 		text &&
@@ -2138,7 +2257,9 @@ function applyContentShaping(
 		maxLength > 0 &&
 		text.length > maxLength
 	) {
-		text = text.slice(0, Math.floor(maxLength));
+		throw new Error(
+			`Connector ${connector.source} cannot accept ${text.length} characters; its declared maximum is ${Math.floor(maxLength)}. Refusing to send partial content.`,
+		);
 	}
 	return text === content.text ? content : { ...content, text };
 }
@@ -2920,8 +3041,208 @@ async function handleSend(
 //      from the channel/source params (covers the original read-channel leaf behavior).
 // ---------------------------------------------------------------------------
 
-const CHANNEL_READ_DEFAULT_LIMIT = 50;
-const CHANNEL_READ_MAX_LIMIT = 200;
+function memoryReadFailure(
+	code: string,
+	text: string,
+	extra?: Record<string, unknown>,
+): ActionResult {
+	const metadata = {
+		actionName: "MESSAGE",
+		operation: "read_channel",
+		error: code,
+		...(extra ?? {}),
+	};
+	return {
+		success: false,
+		text,
+		values: { success: false, error: code },
+		data: metadata,
+		promptData: metadata,
+	};
+}
+
+function memoryScopeAllowsSameRoomRead(
+	stored: Memory,
+	requesterId: UUID,
+	agentId: UUID,
+): boolean {
+	const metadata = (stored.metadata ?? {}) as Record<string, unknown>;
+	const scope = metadata.scope;
+	if (
+		scope === undefined ||
+		scope === "global" ||
+		scope === "shared" ||
+		scope === "room"
+	) {
+		return true;
+	}
+	const scopedTo =
+		typeof metadata.scopedToEntityId === "string"
+			? metadata.scopedToEntityId
+			: typeof metadata.addedBy === "string"
+				? metadata.addedBy
+				: stored.entityId;
+	if (scope === "private" || scope === "user-private") {
+		return scopedTo === requesterId;
+	}
+	if (scope === "agent-private") return requesterId === agentId;
+	// Owner-private needs a live owner-role proof that this narrow same-room
+	// action does not mint. Fail closed rather than infer it from content.
+	return false;
+}
+
+function safeMemoryReadInteger(
+	value: number | undefined,
+	label: "offset" | "limit",
+	fallback?: number,
+): number | undefined {
+	if (value === undefined) return fallback;
+	if (!Number.isSafeInteger(value) || value < 0) return undefined;
+	if (label === "limit" && value < 1) return undefined;
+	return value;
+}
+
+function isUtf8Boundary(bytes: Uint8Array, offset: number): boolean {
+	return (
+		offset === 0 || offset === bytes.length || (bytes[offset] & 0xc0) !== 0x80
+	);
+}
+
+async function handleReadStoredMemory(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+	memoryReference: string,
+): Promise<ActionResult> {
+	const memoryRef = memoryReference.startsWith("memory:")
+		? memoryReference.slice("memory:".length)
+		: memoryReference;
+	if (!isUuidLike(memoryRef)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_REFERENCE",
+			"The stored message reference is invalid.",
+		);
+	}
+	const stored = await runtime.getMemoryById(memoryRef);
+	if (!stored || stored.agentId !== runtime.agentId) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_NOT_FOUND",
+			"The stored message was not found.",
+		);
+	}
+	if (stored.roomId !== message.roomId) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_ACCESS_DENIED",
+			"The stored message is not readable from this room.",
+		);
+	}
+	let stillParticipant = false;
+	try {
+		stillParticipant = (
+			await runtime.getParticipantsForRoom(stored.roomId)
+		).includes(message.entityId);
+	} catch (error) {
+		// error-policy:J1 The action boundary reports authorization lookup failure
+		// without disclosing whether the referenced memory exists in the room.
+		runtime.reportError("MESSAGE.readStoredMemory.authorization", error, {
+			roomId: stored.roomId,
+		});
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_AUTHORIZATION_UNAVAILABLE",
+			"Stored-message authorization is unavailable.",
+		);
+	}
+	if (
+		!stillParticipant ||
+		!memoryScopeAllowsSameRoomRead(stored, message.entityId, runtime.agentId)
+	) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_ACCESS_DENIED",
+			"The stored message is not readable from this room.",
+		);
+	}
+
+	const offset = safeMemoryReadInteger(numberParam(params.offset), "offset", 0);
+	const limit = safeMemoryReadInteger(numberParam(params.limit), "limit");
+	if (
+		offset === undefined ||
+		(params.limit !== undefined && limit === undefined)
+	) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			"Stored-message offset must be a nonnegative safe integer and limit must be a positive safe integer when supplied.",
+		);
+	}
+
+	const sourceText = stored.content.text ?? "";
+	const bytes = new TextEncoder().encode(sourceText);
+	if (offset > bytes.length || !isUtf8Boundary(bytes, offset)) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			"Stored-message offset is outside the content or splits a UTF-8 code point.",
+			{ totalBytes: bytes.length },
+		);
+	}
+	let end =
+		limit === undefined ? bytes.length : Math.min(offset + limit, bytes.length);
+	while (end > offset && !isUtf8Boundary(bytes, end)) end--;
+	if (end === offset && offset < bytes.length) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_INVALID_RANGE",
+			"Stored-message limit is too small to include the next UTF-8 code point.",
+			{ minimumLimit: 4 },
+		);
+	}
+
+	const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+	const revision = `rev:${sourceSha256}`;
+	const expectedRevision = textParam(params.expectedRevision);
+	if (offset > 0 && !expectedRevision) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_EXPECTED_REVISION_REQUIRED",
+			"Stored-message continuation requires expectedRevision.",
+		);
+	}
+	if (expectedRevision && expectedRevision !== revision) {
+		return memoryReadFailure(
+			"MESSAGE_MEMORY_STALE_REVISION",
+			"The stored message changed before this page could be read.",
+			{ currentRevision: revision },
+		);
+	}
+
+	const pageBytes = bytes.slice(offset, end);
+	const text = new TextDecoder("utf-8", { fatal: true }).decode(pageBytes);
+	const readView = {
+		reference: buildContentReference({
+			kind: "memory",
+			ref: `memory:${memoryRef}`,
+			revision,
+		}),
+		slice: buildReadSlice({
+			range: { unit: "byte", start: offset, end, total: bytes.length },
+			completeness: end < bytes.length ? "partial-recoverable" : "complete",
+			revision,
+			sliceSha256: createHash("sha256").update(pageBytes).digest("hex"),
+			sourceSha256,
+		}),
+	};
+	const metadata = {
+		actionName: "MESSAGE",
+		operation: "read_channel",
+		messageRef: readView.reference.ref,
+		readView,
+	};
+	// The exact page has one carrier. Structured fields contain only the opaque
+	// reference and bounded range/digest metadata.
+	return {
+		success: true,
+		text,
+		values: { success: true, readView },
+		data: metadata,
+		promptData: metadata,
+	};
+}
 
 function parseDateParam(value: string | undefined): number | undefined {
 	if (!value) return undefined;
@@ -2935,11 +3256,11 @@ function parseDateParam(value: string | undefined): number | undefined {
 function connectorReadRequest(
 	target: TargetInfo,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ) {
 	return {
 		target,
-		limit,
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -2950,12 +3271,12 @@ async function fetchRecentMessagesFromConnector(
 	connector: ConnectorWithHooks,
 	context: MessageConnectorQueryContext,
 	params: ParamRecord,
-	limit: number,
+	limit: number | undefined,
 ): Promise<Memory[]> {
 	if (!connector.fetchMessages || !connector.listRecentTargets) return [];
 	const recent = await connector.listRecentTargets(context);
 	const memories: Memory[] = [];
-	for (const r of recent.slice(0, 8)) {
+	for (const r of recent) {
 		const target = {
 			...r.target,
 			accountId: r.target.accountId ?? connector.accountId,
@@ -3003,15 +3324,18 @@ async function handleReadChannel(
 	state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
+	const memoryReference =
+		textParam(params.reference) ??
+		textParam(params.messageId) ??
+		textParam(params.id);
+	if (memoryReference) {
+		return handleReadStoredMemory(runtime, message, params, memoryReference);
+	}
 	const connectors = listMessageConnectors(runtime);
 	const source = sourceFromParams(params, message);
 	const accountId = accountIdFromParams(params, message);
 	const channel = textParam(params.channel) ?? textParam(params.target);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		CHANNEL_READ_DEFAULT_LIMIT,
-		CHANNEL_READ_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const range = textParam(params.range);
 
 	// Prefer in-process connector fetchMessages when available.
@@ -3068,9 +3392,8 @@ async function handleReadChannel(
 					params,
 					limit,
 				);
-				memories = memories
-					.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-					.slice(0, limit);
+				memories = memories.sort(compareMemoryByCreatedAtDesc);
+				if (limit !== undefined) memories = memories.slice(0, limit);
 			}
 			return opSuccess(
 				"read_channel",
@@ -3129,8 +3452,8 @@ async function handleReadChannel(
 				count: result.value.memories.length,
 			});
 		}
-		memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-		const limited = memories.slice(0, limit);
+		memories.sort(compareMemoryByCreatedAtDesc);
+		const limited = limit === undefined ? memories : memories.slice(0, limit);
 		return opSuccess(
 			"read_channel",
 			limited.length
@@ -3163,7 +3486,7 @@ async function handleReadChannel(
 		const queryParams: Parameters<IAgentRuntime["getMemories"]>[0] = {
 			tableName: "messages",
 			roomId: room.id,
-			count: limit,
+			...(limit === undefined ? {} : { count: limit }),
 			...(range === "dates"
 				? {
 						start: parseDateParam(textParam(params.from)),
@@ -3177,7 +3500,9 @@ async function handleReadChannel(
 		} as Parameters<IAgentRuntime["getMemories"]>[0];
 
 		const raw = (await runtime.getMemories(queryParams)) as Memory[];
-		const memories = raw.slice(0, limit).reverse();
+		const memories = (
+			limit === undefined ? raw : raw.slice(0, limit)
+		).reverse();
 		return opSuccess(
 			"read_channel",
 			`Read ${memories.length} messages from ${(room as Room & { name?: string }).name ?? channel}.`,
@@ -3206,9 +3531,6 @@ async function handleReadChannel(
 // graph snapshot) and aggregates their conversations from all rooms the
 // person participates in, regardless of platform.
 // ---------------------------------------------------------------------------
-
-const READ_WITH_CONTACT_DEFAULT_LIMIT = 15;
-const READ_WITH_CONTACT_MAX_LIMIT = 50;
 
 type RelationshipsPersonSummary = {
 	primaryEntityId: UUID;
@@ -3255,11 +3577,7 @@ async function handleReadWithContact(
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
 	const platform = textParam(params.platform);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		READ_WITH_CONTACT_DEFAULT_LIMIT,
-		READ_WITH_CONTACT_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 
 	if (!contact && !entityId) {
 		return opFailure(
@@ -3282,7 +3600,6 @@ async function handleReadWithContact(
 	try {
 		const snapshot = await relationships.getGraphSnapshot({
 			search: (entityId ?? contact ?? "").trim(),
-			limit: 5,
 		});
 		const candidates = snapshot.people;
 		if (entityId) {
@@ -3340,14 +3657,14 @@ async function handleReadWithContact(
 				const memories = (await runtime.getMemories({
 					tableName: "messages",
 					roomId: room.id,
-					count: limit,
+					...(limit === undefined ? {} : { count: limit }),
 				} as Parameters<IAgentRuntime["getMemories"]>[0])) as Memory[];
 				if (memories.length === 0) continue;
 				const last = memories[0];
 				conversations.push({
 					platform: roomPlatform,
 					roomId: room.id,
-					roomName: roomRecord.name ?? `Room ${room.id.slice(0, 8)}`,
+					roomName: roomRecord.name ?? `Room ${room.id}`,
 					messageCount: memories.length,
 					lastMessageAt: last?.createdAt
 						? new Date(last.createdAt).toISOString()
@@ -3394,8 +3711,6 @@ async function handleReadWithContact(
 // op=search — connector passthrough OR semantic conversation search.
 // ---------------------------------------------------------------------------
 
-const SEARCH_DEFAULT_LIMIT = 20;
-const SEARCH_MAX_LIMIT = 50;
 const SEARCH_MATCH_THRESHOLD = 0.6;
 
 const CONVERSATION_SEARCH_CATEGORY: SearchCategoryRegistration = {
@@ -3468,11 +3783,7 @@ async function handleSearch(
 			"INVALID_PARAMETERS",
 			"MESSAGE op=search requires a query.",
 		);
-	const limit = clampLimit(
-		numberParam(params.limit),
-		SEARCH_DEFAULT_LIMIT,
-		SEARCH_MAX_LIMIT,
-	);
+	const limit = requestedLimit(numberParam(params.limit));
 	const source = sourceFromParams(params, message);
 	const entityId = textParam(params.entityId);
 
@@ -3524,7 +3835,7 @@ async function handleSearch(
 				const memories = (await searchMessages(context, {
 					query,
 					target: resolved.target,
-					limit,
+					...(limit === undefined ? {} : { limit }),
 					cursor: textParam(params.cursor),
 					before: textParam(params.before),
 					after: textParam(params.after),
@@ -3564,16 +3875,17 @@ async function handleSearch(
 			query,
 			agentId: runtime.agentId,
 			deliveryMessage: message,
-			count: limit + 10,
+			...(limit === undefined ? {} : { count: limit + 10 }),
 			matchThreshold: SEARCH_MATCH_THRESHOLD,
 			...(entityId ? { entityId: entityId as UUID } : {}),
 			source,
 		});
 
-		const results = recall.items
+		const matchingResults = recall.items
 			.map((item) => item.memory)
-			.filter((m) => m.content.text)
-			.slice(0, limit);
+			.filter((m) => m.content.text);
+		const results =
+			limit === undefined ? matchingResults : matchingResults.slice(0, limit);
 		return opSuccess(
 			"search",
 			conversationSearchText(query, results.length, recall.availability),
@@ -3602,12 +3914,6 @@ async function handleSearch(
 // ---------------------------------------------------------------------------
 // op=list_channels / list_servers
 // ---------------------------------------------------------------------------
-
-// Cap on rendered channel entries so a large deployment can't flood the
-// action result. Counts are always computed over the connector's complete
-// room set, and a capped listing is annotated (truncated + channelCount)
-// instead of silently posing as complete.
-const MAX_LISTED_CHANNELS = 50;
 
 async function handleListChannels(
 	runtime: IAgentRuntime,
@@ -3646,22 +3952,19 @@ async function handleListChannels(
 		const targets = await listRooms(context);
 		// Muted visibility: without the flag "which channels are you muted in"
 		// is unanswerable — the participant/world mute state is queryable
-		// nowhere else. Flags cover the FULL set so mutedCount stays correct
-		// even when the rendered listing below is capped.
+		// nowhere else. Flags cover the FULL set, matching the complete listing
+		// rendered below.
 		const mutedFlags = await resolveMutedTargetFlags(runtime, targets);
 		const mutedCount = mutedFlags.filter(Boolean).length;
-		const rendered = targets.slice(0, MAX_LISTED_CHANNELS);
-		const truncated = rendered.length < targets.length;
 		return opSuccess(
 			"list_channels",
 			`Listed ${targets.length} channels from ${connector.label}${
 				mutedCount > 0 ? ` (${mutedCount} muted)` : ""
-			}${truncated ? ` — showing the first ${rendered.length}` : ""}.`,
+			}.`,
 			{
 				source: connector.source,
 				channelCount: targets.length,
-				...(truncated ? { truncated: true } : {}),
-				channels: rendered.map((t, index) => ({
+				channels: targets.map((t, index) => ({
 					label: t.label,
 					kind: t.kind,
 					target: t.target,
@@ -3735,10 +4038,6 @@ async function handleListServers(
 	}
 }
 
-// At most this many connectors in the cross-connector roster, so a deployment
-// wired to many accounts can't produce an unbounded result.
-const MAX_LISTED_CONNECTIONS = 8;
-
 // Cross-connector: unlike list_channels/list_servers (which pick ONE connector
 // via selectConnectorForOp), this iterates EVERY connector exposing listRooms
 // and reports a per-platform summary — platform + label + account + room count,
@@ -3774,8 +4073,6 @@ async function handleListConnections(
 		if (!connector.accountId && sourcesWithAccount.has(connector.source)) {
 			continue;
 		}
-		if (connections.length >= MAX_LISTED_CONNECTIONS) break;
-
 		const context = buildQueryContext(
 			runtime,
 			message,
@@ -3818,6 +4115,289 @@ async function handleListConnections(
 		"list_connections",
 		`Connected via ${connections.length} connection(s): ${labels.join(", ")}.`,
 		{ connections, connectionCount: connections.length },
+	);
+}
+
+// ---------------------------------------------------------------------------
+// op=list_worlds / list_rooms — durable, identity-cluster-scoped topology.
+//
+// Connector list hooks describe what a provider can currently enumerate.
+// These operations answer a different question from the runtime's canonical
+// stores: which worlds and rooms this verified person has actually shared with
+// this agent. Cross-world topology is private continuity metadata, so even an
+// ADMIN caller must arrive through a freshly revalidated owner-private room.
+// ---------------------------------------------------------------------------
+
+type AuthorizedTopology = {
+	worlds: World[];
+	rooms: Room[];
+};
+
+type ExplicitPage<T> = {
+	items: T[];
+	offset: number;
+	total: number;
+	nextOffset: number | null;
+};
+
+function explicitPage<T>(items: T[], params: ParamRecord): ExplicitPage<T> {
+	const rawOffset = numberParam(params.offset);
+	const rawLimit = numberParam(params.limit);
+	const offset = Math.max(0, Math.floor(rawOffset ?? 0));
+	const start = Math.min(offset, items.length);
+	const end =
+		rawLimit === undefined
+			? items.length
+			: Math.min(items.length, start + Math.max(1, Math.floor(rawLimit)));
+	return {
+		items: items.slice(start, end),
+		offset: start,
+		total: items.length,
+		nextOffset: end < items.length ? end : null,
+	};
+}
+
+function topologySearchText(value: unknown): string {
+	return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function matchesTopologyQuery(
+	query: string,
+	values: Array<string | undefined>,
+): boolean {
+	if (!query) return true;
+	return values.some((value) => value?.toLowerCase().includes(query));
+}
+
+async function loadAuthorizedTopology(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<AuthorizedTopology | ActionResult> {
+	if (!message.entityId) {
+		return opFailure(
+			"list_worlds",
+			"REQUESTER_IDENTITY_REQUIRED",
+			"World and room discovery requires a verified requester identity.",
+		);
+	}
+
+	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+	if (
+		!disclosure.allowed ||
+		disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+	) {
+		return opFailure(
+			"list_worlds",
+			"PRIVATE_DESTINATION_REQUIRED",
+			"Cross-world continuity is available only in a revalidated owner-private conversation.",
+			{
+				reason: disclosure.allowed
+					? "invalid_disclosure_basis"
+					: disclosure.reason,
+			},
+		);
+	}
+
+	const requesterEntityIds = await getVerifiedRelatedEntityIds(
+		runtime,
+		message.entityId,
+	);
+	const [requesterRoomLists, agentRoomIds] = await Promise.all([
+		Promise.all(
+			requesterEntityIds.map((entityId) =>
+				runtime.getRoomsForParticipant(entityId),
+			),
+		),
+		runtime.getRoomsForParticipant(runtime.agentId),
+	]);
+	const agentRooms = new Set(agentRoomIds);
+	const sharedRoomIds = Array.from(new Set(requesterRoomLists.flat())).filter(
+		(roomId) => agentRooms.has(roomId),
+	);
+	const rooms =
+		sharedRoomIds.length > 0 ? await runtime.getRoomsByIds(sharedRoomIds) : [];
+	const worldIds = Array.from(
+		new Set(
+			rooms
+				.map((room) => room.worldId)
+				.filter((worldId): worldId is UUID => worldId !== undefined),
+		),
+	);
+	const worlds =
+		worldIds.length > 0 ? await runtime.getWorldsByIds(worldIds) : [];
+	// The topology result can now influence model text. Latch the turn so
+	// streaming remains suppressed and the final delivery seam revalidates the
+	// destination after this read, including while the planner is still running.
+	markOwnerExclusiveDisclosureUsed(message);
+	return { worlds, rooms };
+}
+
+async function handleListWorlds(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const topology = await loadAuthorizedTopology(runtime, message);
+	if ("success" in topology) return topology;
+	const query = topologySearchText(params.query);
+	const source = topologySearchText(params.source);
+	const roomsByWorld = new Map<UUID, Room[]>();
+	for (const room of topology.rooms) {
+		if (!room.worldId) continue;
+		const existing = roomsByWorld.get(room.worldId) ?? [];
+		existing.push(room);
+		roomsByWorld.set(room.worldId, existing);
+	}
+
+	const matches = topology.worlds
+		.map((world) => {
+			const sharedRooms = roomsByWorld.get(world.id) ?? [];
+			const sources = Array.from(
+				new Set(sharedRooms.map((room) => room.source)),
+			).sort();
+			return {
+				worldId: world.id,
+				name: world.name ?? null,
+				messageServerId: world.messageServerId ?? null,
+				sources,
+				sharedRoomCount: sharedRooms.length,
+			};
+		})
+		.filter(
+			(world) =>
+				(!source ||
+					world.sources.some(
+						(candidate) => candidate.toLowerCase() === source,
+					)) &&
+				matchesTopologyQuery(query, [
+					world.worldId,
+					world.name ?? undefined,
+					world.messageServerId ?? undefined,
+					...world.sources,
+				]),
+		)
+		.sort(
+			(left, right) =>
+				(left.name ?? left.worldId).localeCompare(
+					right.name ?? right.worldId,
+				) || left.worldId.localeCompare(right.worldId),
+		);
+	const page = explicitPage(matches, params);
+	const lines = page.items.map(
+		(world) =>
+			`- ${world.name ?? "Unnamed world"} (worldId=${world.worldId}, sources=${world.sources.join(",") || "unknown"}, sharedRooms=${world.sharedRoomCount})`,
+	);
+	return opSuccess(
+		"list_worlds",
+		[
+			`Authorized worlds: ${page.items.length} returned of ${page.total}.`,
+			...lines,
+			...(page.nextOffset === null
+				? []
+				: [`Continue with offset=${page.nextOffset}.`]),
+		].join("\n"),
+		{
+			query: query || null,
+			source: source || null,
+			worlds: page.items,
+			offset: page.offset,
+			total: page.total,
+			nextOffset: page.nextOffset,
+		},
+	);
+}
+
+async function handleListRooms(
+	runtime: IAgentRuntime,
+	message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const topology = await loadAuthorizedTopology(runtime, message);
+	if ("success" in topology) {
+		return {
+			...topology,
+			data: { ...(topology.data ?? {}), operation: "list_rooms" },
+		};
+	}
+	const explicitWorldId = textParam(params.worldId);
+	if (explicitWorldId && !isUuidLike(explicitWorldId)) {
+		return opFailure(
+			"list_rooms",
+			"INVALID_WORLD_ID",
+			`worldId "${explicitWorldId}" is not a valid UUID.`,
+		);
+	}
+	const currentRoom = explicitWorldId
+		? null
+		: await runtime.getRoom(message.roomId);
+	const worldId = (explicitWorldId as UUID | undefined) ?? currentRoom?.worldId;
+	if (!worldId) {
+		return opFailure(
+			"list_rooms",
+			"WORLD_ID_REQUIRED",
+			"MESSAGE op=list_rooms requires worldId when the current room has no world.",
+		);
+	}
+	if (!topology.worlds.some((world) => world.id === worldId)) {
+		return opFailure(
+			"list_rooms",
+			"WORLD_NOT_AUTHORIZED",
+			`World ${worldId} is not associated with the verified requester and this agent.`,
+			{ worldId },
+		);
+	}
+	const query = topologySearchText(params.query);
+	const source = topologySearchText(params.source);
+	const matches = topology.rooms
+		.filter(
+			(room) =>
+				room.worldId === worldId &&
+				(!source || room.source.toLowerCase() === source) &&
+				matchesTopologyQuery(query, [
+					room.id,
+					room.name,
+					room.source,
+					room.channelId,
+					room.serverId,
+				]),
+		)
+		.map((room) => ({
+			roomId: room.id,
+			worldId,
+			name: room.name ?? null,
+			source: room.source,
+			type: room.type,
+			channelId: room.channelId ?? null,
+			serverId: room.serverId ?? null,
+		}))
+		.sort(
+			(left, right) =>
+				(left.name ?? left.roomId).localeCompare(right.name ?? right.roomId) ||
+				left.roomId.localeCompare(right.roomId),
+		);
+	const page = explicitPage(matches, params);
+	const lines = page.items.map(
+		(room) =>
+			`- ${room.name ?? "Unnamed room"} (roomId=${room.roomId}, source=${room.source}, type=${room.type})`,
+	);
+	return opSuccess(
+		"list_rooms",
+		[
+			`Authorized rooms in world ${worldId}: ${page.items.length} returned of ${page.total}.`,
+			...lines,
+			...(page.nextOffset === null
+				? []
+				: [`Continue with offset=${page.nextOffset}.`]),
+		].join("\n"),
+		{
+			worldId,
+			query: query || null,
+			source: source || null,
+			rooms: page.items,
+			offset: page.offset,
+			total: page.total,
+			nextOffset: page.nextOffset,
+		},
 	);
 }
 
@@ -4032,6 +4612,197 @@ async function handleMessageMutation(
 }
 
 // ---------------------------------------------------------------------------
+// op=manage_server
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw `action` strings that alias to manage_server while naming a concrete
+ * management verb. Preserved as the connector operation so `action:
+ * "create_channel"` works without a separate `operation` param.
+ */
+const MANAGE_SERVER_GENERIC_ALIASES = new Set([
+	"manage_server",
+	"manage_guild",
+	"server_management",
+	"guild_management",
+]);
+
+const MANAGE_SERVER_OPERATION_RENAMES: Record<string, string> = {
+	kick_member: "kick",
+	ban_member: "ban",
+	unban_member: "unban",
+	timeout_member: "timeout",
+	edit_channel_permissions: "edit_permissions",
+	apply_server_template: "apply_template",
+	list_server_templates: "list_templates",
+};
+
+function manageServerOperation(params: ParamRecord): string | undefined {
+	const explicit = textParam(params.operation) ?? textParam(params.op);
+	if (explicit) {
+		const normalized = explicit.toLowerCase().replace(/[-\s]+/g, "_");
+		return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+	}
+	const raw = textParam(params.action);
+	if (!raw) return undefined;
+	const normalized = raw.toLowerCase().replace(/[-\s]+/g, "_");
+	if (MANAGE_SERVER_GENERIC_ALIASES.has(normalized)) return undefined;
+	return MANAGE_SERVER_OPERATION_RENAMES[normalized] ?? normalized;
+}
+
+/** Bounded param names forwarded verbatim to the connector. */
+const MANAGE_SERVER_FORWARDED_PARAMS = [
+	"channelId",
+	"parentId",
+	"roleId",
+	"userId",
+	"name",
+	"topic",
+	"channelType",
+	"color",
+	"hoist",
+	"mentionable",
+	"permissions",
+	"allow",
+	"deny",
+	"overwriteId",
+	"reason",
+	"durationMinutes",
+	"deleteMessageSeconds",
+	"maxAgeSeconds",
+	"maxUses",
+	"unique",
+	"template",
+	"templateSpec",
+	"variables",
+	"dryRun",
+] as const;
+
+async function handleManageServer(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const op: MessageOperation = "manage_server";
+	const operation = manageServerOperation(params);
+	if (!operation) {
+		return opFailure(
+			op,
+			"INVALID_PARAMETERS",
+			'MESSAGE op=manage_server requires an operation (e.g. operation: "create_channel").',
+		);
+	}
+	const connectors = connectorsWithHook(runtime, "manageServerHandler");
+	const selection = selectConnectorForOp(
+		connectors,
+		sourceFromParams(params, message),
+		trustedConnectorSource(message),
+		op,
+		accountIdFromParams(params, message),
+	);
+	if ("error" in selection) return selection.error;
+	const connector = selection.connector;
+	if (!connector.accountId) {
+		return opFailure(
+			op,
+			"ACCOUNT_ID_REQUIRED",
+			"Server management requires an explicitly account-scoped connector.",
+		);
+	}
+	const selectedAccountId = connector.accountId;
+	const handler = connector.manageServerHandler;
+	const resolveDestination = connector.resolveManageServerDestination;
+	if (
+		typeof handler !== "function" ||
+		typeof resolveDestination !== "function"
+	) {
+		return opFailure(
+			op,
+			"NOT_SUPPORTED",
+			`Server management is not supported for ${connector.label}.`,
+		);
+	}
+	const resolved = await resolveOptionalTarget(
+		connector,
+		runtime,
+		message,
+		state,
+		params,
+		op,
+	);
+	if (resolved.error) return resolved.error;
+	const forwarded: Record<string, unknown> = {};
+	for (const key of MANAGE_SERVER_FORWARDED_PARAMS) {
+		if (params[key] !== undefined) forwarded[key] = params[key];
+	}
+	let serverId =
+		textParam(params.serverId) ??
+		textParam(params.server) ??
+		textParam(params.guildId) ??
+		resolved.target?.serverId;
+	if (!serverId) {
+		const currentRoom = await runtime.getRoom(message.roomId);
+		serverId =
+			currentRoom?.source === connector.source
+				? currentRoom.serverId
+				: undefined;
+	}
+	if (!serverId) {
+		return opFailure(
+			op,
+			"SERVER_ID_REQUIRED",
+			"MESSAGE op=manage_server requires an exact platform serverId or a current room with an exact persisted server binding.",
+		);
+	}
+	try {
+		const destination = await resolveDestination(runtime, {
+			target: resolved.target,
+			serverId,
+		});
+		if (
+			destination.source !== connector.source ||
+			destination.accountId !== selectedAccountId ||
+			destination.target.accountId !== selectedAccountId
+		) {
+			return opFailure(
+				op,
+				"DESTINATION_CONNECTOR_MISMATCH",
+				"The resolved server destination does not match the selected connector source and account.",
+			);
+		}
+		const authorization = await authorizeManageServerDestination(
+			runtime,
+			message.entityId,
+			destination,
+		);
+		const result = await handler(runtime, {
+			target: destination.target,
+			operation,
+			serverId: destination.serverId,
+			authorization,
+			params: forwarded,
+		});
+		return opSuccess(op, result.summary, {
+			source: connector.source,
+			operation,
+			...(result.data ? { receipt: result.data } : {}),
+		});
+	} catch (error) {
+		// error-policy:J1 Connector failures become structured action failures.
+		if (error instanceof ElizaError) {
+			logger.error(`[MESSAGE/${op}] ${error.message}`);
+			return opFailure(
+				op,
+				error.code,
+				`MESSAGE op=${op} failed: ${error.message}`,
+			);
+		}
+		return opErrorWrap(op, error);
+	}
+}
+
+// ---------------------------------------------------------------------------
 // op=get_user
 // ---------------------------------------------------------------------------
 
@@ -4085,6 +4856,69 @@ async function handleGetUser(
 	} catch (error) {
 		// error-policy:J1 Connector failures become structured action failures.
 		return opErrorWrap("get_user", error);
+	}
+}
+
+async function handleReadMessage(
+	runtime: IAgentRuntime,
+	_message: Memory,
+	params: ParamRecord,
+): Promise<ActionResult> {
+	const sourceValue = textParam(params.source) ?? "gmail";
+	if (!(ALL_MESSAGE_SOURCES as readonly string[]).includes(sourceValue)) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_INVALID_SOURCE",
+			`MESSAGE op=read_message does not recognize source "${sourceValue}".`,
+		);
+	}
+	const messageId = textParam(params.messageId) ?? textParam(params.id);
+	const reference = textParam(params.reference);
+	if (!messageId && !reference) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_MISSING_REFERENCE",
+			"MESSAGE op=read_message requires messageId for the first page or reference for a continuation.",
+		);
+	}
+	const unitValue = textParam(params.unit) ?? "byte";
+	if (!(["line", "fragment", "byte"] as const).includes(unitValue as never)) {
+		return opFailure(
+			"read_message",
+			"MESSAGE_READ_INVALID_UNIT",
+			"MESSAGE op=read_message unit must be line, fragment, or byte.",
+		);
+	}
+	try {
+		const result = await getDefaultTriageService().readMessage(
+			runtime,
+			sourceValue as MessageSource,
+			{
+				messageId,
+				reference,
+				worldId: textParam(params.accountId),
+				offset: numberParam(params.offset),
+				limit: numberParam(params.limit),
+				unit: unitValue as "line" | "fragment" | "byte",
+				expectedRevision: textParam(params.expectedRevision),
+			},
+		);
+		const projection = {
+			readView: result.readView,
+			...(result.control ? { control: result.control } : {}),
+		};
+		// The exact body page has one carrier. Structured projections contain
+		// only source identity, integrity, range, and continuation metadata.
+		return {
+			success: true,
+			text: result.text,
+			values: { success: true },
+			data: projection,
+			promptData: projection,
+		};
+	} catch (error) {
+		// error-policy:J1 Provider/auth/range failures become explicit action failures.
+		return opErrorWrap("read_message", error);
 	}
 }
 
@@ -4175,14 +5009,14 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		name: "action",
 		description:
 			`Message action. One of: ${MESSAGE_OPS.join(", ")}. ` +
-			"list_connections — every messaging platform/server this agent is currently connected to. Use to answer where you are reachable / what platforms or accounts you're on; never assume you are limited to one platform.",
+			"list_connections — every connected messaging platform/account. list_worlds — durable worlds shared by this verified requester and the agent. list_rooms — durable shared rooms in the current world or an authorized worldId.",
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
 	},
 	{
 		name: "source",
 		description:
-			"Connector source: discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
+			"Connector source: discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail.",
 		required: false,
 		subactions: [
 			"send",
@@ -4190,6 +5024,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"search",
 			"list_channels",
 			"list_servers",
+			"list_worlds",
+			"list_rooms",
 			"join",
 			"leave",
 			"react",
@@ -4197,6 +5033,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 			"triage",
 			"list_inbox",
 			"search_inbox",
@@ -4205,7 +5042,16 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"respond",
 			"send_draft",
 			"manage",
+			"read_message",
 		],
+		schema: { type: "string" },
+	},
+	{
+		name: "worldId",
+		description:
+			"For op=list_rooms, an exact world UUID returned by list_worlds. Omit it to inspect the current room's world.",
+		required: false,
+		subactions: ["list_rooms"],
 		schema: { type: "string" },
 	},
 	{
@@ -4225,6 +5071,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"read_message",
 		],
 		schema: { type: "string" },
 	},
@@ -4334,6 +5181,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"draft_followup",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -4366,6 +5214,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"edit",
 			"delete",
 			"pin",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -4383,6 +5232,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"delete",
 			"pin",
 			"get_user",
+			"manage_server",
 		],
 		schema: { type: "string" },
 	},
@@ -4547,9 +5397,18 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "query",
-		description: "Search term for op=search or op=search_inbox.",
+		description:
+			"Search term for op=search, search_inbox, list_worlds, or list_rooms.",
 		required: false,
-		subactions: ["search", "search_inbox", "draft_reply", "respond", "manage"],
+		subactions: [
+			"search",
+			"search_inbox",
+			"draft_reply",
+			"respond",
+			"manage",
+			"list_worlds",
+			"list_rooms",
+		],
 		schema: { type: "string" },
 	},
 	{
@@ -4640,9 +5499,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
 		name: "messageId",
 		description:
-			"Platform/full message ID or stored memory ID for react/edit/delete/pin/respond.",
+			"Platform/full message ID or stored memory ID for read_channel/react/edit/delete/pin/respond. With read_channel, returns an exact byte page of that stored message.",
 		required: false,
 		subactions: [
+			"read_channel",
 			"react",
 			"edit",
 			"delete",
@@ -4650,6 +5510,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"draft_reply",
 			"respond",
 			"manage",
+			"read_message",
 		],
 		schema: { type: "string" },
 	},
@@ -4665,6 +5526,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description: "Alias for messageId.",
 		required: false,
 		subactions: [
+			"read_channel",
 			"react",
 			"edit",
 			"delete",
@@ -4674,7 +5536,39 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"manage",
 			"send_draft",
 			"schedule_draft_send",
+			"read_message",
 		],
+		schema: { type: "string" },
+	},
+	{
+		name: "reference",
+		description:
+			"Opaque continuation reference returned by read_message or a stored read_channel page.",
+		required: false,
+		subactions: ["read_channel", "read_message"],
+		schema: { type: "string" },
+	},
+	{
+		name: "offset",
+		description:
+			"Zero-based range offset for read_message/list_worlds/list_rooms, or UTF-8 byte offset for read_channel with a stored messageId.",
+		required: false,
+		subactions: ["read_channel", "read_message", "list_worlds", "list_rooms"],
+		schema: { type: "number", minimum: 0 },
+	},
+	{
+		name: "unit",
+		description: "Paging unit for read_message; byte is the bounded default.",
+		required: false,
+		subactions: ["read_message"],
+		schema: { type: "string", enum: ["line", "fragment", "byte"] },
+	},
+	{
+		name: "expectedRevision",
+		description:
+			"Revision returned by the preceding read_message or stored read_channel page.",
+		required: false,
+		subactions: ["read_channel", "read_message"],
 		schema: { type: "string" },
 	},
 	{
@@ -4759,6 +5653,9 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"triage",
 			"list_inbox",
 			"search_inbox",
+			"read_message",
+			"list_worlds",
+			"list_rooms",
 		],
 		schema: { type: "number" },
 	},
@@ -4833,6 +5730,108 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		subactions: ["read_channel", "search"],
 		schema: { type: "string" },
 	},
+	{
+		name: "operation",
+		description:
+			"Server-management verb for op=manage_server: create_category, create_channel, edit_channel, delete_channel, create_role, edit_role, delete_role, edit_permissions, assign_role, remove_role, create_invite, kick, ban, unban, timeout, list_templates, apply_template. Connector configuration gates every write (fail closed).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "name",
+		description:
+			"Name for created/edited channels, categories, and roles (manage_server).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "topic",
+		description: "Channel topic for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "channelType",
+		description:
+			"Channel type for manage_server create_channel: text, voice, announcement, forum, stage.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "parentId",
+		description:
+			"Parent category channel id for manage_server create/edit channel.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "roleId",
+		description:
+			"Role id for manage_server edit_role, delete_role, assign_role, remove_role.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "permissions",
+		description:
+			"Named permission list for manage_server create_role/edit_role (Administrator is always rejected).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "allow",
+		description:
+			"Permissions to allow in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "deny",
+		description:
+			"Permissions to deny in a manage_server edit_permissions overwrite.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "array", items: { type: "string" } },
+	},
+	{
+		name: "overwriteId",
+		description:
+			'Overwrite subject for manage_server edit_permissions: a role id, user id, or "@everyone".',
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "template",
+		description:
+			"Registered template id for manage_server apply_template (see list_templates).",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
+	{
+		name: "dryRun",
+		description:
+			"For manage_server: report the plan (would_create/would_update) without writing.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "boolean" },
+	},
+	{
+		name: "reason",
+		description: "Audit-log reason for manage_server writes.",
+		required: false,
+		subactions: ["manage_server"],
+		schema: { type: "string" },
+	},
 ];
 
 // ---------------------------------------------------------------------------
@@ -4847,6 +5846,24 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 		baseCompressed: MESSAGE_COMPRESSED,
 	});
 }
+
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtDesc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
 
 export const messageAction: Action = {
 	name: "MESSAGE",
@@ -4882,13 +5899,20 @@ export const messageAction: Action = {
 	description: MESSAGE_DESCRIPTION,
 	descriptionCompressed: MESSAGE_COMPRESSED,
 	routingHint:
-		"send/read/search/triage messages on a connector or channel, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
+		"send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
 	contexts: MESSAGE_CONTEXTS,
 	roleGate: { minRole: "ADMIN" },
 	parameters: MESSAGE_PARAMETERS,
 	examples: (spec?.examples ?? []) as ActionExample[][],
-	validate: async (runtime, message, state) => {
+	validate: async (runtime, message, state, options) => {
 		refreshDescriptions(messageAction, runtime);
+		const explicitOp = inferOp(paramsFromOptions(options));
+		if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
+			// Scenario and API callers may invoke an explicit topology read without
+			// a model-composed routing state. The handlers still revalidate the
+			// owner-private audience and authorized room intersection themselves.
+			return true;
+		}
 		return hasActionContext(message, state, {
 			contexts: MESSAGE_CONTEXTS,
 		});
@@ -4904,6 +5928,8 @@ export const messageAction: Action = {
 				return handleReadChannel(runtime, message, state, params);
 			case "read_with_contact":
 				return handleReadWithContact(runtime, message, state, params);
+			case "read_message":
+				return handleReadMessage(runtime, message, params);
 			case "search":
 				return handleSearch(runtime, message, state, params);
 			case "list_channels":
@@ -4912,6 +5938,10 @@ export const messageAction: Action = {
 				return handleListServers(runtime, message, state, params);
 			case "list_connections":
 				return handleListConnections(runtime, message, state, params);
+			case "list_worlds":
+				return handleListWorlds(runtime, message, params);
+			case "list_rooms":
+				return handleListRooms(runtime, message, params);
 			case "join":
 			case "leave":
 				return handleJoinLeave(runtime, message, state, params, op);
@@ -4922,6 +5952,8 @@ export const messageAction: Action = {
 				return handleMessageMutation(runtime, message, state, params, op);
 			case "get_user":
 				return handleGetUser(runtime, message, state, params);
+			case "manage_server":
+				return handleManageServer(runtime, message, state, params);
 			case "triage":
 			case "list_inbox":
 			case "search_inbox":

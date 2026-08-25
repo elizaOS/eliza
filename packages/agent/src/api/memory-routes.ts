@@ -66,7 +66,7 @@ const MEMORY_BROWSE_MAX_LIMIT = 200;
 const MEMORY_BROWSE_MAX_SCAN_ROWS = 25_000;
 const MEMORY_FEED_DEFAULT_LIMIT = 50;
 const MEMORY_FEED_MAX_LIMIT = 100;
-const MEMORY_TABLE_NAMES = [
+export const MEMORY_TABLE_NAMES = [
   "messages",
   "memories",
   "facts",
@@ -687,7 +687,10 @@ async function searchMemoryNotes(
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return b.createdAt - a.createdAt;
+    const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return a.id.localeCompare(b.id);
   });
   return hits.slice(0, limit);
 }
@@ -1088,6 +1091,13 @@ export async function handleMemoryRoutes(
         source: HASH_MEMORY_SOURCE,
         channelType: ChannelType.DM,
       },
+      // Hash-memory notes are the agent's personal store: fail closed against
+      // strangers, but keep the AGENT tier readable. `agent-private` (OWNER +
+      // AGENT + RUNTIME) rather than `owner-private` (OWNER + RUNTIME only),
+      // because owner-private would silently deny the agent its own recall
+      // once readers enforce scope. Without an explicit scope the factory
+      // default is `shared` — world-readable — which is wrong for these rows.
+      scope: "agent-private",
     });
     await runtime.createMemory(message, "messages");
     invalidateMemorySearchCache(runtime, roomId);
@@ -1412,17 +1422,20 @@ export async function handleMemoryRoutes(
     let total = 0;
 
     for (const tableName of MEMORY_TABLE_NAMES) {
-      const memories = await runtime.getMemories({
+      // Exact count straight from the store. The previous implementation
+      // fetched getMemories({ limit: 10000 }).length per table, which capped
+      // every larger table at exactly 10,000 and reported the truncated value
+      // as success — a silent window that violates the repo's no-silent-drop
+      // invariant once any table exceeds the cap.
+      const count = await runtime.countMemories({
         agentId: runtime.agentId as UUID,
         tableName,
-        limit: 10000,
-        includeEmbedding: false, // stats only counts memories.length
       });
-      counts[tableName] = memories.length;
-      total += memories.length;
+      counts[tableName] = count;
+      total += count;
     }
 
-    json(res, { total, byType: counts });
+    json(res, { total, byType: counts, totalIsExact: true });
     return true;
   }
 

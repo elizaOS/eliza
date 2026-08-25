@@ -17,6 +17,7 @@ import { memo, useEffect, useMemo, useState } from "react";
 import { client } from "../../../api";
 import type { WorkflowExecution } from "../../../api/client-types-chat";
 import { dispatchVisualizeWorkflow } from "../../pages/workflow-graph-events";
+import { Button } from "../../ui/button";
 import type {
   WorkflowSpec,
   WorkflowStepStatus,
@@ -32,12 +33,11 @@ const STEP_TONE: Record<WorkflowStepStatus, string> = {
 };
 
 function StepIcon({ status }: { status: WorkflowStepStatus }) {
-  if (status === "done") return <CircleCheck className="h-3.5 w-3.5 text-ok" />;
-  if (status === "failed")
-    return <CircleX className="h-3.5 w-3.5 text-danger" />;
+  if (status === "done") return <CircleCheck className="size-3.5 text-ok" />;
+  if (status === "failed") return <CircleX className="size-3.5 text-danger" />;
   if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 animate-spin text-ok" />;
-  return <Circle className="h-3.5 w-3.5 text-muted" />;
+    return <Loader2 className="size-3.5 animate-spin text-ok" />;
+  return <Circle className="size-3.5 text-muted" />;
 }
 
 // Memoized on the workflow spec by value (see `workflowPropsEqual`): a
@@ -109,7 +109,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
       title={title}
       status={
         <span
-          className={`text-[11px] font-medium tabular-nums ${
+          className={`text-xs-tight font-medium tabular-nums ${
             failed ? "text-danger" : "text-muted"
           }`}
         >
@@ -162,12 +162,12 @@ export const WorkflowSteps = memo(function WorkflowSteps({
               <span className="text-xs font-medium text-txt">
                 {widget.title}
               </span>
-              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] uppercase text-primary">
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-3xs uppercase tracking-wider text-primary">
                 {widget.component}
               </span>
             </div>
             {execution?.output !== undefined ? (
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-muted">
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-xs-tight text-muted">
                 {JSON.stringify(execution.output, null, 2)}
               </pre>
             ) : null}
@@ -176,28 +176,30 @@ export const WorkflowSteps = memo(function WorkflowSteps({
         {workflow.workflowId || (workflow.runId && !complete) ? (
           <div className="mt-2 flex gap-2 border-t border-border/60 pt-2">
             {workflow.workflowId ? (
-              <button
+              <Button
                 type="button"
+                variant="externalLink"
+                size="content"
                 onClick={() =>
                   dispatchVisualizeWorkflow(workflow.workflowId as string)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
-                <ExternalLink className="h-3.5 w-3.5" /> Open workflow
-              </button>
+                <ExternalLink className="size-3.5" /> Open workflow
+              </Button>
             ) : null}
             {workflow.runId && !complete ? (
-              <button
+              <Button
                 type="button"
+                variant="ghostMuted"
+                size="tiny"
                 onClick={() =>
                   void client
                     .cancelWorkflowExecution(workflow.runId as string)
                     .then(setExecution)
                 }
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
-                <Square className="h-3.5 w-3.5" /> Cancel run
-              </button>
+                <Square className="size-3.5" /> Cancel run
+              </Button>
             ) : null}
           </div>
         ) : null}

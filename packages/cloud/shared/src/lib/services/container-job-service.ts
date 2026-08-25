@@ -45,7 +45,7 @@ export function isContainerJobType(type: string): boolean {
 
 /** Route a CONTAINER_* job to its executor. */
 export async function dispatchContainerJob(
-  job: JobLike & { type: string },
+  job: JobLike & { type: string; organization_id: string },
   deps: ContainerExecutorDeps,
 ): Promise<void> {
   switch (job.type) {
@@ -89,6 +89,8 @@ export function getContainerExecutorDeps(): ContainerExecutorDeps {
 // ── enqueue ──────────────────────────────────────────────────────────────────
 
 export interface ContainerJobInsert {
+  /** Deterministic id for a generation-owned idempotent insert. */
+  id?: string;
   type: string;
   organizationId: string;
   userId?: string;
@@ -111,6 +113,7 @@ export class ContainerJobEnqueuer {
     containerId: string;
     organizationId: string;
     userId: string;
+    deploymentGeneration?: string;
   }): Promise<{ id: string }> {
     return this.writer.insertJob({
       type: JOB_TYPES.CONTAINER_PROVISION,

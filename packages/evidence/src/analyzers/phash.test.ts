@@ -8,6 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   hammingDistance,
   isSameScreen,
+  medianOf,
   perceptualHash,
   SAME_SCREEN_THRESHOLD,
 } from "./phash.ts";
@@ -27,8 +28,8 @@ describe("hammingDistance", () => {
   });
 });
 
-describe("perceptualHash stability", () => {
-  it("identical content hashes to distance 0", async () => {
+describe("perceptualHash", () => {
+  it("identical images yield distance 0", async () => {
     const a = await textPng(join(dir, "same-a.png"), "Sign in to Eliza");
     const b = await textPng(join(dir, "same-b.png"), "Sign in to Eliza");
     const ha = await perceptualHash(a);
@@ -37,7 +38,7 @@ describe("perceptualHash stability", () => {
     expect(isSameScreen(ha, hb)).toBe(true);
   });
 
-  it("a small crop of the same content stays within the same-screen threshold", async () => {
+  it("minor crop of same render stays below same-screen threshold", async () => {
     const full = await textPng(
       join(dir, "full.png"),
       "Ask me anything",
@@ -45,8 +46,7 @@ describe("perceptualHash stability", () => {
       200,
     );
     const cropped = join(dir, "cropped.png");
-    // Trim ~2% off each edge — the same screen, slightly reframed. A pHash is
-    // robust to small reframing, not to arbitrary crops, so the fixture is a
+    // Shave 12px off left and 4px off top, keep 95% of area: simulates a
     // realistic "same screen across runs" shift, not a large recompose.
     await sharp(full)
       .extract({ left: 12, top: 4, width: 616, height: 192 })
@@ -66,5 +66,14 @@ describe("perceptualHash stability", () => {
       await perceptualHash(solid),
     );
     expect(distance).toBeGreaterThan(SAME_SCREEN_THRESHOLD);
+  });
+
+  it("computes medianOf safely with non-finite values and empty arrays", () => {
+    expect(medianOf([NaN, 10, 5, 20])).toBe(10);
+    expect(medianOf([NaN, Number.POSITIVE_INFINITY, 10, 20, 30, 40])).toBe(25);
+    expect(medianOf([10, 20])).toBe(15);
+    expect(medianOf([5])).toBe(5);
+    expect(medianOf([])).toBe(0);
+    expect(medianOf([NaN, NaN])).toBe(0);
   });
 });

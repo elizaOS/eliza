@@ -50,12 +50,7 @@ const SUBJECT_TYPE_SCORES: Record<string, number> = {
   Discussion: 8,
 };
 
-const NOTIFICATION_TRIAGE_LIMIT = 25;
 const NOTIFICATION_PAGE_SIZE = 50;
-// Bounds the unread-notification traversal against an inbox that never
-// returns a short page (misbehaving server, or a genuinely huge backlog):
-// 20 pages * 50/page is 1000 notifications, generous for a triage pass.
-const NOTIFICATION_MAX_PAGES = 20;
 
 export interface TriagedNotification {
   id: string;
@@ -68,18 +63,38 @@ export interface TriagedNotification {
   score: number;
 }
 
+/**
+ * Orders triaged notifications highest-priority first.
+ *
+ * `scoreNotification` derives its result from repository timestamps supplied by
+ * the GitHub API, so a malformed `pushed_at` can yield a non-finite score. A
+ * comparator returning `NaN` makes `Array.prototype.sort` implementation-
+ * defined and the reported triage list unstable, so a non-finite score is
+ * treated as `0` and equal scores tie-break on notification id.
+ */
+export function compareTriagedNotifications(
+  a: TriagedNotification,
+  b: TriagedNotification,
+): number {
+  const aScore =
+    typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+  const bScore =
+    typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+  return bScore - aScore || a.id.localeCompare(b.id);
+}
+
 interface UnreadNotificationFetchResult {
   notifications: GitHubNotificationSummary[];
   totalUnreadIsLowerBound: boolean;
 }
 
-/** Fetch bounded unread pages and report when the collected total is partial. */
+/** Fetch every unread page, deduplicating rows shifted by a mutating inbox. */
 export async function fetchAllUnreadNotifications(
   activity: GitHubOctokitClient["activity"],
 ): Promise<UnreadNotificationFetchResult> {
   const notifications: GitHubNotificationSummary[] = [];
   const seenIds = new Set<string>();
-  for (let page = 1; page <= NOTIFICATION_MAX_PAGES; page += 1) {
+  for (let page = 1; ; page += 1) {
     const response = await activity.listNotificationsForAuthenticatedUser({
       all: false,
       per_page: NOTIFICATION_PAGE_SIZE,
@@ -96,11 +111,6 @@ export async function fetchAllUnreadNotifications(
       return { notifications, totalUnreadIsLowerBound: false };
     }
   }
-  logger.warn(
-    { pages: NOTIFICATION_MAX_PAGES, collected: notifications.length },
-    "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
-  );
-  return { notifications, totalUnreadIsLowerBound: true };
 }
 
 function scoreNotification(params: {
@@ -177,7 +187,7 @@ export const notificationTriageAction: Action = {
   ): Promise<
     GitHubActionResult<{
       notifications: TriagedNotification[];
-      notificationLimit: number;
+      notificationLimit: null;
       totalUnread: number;
       totalUnreadIsLowerBound: boolean;
     }>
@@ -219,11 +229,10 @@ export const notificationTriageAction: Action = {
           }),
         };
       });
-      triaged.sort((a, b) => b.score - a.score);
-      const boundedTriaged = triaged.slice(0, NOTIFICATION_TRIAGE_LIMIT);
+      triaged.sort(compareTriagedNotifications);
       await callback?.({
         text: formatTriageSummary(
-          boundedTriaged.length,
+          triaged.length,
           triaged.length,
           totalUnreadIsLowerBound,
         ),
@@ -231,8 +240,8 @@ export const notificationTriageAction: Action = {
       return {
         success: true,
         data: {
-          notifications: boundedTriaged,
-          notificationLimit: NOTIFICATION_TRIAGE_LIMIT,
+          notifications: triaged,
+          notificationLimit: null,
           totalUnread: triaged.length,
           totalUnreadIsLowerBound,
         },

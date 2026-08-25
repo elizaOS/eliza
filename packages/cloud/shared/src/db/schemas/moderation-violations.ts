@@ -51,7 +51,7 @@ export const moderationViolations = pgTable(
 
     // Context
     roomId: text("room_id"),
-    messageText: text("message_text").notNull(), // Truncated to 500 chars
+    messageText: text("message_text").notNull(),
 
     // Violation details
     categories: jsonb("categories").notNull().$type<string[]>(), // ["sexual/minors", "self-harm"]

@@ -110,9 +110,9 @@ with `ELIZA_DEV_SERVER_REGISTRY`. See
 | `bun run test:ui:playwright` | `bun run --cwd packages/app test:e2e` |
 | `bun run test:lifeops` | `bun run test:plugin 'plugin-personal-assistant'` |
 | `bun run trajectory:inspect:test` | `bun test packages/scripts/__tests__/trajectory-validate.test.ts` |
-| `bun run audit:e2e-coverage:test` | `bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts` |
-| `bun run test:browser-bridge` | retired with the removed `packages/browser-extension` workspace; no replacement |
-| `bun run test:browser-bridge:safari` | retired with the removed `packages/browser-extension` workspace; no replacement |
+| `bun run audit:e2e-coverage:test` | retired with the historical coverage baseline; use the diagnostic coverage report |
+| `bun run test:browser-bridge` | `bun run --cwd packages/browser-bridge-extension test:smoke:installed` (requires installed browsers) |
+| `bun run test:browser-bridge:safari` | `bun run --cwd packages/browser-bridge-extension test:smoke:safari` (requires installed Safari) |
 | `bun run voice:latency-report` | `bun run --cwd packages/app-core voice:latency-report` |
 | `bun run voice:interactive` | `bun run --cwd packages/app-core voice:interactive` |
 | `bun run voice:duet` | `bun run --cwd packages/app-core voice:duet` |
@@ -159,6 +159,7 @@ packages/
   logger/           structured logging package
   vault/            secrets and configuration storage adapters
   skills/           bundled runtime skills and loading utilities
+  browser-bridge-extension/ Chrome MV3, Firefox, and Safari companion browser extension
   registry/         first-party and community plugin registry data and validation
   scenario-runner/  real-runtime scenario execution and report generation
   test/             repository-wide scenarios and test corpus
@@ -205,6 +206,40 @@ When code needs only the framework, depend on `@elizaos/core`. Do not depend on
 an application host to reach a core abstraction.
 
 ## Engineering conventions
+
+### Prompt integrity: never discard model context
+
+Prompt construction, provider output, action/tool results, conversation
+history, evaluator input, and model output must remain complete. Never use a
+character/token cap, prefix or suffix slice, item-count limit, rolling buffer,
+summary, compaction, or "most recent" window to make model-facing content fit.
+Large supported contexts are a product capability; silently changing them
+creates non-local reasoning failures that are much harder to diagnose than an
+explicit error.
+
+Training and evaluation have the same invariant: teacher prompts, recorded
+requests/responses, and tokenizer inputs must not be compacted or truncated.
+A trainer with a smaller sequence boundary must reject the complete row before
+training; it must never teach from a prefix or suffix that was not the recorded
+model call.
+
+When an external model, platform, parser, transport, or resource boundary has
+a real hard limit, preserve one of these contracts instead:
+
+- reject before dispatch with a typed, actionable size error and no partial
+  payload;
+- split into lossless, ordered chunks and prove reassembly in tests; or
+- paginate only when the caller explicitly requested that pagination and the
+  model receives the continuation contract.
+
+UI previews, log summaries, cryptographic abbreviations, and protocol fields
+with externally mandated limits may be bounded only when the complete value is
+not later presented as model context. Name these surfaces as previews or
+summaries, never as the underlying value. Any change that introduces a cap or
+uses `truncate`, `slice`, `substring`, `maxChars`, `maxTokens`, or an item limit
+near a prompt/provider/action-result path must include a regression test proving
+that content is either complete, losslessly reassembled, or explicitly
+rejected. Do not reintroduce conversation compaction or `/compact`.
 
 - Use the structured logger in server/runtime code; never use `console` there.
   Prefix human-readable messages with the owning class or subsystem and attach
@@ -342,6 +377,33 @@ Tests must exercise the real contract being changed. Cover error, empty,
 invalid-input, concurrency, authorization, and adversarial paths where they are
 meaningful. A mock or stub standing in for the system under test is useful for
 unit coverage but is not end-to-end proof.
+
+Coverage is a diagnostic signal, not a reason to create work. Do not open an
+issue or PR solely because a file, export, branch, or line is uncovered. Run
+speculative audits before filing; open a narrowly scoped issue only after
+finding a concrete defect, regression, risk, or missing consumer-visible
+capability with an affected caller and observable acceptance result. Do not
+create per-file, per-package, or inventory-only issues whose acceptable outcome
+is “no change.”
+
+A test-only PR must name the realistic regression it prevents, the consumer or
+external boundary that would observe the failure, and why existing higher-level
+coverage does not own the contract. A red result produced by changing the
+asserted literal is not evidence of value. Do not add tests whose material
+assertions only copy constants, names, labels, copy, URLs, CSS classes, visual
+tokens, array lengths, object keys, or implementation literals; check that an
+export, type-shaped object, class, function, property, file, asset, generated
+catalog entry, barrel re-export, or fixture exists; introspect schema or metadata
+descriptors without exercising their database, parser, transport, migration,
+or consumer; prove TypeScript assignability at runtime; snapshot deterministic
+fixtures; restate the implementation; or assert a mock that replaces the system
+under test. Line, branch, and module coverage increases do not justify these
+tests.
+
+Narrow exceptions exist for externally versioned wire values, security
+allowlists, migration contracts, and generated-artifact integrity. Even then,
+exercise or validate the external boundary rather than mirroring its source
+declaration. Close or replace test-only PRs that fail this quality gate.
 
 ### Evidence bundles and review
 

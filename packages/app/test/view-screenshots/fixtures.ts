@@ -1021,7 +1021,7 @@ export const VIEW_SPECS: Record<string, ViewSpec> = {
       "sources-empty",
       "sources-pending",
     ],
-    // CalendarView takes no props; its seam is the hook global.
+    // The shipped Calendar view takes no props; its seam is the hook global.
     propsFor: () => ({}),
     calendarResultFor: (s) => calendarCalendarStates[s](),
     calendarSourcesResultFor: (s) => calendarSourceStates[s](),

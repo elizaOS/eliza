@@ -2,12 +2,14 @@
  * Deterministic coverage for unread-notification pagination before priority
  * ranking, using a structural GitHub activity client with multiple pages.
  */
-import { logger } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import {
+  compareTriagedNotifications,
   fetchAllUnreadNotifications,
   formatTriageSummary,
+  notificationTriageAction,
+  type TriagedNotification,
 } from "./notification-triage.js";
 
 describe("fetchAllUnreadNotifications", () => {
@@ -94,8 +96,7 @@ describe("fetchAllUnreadNotifications", () => {
     expect(result.totalUnreadIsLowerBound).toBe(false);
   });
 
-  it("stops after the page cap instead of looping on an always-full inbox", async () => {
-    const warning = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  it("follows unread pages beyond the former fixed page ceiling", async () => {
     const page = (start: number) =>
       Array.from({ length: 50 }, (_, index) => ({
         id: String(start + index),
@@ -104,7 +105,7 @@ describe("fetchAllUnreadNotifications", () => {
     const listNotificationsForAuthenticatedUser = vi
       .fn()
       .mockImplementation(async ({ page: pageNumber }: { page: number }) => ({
-        data: page((pageNumber - 1) * 50),
+        data: pageNumber === 21 ? [] : page((pageNumber - 1) * 50),
       }));
     const activity = {
       listNotificationsForAuthenticatedUser,
@@ -112,14 +113,9 @@ describe("fetchAllUnreadNotifications", () => {
 
     const result = await fetchAllUnreadNotifications(activity);
 
-    expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(20);
+    expect(listNotificationsForAuthenticatedUser).toHaveBeenCalledTimes(21);
     expect(result.notifications).toHaveLength(1000);
-    expect(result.totalUnreadIsLowerBound).toBe(true);
-    expect(warning).toHaveBeenCalledWith(
-      { pages: 20, collected: 1000 },
-      "[GitHub:GITHUB_NOTIFICATION_TRIAGE] unread notifications truncated at page cap",
-    );
-    warning.mockRestore();
+    expect(result.totalUnreadIsLowerBound).toBe(false);
   });
 });
 
@@ -134,5 +130,142 @@ describe("formatTriageSummary", () => {
     expect(formatTriageSummary(25, 1000, true)).toBe(
       "Triaged 25 of at least 1000 unread notification(s)",
     );
+  });
+
+  it("handles NaN scores safely when sorting triaged notifications", () => {
+    const triaged = [
+      {
+        id: "n-1",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: NaN,
+      },
+      {
+        id: "n-2",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 100,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("n-2");
+    expect(triaged[1]?.id).toBe("n-1");
+  });
+
+  it("tie-breaks equal scores by id deterministically", () => {
+    const triaged = [
+      {
+        id: "z-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+      {
+        id: "a-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("a-id");
+    expect(triaged[1]?.id).toBe("z-id");
+  });
+});
+
+describe("compareTriagedNotifications", () => {
+  const base: Omit<TriagedNotification, "id" | "score"> = {
+    reason: "mention",
+    repo: "elizaOS/eliza",
+    title: "(untitled)",
+    subjectType: "Issue",
+    url: null,
+    updatedAt: "2026-08-16T00:00:00Z",
+  };
+  const at = (id: string, score: number): TriagedNotification => ({
+    ...base,
+    id,
+    score,
+  });
+
+  it("orders the highest score first", () => {
+    const triaged = [at("n-low", 10), at("n-high", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-high", "n-low"]);
+  });
+
+  it("keeps a total order when a score is not finite", () => {
+    const triaged = [at("n-nan", Number.NaN), at("n-scored", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-scored", "n-nan"]);
+
+    expect(
+      compareTriagedNotifications(at("n-nan", Number.NaN), at("n-scored", 100)),
+    ).toBeGreaterThan(0);
+    expect(
+      compareTriagedNotifications(at("n-scored", 100), at("n-nan", Number.NaN)),
+    ).toBeLessThan(0);
+  });
+
+  it("tie-breaks equal scores on notification id", () => {
+    expect(compareTriagedNotifications(at("b", 5), at("a", 5))).toBeGreaterThan(
+      0,
+    );
+    expect(compareTriagedNotifications(at("a", 5), at("b", 5))).toBeLessThan(0);
+  });
+});
+
+describe("notificationTriageAction", () => {
+  it("returns every ranked notification after lossless page traversal", async () => {
+    const notifications = Array.from({ length: 30 }, (_, index) => ({
+      id: `n-${index}`,
+      reason: "comment",
+      updated_at: "2026-08-16T00:00:00Z",
+      subject: { title: `Notification ${index}`, type: "Issue", url: null },
+      repository: { full_name: "elizaOS/eliza", pushed_at: null },
+    }));
+    const listNotificationsForAuthenticatedUser = vi
+      .fn()
+      .mockResolvedValueOnce({ data: notifications });
+    const runtime = {
+      getService: () => ({
+        getOctokit: () => ({
+          activity: { listNotificationsForAuthenticatedUser },
+        }),
+      }),
+    } as never;
+
+    const result = await notificationTriageAction.handler(
+      runtime,
+      {} as never,
+      undefined,
+      undefined,
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { notifications: unknown[] }).notifications,
+    ).toHaveLength(30);
+    expect(result.data).toMatchObject({ notificationLimit: null });
   });
 });

@@ -279,7 +279,7 @@ export function TaskEditor({
           <ScheduleRadio
             id="task-sched-once"
             label={t("taskeditor.scheduleOnce", { defaultValue: "Once" })}
-            icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Zap className="size-3.5" aria-hidden />}
             checked={scheduleKind === "once"}
             onSelect={() => setScheduleKind("once")}
           />
@@ -288,14 +288,14 @@ export function TaskEditor({
             label={t("taskeditor.scheduleRecurring", {
               defaultValue: "Recurring",
             })}
-            icon={<Clock3 className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Clock3 className="size-3.5" aria-hidden />}
             checked={scheduleKind === "recurring"}
             onSelect={() => setScheduleKind("recurring")}
           />
           <ScheduleRadio
             id="task-sched-event"
             label={t("taskeditor.scheduleEvent", { defaultValue: "On event" })}
-            icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Calendar className="size-3.5" aria-hidden />}
             checked={scheduleKind === "event"}
             onSelect={() => setScheduleKind("event")}
             disabled={availableEvents.length === 0}
@@ -320,7 +320,8 @@ export function TaskEditor({
               value={cron}
               onChange={(e) => setCron(e.target.value)}
               placeholder="0 9 * * 1-5"
-              className="font-mono text-xs"
+              variant="config"
+              density="compact"
               data-testid="task-editor-cron"
               {...cronField.agentProps}
             />
@@ -376,7 +377,7 @@ export function TaskEditor({
           data-testid="task-editor-save"
           {...saveButton.agentProps}
         >
-          {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
+          {busy ? <Spinner className="mr-2 size-3.5" /> : null}
           {isEditing
             ? t("taskeditor.saveTask", {
                 defaultValue: "Save prompt automation",
@@ -467,13 +468,10 @@ function CronPresetButton({
     <Button
       ref={ref}
       onClick={() => onSelect(expression)}
-      variant="ghost"
-      size="sm"
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? "border-accent bg-accent/10 text-accent"
-          : "border-border/40 text-muted-strong hover:border-border"
-      }`}
+      variant="choice"
+      size="tiny"
+      shape="circle"
+      data-state={active ? "on" : "off"}
       {...agentProps}
     >
       {label}

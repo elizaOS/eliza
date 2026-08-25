@@ -9,6 +9,7 @@
  * is in cloud / cloud-hybrid mode.
  */
 import { Preferences } from "@capacitor/preferences";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { formatError } from "@elizaos/shared";
 import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.generated";
@@ -171,7 +172,9 @@ async function fetchIosFullBunSmokeJson<T>(
     throw new Error(`${label} did not return a complete response`);
   }
   if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `${label} returned HTTP ${status}: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`,
+    );
   }
   try {
     return JSON.parse(text) as T;
@@ -205,7 +208,9 @@ async function fetchIosFullBunSmokeText(
     throw new Error(`${label} did not return a complete response`);
   }
   if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `${label} returned HTTP ${status}: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`,
+    );
   }
   return text;
 }
@@ -226,7 +231,7 @@ function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
     IOS_FULL_BUN_SMOKE_FAILURE_RE.test(text)
   ) {
     throw new Error(
-      `full Bun ${label} did not return the expected local model reply: ${text.slice(0, 500)}`,
+      `full Bun ${label} did not return the expected local model reply: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`,
     );
   }
 }
@@ -239,7 +244,9 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   const status = typeof response.status === "number" ? response.status : 0;
   const body = typeof response.body === "string" ? response.body : "";
   if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${body.slice(0, 500)}`);
+    throw new Error(
+      `${label} returned HTTP ${status}: ${truncateWellFormed(toWellFormedUnicode(body), 500)}`,
+    );
   }
   try {
     return JSON.parse(body) as T;
@@ -712,7 +719,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       )
     ) {
       throw new Error(
-        `full Bun conversation stream returned unusable SSE: ${streamMessage.slice(0, 500)}`,
+        `full Bun conversation stream returned unusable SSE: ${truncateWellFormed(toWellFormedUnicode(streamMessage), 500)}`,
       );
     }
 

@@ -59,11 +59,20 @@ describe("scenario required-service contract", () => {
       domain: "required-service-preflight",
       requires: {
         plugins: ["@elizaos/plugin-wallet"],
+        fixturePlugins: ["wallet-seed-fixture"],
         services: ["wallet-backend"],
       },
       turns: [],
     });
     expect(resolveRequiredServiceTypes(definition)).toEqual(["wallet-backend"]);
+
+    expect(() =>
+      scenario({
+        ...definition,
+        id: "malformed-fixture-plugins",
+        requires: { fixturePlugins: ["wallet-seed-fixture", ""] },
+      } as unknown as ScenarioDefinition),
+    ).toThrow("invalid requires.fixturePlugins");
 
     expect(() =>
       scenario({

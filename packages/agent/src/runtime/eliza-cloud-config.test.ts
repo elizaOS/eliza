@@ -54,6 +54,10 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
   "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
   "ELIZAOS_CLOUD_PLANNER_MODEL",
+  "CEREBRAS_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
   "NANO_MODEL",
   "SMALL_MODEL",
   "MEDIUM_MODEL",
@@ -357,6 +361,43 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(infoSpy).toHaveBeenCalledWith(
       "[eliza][cloud-topology] provisioned=true changed=false -> runtime=cloud inference=true",
     );
+  });
+
+  it("preserves an explicit managed local-Docker Cerebras text route", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
+    process.env.CEREBRAS_API_KEY = "csk-test";
+    process.env.OPENAI_SMALL_MODEL = "gemma-4-31b";
+    process.env.OPENAI_LARGE_MODEL = "gemma-4-31b";
+
+    const config: ElizaConfig = {
+      cloud: { apiKey: "cloud-test", agentId: "agent-test" },
+    } as ElizaConfig;
+
+    expect(ensureProvisionedCloudContainerConfig(config)).toBe(true);
+    expect(config.deploymentTarget).toEqual({
+      runtime: "local",
+    });
+    expect(config.serviceRouting?.llmText).toEqual({
+      backend: "cerebras",
+      transport: "direct",
+      smallModel: "gemma-4-31b",
+      largeModel: "gemma-4-31b",
+    });
+    expect(
+      resolveElizaCloudTopology(config as Record<string, unknown>).services
+        .inference,
+    ).toBe(false);
+    expect(collectPluginNames(config).has("@elizaos/plugin-openai")).toBe(true);
+    expect(collectPluginNames(config).has("@elizaos/plugin-elizacloud")).toBe(
+      true,
+    );
+
+    applyCloudConfigToEnv(config);
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(config.deploymentTarget).toEqual({
+      runtime: "local",
+    });
   });
 
   it("uses a real config.env cloud key when config.cloud carries the redacted placeholder", () => {

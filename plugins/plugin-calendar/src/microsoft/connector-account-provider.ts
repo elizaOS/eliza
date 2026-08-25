@@ -1,7 +1,9 @@
 /**
- * Connects delegated Microsoft calendar accounts through the runtime's shared
- * connector-account OAuth boundary. Authorization uses PKCE, state, and a
- * signed nonce-bearing ID token; account identity comes from Microsoft Graph.
+ * Connects delegated Microsoft Graph accounts (calendar, Outlook mail,
+ * contacts, and files capabilities with incremental consent) through the
+ * runtime's shared connector-account OAuth boundary. Authorization uses PKCE,
+ * state, and a signed nonce-bearing ID token; account identity comes from
+ * Microsoft Graph.
  * Token material is committed only to a durable secret backend and represented
  * in account storage by credential references.
  */
@@ -50,11 +52,16 @@ const MICROSOFT_IDENTITY_SCOPES = [
   "offline_access",
   "User.Read",
 ] as const;
-const MICROSOFT_CALENDAR_CAPABILITIES = [
+const MICROSOFT_CONNECTOR_CAPABILITIES = [
   "microsoft.calendar.read_basic",
   "microsoft.calendar.read",
   "microsoft.calendar.freebusy",
   "microsoft.calendar.write",
+  "microsoft.mail.triage",
+  "microsoft.mail.send",
+  "microsoft.mail.manage",
+  "microsoft.contacts.read",
+  "microsoft.files.read",
 ] as const satisfies readonly LifeOpsMicrosoftCapability[];
 // Durable secret writers only. The in-memory core SECRETS service is
 // deliberately absent: tokens written there die with the process while the
@@ -74,8 +81,8 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   "tokens",
 ]);
 
-type MicrosoftCalendarCapability =
-  (typeof MICROSOFT_CALENDAR_CAPABILITIES)[number];
+type MicrosoftConnectorCapability =
+  (typeof MICROSOFT_CONNECTOR_CAPABILITIES)[number];
 type JsonScalar = string | number | boolean | null;
 type JsonValue =
   | JsonScalar
@@ -302,7 +309,7 @@ function normalizedScopeName(scope: string): string {
 
 function capabilityForInput(
   value: string,
-): MicrosoftCalendarCapability | "identity" | null {
+): MicrosoftConnectorCapability | "identity" | null {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === "microsoft.basic_identity" ||
@@ -312,7 +319,7 @@ function capabilityForInput(
   ) {
     return "identity";
   }
-  if (isMicrosoftCalendarCapability(normalized)) {
+  if (isMicrosoftConnectorCapability(normalized)) {
     return normalized;
   }
   switch (normalizedScopeName(normalized)) {
@@ -322,24 +329,36 @@ function capabilityForInput(
       return "microsoft.calendar.read";
     case "calendars.readwrite":
       return "microsoft.calendar.write";
+    case "mail.read":
+      return "microsoft.mail.triage";
+    case "mail.send":
+      return "microsoft.mail.send";
+    case "mail.readwrite":
+      return "microsoft.mail.manage";
+    case "contacts.read":
+      return "microsoft.contacts.read";
+    case "files.read":
+      return "microsoft.files.read";
     default:
       return null;
   }
 }
 
-function isMicrosoftCalendarCapability(
+function isMicrosoftConnectorCapability(
   value: string,
-): value is MicrosoftCalendarCapability {
-  return (MICROSOFT_CALENDAR_CAPABILITIES as readonly string[]).includes(value);
+): value is MicrosoftConnectorCapability {
+  return (MICROSOFT_CONNECTOR_CAPABILITIES as readonly string[]).includes(
+    value,
+  );
 }
 
 function normalizeRequestedCapabilities(
   requested: readonly string[] | undefined,
-): MicrosoftCalendarCapability[] {
+): MicrosoftConnectorCapability[] {
   if (!requested || requested.length === 0) {
     return ["microsoft.calendar.read"];
   }
-  const capabilities = new Set<MicrosoftCalendarCapability>();
+  const capabilities = new Set<MicrosoftConnectorCapability>();
   for (const value of requested) {
     const normalized = stringValue(value);
     const capability = normalized ? capabilityForInput(normalized) : null;
@@ -362,7 +381,7 @@ function normalizeRequestedCapabilities(
   }
   if (capabilities.size === 0) {
     throw new ElizaError(
-      "Microsoft calendar OAuth requires an explicit calendar capability.",
+      "Microsoft OAuth requires an explicit Graph capability beyond identity.",
       {
         code: "MICROSOFT_OAUTH_CALENDAR_CAPABILITY_REQUIRED",
         severity: "fatal",
@@ -373,23 +392,55 @@ function normalizeRequestedCapabilities(
 }
 
 function calendarPrivilege(
-  capabilities: readonly MicrosoftCalendarCapability[],
-): 1 | 2 | 3 {
+  capabilities: readonly MicrosoftConnectorCapability[],
+): 0 | 1 | 2 | 3 {
   if (capabilities.includes("microsoft.calendar.write")) return 3;
   if (capabilities.includes("microsoft.calendar.read")) return 2;
-  return 1;
+  if (
+    capabilities.includes("microsoft.calendar.read_basic") ||
+    capabilities.includes("microsoft.calendar.freebusy")
+  ) {
+    return 1;
+  }
+  return 0;
 }
 
+function mailReadPrivilege(
+  capabilities: readonly MicrosoftConnectorCapability[],
+): 0 | 1 | 2 {
+  if (capabilities.includes("microsoft.mail.manage")) return 2;
+  if (capabilities.includes("microsoft.mail.triage")) return 1;
+  return 0;
+}
+
+const CALENDAR_SCOPE_BY_PRIVILEGE = [
+  null,
+  "Calendars.ReadBasic",
+  "Calendars.Read",
+  "Calendars.ReadWrite",
+] as const;
+const MAIL_SCOPE_BY_PRIVILEGE = [null, "Mail.Read", "Mail.ReadWrite"] as const;
+
+/**
+ * Incremental-consent scope request: only the Graph permissions for the
+ * capabilities the caller asked for are placed on the authorization URL, so a
+ * mail-only or contacts-only connect never prompts for calendar access.
+ */
 function requestedScopes(
-  capabilities: readonly MicrosoftCalendarCapability[],
+  capabilities: readonly MicrosoftConnectorCapability[],
 ): string[] {
+  const scopes: string[] = [...MICROSOFT_IDENTITY_SCOPES];
   const calendarScope =
-    calendarPrivilege(capabilities) === 3
-      ? "Calendars.ReadWrite"
-      : calendarPrivilege(capabilities) === 2
-        ? "Calendars.Read"
-        : "Calendars.ReadBasic";
-  return [...MICROSOFT_IDENTITY_SCOPES, calendarScope];
+    CALENDAR_SCOPE_BY_PRIVILEGE[calendarPrivilege(capabilities)];
+  if (calendarScope) scopes.push(calendarScope);
+  const mailScope = MAIL_SCOPE_BY_PRIVILEGE[mailReadPrivilege(capabilities)];
+  if (mailScope) scopes.push(mailScope);
+  if (capabilities.includes("microsoft.mail.send")) scopes.push("Mail.Send");
+  if (capabilities.includes("microsoft.contacts.read")) {
+    scopes.push("Contacts.Read");
+  }
+  if (capabilities.includes("microsoft.files.read")) scopes.push("Files.Read");
+  return scopes;
 }
 
 function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
@@ -591,6 +642,16 @@ function canonicalGrantedScope(scope: string): string | null {
       return "Calendars.Read";
     case "calendars.readwrite":
       return "Calendars.ReadWrite";
+    case "mail.read":
+      return "Mail.Read";
+    case "mail.send":
+      return "Mail.Send";
+    case "mail.readwrite":
+      return "Mail.ReadWrite";
+    case "contacts.read":
+      return "Contacts.Read";
+    case "files.read":
+      return "Files.Read";
     default:
       return null;
   }
@@ -598,7 +659,7 @@ function canonicalGrantedScope(scope: string): string | null {
 
 function validateGrantedScopes(args: {
   rawScope: string;
-  requestedCapabilities: readonly MicrosoftCalendarCapability[];
+  requestedCapabilities: readonly MicrosoftConnectorCapability[];
 }): string[] {
   const scopes = args.rawScope
     .split(/\s+/u)
@@ -637,34 +698,99 @@ function validateGrantedScopes(args: {
       },
     );
   }
-  const grantedPrivilege = canonical.has("Calendars.ReadWrite")
+  const assertExactPrivilege = (
+    domain: "calendar" | "mail",
+    grantedPrivilege: number,
+    requiredPrivilege: number,
+    missingCode: string,
+  ): void => {
+    if (grantedPrivilege < requiredPrivilege) {
+      throw new ElizaError(
+        `Microsoft OAuth did not grant the requested ${domain} capability.`,
+        {
+          code: missingCode,
+          context: { domain, requiredPrivilege, grantedPrivilege },
+          severity: "fatal",
+        },
+      );
+    }
+    if (grantedPrivilege > requiredPrivilege) {
+      throw new ElizaError(
+        `Microsoft OAuth returned broader ${domain} access than requested.`,
+        {
+          code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+          context: { domain, requiredPrivilege, grantedPrivilege },
+          severity: "fatal",
+        },
+      );
+    }
+  };
+  const assertExactBooleanScope = (
+    domain: "mail.send" | "contacts" | "files",
+    scope: string,
+    requested: boolean,
+  ): void => {
+    const granted = canonical.has(scope);
+    if (requested && !granted) {
+      throw new ElizaError(
+        `Microsoft OAuth did not grant the requested ${domain} capability.`,
+        {
+          code: "MICROSOFT_OAUTH_GRANTED_SCOPE_MISSING",
+          context: { domain, scope },
+          severity: "fatal",
+        },
+      );
+    }
+    if (!requested && granted) {
+      throw new ElizaError(
+        `Microsoft OAuth returned unrequested ${domain} access.`,
+        {
+          code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+          context: { domain, scope },
+          severity: "fatal",
+        },
+      );
+    }
+  };
+  const grantedCalendarPrivilege = canonical.has("Calendars.ReadWrite")
     ? 3
     : canonical.has("Calendars.Read")
       ? 2
       : canonical.has("Calendars.ReadBasic")
         ? 1
         : 0;
-  const requiredPrivilege = calendarPrivilege(args.requestedCapabilities);
-  if (grantedPrivilege < requiredPrivilege) {
-    throw new ElizaError(
-      "Microsoft OAuth did not grant the requested calendar capability.",
-      {
-        code: "MICROSOFT_OAUTH_CALENDAR_SCOPE_MISSING",
-        context: { requiredPrivilege, grantedPrivilege },
-        severity: "fatal",
-      },
-    );
-  }
-  if (grantedPrivilege > requiredPrivilege) {
-    throw new ElizaError(
-      "Microsoft OAuth returned broader calendar access than requested.",
-      {
-        code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
-        context: { requiredPrivilege, grantedPrivilege },
-        severity: "fatal",
-      },
-    );
-  }
+  assertExactPrivilege(
+    "calendar",
+    grantedCalendarPrivilege,
+    calendarPrivilege(args.requestedCapabilities),
+    "MICROSOFT_OAUTH_CALENDAR_SCOPE_MISSING",
+  );
+  const grantedMailPrivilege = canonical.has("Mail.ReadWrite")
+    ? 2
+    : canonical.has("Mail.Read")
+      ? 1
+      : 0;
+  assertExactPrivilege(
+    "mail",
+    grantedMailPrivilege,
+    mailReadPrivilege(args.requestedCapabilities),
+    "MICROSOFT_OAUTH_GRANTED_SCOPE_MISSING",
+  );
+  assertExactBooleanScope(
+    "mail.send",
+    "Mail.Send",
+    args.requestedCapabilities.includes("microsoft.mail.send"),
+  );
+  assertExactBooleanScope(
+    "contacts",
+    "Contacts.Read",
+    args.requestedCapabilities.includes("microsoft.contacts.read"),
+  );
+  assertExactBooleanScope(
+    "files",
+    "Files.Read",
+    args.requestedCapabilities.includes("microsoft.files.read"),
+  );
   return [...canonical];
 }
 
@@ -675,7 +801,7 @@ async function exchangeAuthorizationCode(args: {
   code: string;
   codeVerifier: string;
   scopes: readonly string[];
-  requestedCapabilities: readonly MicrosoftCalendarCapability[];
+  requestedCapabilities: readonly MicrosoftConnectorCapability[];
 }): Promise<MicrosoftTokenSet> {
   const params = new URLSearchParams({
     client_id: args.config.clientId,
@@ -1622,7 +1748,7 @@ function callbackRedirectUri(args: {
 
 function requestedCapabilitiesFromFlow(
   request: ConnectorOAuthCallbackRequest,
-): MicrosoftCalendarCapability[] {
+): MicrosoftConnectorCapability[] {
   const values = flowMetadata(request).requestedCapabilities;
   if (
     !Array.isArray(values) ||

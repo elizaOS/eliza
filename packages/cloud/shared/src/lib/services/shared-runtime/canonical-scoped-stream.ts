@@ -10,9 +10,13 @@ import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import { chatSseFrame } from "../chat-sse-frames";
-import type { BridgeRequest } from "../eliza-sandbox-bridge";
+import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
-import { coordinateSharedStream } from "./conversation-coordinator";
+import {
+  coordinateSharedBridge,
+  coordinateSharedStream,
+  type SharedConversationCoordinatorOptions,
+} from "./conversation-coordinator";
 import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -44,12 +48,74 @@ export interface CanonicalScopedStreamRequest {
   trustedMessageRole?: "system";
   /** Authenticated transport semantics supplied by the route adapter. */
   channel?: SharedRuntimeChannel;
+  /** Server-attested epoch-ms ceiling for lifecycle history hydration. */
+  trustedHistoryCutoffAt?: number;
+  /** Keep an authenticated control prompt out of durable conversation history. */
+  transientInput?: true;
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
+  /**
+   * Realtime phone sessions buffer the fast model turn inside the coordinator,
+   * then expose the complete result as SSE. This avoids making the phone's
+   * response path depend on a second, nested Durable Object response stream.
+   */
+  responseMode?: "stream" | "buffered";
+}
+
+function bufferedBridgeSse(response: BridgeResponse): Response {
+  if (response.error) {
+    return new Response(
+      chatSseFrame("error", {
+        message: response.error.message || "Shared runtime turn failed",
+      }),
+      { headers: STREAM_HEADERS },
+    );
+  }
+  const result = (response.result ?? {}) as {
+    text?: unknown;
+    responded?: unknown;
+    messageId?: unknown;
+    userMessageId?: unknown;
+    actionResults?: unknown;
+    timing?: unknown;
+  };
+  const text = typeof result.text === "string" ? result.text : "";
+  const responded = result.responded !== false;
+  if (!text && responded) {
+    return new Response(
+      chatSseFrame("error", {
+        message: "Shared runtime produced no response",
+      }),
+      { headers: STREAM_HEADERS },
+    );
+  }
+  const messageId = typeof result.messageId === "string" ? result.messageId : crypto.randomUUID();
+  const userMessageId =
+    typeof result.userMessageId === "string" ? result.userMessageId : crypto.randomUUID();
+  const done = {
+    messageId,
+    userMessageId,
+    text,
+    fullText: text,
+    ...(responded ? {} : { responded: false }),
+    ...(Array.isArray(result.actionResults) ? { actionResults: result.actionResults } : {}),
+    ...(result.timing && typeof result.timing === "object" ? { timing: result.timing } : {}),
+  };
+  const body = text
+    ? chatSseFrame("chunk", {
+        messageId,
+        userMessageId,
+        chunk: text,
+        text,
+        fullText: text,
+        timestamp: Date.now(),
+      }) + chatSseFrame("done", done)
+    : chatSseFrame("done", done);
+  return new Response(body, { headers: STREAM_HEADERS });
 }
 
 function nowMs(): number {
@@ -83,12 +149,11 @@ export async function handleCanonicalScopedAgentStream(
 ): Promise<Response> {
   const timings = request.timings ?? {};
   const parseStartedAt = nowMs();
-  const text =
-    request.body &&
-    typeof request.body === "object" &&
-    typeof (request.body as { text?: unknown }).text === "string"
-      ? (request.body as { text: string }).text
-      : "";
+  const bodyRecord =
+    request.body && typeof request.body === "object"
+      ? (request.body as Record<string, unknown>)
+      : undefined;
+  const text = typeof bodyRecord?.text === "string" ? bodyRecord.text : "";
   const clientMessageId = sharedTurnClientMessageId(request.body);
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
@@ -98,6 +163,37 @@ export async function handleCanonicalScopedAgentStream(
       request.origin,
     );
   }
+
+  // The body crosses an untrusted HTTP-shaped boundary. Lifecycle controls
+  // become authoritative only beside the role attested by the authenticated
+  // in-process adapter; ordinary public turns cannot mint that separate role.
+  const bodyHistoryCutoffAt =
+    request.trustedMessageRole === "system" ? bodyRecord?.historyCutoffAt : undefined;
+  const trustedHistoryCutoffAt = request.trustedHistoryCutoffAt ?? bodyHistoryCutoffAt;
+  if (
+    trustedHistoryCutoffAt !== undefined &&
+    (request.trustedMessageRole !== "system" ||
+      typeof trustedHistoryCutoffAt !== "number" ||
+      !Number.isSafeInteger(trustedHistoryCutoffAt) ||
+      trustedHistoryCutoffAt <= 0)
+  ) {
+    return applyCorsHeaders(
+      Response.json(
+        {
+          success: false,
+          error: "historyCutoffAt must be a positive safe integer",
+        },
+        { status: 400 },
+      ),
+      CORS_METHODS,
+      request.origin,
+    );
+  }
+  const transientInput =
+    request.trustedMessageRole === "system" &&
+    (request.transientInput === true || bodyRecord?.transientInput === true)
+      ? true
+      : undefined;
 
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -116,18 +212,25 @@ export async function handleCanonicalScopedAgentStream(
   let upstream: Response;
   const bridgeStartedAt = nowMs();
   try {
-    upstream = await coordinateSharedStream(request.agent, rpc, {
+    const coordinatorOptions: SharedConversationCoordinatorOptions = {
       abortSignal: request.abortSignal,
       namespace: request.namespace,
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      trustedUserUtterance: text,
       channel: request.channel ?? {
         type: ChannelType.DM,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
       },
       traceId: request.traceId,
-    });
+      trustedHistoryCutoffAt,
+      transientInput,
+    };
+    upstream =
+      request.responseMode === "buffered"
+        ? bufferedBridgeSse(await coordinateSharedBridge(request.agent, rpc, coordinatorOptions))
+        : await coordinateSharedStream(request.agent, rpc, coordinatorOptions);
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
     timings.bridge = elapsedMs(bridgeStartedAt);

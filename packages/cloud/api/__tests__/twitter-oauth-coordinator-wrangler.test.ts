@@ -21,10 +21,13 @@ describe("X OAuth refresh coordinator deployment contract", () => {
     ).toHaveLength(3);
   });
 
-  test("registers the Durable Object class migration", () => {
-    expect(wrangler).toContain('tag = "twitter-oauth-refresh-coordinator-v1"');
-    expect(wrangler).toContain(
-      'new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]',
-    );
+  test("declares the Durable Object class export", () => {
+    const config = Bun.TOML.parse(wrangler) as {
+      exports?: Record<string, { type?: string; storage?: string }>;
+    };
+    expect(config.exports?.TwitterOAuthRefreshCoordinator).toEqual({
+      type: "durable-object",
+      storage: "sqlite",
+    });
   });
 });

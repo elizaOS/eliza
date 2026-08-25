@@ -24,6 +24,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
@@ -84,24 +85,28 @@ function normalizeInstagramQuery(value: string): string {
   return value.trim().replace(/^@/, "").toLowerCase();
 }
 
-function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new RangeError("Instagram connector limit must be a positive finite number");
   }
-  return Math.min(Math.floor(limit), 200);
+  return Math.floor(limit);
 }
 
-function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit: number | undefined
+): Memory[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return memories.slice(0, limit);
+    return limit === undefined ? memories : memories.slice(0, limit);
   }
-  return memories
-    .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
-    .slice(0, limit);
+  const matches = memories.filter((memory) => {
+    const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+    return text.toLowerCase().includes(normalized);
+  });
+  return limit === undefined ? matches : matches.slice(0, limit);
 }
 
 function scoreInstagramMatch(
@@ -140,8 +145,14 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
     : undefined;
 }
 
-function truncateInstagramComment(text: string): string {
-  return text.length > MAX_COMMENT_LENGTH ? `${text.slice(0, MAX_COMMENT_LENGTH - 3)}...` : text;
+export function validateInstagramComment(text: string): string {
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length > MAX_COMMENT_LENGTH) {
+    throw new RangeError(
+      `Instagram comments must not exceed ${MAX_COMMENT_LENGTH} UTF-16 code units; received ${wellFormed.length}.`
+    );
+  }
+  return wellFormed;
 }
 
 function getInstagramPostMetadata(content: Content): Record<string, unknown> {
@@ -329,7 +340,7 @@ export class InstagramService extends Service {
               maxLength: MAX_COMMENT_LENGTH,
               supportsMarkdown: false,
             },
-            postProcess: truncateInstagramComment,
+            postProcess: validateInstagramComment,
           },
         });
       }
@@ -424,9 +435,14 @@ export class InstagramService extends Service {
   private getAccountService(accountId = this.defaultAccountId): InstagramService {
     const normalized = normalizeInstagramAccountId(accountId);
     const services = this.accountServices ?? new Map<string, InstagramService>();
-    return (
-      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
-    );
+    const found =
+      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined);
+    if (!found) {
+      throw new Error(
+        `Instagram account '${normalized}' is not available in this service instance`
+      );
+    }
+    return found;
   }
 
   /**
@@ -472,7 +488,7 @@ export class InstagramService extends Service {
     if (accountService !== this) {
       return accountService.handleSendPost(runtime, content);
     }
-    const text = truncateInstagramComment(
+    const text = validateInstagramComment(
       typeof content.text === "string" ? content.text.trim() : ""
     );
     if (!text) {
@@ -695,15 +711,14 @@ export class InstagramService extends Service {
         ]);
         return score > 0 ? this.buildThreadTarget(thread, score) : null;
       })
-      .filter((target): target is MessageConnectorTarget => Boolean(target))
-      .slice(0, 25);
+      .filter((target): target is MessageConnectorTarget => Boolean(target));
   }
 
   async listConnectorRooms(
     _context: MessageConnectorQueryContext
   ): Promise<MessageConnectorTarget[]> {
     const threads = await this.getThreads();
-    return threads.map((thread) => this.buildThreadTarget(thread, 0.5)).slice(0, 50);
+    return threads.map((thread) => this.buildThreadTarget(thread, 0.5));
   }
 
   async listRecentConnectorTargets(
@@ -729,7 +744,7 @@ export class InstagramService extends Service {
       });
     }
     targets.push(...(await this.listConnectorRooms(context)));
-    return targets.slice(0, 25);
+    return targets;
   }
 
   async fetchConnectorMessages(
@@ -745,7 +760,7 @@ export class InstagramService extends Service {
     }
 
     if (!threadId) {
-      const targets = (await this.listRecentConnectorTargets(context)).slice(0, 10);
+      const targets = await this.listRecentConnectorTargets(context);
       const roomIds = Array.from(
         new Set(
           targets
@@ -758,16 +773,24 @@ export class InstagramService extends Service {
           context.runtime.getMemories({
             tableName: "messages",
             roomId,
-            limit,
+            ...(limit === undefined ? {} : { limit }),
             orderBy: "createdAt",
             orderDirection: "desc",
           })
         )
       );
-      return chunks
-        .flat()
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-        .slice(0, limit);
+      const sorted = chunks.flat().sort((left, right) => {
+        const rightCreated =
+          typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : 0;
+        const leftCreated =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : 0;
+        return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+      });
+      return limit === undefined ? sorted : sorted.slice(0, limit);
     }
 
     // error-policy:J4 this package ships the connector surface without a concrete
@@ -778,17 +801,27 @@ export class InstagramService extends Service {
       const roomId =
         target?.roomId ??
         (createUniqueUuid(context.runtime, `instagram:thread:${threadId}`) as UUID);
-      return platformMessages
+      const sorted = platformMessages
         .map((message) => this.instagramMessageToMemory(context.runtime, message, roomId))
-        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-        .slice(0, limit);
+        .sort((left, right) => {
+          const rightCreated =
+            typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          const leftCreated =
+            typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+        });
+      return limit === undefined ? sorted : sorted.slice(0, limit);
     }
 
     if (target?.roomId) {
       return context.runtime.getMemories({
         tableName: "messages",
         roomId: target.roomId,
-        limit,
+        ...(limit === undefined ? {} : { limit }),
         orderBy: "createdAt",
         orderDirection: "desc",
       });
@@ -804,7 +837,6 @@ export class InstagramService extends Service {
     const limit = normalizeConnectorLimit(params.limit);
     const messages = await this.fetchConnectorMessages(context, {
       target: params.target ?? context.target,
-      limit: Math.max(limit, 100),
     });
     return filterMemoriesByQuery(messages, params.query, limit);
   }
@@ -831,7 +863,7 @@ export class InstagramService extends Service {
         threadId,
       } as TargetInfo,
       label: `Instagram thread ${threadId}`,
-      recentMessages: messages.slice(-20).map((message) => ({
+      recentMessages: messages.map((message) => ({
         name: message.user.username,
         text: message.text ?? "",
         timestamp: message.timestamp.getTime(),

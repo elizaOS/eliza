@@ -224,7 +224,8 @@ export type ModelDefinitionConfig = {
     cacheWrite: number;
   };
   contextWindow: number;
-  maxTokens: number;
+  /** Optional caller-selected output ceiling; omission delegates to the model. */
+  maxTokens?: number;
   headers?: Record<string, string>;
   compat?: ModelCompatConfig;
 };
@@ -419,9 +420,6 @@ export type MemoryQmdUpdateConfig = {
 };
 
 export type MemoryQmdLimitsConfig = {
-  maxResults?: number;
-  maxSnippetChars?: number;
-  maxInjectedChars?: number;
   timeoutMs?: number;
 };
 
@@ -660,6 +658,12 @@ export type UpdateConfig = {
   checkOnStart?: boolean;
   lastCheckAt?: string;
   lastCheckVersion?: string;
+  /**
+   * Release channel `lastCheckVersion` was fetched for. A cached version is
+   * only valid for its own channel, and the channel can change without a
+   * config write (ELIZA_UPDATE_CHANNEL).
+   */
+  lastCheckChannel?: ReleaseChannel;
   /** Seconds between automatic checks. Default: 14400 (4 hours). */
   checkIntervalSeconds?: number;
 };

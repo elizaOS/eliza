@@ -19,6 +19,11 @@ import {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "h2-identity-merge-uses-engine",
   title: "H2 duplicate identity capture uses the ENTITY merge engine",
   domain: "lifeops.kg",

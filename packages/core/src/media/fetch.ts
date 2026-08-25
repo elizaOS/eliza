@@ -9,6 +9,10 @@ import {
 	type PinnedLookupFetchLike,
 	type SsrfPolicy,
 } from "../network/index.js";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 import { detectMime, extensionForMime } from "./mime.js";
 
 export type FetchMediaResult = {
@@ -38,6 +42,8 @@ export type FetchLike = (
 	init?: RequestInit,
 ) => Promise<Response>;
 
+export const DEFAULT_MEDIA_FETCH_TIMEOUT_MS = 10_000;
+
 export type FetchMediaOptions = {
 	url: string;
 	fetchImpl?: FetchLike;
@@ -45,6 +51,8 @@ export type FetchMediaOptions = {
 	maxBytes?: number;
 	maxRedirects?: number;
 	timeoutMs?: number;
+	/** Caller abort signal — composed with the timeout deadline via AbortSignal.any. */
+	signal?: AbortSignal;
 	/** Require the declared response MIME type to start with this prefix. */
 	requiredContentTypePrefix?: string;
 	/** Reject Content-Encoding other than identity when callers need raw media bytes. */
@@ -99,7 +107,7 @@ function parseContentDispositionFileName(
 	return undefined;
 }
 
-async function readErrorBodySnippet(
+export async function readErrorBodySnippet(
 	res: Response,
 	maxChars = 200,
 ): Promise<string | undefined> {
@@ -114,10 +122,12 @@ async function readErrorBodySnippet(
 		if (!collapsed) {
 			return undefined;
 		}
-		if (collapsed.length <= maxChars) {
-			return collapsed;
+		const wellFormed = toWellFormedUnicode(collapsed);
+		if (wellFormed.length <= maxChars) {
+			return wellFormed;
 		}
-		return `${collapsed.slice(0, maxChars - 1)}…`;
+		const budget = Math.max(0, maxChars - 1);
+		return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 	} catch {
 		// error-policy:J7 The HTTP status remains authoritative when its optional
 		// diagnostic body snippet cannot be read.
@@ -159,12 +169,18 @@ async function fetchGuardedMedia(options: FetchMediaOptions): Promise<{
 	finalUrl: string;
 	release: () => Promise<void>;
 }> {
+	const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_FETCH_TIMEOUT_MS;
+	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	const compositeSignal = options.signal
+		? AbortSignal.any([options.signal, timeoutSignal])
+		: timeoutSignal;
 	try {
 		return await fetchWithSsrfGuard({
 			url: options.url,
 			fetchImpl: options.fetchImpl,
 			maxRedirects: options.maxRedirects,
-			timeoutMs: options.timeoutMs,
+			timeoutMs: undefined,
+			signal: compositeSignal,
 			policy: options.ssrfPolicy,
 			lookupFn: options.lookupFn,
 			pinnedFetchImpl: options.pinnedFetchImpl,

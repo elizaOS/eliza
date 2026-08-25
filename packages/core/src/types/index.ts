@@ -23,12 +23,15 @@ export * from "./channel-config";
 // Chat pre-handler contract (generic pre-action dispatch extension point);
 // the concrete registry lives in ../runtime/chat-pre-handler-registry.
 export * from "./chat-pre-handler";
+export * from "./coding";
 // Chat-command contract (CommandDefinition + CommandRegistryService); the
 // concrete registry lives in @elizaos/plugin-commands and re-exports these.
 export * from "./commands";
 export * from "./components";
 // Connector setup HTTP-route contract (distinct from ./setup onboarding wizard)
 export * from "./connector-setup";
+export * from "./content";
+export * from "./content-manifest";
 export * from "./contexts";
 export * from "./database";
 export * from "./documents";
@@ -37,7 +40,9 @@ export * from "./environment";
 export * from "./evaluator";
 export * from "./events";
 export * from "./hook";
+export * from "./identity";
 export * from "./interactions";
+export * from "./membership";
 export * from "./memory";
 export * from "./memory-storage";
 export * from "./message-source";
@@ -119,3 +124,4 @@ export {
 	VIEW_KIND_META,
 	VIEW_KINDS,
 } from "./view-kind";
+export * from "./workspace-delta";

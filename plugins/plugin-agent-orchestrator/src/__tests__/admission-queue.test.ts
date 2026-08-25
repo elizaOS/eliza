@@ -153,5 +153,28 @@ describe("admission-queue ordering (#13772)", () => {
         "t5", // low
       ]);
     });
+
+    it("maintains strict total ordering when enqueuedAt contains invalid date strings", () => {
+      const now = 1_000_000;
+      const ordered = orderQueue(
+        [
+          {
+            taskId: "task-valid",
+            priorityAtEnqueue: "normal",
+            enqueuedAt: new Date(now - 1_000).toISOString(),
+          },
+          {
+            taskId: "task-invalid",
+            priorityAtEnqueue: "normal",
+            enqueuedAt: "invalid-date-string",
+          },
+        ],
+        now,
+        AGING_MS,
+      );
+      expect(ordered).toHaveLength(2);
+      expect(ordered[0]?.taskId).toBe("task-invalid"); // fallback 0 time is earliest
+      expect(ordered[1]?.taskId).toBe("task-valid");
+    });
   });
 });

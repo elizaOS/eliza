@@ -79,6 +79,7 @@ describe("escalateAction", () => {
 		);
 
 		expect(result.success).toBe(true);
+		expect(result.text).toBe(`Message sent to admin in room ${agentId}...`);
 		expect(result.data).toMatchObject({
 			adminUserId: "admin-user",
 			targetRoomId: agentId,

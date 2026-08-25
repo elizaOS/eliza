@@ -196,4 +196,78 @@ describe("runPostReadyBootTail — phase split", () => {
     // The throw short-circuits the remaining tail steps.
     expect(steps.registerCoreSensitiveRequestAdapters).not.toHaveBeenCalled();
   });
+
+  it("(mid-tail teardown) the started contributor finishes but later contributors and the completion stamp do not run (#25110)", async () => {
+    const runtime = makeFakeRuntime();
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = runtime;
+    const { steps, order } = makeSteps();
+
+    // Hold the FIRST contributor open, exactly like a slow app-route load.
+    let releaseAppRoutes!: () => void;
+    const appRoutesGate = new Promise<void>((resolve) => {
+      releaseAppRoutes = resolve;
+    });
+    steps.registerAppRoutePlugins = vi.fn(() => {
+      order.push("appRoutes");
+      return appRoutesGate;
+    });
+
+    let tailSettled = false;
+    const tail = runPostReadyBootTail(runtime, steps, resources).then(() => {
+      tailSettled = true;
+    });
+
+    // While the first contributor is awaiting, teardown clears ownership —
+    // the same thing stopRuntimeBootResources does during shutdown/hot restart.
+    await Promise.resolve();
+    resources.tailRuntime = null;
+
+    releaseAppRoutes();
+    await tail;
+
+    // The already-started contributor was allowed to finish...
+    expect(order).toEqual(["appRoutes"]);
+    // ...but nothing after it ran: no hooks, no bridges, no catalog, no
+    // warmup, and no completion stamp for a stopped runtime's work.
+    expect(steps.registerRuntimeHooks).not.toHaveBeenCalled();
+    expect(steps.ensureTriggerEventBridge).not.toHaveBeenCalled();
+    expect(steps.ensureConnectorTargetCatalog).not.toHaveBeenCalled();
+    expect(steps.startDeferredVoiceWarmup).not.toHaveBeenCalled();
+    expect(tailSettled).toBe(true);
+  });
+
+  it("(mid-tail ownership transfer) a superseding boot attempt stops the old tail before its remaining contributors", async () => {
+    const oldRuntime = makeFakeRuntime();
+    const liveRuntime = makeFakeRuntime();
+    const resources = createRuntimeBootResources();
+    resources.tailRuntime = oldRuntime;
+    const { steps, order } = makeSteps();
+
+    let releaseCredentialBridge!: () => void;
+    const credentialGate = new Promise<void>((resolve) => {
+      releaseCredentialBridge = resolve;
+    });
+    steps.registerSubAgentCredentialBridge = vi.fn(() => {
+      order.push("credentialBridgeWiring");
+      return credentialGate;
+    });
+
+    const tail = runPostReadyBootTail(oldRuntime, steps, resources);
+
+    // Hot restart publishes the newer runtime into the same resource slot.
+    await Promise.resolve();
+    resources.tailRuntime = liveRuntime;
+
+    releaseCredentialBridge();
+    await tail;
+
+    // The synchronous sensitive/adapter registrations and the gated bridge
+    // call sit behind the same microtask queue as the ownership re-check, so
+    // once the newer runtime is published the old tail stops before them.
+    expect(order).toEqual(["appRoutes", "runtimeHooks"]);
+    expect(steps.registerCoreSensitiveRequestAdapters).not.toHaveBeenCalled();
+    expect(steps.ensureTriggerEventBridge).not.toHaveBeenCalled();
+    expect(steps.ensureConnectorTargetCatalog).not.toHaveBeenCalled();
+  });
 });

@@ -8,6 +8,7 @@
 
 import type { App, AppDeploymentStatus } from "../../db/schemas/apps";
 import { ApiError } from "../api/cloud-worker-errors";
+import { deploymentGenerationFromMetadata } from "./app-deployment-generation";
 
 export type { AppDeploymentStatus };
 
@@ -34,12 +35,15 @@ export function publicStatusFor(persisted: AppDeploymentStatus): DeploymentStatu
 
 export function deploymentIdFor(app: {
   id: string;
+  metadata?: Record<string, unknown> | null;
   // Cached reads (`appsService.getById` → Redis/KV) round-trip the timestamp
   // through JSON, so `last_deployed_at` arrives as an ISO STRING, not a Date.
   // Accept both and coerce — calling `.toISOString()` on a string 500s the
   // deploy-status route (the real-staging deploy bug behind #9300).
   last_deployed_at: Date | string | null;
 }): string {
+  const generation = deploymentGenerationFromMetadata(app.metadata);
+  if (generation) return generation;
   const ts = app.last_deployed_at ? new Date(app.last_deployed_at).toISOString() : "0";
   return `${app.id}:${ts}`;
 }
@@ -58,7 +62,7 @@ export function deploymentIdFor(app: {
  * Greptile flagged on PR #7804.
  */
 export function assertDeployable(app: { deployment_status: AppDeploymentStatus }): void {
-  if (app.deployment_status === "building") {
+  if (app.deployment_status === "building" || app.deployment_status === "deploying") {
     throw new ApiError(
       409,
       "session_not_ready",

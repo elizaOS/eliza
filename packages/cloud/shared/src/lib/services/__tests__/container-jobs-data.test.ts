@@ -21,7 +21,12 @@ const job = (data: unknown): JobLike => ({ id: "job-1", data });
 
 describe("container-jobs-data codecs", () => {
   test("provision round-trips through toRecord -> read", () => {
-    const data = { containerId: "c1", organizationId: "o1", userId: "u1" };
+    const data = {
+      containerId: "c1",
+      organizationId: "o1",
+      userId: "u1",
+      deploymentGeneration: "11111111-1111-4111-8111-111111111111",
+    };
     const record = containerProvisionJobDataToRecord(data);
     expect(readContainerProvisionJobData(job(record))).toEqual(data);
   });
@@ -45,6 +50,14 @@ describe("container-jobs-data codecs", () => {
   test("guards reject malformed data", () => {
     expect(isContainerProvisionJobData({ containerId: "c1", organizationId: "o1" })).toBe(false); // missing userId
     expect(isContainerProvisionJobData(null)).toBe(false);
+    expect(
+      isContainerProvisionJobData({
+        containerId: "c1",
+        organizationId: "o1",
+        userId: "u1",
+        deploymentGeneration: "not-a-uuid",
+      }),
+    ).toBe(false);
     expect(
       isContainerProvisionJobData({ containerId: " ", organizationId: "o1", userId: "u1" }),
     ).toBe(false);

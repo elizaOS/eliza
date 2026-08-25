@@ -105,6 +105,14 @@ function normalizeChoiceTestId(id: string): string {
     .replace(
       /^choice-shell-choice-[a-z0-9]+-[a-z0-9]+(-(?:body|chevron))?$/i,
       "choice-shell-<generated>$1",
+    )
+    .replace(
+      /^choice-dismiss-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      "choice-dismiss-<generated>",
+    )
+    .replace(
+      /^choice-dismiss-choice-[a-z0-9]+-[a-z0-9]+$/i,
+      "choice-dismiss-<generated>",
     );
 }
 

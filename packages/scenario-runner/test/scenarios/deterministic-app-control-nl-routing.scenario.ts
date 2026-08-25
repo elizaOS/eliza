@@ -3,7 +3,8 @@
  * plugin-app-control action against seeded scenario views. Runs on the
  * pr-deterministic lane under the model provider (fixtures pin the routing).
  */
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";
 import { matchesScenarioInput } from "@elizaos/core/testing";
@@ -30,10 +31,14 @@ type RuntimeWithScenarioModelFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
+  evaluators: unknown[];
   scenarioModelFixtures?: {
     register: (...fixtures: Array<Record<string, unknown>>) => void;
   };
 };
+
+let previousEvaluators: unknown[] | null = null;
+let scenarioRuntime: RuntimeWithScenarioModelFixtures | null = null;
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -125,29 +130,42 @@ function plannerFixture(
   args: Record<string, unknown>,
   messageToUser: string,
 ) {
+  const plannedResponse = {
+    text: "",
+    thought: `Call ${actionName} for ${input}.`,
+    messageToUser,
+    completed: true,
+    finishReason: "tool-calls",
+    toolCalls: [
+      {
+        id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
+        name: actionName,
+        type: "function",
+        arguments: args,
+      },
+    ],
+  };
   return {
     name: `route-${actionName.toLowerCase()}-planner-${input}`,
     match: {
       modelType: ModelType.ACTION_PLANNER,
       input: matchesScenarioInput(input),
-      toolName: actionName,
     },
-    response: {
-      text: "",
-      thought: `Call ${actionName} for ${input}.`,
-      messageToUser,
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
-          name: actionName,
-          type: "function",
-          arguments: args,
-        },
-      ],
-    },
-    times: 1,
+    resolve: (call: {
+      latestUserText: string;
+      params: { toolChoice?: unknown };
+    }) =>
+      call.params.toolChoice === "required"
+        ? plannedResponse
+        : {
+            text: messageToUser,
+            thought: `Report the completed ${actionName} result.`,
+            messageToUser,
+            completed: true,
+            finishReason: "stop",
+            toolCalls: [],
+          },
+    times: { min: 1, max: 2 },
   };
 }
 
@@ -184,8 +202,21 @@ const views = [
   },
 ];
 
-const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
-const repoRoot = "/tmp/eliza-app-control-nl-routing/repo";
+/**
+ * Fixture tree for this scenario. The seed and cleanup steps `rm -rf` this
+ * root, so it must never be a path a second runner process could also own:
+ * a shared constant under /tmp let two concurrent runs on one host delete
+ * each other's seeded apps and plugin sources mid-run, which surfaced as
+ * "Not a directory" / "Could not locate the source directory" failures on
+ * whichever run lost the race. Keying the root on the process id keeps
+ * concurrent runs isolated without adding module-load filesystem work.
+ */
+const fixtureRoot = path.join(
+  realpathSync(os.tmpdir()),
+  `eliza-app-control-nl-routing-${process.pid}`,
+);
+const appLoadDirectory = path.join(fixtureRoot, "apps");
+const repoRoot = path.join(fixtureRoot, "repo");
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
 const editFeedBoardInput = "Edit view feed-board plugin";
@@ -294,8 +325,11 @@ export default scenario({
         process.env.ELIZA_WORKSPACE_DIR = repoRoot;
         resetAppControlHttpLoopback();
         const runtime = ctx.runtime as RuntimeWithScenarioModelFixtures;
+        scenarioRuntime = runtime;
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
 
-        await fs.rm(path.dirname(appLoadDirectory), {
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });
@@ -567,6 +601,36 @@ export default scenario({
             },
             "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
           ),
+          {
+            name: "app-relaunch-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Relaunched Feed. New run ID: run-feed-nl-2."),
+            },
+            response: "Relaunched Feed. New run ID: run-feed-nl-2.",
+            times: 1,
+          },
+          {
+            name: "app-load-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Loaded Console (@scenario/app-loaded-console)"),
+            },
+            response: `Registered 1 app from ${appLoadDirectory}: Loaded Console (@scenario/app-loaded-console).`,
+            times: 1,
+          },
+          {
+            name: "app-create-cancel-result-rescue",
+            match: {
+              modelType: ModelType.TEXT_LARGE,
+              input: (input: string) =>
+                input.includes("Canceled. No app changes made."),
+            },
+            response: "Canceled. No app changes made.",
+            times: 1,
+          },
         );
 
         registerAppControlHttpHandler((request) => {
@@ -661,7 +725,12 @@ export default scenario({
       type: "custom",
       name: "remove app-control source fixtures",
       apply: async () => {
-        await fs.rm(path.dirname(appLoadDirectory), {
+        if (scenarioRuntime && previousEvaluators !== null) {
+          scenarioRuntime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
+        scenarioRuntime = null;
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });

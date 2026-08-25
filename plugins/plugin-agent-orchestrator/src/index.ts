@@ -25,6 +25,7 @@ import {
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -58,7 +59,6 @@ export {
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.
 export {
-  elideLongBlocks,
   sanitizeCompletionRelay,
   stripToolTranscript,
 } from "./services/transcript-sanitizer.js";
@@ -101,6 +101,7 @@ import {
 import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
+import { AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS } from "./widget-manifest.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -171,14 +172,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (elizaos / pi-agent / claude / codex — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; multi-step; prefer TASKS_SEND if active session exists on same workdir",
+                "delegate ACP coding sub-agent elizaos|pi-agent|claude|codex; multi-step; prefer TASKS_SEND if active session exists on same workdir",
             },
           },
         }),
@@ -227,35 +228,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS action that explains the limitation when the planner reaches for a coding-agent action."),
-    widgets: [
-      {
-        id: "agent-orchestrator.apps",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "App Runs",
-        icon: "Activity",
-        order: 150,
-        defaultEnabled: true,
-      },
-      {
-        id: "agent-orchestrator.accounts",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "Coding accounts",
-        icon: "Zap",
-        order: 250,
-        defaultEnabled: true,
-      },
-      {
-        id: "agent-orchestrator.activity",
-        pluginId: "agent-orchestrator",
-        slot: "chat-sidebar",
-        label: "Activity",
-        icon: "Activity",
-        order: 300,
-        defaultEnabled: true,
-      },
-    ],
+    widgets: [...AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS],
     // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
     actions: orchestratorActions,
@@ -557,16 +530,85 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // memory rewriting lands upstream, intercept user-facing text and replace
 // the teardown-retry phrases with the canonical self-heal recovery line so
 // the user never sees instructions to do something the runtime already does.
-const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
-  /[^.!?\n]*\b(restart|kick(?:[\s-]?off)?|bounce)[^.!?\n]*\bacpx[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bacpx[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\b(clear|clean|wipe)[^.!?\n]*\bstale\s+sessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bmanually\s+clear[^.!?\n]*\bsessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bdaemon\b[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-];
-
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
+
+function containsWord(value: string, word: string): boolean {
+  let cursor = 0;
+  while (cursor < value.length) {
+    const index = value.indexOf(word, cursor);
+    if (index < 0) return false;
+    const before = value[index - 1] ?? " ";
+    const after = value[index + word.length] ?? " ";
+    const isWord = (character: string): boolean => /[a-z0-9_]/.test(character);
+    if (!isWord(before) && !isWord(after)) return true;
+    cursor = index + 1;
+  }
+  return false;
+}
+
+function isForbiddenCleanupSentence(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  const hasRecoveryVerb =
+    containsWord(lower, "restart") ||
+    containsWord(lower, "reboot") ||
+    containsWord(lower, "bounce") ||
+    containsWord(lower, "kick") ||
+    containsWord(lower, "kickoff") ||
+    containsWord(lower, "kick-off") ||
+    lower.includes("not accepting") ||
+    lower.includes("isn't accepting") ||
+    lower.includes("isnt accepting");
+  if (containsWord(lower, "acpx") && hasRecoveryVerb) return true;
+  if (containsWord(lower, "daemon") && hasRecoveryVerb) return true;
+  const clears =
+    containsWord(lower, "clear") ||
+    containsWord(lower, "clean") ||
+    containsWord(lower, "wipe");
+  if (clears && lower.includes("stale session")) return true;
+  return (
+    lower.includes("manually clear") &&
+    (containsWord(lower, "session") || containsWord(lower, "sessions"))
+  );
+}
+
+function stripForbiddenCleanupSentences(text: string): string {
+  const out: string[] = [];
+  let segmentStart = 0;
+  for (let index = 0; index <= text.length; index += 1) {
+    const character = text[index];
+    const boundary =
+      index === text.length ||
+      character === "." ||
+      character === "!" ||
+      character === "?" ||
+      character === "\n";
+    if (!boundary) continue;
+    const includePunctuation = character !== "\n" && index < text.length;
+    const segmentEnd = index + (includePunctuation ? 1 : 0);
+    const segment = text.slice(segmentStart, segmentEnd);
+    if (!isForbiddenCleanupSentence(segment)) out.push(segment);
+    if (character === "\n") out.push("\n");
+    segmentStart = index + 1;
+  }
+  return out.join("");
+}
+
+function collapseWhitespaceRuns(text: string): string {
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (text[cursor]?.trim() !== "") {
+      out.push(text[cursor] ?? "");
+      cursor += 1;
+      continue;
+    }
+    const start = cursor;
+    while (cursor < text.length && text[cursor]?.trim() === "") cursor += 1;
+    out.push(cursor - start >= 2 ? " " : (text[start] ?? ""));
+  }
+  return out.join("");
+}
 
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
@@ -699,12 +741,9 @@ export function plannerAlreadyAckedSpawn(
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
-  let cleaned = text;
-  for (const pattern of FORBIDDEN_CLEANUP_PATTERNS) {
-    cleaned = cleaned.replace(pattern, "");
-  }
+  let cleaned = stripForbiddenCleanupSentences(text);
   if (cleaned === text) return text;
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  cleaned = collapseWhitespaceRuns(cleaned).trim();
   return cleaned.length > 0
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;
@@ -728,9 +767,6 @@ export function sanitizePlannerText(text: string): string {
 // nothing usable — never the primary path. Kept short and neutral on purpose.
 export const SPAWN_ACK_FALLBACK = "On it.";
 
-// Longest acknowledgement we keep. An ack is a one-liner; anything longer is the
-// model over-answering, so it gets clipped.
-const SPAWN_ACK_MAX_CHARS = 120;
 const SPAWN_ACK_TIMEOUT_MS = 750;
 
 function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
@@ -756,7 +792,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
   const name = (character.name ?? "").trim() || "the assistant";
   const voiceParts: string[] = [];
   const bio = (character.bio ?? []).map((b) => b.trim()).filter(Boolean);
-  if (bio.length > 0) voiceParts.push(bio.slice(0, 3).join(" "));
+  if (bio.length > 0) voiceParts.push(bio.join(" "));
   const traits = [
     ...(character.adjectives ?? []),
     ...(character.style?.chat ?? []),
@@ -765,7 +801,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
     .map((t) => t.trim())
     .filter(Boolean);
   if (traits.length > 0) {
-    voiceParts.push(`Voice: ${[...new Set(traits)].slice(0, 8).join(", ")}.`);
+    voiceParts.push(`Voice: ${[...new Set(traits)].join(", ")}.`);
   }
   return [
     `You are ${name}.`,
@@ -787,109 +823,36 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
 export function buildSpawnAckUserPrompt(task: string): string {
   const trimmed = task.trim();
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
-  const clipped = what.length > 400 ? `${what.slice(0, 397)}…` : what;
-  return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
+  return `The task you're starting:\n${toWellFormedUnicode(what)}\n\nYour one-line acknowledgement:`;
 }
 
 /**
- * Clean a model-produced ack into a single plain line: first non-empty line,
- * surrounding quotes / emoji / list markers stripped, whitespace collapsed,
- * length capped. Returns "" when nothing usable remains (the caller then falls
- * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
+ * Preserve a model-produced acknowledgement as complete well-formed text.
+ * The prompt requests one line, but an overlong or multiline response remains
+ * observable rather than being silently rewritten into a partial answer.
  */
 export function sanitizeSpawnAck(raw: string): string {
-  if (!raw) return "";
-  const firstLine =
-    raw
-      .replace(/\r\n/g, "\n")
-      .split("\n")
-      .map((line) => line.trim())
-      .find((line) => line.length > 0) ?? "";
-  if (!firstLine) return "";
-  let cleaned = firstLine
-    .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
-    .replace(/^[>*\-•\s]+/, "")
-    .trim();
-  // Strip a single pair of surrounding quotes (straight, smart, or backtick).
-  const quotePairs: ReadonlyArray<readonly [string, string]> = [
-    ['"', '"'],
-    ["'", "'"],
-    ["“", "”"],
-    ["‘", "’"],
-    ["`", "`"],
-  ];
-  for (const [open, close] of quotePairs) {
-    if (
-      cleaned.length >= open.length + close.length &&
-      cleaned.startsWith(open) &&
-      cleaned.endsWith(close)
-    ) {
-      cleaned = cleaned
-        .slice(open.length, cleaned.length - close.length)
-        .trim();
-      break;
-    }
-  }
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
-  if (!cleaned) return "";
-  return cleaned.length > SPAWN_ACK_MAX_CHARS
-    ? `${cleaned.slice(0, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
-    : cleaned;
-}
-
-function stripToolTranscripts(raw: string): string {
-  if (!raw) return "";
-  const lines = raw.replace(/\r\n/g, "\n").split("\n");
-  let insideToolOutput = false;
-  const out: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
-      insideToolOutput = true;
-      // Extract tool name from `[tool output: NAME]` or `[tool output: NAME: arg]`
-      const m = trimmed.match(/^\[tool output:\s*([^:\]]+)/);
-      const toolName = (m?.[1] ?? "").trim() || "tool";
-      out.push(`[Tool: ${toolName}]`);
-      continue;
-    }
-    if (insideToolOutput && trimmed === "[/tool output]") {
-      insideToolOutput = false;
-      continue;
-    }
-    if (insideToolOutput) continue;
-    if (trimmed.startsWith("[sub-agent:")) continue;
-    if (trimmed.startsWith("[verification:")) continue;
-    if (trimmed.startsWith("[verification note:")) continue;
-    if (/^\/[^\s]+/.test(trimmed)) continue;
-    out.push(line);
-  }
-  return out.join("\n").trim();
+  return toWellFormedUnicode(raw.trim());
 }
 
 export function extractCompletionSummary(raw: string): string {
   if (!raw.trim()) return "done";
-  const lines = stripToolTranscripts(raw)
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
-  const last = lines[lines.length - 1] ?? "";
-  if (!last) return "done";
-  return last.length > 300 ? `${last.slice(0, 297).trimEnd()}…` : last;
+  return toWellFormedUnicode(raw.trim());
 }
 
 /**
  * Prompt for the LLM-driven progress heartbeat. The model gets the
- * recently captured narration tail and must reply with ONE short sentence
+ * complete captured session output and must reply with one short sentence
  * describing what the sub-agent is doing right now — the same kind of
  * concise status the parent agent would give the user when asked "where
  * are you?".
  */
 const HEARTBEAT_SUMMARY_PROMPT = `Thin progress reporter for an autonomous coding sub-agent.
-Below is recent activity. It may include:
+Below is the complete captured activity. It may include:
 - prose narration the sub-agent wrote ("Now let me build...")
-- a list of CONCRETE tool calls with args (most recent last), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`
+- a list of CONCRETE tool calls with args (in source order), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`
 
-Reply with ONE short sentence (max 25 words) describing what the sub-agent is actually doing right now — be SPECIFIC: name the files, commands, or patterns when the tool list shows them. Match the narration's language (French if FR, English if EN, default English).
+Reply with ONE short sentence describing what the sub-agent is actually doing right now — be SPECIFIC: name the files, commands, or patterns when the tool list shows them. Match the narration's language (French if FR, English if EN, default English).
 
 Rules:
 - ALWAYS use the concrete details from the tool list. "Editing locales/fr.json and rebuilding" beats "editing files". "Running wrangler pages deploy" beats "running terminal commands".
@@ -898,7 +861,7 @@ Rules:
 - NEVER say "no narration provided", "cannot assess", "investigating", "running terminal commands" (too generic) — the tool list always has specifics.
 - No prefix, no markdown, no quotes. Just the sentence.
 
-Recent activity:
+Complete captured activity:
 {tail}`;
 
 /**
@@ -950,13 +913,8 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
           : undefined;
   const pattern = typeof input.pattern === "string" ? input.pattern : undefined;
   const url = typeof input.url === "string" ? input.url : undefined;
-  const shortPath = (p: string): string => {
-    // Trim long absolute paths to the last 2 segments.
-    const parts = p.split("/").filter(Boolean);
-    return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
-  };
-  const trimCmd = (c: string): string =>
-    c.length > 80 ? `${c.slice(0, 77)}...` : c;
+  const shortPath = (p: string): string => p;
+  const trimCmd = (c: string): string => toWellFormedUnicode(c);
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1300,9 +1258,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof acp.getSessionOutput === "function"
             ? // error-policy:J7 best-effort heartbeat read; a failed read degrades
               // to "" so the tick is skipped rather than posting a false status.
-              await acp.getSessionOutput(sessionId, 200).catch(() => "")
+              await acp.getSessionOutput(sessionId).catch(() => "")
             : "";
-        const cleaned = stripToolTranscripts(raw);
+        const cleaned = raw;
         const tools = toolHistory.get(sessionId) ?? [];
         // Skip if we genuinely have nothing — neither narration nor any
         // recorded tool call. That happens in the very first seconds
@@ -1311,7 +1269,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (cleaned.trim().length === 0 && tools.length === 0) return;
         const toolsLine =
           tools.length > 0
-            ? `\nTools the sub-agent has called recently (most recent last): ${tools.map((t) => t.formatted).join(", ")}`
+            ? `\nTools the sub-agent has called (in source order): ${tools.map((t) => t.formatted).join(", ")}`
             : "";
         const filledPrompt = HEARTBEAT_SUMMARY_PROMPT.replace(
           "{tail}",
@@ -1320,7 +1278,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const summary = await runtime
           .useModel(ModelType.TEXT_SMALL, {
             prompt: filledPrompt,
-            maxTokens: 80,
           })
           // error-policy:J7 best-effort heartbeat summary; a failed model call
           // degrades to "" and the tick is skipped, never a fabricated status.
@@ -1338,7 +1295,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const prevSummary = lastHeartbeatSummary.get(sessionId);
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
-        const text = `⏳ [${label}] ${trimmedSummary.length > 200 ? `${trimmedSummary.slice(0, 197)}...` : trimmedSummary}`;
+        const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
+        const text = `⏳ [${label}] ${wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -1383,7 +1341,6 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           .useModel(ModelType.TEXT_SMALL, {
             system: buildSpawnAckSystemPrompt(runtime.character),
             prompt: buildSpawnAckUserPrompt(task),
-            maxTokens: 32,
             temperature: 0.7,
           })
           .then(
@@ -1978,13 +1935,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // like a clean sentence.
     const trimmed = buf.trim().replace(/[\s:;,\-—–]+$/, "");
     if (!trimmed) return;
-    // Cap at 800 chars. Sub-agents sometimes dump multi-paragraph results
-    // through narration chunks (full inventory tables, verification
-    // explanations, etc.). Posting those raw produces a wall of text that
-    // duplicates the final summary the response evaluator builds. A 800-char
-    // window fits short tables and a few bullet points; longer dumps get
-    // truncated and the canonical version lands via the summary.
-    const text = `💬 [${label}] ${trimmed.length > 800 ? `${trimmed.slice(0, 793)}…[+]` : trimmed}`;
+    const wellFormed = toWellFormedUnicode(trimmed);
+    const text = `💬 [${label}] ${wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());
@@ -2026,7 +1978,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const label =
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
-            : `sub-agent ${sessionId.slice(0, 8)}`;
+            : `sub-agent ${sessionId}`;
         const isTerminalEvent =
           evName === "stopped" ||
           evName === "error" ||
@@ -2194,26 +2146,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             trimmedFormatted.toLowerCase() === "tool";
           if (!isNonInformative) {
             const arr = toolHistory.get(sessionId) ?? [];
-            // Same toolCallId as an existing entry: replace it. claude-agent-acp
-            // sends an initial `tool_call` with empty rawInput / generic title
-            // ("Bash", "Terminal") followed by a `tool_call_update` carrying
-            // the real command/path. Replacing keeps history clean instead of
-            // listing both bare and enriched versions.
-            const existingIdx = id
-              ? arr.findIndex((entry) => entry.id === id)
-              : -1;
-            if (existingIdx >= 0) {
-              arr[existingIdx] = { id, formatted };
-            } else {
-              // Drop consecutive duplicates so loops over the same file don't
-              // dominate the prompt.
-              if (arr[arr.length - 1]?.formatted !== formatted) {
-                arr.push({ id, formatted });
-              }
-            }
-            // Keep last 20 — enough context for a one-sentence summary
-            // without bloating the LLM prompt.
-            if (arr.length > 20) arr.shift();
+            // Preserve every informative event in source order. A later ACP
+            // update may enrich an earlier generic event, but replacing or
+            // deduplicating it would make the summarizer's context lossy.
+            arr.push({ id, formatted });
             toolHistory.set(sessionId, arr);
           }
         }
@@ -2415,6 +2351,14 @@ export { AcpService } from "./services/acp-service.js";
 // Terminal-output normalizer for chat surfaces; consumed by live smoke harnesses.
 export { cleanForChat } from "./services/ansi-utils.js";
 export {
+  type ChildDeliveryStatus,
+  type ChildTerminalArtifactRef,
+  type ChildTerminalResultEnvelope,
+  type ChildTerminalStatus,
+  type ChildVerificationStatus,
+  deriveChildTerminalResult,
+} from "./services/child-terminal-result.js";
+export {
   COMPLETION_ENVELOPE_INSTRUCTION,
   type CompletionEnvelope,
   envelopeCorrection,
@@ -2440,6 +2384,26 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
+export {
+  assertSubscriptionCodingAdapterReady,
+  classifySubscriptionRuntimeFailure,
+  isSubscriptionCodingAdapter,
+  probeSubscriptionCodingAdapter,
+  SUBSCRIPTION_CODING_ADAPTER_IDS,
+  SUBSCRIPTION_CODING_ADAPTERS,
+  type SubscriptionAdapterProbeStatus,
+  type SubscriptionBillingSource,
+  type SubscriptionCodingAdapterDescriptor,
+  SubscriptionCodingAdapterError,
+  type SubscriptionCodingAdapterErrorCode,
+  type SubscriptionCodingAdapterId,
+  type SubscriptionCodingAdapterProbe,
+  type SubscriptionCodingAdapterProbeOptions,
+  type SubscriptionExecutionMode,
+  type SubscriptionLoginCommand,
+  stripSubscriptionApiEnvironment,
+  subscriptionCodingAdapterCommand,
+} from "./services/subscription-coding-adapters.js";
 // SWARM_COORDINATOR adapter — discoverable by the server's coordinator-bridge
 // wiring and plugin-app-control's verification-room-bridge.
 export {

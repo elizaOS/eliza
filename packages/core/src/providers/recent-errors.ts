@@ -4,8 +4,8 @@
  *
  * Failures outside the action path (providers, services, background jobs, event
  * handlers) do not otherwise reach the model. This provider reads the runtime's
- * in-memory reported-error ring, dedupes by `code`, ages out stale entries, caps
- * the list, and appends a short instruction so the agent can attempt a fix or
+ * in-memory reported-error ring, dedupes by `code`, ages out stale entries, and
+ * appends a short instruction so the agent can attempt a fix or
  * tell the owner. It renders nothing (and costs no prompt tokens) when there are
  * no recent errors — no prompt bloat on the healthy path.
  *
@@ -25,9 +25,11 @@ import type {
 	ProviderResult,
 	State,
 } from "../types";
+import {
+	deepToWellFormedUnicode,
+	toWellFormedUnicode,
+} from "../utils/well-formed.ts";
 
-/** Newest N distinct-by-code errors surfaced into the prompt. */
-const MAX_RECENT_ERRORS = 5;
 /** Entries older than this are ignored (stale failures shouldn't linger). */
 const ERROR_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -46,10 +48,13 @@ export const QUIET_ERROR_CODES: ReadonlySet<string> = new Set([
 	"TASK_WORKER_MISSING",
 	"TASK_QUERY_FAILED",
 	"TASK_ORPHAN_QUARANTINE_FAILED",
+	// Consequences of a user-requested turn abort, not systemic failures: a
+	// single "cancel all ur running coding tasks" fans out into one aborted
+	// provider error per composing provider, and the escalation path posted
+	// the raw dumps into the user's channel (live 2026-08-19).
+	"PROVIDER_COMPOSITION_ABORTED",
+	"TURN_ABORTED",
 ]);
-/** Cap serialized context length so a large payload can't blow up the prompt. */
-export const MAX_CONTEXT_CHARS = 400;
-
 const EMPTY_RESULT: ProviderResult = {
 	data: { recentErrors: [] },
 	values: { recentErrors: "" },
@@ -62,20 +67,21 @@ export function serializeContext(
 	if (!context || Object.keys(context).length === 0) return undefined;
 	let text: string;
 	try {
-		text = JSON.stringify(context);
+		const safeContext = deepToWellFormedUnicode(context);
+		text = JSON.stringify(safeContext);
 	} catch {
 		// error-policy:J3 untrusted-input sanitizing — context may hold a
 		// circular/non-serializable value; drop it rather than fabricate one.
 		return undefined;
 	}
-	return text.length > MAX_CONTEXT_CHARS
-		? `${text.slice(0, MAX_CONTEXT_CHARS - 1)}…`
-		: text;
+	return toWellFormedUnicode(text);
 }
 
 /**
  * Reduce the raw ring to the newest entry per `code` within the age window,
- * ordered newest-first, capped at {@link MAX_RECENT_ERRORS}.
+ * ordered newest-first. Deliberately uncapped: the surfaced block is model
+ * context, and item-count windows into model context are forbidden by the
+ * prompt-integrity contract (#24134).
  */
 function selectRecentErrors(
 	entries: ReportedError[],
@@ -93,9 +99,7 @@ function selectRecentErrors(
 			newestByCode.set(entry.code, entry);
 		}
 	}
-	return [...newestByCode.values()]
-		.sort((a, b) => b.at - a.at)
-		.slice(0, MAX_RECENT_ERRORS);
+	return [...newestByCode.values()].sort((a, b) => b.at - a.at);
 }
 
 function renderText(

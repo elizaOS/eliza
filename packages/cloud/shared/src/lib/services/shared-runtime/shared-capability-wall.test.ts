@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  capabilityWallActionResult,
   resolveSharedCapabilityIntent,
   resolveSharedCapabilityWall,
 } from "./shared-capability-wall";
@@ -166,8 +167,8 @@ describe("Shared capability wall", () => {
 
   test("does not falsely claim voice and messaging require Dedicated", () => {
     const wall = resolveSharedCapabilityWall("call Mom");
-    expect(wall?.reply).toContain("connected voice and messaging channels");
-    expect(wall?.reply).not.toContain("Dedicated");
+    expect(wall?.constraint).toContain("current connected channel");
+    expect(wall?.constraint).not.toContain("Dedicated");
   });
 
   test.each(["channel", "voice"])(
@@ -197,5 +198,69 @@ describe("Shared capability wall", () => {
       primary: expect.objectContaining({ capability: "todos" }),
       blockedSecondary: [],
     });
+  });
+
+  test("returns a validated, review-only personal workspace handoff", () => {
+    const wall = resolveSharedCapabilityWall("email Bob the itinerary");
+    expect(wall).not.toBeNull();
+
+    const result = capabilityWallActionResult(wall!, {
+      agentId: "agent-with-spaces",
+      originalIntent: "email Bob the itinerary",
+      clientMessageId: "client-123",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        actionName: "DEDICATED_CAPABILITY_REQUIRED",
+        success: false,
+        values: expect.objectContaining({
+          automatic: false,
+          capabilityHandoff: expect.objectContaining({
+            version: 1,
+            kind: "capability_handoff",
+            capabilityId: "communications",
+            requiresConfirmation: true,
+            cta: {
+              label: "Set up personal workspace",
+              href: "/cloud/agents/agent-with-spaces",
+            },
+            continuation: {
+              originalIntent: "email Bob the itinerary",
+              clientMessageId: "client-123",
+            },
+          }),
+        }),
+      }),
+    );
+  });
+
+  test("preserves complete intent and rejects an oversized protocol id", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(wall).not.toBeNull();
+    const handoff = capabilityWallActionResult(wall!, {
+      agentId: "agent-1",
+      originalIntent: `  ${"a".repeat(4_100)}  `,
+      clientMessageId: `  ${"b".repeat(140)}  `,
+    }).values.capabilityHandoff;
+    expect(handoff.continuation?.originalIntent).toBe("a".repeat(4_100));
+    expect(handoff.continuation?.clientMessageId).toBeUndefined();
+  });
+
+  test("never invents continuation data when the transport did not provide it", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(wall).not.toBeNull();
+    const handoff = capabilityWallActionResult(wall!, {
+      agentId: "agent-1",
+    }).values.capabilityHandoff;
+    expect(handoff.continuation).toBeUndefined();
+    expect(handoff.cta.href).toBe("/cloud/agents/agent-1");
+  });
+
+  test("fails closed for an agent id that cannot form a contained route", () => {
+    const wall = resolveSharedCapabilityWall("open the browser");
+    expect(() => capabilityWallActionResult(wall!, { agentId: "agent/with spaces" })).toThrow(
+      "invalid agent id",
+    );
   });
 });

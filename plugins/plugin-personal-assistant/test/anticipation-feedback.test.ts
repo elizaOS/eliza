@@ -116,6 +116,32 @@ describe("proactive-dispatch marker store", () => {
     expect(markers[0]?.taskId).toBe("t2");
     expect(markers[7]?.taskId).toBe("t9");
   });
+
+  it("filters out invalid dates during live marker pruning and maintains strict total ordering", async () => {
+    const runtime = createOwnerRuntimeStub();
+    const now = new Date();
+    await runtime.setCache(
+      `eliza:lifeops:anticipation:dispatches:${ROOM_ID}:v1`,
+      [
+        {
+          roomId: ROOM_ID,
+          taskId: "invalid-date-task",
+          firedAt: "invalid-date-string",
+          snippet: "invalid",
+        },
+        {
+          roomId: ROOM_ID,
+          taskId: "valid-task",
+          firedAt: new Date(now.getTime() - 60_000).toISOString(),
+          snippet: "valid",
+        },
+      ],
+    );
+
+    const markers = await listUnprocessedDispatches(runtime, ROOM_ID, { now });
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.taskId).toBe("valid-task");
+  });
 });
 
 describe("anticipation_feedback output parsing", () => {

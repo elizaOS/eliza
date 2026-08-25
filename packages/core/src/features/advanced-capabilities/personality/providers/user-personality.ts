@@ -15,11 +15,7 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { getPersonalityStore } from "../services/personality-store.ts";
-import {
-	MAX_PREFS_PER_USER,
-	type PersonalitySlot,
-	USER_PREFS_TABLE,
-} from "../types.ts";
+import { type PersonalitySlot, USER_PREFS_TABLE } from "../types.ts";
 
 function renderSlot(
 	slot: PersonalitySlot,
@@ -116,7 +112,6 @@ export const userPersonalityProvider: Provider = {
 				entityId: message.entityId,
 				roomId: runtime.agentId,
 				tableName: USER_PREFS_TABLE,
-				count: MAX_PREFS_PER_USER,
 			});
 			const prefTexts = preferences
 				.map((p) => p.content.text)

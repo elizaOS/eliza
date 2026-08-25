@@ -134,3 +134,33 @@ describe("selectReplayEvents — no cursor (backward compatible)", () => {
     expect(result).toEqual(buffer.slice(-120));
   });
 });
+
+describe("selectReplayEvents — fail-closed on non-positive limit", () => {
+  it("returns [] for limit=0, negative, and NaN with no cursor", () => {
+    const buffer = makeBuffer(20);
+    expect(selectReplayEvents(buffer, null, 0)).toEqual([]);
+    expect(selectReplayEvents(buffer, null, -5)).toEqual([]);
+    expect(selectReplayEvents(buffer, null, NaN)).toEqual([]);
+  });
+
+  it("returns [] for limit=0, negative, and NaN with a cursor", () => {
+    const buffer = makeBuffer(20);
+    expect(selectReplayEvents(buffer, 5, 0)).toEqual([]);
+    expect(selectReplayEvents(buffer, 5, -1)).toEqual([]);
+    expect(selectReplayEvents(buffer, 5, NaN)).toEqual([]);
+  });
+
+  it("returns [] for sub-unit and non-finite limits", () => {
+    const buffer = makeBuffer(20);
+    for (const limit of [0.5, Number.POSITIVE_INFINITY]) {
+      expect(selectReplayEvents(buffer, null, limit)).toEqual([]);
+      expect(selectReplayEvents(buffer, 5, limit)).toEqual([]);
+    }
+  });
+
+  it("floors a positive fractional limit before slicing", () => {
+    const buffer = makeBuffer(20);
+    expect(selectReplayEvents(buffer, null, 1.9)).toEqual(buffer.slice(-1));
+    expect(selectReplayEvents(buffer, 5, 1.9)).toEqual([buffer.at(-1)]);
+  });
+});

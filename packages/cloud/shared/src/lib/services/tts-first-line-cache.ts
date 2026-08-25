@@ -64,8 +64,9 @@ const BYPASS_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 export function parseTtsCacheByteAggregate(value: unknown): number {
+  const canonicalString = typeof value !== "string" || /^(?:0|[1-9]\d*)$/.test(value);
   const parsed =
-    (typeof value === "number" || typeof value === "string") && String(value).trim() !== ""
+    canonicalString && (typeof value === "number" || typeof value === "string")
       ? Number(value)
       : Number.NaN;
   if (!Number.isSafeInteger(parsed) || parsed < 0) {

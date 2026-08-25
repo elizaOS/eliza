@@ -22,7 +22,6 @@ type ServiceInternals = {
 
 function makeSettings(overrides: Partial<IMessageSettings> = {}): IMessageSettings {
   return {
-    cliPath: "imsg",
     pollIntervalMs: 5000,
     heartbeatIntervalMs: 60000,
     dmPolicy: "pairing",

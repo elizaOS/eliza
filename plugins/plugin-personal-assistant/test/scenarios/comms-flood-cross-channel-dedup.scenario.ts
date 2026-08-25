@@ -11,7 +11,7 @@
  * OUTCOME (not echo/routing): a custom predicate proves no duplicate outbound
  * dispatch was produced (at most one connector dispatch for the deduped item),
  * paired with an actionCalled proof that the assistant actually engaged the
- * request — together beating the all-actionCalled ratchet.
+ * request — together beating the all-actionCalled guard.
  */
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";

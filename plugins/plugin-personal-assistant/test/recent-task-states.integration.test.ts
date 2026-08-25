@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendScheduledTaskLogEntry,
   createRecentTaskStatesProvider,
+  readScheduledTaskLog,
 } from "../src/providers/recent-task-states.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
@@ -57,5 +58,43 @@ describe("recent task states integration", () => {
     });
     expect(summary.summary).toMatch(/checkin: 1 done/);
     expect(summary.summary).not.toMatch(/reminder/);
+  });
+
+  it("maintains strict total ordering when recordedAt contains invalid date strings", async () => {
+    const runtime = createMinimalRuntimeStub();
+    await appendScheduledTaskLogEntry(runtime, {
+      taskId: "task-invalid",
+      kind: "reminder",
+      outcome: "completed",
+      recordedAt: "invalid-date-string",
+    });
+    await appendScheduledTaskLogEntry(runtime, {
+      taskId: "task-valid",
+      kind: "reminder",
+      outcome: "completed",
+      recordedAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    const log = await readScheduledTaskLog(runtime);
+    expect(log).toHaveLength(2);
+    expect(log[0]?.taskId).toBe("task-invalid"); // fallback 0 is earliest
+    expect(log[1]?.taskId).toBe("task-valid");
+  });
+
+  it("retains complete task history beyond the former 500-entry boundary", async () => {
+    const runtime = createMinimalRuntimeStub();
+    for (let index = 0; index < 525; index += 1) {
+      await appendScheduledTaskLogEntry(runtime, {
+        taskId: `task-${index}`,
+        kind: "reminder",
+        outcome: "completed",
+        recordedAt: new Date(1_700_000_000_000 + index).toISOString(),
+      });
+    }
+
+    const log = await readScheduledTaskLog(runtime);
+    expect(log).toHaveLength(525);
+    expect(log[0]?.taskId).toBe("task-0");
+    expect(log[524]?.taskId).toBe("task-524");
   });
 });

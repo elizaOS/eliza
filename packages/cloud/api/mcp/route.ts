@@ -9,6 +9,7 @@
 import { Hono } from "hono";
 
 import { safeUnknownErrorMessage } from "@/lib/api/cloud-worker-errors";
+import { requireCurrentBillingManagerSession } from "@/lib/auth/workers-hono-auth";
 import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
 import {
   callPlatformCloudMcpTool,
@@ -40,6 +41,98 @@ function jsonRpcError(id: unknown, code: number, message: string) {
     id: id ?? null,
     error: { code, message },
   };
+}
+
+function isBillingCancellationCall(message: unknown): boolean {
+  if (!message || typeof message !== "object" || Array.isArray(message))
+    return false;
+  const request = message as {
+    method?: unknown;
+    params?: {
+      name?: unknown;
+      arguments?: { method?: unknown; path?: unknown };
+    };
+  };
+  if (request.method !== "tools/call") return false;
+  if (
+    request.params?.name === "cloud.billing.cancel_resource" ||
+    request.params?.name === "billing.cancel_resource"
+  ) {
+    return true;
+  }
+  if (request.params?.name !== "cloud.api.request") return false;
+  const generic = request.params.arguments;
+  if (
+    typeof generic?.method !== "string" ||
+    generic.method.toUpperCase() !== "POST"
+  ) {
+    return false;
+  }
+  if (typeof generic.path !== "string" || !generic.path.startsWith("/api/"))
+    return false;
+
+  try {
+    let pathname = new URL(generic.path, "https://mcp-gate.invalid").pathname;
+    for (let pass = 0; pass < 2; pass += 1) {
+      const decoded = decodeURIComponent(pathname);
+      if (decoded === pathname) break;
+      pathname = new URL(decoded, "https://mcp-gate.invalid").pathname;
+    }
+    return /^\/api\/v1\/billing\/resources\/[^/]+\/cancel\/?$/.test(pathname);
+  } catch {
+    // error-policy:J3 malformed generic paths are not trusted to bypass a
+    // privileged pre-forward gate when they still name billing cancellation.
+    return /billing/i.test(generic.path) && /cancel/i.test(generic.path);
+  }
+}
+
+async function rejectUnauthorizedUpstreamBillingCalls(
+  c: AppContext,
+  body: unknown,
+): Promise<Response | null> {
+  const messages = Array.isArray(body) ? body : [body];
+  if (!messages.some(isBillingCancellationCall)) return null;
+
+  try {
+    await requireCurrentBillingManagerSession(c);
+    return null;
+  } catch (error) {
+    logger.error("[MCP] Upstream billing cancellation authorization failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    const message = safeUnknownErrorMessage(error);
+    const errors = messages.map((entry) => {
+      const id =
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? (entry as { id?: unknown }).id
+          : null;
+      return jsonRpcError(id, -32000, message);
+    });
+    return c.json(Array.isArray(body) ? errors : errors[0]);
+  }
+}
+
+async function forwardConfiguredMcpRequest(
+  c: AppContext,
+  upstream: string,
+): Promise<Response> {
+  if (
+    c.req.raw.method !== "GET" &&
+    c.req.raw.method !== "HEAD" &&
+    c.req.raw.body !== null
+  ) {
+    let body: unknown;
+    try {
+      body = await c.req.raw.clone().json();
+    } catch {
+      // error-policy:J3 configured upstream requests remain local when their
+      // untrusted JSON cannot be inspected for privileged billing calls.
+      return c.json(jsonRpcError(null, -32700, "Invalid JSON"), 400);
+    }
+    const rejection = await rejectUnauthorizedUpstreamBillingCalls(c, body);
+    if (rejection) return rejection;
+  }
+  return forwardMcpUpstreamRequest(c.req.raw, upstream);
 }
 
 async function handleJsonRpc(c: AppContext, message: unknown) {
@@ -118,7 +211,7 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   const upstream = getPlatformUpstream(c);
   if (upstream) {
-    return forwardMcpUpstreamRequest(c.req.raw, upstream);
+    return forwardConfiguredMcpRequest(c, upstream);
   }
 
   let body: unknown;
@@ -137,7 +230,7 @@ app.post("/", async (c) => {
 
 app.all("*", async (c) => {
   const upstream = getPlatformUpstream(c);
-  if (upstream) return forwardMcpUpstreamRequest(c.req.raw, upstream);
+  if (upstream) return forwardConfiguredMcpRequest(c, upstream);
   return c.json(
     { success: false, error: "MCP method/path not supported" },
     405,

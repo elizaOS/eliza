@@ -377,17 +377,14 @@ function PluginListView({
       return (
         <Button
           key={tag.id}
-          variant={isActive ? "default" : "surface"}
-          size="sm"
-          className={`min-h-11 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
-            isActive
-              ? "border-transparent bg-accent text-accent-fg hover:bg-accent-muted"
-              : "bg-card/50 text-muted hover:bg-card/80 hover:text-txt"
-          }`}
+          variant="selection"
+          size="touch"
+          shape="circle"
+          data-state={isActive ? "on" : "off"}
           aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}
         >
-          <Icon className="h-3.5 w-3.5 shrink-0" />
+          <Icon className="size-3.5 shrink-0" />
           {tag.label}
           <span
             className={`ml-0.5 rounded-full px-1.5 py-0.5 text-3xs font-mono leading-none ${
@@ -931,7 +928,7 @@ function PluginListView({
     ) => {
       const icon = resolveIcon(plugin);
       if (!icon) {
-        return <Puzzle className={options?.className ?? "w-5 h-5"} />;
+        return <Puzzle className={options?.className ?? "size-5"} />;
       }
       if (typeof icon === "string") {
         const imageSrc = iconImageSource(icon);
@@ -939,19 +936,17 @@ function PluginListView({
           <img
             src={imageSrc}
             alt=""
-            className={
-              options?.className ?? "w-5 h-5 rounded-sm object-contain"
-            }
+            className={options?.className ?? "size-5 rounded-sm object-contain"}
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
             }}
           />
         ) : (
-          <Puzzle className={options?.className ?? "w-5 h-5"} />
+          <Puzzle className={options?.className ?? "size-5"} />
         );
       }
       const IconComponent = icon;
-      return <IconComponent className={options?.className ?? "w-5 h-5"} />;
+      return <IconComponent className={options?.className ?? "size-5"} />;
     },
     [],
   );
@@ -1389,8 +1384,8 @@ function PluginListView({
                     <Button
                       ref={resetOrderRef}
                       variant="outline"
-                      size="sm"
-                      className="ml-1 min-h-11 rounded-full px-3 text-2xs font-bold tracking-wide text-muted hover:text-txt"
+                      size="badge"
+                      className="ml-1"
                       onClick={handleResetOrder}
                       title={t("pluginsview.ResetToDefaultSor")}
                       {...resetOrderAgentProps}

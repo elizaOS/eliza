@@ -4,7 +4,7 @@
 
 import type http from "node:http";
 import path from "node:path";
-import { logger, sendJsonError } from "@elizaos/core";
+import { ElizaError, logger, sendJsonError } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   getStylePresets,
@@ -24,36 +24,178 @@ import { generateWalletKeys, setSolanaWalletEnv } from "./wallet-keygen.ts";
 
 export { isBlockedObjectKey } from "./blocked-object-keys.ts";
 
-function redactValue(val: unknown): unknown {
-  if (val === null || val === undefined) return val;
-  if (typeof val === "string") return val.length > 0 ? "[REDACTED]" : "";
-  if (typeof val === "number" || typeof val === "boolean") return "[REDACTED]";
-  if (Array.isArray(val)) return val.map(redactValue);
-  if (typeof val === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
-      out[k] = redactValue(v);
-    }
-    return out;
+/** Honest GET /api/config and /api/connectors payloads are a handful of objects deep. */
+export const MAX_CONFIG_SECRET_FILTER_DEPTH = 32;
+/**
+ * Node ceiling across the whole redaction / placeholder-strip walk, including
+ * sparse array holes. Well above an ordinary character/config document; bounds
+ * synthetic graphs that would otherwise RangeError or hang the authorized
+ * config and connector routes.
+ */
+export const MAX_CONFIG_SECRET_FILTER_NODES = 100_000;
+export const CONFIG_SECRET_FILTER_UNBOUNDED = "CONFIG_SECRET_FILTER_UNBOUNDED";
+
+type FilterWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failConfigSecretFilterUnbounded(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  throw new ElizaError(
+    "Config response exceeds the secret-key filter walk budget",
+    {
+      code: CONFIG_SECRET_FILTER_UNBOUNDED,
+      context,
+      cause,
+      severity: "fatal",
+    },
+  );
+}
+
+function reserveFilterVisits(ctx: FilterWalkContext, count: number): void {
+  if (count > MAX_CONFIG_SECRET_FILTER_NODES - ctx.visits) {
+    failConfigSecretFilterUnbounded({
+      visits: ctx.visits + count,
+      maxNodes: MAX_CONFIG_SECRET_FILTER_NODES,
+    });
+  }
+  ctx.visits += count;
+}
+
+function enterFilterContainer(value: object, ctx: FilterWalkContext): void {
+  if (ctx.visiting.has(value)) {
+    failConfigSecretFilterUnbounded({ cycle: true });
+  }
+  ctx.visiting.add(value);
+}
+
+function inspectFilter<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect();
+  } catch (cause) {
+    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+    failConfigSecretFilterUnbounded({ inspection: operation }, cause);
+  }
+}
+
+function ownEnumerableStringKeys(value: object): string[] {
+  const keys: string[] = [];
+  for (const key of inspectFilter("ownKeys", () => Reflect.ownKeys(value))) {
+    if (typeof key !== "string") continue;
+    const descriptor = inspectFilter("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (!descriptor?.enumerable) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
+function ownValueDescriptor(
+  value: object,
+  key: string,
+): PropertyDescriptor | undefined {
+  const descriptor = inspectFilter("getOwnPropertyDescriptor", () =>
+    Object.getOwnPropertyDescriptor(value, key),
+  );
+  if (!descriptor) return undefined;
+  if (!("value" in descriptor)) {
+    failConfigSecretFilterUnbounded({ accessor: true, key });
+  }
+  return descriptor;
+}
+
+function ownArrayLength(value: unknown[]): number {
+  const descriptor = ownValueDescriptor(value, "length");
+  if (
+    !descriptor ||
+    !Number.isSafeInteger(descriptor.value) ||
+    descriptor.value < 0
+  ) {
+    failConfigSecretFilterUnbounded({ invalidArrayLength: true });
+  }
+  return descriptor.value;
+}
+
+function newFilterWalkContext(): FilterWalkContext {
+  return { visits: 0, visiting: new WeakSet<object>() };
+}
+
+function redactLeaf(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value.length > 0 ? "[REDACTED]" : "";
+  if (typeof value === "number" || typeof value === "boolean") {
+    return "[REDACTED]";
   }
   return "[REDACTED]";
 }
 
-export function redactDeep(val: unknown): unknown {
-  if (val === null || val === undefined) return val;
-  if (Array.isArray(val)) return val.map(redactDeep);
-  if (typeof val === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(val as Record<string, unknown>)) {
-      if (isSensitiveConfigKey(key)) {
-        out[key] = redactValue(child);
-      } else {
-        out[key] = redactDeep(child);
+function walkConfigSecretFilter(
+  value: unknown,
+  depth: number,
+  ctx: FilterWalkContext,
+  redactAll: boolean,
+  visitAlreadyReserved = false,
+): unknown {
+  if (depth > MAX_CONFIG_SECRET_FILTER_DEPTH) {
+    failConfigSecretFilterUnbounded({
+      depth,
+      max: MAX_CONFIG_SECRET_FILTER_DEPTH,
+    });
+  }
+  if (!visitAlreadyReserved) reserveFilterVisits(ctx, 1);
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") {
+    return redactAll ? redactLeaf(value) : value;
+  }
+
+  enterFilterContainer(value, ctx);
+  try {
+    if (Array.isArray(value)) {
+      const length = ownArrayLength(value);
+      reserveFilterVisits(ctx, length);
+      const next: unknown[] = [];
+      next.length = length;
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = ownValueDescriptor(value, String(index));
+        if (!descriptor) continue;
+        next[index] = walkConfigSecretFilter(
+          descriptor.value,
+          depth + 1,
+          ctx,
+          redactAll,
+          true,
+        );
       }
+      return next;
+    }
+
+    const keys = ownEnumerableStringKeys(value);
+    reserveFilterVisits(ctx, keys.length);
+    const out: Record<string, unknown> = {};
+    for (const key of keys) {
+      const descriptor = ownValueDescriptor(value, key);
+      if (!descriptor) continue;
+      const childRedactAll = redactAll || isSensitiveConfigKey(key);
+      out[key] = walkConfigSecretFilter(
+        descriptor.value,
+        depth + 1,
+        ctx,
+        childRedactAll,
+        true,
+      );
     }
     return out;
+  } finally {
+    ctx.visiting.delete(value);
   }
-  return val;
+}
+
+export function redactDeep(val: unknown): unknown {
+  return walkConfigSecretFilter(val, 0, newFilterWalkContext(), false);
 }
 
 export function redactConfigSecrets(
@@ -68,24 +210,58 @@ export function isRedactedSecretValue(value: unknown): boolean {
   );
 }
 
+function walkStripRedactedPlaceholders(
+  value: unknown,
+  depth: number,
+  ctx: FilterWalkContext,
+  visitAlreadyReserved = false,
+): void {
+  if (depth > MAX_CONFIG_SECRET_FILTER_DEPTH) {
+    failConfigSecretFilterUnbounded({
+      depth,
+      max: MAX_CONFIG_SECRET_FILTER_DEPTH,
+      strip: true,
+    });
+  }
+  if (!visitAlreadyReserved) reserveFilterVisits(ctx, 1);
+  if (value === null || typeof value !== "object") return;
+
+  enterFilterContainer(value, ctx);
+  try {
+    if (Array.isArray(value)) {
+      const length = ownArrayLength(value);
+      reserveFilterVisits(ctx, length);
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = ownValueDescriptor(value, String(index));
+        if (!descriptor) continue;
+        walkStripRedactedPlaceholders(descriptor.value, depth + 1, ctx, true);
+      }
+      return;
+    }
+
+    const keys = ownEnumerableStringKeys(value);
+    reserveFilterVisits(ctx, keys.length);
+    const obj = value as Record<string, unknown>;
+    for (const key of keys) {
+      const descriptor = ownValueDescriptor(value, key);
+      if (!descriptor) continue;
+      if (isRedactedSecretValue(descriptor.value)) {
+        delete obj[key];
+      } else if (
+        descriptor.value !== null &&
+        typeof descriptor.value === "object"
+      ) {
+        walkStripRedactedPlaceholders(descriptor.value, depth + 1, ctx, true);
+      }
+    }
+  } finally {
+    ctx.visiting.delete(value);
+  }
+}
+
 /** Remove UI round-trip placeholders so GET /api/config -> PUT never persists "[REDACTED]". */
 export function stripRedactedPlaceholderValuesDeep(value: unknown): void {
-  if (value === null || typeof value !== "object") return;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      stripRedactedPlaceholderValuesDeep(item);
-    }
-    return;
-  }
-  const obj = value as Record<string, unknown>;
-  for (const key of Object.keys(obj)) {
-    const v = obj[key];
-    if (isRedactedSecretValue(v)) {
-      delete obj[key];
-    } else if (v !== null && typeof v === "object") {
-      stripRedactedPlaceholderValuesDeep(v);
-    }
-  }
+  walkStripRedactedPlaceholders(value, 0, newFilterWalkContext());
 }
 
 // ---------------------------------------------------------------------------

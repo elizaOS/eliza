@@ -32,6 +32,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from training.tokenization import tokenize_with_explicit_limit
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -201,6 +203,7 @@ def build_dataset(
     *,
     split_name: str,
     max_chars: int | None = None,
+    max_tokens: int = 1_000_000,
 ) -> Any:
     formatted = _format_records(records, split_name=split_name)
     from datasets import Dataset
@@ -263,7 +266,14 @@ def build_dataset(
     pre_rendered: list[dict[str, str]] = []
     for row_index, row in enumerate(formatted, start=1):
         try:
-            pre_rendered.append(render(row))
+            rendered = render(row)
+            tokenize_with_explicit_limit(
+                tokenizer,
+                rendered["text"],
+                max_tokens=max_tokens,
+                add_special_tokens=True,
+            )
+            pre_rendered.append(rendered)
         except Exception as exc:  # error-policy:J2 Name the rejected corpus row.
             raise ValueError(
                 f"{split_name} row {row_index} failed apply_chat_template"
@@ -689,7 +699,6 @@ def main() -> int:
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.truncation_side = "left"
     # Base Gemma-4 tokenizers (google/gemma-4-{E2B,E4B,12B,31B}) ship NO
     # chat_template, but SFT renders every row through apply_chat_template — with
     # no template every row raises ValueError and the run aborts with
@@ -726,6 +735,7 @@ def main() -> int:
             tokenizer,
             split_name="train",
             max_chars=max_chars,
+            max_tokens=args.max_seq_len,
         )
         val_ds = (
             build_dataset(
@@ -733,6 +743,7 @@ def main() -> int:
                 tokenizer,
                 split_name="validation",
                 max_chars=max_chars,
+                max_tokens=args.max_seq_len,
             )
             if val_recs
             else None
@@ -900,7 +911,7 @@ def main() -> int:
         save_total_limit=3,
         eval_strategy="steps" if val_ds is not None else "no",
         eval_steps=500,
-        max_length=args.max_seq_len,
+        max_length=None,
         packing=False,
         dataset_text_field="text",
         dataset_num_proc=_dnp,

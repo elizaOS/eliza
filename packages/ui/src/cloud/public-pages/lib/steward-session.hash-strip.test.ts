@@ -11,7 +11,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { stripLegacyTokenHashFromAddressBar } from "./steward-session";
+import {
+  consumeStewardCodeFromQuery,
+  consumeStewardOAuthStateFromCallback,
+  stripLegacyTokenHashFromAddressBar,
+} from "./steward-session";
 
 const realLocation = window.location;
 
@@ -91,5 +95,34 @@ describe("stripLegacyTokenHashFromAddressBar", () => {
     // The snapshot stands in for an already-rewritten address bar: no second
     // history write against the live location.
     expect(replaceSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("OAuth fragment callback consumption", () => {
+  it("consumes Steward's #code + #state callback without losing the state echo", () => {
+    setUrl({ hash: "#code=nonce-code&state=app-state" });
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+
+    expect(consumeStewardCodeFromQuery()).toBe("nonce-code");
+    expect(replaceSpy).toHaveBeenLastCalledWith(
+      null,
+      "",
+      "/login#state=app-state",
+    );
+    expect(consumeStewardOAuthStateFromCallback()).toBe("app-state");
+    expect(replaceSpy).toHaveBeenLastCalledWith(null, "", "/login");
+  });
+
+  it("preserves a snapshotted fragment state until the code consumer hands it off", () => {
+    setUrl({ hash: "" });
+    const stewardWindow = window as Window & {
+      __stewardOAuthHash?: string;
+    };
+    stewardWindow.__stewardOAuthHash = "#code=nonce-code&state=app-state";
+
+    expect(consumeStewardCodeFromQuery()).toBe("nonce-code");
+    expect(stewardWindow.__stewardOAuthHash).toBe("#state=app-state");
+    expect(consumeStewardOAuthStateFromCallback()).toBe("app-state");
+    expect(stewardWindow.__stewardOAuthHash).toBeUndefined();
   });
 });

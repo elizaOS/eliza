@@ -7,7 +7,7 @@
 import {
   ensureAvatarUrl,
   isBuiltInAvatar,
-} from "@elizaos/cloud-shared/lib/utils/default-avatar";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -357,10 +357,6 @@ function AgentCardInner({
     defaultValue: "Open agent",
   });
 
-  const removeSavedClassName = cn(
-    "pointer-events-auto flex-shrink-0 hidden items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-red-500/20 transition-colors group-hover:flex",
-  );
-
   const isListView = viewMode === "list";
 
   // List view
@@ -374,16 +370,17 @@ function AgentCardInner({
       >
         <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
           <Button
-            variant="ghost"
+            variant="publicRow"
+            size="content"
             type="button"
             aria-label={`${openCardLabel}: ${agent.name}`}
-            className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+            className="absolute inset-0 z-10 disabled:cursor-default"
             onClick={handleCardClick}
             disabled={showDeleteConfirm}
           />
           <div className="relative z-20 flex items-center gap-4 p-4 pointer-events-none">
             {/* Avatar */}
-            <div className="relative flex-shrink-0 w-12 h-12 overflow-hidden rounded-lg">
+            <div className="relative shrink-0 size-12 overflow-hidden rounded-lg">
               <Skeleton className="absolute inset-0 w-full h-full" />
               <Image
                 src={ensureAvatarUrl(avatarUrl, agent.name)}
@@ -406,10 +403,10 @@ function AgentCardInner({
                     })}
                 </h3>
                 {!isPublic && isOwned && (
-                  <Lock className="h-3.5 w-3.5 text-white/50 flex-shrink-0" />
+                  <Lock className="size-3.5 text-white/50 shrink-0" />
                 )}
                 {!isOwned && (
-                  <span className="text-xs text-white/50 flex-shrink-0">
+                  <span className="text-xs text-white/50 shrink-0">
                     {t("cloud.agentCard.byOwner", {
                       owner:
                         agent.ownerUsername ||
@@ -431,7 +428,7 @@ function AgentCardInner({
 
             {/* Status badges */}
             {showDeploymentStatus && (
-              <div className="flex gap-1.5 flex-shrink-0">
+              <div className="flex gap-1.5 shrink-0">
                 {isDeployed && (
                   <StatusBadge
                     status="success"
@@ -439,7 +436,6 @@ function AgentCardInner({
                       defaultValue: "Live",
                     })}
                     pulse
-                    className="px-2 py-0.5 text-[10px]"
                   />
                 )}
                 {isStopped && (
@@ -448,7 +444,6 @@ function AgentCardInner({
                     label={t("cloud.agentCard.statusStopped", {
                       defaultValue: "Stopped",
                     })}
-                    className="px-2 py-0.5 text-[10px]"
                   />
                 )}
               </div>
@@ -457,25 +452,26 @@ function AgentCardInner({
             {/* Remove button for saved agents */}
             {!isOwned && (
               <Button
-                variant="ghost"
+                variant="dangerGhost"
+                size="icon-sm"
                 type="button"
                 onClick={handleRemoveSaved}
-                className={removeSavedClassName}
+                className="pointer-events-auto flex-shrink-0 hidden group-hover:flex"
                 title={t("cloud.agentCard.removeFromSaved", {
                   defaultValue: "Remove from saved",
                 })}
               >
-                <X className="h-4 w-4 text-white/70 hover:text-red-500" />
+                <X className="size-4 text-white/70 hover:text-destructive" />
               </Button>
             )}
 
             {/* Dropdown Menu */}
             <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
               <DropdownMenuTrigger
-                className="pointer-events-auto flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-white/10 transition-colors"
+                className="pointer-events-auto shrink-0 flex items-center justify-center size-8 rounded-lg bg-transparent hover:bg-white/10 transition-colors"
                 onClick={(e) => e.preventDefault()}
               >
-                <MoreHorizontal className="h-4 w-4 text-white" />
+                <MoreHorizontal className="size-4 text-white" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
                 {isOwned ? (
@@ -484,7 +480,7 @@ function AgentCardInner({
                       onClick={handleDuplicate}
                       className="cursor-pointer"
                     >
-                      <Copy className="h-4 w-4 mr-2" />
+                      <Copy className="size-4 mr-2" />
                       {t("cloud.agentCard.duplicate", {
                         defaultValue: "Duplicate",
                       })}
@@ -493,7 +489,7 @@ function AgentCardInner({
                       onClick={handleExport}
                       className="cursor-pointer"
                     >
-                      <Upload className="h-4 w-4 mr-2" />
+                      <Upload className="size-4 mr-2" />
                       {t("cloud.agentCard.exportJson", {
                         defaultValue: "Export JSON",
                       })}
@@ -505,9 +501,9 @@ function AgentCardInner({
                     >
                       <span className="flex items-center">
                         {isPublic ? (
-                          <Globe className="h-4 w-4 mr-4" aria-hidden="true" />
+                          <Globe className="size-4 mr-4" aria-hidden="true" />
                         ) : (
-                          <Lock className="h-4 w-4 mr-4" aria-hidden="true" />
+                          <Lock className="size-4 mr-4" aria-hidden="true" />
                         )}
                         {isPublic
                           ? t("cloud.agentCard.public", {
@@ -530,16 +526,16 @@ function AgentCardInner({
                         onClick={handleCopyShareLink}
                         className="cursor-pointer"
                       >
-                        <LinkIcon className="h-4 w-4 mr-2" />
+                        <LinkIcon className="size-4 mr-2" />
                         {t("cloud.agentCard.share", { defaultValue: "Share" })}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleDeleteClick}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                      className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                     >
-                      <Trash2 className="h-4 w-4 mr-2 text-red-500" />
+                      <Trash2 className="size-4 mr-2 text-destructive" />
                       {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                     </DropdownMenuItem>
                   </>
@@ -549,7 +545,7 @@ function AgentCardInner({
                       onClick={handleDuplicate}
                       className="cursor-pointer"
                     >
-                      <Copy className="h-4 w-4 mr-2" />
+                      <Copy className="size-4 mr-2" />
                       {t("cloud.agentCard.forkAgent", {
                         defaultValue: "Fork Agent",
                       })}
@@ -557,9 +553,9 @@ function AgentCardInner({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={handleRemoveSaved}
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                      className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                     >
-                      <X className="h-4 w-4 mr-2 text-red-500" />
+                      <X className="size-4 mr-2 text-destructive" />
                       {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
                     </DropdownMenuItem>
                   </>
@@ -597,7 +593,7 @@ function AgentCardInner({
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
                   disabled={isDeleting}
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-destructive text-destructive-fg hover:bg-destructive/85"
                 >
                   {isDeleting
                     ? t("cloud.agentCard.deleting", {
@@ -623,10 +619,11 @@ function AgentCardInner({
     >
       <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
         <Button
-          variant="ghost"
+          variant="publicRow"
+          size="content"
           type="button"
           aria-label={`${openCardLabel}: ${agent.name}`}
-          className="absolute inset-0 z-10 h-full w-full bg-transparent border-0 p-0 disabled:cursor-default"
+          className="absolute inset-0 z-10 disabled:cursor-default"
           onClick={handleCardClick}
           disabled={showDeleteConfirm}
         />
@@ -652,7 +649,7 @@ function AgentCardInner({
         <div className="pointer-events-none absolute top-3 left-3 z-20 flex items-center gap-1.5">
           {!isPublic && isOwned && (
             <div className="bg-black/30 rounded-md p-1.5">
-              <Lock className=" h-4 w-4 text-white/70" />
+              <Lock className=" size-4 text-white/70" />
             </div>
           )}
           {!isOwned && (
@@ -672,7 +669,6 @@ function AgentCardInner({
               status="success"
               label={t("cloud.agentCard.statusLive", { defaultValue: "Live" })}
               pulse
-              className="px-2 py-0.5 text-[10px]"
             />
           )}
           {showDeploymentStatus && isStopped && (
@@ -681,7 +677,6 @@ function AgentCardInner({
               label={t("cloud.agentCard.statusStopped", {
                 defaultValue: "Stopped",
               })}
-              className="px-2 py-0.5 text-[10px]"
             />
           )}
         </div>
@@ -689,22 +684,23 @@ function AgentCardInner({
         {/* Remove button for saved agents */}
         {!isOwned && (
           <Button
-            variant="ghost"
+            variant="dangerGhost"
+            size="icon-sm"
             type="button"
             onClick={handleRemoveSaved}
-            className="pointer-events-auto absolute top-3 right-12 z-20 hidden items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-red-500/50 transition-colors group-hover:flex"
+            className="pointer-events-auto absolute top-3 right-12 z-20 hidden group-hover:flex"
             title={t("cloud.agentCard.removeFromSaved", {
               defaultValue: "Remove from saved",
             })}
           >
-            <X className="h-4 w-4 text-white" />
+            <X className="size-4 text-white" />
           </Button>
         )}
 
         {/* Dropdown Menu */}
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-          <DropdownMenuTrigger className="pointer-events-auto absolute top-3 right-3 z-20 flex items-center justify-center h-9 w-9 rounded-lg bg-black/30 hover:bg-black/50 transition-colors">
-            <MoreHorizontal className="h-4 w-4 text-white" />
+          <DropdownMenuTrigger className="pointer-events-auto absolute top-3 right-3 z-20 flex items-center justify-center size-9 rounded-lg bg-black/30 hover:bg-black/50 transition-colors">
+            <MoreHorizontal className="size-4 text-white" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-40">
             {isOwned ? (
@@ -713,7 +709,7 @@ function AgentCardInner({
                   onClick={handleDuplicate}
                   className="cursor-pointer"
                 >
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy className="size-4 mr-2" />
                   {t("cloud.agentCard.duplicate", {
                     defaultValue: "Duplicate",
                   })}
@@ -722,7 +718,7 @@ function AgentCardInner({
                   onClick={handleExport}
                   className="cursor-pointer"
                 >
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="size-4 mr-2" />
                   {t("cloud.agentCard.exportJson", {
                     defaultValue: "Export JSON",
                   })}
@@ -734,9 +730,9 @@ function AgentCardInner({
                 >
                   <span className="flex items-center">
                     {isPublic ? (
-                      <Globe className="h-4 w-4 mr-4" aria-hidden="true" />
+                      <Globe className="size-4 mr-4" aria-hidden="true" />
                     ) : (
-                      <Lock className="h-4 w-4 mr-4" aria-hidden="true" />
+                      <Lock className="size-4 mr-4" aria-hidden="true" />
                     )}
                     {isPublic
                       ? t("cloud.agentCard.public", { defaultValue: "Public" })
@@ -757,16 +753,16 @@ function AgentCardInner({
                     onClick={handleCopyShareLink}
                     className="cursor-pointer"
                   >
-                    <LinkIcon className="h-4 w-4 mr-2" />
+                    <LinkIcon className="size-4 mr-2" />
                     {t("cloud.agentCard.share", { defaultValue: "Share" })}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleDeleteClick}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                  className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                 >
-                  <Trash2 className="h-4 w-4 mr-2 text-red-500" />
+                  <Trash2 className="size-4 mr-2 text-destructive" />
                   {t("cloud.agentCard.delete", { defaultValue: "Delete" })}
                 </DropdownMenuItem>
               </>
@@ -776,7 +772,7 @@ function AgentCardInner({
                   onClick={handleDuplicate}
                   className="cursor-pointer"
                 >
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy className="size-4 mr-2" />
                   {t("cloud.agentCard.forkAgent", {
                     defaultValue: "Fork Agent",
                   })}
@@ -784,9 +780,9 @@ function AgentCardInner({
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleRemoveSaved}
-                  className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20  "
+                  className="cursor-pointer text-destructive bg-destructive-subtle hover:bg-destructive-subtle/70"
                 >
-                  <X className="h-4 w-4 mr-2 text-red-500" />
+                  <X className="size-4 mr-2 text-destructive" />
                   {t("cloud.agentCard.remove", { defaultValue: "Remove" })}
                 </DropdownMenuItem>
               </>
@@ -834,7 +830,7 @@ function AgentCardInner({
               <AlertDialogAction
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700"
+                className="bg-destructive text-destructive-fg hover:bg-destructive/85"
               >
                 {isDeleting
                   ? t("cloud.agentCard.deleting", {

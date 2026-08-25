@@ -5,12 +5,13 @@
  * usage-event emitter; the small-model default comes from `getSmallModel`.
  */
 import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { assertModelOutputComplete, logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
 import { getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError, sanitizeUrlForLogs } from "../utils/retry";
+import { resolveAnthropicMaxOutputTokens } from "./text";
 
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Analyze this image and respond with:\nTitle: <short title>\nDescription: <detailed description>";
@@ -26,7 +27,7 @@ function parseTitle(content: string): string {
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
-  return firstLine ? firstLine.slice(0, 100) : "Image Analysis";
+  return firstLine ?? "Image Analysis";
 }
 
 function parseDescription(content: string): string {
@@ -67,9 +68,14 @@ export async function handleImageDescription(
             ],
           },
         ],
-        maxOutputTokens: 1_024,
+        maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
       })
     );
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+    });
 
     if (response.usage) {
       emitModelUsageEvent(

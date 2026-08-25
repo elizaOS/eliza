@@ -276,9 +276,14 @@ export class VirtualFilesystemService {
       const snapshot = await this.readSnapshot(entry.name);
       if (snapshot) snapshots.push(snapshot);
     }
-    return snapshots.sort(
-      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-    );
+    return snapshots.sort((a, b) => {
+      const aTime = Date.parse(a.createdAt);
+      const bTime = Date.parse(b.createdAt);
+      const aSafe = Number.isFinite(aTime) ? aTime : 0;
+      const bSafe = Number.isFinite(bTime) ? bTime : 0;
+      if (bSafe !== aSafe) return bSafe - aSafe;
+      return a.id.localeCompare(b.id);
+    });
   }
 
   async diffSnapshots(

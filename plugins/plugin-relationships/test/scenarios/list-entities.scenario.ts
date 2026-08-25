@@ -38,6 +38,11 @@ type R = AgentRuntime & {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "relationships.list-entities",
   title: "Relationships: list entities in the knowledge graph",
   domain: "relationships",

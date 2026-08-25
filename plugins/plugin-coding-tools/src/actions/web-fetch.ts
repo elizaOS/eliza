@@ -12,6 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { stripHtmlRawTextElements, toWellFormedUnicode } from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
@@ -19,8 +20,6 @@ import {
 } from "../lib/format.js";
 import { guardedTextHttpRequest } from "../lib/web-http.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-
-const WEB_FETCH_RESULT_CHARS = 8_000;
 
 /**
  * Capability kill switch, mirroring the agent-runtime WEB_FETCH action:
@@ -70,10 +69,8 @@ function normalizeWhitespace(text: string): string {
 
 export function htmlToReadableText(html: string): string {
   const title = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
-  const withoutNoise = html
+  const withoutNoise = stripHtmlRawTextElements(html)
     .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ");
   const text = withoutNoise
@@ -101,11 +98,32 @@ export function htmlToReadableText(html: string): string {
   return body;
 }
 
+const MAX_JSON_EXTRACT_DEPTH = 16;
+const MAX_JSON_EXTRACT_PATH_LENGTH = 1024;
+const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
+
 function resolveJsonPath(root: unknown, path: string): unknown {
+  if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
+    return undefined;
+  const segments = path.split(".");
+  if (segments.length === 0 || segments.length > MAX_JSON_EXTRACT_DEPTH)
+    return undefined;
   let current = root;
-  for (const segment of path.split(".")) {
+  for (const segment of segments) {
+    if (
+      segment.length === 0 ||
+      segment.length > MAX_JSON_EXTRACT_SEGMENT_LENGTH
+    )
+      return undefined;
     if (current === null || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(current as object, segment);
+    } catch {
+      return undefined;
+    }
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    current = descriptor.value;
   }
   return current;
 }
@@ -124,13 +142,18 @@ function extractBody(
     type.includes("json") ||
     (!type && (trimmed.startsWith("{") || trimmed.startsWith("[")))
   ) {
-    const parsed = JSON.parse(body) as unknown;
-    const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
-    // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
-    // to the full JSON so the model can still read it and pick out what it needs,
-    // rather than surfacing an io_error for a best-effort path hint.
-    const jsonValue = extract && selected === undefined ? parsed : selected;
-    return { value: JSON.stringify(jsonValue), kind: "json" };
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      const selected = extract ? resolveJsonPath(parsed, extract) : parsed;
+      // A fuzzy or unresolved extract path must not hard-fail the fetch: fall back
+      // to the full JSON so the model can still read it and pick out what it needs,
+      // rather than surfacing an io_error for a best-effort path hint.
+      const jsonValue = extract && selected === undefined ? parsed : selected;
+      return { value: JSON.stringify(jsonValue), kind: "json" };
+    } catch {
+      // error-policy:J4 Malformed JSON falls back to raw text extraction rather than failing
+      return { value: body.trim(), kind: "text" };
+    }
   }
   return { value: body.trim(), kind: "text" };
 }
@@ -211,19 +234,15 @@ export const webFetchAction: Action = {
         response.contentType,
         extract,
       );
-      const value =
-        extracted.value.length > WEB_FETCH_RESULT_CHARS
-          ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
-          : extracted.value;
-      return successActionResult(value, {
+      const wellFormed = toWellFormedUnicode(extracted.value);
+      return successActionResult(wellFormed, {
         action: "WEB_FETCH",
         url,
         final_url: response.url,
         status: response.status,
         content_type: response.contentType,
         kind: extracted.kind,
-        truncated:
-          response.truncated || extracted.value.length > WEB_FETCH_RESULT_CHARS,
+        truncated: false,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

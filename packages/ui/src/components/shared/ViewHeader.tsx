@@ -8,11 +8,13 @@ import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { shouldUseHashNavigation } from "../../navigation";
 import { shellHistory } from "../../surface-realm-channel";
+import { Button } from "../ui/button";
 
 /**
  * Return to the combined home/apps surface — the default "back" for any
  * top-level view. `/views` keeps the launcher route stable while rendering the
- * same inline apps region used by chat; `/apps` remains My Apps management.
+ * same inline apps region used by chat; `/apps` deep-links into the Projects
+ * surface's Apps segment (#17031).
  */
 export function navigateBackToLauncher(): void {
   if (typeof window === "undefined") return;
@@ -65,21 +67,17 @@ export function ViewBackButton({
   // footprint; the visual affordance (36px hover chip) lives on the inner span
   // so the resting/hover appearance is unchanged.
   return (
-    <button
+    <Button
       ref={ref}
-      type="button"
+      variant="ghost"
+      size="icon-lg"
       onClick={handleBack}
       aria-label={label}
-      className={cn(
-        "keyboard-focus-surface group -m-1 inline-flex h-11 w-11 items-center justify-center bg-transparent text-txt",
-        className,
-      )}
+      className={cn("keyboard-focus-surface -m-1", className)}
       {...agentProps}
     >
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors group-hover:bg-bg-hover">
-        <ArrowLeft className="h-5 w-5" aria-hidden />
-      </span>
-    </button>
+      <ArrowLeft className="size-5" aria-hidden />
+    </Button>
   );
 }
 

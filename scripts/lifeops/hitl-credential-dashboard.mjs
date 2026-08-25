@@ -24,7 +24,7 @@
  * Secrets never leave the machine and are never echoed: responses carry
  * last-4 masks only, probe details are redacted upstream, and one-click
  * acquisitions (gh CLI token, GitHub device flow, Discord loopback OAuth,
- * headless SIWE cloud login, signal-cli link)
+ * headless SIWE cloud login)
  * run server-side and save without rendering the credential. Zero
  * dependencies: node:http on 127.0.0.1, first free port from 43117, with
  * same-origin JSON POSTs bound to a per-process session token so another local
@@ -107,7 +107,6 @@ const FAMILY_LABELS = {
   telegram: "Telegram",
   discord: "Discord",
   slack: "Slack",
-  signal: "Signal",
   whatsapp: "WhatsApp",
   imessage: "iMessage",
   x: "X",
@@ -164,10 +163,11 @@ function resolveCommit() {
 
 const COMMIT = resolveCommit();
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    this.publicMessage = message;
   }
 }
 
@@ -179,6 +179,23 @@ function tokenMatches(actual, expected) {
     actualBytes.length === expectedBytes.length &&
     timingSafeEqual(actualBytes, expectedBytes)
   );
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
 }
 
 function assertDashboardPost(req) {
@@ -255,7 +272,7 @@ function persistEnvVar(key, value, target) {
   if (typeof key !== "string" || !CONNECTOR_PATH_ENV_NAMES.has(key)) {
     throw new HttpError(
       400,
-      `unknown env name${typeof key === "string" ? `: ${key}` : ""} — only credential names from the CONNECTOR_PATHS registry are writable`,
+      "unknown env name — only credential names from the CONNECTOR_PATHS registry are writable",
     );
   }
   if (typeof value !== "string")
@@ -334,7 +351,7 @@ function pathState(row, fields, slots, probe) {
   const slotFields = slots.flatMap((slot) => slot?.fields ?? []);
   if ([...fields, ...slotFields].some((field) => field.present))
     return "yellow";
-  // Env-less local bridges (Signal Desktop, macOS Messages) are "present" the
+  // Env-less local bridges (macOS Messages) are "present" the
   // moment their availability check passes — there is nothing to paste.
   if (fields.length === 0 && slotFields.length === 0) return "yellow";
   return "gray";
@@ -424,7 +441,7 @@ function buildStatusPayload() {
 
 function pathById(pathId) {
   const row = CONNECTOR_PATHS.find((path) => path.id === pathId);
-  if (!row) throw new HttpError(404, `unknown auth path: ${pathId}`);
+  if (!row) throw new HttpError(404, "unknown auth path");
   return row;
 }
 
@@ -645,9 +662,9 @@ async function handleDiscordOAuthCallback(url, res) {
     "Cache-Control": "no-store",
   });
   res.end(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>` +
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
       `<style>body{margin:0;background:#101014;color:#e8e6e3;font:15px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}main{max-width:26rem;padding:1rem;text-align:center}h1{font-size:1.1rem}</style>` +
-      `</head><body><main><h1>${title}</h1><p>${note}</p><p>You can close this tab.</p></main></body></html>`,
+      `</head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(note)}</p><p>You can close this tab.</p></main></body></html>`,
   );
 }
 
@@ -711,71 +728,6 @@ async function handleSiweLogin(body) {
   };
 }
 
-// signal-cli link prints the pairing URI within seconds, then must stay alive
-// for the phone scan to complete — so this resolves on the URI and leaves the
-// child running inside a bounded scan window.
-const SIGNAL_LINK_URI_WAIT_MS = 20_000;
-const SIGNAL_LINK_SCAN_WINDOW_MS = 180_000;
-
-function handleSignalLink() {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn("signal-cli", ["link", "-n", "eliza-hitl-dashboard"], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    let settled = false;
-    const settle = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(uriTimer);
-      fn(value);
-    };
-    const uriTimer = setTimeout(() => {
-      child.kill("SIGKILL");
-      settle(
-        rejectPromise,
-        new HttpError(
-          502,
-          `signal-cli link emitted no URI within ${SIGNAL_LINK_URI_WAIT_MS / 1000}s: ${output.trim().slice(-300)}`,
-        ),
-      );
-    }, SIGNAL_LINK_URI_WAIT_MS);
-    const scanWindow = setTimeout(
-      () => child.kill("SIGKILL"),
-      SIGNAL_LINK_SCAN_WINDOW_MS,
-    );
-    scanWindow.unref();
-    const onData = (chunk) => {
-      output += chunk;
-      const match = /(sgnl:\/\/linkdevice\S+)/.exec(output);
-      if (match) {
-        settle(resolvePromise, {
-          ok: true,
-          uri: match[1],
-          note: `scan from the phone (Signal → Settings → Linked devices → Link new device); pairing window stays open ${SIGNAL_LINK_SCAN_WINDOW_MS / 60_000} minutes`,
-        });
-      }
-    };
-    child.stdout.on("data", onData);
-    child.stderr.on("data", onData);
-    child.on("error", (error) => {
-      settle(
-        rejectPromise,
-        new HttpError(502, `signal-cli spawn failed: ${error.message}`),
-      );
-    });
-    child.on("close", (status) => {
-      settle(
-        rejectPromise,
-        new HttpError(
-          502,
-          `signal-cli link exited (status ${status}) before emitting a URI: ${output.trim().slice(-300)}`,
-        ),
-      );
-    });
-  });
-}
-
 // --- HTTP plumbing -------------------------------------------------------------------
 
 function sendJson(res, status, payload) {
@@ -784,6 +736,46 @@ function sendJson(res, status, payload) {
     "Cache-Control": "no-store",
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+/** Maps request failures to the dashboard's non-diagnostic HTTP envelope. */
+export function dashboardErrorResponse(error) {
+  let status = 500;
+  let publicMessage = "Credential dashboard request failed";
+  try {
+    if (error instanceof HttpError) {
+      status =
+        Number.isInteger(error.status) &&
+        error.status >= 400 &&
+        error.status <= 599
+          ? error.status
+          : 500;
+      if (status < 500) {
+        const redacted = redactSecrets(error.publicMessage);
+        const clipped =
+          redacted.length > 512
+            ? `${redacted.slice(0, 512)}…[truncated]`
+            : redacted;
+        publicMessage = Array.from(clipped, (character) => {
+          const code = character.codePointAt(0) ?? 0;
+          return code <= 0x1f ||
+            (code >= 0x7f && code <= 0x9f) ||
+            (code >= 0x2028 && code <= 0x202e) ||
+            (code >= 0x2066 && code <= 0x2069)
+            ? `\\u{${code.toString(16)}}`
+            : character;
+        }).join("");
+      }
+    }
+  } catch {
+    // error-policy:J1 hostile thrown values remain a generic 500 response.
+    status = 500;
+    publicMessage = "Credential dashboard request failed";
+  }
+  return {
+    status,
+    body: { error: publicMessage },
+  };
 }
 
 async function readJsonBody(req) {
@@ -881,11 +873,7 @@ async function handle(req, res) {
     sendJson(res, 200, await handleSiweLogin(await readJsonBody(req)));
     return;
   }
-  if (req.method === "POST" && url.pathname === "/api/oneclick/signal-link") {
-    sendJson(res, 200, await handleSignalLink());
-    return;
-  }
-  throw new HttpError(404, `no route: ${req.method} ${url.pathname}`);
+  throw new HttpError(404, "route not found");
 }
 
 // --- inline page -----------------------------------------------------------------------
@@ -1184,18 +1172,6 @@ const PAGE_HTML = `<!doctype html>
       });
       controls.push(siwe);
     }
-    if (oc && oc.type === 'shell' && path.id === 'signal.cli') {
-      var link = el('button', null, 'Link via signal-cli');
-      link.title = oc.detail;
-      link.addEventListener('click', function () {
-        busyRun(link, 'linking…', api('POST', '/api/oneclick/signal-link').then(function (payload) {
-          var box = el('p', 'uri-box', payload.uri + ' — ' + payload.note);
-          card.appendChild(box);
-          toast('link URI emitted — scan it from the phone', false);
-        }));
-      });
-      controls.push(link);
-    }
     if (oc && oc.type === 'deep-link' && oc.href) {
       var a = el('a', 'btn', 'Open app settings');
       a.href = oc.href; a.target = '_blank'; a.rel = 'noreferrer';
@@ -1359,11 +1335,11 @@ const IS_MAIN =
 if (IS_MAIN) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
-      // error-policy:J1 transport boundary — every route failure becomes a structured JSON error response.
-      const status = error instanceof HttpError ? error.status : 500;
-      sendJson(res, status, {
-        error: redactSecrets(String(error?.message ?? error)),
-      });
+      // error-policy:J1 transport boundary: retain full diagnostics locally,
+      // but never serialize an unexpected exception into the browser response.
+      console.error("[hitl-dashboard] request failed", error);
+      const response = dashboardErrorResponse(error);
+      sendJson(res, response.status, response.body);
     });
   });
   const port = await listenOnFreePort(server);

@@ -8,7 +8,9 @@
  * MIME `parts` trees are bounded in `gmail-mime-parts.ts` so a hostile nest
  * cannot RangeError ingest.
  */
-import { ElizaError } from "@elizaos/core";
+
+import { Buffer } from "node:buffer";
+import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import {
@@ -51,16 +53,13 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
   "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
-const MAX_GMAIL_RESULTS = 1000;
-const MAX_GMAIL_PAGES = 1_000;
 
 interface GmailPaginationState {
-  pageCount: number;
   seenPageTokens: Set<string>;
 }
 
 function createGmailPaginationState(): GmailPaginationState {
-  return { pageCount: 0, seenPageTokens: new Set<string>() };
+  return { seenPageTokens: new Set<string>() };
 }
 
 // Both searchGmailMessages and getGmailSubscriptionHeaders loop `while
@@ -73,7 +72,6 @@ function nextGmailPageToken(
   state: GmailPaginationState,
   resource: string
 ): string | undefined {
-  state.pageCount += 1;
   if (!value?.trim()) {
     return undefined;
   }
@@ -84,13 +82,6 @@ function nextGmailPageToken(
     throw new ElizaError(`Gmail repeated a ${resource} page token.`, {
       code: "GOOGLE_GMAIL_PAGINATION_LOOP",
       context: { resource },
-      severity: "fatal",
-    });
-  }
-  if (state.pageCount >= MAX_GMAIL_PAGES) {
-    throw new ElizaError(`Gmail ${resource} pagination exceeded ${MAX_GMAIL_PAGES} pages.`, {
-      code: "GOOGLE_GMAIL_PAGINATION_LIMIT_EXCEEDED",
-      context: { maxPages: MAX_GMAIL_PAGES, resource },
       severity: "fatal",
     });
   }
@@ -105,24 +96,41 @@ export class GoogleGmailClient {
     params: GoogleAccountRef & { query: string; limit?: number }
   ): Promise<GoogleMessageSummary[]> {
     const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.searchMessages");
-    const response = await gmail.users.messages.list({
-      userId: "me",
-      q: params.query,
-      maxResults: params.limit ?? 10,
-    });
+    const limit = explicitPositiveLimit(params.limit, "limit");
+    const results: GoogleMessageSummary[] = [];
+    const pagination = createGmailPaginationState();
+    let pageToken: string | undefined;
 
-    const messages = response.data.messages ?? [];
-    return Promise.all(
-      messages
-        .filter((message) => message.id)
-        .map((message) =>
+    while (limit === undefined || results.length < limit) {
+      const response = await gmail.users.messages.list({
+        userId: "me",
+        q: params.query,
+        maxResults:
+          limit === undefined
+            ? GMAIL_LIST_PAGE_SIZE
+            : Math.min(GMAIL_LIST_PAGE_SIZE, limit - results.length),
+        pageToken,
+      });
+      const page = await mapWithConcurrency(
+        (response.data.messages ?? []).filter((message) => message.id),
+        GMAIL_METADATA_CONCURRENCY,
+        (message) =>
           this.getMessageWithClient(gmail, {
             accountId: params.accountId,
             messageId: message.id as string,
             includeBody: false,
           })
-        )
-    );
+      );
+      results.push(...page);
+      if (limit !== undefined && results.length >= limit) {
+        break;
+      }
+      pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
+      if (!pageToken) {
+        break;
+      }
+    }
+    return results;
   }
 
   async getMessage(
@@ -173,17 +181,20 @@ export class GoogleGmailClient {
       ["gmail.read"],
       "gmail.searchGmailMessages"
     );
-    const maxResults = normalizedLimit(params.maxResults, 20, MAX_GMAIL_RESULTS);
+    const maxResults = explicitPositiveLimit(params.maxResults, "maxResults");
     const messages: GoogleGmailMessageSummary[] = [];
     const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
-    while (messages.length < maxResults) {
+    while (maxResults === undefined || messages.length < maxResults) {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: params.query,
         includeSpamTrash: params.includeSpamTrash === true,
-        maxResults: Math.min(GMAIL_LIST_PAGE_SIZE, maxResults - messages.length),
+        maxResults:
+          maxResults === undefined
+            ? GMAIL_LIST_PAGE_SIZE
+            : Math.min(GMAIL_LIST_PAGE_SIZE, maxResults - messages.length),
         pageToken,
       });
       const pageMessages = await mapWithConcurrency(
@@ -206,7 +217,7 @@ export class GoogleGmailClient {
           messages.push(message);
         }
       }
-      if (messages.length >= maxResults) {
+      if (maxResults !== undefined && messages.length >= maxResults) {
         break;
       }
       pageToken = nextGmailPageToken(response.data.nextPageToken, pagination, "message search");
@@ -215,7 +226,7 @@ export class GoogleGmailClient {
       }
     }
 
-    return sortGmailMessages(messages).slice(0, maxResults);
+    return sortGmailMessages(messages);
   }
 
   async getGmailMessage(
@@ -261,7 +272,15 @@ export class GoogleGmailClient {
     return (response.data.messages ?? [])
       .map((message) => mapRichMessage(message, params.selfEmail ?? null))
       .filter((message): message is GoogleGmailMessageSummary => message !== null)
-      .sort((left, right) => Date.parse(left.receivedAt) - Date.parse(right.receivedAt));
+      .sort((left, right) => {
+        const leftTime = Number.isFinite(Date.parse(left.receivedAt))
+          ? Date.parse(left.receivedAt)
+          : 0;
+        const rightTime = Number.isFinite(Date.parse(right.receivedAt))
+          ? Date.parse(right.receivedAt)
+          : 0;
+        return leftTime - rightTime;
+      });
   }
 
   async listGmailUnrespondedThreads(
@@ -273,12 +292,11 @@ export class GoogleGmailClient {
     }
   ): Promise<GoogleGmailUnrespondedThread[]> {
     const olderThanDays = normalizedLimit(params.olderThanDays, 3, 3650);
-    const maxResults = normalizedLimit(params.maxResults, 20, 50);
+    const maxResults = explicitPositiveLimit(params.maxResults, "maxResults");
     const selfEmail = params.selfEmail?.trim().toLowerCase() || null;
     const sentCandidates = await this.searchGmailMessages({
       accountId: params.accountId,
       selfEmail,
-      maxResults: Math.min(Math.max(maxResults * 5, maxResults), 250),
       query: `in:sent older_than:${olderThanDays}d`,
     });
     const seenThreads = new Set<string>();
@@ -336,7 +354,8 @@ export class GoogleGmailClient {
       });
     }
 
-    return threads.sort((left, right) => right.daysWaiting - left.daysWaiting).slice(0, maxResults);
+    const sorted = threads.sort(compareUnrespondedThreads);
+    return maxResults === undefined ? sorted : sorted.slice(0, maxResults);
   }
 
   async modifyGmailMessages(
@@ -439,17 +458,17 @@ export class GoogleGmailClient {
       "gmail.getSubscriptionHeaders"
     );
     const query = params.query?.trim() || SUBSCRIPTION_SCAN_QUERY_DEFAULT;
-    const maxMessages = normalizedLimit(params.maxMessages, 200, MAX_GMAIL_RESULTS);
+    const maxMessages = explicitPositiveLimit(params.maxMessages, "maxMessages");
     const results: GoogleGmailSubscriptionMessageHeaders[] = [];
     const pagination = createGmailPaginationState();
     let pageToken: string | undefined;
 
-    while (results.length < maxMessages) {
+    while (maxMessages === undefined || results.length < maxMessages) {
       const response = await gmail.users.messages.list({
         userId: "me",
         q: query,
         includeSpamTrash: false,
-        maxResults: Math.min(100, maxMessages - results.length),
+        maxResults: maxMessages === undefined ? 100 : Math.min(100, maxMessages - results.length),
         pageToken,
       });
       const batch = await mapWithConcurrency(
@@ -472,7 +491,7 @@ export class GoogleGmailClient {
           results.push(headers);
         }
       }
-      if (results.length >= maxMessages) {
+      if (maxMessages !== undefined && results.length >= maxMessages) {
         break;
       }
       pageToken = nextGmailPageToken(
@@ -641,9 +660,9 @@ function mapRichMessage(
   }
   const headers = message.payload?.headers ?? [];
   const subject = decodeHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
-  const from = parseMailbox(headerValue(headers, "From") || "Unknown sender");
+  const fromMailbox = parseEmailAddresses(headerValue(headers, "From"))[0] ?? null;
   const replyTo = headerValue(headers, "Reply-To");
-  const replyToMailbox = replyTo ? parseMailbox(replyTo) : null;
+  const replyToMailbox = parseEmailAddresses(replyTo)[0] ?? null;
   const to = parseEmailAddresses(headerValue(headers, "To")).map(formatAddressValue);
   const cc = parseEmailAddresses(headerValue(headers, "Cc")).map(formatAddressValue);
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter(Boolean);
@@ -653,7 +672,7 @@ function mapRichMessage(
   const autoSubmitted = headerValue(headers, "Auto-Submitted");
   const triage = classifyReplyNeed({
     labels,
-    fromEmail: from.email,
+    fromEmail: fromMailbox?.email,
     to,
     cc,
     selfEmail,
@@ -666,8 +685,8 @@ function mapRichMessage(
     externalId,
     threadId,
     subject,
-    from: from.name || from.email || "Unknown sender",
-    fromEmail: from.email ? from.email.toLowerCase() : null,
+    from: fromMailbox?.name || fromMailbox?.email || "Unknown sender",
+    fromEmail: fromMailbox?.email ? fromMailbox.email.toLowerCase() : null,
     replyTo: replyToMailbox?.email ?? replyToMailbox?.name ?? null,
     to,
     cc,
@@ -709,20 +728,404 @@ function parseEmailAddresses(value: string | undefined): GoogleEmailAddress[] {
     return [];
   }
 
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
-      if (!match) {
-        return { email: part };
+  const addresses: GoogleEmailAddress[] = [];
+  for (const token of splitAddressList(value)) {
+    const mailbox = parseMailbox(token);
+    if (mailbox) {
+      addresses.push(mailbox);
+    }
+  }
+  return addresses;
+}
+
+const MAX_ADDRESS_HEADER_LENGTH = 512 * 1024;
+const MAX_ADDRESSES_PER_HEADER = 2_048;
+
+// RFC 5322 address lists separate mailboxes with commas, but a comma is only a
+// separator in the base list state. Inside a quoted string, an RFC comment, or
+// an angle-addr route it is ordinary text, and a quoted-pair (`\x`) escapes the
+// next character inside quoted strings and comments. A naive `value.split(",")`
+// — or a scanner that toggles quote state on an escaped quote — cuts the common
+// corporate "Last, First" mailbox in half and manufactures a phantom `"Smith`
+// recipient. This bounded scanner tracks quoted strings, nested comments,
+// quoted-pairs, and angle addresses, splits only in the base state, and fails
+// closed when a context is left unterminated, a group is malformed, or the
+// header exceeds explicit size/address-count limits, so malformed input can
+// never inflate the recipient count or allocate an unbounded DTO.
+function splitAddressList(value: string): string[] {
+  // UTF-8 bytes, not UTF-16 code units, are the resource boundary. The cheap
+  // length test prevents allocating an encoding buffer for obviously oversized
+  // ASCII input; byteLength then closes the multibyte bypass.
+  if (
+    value.length > MAX_ADDRESS_HEADER_LENGTH ||
+    Buffer.byteLength(value, "utf8") > MAX_ADDRESS_HEADER_LENGTH
+  ) {
+    return [];
+  }
+
+  // RFC 5322 2.2.3 folds long header lines as CRLF followed by WSP; the
+  // continuation is part of the same logical value, not a structural break.
+  // Unfold before scanning so a fold between a display name and its angle-addr
+  // (or inside a quoted string) cannot split the mailbox: `parseMailbox`'s
+  // address regex does not cross line breaks, so an unfolded fold silently
+  // dropped the whole mailbox. Only CRLF/LF directly followed by space or tab
+  // is a fold; a bare line break elsewhere stays malformed and fails closed
+  // below.
+  value = value.replace(/\r?\n(?=[ \t])/g, "");
+
+  const tokens: string[] = [];
+  let current = "";
+  let inQuote = false;
+  let commentDepth = 0;
+  let inAngle = false;
+  let inDomainLiteral = false;
+  let escaped = false;
+  let inGroup = false;
+  let needsGroupSeparator = false;
+
+  const pushCurrent = (): boolean => {
+    const token = current.trim();
+    current = "";
+    if (!token) {
+      return true;
+    }
+    if (tokens.length >= MAX_ADDRESSES_PER_HEADER) {
+      return false;
+    }
+    tokens.push(token);
+    return true;
+  };
+
+  for (const char of value) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if ((inQuote || commentDepth > 0 || inDomainLiteral) && char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (inQuote) {
+      if (char === '"') {
+        inQuote = false;
       }
-      return {
-        name: match[1]?.trim() || undefined,
-        email: match[2].trim(),
-      };
-    });
+      current += char;
+      continue;
+    }
+    if (commentDepth > 0) {
+      if (char === "(") {
+        commentDepth += 1;
+      } else if (char === ")") {
+        commentDepth -= 1;
+      }
+      current += char;
+      continue;
+    }
+    if (inDomainLiteral) {
+      if (char === "]") {
+        inDomainLiteral = false;
+      }
+      current += char;
+      continue;
+    }
+    if (needsGroupSeparator) {
+      if (/\s/.test(char)) {
+        current += char;
+        continue;
+      }
+      if (char === "(") {
+        commentDepth += 1;
+        current += char;
+        continue;
+      }
+      if (char === ",") {
+        current = "";
+        needsGroupSeparator = false;
+        continue;
+      }
+      return [];
+    }
+    if (char === '"') {
+      inQuote = true;
+      current += char;
+      continue;
+    }
+    if (char === "(") {
+      commentDepth += 1;
+      current += char;
+      continue;
+    }
+    if (char === "[") {
+      inDomainLiteral = true;
+      current += char;
+      continue;
+    }
+    if (char === "<") {
+      if (inAngle) {
+        return [];
+      }
+      inAngle = true;
+      current += char;
+      continue;
+    }
+    if (char === ">") {
+      if (!inAngle) {
+        return [];
+      }
+      inAngle = false;
+      current += char;
+      continue;
+    }
+    if (char === ":" && !inAngle) {
+      if (inGroup || !isPlausibleGroupLabel(current)) {
+        return [];
+      }
+      inGroup = true;
+      current = "";
+      continue;
+    }
+    if (char === ";" && !inAngle) {
+      if (!inGroup || !pushCurrent()) {
+        return [];
+      }
+      inGroup = false;
+      needsGroupSeparator = true;
+      continue;
+    }
+    if (char === "," && !inAngle) {
+      if (!pushCurrent()) {
+        return [];
+      }
+      continue;
+    }
+    current += char;
+  }
+
+  if (inQuote || commentDepth > 0 || inAngle || inDomainLiteral || escaped || inGroup) {
+    return [];
+  }
+  if (needsGroupSeparator) {
+    return tokens;
+  }
+  return pushCurrent() ? tokens : [];
+}
+
+function isPlausibleGroupLabel(value: string): boolean {
+  const label = stripMailboxComments(value).trim();
+  if (!label) {
+    return false;
+  }
+  let inQuote = false;
+  let escaped = false;
+  let hasContent = false;
+  for (const char of label) {
+    if (escaped) {
+      escaped = false;
+      hasContent = true;
+      continue;
+    }
+    if (inQuote && char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (!inQuote && /[()<>@,;:\\[\]]/.test(char)) {
+      return false;
+    }
+    if (!/\s/.test(char)) {
+      hasContent = true;
+    }
+  }
+  return hasContent && !inQuote && !escaped;
+}
+
+// Remove RFC 5322 comments (`(...)`, nestable, with quoted-pair escapes) from a
+// mailbox token without disturbing text inside a quoted string. Comments are
+// structural whitespace and never part of the display name or addr-spec, so a
+// comma-bearing comment like `(Team, West)` must not survive into the parsed
+// address.
+function stripMailboxComments(value: string): string {
+  let result = "";
+  let inQuote = false;
+  let commentDepth = 0;
+  let inDomainLiteral = false;
+  let escaped = false;
+  for (const char of value) {
+    if (escaped) {
+      if (commentDepth === 0) {
+        result += char;
+      }
+      escaped = false;
+      continue;
+    }
+    if ((inQuote || commentDepth > 0 || inDomainLiteral) && char === "\\") {
+      if (commentDepth === 0) {
+        result += char;
+      }
+      escaped = true;
+      continue;
+    }
+    if (inQuote) {
+      if (char === '"') {
+        inQuote = false;
+      }
+      result += char;
+      continue;
+    }
+    if (commentDepth > 0) {
+      if (char === "(") {
+        commentDepth += 1;
+      } else if (char === ")") {
+        commentDepth -= 1;
+      }
+      continue;
+    }
+    if (inDomainLiteral) {
+      result += char;
+      if (char === "]") {
+        inDomainLiteral = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inQuote = true;
+      result += char;
+      continue;
+    }
+    if (char === "(") {
+      commentDepth += 1;
+      continue;
+    }
+    if (char === "[") {
+      inDomainLiteral = true;
+      result += char;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
+// A conservative addr-spec check so an arbitrary fragment (a truncated `"Smith`,
+// a bare display name) is never presented as an email. Requires a single `@`
+// with a non-empty dot-atom or quoted local part and a dot-atom or
+// bracketed-literal domain, and no structural characters that only belong to
+// display names, groups, or comments.
+function isPlausibleEmailAddress(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+  const at = findAddressSeparator(value);
+  if (at <= 0 || at === value.length - 1) {
+    return false;
+  }
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!isPlausibleLocalPart(local)) {
+    return false;
+  }
+  if (isBracketedDomainLiteral(domain)) {
+    return true;
+  }
+  if (/[\s",()<>[\]\\@:;]/.test(domain)) {
+    return false;
+  }
+  return !domain.startsWith(".") && !domain.endsWith(".") && !domain.includes("..");
+}
+
+function findAddressSeparator(value: string): number {
+  let separator = -1;
+  let inQuote = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (inQuote && char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (char === "@" && !inQuote) {
+      if (separator !== -1) {
+        return -1;
+      }
+      separator = index;
+    }
+  }
+  return inQuote || escaped ? -1 : separator;
+}
+
+function isPlausibleLocalPart(value: string): boolean {
+  if (value.startsWith('"') || value.endsWith('"')) {
+    if (!(value.length >= 2 && value.startsWith('"') && value.endsWith('"'))) {
+      return false;
+    }
+    let escaped = false;
+    for (let index = 1; index < value.length - 1; index += 1) {
+      const char = value[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === '"' || char === "\r" || char === "\n") {
+        return false;
+      }
+    }
+    return !escaped;
+  }
+  if (/[\s",()<>[\]\\@:;]/.test(value)) {
+    return false;
+  }
+  return !value.startsWith(".") && !value.endsWith(".") && !value.includes("..");
+}
+
+function isBracketedDomainLiteral(value: string): boolean {
+  if (!value.startsWith("[") || !value.endsWith("]")) {
+    return false;
+  }
+  let escaped = false;
+  for (let index = 1; index < value.length - 1; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "[") {
+      return false;
+    }
+    if (char === "]") {
+      return false;
+    }
+  }
+  return !escaped;
+}
+
+// Unquote and unescape an RFC 5322 quoted-string display name, preserving any
+// commas or quotes that the quoted-pair rules protected.
+function unquoteDisplayName(name: string): string {
+  if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) {
+    return name.slice(1, -1).replace(/\\(.)/g, "$1").trim();
+  }
+  return name.replace(/^"|"$/g, "").trim();
 }
 
 function collectMessageBody(
@@ -787,6 +1190,19 @@ function normalizedLimit(value: number | undefined, fallback: number, max: numbe
   return Math.min(Math.trunc(value), max);
 }
 
+function explicitPositiveLimit(value: number | undefined, field: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Number.isFinite(value) || value <= 0 || !Number.isInteger(value)) {
+    throw new ElizaError(`Gmail ${field} must be a positive integer.`, {
+      code: "GOOGLE_GMAIL_LIMIT_INVALID",
+      context: { field, value },
+    });
+  }
+  return value;
+}
+
 async function mapWithConcurrency<T, TResult>(
   items: readonly T[],
   concurrency: number,
@@ -812,7 +1228,20 @@ async function mapWithConcurrency<T, TResult>(
   return results;
 }
 
-function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMessageSummary[] {
+export function compareUnrespondedThreads(
+  a: GoogleGmailUnrespondedThread,
+  b: GoogleGmailUnrespondedThread
+): number {
+  const rightWaiting =
+    typeof b.daysWaiting === "number" && Number.isFinite(b.daysWaiting) ? b.daysWaiting : 0;
+  const leftWaiting =
+    typeof a.daysWaiting === "number" && Number.isFinite(a.daysWaiting) ? a.daysWaiting : 0;
+  return rightWaiting - leftWaiting || a.threadId.localeCompare(b.threadId);
+}
+
+export function sortGmailMessages(
+  messages: GoogleGmailMessageSummary[]
+): GoogleGmailMessageSummary[] {
   return [...messages].sort((left, right) => {
     if (left.isImportant !== right.isImportant) {
       return right.isImportant ? 1 : -1;
@@ -823,19 +1252,42 @@ function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMe
     if (left.isUnread !== right.isUnread) {
       return right.isUnread ? 1 : -1;
     }
-    return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+    const rightTime =
+      typeof right.receivedAt === "string" && Number.isFinite(Date.parse(right.receivedAt))
+        ? Date.parse(right.receivedAt)
+        : 0;
+    const leftTime =
+      typeof left.receivedAt === "string" && Number.isFinite(Date.parse(left.receivedAt))
+        ? Date.parse(left.receivedAt)
+        : 0;
+    return rightTime - leftTime || left.externalId.localeCompare(right.externalId);
   });
 }
 
-function parseMailbox(value: string): GoogleEmailAddress {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^(.*?)(?:<([^>]+)>)$/);
-  if (match) {
-    const name = (match[1] ?? "").trim().replace(/^"|"$/g, "");
-    const email = (match[2] ?? "").trim();
-    return { name: name || undefined, email };
+// Parse a single RFC 5322 mailbox token into a validated address. An angle-addr
+// (`Display Name <local@domain>`) yields the name and the bracketed addr-spec;
+// a bare token is accepted only when it is itself a plausible addr-spec. RFC
+// comments are stripped and quoted display names unquoted. A token with no
+// plausible email resolves to `null` so callers never present an arbitrary
+// fragment as an email address.
+function parseMailbox(value: string): GoogleEmailAddress | null {
+  const withoutComments = stripMailboxComments(value).trim();
+  if (!withoutComments) {
+    return null;
   }
-  return { email: trimmed };
+  const match = withoutComments.match(/^(.*?)<([^<>]+)>\s*$/);
+  if (match) {
+    const name = unquoteDisplayName((match[1] ?? "").trim());
+    const email = (match[2] ?? "").trim();
+    if (!isPlausibleEmailAddress(email)) {
+      return null;
+    }
+    return name ? { email, name } : { email };
+  }
+  if (isPlausibleEmailAddress(withoutComments)) {
+    return { email: withoutComments };
+  }
+  return null;
 }
 
 function formatAddressValue(address: GoogleEmailAddress): string {
@@ -1036,9 +1488,7 @@ function extractGoogleGmailBodyByMime(
 
 function htmlToPlainText(value: string): string {
   return decodeHtmlEntities(
-    value
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+    stripHtmlRawTextElements(value)
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
       .replace(/<(?:li)[^>]*>/gi, "- ")

@@ -12,8 +12,8 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
 import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
@@ -28,7 +28,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   const rawBody = await c.req.text();
   const signature = c.req.header("stripe-signature") ?? null;
 

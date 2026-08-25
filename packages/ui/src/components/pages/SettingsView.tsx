@@ -17,7 +17,9 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
+import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
@@ -26,6 +28,7 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
@@ -169,10 +172,10 @@ function SettingsSectionFallback({
         {error.message}
       </p>
       <Button
-        variant="outline"
-        size="sm"
+        variant="outlineAccent"
+        size="regularCompact"
         onClick={onRetry}
-        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </Button>
@@ -206,7 +209,7 @@ function SettingsSectionSurfaceAnchor({
     onActivate: () => onSelect(section.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       aria-hidden
@@ -236,6 +239,42 @@ export function SettingsView({
   navigatePayload?: unknown;
   navigateSequence?: number;
 } = {}) {
+  // Gate: explicitly cloud-only desktop builds render the consolidated
+  // CloudSettingsPanel instead of the legacy registry-driven view. Managed
+  // Cloud web runtimes also resolve cloudOnly branding in production, so the
+  // branding flag alone cannot distinguish them; the Electrobun runtime check
+  // keeps web and mobile cloud builds on the legacy view and its Cloud
+  // sections. This check lives in a thin wrapper so each branch has its own
+  // hook tree — an early return inside the legacy body would trigger React
+  // error #300 (hooks-count mismatch) if the boot config settles after first
+  // render.
+  const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
+
+  if (cloudOnlyBranding && !inModal && isElectrobunRuntime()) {
+    return <CloudSettingsPanel />;
+  }
+  return (
+    <LegacySettingsView
+      inModal={inModal}
+      initialSection={initialSection}
+      navigatePayload={navigatePayload}
+      navigateSequence={navigateSequence}
+    />
+  );
+}
+
+function LegacySettingsView({
+  inModal,
+  initialSection,
+  navigatePayload,
+  navigateSequence = 0,
+}: {
+  inModal?: boolean;
+  onClose?: () => void;
+  initialSection?: string;
+  navigatePayload?: unknown;
+  navigateSequence?: number;
+} = {}) {
   const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
     t: s.t,
     loadPlugins: s.loadPlugins,
@@ -243,7 +282,9 @@ export function SettingsView({
   }));
   const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
-  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
+  const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
+  const managedCloudRuntime =
+    isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   useSyncExternalStore(
@@ -441,6 +482,9 @@ export function SettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
+        className={cn(
+          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
+        )}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
@@ -448,8 +492,10 @@ export function SettingsView({
         <div
           data-testid="settings-shell"
           className={cn(
-            "flex min-h-full w-full",
-            isDesktop ? "flex-row" : "flex-col",
+            "flex w-full",
+            isDesktop
+              ? "min-h-full flex-row"
+              : "h-full min-h-0 flex-col overflow-hidden",
           )}
         >
           {/* Agent-surface anchors: the agent addresses every section by
@@ -466,7 +512,14 @@ export function SettingsView({
             ))}
           </div>
 
-          <div className="min-w-0 flex-1 pb-32">
+          <div
+            className={cn(
+              "min-w-0 flex-1",
+              isDesktop
+                ? "pb-32"
+                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+            )}
+          >
             {isDesktop ? (
               <main
                 data-testid="desktop-settings-work-area"

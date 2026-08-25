@@ -1,4 +1,7 @@
-// Coordinates cloud service provisioning job types behavior behind route handlers.
+/**
+ * Defines provisioning job wire values and the canonical lifecycle metadata
+ * consumed by enqueue admission, workers, recovery, and daemon lane routing.
+ */
 export const JOB_TYPES = {
   AGENT_PROVISION: "agent_provision",
   AGENT_DELETE: "agent_delete",
@@ -109,6 +112,7 @@ interface AgentLifecycleJobMetadata {
   exclusive: boolean;
   coldBoot: boolean;
   ownsProvisioningStatus: boolean;
+  requiresContainerBackedTarget: boolean;
 }
 
 export const AGENT_LIFECYCLE_JOB_METADATA = [
@@ -117,78 +121,91 @@ export const AGENT_LIFECYCLE_JOB_METADATA = [
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: true,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_DELETE,
     exclusive: true,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: false,
   },
   {
     type: JOB_TYPES.AGENT_SUSPEND,
     exclusive: true,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_RESUME,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: true,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_RESTART,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: true,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_LOGS,
     exclusive: false,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_MESSAGE,
     exclusive: false,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: false,
   },
   {
     type: JOB_TYPES.AGENT_SNAPSHOT,
     exclusive: false,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_UPGRADE,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_DOWNGRADE,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_SLEEP,
     exclusive: true,
     coldBoot: false,
     ownsProvisioningStatus: false,
+    requiresContainerBackedTarget: true,
   },
   {
     type: JOB_TYPES.AGENT_WAKE,
     exclusive: true,
     coldBoot: true,
     ownsProvisioningStatus: true,
+    requiresContainerBackedTarget: true,
   },
 ] as const satisfies readonly AgentLifecycleJobMetadata[];
 
@@ -230,6 +247,22 @@ export const PROVISIONING_STATUS_OWNER_JOB_TYPES: ReadonlySet<ProvisioningJobTyp
     ({ type }) => type,
   ),
 );
+
+/**
+ * Agent jobs whose target must own a dedicated container. This explicit
+ * metadata-derived set deliberately leaves shared-runtime message delivery
+ * and logical deletion available without enrolling future job types by
+ * default.
+ */
+export const CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set(
+  AGENT_LIFECYCLE_JOB_METADATA.filter(({ requiresContainerBackedTarget }) =>
+    Boolean(requiresContainerBackedTarget),
+  ).map(({ type }) => type),
+);
+
+export function requiresContainerBackedTarget(jobType: string): boolean {
+  return CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES.has(jobType as ProvisioningJobType);
+}
 
 export const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
 export const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;

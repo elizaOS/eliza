@@ -335,6 +335,56 @@ describe("installPlugin approval boundary", () => {
     });
     expect(mkdir).not.toHaveBeenCalled();
   });
+
+  it("rejects a canonical package from a different explicit scope before filesystem or process effects", async () => {
+    await useIsolatedState();
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({
+        name: "@attacker/plugin-x",
+        npm: {
+          package: "@attacker/plugin-x",
+          v0Version: null,
+          v1Version: null,
+          v2Version: "2.4.1",
+        },
+      }),
+    );
+    const mkdir = vi.spyOn(fs, "mkdir");
+
+    const result = await installPlugin("@elizaos/plugin-x");
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/scope.*does not match/i),
+    });
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects same-scope package drift for an explicit request before effects", async () => {
+    await useIsolatedState();
+    vi.spyOn(registryClient, "getPluginInfo").mockResolvedValue(
+      registryInfo({
+        name: "@elizaos/plugin-y",
+        npm: {
+          package: "@elizaos/plugin-y",
+          v0Version: null,
+          v1Version: null,
+          v2Version: "2.4.1",
+        },
+      }),
+    );
+    const mkdir = vi.spyOn(fs, "mkdir");
+
+    const result = await installPlugin("@elizaos/plugin-x");
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/package.*does not match/i),
+    });
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("package-manager lock provenance", () => {

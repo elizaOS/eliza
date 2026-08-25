@@ -47,8 +47,41 @@ interface ActiveTurn {
 	reason?: string;
 }
 
+// Async-context turn tracking is Node-only, mirroring streaming-context's
+// lazy AsyncLocalStorage pattern so the edge bundle carries no node:async_hooks
+// import. Without it (non-Node), abortTurn cannot identify the calling turn
+// and aborts every turn in the room.
+type TurnStorage =
+	| import("node:async_hooks").AsyncLocalStorage<ActiveTurn>
+	| null;
+let currentTurnStorage: TurnStorage = null;
+let currentTurnStorageInitialized = false;
+
+function getCurrentTurnStorage(): TurnStorage {
+	if (!currentTurnStorageInitialized) {
+		currentTurnStorageInitialized = true;
+		if (
+			typeof process !== "undefined" &&
+			typeof process.versions !== "undefined" &&
+			typeof process.versions.node !== "undefined"
+		) {
+			try {
+				// eslint-disable-next-line @typescript-eslint/no-require-imports
+				const { AsyncLocalStorage } =
+					require("node:async_hooks") as typeof import("node:async_hooks");
+				currentTurnStorage = new AsyncLocalStorage();
+			} catch {
+				// error-policy:J4 Turn-context storage is optional outside Node;
+				// null explicitly disables in-turn self-exclusion.
+				currentTurnStorage = null;
+			}
+		}
+	}
+	return currentTurnStorage;
+}
+
 export class TurnControllerRegistry {
-	private active = new Map<string, ActiveTurn>();
+	private active = new Map<string, ActiveTurn[]>();
 	private listeners = new Set<(event: TurnEvent) => void>();
 
 	/**
@@ -57,9 +90,8 @@ export class TurnControllerRegistry {
 	 * (normally, throwing, or aborted), the controller is removed from the
 	 * registry.
 	 *
-	 * Concurrent turns for the SAME `roomId` are allowed by this registry — it
-	 * just records the latest. Use `RoomHandlerQueue` to enforce one-at-a-time
-	 * per room.
+	 * Concurrent turns for the SAME `roomId` are all tracked. Use
+	 * `RoomHandlerQueue` to enforce one-at-a-time per room where needed.
 	 */
 	async runWith<T>(
 		roomId: string,
@@ -71,10 +103,15 @@ export class TurnControllerRegistry {
 			controller,
 			startedAt: Date.now(),
 		};
-		this.active.set(roomId, turn);
+		const turns = this.active.get(roomId) ?? [];
+		turns.push(turn);
+		this.active.set(roomId, turns);
 		this.emit({ type: "started", roomId, startedAt: turn.startedAt });
+		const storage = getCurrentTurnStorage();
 		try {
-			const result = await fn(controller.signal);
+			const result = storage
+				? await storage.run(turn, () => fn(controller.signal))
+				: await fn(controller.signal);
 			this.emit({
 				type: "completed",
 				roomId,
@@ -101,24 +138,43 @@ export class TurnControllerRegistry {
 			}
 			throw error;
 		} finally {
-			if (this.active.get(roomId) === turn) {
+			const remaining = (this.active.get(roomId) ?? []).filter(
+				(t) => t !== turn,
+			);
+			if (remaining.length > 0) {
+				this.active.set(roomId, remaining);
+			} else {
 				this.active.delete(roomId);
 			}
 		}
 	}
 
 	/**
-	 * Abort the active turn for `roomId`. No-op if there's no active turn.
-	 * Returns true if a turn was aborted.
+	 * Abort the active turns for `roomId`. When called from inside a turn
+	 * (async context under `runWith`), that calling turn is excluded — an
+	 * abort evaluator kills the work the user wants stopped, not the turn
+	 * that is processing the stop request. Out-of-band callers (HTTP stop
+	 * route, lifecycle handlers) have no current turn and abort everything.
+	 * Returns true if at least one turn was aborted.
 	 */
 	abortTurn(roomId: string, reason: string): boolean {
-		const turn = this.active.get(roomId);
-		if (!turn) return false;
-		if (turn.controller.signal.aborted) return false;
-		turn.reason = reason;
-		turn.controller.abort(new TurnAbortedError(reason));
-		this.emit({ type: "aborted", roomId, reason });
-		return true;
+		// In-turn callers (threadOps' Stage-1 abort evaluator) are excluded so
+		// a cancel message aborts the work the user wants stopped, never the
+		// turn processing the cancel. With the previous latest-only map that
+		// evaluator could only ever find its own controller and self-aborted
+		// (live 2026-08-19: "cancel all ur running coding tasks" → errored
+		// turn, nothing delivered).
+		const self = getCurrentTurnStorage()?.getStore();
+		let aborted = false;
+		for (const turn of this.active.get(roomId) ?? []) {
+			if (turn === self) continue;
+			if (turn.controller.signal.aborted) continue;
+			turn.reason = reason;
+			turn.controller.abort(new TurnAbortedError(reason));
+			aborted = true;
+		}
+		if (aborted) this.emit({ type: "aborted", roomId, reason });
+		return aborted;
 	}
 
 	/**
@@ -129,8 +185,18 @@ export class TurnControllerRegistry {
 	 */
 	abortAllTurns(reason: string): string[] {
 		const aborted: string[] = [];
-		for (const roomId of Array.from(this.active.keys())) {
-			if (this.abortTurn(roomId, reason)) {
+		for (const [roomId, turns] of Array.from(this.active.entries())) {
+			let roomAborted = false;
+			// Lifecycle shutdown spares nothing — including the caller's own
+			// turn, unlike abortTurn's in-turn self-exclusion.
+			for (const turn of turns) {
+				if (turn.controller.signal.aborted) continue;
+				turn.reason = reason;
+				turn.controller.abort(new TurnAbortedError(reason));
+				roomAborted = true;
+			}
+			if (roomAborted) {
+				this.emit({ type: "aborted", roomId, reason });
 				aborted.push(roomId);
 			}
 		}
@@ -153,9 +219,16 @@ export class TurnControllerRegistry {
 	/**
 	 * Returns the AbortSignal for the active turn on `roomId`, or null. Used
 	 * by long-running tools that want to check abort status mid-execution.
+	 * Inside a turn this is the caller's own signal; out-of-band it is the
+	 * newest turn's signal.
 	 */
 	signalFor(roomId: string): AbortSignal | null {
-		return this.active.get(roomId)?.controller.signal ?? null;
+		const self = getCurrentTurnStorage()?.getStore();
+		if (self && self.roomId === roomId) return self.controller.signal;
+		const turns = this.active.get(roomId);
+		return turns && turns.length > 0
+			? turns[turns.length - 1].controller.signal
+			: null;
 	}
 
 	/**

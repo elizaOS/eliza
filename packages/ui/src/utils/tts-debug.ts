@@ -22,6 +22,8 @@ type RuntimeImportMeta = ImportMeta & {
   env?: Record<string, unknown>;
 };
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {
     if (raw == null) return false;
@@ -60,8 +62,9 @@ export function ttsDebugTextPreview(
   maxChars: number = DEFAULT_PREVIEW_MAX,
 ): string {
   const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
-  if (singleLine.length <= maxChars) return singleLine;
-  return `${singleLine.slice(0, maxChars)}…`;
+  const wellFormed = toWellFormedUnicode(singleLine);
+  if (wellFormed.length <= maxChars) return wellFormed;
+  return `${truncateWellFormed(wellFormed, maxChars)}…`;
 }
 
 function serializeTtsDebugDetail(detail: Record<string, unknown>): string {

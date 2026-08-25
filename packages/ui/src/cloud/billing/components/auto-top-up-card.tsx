@@ -341,7 +341,7 @@ export function AutoTopUpCard() {
         >
           <div className="flex min-w-0 items-start gap-3">
             <AlertCircle
-              className="mt-0.5 h-5 w-5 shrink-0 text-danger"
+              className="mt-0.5 size-5 shrink-0 text-danger"
               aria-hidden="true"
             />
             <div className="min-w-0 space-y-1">
@@ -363,7 +363,6 @@ export function AutoTopUpCard() {
             type="button"
             variant="outline"
             size="sm"
-            className="min-h-touch shrink-0 font-mono"
             disabled={loading}
             aria-busy={loading}
             onClick={() => void load()}
@@ -394,7 +393,7 @@ export function AutoTopUpCard() {
           aria-label={loadingLabel}
         >
           <Loader2
-            className="h-5 w-5 animate-spin text-muted motion-reduce:animate-none"
+            className="size-5 animate-spin text-muted motion-reduce:animate-none"
             aria-hidden="true"
           />
           <span className="sr-only">{loadingLabel}</span>
@@ -422,7 +421,7 @@ export function AutoTopUpCard() {
           <p className="text-pretty text-xs font-mono text-muted">
             {t("cloud.autoTopUp.description", {
               defaultValue:
-                "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
+                "Automatically charge your saved card when credits dip below the threshold.",
             })}
           </p>
         </div>
@@ -451,7 +450,7 @@ export function AutoTopUpCard() {
             className="flex items-start gap-2 border border-status-warning/30 bg-status-warning-bg p-3"
           >
             <Info
-              className="mt-0.5 h-4 w-4 shrink-0 text-status-warning"
+              className="mt-0.5 size-4 shrink-0 text-status-warning"
               aria-hidden="true"
             />
             <p
@@ -516,15 +515,14 @@ export function AutoTopUpCard() {
             onClick={handleSave}
             disabled={saving || !!noPaymentMethod}
             aria-busy={saving}
-            className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
               <Loader2
-                className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                className="size-4 animate-spin motion-reduce:animate-none"
                 aria-hidden="true"
               />
             ) : (
-              <CreditCard className="h-4 w-4" aria-hidden="true" />
+              <CreditCard className="size-4" aria-hidden="true" />
             )}
             {saveLabel}
           </Button>

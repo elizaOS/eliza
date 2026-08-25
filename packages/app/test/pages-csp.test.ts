@@ -30,4 +30,14 @@ describe("Pages CSP", () => {
     expect(csp).toContain("https://api.open-meteo.com");
     expect(csp).not.toContain("https://ipapi.co");
   });
+
+  it("allows the official Telegram script origin and OAuth frame host", () => {
+    const csp = getHeaderLine("Content-Security-Policy");
+    const scriptSrc = csp.match(/script-src ([^;]+);/)?.[1];
+    const frameSrc = csp.match(/frame-src ([^;]+);/)?.[1];
+
+    expect(scriptSrc).toContain("https://telegram.org");
+    expect(scriptSrc).not.toContain("https://*.telegram.org");
+    expect(frameSrc).toContain("https://oauth.telegram.org");
+  });
 });

@@ -322,4 +322,29 @@ describe("meeting ghost transcript analysis", () => {
     expect(analysis.calendarIntents).toHaveLength(0);
     expect(analysis.digestLines).toHaveLength(0);
   });
+
+  it("requires a word boundary before first-person commitment verbs", () => {
+    const analysis = analyzeMeetingGhostTranscript({
+      owner: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "meeting-ghost",
+        careAbouts: [],
+        calendarId: "primary",
+        approvalExpiresAt,
+      },
+      transcript: {
+        meetingId: "joined-subject-words",
+        title: "Standup",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [{ name: "Mira", email: "mira@example.com" }],
+        segments: [
+          seg("Mira", 0, "iwill send the plan tomorrow"),
+          seg("Mira", 5_000, "wewill update the calendar tomorrow"),
+        ],
+      },
+    });
+
+    expect(analysis.commitments).toHaveLength(0);
+  });
 });

@@ -74,6 +74,10 @@ async function expectSeededFactSurfaced(
 export default scenario({
   id: "deterministic-seeded-fact-recall",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Seed and final checks exercise runtime state without model calls.",
+  },
   title:
     "A plain-text memory seed lands as a durable fact the FACTS provider surfaces",
   domain: "scenario-runner",

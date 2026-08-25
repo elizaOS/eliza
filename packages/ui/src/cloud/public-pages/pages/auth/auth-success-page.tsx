@@ -26,6 +26,7 @@ import { getBootConfig } from "../../../../config/boot-config";
 import { ApiError, api, readCloudBearerToken } from "../../../lib/api-client";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
+import { AuthResultShell } from "./auth-result-shell";
 
 /** Hosts that may receive OAuth success redirects but are not Eliza Cloud. */
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
@@ -78,7 +79,7 @@ async function fetchCloudJson<T>(
 
   const headers = new Headers({ Accept: "application/json" });
   if (!options.skipAuth) {
-    const token = readCloudBearerToken();
+    const token = await readCloudBearerToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
@@ -336,7 +337,7 @@ async function verifyProof(args: {
       if (isRetryableApiFailure(error)) {
         return { ok: false, reason: "unavailable" };
       }
-      if (error.status === 401 && readCloudBearerToken()?.trim()) {
+      if (error.status === 401 && (await readCloudBearerToken())?.trim()) {
         try {
           const data = await fetchSuccessProofVerify(args.proof, args.signal, {
             skipAuth: true,
@@ -466,7 +467,7 @@ async function resolveConnectionOwnership(args: {
     }
   | { ok: false; reason: "rejected" | "unauthorized" | "unavailable" }
 > {
-  const hadBearer = Boolean(readCloudBearerToken()?.trim());
+  const hadBearer = Boolean((await readCloudBearerToken())?.trim());
   const first = await verifyConnectionOwnership(args);
   if (first.ok || first.reason !== "unauthorized" || !hadBearer) {
     return first;
@@ -646,78 +647,67 @@ export default function AuthSuccessPage() {
 
   if (view.phase === "pending") {
     return (
-      <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <div className="relative w-full max-w-md bg-card border border-border p-8">
-          <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-bg-muted">
-              <Loader2
-                className="h-7 w-7 animate-spin text-muted"
-                aria-hidden
-              />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-xl font-semibold text-txt">
-                {t("cloud.authSuccess.pendingTitle", {
-                  defaultValue: "Verifying Connection",
-                })}
-              </h1>
-              <p className="text-sm text-muted">
-                {t("cloud.authSuccess.pendingDescription", {
-                  defaultValue: "Confirming this connection with Eliza Cloud…",
-                })}
-              </p>
-            </div>
-          </div>
+      <AuthResultShell>
+        <div className="flex size-14 items-center justify-center bg-bg-muted">
+          <Loader2 className="size-7 animate-spin text-muted" aria-hidden />
         </div>
-      </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold text-txt">
+            {t("cloud.authSuccess.pendingTitle", {
+              defaultValue: "Verifying Connection",
+            })}
+          </h1>
+          <p className="text-sm text-muted">
+            {t("cloud.authSuccess.pendingDescription", {
+              defaultValue: "Confirming this connection with Eliza Cloud…",
+            })}
+          </p>
+        </div>
+      </AuthResultShell>
     );
   }
 
   if (view.phase === "unavailable") {
     return (
-      <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <div className="relative w-full max-w-md bg-card border border-border p-8">
-          <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-bg-muted">
-              <AlertCircle className="h-7 w-7 text-muted" aria-hidden />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-xl font-semibold text-txt">
-                {t("cloud.authSuccess.unavailableTitle", {
-                  defaultValue: "Could Not Reach Eliza Cloud",
-                })}
-              </h1>
-              <p className="text-sm text-muted">
-                {t("cloud.authSuccess.unavailableDescription", {
-                  defaultValue:
-                    "We could not verify this connection because the verification service is temporarily unavailable. Try again in a moment.",
-                })}
-              </p>
-            </div>
-            <div className="w-full space-y-3">
-              <Button
-                onClick={() => window.location.reload()}
-                className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
-                {t("cloud.authSuccess.tryAgain", {
-                  defaultValue: "Try Again",
-                })}
-              </Button>
-              <Button
-                variant="outline"
-                asChild
-                className="w-full h-11 border-border hover:bg-bg-hover"
-              >
-                <Link to="/">
-                  <Home className="h-4 w-4 mr-2" aria-hidden />
-                  {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
-                </Link>
-              </Button>
-            </div>
-          </div>
+      <AuthResultShell>
+        <div className="flex size-14 items-center justify-center bg-bg-muted">
+          <AlertCircle className="size-7 text-muted" aria-hidden />
         </div>
-      </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold text-txt">
+            {t("cloud.authSuccess.unavailableTitle", {
+              defaultValue: "Could Not Reach Eliza Cloud",
+            })}
+          </h1>
+          <p className="text-sm text-muted">
+            {t("cloud.authSuccess.unavailableDescription", {
+              defaultValue:
+                "We could not verify this connection because the verification service is temporarily unavailable. Try again in a moment.",
+            })}
+          </p>
+        </div>
+        <div className="w-full space-y-3">
+          <Button
+            onClick={() => window.location.reload()}
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+          >
+            <RefreshCw className="size-4 mr-2" aria-hidden />
+            {t("cloud.authSuccess.tryAgain", {
+              defaultValue: "Try Again",
+            })}
+          </Button>
+          <Button
+            variant="outline"
+            asChild
+            className="w-full h-11 border-border hover:bg-bg-hover"
+          >
+            <Link to="/">
+              <Home className="size-4 mr-2" aria-hidden />
+              {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
+            </Link>
+          </Button>
+        </div>
+      </AuthResultShell>
     );
   }
 
@@ -734,94 +724,86 @@ export default function AuthSuccessPage() {
           });
 
     return (
-      <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <div className="relative w-full max-w-md bg-card border border-border p-8">
-          <div className="flex flex-col items-center gap-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center bg-destructive-subtle">
-              <AlertCircle className="h-7 w-7 text-destructive" aria-hidden />
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-xl font-semibold text-txt">
-                {t("cloud.authSuccess.unverifiedTitle", {
-                  defaultValue: "Connection Could Not Be Verified",
-                })}
-              </h1>
-              <p className="text-sm text-muted">{description}</p>
-            </div>
-
-            <div className="w-full space-y-3">
-              <Button
-                onClick={() => navigate("/login")}
-                className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" aria-hidden />
-                {t("cloud.authSuccess.backToSignIn", {
-                  defaultValue: "Back to Sign In",
-                })}
-              </Button>
-              <Button
-                variant="outline"
-                asChild
-                className="w-full h-11 border-border hover:bg-bg-hover"
-              >
-                <Link to="/">
-                  <Home className="h-4 w-4 mr-2" aria-hidden />
-                  {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
-                </Link>
-              </Button>
-            </div>
-          </div>
+      <AuthResultShell>
+        <div className="flex size-14 items-center justify-center bg-destructive-subtle">
+          <AlertCircle className="size-7 text-destructive" aria-hidden />
         </div>
-      </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold text-txt">
+            {t("cloud.authSuccess.unverifiedTitle", {
+              defaultValue: "Connection Could Not Be Verified",
+            })}
+          </h1>
+          <p className="text-sm text-muted">{description}</p>
+        </div>
+
+        <div className="w-full space-y-3">
+          <Button
+            onClick={() => navigate("/login")}
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+          >
+            <RefreshCw className="size-4 mr-2" aria-hidden />
+            {t("cloud.authSuccess.backToSignIn", {
+              defaultValue: "Back to Sign In",
+            })}
+          </Button>
+          <Button
+            variant="outline"
+            asChild
+            className="w-full h-11 border-border hover:bg-bg-hover"
+          >
+            <Link to="/">
+              <Home className="size-4 mr-2" aria-hidden />
+              {t("cloud.authSuccess.goHome", { defaultValue: "Go Home" })}
+            </Link>
+          </Button>
+        </div>
+      </AuthResultShell>
     );
   }
 
   const { platformDisplay } = view;
 
   return (
-    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-      <div className="relative w-full max-w-md bg-card border border-border p-8">
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center bg-status-success-bg">
-            <CheckCircle className="h-7 w-7 text-status-success" aria-hidden />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-xl font-semibold text-txt">
-              {t("cloud.authSuccess.platformConnected", {
-                platform: platformDisplay,
-                defaultValue: "{{platform}} Connected",
-              })}
-            </h1>
-            <p className="text-sm text-muted">
-              {t("cloud.authSuccess.platformAccountConnected", {
-                platform: platformDisplay,
-                defaultValue:
-                  "Your {{platform}} account has been connected successfully.",
-              })}
-            </p>
-          </div>
-
-          <p className="text-xs text-muted">
-            {t("cloud.authSuccess.returnToApp", {
-              defaultValue: "Return to the app to continue.",
-            })}
-          </p>
-
-          <div className="w-full">
-            <Button
-              variant="outline"
-              asChild
-              className="w-full h-11 border-border hover:bg-bg-hover"
-            >
-              <Link to="/">
-                {t("cloud.authSuccess.returnToAppCta", {
-                  defaultValue: "Return to App",
-                })}
-              </Link>
-            </Button>
-          </div>
-        </div>
+    <AuthResultShell>
+      <div className="flex size-14 items-center justify-center bg-status-success-bg">
+        <CheckCircle className="size-7 text-status-success" aria-hidden />
       </div>
-    </div>
+      <div className="space-y-2">
+        <h1 className="text-xl font-semibold text-txt">
+          {t("cloud.authSuccess.platformConnected", {
+            platform: platformDisplay,
+            defaultValue: "{{platform}} Connected",
+          })}
+        </h1>
+        <p className="text-sm text-muted">
+          {t("cloud.authSuccess.platformAccountConnected", {
+            platform: platformDisplay,
+            defaultValue:
+              "Your {{platform}} account has been connected successfully.",
+          })}
+        </p>
+      </div>
+
+      <p className="text-xs text-muted">
+        {t("cloud.authSuccess.returnToApp", {
+          defaultValue: "Return to the app to continue.",
+        })}
+      </p>
+
+      <div className="w-full">
+        <Button
+          variant="outline"
+          asChild
+          className="w-full h-11 border-border hover:bg-bg-hover"
+        >
+          <Link to="/">
+            {t("cloud.authSuccess.returnToAppCta", {
+              defaultValue: "Return to App",
+            })}
+          </Link>
+        </Button>
+      </div>
+    </AuthResultShell>
   );
 }

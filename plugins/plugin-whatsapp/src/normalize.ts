@@ -327,19 +327,6 @@ export function chunkWhatsAppText(text: string, opts: ChunkWhatsAppTextOpts = {}
 }
 
 /**
- * Truncates text to a maximum length with ellipsis
- */
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) {
-    return text;
-  }
-  if (maxLength <= 3) {
-    return "...".slice(0, maxLength);
-  }
-  return `${truncateWellFormed(text, maxLength - 3)}...`;
-}
-
-/**
  * Resolves the system location string for logging
  */
 export function resolveWhatsAppSystemLocation(params: {

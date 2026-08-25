@@ -2,7 +2,7 @@
  * `INBOX` umbrella action — cross-channel inbox.
  *
  * The agent's `MESSAGE` umbrella triages per-channel inboxes; INBOX fans out to
- * every connected platform (Gmail, Slack, Discord, Telegram, Signal, iMessage,
+ * every connected platform (Gmail, Slack, Discord, Telegram, iMessage,
  * WhatsApp) and produces a single merged feed for "show me my inbox" style
  * intents.
  *
@@ -85,7 +85,6 @@ const PLATFORMS = [
   "slack",
   "discord",
   "telegram",
-  "signal",
   "imessage",
   "whatsapp",
 ] as const;
@@ -176,7 +175,7 @@ export interface InboxQueueOperationResult {
 export type InboxFetcher = (args: {
   runtime: IAgentRuntime;
   since?: string;
-  limit: number;
+  limit?: number;
   query?: string;
 }) => Promise<readonly InboxItem[]>;
 
@@ -190,7 +189,6 @@ const PLATFORM_TO_MESSAGE_SOURCE: Partial<
   gmail: "gmail",
   discord: "discord",
   telegram: "telegram",
-  signal: "signal",
   imessage: "imessage",
   whatsapp: "whatsapp",
 };
@@ -240,12 +238,12 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
             sources: [source],
             content: query,
             sinceMs: parseSinceMs(since),
-            limit,
+            ...(limit === undefined ? {} : { limit }),
           })
         : await service.triage(runtime, {
             sources: [source],
             sinceMs: parseSinceMs(since),
-            limit,
+            ...(limit === undefined ? {} : { limit }),
           });
       return refs.flatMap((ref) => {
         const item = mapMessageRefToInboxItem(ref);
@@ -268,7 +266,6 @@ const defaultFetchers: InboxFetchers = {
   slack: noopFetcher,
   discord: createDefaultPlatformFetcher("discord"),
   telegram: createDefaultPlatformFetcher("telegram"),
-  signal: createDefaultPlatformFetcher("signal"),
   imessage: createDefaultPlatformFetcher("imessage"),
   whatsapp: createDefaultPlatformFetcher("whatsapp"),
 };
@@ -338,7 +335,23 @@ function dedupeKey(item: InboxItem): string {
   return `id:${item.platform}::${item.id}`;
 }
 
-function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
+export function compareInboxItemsByReceivedAt(
+  a: InboxItem,
+  b: InboxItem,
+): number {
+  const aTime = Date.parse(a.receivedAt);
+  const bTime = Date.parse(b.receivedAt);
+  if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+    return a.id.localeCompare(b.id);
+  }
+  if (Number.isNaN(aTime)) return 1;
+  if (Number.isNaN(bTime)) return -1;
+  return bTime - aTime || a.id.localeCompare(b.id);
+}
+
+export function dedupeAndOrder(
+  items: readonly InboxItem[],
+): readonly InboxItem[] {
   const seen = new Map<string, InboxItem>();
   for (const item of items) {
     const key = dedupeKey(item);
@@ -354,14 +367,7 @@ function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
       seen.set(key, item);
     }
   }
-  return [...seen.values()].sort((a, b) => {
-    const aTime = Date.parse(a.receivedAt);
-    const bTime = Date.parse(b.receivedAt);
-    if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-    if (Number.isNaN(aTime)) return 1;
-    if (Number.isNaN(bTime)) return -1;
-    return bTime - aTime;
-  });
+  return [...seen.values()].sort(compareInboxItemsByReceivedAt);
 }
 
 /**
@@ -375,7 +381,7 @@ async function fetchInboxItems(args: {
   runtime: IAgentRuntime;
   platforms: readonly InboxPlatform[];
   since?: string;
-  limit: number;
+  limit?: number;
   query?: string;
 }): Promise<{
   merged: readonly InboxItem[];
@@ -383,14 +389,14 @@ async function fetchInboxItems(args: {
   degraded: readonly InboxDegradedPlatform[];
   capped: readonly InboxPlatform[];
 }> {
-  const probeLimit = args.limit + 1;
+  const probeLimit = args.limit === undefined ? undefined : args.limit + 1;
   const settled = await Promise.allSettled(
     args.platforms.map(async (platform) => {
       const fetcher = activeFetchers[platform];
       return fetcher({
         runtime: args.runtime,
         ...(args.since ? { since: args.since } : {}),
-        limit: probeLimit,
+        ...(probeLimit === undefined ? {} : { limit: probeLimit }),
         ...(args.query ? { query: args.query } : {}),
       });
     }),
@@ -402,7 +408,8 @@ async function fetchInboxItems(args: {
     const platform = args.platforms[index];
     if (!platform) return;
     if (result.status === "fulfilled") {
-      const hasMore = result.value.length > args.limit;
+      const hasMore =
+        args.limit !== undefined && result.value.length > args.limit;
       flat.push(
         ...(hasMore ? result.value.slice(0, args.limit) : result.value),
       );
@@ -434,7 +441,7 @@ function degradedSuffix(degraded: readonly InboxDegradedPlatform[]): string {
 
 function fetchScopeSuffix(args: {
   platforms: readonly InboxPlatform[];
-  limit: number;
+  limit?: number;
   since?: string;
   queryApplied: boolean;
   capped: readonly InboxPlatform[];
@@ -442,7 +449,7 @@ function fetchScopeSuffix(args: {
   const parts = [`platforms=${args.platforms.join(",")}`];
   if (args.since) parts.push(`since ${args.since}`);
   if (args.queryApplied) parts.push("content query applied");
-  parts.push(`up to ${args.limit} per platform`);
+  if (args.limit !== undefined) parts.push(`up to ${args.limit} per platform`);
   const cap =
     args.capped.length > 0
       ? ` ${args.capped.join(",")} returned more than that cap, so this is a sample, not a total.`
@@ -504,7 +511,6 @@ const MESSAGE_SOURCES = new Set<MessageSource>([
   "telegram",
   "twitter",
   "imessage",
-  "signal",
   "whatsapp",
   "browser_bridge",
 ]);
@@ -747,7 +753,7 @@ export async function executeInboxQueueOperation(args: {
       const limit =
         typeof args.params.limit === "number" && args.params.limit > 0
           ? Math.floor(args.params.limit)
-          : 50;
+          : undefined;
       const classification = parseClassification(args.params.classification);
       let classifiedCount = 0;
       // 1. Pull fresh cross-channel messages through the same fan-out `list`
@@ -759,7 +765,7 @@ export async function executeInboxQueueOperation(args: {
         runtime: args.runtime,
         platforms: resolvePlatforms(args.params.platforms),
         ...(since ? { since } : {}),
-        limit,
+        ...(limit === undefined ? {} : { limit }),
       });
       const alreadyTriaged = await repo.getBySourceMessageIds(
         merged.map((item) => item.id),
@@ -775,27 +781,35 @@ export async function executeInboxQueueOperation(args: {
       // 2. Return the pending queue, which now includes the rows the
       //    classifier just persisted, optionally narrowed by classification.
       const includeSnoozed = args.params.includeSnoozed === true;
+      const pageLimit = limit === undefined ? undefined : limit + 1;
       const entryPage = classification
         ? await repo.getByClassification(classification, {
-            limit: limit + 1,
+            ...(pageLimit === undefined ? {} : { limit: pageLimit }),
             includeSnoozed,
           })
         : await repo.getUnresolved({
-            limit: limit + 1,
+            ...(pageLimit === undefined ? {} : { limit: pageLimit }),
             includeSnoozed,
           });
-      const entriesCapped = entryPage.length > limit;
-      const entries = entriesCapped ? entryPage.slice(0, limit) : entryPage;
+      const entriesCapped = limit !== undefined && entryPage.length > limit;
+      const entries =
+        entriesCapped && limit !== undefined
+          ? entryPage.slice(0, limit)
+          : entryPage;
       const narrowed = Boolean(classification) || !includeSnoozed;
       const outsideScopePage =
         narrowed && entries.length === 0
           ? await repo.getUnresolved({
-              limit: limit + 1,
+              ...(pageLimit === undefined ? {} : { limit: pageLimit }),
               includeSnoozed: true,
             })
           : [];
-      const outsideScopeCapped = outsideScopePage.length > limit;
-      const outsideScopeCount = Math.min(outsideScopePage.length, limit);
+      const outsideScopeCapped =
+        limit !== undefined && outsideScopePage.length > limit;
+      const outsideScopeCount =
+        limit === undefined
+          ? outsideScopePage.length
+          : Math.min(outsideScopePage.length, limit);
       const scopeParts: string[] = [];
       if (classification) scopeParts.push(`classification=${classification}`);
       if (!includeSnoozed) scopeParts.push("snoozed excluded");
@@ -954,9 +968,9 @@ export const inboxAction: Action & {
     "surface:internal",
   ],
   description:
-    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage (AI-classify new messages into urgent / needs_reply / notify / info / ignore, then return the prioritized queue), reply, snooze, archive, approve.",
+    "Inbox: Gmail, Slack, Discord, Telegram, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage (AI-classify new messages into urgent / needs_reply / notify / info / ignore, then return the prioritized queue), reply, snooze, archive, approve.",
   descriptionCompressed:
-    "INBOX list|search|summarize|triage(classify urgent/needs_reply/noise)|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
+    "INBOX list|search|summarize|triage(classify urgent/needs_reply/noise)|reply|snooze|archive|approve gmail|slack|discord|telegram|imessage|whatsapp",
   routingHint:
     'cross-channel inbox ("show inbox", "all messages", "search every channel", "summarize inboxes") -> INBOX; "triage my inbox" / "what needs my attention" -> INBOX triage; per-channel -> MESSAGE',
   contexts: ["inbox", "messaging", "cross-channel"],
@@ -973,7 +987,7 @@ export const inboxAction: Action & {
     {
       name: "platforms",
       description:
-        "Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
+        "Optional platform filter: gmail | slack | discord | telegram | imessage | whatsapp. Default all.",
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
@@ -1099,7 +1113,7 @@ export const inboxAction: Action & {
     const limit =
       typeof params.limit === "number" && params.limit > 0
         ? Math.floor(params.limit)
-        : 50;
+        : undefined;
 
     let query: string | undefined;
     if (subaction === "search") {
@@ -1132,7 +1146,7 @@ export const inboxAction: Action & {
         runtime,
         platforms,
         ...(since ? { since } : {}),
-        limit,
+        ...(limit === undefined ? {} : { limit }),
         ...(query ? { query } : {}),
       });
     const items: readonly InboxItem[] = subaction === "summarize" ? [] : merged;
@@ -1168,7 +1182,7 @@ export const inboxAction: Action & {
         text = `Summarized ${platforms.length} platforms (${merged.length} unique messages).`;
         break;
     }
-    text = `${text}${fetchScopeSuffix({ platforms, limit, ...(since ? { since } : {}), queryApplied: Boolean(query), capped })}${degradedSuffix(degraded)}`;
+    text = `${text}${fetchScopeSuffix({ platforms, ...(limit === undefined ? {} : { limit }), ...(since ? { since } : {}), queryApplied: Boolean(query), capped })}${degradedSuffix(degraded)}`;
 
     await callback?.({
       text,

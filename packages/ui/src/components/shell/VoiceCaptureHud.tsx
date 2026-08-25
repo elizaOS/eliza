@@ -39,6 +39,7 @@ import {
   subscribeVoiceCaptureBreadcrumbs,
   type VoiceCaptureBreadcrumb,
 } from "../../utils/voice-capture-debug";
+import { Button } from "../ui/button";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.voiceHud.dismissed";
@@ -263,27 +264,34 @@ export function VoiceCaptureHud() {
               className="flex items-baseline gap-1 whitespace-nowrap tabular-nums"
             >
               <span className="text-white/60">+{line.offsetMs}</span>
-              <span className={line.bad ? "text-red-400" : "text-emerald-300"}>
+              <span
+                className={
+                  line.bad ? "text-destructive" : "text-status-success"
+                }
+              >
                 {line.step}
               </span>
               {line.token ? (
-                <span className={line.bad ? "text-red-300" : "text-white/70"}>
+                <span
+                  className={line.bad ? "text-destructive" : "text-white/70"}
+                >
                   ({line.token})
                 </span>
               ) : null}
             </div>
           ))}
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghostMuted"
           data-testid="voice-capture-hud-dismiss"
           title="Hide voice trace for this session"
           aria-label="Hide voice capture trace for this session"
           onClick={dismiss}
-          className="shrink-0 self-start text-white/50 hover:text-white"
+          className="shrink-0 self-start"
         >
-          <X aria-hidden="true" className="h-2.5 w-2.5" />
-        </button>
+          <X aria-hidden="true" className="size-2.5" />
+        </Button>
       </div>
     </div>
   );

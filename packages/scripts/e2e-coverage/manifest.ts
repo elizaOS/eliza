@@ -3,10 +3,6 @@
  * of truth that maps each surface item to the real test artifact(s) that cover
  * it, or records an explicit, justified exemption.
  *
- * Precedent: this is the same curated-set + drift-check pattern as
- * `packages/app/test/route-coverage.test.ts` (DIRECT_ROUTE_CASES) and
- * `view-interaction-coverage.test.ts` (GUI_INTERACTION_OWNERS / INTERACTION_DEBT).
- *
  * Anti-larp: a `covered` entry only counts when every artifact exists AND each
  * declared `signal` appears in at least one artifact. For new plugin-route tests
  * the signal is `tryHandleRuntimePluginRoute` — the real prod dispatch entry —
@@ -62,17 +58,6 @@ export const COMMAND_COVERAGE: CoverageEntry = {
 export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set([
   "packages/agent/src/api/commands-routes.test.ts",
 ]);
-
-/**
- * Views are covered by the existing UI ship-gates; this issue references them
- * (#8796/#8797/#8798) rather than re-implementing view e2e. The gate only
- * asserts these gate files still exist (deletion = regression).
- */
-export const VIEW_COVERAGE_GATES: readonly string[] = [
-  "packages/app/test/route-coverage.test.ts",
-  "packages/app/test/view-interaction-coverage.test.ts",
-  "packages/agent/src/__tests__/plugin-view-inventory-ratchet.test.ts",
-];
 
 /**
  * Candidate source paths for the #8791 pre-LLM shortcut registry. None exist
@@ -131,12 +116,9 @@ function existing(artifact: string): CoverageEntry {
  * scan — a newly route-wiring plugin with no entry here fails the gate.
  */
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
-  // ── Pre-existing dedicated route tests (trusted; ratcheted against deletion) ─
+  // ── Dedicated route tests ──
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
-  ),
-  "plugin-bluebubbles": existing(
-    "plugins/plugin-bluebubbles/__tests__/data-routes.test.ts",
   ),
   "plugin-browser": existing(
     "plugins/plugin-browser/src/routes/workspace-routes.test.ts",
@@ -161,14 +143,15 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-meetings": existing(
     "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
   ),
-  "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
   "plugin-notes": existing(
     "plugins/plugin-notes/src/__tests__/backend.test.ts",
   ),
   "plugin-scheduling": existing(
     "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
   ),
-  "plugin-wallet": existing("plugins/plugin-wallet/src/plugin.routes.test.ts"),
+  "plugin-wallet": existing(
+    "plugins/plugin-wallet/src/api/wallet-routes.test.ts",
+  ),
   "plugin-whatsapp": existing(
     "plugins/plugin-whatsapp/__tests__/webhook-routes.test.ts",
   ),

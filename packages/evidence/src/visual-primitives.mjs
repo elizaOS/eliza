@@ -14,10 +14,14 @@ import { mkdirSync } from "node:fs";
 import { access, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import sharp from "sharp";
 import { brandColorFractions } from "./analyzers/brand.ts";
 import { dominantPalette as analyzeDominantPalette } from "./analyzers/color.ts";
 import { changeMetric as analyzeChangeMetric } from "./analyzers/diff.ts";
+import { parseRgb } from "./visual-color-parser.mjs";
+
+export { parseRgb };
 
 export const DEFAULT_PIXEL_THRESHOLD = 30;
 export const DEFAULT_BLUE_COVERAGE_LIMIT = 0.05;
@@ -41,25 +45,6 @@ let systemTesseractProbe = null;
 let packagedTesseractProbe = null;
 /** @type {Map<string, Promise<any>>} */
 let packagedWorkers = new Map();
-
-/**
- * Parse a CSS `rgb()` / `rgba()` string into `[r, g, b, a]`, or null.
- *
- * @param {string} input
- * @returns {[number, number, number, number] | null}
- */
-export function parseRgb(input) {
-  const m = String(input).match(
-    /^rgba?\(\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,\s*(\d+\.?\d*)(?:\s*,\s*(\d+\.?\d*))?\s*\)$/,
-  );
-  if (!m) return null;
-  return [
-    Number(m[1]),
-    Number(m[2]),
-    Number(m[3]),
-    m[4] === undefined ? 1 : Number(m[4]),
-  ];
-}
 
 /**
  * Bucket an RGB triple into the app audit's coarse brand categories.
@@ -135,7 +120,13 @@ export function quantizePalette(data, opts = {}) {
     if (bin) bin.count += 1;
     else bins.set(key, { r, g, b, count: 1 });
   }
-  const sorted = [...bins.values()].sort((x, y) => y.count - x.count);
+  const sorted = [...bins.values()].sort((x, y) => {
+    const yCount =
+      typeof y.count === "number" && Number.isFinite(y.count) ? y.count : 0;
+    const xCount =
+      typeof x.count === "number" && Number.isFinite(x.count) ? x.count : 0;
+    return yCount - xCount || x.r - y.r || x.g - y.g || x.b - y.b;
+  });
   const denom = totalOpaque || 1;
   const swatches = sorted.slice(0, topK).map((bin) => ({
     rgb: [bin.r, bin.g, bin.b],
@@ -513,13 +504,13 @@ export async function ocrImage(pngPath, opts = {}) {
   if (primaryOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `${engine.label} failed: ${errorMessage(primaryOutcome.reason).slice(0, 200)}`,
+      reason: `${engine.label} failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(primaryOutcome.reason)), 200)}`,
     };
   }
   if (imageOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `pixel diagnostics failed: ${errorMessage(imageOutcome.reason).slice(0, 200)}`,
+      reason: `pixel diagnostics failed: ${truncateWellFormed(toWellFormedUnicode(errorMessage(imageOutcome.reason)), 200)}`,
     };
   }
   const primaryRecognition = primaryOutcome.value;

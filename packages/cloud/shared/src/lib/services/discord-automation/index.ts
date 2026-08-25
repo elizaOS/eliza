@@ -6,8 +6,10 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
+import { discordFetch } from "../../utils/discord-api";
 import {
   DISCORD_RATE_LIMITS,
   getGuildIconUrl,
@@ -27,6 +29,8 @@ import type {
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
+
+export { discordFetch };
 
 // Required environment variables
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -161,7 +165,7 @@ class DiscordAutomationService {
 
     let tokenData: DiscordTokenResponse;
     try {
-      const tokenResponse = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+      const tokenResponse = await discordFetch(`${DISCORD_API_BASE}/oauth2/token`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -179,7 +183,7 @@ class DiscordAutomationService {
         const errorText = await tokenResponse.text();
         logger.warn("[Discord] Token exchange failed", {
           status: tokenResponse.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return null;
       }
@@ -201,12 +205,12 @@ class DiscordAutomationService {
 
     try {
       const [userResponse, guildsResponse] = await Promise.all([
-        fetch(`${DISCORD_API_BASE}/users/@me`, {
+        discordFetch(`${DISCORD_API_BASE}/users/@me`, {
           headers: {
             Authorization: `Bearer ${tokenData.access_token}`,
           },
         }),
-        fetch(`${DISCORD_API_BASE}/users/@me/guilds`, {
+        discordFetch(`${DISCORD_API_BASE}/users/@me/guilds`, {
           headers: {
             Authorization: `Bearer ${tokenData.access_token}`,
           },
@@ -304,7 +308,7 @@ class DiscordAutomationService {
       }
 
       // Fetch guild info using bot token
-      const guildResponse = await fetch(`${DISCORD_API_BASE}/guilds/${args.guildId}`, {
+      const guildResponse = await discordFetch(`${DISCORD_API_BASE}/guilds/${args.guildId}`, {
         headers: {
           Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
         },
@@ -397,7 +401,7 @@ class DiscordAutomationService {
     }
 
     try {
-      const response = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}/members/@me`, {
+      const response = await discordFetch(`${DISCORD_API_BASE}/guilds/${guildId}/members/@me`, {
         method: "PATCH",
         headers: {
           Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
@@ -413,7 +417,7 @@ class DiscordAutomationService {
         logger.warn("[Discord] Failed to set bot nickname", {
           guildId,
           status: response.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return false;
       }
@@ -500,7 +504,7 @@ class DiscordAutomationService {
       throw new Error("[Discord] Cannot refresh channels: bot token not configured");
     }
 
-    const response = await fetch(`${DISCORD_API_BASE}/guilds/${guildId}/channels`, {
+    const response = await discordFetch(`${DISCORD_API_BASE}/guilds/${guildId}/channels`, {
       headers: {
         Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
       },
@@ -512,7 +516,7 @@ class DiscordAutomationService {
     if (!response.ok) {
       const error = await response.text();
       throw new Error(
-        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${error.slice(0, 200)}`,
+        `[Discord] Failed to fetch channels for guild ${guildId} (status ${response.status}): ${truncateWellFormed(toWellFormedUnicode(error), 200)}`,
       );
     }
 
@@ -578,19 +582,14 @@ class DiscordAutomationService {
           if (options?.components) body.components = options.components;
         }
 
-        const response = await Promise.race([
-          fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Discord API timeout")), 25_000),
-          ),
-        ]);
+        const response = await discordFetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
 
         if (!response.ok) {
           const error = await response.text();
@@ -666,7 +665,7 @@ class DiscordAutomationService {
 
     try {
       // Try to leave the guild via API
-      const response = await fetch(`${DISCORD_API_BASE}/users/@me/guilds/${guildId}`, {
+      const response = await discordFetch(`${DISCORD_API_BASE}/users/@me/guilds/${guildId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
@@ -720,7 +719,7 @@ class DiscordAutomationService {
     if (!DISCORD_BOT_TOKEN) return false;
 
     try {
-      const response = await fetch(`${DISCORD_API_BASE}/channels/${channelId}`, {
+      const response = await discordFetch(`${DISCORD_API_BASE}/channels/${channelId}`, {
         headers: {
           Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
         },

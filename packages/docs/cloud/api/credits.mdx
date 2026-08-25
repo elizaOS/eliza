@@ -121,7 +121,9 @@ Get comprehensive credit status including organization balance, agent budgets, a
     }
   ],
   "pricing": {
-    "creditsPerDollar": 100,
+    "creditUnit": "USD",
+    "creditsPerDollar": 1,
+    "usdPerCredit": 1,
     "minimumTopUp": 5.0,
     "x402Enabled": true
   }
@@ -143,7 +145,7 @@ Create a Stripe checkout session to purchase credits.
 
 ```json
 {
-  "credits": 50,
+  "amountUsd": 50,
   "success_url": "https://cloud.eliza.app/cloud/billing/success",
   "cancel_url": "https://cloud.eliza.app/cloud/billing"
 }
@@ -160,6 +162,11 @@ Create a Stripe checkout session to purchase credits.
 
 Redirect the user to `url` to complete the payment. `success_url` and
 `cancel_url` must be allowed platform redirect URLs.
+
+`amountUsd` is both the dollar charge and the number of organization cloud
+credits granted: one credit equals $1 USD. The deprecated `credits` request
+field remains a compatibility alias with the same 1:1 meaning. If both fields
+are supplied, their numeric values must match.
 
 ---
 

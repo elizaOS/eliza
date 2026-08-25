@@ -3,9 +3,9 @@
  * of the available agent frameworks, each tab carrying its install/auth state
  * (preflight result → status icon).
  */
+
+import { Button, SettingsControls } from "@elizaos/ui";
 import type { AgentPreflightResult } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   AlertTriangle,
@@ -77,24 +77,20 @@ export function AgentTabsSection({
           return (
             <Button
               key={agent}
-              variant={active ? "default" : "ghost"}
-              size="sm"
-              className={`h-8 flex-1 px-2 text-xs font-semibold ${
-                active
-                  ? "bg-accent text-accent-fg dark:text-accent-fg shadow-sm"
-                  : needsAuth
-                    ? "text-warn hover:bg-warn/10 hover:text-warn"
-                    : "text-muted hover:bg-bg-hover hover:text-txt"
-              }`}
+              variant={
+                active ? "default" : needsAuth ? "warningOutline" : "ghostMuted"
+              }
+              size="dense"
+              className="flex-1"
               onClick={() => onSelectAgent(agent)}
               aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
             >
               <span className="inline-flex items-center gap-1.5">
                 <span>{AGENT_LABELS[agent]}</span>
                 {isAuthenticating ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
                 ) : needsAuth ? (
-                  <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                  <KeyRound className="size-3.5" aria-hidden />
                 ) : (
                   <InstallStateIcon state={installState} label={statusLabel} />
                 )}
@@ -105,9 +101,9 @@ export function AgentTabsSection({
       </SettingsControls.SegmentedGroup>
 
       {activeTab && activeNeedsAuth && (
-        <div className="mt-1.5 flex items-center justify-between gap-2 px-1 py-1 text-xs text-warn">
+        <div className="mt-1.5 flex items-center justify-between gap-2 p-1 text-xs text-warn">
           <div className="inline-flex min-w-0 items-center gap-1.5">
-            <KeyRound className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <KeyRound className="size-3.5 shrink-0" aria-hidden />
             <span className="truncate">
               {t("codingagentsettingssection.AuthenticationRequired", {
                 defaultValue: "Authentication required",
@@ -115,16 +111,16 @@ export function AgentTabsSection({
             </span>
           </div>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="tiny"
             disabled={activeAuthenticating}
-            className="h-7 shrink-0 px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
+            className="shrink-0"
             onClick={() => onAuth(activeTab)}
           >
             {activeAuthenticating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : (
-              <KeyRound className="h-3.5 w-3.5" aria-hidden />
+              <KeyRound className="size-3.5" aria-hidden />
             )}
             {t("codingagentsettingssection.SignIn", {
               defaultValue: "Sign in",
@@ -145,7 +141,7 @@ export function AgentTabsSection({
               {t("codingagentsettingssection.OpenSignInPage", {
                 defaultValue: "Open sign-in page",
               })}
-              <ExternalLink className="inline h-3 w-3" aria-hidden />
+              <ExternalLink className="inline size-3" aria-hidden />
             </a>
           )}
           {authResult.deviceCode && (
@@ -169,7 +165,7 @@ export function AgentTabsSection({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7"
+                className="size-7"
                 aria-label={t("codingagentsettingssection.Retry", {
                   defaultValue: "Retry",
                 })}
@@ -179,7 +175,7 @@ export function AgentTabsSection({
                 disabled={authInProgress !== null}
                 onClick={() => onAuth(authResult.agent)}
               >
-                <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                <RotateCw className="size-3.5" aria-hidden />
               </Button>
             </div>
           )}
@@ -207,7 +203,7 @@ function InstallStateIcon({
   if (state === "installed") {
     return (
       <CheckCircle2
-        className="h-3.5 w-3.5 text-ok"
+        className="size-3.5 text-ok"
         aria-label={label}
         role="img"
       />
@@ -216,17 +212,13 @@ function InstallStateIcon({
   if (state === "missing") {
     return (
       <AlertTriangle
-        className="h-3.5 w-3.5 text-muted"
+        className="size-3.5 text-muted"
         aria-label={label}
         role="img"
       />
     );
   }
   return (
-    <CircleHelp
-      className="h-3.5 w-3.5 text-warn"
-      aria-label={label}
-      role="img"
-    />
+    <CircleHelp className="size-3.5 text-warn" aria-label={label} role="img" />
   );
 }

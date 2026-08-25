@@ -12,8 +12,7 @@ import {
   CapacitorBarcodeScannerTypeHint,
 } from "@capacitor/barcode-scanner";
 import { Capacitor } from "@capacitor/core";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button, Input } from "@elizaos/ui";
 import type React from "react";
 import { useCallback, useState } from "react";
 import {
@@ -117,7 +116,13 @@ export function Pairing({
   return (
     <main style={styles.root}>
       <header style={styles.header}>
-        <Button unstyled type="button" onClick={onBack} style={styles.back}>
+        <Button
+          variant="link"
+          size="content"
+          type="button"
+          onClick={onBack}
+          style={styles.back}
+        >
           Back
         </Button>
         <h1 style={styles.title}>Pair with Eliza</h1>
@@ -129,13 +134,14 @@ export function Pairing({
           payload manually.
         </p>
         <Button
-          unstyled
+          variant="default"
+          size="lg"
           type="button"
           onClick={scan}
           disabled={status.kind === "scanning"}
           style={styles.primary}
         >
-          {status.kind === "scanning" ? "Scanning..." : "Scan QR code"}
+          {status.kind === "scanning" ? "Scanning…" : "Scan QR code"}
         </Button>
       </section>
 
@@ -153,7 +159,12 @@ export function Pairing({
             placeholder="base64 pairing payload"
             style={styles.input}
           />
-          <Button unstyled type="submit" style={styles.secondary}>
+          <Button
+            variant="outline"
+            size="lg"
+            type="submit"
+            style={styles.secondary}
+          >
             Pair device
           </Button>
         </form>

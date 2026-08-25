@@ -94,8 +94,11 @@ describe("native Browser owner lifecycle", () => {
 
   it("reconciles renderer orphans and releases native page resources", () => {
     expect(kotlin).toContain("surface.webView.destroy()");
-    expect(kotlin).toContain("surface.profileName?.let(::releaseProfile)");
-    expect(kotlin).toContain("deleted || store.getProfile(name) == null");
+    expect(kotlin).toContain("surface.profileName?.let(::retireProfile)");
+    expect(kotlin).toContain("store.deleteProfile(name)");
+    expect(kotlin).toContain("PROFILE_NAMESPACE_PREFIX");
+    expect(kotlin).toContain("profileProcessNonce");
+    expect(kotlin).toContain("profileSerial += 1");
     expect(kotlin).toContain("surface.session != session");
     expect(swift).toContain("surface.webView.stopLoading()");
     expect(swift).toContain("surface.session != identity.session");

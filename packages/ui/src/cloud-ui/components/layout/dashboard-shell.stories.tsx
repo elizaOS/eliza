@@ -2,6 +2,7 @@
  * Storybook stories for the DashboardShellLayout (sidebar + content).
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { DashboardShellLayout } from "./dashboard-shell";
 
 const Sidebar = ({ items }: { items: string[] }) => (
@@ -11,15 +12,16 @@ const Sidebar = ({ items }: { items: string[] }) => (
     </div>
     <nav className="flex flex-col gap-1 text-sm text-white/80">
       {items.map((label, i) => (
-        <button
+        <Button
           type="button"
           key={label}
-          className={`rounded px-3 py-2 text-left hover:bg-white/5 ${
-            i === 0 ? "bg-white/10 text-white" : ""
-          }`}
+          variant="selection"
+          size="compact"
+          align="start"
+          data-state={i === 0 ? "on" : "off"}
         >
           {label}
-        </button>
+        </Button>
       ))}
     </nav>
   </aside>
@@ -30,7 +32,7 @@ const Header = ({ title }: { title: string }) => (
     <div className="text-sm font-medium text-white">{title}</div>
     <div className="flex items-center gap-3 text-xs text-white/60">
       <span>v1.4.2</span>
-      <div className="h-7 w-7 rounded-full bg-orange-500" />
+      <div className="size-7 rounded-full bg-orange-500" />
     </div>
   </header>
 );
@@ -93,18 +95,15 @@ export const EmptyContent: Story = {
         <img
           src="https://placehold.co/120x120/0a0a0a/f97316?text=%2B"
           alt=""
-          className="mb-4 h-24 w-24 rounded-full"
+          className="mb-4 size-24 rounded-full"
         />
         <div className="text-lg font-medium text-white">No agents yet</div>
         <div className="mt-1 text-sm text-white/60">
           Create your first agent to get started.
         </div>
-        <button
-          type="button"
-          className="mt-4 rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-black hover:bg-orange-600"
-        >
+        <Button type="button" variant="default" className="mt-4">
           New agent
-        </button>
+        </Button>
       </div>
     ),
   },
@@ -117,7 +116,7 @@ export const MinimalShell: Story = {
         {["O", "A", "B", "U", "S"].map((letter, i) => (
           <div
             key={letter}
-            className={`flex h-9 w-9 items-center justify-center rounded-md text-xs ${
+            className={`flex size-9 items-center justify-center rounded-md text-xs ${
               i === 0
                 ? "bg-orange-500 text-black"
                 : "bg-white/5 text-white/70 hover:bg-white/10"

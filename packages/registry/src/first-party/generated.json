@@ -520,113 +520,6 @@
       "subtype": "other"
     },
     {
-      "id": "bluebubbles",
-      "name": "Bluebubbles",
-      "description": "BlueBubbles connector for sending and receiving iMessage through a local BlueBubbles server.",
-      "npmName": "@elizaos/plugin-bluebubbles",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "connector",
-        "social",
-        "social-chat",
-        "messaging",
-        "bluebubbles"
-      ],
-      "config": {
-        "BLUEBUBBLES_ENABLED": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Enabled",
-          "help": "Enable or disable this feature",
-          "advanced": false
-        },
-        "BLUEBUBBLES_PASSWORD": {
-          "type": "secret",
-          "required": true,
-          "sensitive": true,
-          "label": "Password",
-          "help": "Password for Bluebubbles",
-          "advanced": false
-        },
-        "BLUEBUBBLES_DM_POLICY": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Dm Policy",
-          "help": "DM policy (e.g. allow, deny, allowlist)",
-          "advanced": false
-        },
-        "BLUEBUBBLES_ALLOW_FROM": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Allow From",
-          "help": "Comma-separated allowed user list",
-          "advanced": false
-        },
-        "BLUEBUBBLES_SERVER_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Server Url",
-          "help": "Server URL",
-          "advanced": false
-        },
-        "BLUEBUBBLES_GROUP_POLICY": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Group Policy",
-          "help": "Group message policy (e.g. allow, deny)",
-          "advanced": false
-        },
-        "BLUEBUBBLES_WEBHOOK_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Webhook Path",
-          "help": "Webhook path",
-          "advanced": false
-        },
-        "BLUEBUBBLES_GROUP_ALLOW_FROM": {
-          "type": "string",
-          "required": false,
-          "sensitive": false,
-          "label": "Group Allow From",
-          "help": "Comma-separated allowed user list",
-          "advanced": false
-        },
-        "BLUEBUBBLES_SEND_READ_RECEIPTS": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Send Read Receipts",
-          "help": "Send read receipts",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": false,
-        "pinTo": [],
-        "style": "setup-panel",
-        "group": "connector",
-        "groupOrder": 1,
-        "actions": ["enable", "configure", "setup-guide"]
-      },
-      "resources": {},
-      "dependsOn": [],
-      "channels": ["bluebubbles"],
-      "shortIds": ["bluebubbles"],
-      "kind": "connector",
-      "subtype": "messaging",
-      "auth": {
-        "kind": "token",
-        "credentialKeys": []
-      }
-    },
-    {
       "id": "browser",
       "name": "Browser",
       "description": "Web scraping and content extraction with Playwright",
@@ -811,9 +704,10 @@
           "sensitive": false,
           "default": "120000",
           "label": "Timeout",
-          "help": "Per-call CLI spawn timeout in milliseconds.",
+          "help": "Per-call CLI spawn timeout in milliseconds. Must be an integer from 1 through 2147483647 when configured.",
           "advanced": true,
-          "min": 0,
+          "min": 1,
+          "max": 2147483647,
           "unit": "ms"
         }
       },
@@ -885,7 +779,7 @@
     {
       "id": "coding-tools",
       "name": "Coding Tools",
-      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. AST-validated commands, mtime-gated writes, sealed workspace roots, optional per-OS process sandboxing (sandbox-exec on macOS, bwrap on Linux).",
+      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. Commands are analyzed before trusted host execution; mtime-gated file writes and configured path roots apply to FILE, WORKTREE, and the SHELL working directory.",
       "npmName": "@elizaos/plugin-coding-tools",
       "version": "0.1.0",
       "source": "bundled",
@@ -896,7 +790,7 @@
           "required": false,
           "sensitive": false,
           "label": "Workspace roots",
-          "help": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's cwd.",
+          "help": "Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. SHELL commands may address paths outside these roots. Defaults to the runtime's cwd.",
           "advanced": false
         },
         "CODING_TOOLS_DENY_COMMANDS": {
@@ -927,14 +821,6 @@
           "advanced": true,
           "min": 1000,
           "unit": "ms"
-        },
-        "CODING_TOOLS_OS_SANDBOX": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "OS-level sandbox",
-          "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
-          "advanced": true
         }
       },
       "render": {
@@ -1505,6 +1391,122 @@
         "routePlugin": {
           "specifier": "@elizaos/plugin-documents/plugin",
           "exportName": "documentsPlugin"
+        }
+      }
+    },
+    {
+      "id": "doordash",
+      "name": "DoorDash",
+      "description": "Search DoorDash restaurants, browse menus, manage carts, preview checkout, and track orders through a configured MCP adapter. Final checkout requires explicit preview-bound confirmation.",
+      "npmName": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["doordash", "food", "delivery", "ordering", "mcp"],
+      "config": {
+        "features.doordash": {
+          "type": "boolean",
+          "required": false,
+          "default": false,
+          "label": "Enable DoorDash",
+          "help": "Enable DoorDash through a configured MCP adapter."
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "ShoppingBag",
+        "group": "connectors",
+        "groupOrder": 30,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza"
+      },
+      "dependsOn": ["mcp"],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
+      "id": "dropbox",
+      "name": "Dropbox",
+      "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
+      "npmName": "@elizaos/plugin-dropbox",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": [
+        "dropbox",
+        "files",
+        "storage",
+        "documents",
+        "connector",
+        "productivity"
+      ],
+      "config": {
+        "DROPBOX_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "App Key",
+          "help": "Dropbox app key (OAuth client ID). Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "DROPBOX_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "App Secret",
+          "help": "Dropbox app secret (OAuth client secret). Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "DROPBOX_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Redirect URI",
+          "help": "Redirect URI registered on the Dropbox app.",
+          "advanced": true
+        },
+        "DROPBOX_ACCESS_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Access Token",
+          "help": "Local BYO access token for self-hosted mode. Short-lived tokens without a refresh token stop working when they expire.",
+          "advanced": false
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "FolderOpen",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-dropbox#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "other",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": ["DROPBOX_ACCESS_TOKEN"]
+      },
+      "accounts": {
+        "owner": {
+          "supported": true,
+          "authKind": "oauth-cloud",
+          "credentialKeys": [],
+          "notes": "The user's Dropbox account, connected via PKCE offline OAuth with read scopes by default and an explicit write-scope escalation."
         }
       }
     },
@@ -2656,14 +2658,6 @@
           "sensitive": false,
           "label": "Enabled",
           "help": "Enable or disable this feature",
-          "advanced": false
-        },
-        "IMESSAGE_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to CLI binary",
           "advanced": false
         },
         "IMESSAGE_DM_POLICY": {
@@ -3853,6 +3847,106 @@
       }
     },
     {
+      "id": "notion",
+      "name": "Notion",
+      "description": "Notion connector for workspace search, page reads with citation deep links, page creation, and appends. Uses workspace-bound OAuth; local mode accepts an internal integration token.",
+      "npmName": "@elizaos/plugin-notion",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["notion", "notes", "documents", "connector", "productivity"],
+      "config": {
+        "NOTION_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Client ID",
+          "help": "Notion public-integration OAuth client ID. Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "NOTION_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "OAuth Client Secret",
+          "help": "Notion public-integration OAuth client secret. Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "NOTION_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Redirect URI",
+          "help": "Redirect URI registered on the Notion integration.",
+          "advanced": true
+        },
+        "NOTION_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Internal Integration Token",
+          "help": "Local BYO internal-integration token for self-hosted mode. The integration only sees pages shared with it.",
+          "advanced": false
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "FileText",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-notion#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "other",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": ["NOTION_TOKEN"]
+      },
+      "accounts": {
+        "owner": {
+          "supported": true,
+          "authKind": "oauth-cloud",
+          "credentialKeys": [],
+          "notes": "The user's Notion workspace, connected via OAuth. The grant is scoped to exactly the pages and databases the user shares with the connection inside Notion's consent UI."
+        }
+      }
+    },
+    {
+      "id": "omarchy",
+      "name": "Omarchy",
+      "description": "Safe Omarchy desktop integration: shell status, explicit notifications, and the Eliza quick-chat pill.",
+      "npmName": "@elizaos/plugin-omarchy",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["desktop", "linux", "omarchy", "system"],
+      "config": {},
+      "render": {
+        "visible": false,
+        "pinTo": ["os-shell"],
+        "style": "card",
+        "icon": "MonitorCog",
+        "group": "system",
+        "actions": ["enable"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-omarchy",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "feature"
+    },
+    {
       "id": "openai",
       "name": "Openai",
       "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
@@ -3863,7 +3957,7 @@
       "config": {
         "OPENAI_API_KEY": {
           "type": "secret",
-          "required": true,
+          "required": false,
           "sensitive": true,
           "label": "Api Key",
           "help": "API key used to authenticate requests to the OpenAI API.",
@@ -3969,15 +4063,6 @@
           "label": "Image Description Model",
           "help": "Identifier of the model used for describing images.",
           "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
-          "advanced": false
-        },
-        "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-          "type": "secret",
-          "required": false,
-          "sensitive": true,
-          "default": "8192",
-          "label": "Image Description Max Tokens",
-          "help": "Maximum number of tokens allowed in the image-description model response.",
           "advanced": false
         },
         "OPENAI_TTS_MODEL": {
@@ -4505,89 +4590,6 @@
       "subtype": "automation"
     },
     {
-      "id": "signal",
-      "name": "Signal",
-      "description": "Signal messaging integration plugin for ElizaOS agents",
-      "npmName": "@elizaos/plugin-signal",
-      "version": "2.0.0-beta.0",
-      "source": "bundled",
-      "tags": [
-        "signal",
-        "messaging",
-        "secure",
-        "encrypted",
-        "connector",
-        "social",
-        "social-chat"
-      ],
-      "config": {
-        "SIGNAL_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to signal-cli executable (alternative to HTTP API). Leave blank to resolve signal-cli from PATH and auto-install with Homebrew on macOS/Linux when available; on Windows or without Homebrew, install signal-cli manually and set this path.",
-          "advanced": false
-        },
-        "SIGNAL_CLI_AUTO_INSTALL": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Auto Install Cli",
-          "help": "Set false to disable Homebrew auto-install for the default signal-cli binary on macOS/Linux.",
-          "advanced": true
-        },
-        "SIGNAL_HTTP_URL": {
-          "type": "url",
-          "required": false,
-          "sensitive": false,
-          "label": "Http Url",
-          "help": "Signal CLI REST API URL (e.g., http://localhost:8080)",
-          "advanced": false
-        },
-        "SIGNAL_ACCOUNT_NUMBER": {
-          "type": "number",
-          "required": true,
-          "sensitive": false,
-          "label": "Account Number",
-          "help": "Signal account phone number in E.164 format (e.g., +1234567890)",
-          "advanced": false,
-          "min": 0
-        },
-        "SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "Should Ignore Group Messages",
-          "help": "If true, the bot will only respond to direct messages",
-          "advanced": false
-        }
-      },
-      "render": {
-        "visible": true,
-        "pinTo": [],
-        "style": "setup-panel",
-        "icon": "Lock",
-        "group": "connector",
-        "groupOrder": 1,
-        "actions": ["enable", "configure", "setup-guide"]
-      },
-      "resources": {
-        "homepage": "https://github.com/elizaos-plugins/plugin-signal#readme",
-        "repository": "https://github.com/elizaos-plugins/plugin-signal",
-        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#signal"
-      },
-      "dependsOn": [],
-      "channels": ["signal"],
-      "shortIds": [],
-      "kind": "connector",
-      "subtype": "messaging",
-      "auth": {
-        "kind": "token",
-        "credentialKeys": []
-      }
-    },
-    {
       "id": "skills-viewer",
       "name": "Skills Viewer",
       "description": "Create, enable, review, and install custom agent skills.",
@@ -4725,6 +4727,72 @@
           "credentialKeys": [],
           "notes": "The agent's own Slack bot identity (xoxb-... bot token), installed into the workspace via Eliza Cloud OAuth. Posts, mentions, replies, and DMs flow through the bot user."
         }
+      }
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "description": "Spotify music integration: search, saved-track library, playlists, playback control, and device handoff with managed OAuth or a self-hosted Spotify app.",
+      "npmName": "@elizaos/plugin-spotify",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["connector", "music", "media", "spotify"],
+      "config": {
+        "SPOTIFY_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Client ID",
+          "help": "Spotify application client ID (only needed for self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Client Secret",
+          "help": "Spotify application client secret (self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_REFRESH_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Refresh Token",
+          "help": "Long-lived refresh token for local mode, obtained via a one-time authorization-code grant",
+          "advanced": true
+        },
+        "SPOTIFY_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Redirect URI",
+          "help": "OAuth redirect URI registered on the Spotify application",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "Music",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza",
+        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#spotify"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "streaming",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": []
       }
     },
     {

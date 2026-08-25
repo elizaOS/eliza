@@ -18,9 +18,7 @@
  *     `ensureTrajectoriesTable` migrates rows from JSONB into the new table.
  *     Writes go to both stores; reads prefer the new table and fall back
  *     to JSONB.
- *   - Scripts: no character cap on the dedicated `script` TEXT column.
- *     The legacy `TRAJECTORY_STEP_SCRIPT_MAX_CHARS=4096` cap remains
- *     applied to the JSONB fallback.
+ *   - Scripts are preserved completely in both stores.
  */
 
 // ---------------------------------------------------------------------------
@@ -36,8 +34,6 @@ export {
   shouldEnableTrajectoryLoggingByDefault,
   // Testing helpers
   shouldRunObservationExtraction,
-  truncateField,
-  truncateRecord,
 } from "./trajectory-internals.ts";
 // ---------------------------------------------------------------------------
 // Query — read operations

@@ -4,7 +4,7 @@
  * per command (never clobbering `eliza_pair`), and role-gated dispatch. Runtime
  * and `hasRoleAccess` are mocked.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
@@ -73,12 +73,16 @@ import {
   buildTelegramCommandDescriptors,
   registerTelegramCommandHandlers,
   resolveTelegramEmbedUrl,
+  resolveTelegramSenderAuth,
 } from "./command-registration";
+import { resolveTelegramRuntimeEntityId } from "./identity";
 import type { MessageManager } from "./messageManager";
 
 const { getConnectorCommands } = pluginCommandsMock;
 
 const TELEGRAM_COMMAND_NAME = /^[a-z0-9_]{1,32}$/;
+
+const OWNER_ENTITY_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const cache = new Map<string, unknown>();
@@ -91,6 +95,23 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
       return true;
     }),
     character: { name: "TestAgent" },
+  } as unknown as IAgentRuntime;
+}
+
+function ownerEntity(telegramUserId: string) {
+  return {
+    id: OWNER_ENTITY_ID,
+    names: ["owner"],
+    metadata: { telegram: { userId: telegramUserId } },
+  };
+}
+
+function makeOwnerRuntime(
+  getEntityById: ReturnType<typeof vi.fn>,
+): IAgentRuntime {
+  return {
+    ...makeRuntime({ ELIZA_ADMIN_ENTITY_ID: OWNER_ENTITY_ID }),
+    getEntityById,
   } as unknown as IAgentRuntime;
 }
 
@@ -139,6 +160,7 @@ function registerHandlers(
 beforeEach(() => {
   hasRoleAccess.mockReset();
   hasRoleAccess.mockResolvedValue(true);
+  pluginCommandsMock.resolveCommand.mockClear();
 });
 
 describe("buildTelegramCommandDescriptors", () => {
@@ -159,6 +181,53 @@ describe("buildTelegramCommandDescriptors", () => {
     const commands = getConnectorCommands("telegram");
     expect(commands.some((c) => c.target.kind === "agent")).toBe(true);
     expect(commands.some((c) => c.target.kind === "navigate")).toBe(true);
+  });
+
+  it("keeps UTF-16 surrogate pairs intact when clamping description to 256", () => {
+    const emojiDesc = `${"a".repeat(255)}🦊${"b".repeat(100)}`;
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "emoji_desc",
+        description: emojiDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor).toBeDefined();
+    expect(descriptor.description.isWellFormed()).toBe(true);
+    expect(descriptor.description.length).toBeLessThanOrEqual(256);
+    expect(descriptor.description.length).toBe(255);
+    expect(descriptor.description).toBe("a".repeat(255));
+  });
+
+  it("sanitizes lone surrogates in description before clamping", () => {
+    const loneDesc = "a\ud800bc";
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "lone_desc",
+        description: loneDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor).toBeDefined();
+    expect(descriptor.description).toBe("a\ufffdbc");
+    expect(descriptor.description.isWellFormed()).toBe(true);
+  });
+
+  it("preserves an emoji that fits entirely under the 256 cap", () => {
+    const fittingDesc = `${"a".repeat(254)}🦊`;
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "fitting_desc",
+        description: fittingDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor.description).toBe(fittingDesc);
+    expect(descriptor.description.isWellFormed()).toBe(true);
+    expect(descriptor.description.length).toBe(256);
   });
 });
 
@@ -209,7 +278,13 @@ describe("registerTelegramCommandHandlers", () => {
     const { ctx } = makeCtx("/stop");
     await stopHandler?.(ctx);
 
-    expect(handleMessage).toHaveBeenCalledWith(ctx, { forceReply: true });
+    expect(handleMessage).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        forceReply: true,
+        entityId: expect.any(String),
+      }),
+    );
   });
 
   it("wires navigate handlers to reply with an app destination", async () => {
@@ -226,6 +301,57 @@ describe("registerTelegramCommandHandlers", () => {
     expect(reply.mock.calls[0]?.[0]).toContain("settings");
     expect(reply.mock.calls[0]?.[0]).toContain("Eliza app");
   });
+
+  it.each([
+    [
+      "a lone high surrogate",
+      "before\ud800after",
+      "Open settings → before�after in the Eliza app.",
+    ],
+    [
+      "a lone low surrogate",
+      "before\udc00after",
+      "Open settings → before�after in the Eliza app.",
+    ],
+    [
+      "an exact-cap reply",
+      "a".repeat(4062),
+      `Open settings → ${"a".repeat(4062)} in the Eliza app.`,
+    ],
+    [
+      "a cap-plus-one reply",
+      "a".repeat(4063),
+      `Open settings → ${"a".repeat(4063)} in the Eliza app`,
+    ],
+    [
+      "an astral character crossing the cap",
+      `${"a".repeat(4079)}🦊tail`,
+      `Open settings → ${"a".repeat(4079)}`,
+    ],
+    [
+      "a hostile over-limit raw argument",
+      "a".repeat(5000),
+      `Open settings → ${"a".repeat(4080)}`,
+    ],
+  ])(
+    "normalizes the /settings wire reply for %s",
+    async (_label, section, expected) => {
+      const { handlers } = registerHandlers();
+      const settingsHandler = handlers.get("settings");
+      expect(settingsHandler).toBeDefined();
+      const { ctx, reply } = makeCtx(`/settings ${section}`);
+
+      await settingsHandler?.(ctx);
+
+      expect(reply).toHaveBeenCalledTimes(1);
+      const wireText = reply.mock.calls[0]?.[0];
+      // Observe the production handler's actual wire argument: restoring the
+      // raw describeNavigation reply breaks the malformed/over-limit cases.
+      expect(wireText).toBe(expected);
+      expect(wireText?.length).toBeLessThanOrEqual(4096);
+      expect(wireText?.isWellFormed()).toBe(true);
+    },
+  );
 });
 
 describe("Telegram Mini App launch command", () => {
@@ -281,6 +407,33 @@ describe("Telegram Mini App launch command", () => {
 });
 
 describe("auth gating", () => {
+  it("fails visibly and without dispatch when canonical identity storage rejects", async () => {
+    const identityError = new Error("identity database unavailable");
+    const reportError = vi.fn();
+    const rt = {
+      ...makeOwnerRuntime(vi.fn(async () => Promise.reject(identityError))),
+      reportError,
+    } as unknown as IAgentRuntime;
+    const { manager, handleMessage } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const restartHandler = handlers.get("restart");
+    expect(restartHandler).toBeDefined();
+    const { ctx, reply } = makeCtx("/restart");
+
+    await restartHandler?.(ctx);
+
+    expect(reply).toHaveBeenCalledWith(
+      "Could not verify your identity. Try again.",
+    );
+    expect(hasRoleAccess).not.toHaveBeenCalled();
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(
+      "telegram:command-identity",
+      identityError,
+      { accountId: "default", telegramUserId: "4242" },
+    );
+  });
+
   it("refuses a requiresAuth command when the sender is not an owner", async () => {
     hasRoleAccess.mockResolvedValue(false);
     const { manager, handleMessage } = makeMessageManager();
@@ -308,8 +461,14 @@ describe("auth gating", () => {
     const { ctx } = makeCtx("/restart");
     await restartHandler?.(ctx);
 
-    // Owner access → command routes to the agent.
-    expect(handleMessage).toHaveBeenCalledWith(ctx, { forceReply: true });
+    // Owner access → command routes to the agent with the bound actor snapshot.
+    expect(handleMessage).toHaveBeenCalledWith(
+      ctx,
+      expect.objectContaining({
+        forceReply: true,
+        entityId: expect.any(String),
+      }),
+    );
   });
 
   it("consults both the OWNER and ADMIN roles when resolving the sender", async () => {
@@ -324,6 +483,100 @@ describe("auth gating", () => {
     const requestedRoles = hasRoleAccess.mock.calls.map((call) => call[2]);
     expect(requestedRoles).toContain("OWNER");
     expect(requestedRoles).toContain("ADMIN");
+  });
+
+  it("resolves default-account sender entity ids the same way inbound messages do", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "default");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    const expected = await resolveTelegramRuntimeEntityId(
+      rt,
+      "default",
+      "4242",
+    );
+    expect(memory.entityId).toBe(expected);
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "default:4242"));
+    expect(memory.entityId).not.toBe(createUniqueUuid(rt, "4242"));
+  });
+
+  it("keeps non-default account sender ids on the historical account:user seed", async () => {
+    hasRoleAccess.mockResolvedValue(true);
+    const rt = makeRuntime();
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "acct-a");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    expect(memory.entityId).toBe(createUniqueUuid(rt, "acct-a:4242"));
+  });
+
+  it("resolves a configured owner through the entity store, not the UUID fallback", async () => {
+    const getEntityById = vi.fn(async () => ownerEntity("4242"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { ctx } = makeCtx("/whoami");
+    await resolveTelegramSenderAuth(ctx, rt, "default");
+    const memory = hasRoleAccess.mock.calls[0]?.[1] as {
+      entityId?: string;
+    };
+    expect(memory.entityId).toBe(OWNER_ENTITY_ID);
+    expect(memory.entityId).not.toBe(createUniqueUuid(rt, "default:4242"));
+    expect(getEntityById).toHaveBeenCalledWith(OWNER_ENTITY_ID);
+  });
+
+  it("binds the authorized entity through dispatch when the pairing snapshot changes", async () => {
+    const getEntityById = vi
+      .fn()
+      .mockResolvedValueOnce(ownerEntity("4242"))
+      .mockResolvedValueOnce(ownerEntity("9999"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { manager } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const thinkHandler = handlers.get("think");
+    expect(thinkHandler).toBeDefined();
+    const { ctx, reply } = makeCtx("/think high");
+
+    await thinkHandler?.(ctx);
+
+    const authorizedMemory = hasRoleAccess.mock.calls[0]?.[1] as
+      | { entityId?: string }
+      | undefined;
+    const dispatchedMemory = pluginCommandsMock.resolveCommand.mock
+      .calls[0]?.[1] as { entityId?: string } | undefined;
+    const authorizedEntity = authorizedMemory?.entityId;
+    const dispatchedEntity = dispatchedMemory?.entityId;
+    const identityCalls = [authorizedEntity, dispatchedEntity];
+
+    expect(authorizedEntity).toBe(OWNER_ENTITY_ID);
+    expect(dispatchedEntity).toBe(authorizedEntity);
+    expect(dispatchedEntity).not.toBe(createUniqueUuid(rt, "default:4242"));
+    expect(getEntityById).toHaveBeenCalledTimes(1);
+    expect(identityCalls).toEqual([OWNER_ENTITY_ID, OWNER_ENTITY_ID]);
+    expect(reply).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the bound authorized entity to pipeline dispatch without a second lookup", async () => {
+    const getEntityById = vi
+      .fn()
+      .mockResolvedValueOnce(ownerEntity("4242"))
+      .mockResolvedValueOnce(ownerEntity("9999"));
+    const rt = makeOwnerRuntime(getEntityById);
+    const { manager, handleMessage } = makeMessageManager();
+    const { handlers } = registerHandlers(rt, manager);
+    const stopHandler = handlers.get("stop");
+    expect(stopHandler).toBeDefined();
+    const { ctx } = makeCtx("/stop");
+
+    await stopHandler?.(ctx);
+
+    expect(getEntityById).toHaveBeenCalledTimes(1);
+    expect(handleMessage).toHaveBeenCalledWith(ctx, {
+      forceReply: true,
+      entityId: OWNER_ENTITY_ID,
+    });
   });
 });
 

@@ -17,7 +17,19 @@ saved places, safe sharing, and navigation handoffs.
   Do not add another file store, scheduler, or identity graph.
 - Native coordinates may be supplied by `@elizaos/capacitor-location`, but this
   package does not request device permissions or read device location itself.
-- Google Maps/Routes integration and rendered maps UI belong to later issues.
+- The plugin-local `/maps` view renders normalized results as a deterministic,
+  provider-neutral schematic. It never fetches external tiles or invents
+  attribution, ratings, availability, route alternatives, or geometry.
+- `GoogleMapsAdapter` is the Google Places (New)/Routes integration. Its
+  `api-key` and `managed` credential modes are explicit and never fall back
+  into each other; managed mode sends only an opaque session token and
+  connection id to the Cloud maps gateway and rejects endpoint overrides.
+  Its request budget fails typed (`MAPS_BUDGET_EXHAUSTED`) before dispatch,
+  its place-detail cache TTL must stay within Google's 30-day policy cap, and
+  its legal attribution is exposed through the adapter-level `attribution`
+  contract, never invented per result.
+- Other commercial provider adapters and device-specific share/navigation
+  launches belong to their owning connectors.
 
 ## Public surface
 
@@ -36,7 +48,20 @@ saved places, safe sharing, and navigation handoffs.
   historical result without an effect receipt; never claim that the prior
   desired state is current.
 - Missing action inputs return a canonical form interaction and set
-  `awaitingUserInput`; they never fabricate coordinates or places.
+  `awaitingUserInput`; they never fabricate coordinates or places. Route forms
+  offer the travel-mode select; place forms offer the result-limit filter.
+- View reads use the authenticated `serverInteract` broker. The view must not
+  call `savePlace()` directly; its save control hands a reviewable `MAPS_SAVE`
+  request to chat so runtime receipt settlement remains authoritative.
+- Chat surfaces render `[MAPSCARD]` markers (`src/card.ts`) for place, place
+  list, route, handoff, and locate results. Card payloads carry display-safe
+  fields only — no polylines, credentials, or provider internals — and the
+  dashboard parser rejects handoff links outside `geo:` / Apple Maps /
+  OpenStreetMap.
+- `MAPS_SHARE` requires `confirm: true`; without it the action returns a
+  confirmation choice and never emits a share URI. `useCurrentLocation`
+  requests without coordinates return a locate card; coordinates are only ever
+  supplied by the user's device through the chat surface.
 
 ## Commands
 
@@ -45,6 +70,7 @@ bun run --cwd plugins/plugin-maps test
 bun run --cwd plugins/plugin-maps typecheck
 bun run --cwd plugins/plugin-maps lint:check
 bun run --cwd plugins/plugin-maps build
+bun run --cwd packages/app audit:app
 ```
 
 ## Verification

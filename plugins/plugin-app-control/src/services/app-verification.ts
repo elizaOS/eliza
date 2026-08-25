@@ -29,13 +29,10 @@ import {
 	parseVitestCounts,
 	parseVitestOutput,
 	stripAnsi,
-	truncate,
 } from "./verification-helpers.js";
 
 const execFileAsync = promisify(execFile);
 
-const OUTPUT_INLINE_LIMIT = 4 * 1024;
-const RETRY_PROMPT_LIMIT = 2 * 1024;
 const EXEC_BUFFER = 16 * 1024 * 1024;
 
 const TIMEOUTS = {
@@ -319,7 +316,7 @@ async function runTypecheck(
 		kind: "typecheck",
 		passed: exitCode === 0,
 		durationMs: nowMs() - start,
-		output: truncate(full, OUTPUT_INLINE_LIMIT),
+		output: full,
 		outputPath,
 		...(diagnostics.length > 0 ? { diagnostics } : {}),
 	};
@@ -344,7 +341,7 @@ async function runLint(
 		kind: "lint",
 		passed: exitCode === 0 && diagnostics.length === 0,
 		durationMs: nowMs() - start,
-		output: truncate(full, OUTPUT_INLINE_LIMIT),
+		output: full,
 		outputPath,
 		...(diagnostics.length > 0 ? { diagnostics } : {}),
 	};
@@ -408,7 +405,7 @@ async function runTests(
 		kind: "test",
 		passed: exitCode === 0 && failedCount === 0,
 		durationMs: nowMs() - start,
-		output: truncate(full, OUTPUT_INLINE_LIMIT),
+		output: full,
 		outputPath,
 		...(diagnostics.length > 0 ? { diagnostics } : {}),
 		...(provenSummary ? { testSummary: provenSummary } : {}),
@@ -433,7 +430,7 @@ async function runBuild(
 		kind: "build",
 		passed: exitCode === 0,
 		durationMs: nowMs() - start,
-		output: truncate(full, OUTPUT_INLINE_LIMIT),
+		output: full,
 		outputPath,
 	};
 }
@@ -496,7 +493,7 @@ async function runLaunchCheck(
 		kind: "launch",
 		passed,
 		durationMs: nowMs() - start,
-		output: truncate(logBuffer, OUTPUT_INLINE_LIMIT),
+		output: logBuffer,
 		outputPath,
 	};
 }
@@ -723,7 +720,7 @@ async function runBrowserCheck(
 			kind: "browser",
 			passed,
 			durationMs: nowMs() - start,
-			output: truncate(full, OUTPUT_INLINE_LIMIT),
+			output: full,
 			outputPath,
 			...(diagnostics ? { diagnostics } : {}),
 		},
@@ -1073,7 +1070,7 @@ async function runStructuredProofCheck(
 		kind: "structured-proof",
 		passed,
 		durationMs: nowMs() - start,
-		output: truncate(output, OUTPUT_INLINE_LIMIT),
+		output,
 		outputPath,
 		...(diagnostics.length > 0 ? { diagnostics } : {}),
 	};
@@ -1096,7 +1093,7 @@ function buildRetryPrompt(
 	for (const check of failed) {
 		const diags = check.diagnostics ?? [];
 		if (diags.length === 0) {
-			const snippet = truncate(check.output, 240);
+			const snippet = check.output;
 			lines.push(`  - ${check.kind}: failed`);
 			if (snippet) lines.push(`      ${snippet.replace(/\n/g, "\n      ")}`);
 			continue;
@@ -1106,13 +1103,8 @@ function buildRetryPrompt(
 		lines.push(
 			`  - ${check.kind}: ${counted.length} ${counted.length === 1 ? "issue" : "issues"}`,
 		);
-		const shown = counted.slice(0, 10);
-		for (const diag of shown) {
+		for (const diag of counted) {
 			lines.push(`      ${summarizeDiagnostic(diag)}`);
-		}
-		const remaining = counted.length - shown.length;
-		if (remaining > 0) {
-			lines.push(`      ... and ${remaining} more.`);
 		}
 	}
 	lines.push("");
@@ -1123,8 +1115,7 @@ function buildRetryPrompt(
 	lines.push(
 		`${proofKind} {"${nameField}":"<package-name>","files":["src/index.ts"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}`,
 	);
-	const text = lines.join("\n");
-	return truncate(text, RETRY_PROMPT_LIMIT);
+	return lines.join("\n");
 }
 
 export class AppVerificationService extends Service {
@@ -1384,7 +1375,7 @@ export class AppVerificationService extends Service {
 				kind: "publish",
 				passed: published,
 				durationMs: nowMs() - publishStart,
-				output: truncate(publishLog, OUTPUT_INLINE_LIMIT),
+				output: publishLog,
 				outputPath: await persistOutput(dir, "publish", publishLog),
 			});
 		}

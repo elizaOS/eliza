@@ -183,4 +183,32 @@ describe("Telegram connector outbound media", () => {
       { caption: "report", message_thread_id: 88 },
     );
   });
+
+  it("delivers an over-limit media caption completely as follow-up text", async () => {
+    const { manager, ctx, senders } = setup();
+    const caption = `${"a".repeat(4095)}🦊\n\n${"z".repeat(1025)}`;
+
+    await manager.sendMedia(
+      ctx,
+      "https://cdn.example.com/cat.png",
+      MediaType.PHOTO,
+      caption,
+      88,
+    );
+
+    expect(senders.sendPhoto).toHaveBeenCalledWith(
+      123,
+      "https://cdn.example.com/cat.png",
+      { caption: undefined, message_thread_id: 88 },
+    );
+    const followUps = senders.sendMessage.mock.calls.map((call) => call[1]);
+    expect(followUps).toHaveLength(2);
+    expect(followUps.join("")).toBe(caption);
+    expect(followUps.every((chunk) => chunk.length <= 4096)).toBe(true);
+    expect(followUps.every((chunk) => chunk.isWellFormed())).toBe(true);
+    expect(senders.sendMessage.mock.calls.map((call) => call[2])).toEqual([
+      { message_thread_id: 88 },
+      { message_thread_id: 88 },
+    ]);
+  });
 });

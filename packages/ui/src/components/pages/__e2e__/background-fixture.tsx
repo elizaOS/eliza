@@ -86,6 +86,19 @@ function seed(
 // Seed before first paint so store-backed selectors never read an empty store.
 seed(INITIAL_BACKGROUND_CONFIG, [], [], () => {}, () => {}, () => {});
 
+const PRESET_TRAY_STYLE: React.CSSProperties = {
+  position: "relative",
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  padding: 24,
+  maxWidth: 420,
+  margin: "24px auto",
+  borderRadius: 24,
+  background: "rgba(255,255,255,0.55)",
+  backdropFilter: "blur(16px)",
+};
+
 function Harness(): React.JSX.Element {
   const [config, setConfig] = useState<BackgroundConfig>(
     INITIAL_BACKGROUND_CONFIG,
@@ -180,26 +193,13 @@ function Harness(): React.JSX.Element {
       data-testid="bg-fixture-root"
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100dvh",
         overflow: "hidden",
       }}
     >
       <AppBackground />
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 10,
-          padding: 24,
-          maxWidth: 420,
-          margin: "24px auto",
-          borderRadius: 24,
-          background: "rgba(255,255,255,0.55)",
-          backdropFilter: "blur(16px)",
-        }}
-      >
+      <div style={PRESET_TRAY_STYLE}>
         {BACKGROUND_PRESETS.map((preset) => (
           <button
             key={preset.id}

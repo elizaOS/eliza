@@ -53,8 +53,14 @@ export async function deleteWalletSecretsFromOsStore(): Promise<void> {
     return;
   }
   const vaultId = deriveAgentVaultId();
-  await store.delete(vaultId, "wallet.evm_private_key");
-  await store.delete(vaultId, "wallet.solana_private_key");
+  for (const [, kind] of WALLET_PAIRS) {
+    const result = await store.delete(vaultId, kind);
+    if (!result.ok) {
+      throw new Error(
+        `OS credential store rejected wallet deletion: ${result.reason}`,
+      );
+    }
+  }
 }
 
 export type MigrateWalletPrivateKeysToOsStoreResult = {

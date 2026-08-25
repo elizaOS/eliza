@@ -96,7 +96,11 @@ export function classifyBrowserWorkspaceErrorCode(
   if (/rejected invalid URL|only supports http\/https/i.test(message)) {
     return "invalid_url";
   }
-  if (/\(404\)|Tab .+ was not found/i.test(message)) {
+  const lowerMessage = message.toLowerCase();
+  const tabPrefix = lowerMessage.indexOf("tab ");
+  const tabSuffix =
+    tabPrefix < 0 ? -1 : lowerMessage.indexOf(" was not found", tabPrefix + 4);
+  if (message.includes("(404)") || tabSuffix > tabPrefix + 4) {
     return "tab_not_found";
   }
   if (/requires a current tab/i.test(message)) {

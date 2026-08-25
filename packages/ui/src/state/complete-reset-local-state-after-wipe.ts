@@ -10,9 +10,9 @@
  * jsdom (see `complete-reset-local-state-after-wipe.test.ts`).
  *
  * **Atomicity contract:**
- *  - All synchronous callbacks fire in fixed order before the `await`.
- *    React batches those setter calls into a single render commit, so the
- *    UI never observes a partial wipe state mid-cascade.
+ *  - Synchronous callbacks fire in fixed order around the awaited credential
+ *    deletion. No signed-out state is published until protected storage has
+ *    confirmed removal, so a failed native delete aborts the reset cascade.
  *  - `fetchFirstRunOptions` is the only step allowed to fail. Its
  *    try/catch is in-function: a failed fetch leaves first-run options
  *    stale but does NOT roll back the rest of the wipe (rolling back would
@@ -40,7 +40,7 @@ export type CompleteResetLocalStateDeps = {
   clearPersistedAvatarIndex: () => void;
   setClientBaseUrl: (url: string | null) => void;
   setClientToken: (token: string | null) => void;
-  clearElizaCloudSessionUi: () => void;
+  clearElizaCloudSessionUi: () => Promise<void>;
   markFirstRunReset: () => void;
   resetAvatarSelection: () => void;
   clearConversationLists: () => void;
@@ -62,7 +62,7 @@ export async function completeResetLocalStateAfterServerWipe(
   d.clearPersistedAvatarIndex();
   d.setClientBaseUrl(null);
   d.setClientToken(null);
-  d.clearElizaCloudSessionUi();
+  await d.clearElizaCloudSessionUi();
   d.markFirstRunReset();
   d.resetAvatarSelection();
   d.clearConversationLists();

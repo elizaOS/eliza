@@ -29,6 +29,9 @@
   --card: var(--brand-white);
   --card-foreground: var(--brand-black);
   --surface: rgba(0, 0, 0, 0.04);
+  /* Stable inverse pair for light controls on dark or accent contexts. */
+  --inverse: var(--brand-white);
+  --inverse-foreground: var(--brand-black);
 
   /* Text */
   --text: var(--brand-black);
@@ -145,6 +148,12 @@
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
   --text-xs-tight: 0.6875rem;
+  /* Between xs and sm (replaces arbitrary text-[13px]) */
+  --text-sm-tight: 0.8125rem;
+  /* Chat message body + composer (replaces the text-[14px]/text-[15px] split)
+     and the larger first-run/lead conversational size (was text-[17px]). */
+  --text-chat-body: 0.9375rem;
+  --text-chat-lead: 1.0625rem;
 
   /* Touch target minimum (Apple HIG 44px) */
   --min-touch-target: 2.75rem;
@@ -162,6 +171,17 @@
      One token per axis so the whole app breathes on one rhythm. */
   --view-pad-top: 0.5rem;
   --view-pad-bottom: 1rem;
+
+  /* Full chat sheets intentionally cover the app surface. Security-sensitive
+     workspaces can opt their controls out of that occluded layer while keeping
+     a non-interactive page header visible for orientation. The controls return
+     automatically when the sheet collapses; no parallel React state channel is
+     needed between the shell and the routed view. */
+  &:has([data-chat-overlay][data-open="true"])
+    [data-chat-occlusion-policy="hide"] {
+    visibility: hidden;
+    pointer-events: none;
+  }
 
   /* Plugin UI Design Tokens */
   --plugin-field-gap: 1rem;
@@ -302,6 +322,9 @@
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
   --text-xs-tight: 0.6875rem;
+  --text-sm-tight: 0.8125rem;
+  --text-chat-body: 0.9375rem;
+  --text-chat-lead: 1.0625rem;
   --min-touch-target: 2.75rem;
 
   /* Plugin UI */

@@ -6,7 +6,7 @@
  */
 import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { SlackService } from "./service";
+import { compareSlackConnectorTargets, SlackService } from "./service";
 import type { SlackChannel } from "./types";
 
 type MockSlackService = SlackService & {
@@ -217,6 +217,61 @@ describe("Slack message connector adapter", () => {
     ).toMatchObject({ source: "slack", entityId: "U234" });
   });
 
+  it("preserves every matching and listed connector target", async () => {
+    const runtime = createRuntime();
+    const channels = Array.from({ length: 60 }, (_, index) => ({
+      id: `C${index}`,
+      name: `project-${index}`,
+      isChannel: true,
+      isGroup: false,
+      isIm: false,
+      isMpim: false,
+      isPrivate: false,
+      isArchived: false,
+      isGeneral: index === 0,
+      isShared: false,
+      isOrgShared: false,
+      isMember: true,
+      topic: undefined,
+      purpose: undefined,
+      numMembers: 1,
+      created: 1,
+      creator: "U1",
+    })) satisfies SlackChannel[];
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        teamId: "T123",
+        defaultAccountId: "default",
+        accountStates: new Map([
+          [
+            "default",
+            {
+              accountId: "default",
+              teamId: "T123",
+              policy: { isChannelAllowed: () => true },
+            },
+          ],
+        ]),
+        listChannels: vi.fn().mockResolvedValue(channels),
+        client: {
+          users: { list: vi.fn().mockResolvedValue({ members: [] }) },
+        },
+      },
+    );
+
+    const matches = await service.resolveConnectorTargets("project", {
+      runtime,
+    });
+    const rooms = await service.listConnectorRooms({ runtime });
+    const recent = await service.listRecentConnectorTargets({ runtime });
+
+    expect(matches).toHaveLength(60);
+    expect(rooms).toHaveLength(60);
+    expect(recent).toHaveLength(60);
+  });
+
   it("routes outbound DMs through the requested account client", async () => {
     const runtime = createRuntime();
     const clientA = {
@@ -385,7 +440,7 @@ describe("Slack message connector adapter", () => {
     expect(client.pins.remove).not.toHaveBeenCalled();
   });
 
-  it("normalizes hostile fetch and search limits before reading Slack history", async () => {
+  it("rejects invalid fetch and search limits before reading Slack history", async () => {
     const runtime = createRuntime();
     const messages = Array.from({ length: 4 }, (_, index) => ({
       ts: `170000000${index}.000001`,
@@ -412,32 +467,134 @@ describe("Slack message connector adapter", () => {
       },
     );
 
-    const fetched = await service.fetchConnectorMessages(
-      { runtime },
-      { channelId: "C12345678", limit: 1.9 },
-    );
-    const searched = await service.searchConnectorMessages(
-      { runtime },
+    await expect(
+      service.fetchConnectorMessages(
+        { runtime },
+        { channelId: "C12345678", limit: 1.9 },
+      ),
+    ).rejects.toThrow(/positive safe integer/);
+    await expect(
+      service.searchConnectorMessages(
+        { runtime },
+        {
+          channelId: "C12345678",
+          query: "incident",
+          limit: Number.NEGATIVE_INFINITY,
+        },
+      ),
+    ).rejects.toThrow(/positive safe integer/);
+
+    expect(service.readHistory).not.toHaveBeenCalled();
+  });
+
+  it("paginates every Slack history page when no limit was requested", async () => {
+    const all = Array.from({ length: 501 }, (_, index) => ({
+      type: "message",
+      ts: `${1_700_000_000 + index}.000001`,
+      text: `message ${index}`,
+      user: "U123ABC",
+    }));
+    const history = vi.fn(async ({ cursor }: { cursor?: string }) => {
+      const start = cursor ? Number(cursor.slice(1)) : 0;
+      const messages = all.slice(start, start + 15);
+      const next = start + messages.length;
+      return {
+        messages,
+        response_metadata: { next_cursor: next < all.length ? `p${next}` : "" },
+      };
+    });
+    const client = { conversations: { history } };
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
       {
-        channelId: "C12345678",
-        query: "incident",
-        limit: Number.NEGATIVE_INFINITY,
+        client,
+        defaultAccountId: "default",
+        accountStates: new Map(),
       },
     );
 
-    expect(service.readHistory).toHaveBeenNthCalledWith(
-      1,
-      "C12345678",
-      expect.objectContaining({ limit: 1 }),
-      "default",
+    const result = await service.readHistory("C12345678", undefined, "default");
+
+    expect(result).toHaveLength(501);
+    expect(history).toHaveBeenCalledTimes(34);
+  });
+
+  it("keeps every search match when no result page was requested", async () => {
+    const runtime = createRuntime();
+    const messages = Array.from({ length: 501 }, (_, index) => ({
+      ts: `${1_700_000_000 + index}.000001`,
+      text: `incident ${index}`,
+      user: "U123ABC",
+    }));
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        runtime,
+        client: {},
+        defaultAccountId: "default",
+        accountStates: new Map(),
+        readHistory: vi.fn(async () => messages),
+        slackMessageToMemory: vi.fn(
+          async (message: { ts: string; text: string }) => ({
+            id: message.ts,
+            roomId: "room-1",
+            entityId: "entity-1",
+            content: { text: message.text },
+            createdAt: Number(message.ts.split(".")[0]),
+          }),
+        ),
+      },
     );
-    expect(service.readHistory).toHaveBeenNthCalledWith(
-      2,
-      "C12345678",
-      expect.objectContaining({ limit: 100 }),
-      "default",
+
+    const result = await service.searchConnectorMessages(
+      { runtime },
+      { channelId: "C12345678", query: "incident" },
     );
-    expect(fetched).toHaveLength(4);
-    expect(searched).toHaveLength(2);
+
+    expect(result).toHaveLength(501);
+  });
+});
+
+describe("compareSlackConnectorTargets", () => {
+  const at = (
+    label: string,
+    score: number,
+    channelId: string,
+  ): MessageConnectorTarget =>
+    ({
+      label,
+      score,
+      target: { source: "slack", channelId },
+    }) as unknown as MessageConnectorTarget;
+
+  it("orders the highest score first", () => {
+    const targets = [at("low", 0.1, "C1"), at("high", 0.9, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["high", "low"]);
+  });
+
+  it("keeps a total order when a score is not finite", () => {
+    const targets = [at("nan", Number.NaN, "C1"), at("valid", 0.9, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["valid", "nan"]);
+
+    expect(
+      compareSlackConnectorTargets(
+        at("nan", Number.NaN, "C1"),
+        at("valid", 0.9, "C2"),
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      compareSlackConnectorTargets(
+        at("valid", 0.9, "C2"),
+        at("nan", Number.NaN, "C1"),
+      ),
+    ).toBeLessThan(0);
+  });
+
+  it("tie-breaks equal scores on label", () => {
+    const targets = [at("z-label", 0.5, "C1"), at("a-label", 0.5, "C2")];
+    targets.sort(compareSlackConnectorTargets);
+    expect(targets.map((t) => t.label)).toEqual(["a-label", "z-label"]);
   });
 });

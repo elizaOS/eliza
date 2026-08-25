@@ -33,7 +33,7 @@ src/
   register.ts           Side-effect entry — calls registerWifiApp() if isElizaOS()
   ui.ts                 UI barrel — re-exports WifiAppView + wifi-app helpers
   providers/
-    networks.ts         wifiNetworksProvider — calls WiFi.listAvailableNetworks, limit 25
+    networks.ts         wifiNetworksProvider — calls WiFi.listAvailableNetworks losslessly
   components/
     wifi-app.ts         wifiApp OverlayApp descriptor + registerWifiApp()
     WifiAppView.tsx     Full-screen React overlay UI (scan, connect, disconnect)
@@ -67,7 +67,9 @@ No env vars or settings keys. The plugin reads no process environment at runtime
 
 - **Android-only.** `WifiAppView` and `registerWifiApp()` are safe to import on non-Android platforms but `@elizaos/capacitor-wifi` methods will reject or return empty results everywhere except Android. The `register.ts` entry guards registration behind `isElizaOS()`.
 - **No server routes.** `WifiAppView` owns all its data by calling the Capacitor plugin directly; there is no backend API involved.
-- **Scan limit.** `wifiNetworksProvider` caps at 25 networks; `WifiAppView` caps its own scan at 50. Keep these consistent if raising the limit.
+- **Complete scans.** `wifiNetworksProvider` and `WifiAppView` omit the native
+  bridge's optional `limit`, so every deduplicated Android scan result remains
+  available to the planner and UI.
 - **Location permission.** Android requires `ACCESS_FINE_LOCATION` for `WifiManager.startScan`. If the permission is denied, scans succeed silently with an empty list or throw; the provider maps errors to `wifiNetworksError` in `values`.
 - **Provider context gate.** `wifiNetworksProvider` uses `contextGate: { anyOf: ["system"] }` — it only fires in system-context conversations, not every agent turn.
 - **`elizaos.app` metadata.** `package.json` carries an `elizaos.app` block (`displayName: "WiFi"`, `category: "system"`, `androidOnly: true`, `heroImage: "assets/hero.png"`) used by the app catalog tooling.

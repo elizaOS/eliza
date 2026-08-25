@@ -99,14 +99,6 @@ function main() {
       allowFailure: true,
     },
   );
-  runStep(
-    "bluebubbles-validate-no-send",
-    "node",
-    [script("validate-bluebubbles-outbound.mjs")],
-    {
-      allowFailure: true,
-    },
-  );
   if (!args.skipWatch && args.watchSeconds > 0) {
     runStep(
       "watch-physical-gateway",

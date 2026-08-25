@@ -1,5 +1,5 @@
 {
-  "$comment": "Coverage floor for the Windows lane (#13402). The dedicated windows-ci.yml workflow was consolidated away; the surviving Windows proof is the jobs.platform-smoke windows matrix entry in .github/workflows/nightly.yml. Every command here must stay wired as a run: step in that job. Enforced by packages/scripts/ci-windows-command-coverage-contract.mjs: adding a command is always allowed (this is a floor, not an exact match); to intentionally retire one, delete it from the workflow AND from this list in the SAME PR so the reduction is reviewable in the diff.",
+  "$comment": "Coverage floor for the Windows lane (#13402). The surviving Windows proof is the jobs.platform-smoke windows matrix entry in .github/workflows/platform-smoke.yml, called by Develop Full. Every command here must stay wired as a run: step in that job. Enforced by packages/scripts/ci-windows-command-coverage-contract.mjs: adding a command is always allowed (this is a floor, not an exact match); to intentionally retire one, delete it from the workflow AND from this list in the SAME PR so the reduction is reviewable in the diff.",
   "commands": [
     "node packages/scripts/test-cloud-run-watchdog.self-test.mjs",
     "bun run build:core",

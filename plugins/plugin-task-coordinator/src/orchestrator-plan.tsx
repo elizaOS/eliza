@@ -1,5 +1,5 @@
 // Renders the live orchestrator plan checklist.
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import { Check, ChevronRight, Circle, Loader } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -37,15 +37,15 @@ function readEntries(plan: Record<string, unknown>): PlanEntry[] {
 
 function StatusIcon({ status }: { status: PlanEntry["status"] }): ReactNode {
   if (status === "completed")
-    return <Check className="h-3 w-3 shrink-0 text-ok" aria-hidden />;
+    return <Check className="size-3 shrink-0 text-ok" aria-hidden />;
   if (status === "in_progress")
     return (
       <Loader
-        className="h-3 w-3 shrink-0 animate-spin text-muted-strong"
+        className="size-3 shrink-0 animate-spin text-muted-strong"
         aria-hidden
       />
     );
-  return <Circle className="h-3 w-3 shrink-0 text-muted/60" aria-hidden />;
+  return <Circle className="size-3 shrink-0 text-muted/60" aria-hidden />;
 }
 
 export function PlanDock({
@@ -73,13 +73,14 @@ export function PlanDock({
       data-testid="orchestrator-plan"
     >
       <Button
-        unstyled
+        variant="sectionToggle"
+        size="content"
+        align="start"
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left"
       >
         <ChevronRight
-          className={`h-3 w-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
+          className={`size-3 shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`}
         />
         <span className="text-xs font-semibold text-txt">Plan</span>
         <span className="flex-1" />

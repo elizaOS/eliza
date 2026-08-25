@@ -112,6 +112,8 @@ Read by the runtime (see README for the full WHY of each):
 - `SHOULD_RESPOND_MODEL` (`small`/`large`, `services/message.ts`), `BASIC_CAPABILITIES_KEEP_RESP` (`services/message.ts`) — message/basic-capabilities behavior.
 - `ELIZA_BOT_NOISE_TRIAGE` (`services/message/bot-noise-triage.ts`) — set `0` to disable the TEXT_SMALL pre-gate that triages unaddressed bot/webhook group messages before the Stage 1 RESPONSE_HANDLER call (default on).
 - `ELIZA_STAGE1_GROUP_TRIAGE` (`services/message/stage1-prompt-tier.ts`) — set `0` to disable the compact Stage 1 instruction tier for unaddressed group messages and always render the full rule block (default on).
+- `AUTONOMY_INTERVAL_MS` (`features/autonomy/service.ts`) — canonical positive decimal integer cadence in milliseconds, clamped to 5,000–600,000; malformed or unset values use 30,000.
+- `AUTONOMY_MODEL_SIZE` (`features/autonomy/service.ts`) — autonomy model tier, exactly `small` or `large`; malformed or unset values use `large`.
 - Prompt-batcher knobs (all `PROMPT_BATCHER_*`, read in `runtime.ts`): `PROMPT_BATCHER_BATCH_SIZE`, `PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS`, `PROMPT_BATCHER_MAX_SECTIONS_PER_CALL`, `PROMPT_BATCHER_PACKING_DENSITY`, `PROMPT_BATCHER_MAX_TOKENS_PER_CALL`, `PROMPT_BATCHER_MAX_PARALLEL_CALLS`, `PROMPT_BATCHER_MODEL_SEPARATION`.
 - `ELIZA_STATE_DIR` — state-dir resolution (`utils/state-dir.ts`); `ELIZA_WORKSPACE_DIR` — workspace folder (`utils/workspace-folder-config.ts`).
 - `ELIZA_TRAJECTORY_LOGGING` — canonical trajectory persistence gate for both file and DB recorders (`runtime/trajectory-gate.ts`): truthy enables; non-empty falsey disables; blank is unset. Defaults are on for dev/unset `NODE_ENV`, off for `NODE_ENV=test|production`. `ELIZA_TRAJECTORY_RECORDING` is the legacy alias, and `ELIZA_DISABLE_TRAJECTORY_LOGGING=1` is the hard opt-out.
@@ -164,8 +166,24 @@ visible.
 - `index.node.ts` is the source of truth for the root public surface; narrow contract consumers should prefer `@elizaos/core/contracts/*` subpaths to avoid barrel collisions.
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
+- Action, provider, and analytics results preserve complete model-facing records. Detailed trust evaluation returns every evidence record, follow-up suggestions return every qualifying contact, relationship analytics page through every shared message, and channel-topic search returns every matching room. Do not silently slice without a lossless page or reference contract.
+- Planner action retrieval ranks the complete authorized parent catalog, and every registered child remains callable. Candidate, context, relevance, and tier metadata may change ordering or detail but must never remove tools from the model-facing surface. Tool, provider, subaction, and parameter descriptions plus examples render completely. Legacy compressed fields mirror complete descriptions for compatibility and are never prompt alternatives.
+- Stage-1 message-handler action and intent hints preserve every ordered string exactly; malformed arrays reject the envelope. PII context assembly likewise preserves repeated candidates, every ordered resolution and retrieval fragment, and exact text. Legacy cap hints are ignored, and malformed Unicode is rejected rather than repaired into different model context.
+- Device-class inference budgets reject unsupported model-output requests before
+  dispatch. They may bound queue wait as a resource policy, but must never lower
+  `maxTokens` and pass a partial generation off as the requested result.
+- `ActionResult.promptData` may replace runtime-only `data` only as a declared,
+  complete model schema; prompt serializers never emit both carriers. Context
+  rendering preserves exact whitespace and complete runtime-event fields, and
+  content-reference discovery uses cycle-safe complete traversal rather than
+  depth or visited-value caps. The final wire preflight owns any explicit
+  model-limit rejection.
+- Document keyword, vector, and hybrid searches traverse every authorized
+  fragment page before ranking. Fragment-query limits are storage batch sizes,
+  never recall caps; a repeated page rejects instead of returning a prefix.
 - DB mutation methods on `IDatabaseAdapter` return `Promise<boolean>` so callers can distinguish success/failure (`types/database.ts`).
 - The task system (`services/task.ts`, `services/task-scheduler.ts`) is the single place scheduled work runs; only tasks tagged `queue` are polled. Three modes: local timer, per-daemon (`startTaskScheduler`), serverless (`{ serverless: true }` + `runDueTasks()`).
+- Document reads use `roomId` as the single room entitlement and join it to the requester's current room set inside the adapter. `directGrantEntityIds` is a bounded, validated read exception that remains valid without room membership; it never opens `agent-private` documents and never grants mutation authority. Only the dedicated adapter CAS may replace grants: OWNER on any valid document, or a current room ADMIN on global and user-private documents, with every grantee validated in the current agent tenant. Malformed or duplicate grant arrays make the parent unreadable.
 - `runtime.ts` is intentionally large and load-bearing; navigate by symbol and
   ownership boundary rather than reading it top to bottom or adding another
   unrelated responsibility.

@@ -24,7 +24,7 @@ const OUTPUT = join(__dirname, "COVERAGE.md");
 
 const routerSrc = readFileSync(ROUTER, "utf8");
 const routes = [];
-for (const m of routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g))
+for (const m of routerSrc.matchAll(/^ {4}path: "([^"]+)",$/gm))
   routes.push(m[1]);
 
 function walk(dir) {

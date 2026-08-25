@@ -189,7 +189,7 @@ export function AppsSidebar({
               {starredEntries.length > 0 && (
                 <AppsSidebarSection
                   label="Starred"
-                  icon={<Star className="h-3 w-3" aria-hidden />}
+                  icon={<Star className="size-3" aria-hidden />}
                 >
                   {starredEntries.map((app) => (
                     <AppsSidebarAppButton
@@ -208,7 +208,7 @@ export function AppsSidebar({
               {featuredEntries.length > 0 && (
                 <AppsSidebarSection
                   label="Featured"
-                  icon={<Star className="h-3 w-3" aria-hidden />}
+                  icon={<Star className="size-3" aria-hidden />}
                 >
                   {featuredEntries.map((app) => (
                     <AppsSidebarAppButton
@@ -227,7 +227,7 @@ export function AppsSidebar({
               {activeEntries.length > 0 && (
                 <AppsSidebarSection
                   label="Active"
-                  icon={<Play className="h-3 w-3" aria-hidden />}
+                  icon={<Play className="size-3" aria-hidden />}
                 >
                   {activeEntries.map(({ run, displayName, identitySource }) => (
                     <AppsSidebarAppButton
@@ -277,7 +277,7 @@ function AppsSidebarSection({
 }) {
   return (
     <div>
-      <SidebarContent.SectionLabel className="mb-1 inline-flex items-center gap-1.5 px-2 text-[0.625rem]">
+      <SidebarContent.SectionLabel className="mb-1 inline-flex items-center gap-1.5 px-2 text-2xs">
         {icon}
         {label}
       </SidebarContent.SectionLabel>
@@ -311,15 +311,16 @@ function AppsSidebarAppButtonInner<TPayload>({
 
   return (
     <Button
-      variant="ghost"
+      variant="selection"
+      size="eventRow"
+      align="start"
+      data-state={selected ? "on" : "off"}
       onClick={handleClick}
       aria-current={selected ? "page" : undefined}
-      className={`group flex h-auto w-full min-w-0 justify-start gap-2 rounded-sm px-2 py-1 text-left font-normal transition-colors ${
-        selected ? "bg-accent/15 text-txt" : "text-txt hover:bg-bg-muted/50"
-      }`}
+      className="group min-w-0"
     >
       <Icon
-        className="h-3.5 w-3.5 shrink-0 text-muted"
+        className="size-3.5 shrink-0 text-muted"
         aria-hidden
         strokeWidth={2}
       />
@@ -330,7 +331,7 @@ function AppsSidebarAppButtonInner<TPayload>({
         <span
           role="img"
           aria-label={t("appsview.Running")}
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok "
+          className="size-1.5 shrink-0 rounded-full bg-ok "
         />
       ) : null}
     </Button>

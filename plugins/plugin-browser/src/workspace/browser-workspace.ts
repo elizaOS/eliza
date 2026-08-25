@@ -130,7 +130,7 @@ import {
   pushWebBrowserWorkspaceHistory,
 } from "./browser-workspace-forms.js";
 // ── Re-export network ────────────────────────────────────────────────
-import { browserWorkspacePageFetch } from "./browser-workspace-helpers.js";
+import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 // ── Re-export jsdom ──────────────────────────────────────────────────
 import {
   createEmptyWebBrowserWorkspaceDom,
@@ -971,8 +971,10 @@ export async function executeBrowserWorkspaceCommand(
             "Eliza browser workspace diff url requires secondaryUrl.",
           );
         }
-        const left = await browserWorkspacePageFetch(leftUrl);
-        const right = await browserWorkspacePageFetch(rightUrl);
+        // Each hop carries its own deadline, matching the web backend of this
+        // same subaction, which routes both pages through the tracked fetch.
+        const left = await browserWorkspaceBoundedPageFetch(leftUrl);
+        const right = await browserWorkspaceBoundedPageFetch(rightUrl);
         return {
           mode: "desktop",
           subaction: command.subaction,

@@ -597,7 +597,9 @@ describe("action catalogue and retrieval", () => {
 			recentConversationText: "Code me an app showing how good gpt oss is",
 		});
 
-		expect(response.results[0]).toMatchObject({
+		expect(
+			response.results.find((result) => result.name === "TASKS"),
+		).toMatchObject({
 			name: "TASKS",
 			matchedBy: expect.arrayContaining(["bm25"]),
 		});
@@ -1176,6 +1178,24 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 			"SHELL",
 			"TERMINAL_SHELL",
 		]);
+	});
+});
+
+describe("candidate family hints: arithmetic", () => {
+	it("arithmetic-shaped inventions hint the deterministic evaluator", () => {
+		for (const name of ["CALC_RESULT", "DO_MATH", "MULTIPLY_NUMBERS"]) {
+			expect(parentAliasesForCandidateAction(name)).toEqual(["CALCULATE"]);
+		}
+	});
+
+	it("does not treat unrelated candidate-name substrings as arithmetic", () => {
+		for (const name of [
+			"MULTIPLATFORM_SETUP",
+			"CALCULUS_NOTES",
+			"MATHILDA_PROFILE",
+		]) {
+			expect(parentAliasesForCandidateAction(name)).not.toContain("CALCULATE");
+		}
 	});
 });
 

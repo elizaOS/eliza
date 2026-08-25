@@ -17,10 +17,12 @@ import type {
 import {
   failureToActionResult,
   fencePreformatted,
+  readParam,
   readStringParam,
   successActionResult,
   userFacingSuccessResult,
 } from "../lib/format.js";
+import { isAbsolutePath } from "../lib/path-utils.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 import { editFileHandler } from "./edit.js";
 import { globHandler } from "./glob.js";
@@ -81,6 +83,147 @@ const FILE_ACTIONS: Record<FileOperation, FileHandler> = {
   glob: globHandler,
   ls: lsHandler,
 };
+
+const WORKSPACE_OPERATION_PARAMETERS: Record<FileOperation, readonly string[]> =
+  {
+    read: ["file_path", "offset", "limit", "unit", "expectedRevision"],
+    write: ["file_path", "content", "overwrite"],
+    edit: [
+      "file_path",
+      "old_string",
+      "new_string",
+      "replace_all",
+      "allow_literal_escapes",
+    ],
+    grep: [
+      "pattern",
+      "path",
+      "glob",
+      "type",
+      "output_mode",
+      "-A",
+      "-B",
+      "-C",
+      "case_insensitive",
+      "multiline",
+      "head_limit",
+      "show_line_numbers",
+    ],
+    glob: ["pattern", "path"],
+    ls: ["path", "ignore"],
+  };
+
+const EMPTY_STRING_PAYLOAD_PARAMETERS = new Set([
+  "content",
+  "old_string",
+  "new_string",
+]);
+
+const OPTIONAL_ZERO_PARAMETERS = new Set([
+  "offset",
+  "limit",
+  "-A",
+  "-B",
+  "-C",
+  "head_limit",
+]);
+
+const ALL_WORKSPACE_OPERATION_PARAMETERS = new Set(
+  Object.values(WORKSPACE_OPERATION_PARAMETERS).flat(),
+);
+
+function hasDenseUmbrellaShape(
+  operation: FileOperation,
+  options: unknown,
+): boolean {
+  const relevant = new Set(WORKSPACE_OPERATION_PARAMETERS[operation]);
+  let unrelatedFields = 0;
+  for (const name of ALL_WORKSPACE_OPERATION_PARAMETERS) {
+    if (relevant.has(name) || readParam(options, name) === undefined) continue;
+    unrelatedFields += 1;
+    if (unrelatedFields >= 2) return true;
+  }
+  return false;
+}
+
+function nonEmptyStringParam(
+  options: unknown,
+  name: string,
+): string | undefined {
+  const value = readStringParam(options, name);
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function looksLikeRelativeGlob(value: string): boolean {
+  return !isAbsolutePath(value) && /[*?[\]{}]/.test(value);
+}
+
+/**
+ * Narrows the umbrella schema to the selected operation before dispatch. Some
+ * strict decoders materialize every optional property in FILE's union-shaped
+ * schema. In that recognizable dense shape, empty strings/arrays, optional
+ * numeric zeroes, and GREP's false line-number sentinel must not override the
+ * selected operation's defaults. Sparse calls retain explicit zero and false
+ * values, and empty write/edit payload strings remain exact user data.
+ */
+function normalizeWorkspaceFileOptions(
+  operation: FileOperation,
+  options: unknown,
+): HandlerOptions {
+  const parameters: Record<string, unknown> = {};
+  const denseUmbrellaShape = hasDenseUmbrellaShape(operation, options);
+
+  for (const name of WORKSPACE_OPERATION_PARAMETERS[operation]) {
+    const value = readParam(options, name);
+    if (value === undefined) continue;
+    if (
+      denseUmbrellaShape &&
+      typeof value === "string" &&
+      value.length === 0 &&
+      !EMPTY_STRING_PAYLOAD_PARAMETERS.has(name)
+    ) {
+      continue;
+    }
+    if (
+      denseUmbrellaShape &&
+      typeof value === "number" &&
+      value === 0 &&
+      OPTIONAL_ZERO_PARAMETERS.has(name)
+    ) {
+      continue;
+    }
+    if (denseUmbrellaShape && Array.isArray(value) && value.length === 0)
+      continue;
+    if (
+      denseUmbrellaShape &&
+      operation === "grep" &&
+      name === "show_line_numbers" &&
+      value === false
+    ) {
+      continue;
+    }
+    parameters[name] = value;
+  }
+
+  if (operation === "glob") {
+    const canonicalPattern = nonEmptyStringParam(options, "pattern");
+    const compatibilityPattern = nonEmptyStringParam(options, "glob");
+    const requestedPath = nonEmptyStringParam(options, "path");
+    const pattern = canonicalPattern ?? compatibilityPattern;
+
+    if (pattern !== undefined) parameters.pattern = pattern;
+    if (requestedPath !== undefined) {
+      if (looksLikeRelativeGlob(requestedPath)) {
+        if (pattern === undefined) parameters.pattern = requestedPath;
+        delete parameters.path;
+      } else {
+        parameters.path = requestedPath;
+      }
+    }
+  }
+
+  return { parameters } as HandlerOptions;
+}
 
 const FILE_OPERATION_ALIASES: Record<string, FileOperation> = {
   cat: "read",
@@ -285,7 +428,7 @@ export const fileAction: Action = {
     "LIST_FILES",
   ],
   description:
-    "Read, write, edit, grep, glob, or list files. Workspace paths are absolute unless the operation defaults to session cwd; target=device uses the device bridge.",
+    "Read, write, edit, grep, glob, or list files. Relative workspace paths resolve against the session cwd before sandbox validation; target=device uses the device bridge.",
   descriptionCompressed:
     "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
   parameters: [
@@ -304,7 +447,8 @@ export const fileAction: Action = {
     },
     {
       name: "file_path",
-      description: "Absolute path for read/write/edit operations.",
+      description:
+        "Absolute or session-cwd-relative path for read/write/edit operations.",
       required: false,
       schema: { type: "string" },
     },
@@ -397,12 +541,6 @@ export const fileAction: Action = {
       schema: { type: "boolean" },
     },
     {
-      name: "head_limit",
-      description: "For action=grep, truncate output to the first N lines.",
-      required: false,
-      schema: { type: "number" },
-    },
-    {
       name: "show_line_numbers",
       description: "For action=grep: include 1-based line numbers.",
       required: false,
@@ -410,15 +548,28 @@ export const fileAction: Action = {
     },
     {
       name: "offset",
-      description: "For action=read, zero-based line offset.",
+      description: "For action=read, zero-based offset in the selected unit.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "limit",
-      description: "For action=read, max number of lines to return.",
+      description: "For action=read, maximum lines or UTF-8 bytes to return.",
       required: false,
       schema: { type: "number" },
+    },
+    {
+      name: "unit",
+      description: "For action=read, coordinate unit: line (default) or byte.",
+      required: false,
+      schema: { type: "string", enum: ["line", "byte"] },
+    },
+    {
+      name: "expectedRevision",
+      description:
+        "For action=read continuation, reject if the file revision changed.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "ignore",
@@ -451,16 +602,24 @@ export const fileAction: Action = {
         message: "FILE requires action=read/write/edit/grep/glob/ls",
       });
     }
-    const { operation, target } = routing;
+    let { operation } = routing;
+    const { target } = routing;
     if (target === "device") {
       return deviceFileHandler(operation, runtime, options, callback);
+    }
+    if (
+      operation === "ls" &&
+      (nonEmptyStringParam(options, "pattern") !== undefined ||
+        nonEmptyStringParam(options, "glob") !== undefined)
+    ) {
+      operation = "glob";
     }
     const handler = FILE_ACTIONS[operation];
     const result = await handler(
       runtime,
       message,
       state,
-      options as HandlerOptions | undefined,
+      normalizeWorkspaceFileOptions(operation, options),
       callback,
     );
     return result;

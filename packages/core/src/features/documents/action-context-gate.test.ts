@@ -92,6 +92,9 @@ function makeService() {
 		listDocumentsDetailed: vi.fn(async () => listResult()),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
+		// The `read` subaction goes through the bounded progressive-read API
+		// (#24305), not getDocumentById; a missing document is the null case.
+		readDocumentRange: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
 			clientDocumentId: DOC_ID,
 			fragmentCount: 1,
@@ -176,7 +179,7 @@ describe("DOCUMENT handler operation gate on knowledge-routed turns", () => {
 	it.each([
 		["list", {}, "listDocumentsDetailed"],
 		["search", { query: "launch notes" }, "searchDocuments"],
-		["read", { id: DOC_ID }, "getDocumentById"],
+		["read", { id: DOC_ID }, "readDocumentRange"],
 	] as const)(
 		"allows the read-only %s subaction when routed to knowledge",
 		async (action, extraParams, method) => {
@@ -254,7 +257,7 @@ describe("DOCUMENT handler operation gate on knowledge-routed turns", () => {
 describe("DOCUMENT handler operation gate on app-path merged routing", () => {
 	it.each([
 		["list", {}, "listDocumentsDetailed"],
-		["read", { id: DOC_ID }, "getDocumentById"],
+		["read", { id: DOC_ID }, "readDocumentRange"],
 	] as const)(
 		"allows the read-only %s subaction when state is knowledge and message is general (app-path)",
 		async (action, extraParams, method) => {

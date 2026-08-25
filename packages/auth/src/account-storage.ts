@@ -1285,7 +1285,11 @@ function listAccountsUnlocked(
     records.push(parsed);
   }
 
-  records.sort((a, b) => a.createdAt - b.createdAt);
+  records.sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    return aTime - bTime;
+  });
   return records;
 }
 

@@ -252,8 +252,10 @@ function parseReaction(row: {
 export interface ChatDbAttachment {
   /** chat.db `attachment.guid`. */
   guid: string;
-  /** Filename as stored, if known. */
+  /** User-facing transfer filename, if known. */
   filename: string | null;
+  /** Local Messages attachment path, if the bytes have downloaded. */
+  path: string | null;
   /** Apple UTI (e.g. `public.jpeg`, `com.apple.quicktime-movie`). */
   uti: string | null;
   /** Best-available MIME type (may be null for some UTIs). */
@@ -792,7 +794,8 @@ export async function openChatDb(
           }>;
           attachments = attRows.map((a) => ({
             guid: a.guid,
-            filename: a.transfer_name ?? a.filename ?? null,
+            filename: a.transfer_name ?? a.filename?.split("/").pop() ?? null,
+            path: a.filename,
             uti: a.uti,
             mimeType: a.mime_type,
             totalBytes: a.total_bytes,
@@ -889,9 +892,10 @@ export async function openChatDb(
     listMessages(options = {}): ChatDbMessage[] {
       if (closed) return [];
       const chatId = options.chatId?.trim();
-      const requestedLimit =
-        typeof options.limit === "number" && Number.isFinite(options.limit) ? options.limit : 50;
-      const limit = Math.max(1, Math.trunc(requestedLimit));
+      const limit =
+        typeof options.limit === "number" && Number.isFinite(options.limit)
+          ? Math.max(1, Math.trunc(options.limit))
+          : -1;
 
       let rows: RawMessageRow[];
       try {

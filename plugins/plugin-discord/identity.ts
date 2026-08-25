@@ -6,12 +6,12 @@
  */
 import {
 	createUniqueUuid,
+	deterministicOwnerEntityId,
 	type IAgentRuntime,
 	type Metadata,
 	type RolesWorldMetadata,
 	recordOwnerGrant,
 	recordRoleGrant,
-	stringToUuid,
 } from "@elizaos/core";
 
 const CANONICAL_OWNER_SETTING_KEYS = ["ELIZA_ADMIN_ENTITY_ID"] as const;
@@ -65,8 +65,9 @@ export function resolveElizaOwnerEntityId(runtime: IAgentRuntime): string {
 		return configuredOwnerId;
 	}
 
-	const agentName = runtime.character?.name?.trim() || runtime.agentId;
-	return stringToUuid(`${agentName}-admin-entity`);
+	// Unconfigured rigs: core's agent-id seed, shared with the chat, pendant,
+	// and LifeOps owner scopes so Discord world ownership names the same entity.
+	return deterministicOwnerEntityId(runtime.agentId);
 }
 
 export function resolveDiscordRuntimeEntityId(

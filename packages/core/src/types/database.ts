@@ -67,8 +67,10 @@ export type DocumentListRequesterRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
-	| "RUNTIME";
+	| "RUNTIME"
+	| "UNRESOLVED";
 
 /** Identity and room membership used by every document authorization query. */
 export interface DocumentRequesterContext {
@@ -100,12 +102,44 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
 	documentId: UUID;
 }
 
+/** Exact unit used by an authorized document read. */
+export type DocumentRangeUnit = "line" | "fragment";
+
+/**
+ * Authorized document read. Offsets and caller-requested limits count exact
+ * retained line or paragraph-like fragment units, never JavaScript string code
+ * units. Omitting `limit` returns the complete remainder of the source.
+ */
+export interface DocumentRangeReadParams extends DocumentRequesterContext {
+	documentId: UUID;
+	unit: DocumentRangeUnit;
+	offset: number;
+	limit?: number;
+}
+
+/**
+ * Source projection returned by a native adapter. The source
+ * fingerprint is an adapter-internal change detector and must be wrapped in an
+ * opaque public revision before it leaves DocumentService.
+ */
+export interface DocumentRangeReadResult {
+	text: string;
+	start: number;
+	end: number;
+	total: number;
+	documentRevision: number;
+	revisionAttemptId?: string;
+	sourceFingerprint: string;
+}
+
 /**
  * Authorized fragment query. Fragment visibility is derived from the parent
  * document, never from denormalized fragment metadata.
  */
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
+	offset?: number;
+	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;
@@ -121,6 +155,7 @@ export interface DocumentMutationSnapshot {
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
+	directGrantEntityIds?: UUID[];
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;
@@ -133,6 +168,25 @@ export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
 	documentId: UUID;
 	expected: DocumentMutationSnapshot;
 	replacement: Memory;
+}
+
+/** Atomic replacement of a document's explicit entity read grants. */
+export interface DocumentDirectGrantUpdateParams
+	extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	directGrantEntityIds: UUID[];
+}
+
+/**
+ * Atomic replacement of a document parent and its complete fragment revision.
+ * Replacement fragment IDs must be fresh; adapters reject IDs from the
+ * committed generation so secondary indexes and asynchronous replicas can
+ * preserve the old revision until the parent commit point advances.
+ */
+export interface DocumentRevisionReplaceParams
+	extends DocumentCompareAndSwapParams {
+	fragments: Memory[];
 }
 
 /** Compare-and-swap document deletion under canonical mutation policy. */
@@ -1094,29 +1148,41 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 */
 		includeEmbedding?: boolean;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before ordering and pagination. When omitted,
+		 * no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
 
 	/**
-	 * Required native document-store contract. Version 2 covers canonical
-	 * visibility for list/lookup/search plus compare-and-swap mutation. Adapter
-	 * authors migrating from version 1 must implement all five methods; there is
+	 * Required native document-store contract. Version 4 covers canonical
+	 * visibility for list/lookup/search plus atomic revision replacement. Adapter
+	 * authors migrating from version 2 must implement all six methods; there is
 	 * deliberately no bounded compatibility scan because it cannot preserve
 	 * authorization, counts, or pagination guarantees.
 	 */
-	readonly documentListQueryCapability: 2;
+	readonly documentListQueryCapability: 4;
+	/** Native source projection with optional caller-requested pagination. */
+	readonly documentRangeReadCapability?: 1;
 	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
 	getDocument(params: DocumentGetQueryParams): Promise<Memory | null>;
+	readDocumentRange?(
+		params: DocumentRangeReadParams,
+	): Promise<DocumentRangeReadResult | null>;
 	queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
+	): Promise<DocumentMutationResult>;
+	replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
 	): Promise<DocumentMutationResult>;
 	deleteDocumentWithSnapshot(
 		params: DocumentDeleteParams,
@@ -1171,8 +1237,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		textContains?: string;
 		includeEmbedding?: boolean;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before ordering and pagination. When omitted,
+		 * no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
@@ -1250,6 +1317,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		tableName: string;
 		query?: string;
@@ -1257,8 +1325,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		worldId?: UUID;
 		entityId?: UUID;
 		/**
-		 * Requester identity to scope retrieval to. When omitted, no
-		 * access-context filtering is applied (single-tenant behavior).
+		 * Requester authority used to intersect disclosure scope and any supplied
+		 * world/authorized-room bounds before vector ranking and pagination. When
+		 * omitted, no access-context filtering is applied (single-tenant behavior).
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
@@ -1554,6 +1623,7 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 */
 	getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		/** Required. Only tasks with agentId in this array are returned. Single agent = [id]. WHY: multi-tenant safety; schema indexes by agent_id; daemon batches one getTasks(agentIds) for many agents. */
@@ -1569,6 +1639,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	// getTasksByName() are query methods (filter by room, tags, name).
 	createTasks(tasks: Task[]): Promise<UUID[]>;
 	getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Atomically updates a queued task only while its lifecycle status is
+	 * pending (or absent for legacy rows). The queue tag and status predicate
+	 * are evaluated by storage in the same mutation that applies `task`.
+	 */
+	updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>;
 	deleteTasks(taskIds: UUID[]): Promise<void>;
 

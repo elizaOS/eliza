@@ -111,14 +111,14 @@ const accentGradientStyle = {
   background:
     "linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, white 8%) 0%, var(--accent) 100%)",
   color: "var(--accent-foreground)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.5)",
+  borderColor: "rgba(var(--accent-rgb), 0.5)",
 } as const;
 
 const idleSaveBtnStyle = {
   background:
-    "linear-gradient(180deg, rgba(var(--accent-rgb,240,185,11),0.16) 0%, rgba(var(--accent-rgb,240,185,11),0.1) 100%)",
-  color: "rgba(var(--accent-rgb, 240, 185, 11), 0.78)",
-  borderColor: "rgba(var(--accent-rgb, 240, 185, 11), 0.22)",
+    "linear-gradient(180deg, rgba(var(--accent-rgb),0.16) 0%, rgba(var(--accent-rgb),0.1) 100%)",
+  color: "rgba(var(--accent-rgb), 0.78)",
+  borderColor: "rgba(var(--accent-rgb), 0.22)",
 } as const;
 
 /* ── Constants ─────────────────────────────────────────────────────── */
@@ -198,15 +198,16 @@ function CharacterPageTabButton({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="content"
+      data-state={isActive ? "on" : "off"}
       id={`character-editor-tab-${page}`}
       role="tab"
       aria-selected={isActive}
       aria-current={isActive ? "page" : undefined}
       aria-controls={`character-editor-panel-${page}`}
       tabIndex={isActive ? 0 : -1}
-      className={`h-auto ${className ?? ""}`}
+      className={className}
       style={style}
       onClick={() => onSelect(page)}
       onKeyDown={onKeyDown}
@@ -1128,7 +1129,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={() => document.getElementById(uploadInputId)?.click()}
         onClick={() => document.getElementById(uploadInputId)?.click()}
         title={t("aria.upload", {
@@ -1138,7 +1139,7 @@ export function CharacterEditor({
           defaultValue: "Upload VRM",
         })}
       >
-        <UploadIcon className="h-4 w-4" />
+        <UploadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-export-json"
@@ -1150,7 +1151,7 @@ export function CharacterEditor({
         type="button"
         variant="outline"
         size="icon"
-        className="h-9 w-9 rounded-sm"
+        className="size-9 rounded-sm"
         onActivate={handleExportCharacter}
         onClick={handleExportCharacter}
         disabled={!currentCharacter}
@@ -1161,7 +1162,7 @@ export function CharacterEditor({
           defaultValue: "Export JSON",
         })}
       >
-        <DownloadIcon className="h-4 w-4" />
+        <DownloadIcon className="size-4" />
       </CharacterAgentButton>
       <CharacterAgentButton
         agentId="action-reset"
@@ -1517,7 +1518,7 @@ export function CharacterEditor({
                 type="file"
                 id="ce-vrm-upload"
                 accept=".vrm"
-                className="hidden border-0 bg-transparent p-0"
+                variant="nativeFileDisplayNone"
                 style={{ display: "none" }}
                 onChange={(e: ChangeEvent<HTMLInputElement>) => {
                   const file = e.target.files?.[0];
@@ -1618,7 +1619,6 @@ export function CharacterEditor({
             <DialogFooter className="gap-2 sm:gap-2">
               <Button
                 type="button"
-                className="border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
                 onClick={() => void resolvePendingNavigation(true)}
                 disabled={characterSaving || voiceSaving}
               >

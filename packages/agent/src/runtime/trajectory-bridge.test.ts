@@ -217,6 +217,82 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(typeof logger.logLlmCall).toBe("function");
   });
 
+  it("persists semantic decision stages through the patched logSemanticStage", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    expect(typeof patched.logSemanticStage).toBe("function");
+    await logger.startTrajectory?.("step-semantic-1", {
+      agentId: runtime.agentId,
+      source: "test",
+    });
+    await flushTrajectoryWrites(runtime);
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-1",
+      stage: {
+        stageId: "stage-tool-search-1",
+        kind: "toolSearch",
+        iteration: 1,
+        startedAt: 100,
+        endedAt: 112,
+        latencyMs: 12,
+        toolSearch: {
+          query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+          results: [
+            { name: "OWNER_ROUTINES", score: 0.91, rank: 1 },
+            { name: "VIEWS", score: 0.22, rank: 2 },
+          ],
+          selectedActions: ["OWNER_ROUTINES"],
+        },
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    const persistenceSql = trajectoryPersistenceSql(execute);
+    expect(persistenceSql.length).toBeGreaterThan(0);
+    const stageWrite = persistenceSql.find((query) =>
+      query.includes("semanticStages"),
+    );
+    expect(stageWrite).toBeDefined();
+    expect(stageWrite).toContain("stage-tool-search-1");
+    expect(stageWrite).toContain("OWNER_ROUTINES");
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed semantic stage as an invalid capture without a write", async () => {
+    const { runtime, logger, execute, reportError } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await ensureTrajectoriesTable(runtime);
+    const patched = logger as MockLogger & {
+      logSemanticStage?: (params: Record<string, unknown>) => void;
+    };
+    execute.mockClear();
+
+    patched.logSemanticStage?.({
+      stepId: "step-semantic-2",
+      stage: {
+        stageId: "bad-stage",
+        kind: "toolSearch",
+        startedAt: 10,
+        endedAt: 5,
+        latencyMs: -5,
+      },
+    });
+    await flushTrajectoryWrites(runtime);
+
+    expect(trajectoryPersistenceSql(execute)).toHaveLength(0);
+    expect(reportError).toHaveBeenCalledWith(
+      "TrajectoryStorage.captureValidation",
+      expect.anything(),
+      expect.objectContaining({ captureType: "semanticStage" }),
+    );
+  });
+
   it("honors live enablement across patched lifecycle and legacy helpers", async () => {
     const { runtime, logger, execute } = makeRuntime({
       statefulEnablement: true,
@@ -808,28 +884,43 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     });
 
     execute.mockClear();
-    standalone.logLlmCall({
-      stepId: childStepId,
-      model: "late-standalone",
-      response: "must be rejected",
-      purpose: "action",
-      actionType: "runtime.useModel",
-    });
-    standalone.logProviderAccess({
-      stepId: childStepId,
-      providerName: "late-standalone-provider",
-      purpose: "context",
-      data: {},
-    });
+    // Sub-2s rejects are the designed delivery/terminalization race and are
+    // quieted to debug logging; only an aged capture is the real leak signal
+    // this assertion is about, so the two rejects land 10s after close.
+    const realNow = Date.now.bind(Date);
+    const agedNow = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => realNow() + 10_000);
+    try {
+      standalone.logLlmCall({
+        stepId: childStepId,
+        model: "late-standalone",
+        response: "must be rejected",
+        purpose: "action",
+        actionType: "runtime.useModel",
+      });
+      standalone.logProviderAccess({
+        stepId: childStepId,
+        providerName: "late-standalone-provider",
+        purpose: "context",
+        data: {},
+      });
+    } finally {
+      agedNow.mockRestore();
+    }
     await standalone.flushWriteQueue();
     expect(execute).not.toHaveBeenCalled();
-    expect(
-      reportError.mock.calls.filter(
-        ([scope, , context]) =>
-          scope === "TrajectoryStorage.lateCapture" &&
-          (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
-      ),
-    ).toHaveLength(2);
+    // Both captures are rejected, but only the first reports: repeats for the
+    // same closed step dedupe to debug logging.
+    const lateReports = reportError.mock.calls.filter(
+      ([scope, , context]) =>
+        scope === "TrajectoryStorage.lateCapture" &&
+        (context as { diagnosticOnly?: boolean }).diagnosticOnly === true,
+    );
+    expect(lateReports).toHaveLength(1);
+    expect(String((lateReports[0][1] as Error).message)).toMatch(
+      /step=\S+ type=llm purpose=action age=\d+s/,
+    );
 
     await standalone.stop();
     execute.mockClear();
@@ -1239,9 +1330,9 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(terminalWrite).not.toContain('"episodeLength":999');
   });
 
-  // ~20s of CPU-bound truncation/serialization on a dev machine; shared 4-core
-  // CI runners under parallel vitest batches have blown the 120s default.
-  it("bounds bridge-owned action, model, and provider capture", {
+  // This large serialization fixture can contend with parallel Vitest batches
+  // on shared runners, so retain the explicit timeout.
+  it("preserves large bridge-owned captures while normalizing cycles and depth", {
     timeout: 300_000,
   }, async () => {
     const { runtime, logger, execute } = makeRuntime();
@@ -1342,11 +1433,12 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
     const joinedWrites =
       trajectoryPersistenceSql(execute).join("\n---WRITE---\n");
-    expect(joinedWrites).toContain("...[truncated]");
-    expect(joinedWrites).toContain('"__truncatedItems"');
+    expect(joinedWrites).toMatch(/x{70000}/);
+    expect(joinedWrites).toContain(JSON.stringify(oversizedArray));
     expect(joinedWrites).toContain("[Circular]");
     expect(joinedWrites).toContain("[MaxDepth]");
-    expect(joinedWrites).not.toContain(oversized);
+    expect(joinedWrites).not.toContain("...[truncated]");
+    expect(joinedWrites).not.toContain('"__truncatedItems"');
   });
 
   it.each(["metadata_json", "metrics_json", "reward_components_json"] as const)(
@@ -1466,36 +1558,25 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
   });
 });
 
-describe("budgeted LLM capture completeness", () => {
-  it("retains required fields without exceeding the global row budget", () => {
+describe("complete LLM capture", () => {
+  it("retains every field beyond the former global row budget", () => {
     const optionalFields = Object.fromEntries(
       Array.from({ length: 20 }, (_, index) => [
         `optional-${index}`,
         "x".repeat(70_000),
       ]),
     );
-    const normalized = normalizeLlmCallPayload([
-      {
-        stepId: "step-budget-exhausted",
-        ...optionalFields,
-        model: "zai-glm-4.7",
-        response: "r".repeat(400_000),
-        purpose: "response",
-        actionType: "llm",
-      },
-    ]);
-
-    expect(normalized?.params).toMatchObject({
+    const payload = {
+      stepId: "step-budget-exhausted",
+      ...optionalFields,
       model: "zai-glm-4.7",
+      response: "r".repeat(400_000),
       purpose: "response",
       actionType: "llm",
-    });
-    expect(normalized?.params.response).toEqual(
-      expect.stringContaining("...[truncated]"),
-    );
-    expect(
-      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
-    ).toBeLessThanOrEqual(1024 * 1024);
+    };
+    const normalized = normalizeLlmCallPayload([payload]);
+
+    expect(normalized?.params).toEqual(payload);
   });
 
   it("leaves a small response byte-identical", () => {
@@ -1513,12 +1594,7 @@ describe("budgeted LLM capture completeness", () => {
   });
 });
 
-describe("budgeted provider capture completeness", () => {
-  // The canonical producer shape (TrajectoriesService.logProviderAccess) emits
-  // `data` before the required `purpose` string, so a context-heavy provider
-  // payload exhausted the shared row budget first and `purpose` was bounded
-  // into a truncation marker. Re-validating that snapshot then discarded the
-  // whole provider access, which is the opposite of what the record is for.
+describe("complete provider capture", () => {
   const oversizedProviderData = () =>
     Object.fromEntries(
       Array.from({ length: 20 }, (_, index) => [
@@ -1527,41 +1603,33 @@ describe("budgeted provider capture completeness", () => {
       ]),
     );
 
-  it("retains required fields when data exhausts the global row budget", () => {
-    const normalized = normalizeProviderAccessPayload([
-      {
-        stepId: "step-provider-budget",
-        providerName: "KNOWLEDGE",
-        data: oversizedProviderData(),
-        purpose: "Provider KNOWLEDGE accessed for context",
-      },
-    ]);
-
-    expect(normalized?.params).toMatchObject({
+  it("retains every field beyond the former global row budget", () => {
+    const payload = {
+      stepId: "step-provider-budget",
       providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
       purpose: "Provider KNOWLEDGE accessed for context",
-    });
-    // `data` stays an object so the capture keeps its shape while degrading.
-    expect(normalized?.params.data).toBeTypeOf("object");
-    expect(
-      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
-    ).toBeLessThanOrEqual(1024 * 1024);
+    };
+    const normalized = normalizeProviderAccessPayload([payload]);
+
+    expect(normalized?.params).toEqual(payload);
   });
 
   it("retains required fields through the (stepId, details) overload", () => {
+    const payload = {
+      providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
+      purpose: "Provider KNOWLEDGE accessed for context",
+    };
     const normalized = normalizeProviderAccessPayload([
       "step-provider-budget-positional",
-      {
-        providerName: "KNOWLEDGE",
-        data: oversizedProviderData(),
-        purpose: "Provider KNOWLEDGE accessed for context",
-      },
+      payload,
     ]);
 
     expect(normalized?.stepId).toBe("step-provider-budget-positional");
-    expect(normalized?.params).toMatchObject({
-      providerName: "KNOWLEDGE",
-      purpose: "Provider KNOWLEDGE accessed for context",
+    expect(normalized?.params).toEqual({
+      ...payload,
+      stepId: "step-provider-budget-positional",
     });
   });
 
@@ -1579,7 +1647,7 @@ describe("budgeted provider capture completeness", () => {
     expect(normalized?.params.purpose).toBe("action");
   });
 
-  it("retains required provider fields through logger flush and SQL serialization", async () => {
+  it("retains complete provider fields through logger flush and SQL serialization", async () => {
     const { runtime, logger, execute } = makeRuntime();
     await installDatabaseTrajectoryLogger(runtime);
     await logger.startTrajectory?.("provider-budget-persistence", {
@@ -1602,6 +1670,7 @@ describe("budgeted provider capture completeness", () => {
     expect(serialized).toContain(
       '"purpose":"Provider KNOWLEDGE accessed for context"',
     );
-    expect(serialized).toContain('"data":');
+    const lastChunk = serialized.match(/"chunk-19":"(x+)"/);
+    expect(lastChunk?.[1]).toHaveLength(70_000);
   });
 });

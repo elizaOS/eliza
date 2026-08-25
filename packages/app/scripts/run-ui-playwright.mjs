@@ -13,7 +13,10 @@ import {
   auditProjectsRequestedByArgs,
   writeAuditProjectPropagation,
 } from "./lib/playwright-audit-projects.mjs";
-import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
+import {
+  withElizaSourceNodeOptions,
+  withoutElizaSourceNodeOptions,
+} from "./lib/playwright-node-options.mjs";
 import {
   resolveExecutableFromPath,
   resolvePlaywrightNodeRuntime,
@@ -402,7 +405,10 @@ if (
     [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],
     {
       cwd: repoRoot,
-      env,
+      env: {
+        ...env,
+        NODE_OPTIONS: withoutElizaSourceNodeOptions(env.NODE_OPTIONS),
+      },
       stdio: "inherit",
     },
   );
@@ -438,7 +444,10 @@ if (
     ],
     {
       cwd: repoRoot,
-      env,
+      env: {
+        ...env,
+        NODE_OPTIONS: withoutElizaSourceNodeOptions(env.NODE_OPTIONS),
+      },
       stdio: "inherit",
     },
   );

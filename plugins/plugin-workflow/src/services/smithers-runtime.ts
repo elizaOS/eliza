@@ -25,7 +25,6 @@ import type {
 const PROTOCOL_PREFIX = '__ELIZA_SMTHRS__';
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1_000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
-const MAX_STDERR_CHARS = 8_192;
 /** Fail-closed ceiling for one protocol line (complete or incomplete). */
 const MAX_PROTOCOL_LINE_BYTES = 1_048_576;
 const WORKER_TERMINATION_GRACE_MS = 1_000;
@@ -33,6 +32,13 @@ const WORKER_STDIO_DRAIN_GRACE_MS = 1_000;
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 type WorkerTerminationCause = 'abort' | 'timeout' | 'overflow';
+
+export function resolveSmithersBunExecutable(): string {
+  const configured = process.env.BUN_BIN?.trim();
+  if (configured) return configured;
+  if (process.versions.bun) return process.execPath;
+  return 'bun';
+}
 
 function appendSmithersProtocolChunk(
   buffer: string,
@@ -343,7 +349,7 @@ export async function controlSmithersRun(
       mode: 0o600,
     }
   );
-  const child = spawn(process.env.BUN_BIN || 'bun', ['--eval', createSmithersControlScript()], {
+  const child = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersControlScript()], {
     cwd: PLUGIN_ROOT,
     env: {
       PATH: process.env.PATH,
@@ -357,7 +363,7 @@ export async function controlSmithersRun(
   let stderr = '';
   child.stderr?.setEncoding('utf8');
   child.stderr?.on('data', (chunk: string) => {
-    stderr = `${stderr}${chunk}`.slice(-MAX_STDERR_CHARS);
+    stderr += chunk;
   });
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     child.once('error', reject);
@@ -432,7 +438,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   );
 
   const timeoutMs = resolveSmithersTimeoutMs(request.timeoutMs);
-  const worker = spawn(process.env.BUN_BIN || 'bun', ['--eval', createSmithersWorkerScript()], {
+  const worker = spawn(resolveSmithersBunExecutable(), ['--eval', createSmithersWorkerScript()], {
     cwd: PLUGIN_ROOT,
     env: {
       PATH: process.env.PATH,
@@ -487,7 +493,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
 
   const consumeLine = async (line: string): Promise<void> => {
     if (!line.startsWith(PROTOCOL_PREFIX)) {
-      stdoutNoise = `${stdoutNoise}${line}\n`.slice(-MAX_STDERR_CHARS);
+      stdoutNoise += `${line}\n`;
       return;
     }
     let message: WorkerMessage;
@@ -564,7 +570,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   });
   worker.stderr?.setEncoding('utf8');
   worker.stderr?.on('data', (chunk: string) => {
-    stderr = `${stderr}${chunk}`.slice(-MAX_STDERR_CHARS);
+    stderr += chunk;
   });
 
   let terminationCause: WorkerTerminationCause | undefined;

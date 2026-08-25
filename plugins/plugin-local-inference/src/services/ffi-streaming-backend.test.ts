@@ -66,6 +66,7 @@ describe("FfiStreamingBackend guided output reconstruction", () => {
 		const streamed: string[] = [];
 		const result = await backend.generateWithUsage({
 			prompt: "reply",
+			maxTokens: 64,
 			responseSkeleton: skeleton,
 			elizaSchema: elizaHarnessSchemaFromSkeleton({ skeleton }),
 			onTextChunk: (chunk) => streamed.push(chunk),
@@ -109,8 +110,38 @@ describe("FfiStreamingBackend guided output reconstruction", () => {
 			loadConfig: null,
 		} as unknown as FfiBackendSession;
 
-		await expect(backend.generate({ prompt: "reply" })).resolves.toBe(
-			"plain reply",
-		);
+		await expect(
+			backend.generate({ prompt: "reply", maxTokens: 64 }),
+		).resolves.toBe("plain reply");
+	});
+
+	it("rejects output that reaches the native decode boundary", async () => {
+		const backend = new FfiStreamingBackend({
+			supported: () => true,
+			acquire: async () => {
+				throw new Error("test injects the acquired session");
+			},
+			release: async () => {},
+		});
+		(backend as unknown as { session: FfiBackendSession }).session = {
+			runner: {
+				generateWithUsage: async () => ({
+					text: "partial",
+					slotId: 2,
+					firstTokenMs: 1,
+					drafted: 0,
+					accepted: 8,
+				}),
+			},
+			tokenize: () => new Int32Array([1]),
+			mtp: null,
+			draftModelPath: null,
+			mmprojPath: null,
+			loadConfig: { contextSize: 9 },
+		} as unknown as FfiBackendSession;
+
+		await expect(backend.generate({ prompt: "reply" })).rejects.toMatchObject({
+			code: "MODEL_OUTPUT_INCOMPLETE",
+		});
 	});
 });

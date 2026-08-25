@@ -402,6 +402,9 @@ type AuthorizedRouteRoleOptions =
   | {
       state: CompatStateLike;
       store?: never;
+      allowCookieAuth?: boolean;
+      allowTrustedLocalBypass?: boolean;
+      allowBearerAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: never;
@@ -409,6 +412,9 @@ type AuthorizedRouteRoleOptions =
   | {
       store: AuthStore;
       state?: never;
+      allowCookieAuth?: boolean;
+      allowTrustedLocalBypass?: boolean;
+      allowBearerAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: (key: string) => unknown;
@@ -442,6 +448,13 @@ export async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   options: AuthorizedRouteRoleOptions,
 ): Promise<RouteRoleResolution> {
+  // Trusted local requests bypass the rate limiter, matching the ordering in
+  // {@link ensureCompatApiAuthorized}. A burst of failed renderer auth attempts
+  // must not block the desktop shell's local login-persistence request.
+  if (options.allowTrustedLocalBypass !== false && isTrustedLocalRequest(req)) {
+    return { ok: true, role: "OWNER" };
+  }
+
   const ip = req.socket.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
     return {
@@ -450,8 +463,6 @@ export async function resolveAuthorizedRouteRole(
       reason: "Too many authentication attempts",
     };
   }
-
-  if (isTrustedLocalRequest(req)) return { ok: true, role: "OWNER" };
 
   const state = "state" in options ? options.state : undefined;
   const db = state?.current?.adapter?.db;
@@ -469,7 +480,8 @@ export async function resolveAuthorizedRouteRole(
       return { ok: false, status: 401, reason: "Unauthorized" };
     }
 
-    const providedToken = getProvidedApiToken(req);
+    const providedToken =
+      options.allowBearerAuth === false ? null : getProvidedApiToken(req);
     if (providedToken && tokenMatches(expectedToken, providedToken)) {
       return { ok: true, role: "OWNER" };
     }
@@ -481,7 +493,10 @@ export async function resolveAuthorizedRouteRole(
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
-  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  const sessionCookie =
+    options.allowCookieAuth === false
+      ? null
+      : readCookie(req, SESSION_COOKIE_NAME);
   if (sessionCookie) {
     const session = await findActiveSession(
       store,
@@ -505,7 +520,8 @@ export async function resolveAuthorizedRouteRole(
     }
   }
 
-  const provided = getProvidedApiToken(req);
+  const provided =
+    options.allowBearerAuth === false ? null : getProvidedApiToken(req);
   if (provided) {
     const sessionFromBearer = await findActiveSession(
       store,

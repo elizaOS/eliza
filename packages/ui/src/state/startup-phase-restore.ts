@@ -13,7 +13,6 @@ import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
-  STEWARD_TOKEN_KEY,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
@@ -457,7 +456,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
         );
       }
       if (recovered?.token) {
-        writeStoredStewardToken(recovered.token);
+        await writeStoredStewardToken(recovered.token);
         try {
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
         } catch {
@@ -490,7 +489,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   }
 
   if (refreshed?.token) {
-    writeStoredStewardToken(refreshed.token);
+    await writeStoredStewardToken(refreshed.token);
     // Let the native Steward auth context + any storage listeners pick up the
     // fresh JWT without waiting for the next read.
     try {
@@ -507,11 +506,30 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   // Refresh failed / timed out. A truly-expired token is a dead credential —
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
   if (secs <= 0) {
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     clearSharedCloudAccountBinding();
     return null;
   }
   return stored;
+}
+
+/**
+ * Drop a near-expiry Steward JWT that a rotation attempt shadowed, through the
+ * same protected-storage adapter every other Steward removal uses. A raw
+ * `localStorage.removeItem` bypasses the native/Electrobun secure-store guard
+ * for `STEWARD_TOKEN_KEY` and can silently leave the stale JWT alive on a
+ * protected host that denies the delete; this awaits the real result and logs
+ * a denied delete instead of pretending the credential is gone.
+ */
+async function dropShadowingStewardToken(reason: string): Promise<void> {
+  try {
+    await clearStoredStewardToken();
+  } catch (error) {
+    logger.error(
+      { error, reason },
+      "[startup-phase-restore] denied delete left a shadowing Steward JWT in protected storage",
+    );
+  }
 }
 
 export async function applyRestoredConnection(args: {
@@ -580,18 +598,16 @@ export async function applyRestoredConnection(args: {
         // Try rotation once; on failure remove only that JWT so native Cloud
         // requests continue with the independently valid owner key.
         stewardTokenPromise = refreshCloudStewardSession()
-          .then((refreshed) => {
+          .then(async (refreshed) => {
             const fresh = refreshed?.token?.trim() || null;
-            if (fresh) writeStoredStewardToken(fresh);
-            else if (typeof window !== "undefined")
-              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            if (fresh) await writeStoredStewardToken(fresh);
+            else await dropShadowingStewardToken("rotation-returned-no-token");
             return fresh;
           })
-          .catch(() => {
+          .catch(async () => {
             // error-policy:J4 the valid native owner key remains available;
             // remove the shadowing near-expiry JWT and visibly continue with it.
-            if (typeof window !== "undefined")
-              window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+            await dropShadowingStewardToken("rotation-failed");
             return null;
           });
       } else {

@@ -40,12 +40,6 @@ interface Trigger {
 /** Hours of owner inactivity before suggesting a check-in. */
 const OWNER_INACTIVE_HOURS = 24;
 
-/** Max rooms to scan when checking owner recency. */
-const MAX_OWNER_ROOMS = 5;
-
-/** Max messages to fetch per room when checking owner recency. */
-const MESSAGES_PER_ROOM = 3;
-
 const URGENCY_ORDER: Record<Urgency, number> = {
   high: 3,
   medium: 2,
@@ -73,13 +67,9 @@ async function findLastOwnerMessageTimestamp(
   const roomIds = await runtime.getRoomsForParticipant(ownerEntityId as UUID);
   if (roomIds.length === 0) return 0;
 
-  // Limit scan breadth
-  const targetRoomIds = roomIds.slice(0, MAX_OWNER_ROOMS) as UUID[];
-
   const memories = await runtime.getMemoriesByRoomIds({
     tableName: "messages",
-    roomIds: targetRoomIds,
-    limit: MESSAGES_PER_ROOM * MAX_OWNER_ROOMS,
+    roomIds: roomIds as UUID[],
   });
 
   let latest = 0;
@@ -99,10 +89,13 @@ async function findLastOwnerMessageTimestamp(
 // Trigger checks
 // ---------------------------------------------------------------------------
 
-async function checkActiveEscalation(triggers: Trigger[]): Promise<void> {
+async function checkActiveEscalation(
+  runtime: IAgentRuntime,
+  triggers: Trigger[],
+): Promise<void> {
   try {
     const { EscalationService } = await import("../services/escalation.ts");
-    const active = EscalationService.getActiveEscalationSync();
+    const active = EscalationService.getActiveEscalationSync(runtime);
     if (active && !active.resolved) {
       triggers.push({
         type: "active_escalation",
@@ -205,7 +198,7 @@ export function createEscalationTriggerProvider(): Provider {
 
       if (isAdminViewer) {
         await Promise.all([
-          checkActiveEscalation(triggers),
+          checkActiveEscalation(runtime, triggers),
           checkOwnerInactivity(runtime, message, triggers),
           checkPendingVerifications(runtime, message, triggers),
         ]);

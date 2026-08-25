@@ -458,7 +458,6 @@
         "plugins/plugin-personal-assistant/test/lifeops-gmail-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-memory.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/lifeops-screen-context.live.e2e.test.ts",
-        "plugins/plugin-personal-assistant/test/lifeops-signal.real.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/reminder-review-job.real.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-chat.live.e2e.test.ts",
         "plugins/plugin-personal-assistant/test/selfcontrol-desktop.live.e2e.test.ts",

@@ -23,6 +23,8 @@ import {
 	type MessageRef,
 	type MessageSource,
 	NotYetImplementedError,
+	type ReadMessageRequest,
+	type ReadMessageResult,
 	type SearchMessagesFilters,
 } from "../types.ts";
 
@@ -77,6 +79,18 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 			return null;
 		}
 		return this.getMessageImpl(runtime, id);
+	}
+
+	async readMessage(
+		runtime: IAgentRuntime,
+		request: ReadMessageRequest,
+	): Promise<ReadMessageResult> {
+		if (!this.isAvailable(runtime)) {
+			throw new Error(
+				`[MessagingTriage:${this.source}] adapter unavailable during message read`,
+			);
+		}
+		return this.readMessageImpl(runtime, request);
 	}
 
 	async searchMessages(
@@ -164,6 +178,15 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 	): Promise<MessageRef | null> {
 		throw new NotYetImplementedError(
 			`${this.source} adapter does not implement getMessage`,
+		);
+	}
+
+	protected readMessageImpl(
+		_runtime: IAgentRuntime,
+		_request: ReadMessageRequest,
+	): Promise<ReadMessageResult> {
+		throw new NotYetImplementedError(
+			`${this.source} adapter does not implement readMessage`,
 		);
 	}
 

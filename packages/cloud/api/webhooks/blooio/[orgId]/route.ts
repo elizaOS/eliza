@@ -1,8 +1,7 @@
 /**
- * Blooio Webhook Handler
- *
- * Receives inbound iMessage/SMS messages from Blooio and routes them
- * to the appropriate agent for processing.
+ * Authenticates and processes Blooio webhook deliveries for one organization.
+ * Every production POST passes through Blooio signature validation before
+ * payload parsing, idempotency, or agent routing.
  */
 
 import { Hono } from "hono";
@@ -12,6 +11,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { blooioAutomationService } from "@/lib/services/blooio-automation";
+import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
 import {
   type BlooioWebhookEvent,
   extractBlooioMediaUrls,
@@ -22,64 +22,22 @@ import {
 import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import {
-  handleBlueBubblesWebhook,
-  handleBlueBubblesWebhookPayload,
-} from "../../bluebubbles/route";
 
-function isBlueBubblesBridgeRequest(
-  c: AppContext,
-  rawBody: string,
-): { payload: unknown } | null {
-  const bridge =
-    c.req.header("x-eliza-bridge") ??
-    c.req.query("bridge") ??
-    new URL(c.req.url).searchParams.get("bridge");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawBody) as unknown;
-  } catch {
-    return bridge === "bluebubbles" ? { payload: null } : null;
-  }
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-  if (bridge === "bluebubbles") {
-    return { payload: parsed };
-  }
-
-  // Blooio v4 and BlueBubbles both use a top-level { type, data } envelope.
-  // Auto-detect only BlueBubbles-specific message fields; treating the shared
-  // envelope shape itself as proof would divert signed Blooio v4 deliveries
-  // into the legacy bridge handler before Blooio signature verification.
-  if (
-    parsed &&
-    typeof parsed === "object" &&
-    "type" in parsed &&
-    "data" in parsed &&
-    parsed.data &&
-    typeof parsed.data === "object" &&
-    ("guid" in parsed.data ||
-      "isFromMe" in parsed.data ||
-      "handle" in parsed.data ||
-      "chats" in parsed.data ||
-      "dateCreated" in parsed.data)
-  ) {
-    return { payload: parsed };
-  }
-
-  return null;
+function boundedOrganizationId(value: string): string {
+  return uuidPattern.test(value) ? value : "invalid";
 }
 
 async function handleBlooioWebhook(c: AppContext): Promise<Response> {
-  const orgId = c.req.param("orgId") ?? "";
+  const requestedOrgId = c.req.param("orgId") ?? "";
+  const orgId = boundedOrganizationId(requestedOrgId);
 
   try {
     const rawBody = await c.req.text();
-    const blueBubblesRequest = isBlueBubblesBridgeRequest(c, rawBody);
-    if (blueBubblesRequest) {
-      return handleBlueBubblesWebhookPayload(c, blueBubblesRequest.payload);
-    }
-
-    if (!orgId) return c.json({ error: "Organization ID is required" }, 400);
+    if (!requestedOrgId)
+      return c.json({ error: "Organization ID is required" }, 400);
 
     const isProduction = c.env.NODE_ENV === "production";
     const skipVerification =
@@ -123,6 +81,7 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       const rawPayload = JSON.parse(rawBody);
       payload = parseBlooioWebhookEvent(rawPayload);
     } catch (parseError) {
+      // error-policy:J3 malformed provider input becomes a bounded 400 response.
       if (parseError instanceof SyntaxError) {
         logger.warn("[BlooioWebhook] Invalid JSON payload", { orgId });
         return c.json({ error: "Invalid JSON payload" }, 400);
@@ -130,15 +89,9 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       if (parseError instanceof ZodError) {
         logger.warn("[BlooioWebhook] Invalid webhook payload schema", {
           orgId,
-          errors: parseError.issues.map((e) => ({
-            path: e.path,
-            message: e.message,
-          })),
+          issueCount: parseError.issues.length,
         });
-        return c.json(
-          { error: "Invalid webhook payload", details: parseError.issues },
-          400,
-        );
+        return c.json({ error: "Invalid webhook payload" }, 400);
       }
       throw parseError;
     }
@@ -155,7 +108,6 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       if (await isAlreadyProcessed(idempotencyKey)) {
         logger.info("[BlooioWebhook] Duplicate message, skipping", {
           orgId,
-          messageId: payload.message_id,
         });
         return c.json({ success: true, status: "already_processed" });
       }
@@ -171,9 +123,6 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
     // Log the event
     logger.info("[BlooioWebhook] Received event", {
       orgId,
-      event: payload.event,
-      messageId: payload.message_id,
-      sender: payload.sender,
     });
 
     // Handle different event types
@@ -185,35 +134,30 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       case "message.sent":
         logger.info("[BlooioWebhook] Message sent confirmation", {
           orgId,
-          messageId: payload.message_id,
         });
         break;
 
       case "message.delivered":
         logger.info("[BlooioWebhook] Message delivered", {
           orgId,
-          messageId: payload.message_id,
         });
         break;
 
       case "message.failed":
         logger.error("[BlooioWebhook] Message delivery failed", {
           orgId,
-          messageId: payload.message_id,
         });
         break;
 
       case "message.read":
         logger.info("[BlooioWebhook] Message read", {
           orgId,
-          messageId: payload.message_id,
         });
         break;
 
       default:
         logger.info("[BlooioWebhook] Unhandled event type", {
           orgId,
-          event: payload.event,
         });
     }
 
@@ -224,31 +168,19 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
 
     return c.json({ success: true });
   } catch (error) {
+    // error-policy:J1 unexpected webhook failures become a bounded 500 response.
     logger.error("[BlooioWebhook] Error processing webhook", {
       orgId,
-      error: error instanceof Error ? error.message : "Unknown error",
+      ...phoneErrorDiagnostic(error),
     });
     return c.json({ error: "Internal server error" }, 500);
   }
 }
 
 const app = new Hono<AppEnv>();
-app.post(
-  "/",
-  async (c, next) => {
-    const bridge =
-      c.req.header("x-eliza-bridge") ??
-      c.req.query("bridge") ??
-      new URL(c.req.url).searchParams.get("bridge");
-    if (bridge === "bluebubbles") {
-      return handleBlueBubblesWebhook(c);
-    }
-    await next();
-  },
-  rateLimit(RateLimitPresets.AGGRESSIVE),
-  (c) => handleBlooioWebhook(c),
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleBlooioWebhook(c),
 );
-app.post("/bluebubbles", (c) => handleBlueBubblesWebhook(c));
 
 /**
  * Handle incoming message from Blooio
@@ -274,7 +206,7 @@ async function handleIncomingMessage(
   const hasAttachments = event.attachments && event.attachments.length > 0;
 
   if (!text && !hasAttachments) {
-    logger.info("[BlooioWebhook] Skipping empty message", { orgId, chatId });
+    logger.info("[BlooioWebhook] Skipping empty message", { orgId });
     return;
   }
 
@@ -294,25 +226,20 @@ async function handleIncomingMessage(
   if (apiKey && event.sender) {
     markChatAsRead(apiKey, event.sender, {
       fromNumber: blooioFromNumber || undefined,
-      // error-policy:J6 best-effort read-receipt side-effect — a failed read
-      // marker is logged and must not affect webhook processing of the message.
     }).catch((err) =>
+      // error-policy:J6 best-effort read-receipt failures use bounded diagnostics
+      // and must not affect webhook processing of the message.
       logger.warn("[BlooioWebhook] Failed to mark chat as read", {
         orgId,
-        chatId,
-        error: err instanceof Error ? err.message : String(err),
+        ...phoneErrorDiagnostic(err),
       }),
     );
   }
 
   logger.info("[BlooioWebhook] Processing incoming message", {
     orgId,
-    chatId,
-    sender: event.sender,
-    recipient: blooioFromNumber,
     hasText: !!text,
     hasAttachments,
-    protocol: event.protocol,
   });
 
   const sender = event.sender ?? undefined;
@@ -364,7 +291,6 @@ async function handleIncomingMessage(
   if (!routed.handled) {
     logger.info("[BlooioWebhook] Message did not resolve to an owned Agent", {
       orgId,
-      from: sender,
       reason: routed.reason,
       agentId: routed.agentId,
     });
@@ -384,12 +310,15 @@ async function handleIncomingMessage(
       agentUserId: routed.userId,
     });
 
-    if (sent) {
-      logger.info("[BlooioWebhook] Agent response sent", { orgId, chatId });
+    if (sent.status === "delivered") {
+      logger.info("[BlooioWebhook] Agent response sent", { orgId });
     } else {
-      logger.error("[BlooioWebhook] Failed to send agent response", {
+      logger.error("[BlooioWebhook] Agent response delivery did not complete", {
         orgId,
-        chatId,
+        deliveryStatus: sent.status,
+        deliveryCode: sent.code,
+        retryable: sent.retryable,
+        providerStatus: sent.providerStatus,
       });
     }
   }

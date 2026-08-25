@@ -1,7 +1,12 @@
 // Defines cloud shared provider env behavior for backend service consumers.
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
-function isPlaceholderProviderKey(value: string | undefined): boolean {
+/**
+ * Shared placeholder rule for provider credentials: blank values and common
+ * template strings ("placeholder", "replace_with", "your_...") never count as
+ * configured. Exported so managed-account verification applies the same rule.
+ */
+export function isPlaceholderProviderKey(value: string | undefined): boolean {
   if (!value) return true;
   const normalized = value.trim().toLowerCase();
   return (

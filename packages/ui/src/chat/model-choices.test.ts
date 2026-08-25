@@ -2,7 +2,7 @@
  * Position-aware "models" completion grammar over a fixture catalog — pure
  * functions, no React/DOM: per-subcommand values for /model, provider
  * qualification of ambiguous chat ids, apiSupported filtering, effort
- * resolution, caps, and the value→label map.
+ * resolution, complete catalogs, and the value→label map.
  */
 
 import { describe, expect, it } from "vitest";
@@ -209,7 +209,7 @@ describe("resolveModelChoices", () => {
     ).toEqual([]);
   });
 
-  it("caps oversized lists", () => {
+  it("keeps every callable entry in oversized catalogs", () => {
     const entries: ModelCatalogEntry[] = Array.from({ length: 40 }, (_, i) => ({
       id: `model-${i}`,
       display: `Model ${i}`,
@@ -218,7 +218,7 @@ describe("resolveModelChoices", () => {
     }));
     const big: ModelCatalogProviders = { codex: entries };
     expect(resolveModelChoices(big, ctx(2, ["coding", "codex"]))).toHaveLength(
-      25,
+      40,
     );
   });
 });

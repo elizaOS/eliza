@@ -92,7 +92,9 @@ Use the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill and its
   should announce payment success/failure in the initiating room.
 - Use `/api/v1/redemptions` to request creator payouts in elizaOS tokens on
   Base, BSC/BNB, Ethereum, or Solana. The payout is fixed to the USD quote at
-  request time and then admin reviewed/processed.
+  request time and then admin reviewed/processed. Send `asset: "eliza"`
+  explicitly; legacy raw omission defaults to USDC and must not be paired with
+  an elizaOS-token quote.
 - If running through `@elizaos/plugin-elizacloud`, browser/app code should use
   `/api/cloud/billing/*` local aliases instead of handling Cloud credentials.
 

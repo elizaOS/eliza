@@ -9,9 +9,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { toPaymentRequestDto } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -22,7 +23,7 @@ const CancelSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {
@@ -55,7 +56,10 @@ app.post("/", async (c) => {
       parsed.data.reason,
     );
 
-    return c.json({ success: true, paymentRequest });
+    return c.json({
+      success: true,
+      paymentRequest: toPaymentRequestDto(paymentRequest),
+    });
   } catch (error) {
     logger.error("[PaymentRequests API] Failed to cancel payment request", {
       error,

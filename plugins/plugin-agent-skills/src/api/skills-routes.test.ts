@@ -4,8 +4,9 @@
  * routes fail closed with 400 Bad Request per Error Policy J3 before touching
  * disk or internal services.
  */
+import { EventEmitter } from "node:events";
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { SKILL_NAME_MAX_LENGTH } from "../types";
 import {
@@ -322,5 +323,405 @@ describe("handleSkillsRoutes path encoding validation", () => {
       "Invalid skill slug",
       400,
     );
+  });
+});
+
+describe("skill install request lifecycle", () => {
+  it.each([
+    ["SKILL_DOWNLOAD_TIMEOUT", 504],
+    ["SKILL_DOWNLOAD_ABORTED", 499],
+    ["SKILL_PACKAGE_TOO_LARGE", 413],
+  ])("returns typed %s install failures with their HTTP status", async (code, status) => {
+    const failure = new ElizaError("typed install failure", { code });
+    const runtime = {
+      getService: vi.fn(() => ({
+        install: vi.fn().mockRejectedValue(failure),
+        isInstalled: vi.fn().mockResolvedValue(false),
+      })),
+    } as unknown as AgentRuntime;
+    const { ctx, json, error } = createSkillsContext(
+      "POST",
+      "/api/skills/catalog/install",
+      {
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "typed-failure" }),
+        state: { runtime, config: {}, skills: [] },
+      },
+    );
+
+    await expect(handleSkillsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      {
+        error: "Skill install failed: typed install failure",
+        code,
+      },
+      status,
+    );
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["catalog", "/api/skills/catalog/install"],
+    ["marketplace", "/api/skills/marketplace/install"],
+  ])(
+    "does not write the %s already-installed response after disconnect",
+    async (_label, pathname) => {
+      const socket = new EventEmitter();
+      const req = Object.assign(new EventEmitter(), {
+        aborted: false,
+        destroyed: false,
+        method: "POST",
+        socket,
+        url: pathname,
+      }) as unknown as http.IncomingMessage;
+      const res = Object.assign(new EventEmitter(), {
+        destroyed: false,
+        writableEnded: false,
+      }) as unknown as http.ServerResponse;
+      let finishInstalledCheck: (() => void) | undefined;
+      const isInstalled = vi.fn(
+        async () =>
+          new Promise<boolean>((resolve) => {
+            finishInstalledCheck = () => resolve(true);
+          }),
+      );
+      const install = vi.fn(async () => true);
+      const runtime = {
+        getService: vi.fn(() => ({ install, isInstalled })),
+      } as unknown as AgentRuntime;
+      const { ctx, error, json } = createSkillsContext("POST", pathname, {
+        req,
+        res,
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "installed-skill" }),
+        state: { runtime, config: {}, skills: [] },
+      });
+
+      const handled = handleSkillsRoutes(ctx);
+      await vi.waitFor(() => expect(isInstalled).toHaveBeenCalledOnce());
+      res.emit("close");
+      finishInstalledCheck?.();
+
+      await expect(handled).resolves.toBe(true);
+      expect(install).not.toHaveBeenCalled();
+      expect(json).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      expect(req.listenerCount("aborted")).toBe(0);
+      expect(res.listenerCount("close")).toBe(0);
+      expect(socket.listenerCount("close")).toBe(0);
+    },
+  );
+
+  it("forwards catalog-route disconnect cancellation and removes listeners", async () => {
+    const socket = new EventEmitter();
+    const req = Object.assign(new EventEmitter(), {
+      aborted: false,
+      destroyed: false,
+      method: "POST",
+      socket,
+      url: "/api/skills/catalog/install",
+    }) as unknown as http.IncomingMessage;
+    const res = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableEnded: false,
+    }) as unknown as http.ServerResponse;
+    let observedSignal: AbortSignal | undefined;
+    const install = vi.fn(
+      async (
+        _slug: string,
+        options?: { signal?: AbortSignal; throwOnDownloadError?: boolean },
+      ) => {
+        observedSignal = options?.signal;
+        expect(options?.throwOnDownloadError).toBe(true);
+        if (!observedSignal) throw new Error("missing install signal");
+        await new Promise<never>((_resolve, reject) => {
+          observedSignal?.addEventListener(
+            "abort",
+            () => reject(observedSignal?.reason),
+            { once: true },
+          );
+        });
+        return true;
+      },
+    );
+    const runtime = {
+      getService: vi.fn(() => ({
+        install,
+        isInstalled: vi.fn(async () => false),
+      })),
+    } as unknown as AgentRuntime;
+    const { ctx, error } = createSkillsContext(
+      "POST",
+      "/api/skills/catalog/install",
+      {
+        req,
+        res,
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "disconnect-skill" }),
+        state: { runtime, config: {}, skills: [] },
+      },
+    );
+
+    const handled = handleSkillsRoutes(ctx);
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+    req.emit("aborted");
+
+    await expect(handled).resolves.toBe(true);
+    expect(observedSignal?.aborted).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    expect(socket.listenerCount("close")).toBe(0);
+  });
+
+  it("forwards disconnect cancellation through the marketplace slug route", async () => {
+    const socket = new EventEmitter();
+    const req = Object.assign(new EventEmitter(), {
+      aborted: false,
+      destroyed: false,
+      method: "POST",
+      socket,
+      url: "/api/skills/marketplace/install",
+    }) as unknown as http.IncomingMessage;
+    const res = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableEnded: false,
+    }) as unknown as http.ServerResponse;
+    let observedSignal: AbortSignal | undefined;
+    const install = vi.fn(
+      async (
+        _slug: string,
+        options?: { signal?: AbortSignal; throwOnDownloadError?: boolean },
+      ) => {
+        observedSignal = options?.signal;
+        expect(options?.throwOnDownloadError).toBe(true);
+        if (!observedSignal) throw new Error("missing install signal");
+        await new Promise<never>((_resolve, reject) => {
+          observedSignal?.addEventListener(
+            "abort",
+            () => reject(observedSignal?.reason),
+            { once: true },
+          );
+        });
+        return true;
+      },
+    );
+    const runtime = {
+      getService: vi.fn(() => ({
+        install,
+        isInstalled: vi.fn(async () => false),
+      })),
+    } as unknown as AgentRuntime;
+    const { ctx, error } = createSkillsContext(
+      "POST",
+      "/api/skills/marketplace/install",
+      {
+        req,
+        res,
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "disconnect-skill" }),
+        state: { runtime, config: {}, skills: [] },
+      },
+    );
+
+    const handled = handleSkillsRoutes(ctx);
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+    req.emit("aborted");
+
+    await expect(handled).resolves.toBe(true);
+    expect(observedSignal?.aborted).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    expect(socket.listenerCount("close")).toBe(0);
+  });
+
+  it("does not write a late response when an install ignores cancellation", async () => {
+    const socket = new EventEmitter();
+    const req = Object.assign(new EventEmitter(), {
+      aborted: false,
+      destroyed: false,
+      method: "POST",
+      socket,
+      url: "/api/skills/catalog/install",
+    }) as unknown as http.IncomingMessage;
+    const res = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableEnded: false,
+    }) as unknown as http.ServerResponse;
+    let finishInstall: (() => void) | undefined;
+    const install = vi.fn(
+      async () =>
+        new Promise<boolean>((resolve) => {
+          finishInstall = () => resolve(true);
+        }),
+    );
+    const runtime = {
+      getService: vi.fn(() => ({
+        install,
+        isInstalled: vi.fn(async () => false),
+      })),
+    } as unknown as AgentRuntime;
+    const initialSkills: SkillsRouteContext["state"]["skills"] = [];
+    const state: SkillsRouteContext["state"] = {
+      runtime,
+      config: {},
+      skills: initialSkills,
+    };
+    const { ctx, error, json } = createSkillsContext(
+      "POST",
+      "/api/skills/catalog/install",
+      {
+        req,
+        res,
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "late-skill" }),
+        state,
+      },
+    );
+
+    const handled = handleSkillsRoutes(ctx);
+    await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+    req.emit("aborted");
+    finishInstall?.();
+
+    await expect(handled).resolves.toBe(true);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(state.skills).not.toBe(initialSkills);
+    expect(state.skills).toEqual([]);
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    expect(socket.listenerCount("close")).toBe(0);
+  });
+
+  it("keeps disconnect ownership through post-install skill discovery", async () => {
+    const socket = new EventEmitter();
+    const req = Object.assign(new EventEmitter(), {
+      aborted: false,
+      destroyed: false,
+      method: "POST",
+      socket,
+      url: "/api/skills/catalog/install",
+    }) as unknown as http.IncomingMessage;
+    const res = Object.assign(new EventEmitter(), {
+      destroyed: false,
+      writableEnded: false,
+    }) as unknown as http.ServerResponse;
+    let finishDiscovery: (() => void) | undefined;
+    const discoverSkills = vi.fn(
+      async () =>
+        new Promise<never[]>((resolve) => {
+          finishDiscovery = () => resolve([]);
+        }),
+    );
+    const runtime = {
+      getService: vi.fn(() => ({
+        install: vi.fn(async () => true),
+        isInstalled: vi.fn(async () => false),
+      })),
+    } as unknown as AgentRuntime;
+    const initialSkills: SkillsRouteContext["state"]["skills"] = [];
+    const state: SkillsRouteContext["state"] = {
+      runtime,
+      config: {},
+      skills: initialSkills,
+    };
+    const { ctx, error, json } = createSkillsContext(
+      "POST",
+      "/api/skills/catalog/install",
+      {
+        req,
+        res,
+        discoverSkills,
+        readJsonBody: vi.fn().mockResolvedValue({ slug: "late-skill" }),
+        state,
+      },
+    );
+
+    const handled = handleSkillsRoutes(ctx);
+    await vi.waitFor(() => expect(discoverSkills).toHaveBeenCalledOnce());
+    socket.emit("close");
+    finishDiscovery?.();
+
+    await expect(handled).resolves.toBe(true);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(state.skills).not.toBe(initialSkills);
+    expect(state.skills).toEqual([]);
+    expect(req.listenerCount("aborted")).toBe(0);
+    expect(res.listenerCount("close")).toBe(0);
+    expect(socket.listenerCount("close")).toBe(0);
+  });
+});
+
+describe("catalog pagination parameter parsing", () => {
+  function catalogContext(query: string) {
+    const pathname = "/api/skills/catalog";
+    const { ctx, json, error } = createSkillsContext("GET", pathname);
+    ctx.url = new URL(`http://localhost${pathname}${query}`);
+    return { ctx, json, error };
+  }
+
+  it("ignores a non-finite page instead of slicing from Infinity", async () => {
+    // Number("Infinity") is Infinity, so `start = (page - 1) * perPage` became
+    // Infinity: an always-empty page whose echoed `page` serializes as null.
+    const { ctx, json } = catalogContext("?page=Infinity");
+    await handleSkillsRoutes(ctx);
+    expect(json).toHaveBeenCalled();
+    const body = json.mock.calls[0]?.[1] as { page: number };
+    expect(Number.isSafeInteger(body.page)).toBe(true);
+    expect(body.page).toBe(1);
+  });
+
+  it("ignores a fractional page instead of producing overlapping windows", async () => {
+    // page=2.7 sliced [4.59, 7.29), overlapping the windows for pages 2 and 3.
+    const { ctx, json } = catalogContext("?page=2.7&perPage=2");
+    await handleSkillsRoutes(ctx);
+    const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
+    expect(Number.isSafeInteger(body.page)).toBe(true);
+    expect(body.page).toBe(1);
+    expect(body.perPage).toBe(2);
+  });
+
+  it("still honours clean pagination values", async () => {
+    const { ctx, json } = catalogContext("?page=3&perPage=25");
+    await handleSkillsRoutes(ctx);
+    const body = json.mock.calls[0]?.[1] as { page: number; perPage: number };
+    expect(body.page).toBe(3);
+    expect(body.perPage).toBe(25);
+  });
+
+  it("sorts registry skills safely when downloads, stars, or updatedAt contain NaN", () => {
+    const items = [
+      { slug: "skill-nan", displayName: "Skill NaN", stats: { downloads: NaN, stars: NaN }, updatedAt: NaN },
+      { slug: "skill-valid", displayName: "Skill Valid", stats: { downloads: 100, stars: 50 }, updatedAt: 1000 },
+    ];
+
+    items.sort((a, b) => {
+      const bDownloads =
+        typeof b.stats.downloads === "number" &&
+        Number.isFinite(b.stats.downloads)
+          ? b.stats.downloads
+          : 0;
+      const aDownloads =
+        typeof a.stats.downloads === "number" &&
+        Number.isFinite(a.stats.downloads)
+          ? a.stats.downloads
+          : 0;
+      const bUpdated =
+        typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+          ? b.updatedAt
+          : 0;
+      const aUpdated =
+        typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+          ? a.updatedAt
+          : 0;
+      return (
+        bDownloads - aDownloads ||
+        bUpdated - aUpdated ||
+        a.slug.localeCompare(b.slug)
+      );
+    });
+
+    expect(items[0]?.slug).toBe("skill-valid");
+    expect(items[1]?.slug).toBe("skill-nan");
   });
 });

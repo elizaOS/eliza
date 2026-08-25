@@ -3,9 +3,11 @@
  * section (`/settings#cloud-billing`) and the standalone `dashboard/billing`
  * console page.
  *
- * Fetches the current user/org (the `BillingTab` needs `organization_id`,
- * `wallet_address`, and the seed `credit_balance`), then renders `BillingTab`
- * followed by the independent, read-only account-limits snapshot.
+ * Fetches the current user/account (the `BillingTab` needs a freshly confirmed
+ * billing identity), then renders the consumer billing controls. Balance and
+ * active compute come from the canonical billing snapshot v2. Internal
+ * infrastructure quotas remain available to their owning diagnostics surfaces;
+ * they are not part of the normal billing experience.
  * Wraps the subtree in {@link ConditionalWalletProviders} so the crypto
  * direct-payment wallet stack (wagmi/RainbowKit/Solana) never enters the entry
  * bundle elsewhere.
@@ -20,7 +22,6 @@ import {
   DashboardLoadingState,
 } from "@elizaos/ui/cloud-ui";
 import { useCloudT } from "../shell/CloudI18nProvider";
-import { AccountLimitsCard } from "./components/account-limits-card";
 import { BillingTab } from "./components/billing-tab";
 import { useBillingUser } from "./data/billing-data";
 import { ConditionalWalletProviders } from "./wallet/ConditionalWalletProviders";
@@ -85,14 +86,13 @@ export function BillingSectionBody() {
   return (
     <ConditionalWalletProviders>
       {wasCheckoutCanceled() ? (
-        <div className="mb-4 border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="mb-4 border border-destructive/40 bg-destructive-subtle px-4 py-3 text-sm text-destructive">
           {t("cloud.billing.paymentCanceled", {
             defaultValue: "Payment canceled. No charges were made.",
           })}
         </div>
       ) : null}
       <BillingTab user={user} />
-      <AccountLimitsCard organizationId={user.organization_id} />
     </ConditionalWalletProviders>
   );
 }

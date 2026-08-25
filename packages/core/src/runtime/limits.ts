@@ -1,11 +1,12 @@
 /**
  * Bounds and guard functions for the planner chaining loop: the
  * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
- * cumulative-token budgets, compaction thresholds), the typed
+ * cumulative-token budgets), the typed
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
 import type { ActionFailureProvenance } from "../types/action-failure";
+import { toWellFormedUnicode } from "../utils/well-formed";
 
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
@@ -29,11 +30,27 @@ export interface ChainingLoopConfig {
 	 * This is the success-side analog of `maxRepeatedFailures`.
 	 */
 	maxRepeatedToolCalls: number;
-	/** Estimated model context window for compaction decisions. */
+	/**
+	 * Maximum successful memory/knowledge-recall search rounds per turn
+	 * (MEMORY_SEARCH-family: `*_SEARCH` recall tools, SEARCH_KNOWLEDGE, and the
+	 * MEMORY umbrella with a search op). The existing redundant-call breaker
+	 * only catches byte-identical repeats; a model reformulating the SAME recall
+	 * ("alexis gym signup" → "gym signup alexis" → "alexis gym") slips past it
+	 * and every extra round costs a full planner prompt (live sol-dev
+	 * 2026-08-17: 3-5 MEMORY_SEARCH rounds per turn drove 30-117s tails). Once
+	 * the budget is spent, further search-class calls are skipped with an
+	 * instruction to answer from the results already gathered — the results ARE
+	 * in the trajectory, so no information is lost. Near-duplicate queries
+	 * (same tool, same normalized query tokens) are additionally skipped
+	 * regardless of remaining budget. Failed calls remain governed by the
+	 * repeated-failure guard so this budget does not suppress a corrected retry.
+	 */
+	maxMemorySearchRounds: number;
+	/** Estimated model context window for explicit oversize rejection. */
 	contextWindowTokens: number;
 	/**
 	 * Optional model id used to resolve the *actual* per-model context
-	 * window (and a 20%-of-window reserve floor) at compaction-budget time
+	 * window (and a 20%-of-window reserve floor) at input-budget time
 	 * via `lookupModelContextWindow`. When set and the lookup hits, this
 	 * wins over `contextWindowTokens` — letting tight-context models
 	 * (Cerebras llama3.1-8b at 32k, compact local tiers at 64k, gemma-4-31b at 131k) get
@@ -53,10 +70,6 @@ export interface ChainingLoopConfig {
 	 * while still preserving explicit reserve overrides.
 	 */
 	compactionReserveTokensExplicit?: boolean;
-	/** Whether the planner may summarize old trajectory steps before replanning. */
-	compactionEnabled: boolean;
-	/** Number of newest completed tool steps kept verbatim after compaction. */
-	compactionKeepSteps: number;
 	/**
 	 * Maximum cumulative prompt tokens summed across every planner-stage
 	 * model call within a single user turn. Once exceeded the loop aborts
@@ -80,35 +93,7 @@ export interface ChainingLoopConfig {
 	 * runaway level — a turn that exceeds it is almost certainly stuck.
 	 */
 	maxTrajectoryPromptTokens: number;
-	/**
-	 * When set, caps each tool-result string rendered into the planner
-	 * input to this many characters (head + `[N chars truncated]` marker
-	 * + tail). The trajectory itself is unchanged — only the wire-shape
-	 * messages are truncated.
-	 *
-	 * Why this exists: the compactor keeps the four newest steps
-	 * verbatim by default (`compactionKeepSteps: 4`). A single
-	 * pathologically-large tool result inside the kept window — a 30 KB
-	 * shell dump, a multi-thousand-line file read, a full grep — can
-	 * blow the model's per-call context budget single-handedly, even
-	 * after compaction has done its job. This cap protects against that
-	 * single-step pathology without touching the trajectory's
-	 * archival/replay fidelity.
-	 *
-	 * Default: undefined (no cap) — the planner path is unchanged. The
-	 * evaluator applies `DEFAULT_MAX_KEPT_STEP_CHARS` directly (see
-	 * evaluator.ts) so the fix stays out of the planner loop. Recommended
-	 * for tight-context models: ~8000 (one tool result still gets
-	 * roughly two pages of head + a half page of tail context).
-	 */
-	compactionMaxKeptStepChars?: number;
 }
-
-/** Default per-tool-result render cap (chars). ~8.6k tokens at 3.5 chars/token:
- * large enough to keep head+tail structure of any real result, small enough that
- * no single step can approach the 128k default window (live incident: one 5MB
- * grep result rendered verbatim = 2.28M tokens vs cerebras's 131,072 limit). */
-export const DEFAULT_MAX_KEPT_STEP_CHARS = 30_000;
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,
@@ -117,10 +102,9 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxUnavailableToolCallRetries: 3,
 	maxTerminalOnlyContinuations: 2,
 	maxRepeatedToolCalls: 2,
-	contextWindowTokens: 128_000,
+	maxMemorySearchRounds: 2,
+	contextWindowTokens: 1_000_000,
 	compactionReserveTokens: 10_000,
-	compactionEnabled: true,
-	compactionKeepSteps: 4,
 	maxTrajectoryPromptTokens: 1_500_000,
 };
 
@@ -136,6 +120,11 @@ export class TrajectoryLimitExceeded extends Error {
 	readonly kind: TrajectoryLimitKind;
 	readonly max: number;
 	readonly observed: number;
+	/**
+	 * Present only for `repeated_failures`, where the underlying tool failure
+	 * has a structured cause worth surfacing. Consumed by
+	 * `classifyStructuredFailureCause` in `services/message/fallback-reply.ts`.
+	 */
 	readonly failureProvenance?: ActionFailureProvenance;
 
 	constructor(params: {
@@ -153,7 +142,9 @@ export class TrajectoryLimitExceeded extends Error {
 		this.kind = params.kind;
 		this.max = params.max;
 		this.observed = params.observed;
-		this.failureProvenance = params.failureProvenance;
+		if (params.failureProvenance !== undefined) {
+			this.failureProvenance = params.failureProvenance;
+		}
 	}
 }
 
@@ -184,6 +175,12 @@ export interface FailureLike {
 	error?: unknown;
 	success?: boolean;
 	repeatKey?: string;
+	/**
+	 * Structured cause carried up from the settled `ActionResult`. When a
+	 * repeated-failure abort is raised, this is what lets the fallback reply
+	 * say *why* the tool kept failing (a dead datastore, say) rather than
+	 * reporting generic planner exhaustion.
+	 */
 	failureProvenance?: ActionFailureProvenance;
 }
 
@@ -201,7 +198,9 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
-	const normalizedError = rawError.trim().replace(/\s+/g, " ").slice(0, 240);
+	const normalizedError = toWellFormedUnicode(
+		rawError.trim().replace(/\s+/g, " "),
+	);
 	return `${toolName}:${normalizedError}`;
 }
 
@@ -227,7 +226,7 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey ? `${signature}:${repeatKey}` : signature;
 }
 
 export function assertRepeatedFailureLimit(params: {
@@ -241,10 +240,10 @@ export function assertRepeatedFailureLimit(params: {
 			kind: "repeated_failures",
 			max: params.maxRepeatedFailures,
 			observed,
-			failureProvenance: params.latestFailure.failureProvenance,
 			message: `Repeated tool failure limit exceeded for ${getFailureSignature(
 				params.latestFailure,
 			)}`,
+			failureProvenance: params.latestFailure.failureProvenance,
 		});
 	}
 }

@@ -251,6 +251,107 @@ describe("gmail send handler", () => {
     );
   });
 
+  it("normalizes lone surrogates in explicit and short derived subjects", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: "body", metadata: { subject: "Explicit\ud800subject" } }
+    );
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: "Derived\udc00subject\nbody" }
+    );
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual(["Explicit�subject", "Derived�subject"]);
+    expect(subjects.every((subject) => subject.isWellFormed())).toBe(true);
+  });
+
+  it("preserves complete long derived subjects and UTF-16 surrogate pairs", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const text = `${"a".repeat(74)}\u{1F98A}bbbb\nBody line 2`;
+    await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+
+    expect(sendGmailMessage).toHaveBeenCalledTimes(1);
+    const sentSubject = (sendGmailMessage.mock.calls[0][0] as { subject: string }).subject;
+    expect(sentSubject).toBe(text.split("\n", 1)[0]);
+    expect(sentSubject.isWellFormed()).toBe(true);
+  });
+
+  it("preserves derived subjects across the former 78-code-unit boundary", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+    const subjects = ["Status 🦊", "s".repeat(178)];
+
+    for (const text of subjects) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    expect(
+      sendGmailMessage.mock.calls.map((call) => (call[0] as { subject: string }).subject)
+    ).toEqual(subjects);
+  });
+
+  it("normalizes either lone-surrogate half without clipping the subject", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+    const inputs = [
+      "short\ud800subject",
+      "short\udc00subject",
+      `${"h".repeat(74)}\ud800tail`,
+      `${"l".repeat(74)}\udc00tail`,
+    ];
+
+    for (const text of inputs) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual([
+      "short�subject",
+      "short�subject",
+      `${"h".repeat(74)}�tail`,
+      `${"l".repeat(74)}�tail`,
+    ]);
+    expect(subjects.every((subject) => subject.isWellFormed())).toBe(true);
+  });
+
+  it("does not add an omission suffix after the former boundary", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    for (const text of ["m".repeat(78), "n".repeat(79)]) {
+      await invokeSend(registration, runtime, { channelId: "shadow@example.com" }, { text });
+    }
+
+    const subjects = sendGmailMessage.mock.calls.map(
+      (call) => (call[0] as { subject: string }).subject
+    );
+    expect(subjects).toEqual(["m".repeat(78), "n".repeat(79)]);
+  });
+
   it("resolves an entity-store recipient through stored email handles", async () => {
     const { runtime, sendGmailMessage } = runtimeStub({
       accounts: [CONNECTED_ACCOUNT],

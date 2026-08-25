@@ -73,15 +73,14 @@ function DefaultViewErrorFallback({
       <p className="text-sm font-semibold text-destructive">
         This view ran into a problem
       </p>
-      <p className="max-w-sm break-words font-mono text-[11px] text-muted opacity-70">
+      <p className="max-w-sm break-words font-mono text-xs text-muted opacity-70">
         {error.message}
       </p>
       <div className="flex items-center gap-2">
         <Button
           type="button"
-          size="sm"
+          size="compact"
           variant="outline"
-          className="rounded-sm text-xs"
           onClick={onRetry}
           data-testid="view-error-retry"
         >
@@ -89,9 +88,8 @@ function DefaultViewErrorFallback({
         </Button>
         <Button
           type="button"
-          size="sm"
-          variant="ghost"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="ghostMuted"
           onClick={goToLauncher}
           data-testid="view-error-back"
         >

@@ -7,6 +7,8 @@
  * It never reports low-confidence attribution as a confirmed identity.
  */
 
+import { trimEndCharacters } from "./utils/string-boundaries.js";
+
 export type SpeakerNameEvidenceSource =
   | "platform_roster"
   | "calendar_attendee"
@@ -172,18 +174,14 @@ function assertRatio(field: string, value: number): void {
 }
 
 function normalizeName(name: string): string {
-  return name
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.,;:!?]+$/g, "")
-    .toLocaleLowerCase();
+  return trimEndCharacters(
+    name.trim().replace(/\s+/g, " "),
+    ".,;:!?",
+  ).toLocaleLowerCase();
 }
 
 function displayName(name: string): string {
-  return name
-    .trim()
-    .replace(/\s+/g, " ")
-    .replace(/[.,;:!?]+$/g, "");
+  return trimEndCharacters(name.trim().replace(/\s+/g, " "), ".,;:!?");
 }
 
 function firstName(name: string): string {
@@ -243,7 +241,25 @@ function groupCandidates(
         (a, b) => SOURCE_PRIORITY[b.source] - SOURCE_PRIORITY[a.source],
       ),
     }))
-    .sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+    .sort((a, b) => {
+      const bScore =
+        typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+      const aScore =
+        typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+      const bConf =
+        typeof b.confidence === "number" && Number.isFinite(b.confidence)
+          ? b.confidence
+          : 0;
+      const aConf =
+        typeof a.confidence === "number" && Number.isFinite(a.confidence)
+          ? a.confidence
+          : 0;
+      return (
+        bScore - aScore ||
+        bConf - aConf ||
+        a.normalizedName.localeCompare(b.normalizedName)
+      );
+    });
 }
 
 function hasSource(

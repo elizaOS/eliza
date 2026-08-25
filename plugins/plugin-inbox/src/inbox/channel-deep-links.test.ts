@@ -1,7 +1,7 @@
 /**
  * Exercises pure per-channel deep-link URL construction for cross-channel
  * inbox triage. The cases pin platform-specific identifiers so queue entries
- * can link back to Discord, Telegram, Signal, iMessage, WhatsApp, Slack, Gmail,
+ * can link back to Discord, Telegram, iMessage, WhatsApp, Slack, Gmail,
  * and other source threads without dispatching connector calls.
  */
 import { describe, expect, it } from "vitest";
@@ -56,17 +56,7 @@ describe("buildDeepLink — Telegram", () => {
   });
 });
 
-describe("buildDeepLink — Signal / iMessage / WhatsApp", () => {
-  it("signal uses phoneNumber or identifier", () => {
-    expect(
-      buildDeepLink("signal", { roomMeta: { phoneNumber: "+15551234" } }),
-    ).toBe("signal://signal.me/#p/+15551234");
-    expect(buildDeepLink("signal", { roomMeta: { identifier: "+1999" } })).toBe(
-      "signal://signal.me/#p/+1999",
-    );
-    expect(buildDeepLink("signal", { roomMeta: {} })).toBeNull();
-  });
-
+describe("buildDeepLink — iMessage / WhatsApp", () => {
   it("imessage accepts handle / chatIdentifier / chat_identifier", () => {
     expect(buildDeepLink("imessage", { roomMeta: { handle: "a@b.com" } })).toBe(
       "imessage://a@b.com",

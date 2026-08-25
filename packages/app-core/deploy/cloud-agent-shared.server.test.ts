@@ -178,6 +178,28 @@ describe("startCloudAgent HTTP handlers", () => {
     expect(unauthorized.statusCode).toBe(401);
 
     const auth = { authorization: "Bearer secret" };
+    const cutoverImport = await dispatch(
+      bridgeServer,
+      "POST",
+      "/api/conversations/personal%3Atest/import",
+      JSON.stringify({
+        messages: [],
+        scheduledTasks: [],
+        todoSnapshot: { todos: [], mutations: [], digest: "digest" },
+      }),
+      auth,
+    );
+    expect(parseJson(cutoverImport)).toMatchObject({
+      conversationId: "personal:test",
+      complete: true,
+      sourceMessageCount: 0,
+      inserted: 0,
+      skipped: 0,
+      sourceTodoCount: 0,
+      sourceTodoDigest: "digest",
+      targetTodoDigest: "digest",
+    });
+
     const message = await dispatch(
       bridgeServer,
       "POST",
@@ -214,13 +236,23 @@ describe("startCloudAgent HTTP handlers", () => {
       JSON.stringify({ jsonrpc: "2.0", id: 2, method: "status.get" }),
       auth,
     );
-    expect(parseJson(status)).toMatchObject({
+    const statusBody = parseJson(status);
+    expect(statusBody).toMatchObject({
       result: {
         status: "running",
         memoriesCount: 2,
         database: "ok",
       },
     });
+    // The RPC status boundary must carry the same public projection as HTTP
+    // health: classification fields only, never the internal probe diagnostic.
+    const statusLiveness = (statusBody.result as Record<string, unknown>)
+      .databaseLiveness as Record<string, unknown>;
+    expect(Object.keys(statusLiveness).sort()).toEqual([
+      "ok",
+      "status",
+      "terminal",
+    ]);
 
     const snapshot = await dispatch(
       bridgeServer,

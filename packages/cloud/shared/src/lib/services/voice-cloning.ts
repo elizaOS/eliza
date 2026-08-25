@@ -1,9 +1,16 @@
-// Coordinates cloud service voice cloning behavior behind route handlers.
+/** Coordinates persisted voice-cloning records with the ElevenLabs provider lifecycle. */
+
 import { and, desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { userVoices, voiceCloningJobs, voiceSamples } from "../../db/schemas/user-voices";
 import { logger } from "../utils/logger";
 import { getElevenLabsService } from "./elevenlabs";
+
+function isMissingElevenLabsVoice(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  return candidate.status === 404 || candidate.statusCode === 404;
+}
 
 /**
  * Service for managing voice cloning operations with ElevenLabs.
@@ -121,7 +128,13 @@ export class VoiceCloningService {
 
     // Delete from ElevenLabs
     const elevenlabs = getElevenLabsService();
-    await elevenlabs.deleteVoice(voice.elevenlabsVoiceId);
+    try {
+      await elevenlabs.deleteVoice(voice.elevenlabsVoiceId);
+    } catch (error) {
+      // error-policy:J2 Account/resource deletion is idempotent: a provider 404
+      // means the desired external state already exists, so finish the DB tombstone.
+      if (!isMissingElevenLabsVoice(error)) throw error;
+    }
     logger.info("[VoiceCloning] Voice deleted from ElevenLabs", {
       elevenlabsVoiceId: voice.elevenlabsVoiceId,
     });

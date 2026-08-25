@@ -17,6 +17,8 @@ import {
   SECRETS_SERVICE_TYPE,
   Service,
   SsrfBlockedError,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { GoogleCalendarEvent } from "@elizaos/plugin-google-workspace";
 // Runtime error classes come from the dependency-light calendar subpath so
@@ -214,9 +216,6 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
-// Keep the page cap as a pathological-work backstop; the retained-event bound
-// is the normal product/memory boundary for full and incremental syncs.
-export const MAX_GOOGLE_CALENDAR_PAGES = 1_000;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -366,10 +365,13 @@ function providerResponseErrorContext(
   }
   const body = shaped.response?.data;
   if (typeof body === "string") {
-    context.providerBody = body.slice(0, 2000);
+    context.providerBody = truncateWellFormed(toWellFormedUnicode(body), 2000);
   } else if (body !== undefined && body !== null) {
     try {
-      context.providerBody = JSON.stringify(body).slice(0, 2000);
+      context.providerBody = truncateWellFormed(
+        toWellFormedUnicode(JSON.stringify(body)),
+        2000,
+      );
     } catch {
       // error-policy:J3 a non-serializable provider body degrades to its type
       // tag; the raw error object still travels with the report.
@@ -2983,24 +2985,8 @@ export class CalendarService extends Service {
     const seenPageTokens = new Set<string>();
     let pageToken: string | undefined;
     let nextSyncToken: string | null = null;
-    let pageCount = 0;
 
     do {
-      pageCount += 1;
-      if (pageCount > MAX_GOOGLE_CALENDAR_PAGES) {
-        throw new ElizaError(
-          "Google Calendar event pagination exceeded maximum page limit.",
-          {
-            code: "GOOGLE_CALENDAR_PAGE_LIMIT_EXCEEDED",
-            context: {
-              accountId: args.accountId,
-              calendarId: args.calendarId,
-              maxPages: MAX_GOOGLE_CALENDAR_PAGES,
-            },
-            severity: "fatal",
-          },
-        );
-      }
       const page = await listEventPage({
         accountId: args.accountId,
         calendarId: args.calendarId,

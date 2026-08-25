@@ -29,12 +29,10 @@ import type {
   SharedTurnClaimStore,
   SharedTurnTerminalResult,
 } from "@/lib/services/shared-runtime/shared-runtime-chat";
-import {
-  MAX_HISTORY_MESSAGES,
-  mergeSharedRuntimeHistoryMessages,
-  selectSharedRuntimeContext,
-} from "@/lib/services/shared-runtime/shared-runtime-history-policy";
+import { mergeSharedRuntimeHistoryMessages } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
+
+const RELEASE_QUEUE_BEFORE_BODY_HEADER = "X-Eliza-Release-Coordinator-Queue";
 
 // The agent row crosses the Durable Object boundary as JSON, so its Drizzle
 // `Date` columns arrive as ISO strings; `handle` rehydrates them before any
@@ -46,6 +44,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -55,6 +55,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -64,6 +66,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -73,6 +77,8 @@ type ConversationRequest =
       rpc: BridgeRequest;
       traceId?: string;
       trustedMessageRole?: "system";
+      trustedHistoryCutoffAt?: number;
+      transientInput?: true;
       trustedUserUtterance?: string;
       channel?: SharedRuntimeChannel;
     }
@@ -158,7 +164,8 @@ interface StoredConversation {
 
 const CONVERSATION_KEY = "conversation";
 const HISTORY_ARCHIVE_PREFIX = "history-archive:";
-const MAX_RECALL_MESSAGES = 128;
+const HISTORY_ARCHIVE_BODY_PREFIX = "history-archive-body:";
+const HISTORY_ARCHIVE_CHUNK_BYTES = 256_000;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const PROVISIONAL_CONVERGENCE_SEAL_KEY =
   "personal-provisional-convergence-seal";
@@ -209,6 +216,8 @@ const IDLE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000;
  * the old turn) and room serialization is released.
  */
 const STREAM_STALL_TIMEOUT_MS = 120_000;
+/** Snapshot cache bound only; omitted messages are archived and reloaded losslessly. */
+const MAX_SNAPSHOT_MESSAGES = 40;
 
 interface StoredAlarmDeadlines {
   mirrorRetryAt?: number;
@@ -282,11 +291,9 @@ function boundTurnClaims(claims: StoredTurnClaim[]): StoredTurnClaim[] {
 }
 
 /**
- * SQLite-backed Durable Object storage rejects values over 2 MiB. History is
- * count-capped upstream (MAX_HISTORY_MESSAGES) but individual message text is
- * unbounded, so trim oldest turns — and as a last resort truncate the sole
- * remaining message — to keep the snapshot storable; otherwise every
- * subsequent save would throw and wedge the room.
+ * SQLite-backed Durable Object storage rejects values over 2 MiB. The hot
+ * snapshot therefore keeps only complete messages that fit its byte budget;
+ * every omitted message is archived losslessly under separate keys.
  */
 const MAX_SNAPSHOT_BYTES = 1_500_000;
 
@@ -302,14 +309,20 @@ function boundSnapshotHistory(
     bounded = bounded.slice(1);
   }
   if (bounded.length === 1 && snapshotBytes(bounded) > MAX_SNAPSHOT_BYTES) {
-    // Slice by code units at a quarter of the byte budget: UTF-8 expands a
-    // code unit to at most ~3 bytes, so the result stays well under the cap.
-    const only = bounded[0];
-    bounded = [
-      { ...only, content: only.content.slice(0, MAX_SNAPSHOT_BYTES / 4) },
-    ];
+    bounded = [];
   }
   return bounded;
+}
+
+interface ChunkedArchivedMessage {
+  kind: "chunked-history-message";
+  chunkCount: number;
+}
+
+function isChunkedArchivedMessage(
+  value: SharedTurnMessage | ChunkedArchivedMessage,
+): value is ChunkedArchivedMessage {
+  return "kind" in value && value.kind === "chunked-history-message";
 }
 
 function archiveMessageKey(message: SharedTurnMessage): string {
@@ -337,8 +350,11 @@ export class SharedRuntimeConversation {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
   private conversation: StoredConversation | null | undefined;
+  private readonly pendingHistory = new Map<string, SharedTurnMessage[]>();
+  private pendingHistoryCheckpoint: Promise<void> = Promise.resolve();
   private hydration: Promise<void> | undefined;
   private prewarmReady = false;
+  private prewarm: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
   private alarmMutationQueue: Promise<void> = Promise.resolve();
@@ -405,10 +421,19 @@ export class SharedRuntimeConversation {
           agentId,
           channelId,
         );
+        const retained = boundSnapshotHistory(
+          history.slice(-MAX_SNAPSHOT_MESSAGES),
+        );
+        const retainedKeys = new Set(retained.map(archiveMessageKey));
+        for (const message of history) {
+          if (!retainedKeys.has(archiveMessageKey(message))) {
+            await this.archiveMessage(message);
+          }
+        }
         this.conversation = {
           agentId,
           channelId,
-          history,
+          history: retained,
           dirty: false,
           version: 0,
         };
@@ -462,7 +487,8 @@ export class SharedRuntimeConversation {
       ];
       imports.push(
         import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
-          ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+          ({ prewarmSharedElizaStreamingContext }) =>
+            prewarmSharedElizaStreamingContext(),
         ),
       );
       await Promise.all(imports);
@@ -483,6 +509,58 @@ export class SharedRuntimeConversation {
         );
       }),
     );
+  }
+
+  /**
+   * Starts one room warmup without holding the serialized turn queue.
+   *
+   * The response body remains pending until the warmup finishes, so callers
+   * still observe truthful completion. Response headers are returned
+   * immediately and the Durable Object queue is released before that body is
+   * consumed; otherwise a cold runtime build can head-of-line block the first
+   * live voice turn behind the caller's coordinator header deadline.
+   */
+  private deferredPrewarmResponse(
+    agentId: string,
+    channelId: string,
+    startEmpty: boolean,
+  ): Response {
+    if (!this.prewarmReady && !this.prewarm) {
+      const prewarm = this.prewarmConversation(agentId, channelId, startEmpty);
+      this.prewarm = prewarm;
+      const clearPrewarm = () => {
+        if (this.prewarm === prewarm) this.prewarm = undefined;
+      };
+      void prewarm.then(clearPrewarm, clearPrewarm);
+      this.state.waitUntil(prewarm);
+    }
+
+    const completion = this.prewarm ?? Promise.resolve();
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"success":'));
+        void completion.then(
+          () => {
+            if (canceled) return;
+            controller.enqueue(new TextEncoder().encode("true}"));
+            controller.close();
+          },
+          (error) => {
+            if (!canceled) controller.error(error);
+          },
+        );
+      },
+      cancel() {
+        canceled = true;
+      },
+    });
+    return new Response(body, {
+      headers: {
+        "Content-Type": "application/json",
+        [RELEASE_QUEUE_BEFORE_BODY_HEADER]: "before-body",
+      },
+    });
   }
 
   /**
@@ -601,7 +679,19 @@ export class SharedRuntimeConversation {
   ): Promise<void> {
     const bounded = Object.fromEntries(
       Object.entries(ledger)
-        .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
+        .sort(([leftKey, left], [rightKey, right]) => {
+          const r =
+            typeof right.updatedAt === "number" &&
+            Number.isFinite(right.updatedAt)
+              ? right.updatedAt
+              : 0;
+          const l =
+            typeof left.updatedAt === "number" &&
+            Number.isFinite(left.updatedAt)
+              ? left.updatedAt
+              : 0;
+          return r - l || leftKey.localeCompare(rightKey);
+        })
         .slice(0, MAX_MOBILE_PUSH_DELIVERY_LEDGER_ENTRIES),
     );
     await this.state.storage.put(MOBILE_PUSH_DELIVERY_LEDGER_KEY, bounded);
@@ -763,6 +853,14 @@ export class SharedRuntimeConversation {
     // resurrect deleted conversation content.
     if (await this.deletionTombstone()) return;
     try {
+      const persisted =
+        await this.state.storage.get<StoredConversation>(CONVERSATION_KEY);
+      const completeHistory =
+        persisted?.agentId === snapshot.agentId &&
+        persisted.channelId === snapshot.channelId &&
+        persisted.version === snapshot.version
+          ? await this.loadCompleteHistory(persisted)
+          : snapshot.history;
       await this.runWithBindings(async () => {
         const { sharedRuntimeHistoryRepository } = await import(
           "@/db/repositories/shared-runtime-history"
@@ -770,8 +868,7 @@ export class SharedRuntimeConversation {
         await sharedRuntimeHistoryRepository.merge(
           snapshot.agentId,
           snapshot.channelId,
-          snapshot.history,
-          MAX_HISTORY_MESSAGES,
+          completeHistory,
         );
         // The caller purges Postgres before dispatching the DO delete. A merge
         // already in flight can therefore finish after that purge. Re-check
@@ -820,11 +917,95 @@ export class SharedRuntimeConversation {
     return this.mirrorQueue;
   }
 
+  private async archiveMessage(message: SharedTurnMessage): Promise<void> {
+    const key = archiveMessageKey(message);
+    const encoded = new TextEncoder().encode(JSON.stringify(message));
+    if (encoded.byteLength <= HISTORY_ARCHIVE_CHUNK_BYTES) {
+      await this.state.storage.put(key, message);
+      return;
+    }
+    const chunkCount = Math.ceil(
+      encoded.byteLength / HISTORY_ARCHIVE_CHUNK_BYTES,
+    );
+    for (let index = 0; index < chunkCount; index += 1) {
+      const start = index * HISTORY_ARCHIVE_CHUNK_BYTES;
+      await this.state.storage.put(
+        `${HISTORY_ARCHIVE_BODY_PREFIX}${key.slice(HISTORY_ARCHIVE_PREFIX.length)}:${index}`,
+        encoded.slice(start, start + HISTORY_ARCHIVE_CHUNK_BYTES),
+      );
+    }
+    await this.state.storage.put(key, {
+      kind: "chunked-history-message",
+      chunkCount,
+    } satisfies ChunkedArchivedMessage);
+  }
+
+  private async checkpointPendingHistory(
+    messages: SharedTurnMessage[],
+  ): Promise<void> {
+    await this.state.storage.transaction(async (txn) => {
+      for (const message of messages) {
+        const key = archiveMessageKey(message);
+        const encoded = new TextEncoder().encode(JSON.stringify(message));
+        if (encoded.byteLength <= HISTORY_ARCHIVE_CHUNK_BYTES) {
+          await txn.put(key, message);
+          continue;
+        }
+        const chunkCount = Math.ceil(
+          encoded.byteLength / HISTORY_ARCHIVE_CHUNK_BYTES,
+        );
+        for (let index = 0; index < chunkCount; index += 1) {
+          const start = index * HISTORY_ARCHIVE_CHUNK_BYTES;
+          await txn.put(
+            `${HISTORY_ARCHIVE_BODY_PREFIX}${key.slice(HISTORY_ARCHIVE_PREFIX.length)}:${index}`,
+            encoded.slice(start, start + HISTORY_ARCHIVE_CHUNK_BYTES),
+          );
+        }
+        await txn.put(key, {
+          kind: "chunked-history-message",
+          chunkCount,
+        } satisfies ChunkedArchivedMessage);
+      }
+    });
+  }
+
   private async loadArchivedHistory(): Promise<SharedTurnMessage[]> {
-    const archived = await this.state.storage.list<SharedTurnMessage>({
+    const archived = await this.state.storage.list<
+      SharedTurnMessage | ChunkedArchivedMessage
+    >({
       prefix: HISTORY_ARCHIVE_PREFIX,
     });
-    return [...archived.values()];
+    const messages: SharedTurnMessage[] = [];
+    for (const [key, value] of archived) {
+      if (!isChunkedArchivedMessage(value)) {
+        messages.push(value);
+        continue;
+      }
+      const chunks: Uint8Array[] = [];
+      let totalBytes = 0;
+      for (let index = 0; index < value.chunkCount; index += 1) {
+        const chunk = await this.state.storage.get<Uint8Array>(
+          `${HISTORY_ARCHIVE_BODY_PREFIX}${key.slice(HISTORY_ARCHIVE_PREFIX.length)}:${index}`,
+        );
+        if (!chunk) {
+          throw new Error(
+            `[SharedRuntimeConversation] archived history chunk ${index + 1}/${value.chunkCount} is missing for ${key}`,
+          );
+        }
+        chunks.push(chunk);
+        totalBytes += chunk.byteLength;
+      }
+      const encoded = new Uint8Array(totalBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        encoded.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      messages.push(
+        JSON.parse(new TextDecoder().decode(encoded)) as SharedTurnMessage,
+      );
+    }
+    return messages;
   }
 
   private async loadCompleteHistory(
@@ -832,67 +1013,69 @@ export class SharedRuntimeConversation {
   ): Promise<SharedTurnMessage[]> {
     const archived = await this.loadArchivedHistory();
     return mergeSharedRuntimeHistoryMessages(
-      archived,
+      mergeSharedRuntimeHistoryMessages(archived, current.recall ?? []),
       current.history,
-      Number.MAX_SAFE_INTEGER,
     );
   }
 
   private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
+    const pendingKey = (agentId: string, channelId: string) =>
+      `${agentId}\u0000${channelId}`;
     return {
-      load: async (agentId, channelId, queryText) => {
+      load: async (agentId, channelId, _queryText) => {
         const current = await this.loadConversation(
           agentId,
           channelId,
           startEmpty,
         );
-        if (!startEmpty) return current.history;
-        if (queryText === undefined) {
-          return await this.loadCompleteHistory(current);
-        }
-        const recallContext = mergeSharedRuntimeHistoryMessages(
-          current.recall ?? [],
-          current.history,
-          Number.MAX_SAFE_INTEGER,
+        return mergeSharedRuntimeHistoryMessages(
+          await this.loadCompleteHistory(current),
+          this.pendingHistory.get(pendingKey(agentId, channelId)) ?? [],
         );
-        return selectSharedRuntimeContext(
-          recallContext,
-          queryText,
-          MAX_HISTORY_MESSAGES,
+      },
+      stagePending: (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        this.pendingHistory.set(
+          key,
+          mergeSharedRuntimeHistoryMessages(
+            this.pendingHistory.get(key) ?? [],
+            messages,
+          ),
+        );
+        this.pendingHistoryCheckpoint = this.pendingHistoryCheckpoint.then(
+          async () => {
+            await this.checkpointPendingHistory(messages);
+          },
         );
       },
       merge: async (agentId, channelId, messages) => {
+        const key = pendingKey(agentId, channelId);
+        const pending = this.pendingHistory.get(key) ?? [];
         const current = await this.loadConversation(
           agentId,
           channelId,
           startEmpty,
         );
         const merged = mergeSharedRuntimeHistoryMessages(
-          current.history,
+          mergeSharedRuntimeHistoryMessages(
+            await this.loadCompleteHistory(current),
+            pending,
+          ),
           messages,
-          Number.MAX_SAFE_INTEGER,
         );
-        const evicted = merged.slice(0, -MAX_HISTORY_MESSAGES);
-        let recall = current.recall;
-        if (startEmpty && evicted.length > 0) {
-          for (const message of evicted) {
-            await this.state.storage.put(archiveMessageKey(message), message);
+        const retained = boundSnapshotHistory(
+          merged.slice(-MAX_SNAPSHOT_MESSAGES),
+        );
+        const retainedKeys = new Set(retained.map(archiveMessageKey));
+        for (const message of merged) {
+          if (!retainedKeys.has(archiveMessageKey(message))) {
+            await this.archiveMessage(message);
           }
-          recall = selectSharedRuntimeContext(
-            mergeSharedRuntimeHistoryMessages(
-              current.recall ?? [],
-              evicted,
-              Number.MAX_SAFE_INTEGER,
-            ),
-            "",
-            MAX_RECALL_MESSAGES,
-          );
         }
         const snapshot: StoredConversation = {
           agentId,
           channelId,
-          history: boundSnapshotHistory(merged.slice(-MAX_HISTORY_MESSAGES)),
-          ...(recall ? { recall } : {}),
+          history: retained,
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
         };
@@ -901,7 +1084,15 @@ export class SharedRuntimeConversation {
         // response-body cancel/finalize path can attempt the write again.
         await this.state.storage.put(CONVERSATION_KEY, snapshot);
         this.conversation = snapshot;
-        this.scheduleMirror(snapshot);
+        if (pending.length > 0) {
+          const persistedKeys = new Set(pending.map(archiveMessageKey));
+          const remaining = (this.pendingHistory.get(key) ?? []).filter(
+            (message) => !persistedKeys.has(archiveMessageKey(message)),
+          );
+          if (remaining.length > 0) this.pendingHistory.set(key, remaining);
+          else this.pendingHistory.delete(key);
+        }
+        this.scheduleMirror({ ...snapshot, history: merged });
         // Refresh the idle-expiry deadline on every save. Personal rooms are
         // exempt: their archive keys have no Postgres copy, so expiry could
         // not re-hydrate them.
@@ -1517,12 +1708,11 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
     if (payload.operation === "prewarm") {
-      await this.prewarmConversation(
+      return this.deferredPrewarmResponse(
         payload.agentId,
         payload.roomId,
         payload.startEmpty === true,
       );
-      return Response.json({ success: true });
     }
     if (payload.operation === "cutover-seal") {
       const existing = await this.activeCutoverSeal();
@@ -1681,6 +1871,8 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+          transientInput: payload.transientInput,
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
           mobilePushDispatch: personal
@@ -1697,6 +1889,8 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        trustedHistoryCutoffAt: payload.trustedHistoryCutoffAt,
+        transientInput: payload.transientInput,
         trustedUserUtterance: payload.trustedUserUtterance,
         channel: validatedChannel,
         mobilePushDispatch: personal
@@ -1705,7 +1899,13 @@ export class SharedRuntimeConversation {
             }
           : undefined,
       });
-      return Response.json(result);
+      const response = Response.json(result);
+      // A bridge result is complete before this response exists. Releasing the
+      // room here avoids coupling later turns to whether a nested Worker fetch
+      // happens to pull the small JSON body promptly; only live SSE streams
+      // need to retain serialization until their body is consumed.
+      response.headers.set(RELEASE_QUEUE_BEFORE_BODY_HEADER, "before-body");
+      return response;
     });
   }
 
@@ -1730,16 +1930,52 @@ export class SharedRuntimeConversation {
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       release();
     };
+    const cancelOffQueue = (reason: string): void => {
+      // Calling reader.cancel synchronously fences the old generation before
+      // the room queue advances. Its promise includes interrupted-history and
+      // billing finalization, which can cross storage/provider boundaries and
+      // must not hold later realtime turns behind the coordinator deadline.
+      const cancellation = reader.cancel(reason);
+      const cancellationOutcome = cancellation.then(
+        () => null,
+        (error: unknown) => error,
+      );
+      const checkpoint = this.pendingHistoryCheckpoint;
+      this.state.waitUntil(
+        (async () => {
+          let checkpointLanded = false;
+          try {
+            // Only the lossless interrupted-turn checkpoint holds admission.
+            // Full history merge, billing, and provider teardown remain off
+            // queue after a restart-safe recovery record exists.
+            await checkpoint;
+            checkpointLanded = true;
+            settle();
+            const cancellationError = await cancellationOutcome;
+            if (cancellationError !== null) throw cancellationError;
+          } catch (error) {
+            // error-policy:J7 a failed checkpoint keeps this object fail-closed;
+            // Workers resets it after the failed storage output gate, and the
+            // next instance admits only from the prior durable snapshot.
+            const { logger } = await import("@/lib/utils/logger");
+            logger.warn(
+              "[SharedRuntimeConversation] off-queue stream cancellation failed",
+              {
+                reason,
+                phase: checkpointLanded ? "finalization" : "checkpoint",
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            if (!checkpointLanded) throw error;
+          }
+        })(),
+      );
+    };
     const armStallTimer = () => {
       if (settled) return;
       if (stallTimer !== undefined) clearTimeout(stallTimer);
       stallTimer = setTimeout(() => {
-        reader
-          .cancel("shared-runtime room stream stalled past backstop")
-          // error-policy:J6 canceling an already-errored reader is teardown
-          // only; the lock release below is the recovery that matters.
-          .catch(() => undefined)
-          .finally(settle);
+        cancelOffQueue("shared-runtime room stream stalled past backstop");
       }, this.streamStallTimeoutMs);
     };
     armStallTimer();
@@ -1761,12 +1997,8 @@ export class SharedRuntimeConversation {
           controller.error(error);
         }
       },
-      cancel: async (reason) => {
-        try {
-          await reader.cancel(reason);
-        } finally {
-          settle();
-        }
+      cancel: (reason) => {
+        cancelOffQueue(String(reason));
       },
     });
     return new Response(body, {
@@ -1786,6 +2018,13 @@ export class SharedRuntimeConversation {
 
     try {
       const response = await this.handle(request);
+      if (
+        response.headers.get(RELEASE_QUEUE_BEFORE_BODY_HEADER) === "before-body"
+      ) {
+        response.headers.delete(RELEASE_QUEUE_BEFORE_BODY_HEADER);
+        release();
+        return response;
+      }
       return this.releaseWhenConsumed(response, release);
     } catch (error) {
       // error-policy:J1 the Durable Object transport boundary translates cache

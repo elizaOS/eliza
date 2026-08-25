@@ -1,5 +1,6 @@
 /**
- * POST /api/v1/api-keys/[id]/regenerate — invalidate the old key and emit a new one.
+ * POST /api/v1/api-keys/[id]/regenerate — rotate a user-managed key.
+ * Mobile lifecycle credentials keep their fixed secret and are not addressable here.
  */
 
 import { Hono } from "hono";
@@ -25,7 +26,7 @@ app.post("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await apiKeysService.getManageableById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     await assertOrgMembership(user, existingKey.organization_id, {
       resourceType: "api_key",

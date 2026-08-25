@@ -6,6 +6,7 @@
  * anonymous counter mirrors run under `waitUntil`.
  */
 
+import { assertModelOutputComplete } from "@elizaos/core";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { Hono } from "hono";
 import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
@@ -157,6 +158,42 @@ function retryableWarmingResponse(c: AppContext, area: string): Response {
     503,
     { "Retry-After": "1" },
   );
+}
+
+type AnonymousLimitResponse =
+  | {
+      reason: "message_limit";
+      remaining: number;
+      limit: number;
+    }
+  | {
+      reason: "hourly_limit";
+      remaining: number;
+      limit: number;
+      retryAfter: number;
+    };
+
+function anonymousLimitResponse(
+  c: AppContext,
+  limitResult: AnonymousLimitResponse,
+): Response {
+  const error =
+    limitResult.reason === "message_limit"
+      ? `You've reached your free message limit (${limitResult.limit} messages). Sign up to continue chatting!`
+      : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
+  const body = {
+    error,
+    requiresSignup: true,
+    reason: limitResult.reason,
+    limit: limitResult.limit,
+    remaining: limitResult.remaining,
+  };
+  if (limitResult.reason === "hourly_limit") {
+    return c.json(body, 429, {
+      "Retry-After": String(limitResult.retryAfter),
+    });
+  }
+  return c.json(body, 429);
 }
 
 const app = new Hono<AppEnv>();
@@ -471,20 +508,7 @@ app.post("/", async (c) => {
           );
         }
         if (leaseResolution.kind === "limited") {
-          const error =
-            leaseResolution.reason === "message_limit"
-              ? `You've reached your free message limit (${leaseResolution.limit} messages). Sign up to continue chatting!`
-              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
-          return c.json(
-            {
-              error,
-              requiresSignup: true,
-              reason: leaseResolution.reason,
-              limit: leaseResolution.limit,
-              remaining: leaseResolution.remaining,
-            },
-            429,
-          );
+          return anonymousLimitResponse(c, leaseResolution);
         }
 
         const lease: AnonymousChatGateLease = leaseResolution.lease;
@@ -516,20 +540,7 @@ app.post("/", async (c) => {
           anonymousSession.session_token,
         );
         if (!limitCheck.allowed) {
-          const error =
-            limitCheck.reason === "message_limit"
-              ? `You've reached your free message limit (${limitCheck.limit} messages). Sign up to continue chatting!`
-              : "You've reached the hourly rate limit. Please wait an hour or sign up for unlimited access.";
-          return c.json(
-            {
-              error,
-              requiresSignup: true,
-              reason: limitCheck.reason,
-              limit: limitCheck.limit,
-              remaining: limitCheck.remaining,
-            },
-            429,
-          );
+          return anonymousLimitResponse(c, limitCheck);
         }
         let refunded = false;
         refundAnonymousMessageSlot = async () => {
@@ -545,18 +556,13 @@ app.post("/", async (c) => {
       selectedModel,
       process.env,
     );
-    const effectiveMaxOutputTokens =
-      cotBudget != null
-        ? Math.max(
-            DEFAULT_MIN_OUTPUT_TOKENS,
-            cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
-          )
-        : undefined;
     const estimatedInputTokens = estimateTokens(
       messages.map((message) => extractTextFromParts(message.parts)).join(" "),
     );
     const estimatedOutputTokens =
-      effectiveMaxOutputTokens ?? DEFAULT_OUTPUT_TOKENS;
+      cotBudget != null
+        ? cotBudget + DEFAULT_MIN_OUTPUT_TOKENS
+        : DEFAULT_OUTPUT_TOKENS;
     const billingSource = resolveAiProviderSource(selectedModel) ?? "gateway";
     const affiliateCode = isAnonymous
       ? null
@@ -627,15 +633,17 @@ app.post("/", async (c) => {
       messages: modelMessages,
       abortSignal: c.req.raw.signal,
       timeout: routeTimeoutMs,
-      ...(effectiveMaxOutputTokens != null
-        ? { maxOutputTokens: effectiveMaxOutputTokens }
-        : {}),
       ...mergeAnthropicCotProviderOptions(
         selectedModel,
         process.env,
         cotBudget ?? undefined,
       ),
-      onFinish: async ({ text, usage }) => {
+      onFinish: async ({ text, usage, finishReason }) => {
+        assertModelOutputComplete({
+          finishReason,
+          provider,
+          model: selectedModel,
+        });
         await settleOffResponsePath(executionCtx, async () => {
           if (!usage) {
             await settleUnknownReservation?.();

@@ -25,6 +25,7 @@ import {
   ModelType,
   type Setting,
   saltWorldSettings,
+  toWellFormedUnicode,
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
@@ -43,7 +44,6 @@ import {
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   fetchConfiguredOwnerName,
-  OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "../services/owner-name.ts";
 
@@ -66,18 +66,11 @@ const sectionSettingsAction = createSectionSettingsAction();
 // Coding sub-agent adapters the orchestrator can route to. Mirrors
 // KNOWN_ADAPTER_TYPES in plugin-agent-orchestrator (kept as a literal here so
 // @elizaos/agent does not depend on the orchestrator plugin).
-const CODING_BACKENDS = [
-  "elizaos",
-  "pi-agent",
-  "claude",
-  "codex",
-  "opencode",
-] as const;
+const CODING_BACKENDS = ["elizaos", "pi-agent", "claude", "codex"] as const;
 const CODING_BACKEND_ALIASES: Record<string, string> = {
   "eliza-os": "elizaos",
   eliza: "elizaos",
   pi: "pi-agent",
-  "open-code": "opencode",
   "claude-code": "claude",
   openai: "codex",
   "openai-codex": "codex",
@@ -119,11 +112,11 @@ function isCapabilityKey(value: unknown): value is CapabilityKey {
   );
 }
 
-function trimToString(value: unknown, max: number): string | undefined {
+export function trimToString(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  const trimmed = toWellFormedUnicode(value.trim());
   if (!trimmed) return undefined;
-  return trimmed.slice(0, max);
+  return trimmed.length <= max ? trimmed : undefined;
 }
 
 function fail(
@@ -315,8 +308,11 @@ function handleToggleCapability(params: Record<string, unknown>): ActionResult {
 async function handleSetOwnerName(
   params: Record<string, unknown>,
 ): Promise<ActionResult> {
-  const raw = typeof params.name === "string" ? params.name.trim() : "";
-  const name = raw.slice(0, OWNER_NAME_MAX_LENGTH);
+  const raw =
+    typeof params.name === "string"
+      ? toWellFormedUnicode(params.name.trim())
+      : "";
+  const name = raw;
   if (!name) {
     return fail(
       "INVALID_PARAMETERS",
@@ -855,7 +851,8 @@ export const settingsAction: Action = {
     },
     {
       name: "name",
-      description: `[set_owner_name] New owner display name (1–${OWNER_NAME_MAX_LENGTH} chars after trim).`,
+      description:
+        "[set_owner_name] New owner display name, preserved in full after trimming outer whitespace.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -869,7 +866,7 @@ export const settingsAction: Action = {
     {
       name: "backend",
       description:
-        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, or opencode. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
+        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, or codex. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
       required: false,
       schema: { type: "string" as const },
     },

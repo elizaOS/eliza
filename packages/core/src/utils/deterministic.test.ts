@@ -104,6 +104,15 @@ describe("stableStringify", () => {
 		expect(stableStringify([3, 1, 2])).toBe("[3,1,2]");
 	});
 
+	// Regression: keys were sorted with localeCompare, whose ICU collation is
+	// environment-dependent — the same object produced different bytes (and
+	// different derived hashes) under e.g. LC_ALL=sv_SE.UTF-8 vs LC_ALL=C.
+	it("orders keys by UTF-16 code units regardless of host locale", () => {
+		expect(stableStringify({ z: 1, ä: 2, B: 3, a: 4 })).toBe(
+			'{"B":3,"a":4,"z":1,"ä":2}',
+		);
+	});
+
 	it("serializes Date instances to ISO timestamp strings rather than empty objects", () => {
 		const date = new Date("2026-01-01T00:00:00.000Z");
 		expect(stableStringify(date)).toBe('"2026-01-01T00:00:00.000Z"');

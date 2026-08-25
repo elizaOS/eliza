@@ -1,3 +1,7 @@
+/** Defines and normalizes environment aliases shared by branded hosts. */
+
+import { trimBoundaryCharacters } from "../utils/string-boundaries.js";
+
 export type BrandEnvAliasPair = readonly [brandKey: string, elizaKey: string];
 
 interface BrandEnvAliasDefinition {
@@ -105,11 +109,12 @@ export const BRAND_ENV_ALIAS_DEFINITIONS = [
 ] as const satisfies readonly BrandEnvAliasDefinition[];
 
 export function normalizeBrandEnvPrefix(prefix: string | undefined): string {
-  const normalized = String(prefix ?? "ELIZA")
-    .trim()
-    .replace(/[^A-Za-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-    .toUpperCase();
+  const normalized = trimBoundaryCharacters(
+    String(prefix ?? "ELIZA")
+      .trim()
+      .replace(/[^A-Za-z0-9]+/g, "_"),
+    "_",
+  ).toUpperCase();
 
   if (!normalized) {
     throw new Error("Brand env prefix must resolve to a non-empty identifier");

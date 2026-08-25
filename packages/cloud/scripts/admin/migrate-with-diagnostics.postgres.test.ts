@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
+import { runMigrations } from "./migrate-with-diagnostics";
 
 const { Client } = pg;
 const ROOT = path.resolve(import.meta.dir, "../../../..");
@@ -57,6 +58,17 @@ const BASE_URL =
 const ENABLED =
   process.env.RUN_REAL_POSTGRES_MIGRATION_TESTS === "1" &&
   BASE_URL.startsWith("postgres");
+const RELEASE_BARRIER_CHECKPOINT_TAG =
+  "0194_job_execution_interruptions_catalog_guard";
+const RELEASE_BARRIER_DROP_TAG = "0282_drop_unused_usage_quotas_table";
+const RELEASE_BARRIER_RESTORE_TAG =
+  "0282_01_restore_usage_quotas_compatibility";
+const RELEASE_BARRIER_OPTIONS = {
+  timeoutMs: 250,
+  maxAttempts: 2,
+  baseDelayMs: 1,
+  maxDelayMs: 1,
+};
 
 interface JournalEntry {
   when: number;
@@ -94,6 +106,62 @@ async function createDatabase(): Promise<{
   return { name, url: databaseUrl(name), client };
 }
 
+function releaseBarrierMigration(idx: number, tag: string, statement: string) {
+  return {
+    entry: {
+      idx,
+      version: "7",
+      when: 1_900_000_000_000 + idx,
+      tag,
+      breakpoints: true,
+    },
+    hash: `hash-${tag}`,
+    statements: [statement],
+  };
+}
+
+function releaseBarrierMigrations() {
+  return [
+    releaseBarrierMigration(
+      194,
+      RELEASE_BARRIER_CHECKPOINT_TAG,
+      "CREATE TABLE usage_quotas (id uuid, legacy_marker text)",
+    ),
+    releaseBarrierMigration(
+      281,
+      "0281_before_usage_quotas_release",
+      "SELECT 1",
+    ),
+    releaseBarrierMigration(
+      282,
+      RELEASE_BARRIER_DROP_TAG,
+      "DROP TABLE usage_quotas",
+    ),
+    releaseBarrierMigration(
+      283,
+      RELEASE_BARRIER_RESTORE_TAG,
+      "CREATE TABLE usage_quotas (id uuid)",
+    ),
+  ];
+}
+
+function migrationClient(
+  client: pg.Client,
+  beforeQuery: (text: string) => Promise<void> = async () => {},
+) {
+  return {
+    backend: "postgres" as const,
+    query: async <T = unknown>(text: string, params?: unknown[]) => {
+      await beforeQuery(text);
+      const result = await client.query(text, params);
+      return { rows: result.rows as T[] };
+    },
+    end: async () => {
+      await client.end();
+    },
+  };
+}
+
 async function journalEntries(): Promise<JournalEntry[]> {
   const journal = JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as {
     entries: JournalEntry[];
@@ -108,10 +176,66 @@ async function journalEntries(): Promise<JournalEntry[]> {
  * breaks on every new migration.
  */
 const CHECKPOINT_PREFIX_LENGTH = 184;
+const USAGE_QUOTAS_DROP_TAG = "0282_drop_unused_usage_quotas_table";
+const USAGE_QUOTAS_RESTORE_TAG = "0282_01_restore_usage_quotas_compatibility";
 
-async function expectedPendingBanner(): Promise<string> {
-  const total = (await journalEntries()).length;
-  return `pending migrations: ${total - CHECKPOINT_PREFIX_LENGTH}`;
+/**
+ * Exact migrator banner once the ledger is complete through `appliedLength`
+ * journal entries. The count comes from the live journal, so the expectations
+ * around the release-barrier pause and repair keep tracking appended
+ * migrations too, and the whole line is anchored so a smaller count cannot
+ * match inside a larger one (`: 1` inside `: 16`).
+ */
+async function expectedPendingBanner(
+  appliedLength = CHECKPOINT_PREFIX_LENGTH,
+): Promise<RegExp> {
+  const pending = (await journalEntries()).length - appliedLength;
+  return new RegExp(`^\\[db:migrate\\] pending migrations: ${pending}$`, "m");
+}
+
+/** Fails closed unless the journal has exactly one adjacent guarded pair. */
+function locateUsageQuotasBarrier(entries: JournalEntry[]): {
+  dropIndex: number;
+  drop: JournalEntry;
+  restore: JournalEntry;
+} {
+  const dropIndexes = entries.flatMap((entry, index) =>
+    entry.tag === USAGE_QUOTAS_DROP_TAG ? [index] : [],
+  );
+  const restoreIndexes = entries.flatMap((entry, index) =>
+    entry.tag === USAGE_QUOTAS_RESTORE_TAG ? [index] : [],
+  );
+  if (dropIndexes.length !== 1 || restoreIndexes.length !== 1) {
+    throw new Error(
+      "Guarded usage-quotas migration pair must appear exactly once",
+    );
+  }
+  const dropIndex = dropIndexes[0] ?? -1;
+  const drop = entries[dropIndex];
+  const restoreIndex = restoreIndexes[0] ?? -1;
+  const restore = entries[restoreIndex];
+  if (!drop || !restore || restoreIndex !== dropIndex + 1) {
+    throw new Error("Guarded usage-quotas migrations must be adjacent");
+  }
+  return { dropIndex, drop, restore };
+}
+
+/** Journal position of the guarded usage-quotas drop and its adjacent restore. */
+async function usageQuotasBarrier() {
+  return locateUsageQuotasBarrier(await journalEntries());
+}
+
+function expectRedactedMigrationFailure(
+  output: string,
+  databaseCode?: string,
+): void {
+  const suffix = databaseCode ? ` database_code=${databaseCode}` : "";
+  expect(output).toMatch(
+    new RegExp(
+      `^\\[db:migrate\\] fatal: code=DATABASE_OPERATION_FAILED${suffix}$`,
+      "m",
+    ),
+  );
 }
 
 /**
@@ -220,6 +344,17 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       auto_top_up_threshold numeric(10, 2),
       CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
     );
+    CREATE TABLE api_keys (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      is_active boolean NOT NULL DEFAULT true,
+      deleted_at timestamp without time zone,
+      updated_at timestamp without time zone NOT NULL DEFAULT now(),
+      key_ciphertext text,
+      key_nonce text,
+      key_auth_tag text,
+      key_kms_key_id text,
+      key_kms_key_version integer
+    );
     CREATE TABLE organization_billing (
       organization_id uuid NOT NULL UNIQUE
         REFERENCES organizations(id) ON DELETE CASCADE,
@@ -316,6 +451,14 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       raw_payload_storage text NOT NULL DEFAULT 'inline',
       raw_payload_key text,
       received_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE remote_sessions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agent_id uuid NOT NULL,
+      status text NOT NULL,
+      CONSTRAINT remote_sessions_status_check CHECK (
+        status IN ('pending', 'active', 'denied', 'revoked')
+      )
     );
     CREATE TABLE docker_nodes (
       id uuid PRIMARY KEY,
@@ -428,6 +571,28 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
   `);
 }
 
+test("usage-quotas journal helper rejects missing, duplicate, and nonadjacent pairs", () => {
+  const drop = { when: 1, tag: USAGE_QUOTAS_DROP_TAG };
+  const restore = { when: 2, tag: USAGE_QUOTAS_RESTORE_TAG };
+  const unrelated = { when: 3, tag: "0290_unrelated" };
+
+  expect(locateUsageQuotasBarrier([drop, restore])).toEqual({
+    dropIndex: 0,
+    drop,
+    restore,
+  });
+  expect(() => locateUsageQuotasBarrier([drop])).toThrow("exactly once");
+  expect(() => locateUsageQuotasBarrier([drop, restore, drop])).toThrow(
+    "exactly once",
+  );
+  expect(() => locateUsageQuotasBarrier([drop, restore, restore])).toThrow(
+    "exactly once",
+  );
+  expect(() => locateUsageQuotasBarrier([drop, unrelated, restore])).toThrow(
+    "must be adjacent",
+  );
+});
+
 async function seedAppliedPrefix(
   client: pg.Client,
   length: number,
@@ -514,7 +679,9 @@ async function runScript(
 }
 
 async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
-  const deadline = Date.now() + 5_000;
+  // The migrator is a fresh Bun subprocess and may need to load the workspace
+  // graph before opening its session on a busy CI host.
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const result = await client.query<{ count: string }>(`
       SELECT count(*)::text AS count
@@ -525,6 +692,26 @@ async function waitForAdvisoryLock(client: pg.Client): Promise<void> {
     await Bun.sleep(10);
   }
   throw new Error("Timed out waiting for migration advisory lock");
+}
+
+async function waitForBlockedRelationLock(
+  client: pg.Client,
+  relationName: string,
+): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const result = await client.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM pg_locks
+       WHERE locktype = 'relation'
+         AND relation = to_regclass($1)
+         AND NOT granted`,
+      [relationName],
+    );
+    if (Number(result.rows[0]?.count ?? "0") > 0) return;
+    await Bun.sleep(25);
+  }
+  throw new Error(`Timed out waiting for a blocked lock on ${relationName}`);
 }
 
 async function expectPreCheckpointPaymentRequestAuthority(
@@ -996,7 +1183,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain(await expectedPendingBanner());
+      expect(first.output).toMatch(await expectedPendingBanner());
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -1043,13 +1230,256 @@ describe.skipIf(!ENABLED)(
 
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
-      expect(second.output).toContain("pending migrations: 0");
+      // The first run paused before the drop, so the drop and everything the
+      // journal appends after the guarded pair are still pending.
+      const { dropIndex } = await usageQuotasBarrier();
+      expect(second.output).toMatch(await expectedPendingBanner(dropIndex));
+      expect(second.output).toContain(
+        "release barrier permits 0 safe pending migrations before 0282",
+      );
+      expect(second.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const preflight = await runScript(PREFLIGHT, database.url);
       expect(preflight.exitCode, preflight.output).toBe(0);
       expect(preflight.output).toContain("catalog and journal verified");
       await database.client.end();
+    }, 120_000);
+
+    test("rejects a wiped empty ledger without changing a nonempty live schema", async () => {
+      const database = await createDatabase();
+      await database.client.query(
+        "CREATE TABLE live_data (id integer PRIMARY KEY, value text NOT NULL)",
+      );
+      await database.client.query(
+        "INSERT INTO live_data (id, value) VALUES (1, 'preserve-me')",
+      );
+
+      const result = await runScript(MIGRATOR, database.url);
+      expect(result.exitCode).toBe(1);
+      const preserved = await database.client.query<{ value: string }>(
+        "SELECT value FROM live_data WHERE id = 1",
+      );
+      expect(preserved.rows).toEqual([{ value: "preserve-me" }]);
+      const ledger = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations",
+      );
+      expect(ledger.rows[0]?.count).toBe("0");
+      await database.client.end();
     }, 30_000);
+
+    test("migrates a fresh PostgreSQL database through the full journal exactly once", async () => {
+      const database = await createDatabase();
+      const entries = await journalEntries();
+
+      const first = await runScript(MIGRATOR, database.url);
+      expect(first.exitCode, first.output).toBe(0);
+      expect(first.output).toMatch(await expectedPendingBanner(0));
+      expect(first.output).toContain(
+        "applying 0282_drop_unused_usage_quotas_table",
+      );
+      expect(first.output).toContain(
+        "applying 0282_01_restore_usage_quotas_compatibility",
+      );
+      expect(first.output).toContain("migrations complete");
+
+      const state = await database.client.query<{
+        ledger_count: string;
+        usage_quotas_table: string | null;
+      }>(`
+        SELECT
+          (SELECT count(*)::text FROM drizzle.__drizzle_migrations)
+            AS ledger_count,
+          to_regclass('public.usage_quotas')::text AS usage_quotas_table
+      `);
+      expect(state.rows).toEqual([
+        {
+          ledger_count: String(entries.length),
+          usage_quotas_table: "usage_quotas",
+        },
+      ]);
+
+      const second = await runScript(MIGRATOR, database.url);
+      expect(second.exitCode, second.output).toBe(0);
+      expect(second.output).toMatch(/^\[db:migrate\] pending migrations: 0$/m);
+      expect(second.output).not.toContain("applying ");
+      await database.client.end();
+    }, 120_000);
+
+    test("keeps the guarded table continuously available to a concurrent PostgreSQL session", async () => {
+      const database = await createDatabase();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      let signalRestoreReached: (() => void) | undefined;
+      let releaseRestore: (() => void) | undefined;
+      const restoreReached = new Promise<void>((resolve) => {
+        signalRestoreReached = resolve;
+      });
+      const restoreMayRun = new Promise<void>((resolve) => {
+        releaseRestore = resolve;
+      });
+      const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+      const migrations = releaseBarrierMigrations();
+      const migrationRun = runMigrations(
+        migrationClient(database.client, async (text) => {
+          if (text !== restoreStatement) return;
+          signalRestoreReached?.();
+          await restoreMayRun;
+        }),
+        migrations,
+        RELEASE_BARRIER_OPTIONS,
+        undefined,
+        undefined,
+        async () => {},
+      );
+
+      await restoreReached;
+      let observerSettled = false;
+      const concurrentRead = observer
+        .query<{ count: string }>(
+          "SELECT count(*)::text AS count FROM usage_quotas",
+        )
+        .finally(() => {
+          observerSettled = true;
+        });
+      await Bun.sleep(100);
+      expect(observerSettled).toBe(false);
+
+      releaseRestore?.();
+      await migrationRun;
+      expect((await concurrentRead).rows).toEqual([{ count: "0" }]);
+      const pairLedger = await observer.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
+        [migrations.slice(2).map((migration) => migration.entry.when)],
+      );
+      expect(pairLedger.rows).toEqual([{ count: "2" }]);
+      await observer.end();
+    }, 30_000);
+
+    test("rolls back the guarded drop and both ledger rows when PostgreSQL restore fails", async () => {
+      const database = await createDatabase();
+      const observer = new Client({ connectionString: database.url });
+      await observer.connect();
+      const migrations = releaseBarrierMigrations();
+      const restoreStatement = "CREATE TABLE usage_quotas (id uuid)";
+
+      await expect(
+        runMigrations(
+          migrationClient(database.client, async (text) => {
+            if (text === restoreStatement) {
+              throw new Error("injected restore failure");
+            }
+          }),
+          migrations,
+          RELEASE_BARRIER_OPTIONS,
+          undefined,
+          undefined,
+          async () => {},
+        ),
+      ).rejects.toThrow("injected restore failure");
+
+      const table = await observer.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM usage_quotas",
+      );
+      expect(table.rows).toEqual([{ count: "0" }]);
+      const ledger = await observer.query<{ created_at: string }>(
+        "SELECT created_at::text FROM drizzle.__drizzle_migrations ORDER BY id",
+      );
+      expect(ledger.rows).toEqual(
+        migrations.slice(0, 2).map((migration) => ({
+          created_at: String(migration.entry.when),
+        })),
+      );
+      await observer.end();
+    }, 30_000);
+
+    test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
+
+      const safePrefix = await runScript(MIGRATOR, database.url);
+      expect(safePrefix.exitCode, safePrefix.output).toBe(0);
+      expect(safePrefix.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
+
+      const { drop, restore } = await usageQuotasBarrier();
+      const dropSql = await readFile(
+        path.join(MIGRATIONS_DIR, `${drop.tag}.sql`),
+        "utf8",
+      );
+      await database.client.query(dropSql);
+      await database.client.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+        [createHash("sha256").update(dropSql).digest("hex"), drop.when],
+      );
+
+      const restoreSql = await readFile(
+        path.join(MIGRATIONS_DIR, `${restore.tag}.sql`),
+        "utf8",
+      );
+      await database.client.query("BEGIN");
+      try {
+        for (const statement of restoreSql
+          .split("--> statement-breakpoint")
+          .map((candidate) => candidate.trim())
+          .filter(Boolean)) {
+          await database.client.query(statement);
+        }
+        await database.client.query(
+          "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+          [createHash("sha256").update(restoreSql).digest("hex"), restore.when],
+        );
+        await database.client.query("COMMIT");
+      } catch (error) {
+        await database.client.query("ROLLBACK");
+        throw error;
+      }
+
+      const oldSelection = await database.client.query(`
+        SELECT id, organization_id, quota_type, model_name, period_type,
+          credits_limit, current_usage, period_start, period_end, is_active,
+          created_at, updated_at
+        FROM usage_quotas
+      `);
+      expect(oldSelection.rows).toEqual([]);
+      expect(oldSelection.fields.map((field) => field.name)).toEqual([
+        "id",
+        "organization_id",
+        "quota_type",
+        "model_name",
+        "period_type",
+        "credits_limit",
+        "current_usage",
+        "period_start",
+        "period_end",
+        "is_active",
+        "created_at",
+        "updated_at",
+      ]);
+
+      const indexes = await database.client.query<{ indexname: string }>(`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'usage_quotas'
+        ORDER BY indexname
+      `);
+      expect(indexes.rows.map((row) => row.indexname)).toEqual([
+        "usage_quotas_active_idx",
+        "usage_quotas_org_id_idx",
+        "usage_quotas_period_idx",
+        "usage_quotas_pkey",
+        "usage_quotas_quota_type_idx",
+      ]);
+
+      const restoreLedger = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+        [restore.when],
+      );
+      expect(restoreLedger.rows[0]?.count).toBe("1");
+      await database.client.end();
+    }, 120_000);
 
     test("accepts historical production hash drift but enforces hashes from the checkpoint forward", async () => {
       const database = await createDatabase();
@@ -1061,7 +1491,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -1069,9 +1499,8 @@ describe.skipIf(!ENABLED)(
       );
       const checkpointMismatch = await runScript(MIGRATOR, database.url);
       expect(checkpointMismatch.exitCode).toBe(1);
-      expect(checkpointMismatch.output).toContain(
-        "Migration ledger hash mismatch for 0194_job_execution_interruptions_catalog_guard",
-      );
+      expectRedactedMigrationFailure(checkpointMismatch.output);
+      expect(checkpointMismatch.output).not.toContain("checkpoint-drift");
       await database.client.end();
     }, 30_000);
 
@@ -1111,7 +1540,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1125,7 +1554,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1161,7 +1590,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
@@ -1185,7 +1614,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain(await expectedPendingBanner());
+      expect(migrated.output).toMatch(await expectedPendingBanner());
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
@@ -1214,9 +1643,8 @@ describe.skipIf(!ENABLED)(
 
       const result = await runScript(MIGRATOR, database.url);
       expect(result.exitCode).toBe(1);
-      expect(result.output).toContain(
-        "appears after hash enforcement checkpoint",
-      );
+      expectRedactedMigrationFailure(result.output);
+      expect(result.output).not.toContain("appears after hash enforcement");
       await database.client.end();
     }, 120_000);
 
@@ -1228,9 +1656,8 @@ describe.skipIf(!ENABLED)(
       );
       const driftResult = await runScript(MIGRATOR, drift.url);
       expect(driftResult.exitCode).toBe(1);
-      expect(driftResult.output).toContain(
-        "jobs.execution_interruptions catalog mismatch",
-      );
+      expectRedactedMigrationFailure(driftResult.output, "55000");
+      expect(driftResult.output).not.toContain("catalog mismatch");
       const driftJournal = await drift.client.query<{
         add_column: string;
         catalog_guard: string;
@@ -1254,9 +1681,8 @@ describe.skipIf(!ENABLED)(
       );
       const generatedResult = await runScript(MIGRATOR, generated.url);
       expect(generatedResult.exitCode).toBe(1);
-      expect(generatedResult.output).toContain(
-        "expected writable integer NOT NULL DEFAULT 0",
-      );
+      expectRedactedMigrationFailure(generatedResult.output, "55000");
+      expect(generatedResult.output).not.toContain("expected writable");
       await generated.client.end();
 
       const duplicate = await createDatabase();
@@ -1272,7 +1698,8 @@ describe.skipIf(!ENABLED)(
       );
       const duplicateResult = await runScript(MIGRATOR, duplicate.url);
       expect(duplicateResult.exitCode).toBe(1);
-      expect(duplicateResult.output).toContain("duplicate created_at");
+      expectRedactedMigrationFailure(duplicateResult.output);
+      expect(duplicateResult.output).not.toContain("duplicate created_at");
       await duplicate.client.end();
 
       const unknownRow = await createDatabase();
@@ -1282,7 +1709,8 @@ describe.skipIf(!ENABLED)(
       );
       const unknownRowResult = await runScript(MIGRATOR, unknownRow.url);
       expect(unknownRowResult.exitCode).toBe(1);
-      expect(unknownRowResult.output).toContain("no matching journal entry");
+      expectRedactedMigrationFailure(unknownRowResult.output);
+      expect(unknownRowResult.output).not.toContain("no matching journal");
       await unknownRow.client.end();
     }, 300_000);
 
@@ -1296,12 +1724,19 @@ describe.skipIf(!ENABLED)(
 
       const firstPromise = runScript(MIGRATOR, database.url, {
         MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+        MIGRATION_LOCK_RETRY_BASE_MS: "100",
+        MIGRATION_LOCK_RETRY_MAX_MS: "200",
       });
       const secondPromise = runScript(MIGRATOR, database.url, {
         MIGRATION_LOCK_MAX_ATTEMPTS: "100",
+        MIGRATION_LOCK_RETRY_BASE_MS: "100",
+        MIGRATION_LOCK_RETRY_MAX_MS: "200",
       });
       await waitForAdvisoryLock(database.client);
-      await Bun.sleep(250);
+      await waitForBlockedRelationLock(database.client, "jobs");
+      // Keep the blocker long enough for the observed waiter to cross its
+      // configured timeout and exercise rollback/retry before releasing it.
+      await Bun.sleep(150);
       await holder.query("COMMIT");
       await holder.end();
 
@@ -1311,7 +1746,14 @@ describe.skipIf(!ENABLED)(
       const output = `${first.output}${second.output}`;
       expect(output).toContain("lock timeout on attempt");
       expect(output).toContain("migration lock busy on attempt");
-      expect(output).toContain("pending migrations: 0");
+      // Whichever migrator won the lock applied the safe prefix; the other then
+      // found the ledger already at 0281 with the guarded tail still pending.
+      const { dropIndex } = await usageQuotasBarrier();
+      expect(output).toMatch(await expectedPendingBanner());
+      expect(output).toMatch(await expectedPendingBanner(dropIndex));
+      expect(output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const journal = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",
@@ -1319,7 +1761,7 @@ describe.skipIf(!ENABLED)(
       );
       expect(journal.rows[0]?.count).toBe("1");
       await database.client.end();
-    }, 30_000);
+    }, 120_000);
 
     test("fails observably after bounded table-lock retries without partial state", async () => {
       const database = await createDatabase();

@@ -16,6 +16,7 @@
  * `@elizaos/ui`; both share one module-level boot-progress state.
  */
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getElizaApiBase } from "@elizaos/shared";
 import {
   handleIosLocalAgentRequest,
@@ -497,9 +498,9 @@ export function isIosInProcessLocalAgentBase(
   baseUrl: string | null | undefined,
 ): boolean {
   if (!baseUrl) return false;
-  return isIosInProcessLocalAgentUrl(
-    `${baseUrl.replace(/\/+$/, "")}/api/health`,
-  );
+  let end = baseUrl.length;
+  while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--;
+  return isIosInProcessLocalAgentUrl(`${baseUrl.slice(0, end)}/api/health`);
 }
 
 function isSafeLocalPath(path: string): boolean {
@@ -767,7 +768,7 @@ async function restartIosFullBunRuntimeFromWatchdog(): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     recordIosNativeAgentBootPhase("error", message);
     appendIosBootTrace("watchdog-restart-failed", {
-      message: message.slice(0, 300),
+      message: truncateWellFormed(toWellFormedUnicode(message), 300),
     });
     throw error;
   });

@@ -42,7 +42,14 @@ import {
 import { runShell } from "../services/shell-execution-router.ts";
 import { decodePathComponent } from "./server-helpers.ts";
 import type { ServerState } from "./server-types.ts";
-import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
+import {
+  capturedTerminalOutputIsSafe,
+  MAX_TERMINAL_CAPTURE_BYTES,
+} from "./terminal-output-contract.ts";
+import {
+  resolveRequestedTerminalRunId,
+  resolveTerminalRunLimits,
+} from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -228,6 +235,19 @@ export interface MiscRouteContext {
   isSharedTerminalClientId: (clientId: string) => boolean;
   activeTerminalRunCount: number;
   setActiveTerminalRunCount: (delta: number) => void;
+  /**
+   * Atomically reserves one process-wide terminal slot. Production supplies
+   * this instead of relying on the count snapshot captured before body parsing.
+   */
+  tryAcquireTerminalRunSlot?: (
+    scopeId: string,
+    runId: string,
+    maxConcurrent: number,
+  ) =>
+    | { release: () => void }
+    | { rejection: "capacity" | "duplicate" | "registry-capacity" };
+  /** Test seam for failures before the shell process can be launched. */
+  resolveTerminalShellCommand?: typeof resolveTerminalShellCommand;
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +319,7 @@ export async function handleMiscRoutes(
         : body.url
           ? `Can you analyze this: ${body.url}`
           : body.text
-            ? `What are your thoughts on: ${body.text.slice(0, 100)}`
+            ? `What are your thoughts on: ${body.text}`
             : "What do you think about this shared content?",
       receivedAt: Date.now(),
     };
@@ -470,16 +490,60 @@ export async function handleMiscRoutes(
     }
 
     const emitTerminalEvent = (payload: object) => {
-      if (ctx.isSharedTerminalClientId(targetClientId)) {
-        state.broadcastWs?.(payload);
-        return;
+      try {
+        if (ctx.isSharedTerminalClientId(targetClientId)) {
+          state.broadcastWs?.(payload);
+          return;
+        }
+        if (typeof state.broadcastWsToClientId !== "function") return;
+        state.broadcastWsToClientId(targetClientId, payload);
+      } catch (error) {
+        // error-policy:J6 terminal event delivery is observational; a broken
+        // subscriber must not replace the command result or leak its lease.
+        logger.warn(
+          { error, runClientId: targetClientId },
+          "[terminal] Failed to broadcast terminal event",
+        );
       }
-      if (typeof state.broadcastWsToClientId !== "function") return;
-      state.broadcastWsToClientId(targetClientId, payload);
     };
 
+    const captureOutput = body.captureOutput === true;
+    const MAX_CAPTURE_BYTES = MAX_TERMINAL_CAPTURE_BYTES;
+
+    const runId = resolveRequestedTerminalRunId(
+      req.headers["x-eliza-terminal-run-id"],
+    );
+    if (!runId) {
+      error(res, "Invalid X-Eliza-Terminal-Run-Id header", 400);
+      return true;
+    }
+
     const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
-    if (ctx.activeTerminalRunCount >= maxConcurrent) {
+    const runScopeId = String(state.runtime?.agentId ?? "no-agent");
+    const admission = ctx.tryAcquireTerminalRunSlot
+      ? ctx.tryAcquireTerminalRunSlot(runScopeId, runId, maxConcurrent)
+      : ctx.activeTerminalRunCount < maxConcurrent
+        ? {
+            release: (() => {
+              ctx.setActiveTerminalRunCount(1);
+              let released = false;
+              return () => {
+                if (released) return;
+                released = true;
+                ctx.setActiveTerminalRunCount(-1);
+              };
+            })(),
+          }
+        : { rejection: "capacity" as const };
+    if ("rejection" in admission) {
+      if (admission.rejection === "duplicate") {
+        error(res, "Terminal run id was already used", 409);
+        return true;
+      }
+      if (admission.rejection === "registry-capacity") {
+        error(res, "Terminal run admission is temporarily unavailable", 503);
+        return true;
+      }
       error(
         res,
         `Too many active terminal runs (${maxConcurrent}). Wait for a command to finish.`,
@@ -487,15 +551,11 @@ export async function handleMiscRoutes(
       );
       return true;
     }
-
-    const captureOutput = body.captureOutput === true;
-    const MAX_CAPTURE_BYTES = 128 * 1024;
+    const releaseTerminalRunSlot = admission.release;
 
     if (!captureOutput) {
-      json(res, { ok: true });
+      json(res, { ok: true, runId });
     }
-
-    const runId = `run-${crypto.randomUUID()}`;
 
     emitTerminalEvent({
       type: "terminal-output",
@@ -505,37 +565,35 @@ export async function handleMiscRoutes(
       maxDurationMs,
     });
 
-    ctx.setActiveTerminalRunCount(1);
     let finalized = false;
     let timedOut = false;
     let stdout = "";
     let stderr = "";
-    let truncated = false;
+    let captureOverflowed = false;
 
+    let capturedBytes = 0;
     const appendOutput = (current: string, chunkText: string): string => {
-      if (!captureOutput || truncated || !chunkText) {
+      if (!captureOutput || captureOverflowed || !chunkText) {
         return current;
       }
-      const remaining = MAX_CAPTURE_BYTES - Buffer.byteLength(current, "utf8");
+      const remaining = MAX_CAPTURE_BYTES - capturedBytes;
       if (remaining <= 0) {
-        truncated = true;
+        captureOverflowed = true;
         return current;
       }
       const chunkBytes = Buffer.byteLength(chunkText, "utf8");
       if (chunkBytes <= remaining) {
+        capturedBytes += chunkBytes;
         return current + chunkText;
       }
-      truncated = true;
-      return (
-        current +
-        Buffer.from(chunkText, "utf8").subarray(0, remaining).toString("utf8")
-      );
+      captureOverflowed = true;
+      return current;
     };
 
     const finalize = () => {
       if (finalized) return;
       finalized = true;
-      ctx.setActiveTerminalRunCount(-1);
+      releaseTerminalRunSlot();
       clearTimeout(timeoutHandle);
     };
 
@@ -550,8 +608,11 @@ export async function handleMiscRoutes(
     }, maxDurationMs);
 
     const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
-      if (stream === "stdout") stdout = appendOutput(stdout, text);
-      else stderr = appendOutput(stderr, text);
+      if (captureOutput) {
+        if (stream === "stdout") stdout = appendOutput(stdout, text);
+        else stderr = appendOutput(stderr, text);
+        return;
+      }
       emitTerminalEvent({
         type: "terminal-output",
         runId,
@@ -560,22 +621,82 @@ export async function handleMiscRoutes(
       });
     };
 
-    const shell = resolveTerminalShellCommand();
-    runShell(
-      {
-        command: shell.command,
-        args: shell.argsFor(command),
-        cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
-        env: { FORCE_COLOR: "0" },
-        timeoutMs: maxDurationMs,
-        onStdout: (text) => appendAndEmit("stdout", text),
-        onStderr: (text) => appendAndEmit("stderr", text),
-        toolName: "terminal.run",
-      },
-      null,
-    )
+    Promise.resolve()
+      .then(() => {
+        const shell = (
+          ctx.resolveTerminalShellCommand ?? resolveTerminalShellCommand
+        )();
+        return runShell(
+          {
+            command: shell.command,
+            args: shell.argsFor(command),
+            cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
+            env: { FORCE_COLOR: "0" },
+            timeoutMs: maxDurationMs,
+            onStdout: (text) => appendAndEmit("stdout", text),
+            onStderr: (text) => appendAndEmit("stderr", text),
+            toolName: "terminal.run",
+          },
+          null,
+        );
+      })
       .then((result) => {
         finalize();
+        const runTimedOut = timedOut || result.exitCode === 124;
+        if (captureOutput) {
+          if (captureOverflowed) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output exceeded the complete-capture limit",
+            });
+            error(
+              res,
+              `Terminal output exceeded the ${MAX_CAPTURE_BYTES}-byte complete-capture safety limit; no partial result was returned.`,
+              413,
+            );
+            return;
+          }
+          if (runTimedOut) {
+            error(
+              res,
+              "Terminal execution timed out; no partial result was returned.",
+              504,
+            );
+            return;
+          }
+          if (!capturedTerminalOutputIsSafe(stdout, stderr)) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "error",
+              data: "Terminal output was not valid safe text",
+            });
+            error(
+              res,
+              "Terminal output was not valid safe text; no result was returned.",
+              422,
+            );
+            return;
+          }
+          if (stdout) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stdout",
+              data: stdout,
+            });
+          }
+          if (stderr) {
+            emitTerminalEvent({
+              type: "terminal-output",
+              runId,
+              event: "stderr",
+              data: stderr,
+            });
+          }
+        }
         emitTerminalEvent({
           type: "terminal-output",
           runId,
@@ -590,24 +711,24 @@ export async function handleMiscRoutes(
             exitCode: result.exitCode,
             stdout,
             stderr,
-            timedOut: timedOut || result.exitCode === 124,
-            truncated,
+            timedOut: runTimedOut,
+            truncated: false,
             maxDurationMs,
             sandbox: result.sandbox,
             durationMs: result.durationMs,
           });
         }
       })
-      .catch((err: Error) => {
+      .catch((_error: Error) => {
         finalize();
         emitTerminalEvent({
           type: "terminal-output",
           runId,
           event: "error",
-          data: err.message,
+          data: "Terminal execution failed",
         });
         if (captureOutput) {
-          error(res, err.message, 500);
+          error(res, "Terminal execution failed", 500);
         }
       });
 

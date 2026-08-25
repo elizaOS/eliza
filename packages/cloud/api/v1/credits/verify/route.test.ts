@@ -38,6 +38,8 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 mock.module("@/lib/services/stripe-checkout-orders", () => ({
   StripeCheckoutAuthorityError: class extends Error {

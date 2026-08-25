@@ -239,17 +239,24 @@ export function createSchedulingSqlScheduledTaskStore(
 ): ScheduledTaskStore {
   const { agentId } = opts;
   const executeSql = schedulingSqlExecutor(opts);
-  return {
-    async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
-      const now = isoNow();
-      const nextFireAtSql =
-        options?.nextFireAtIso === null ||
-        options?.nextFireAtIso === undefined ||
-        options.nextFireAtIso.length === 0
-          ? "NULL"
-          : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
-      await executeSql(
-        `INSERT INTO ${TASK_TABLE} (
+  // Shared by `upsert` and `upsertIfStatus`. `guardStatus` narrows the
+  // conflict-update to rows still showing that lifecycle status, so a stale
+  // post-dispatch snapshot cannot overwrite a user verb that landed while the
+  // dispatcher was in flight.
+  const upsertStatement = (
+    task: ScheduledTask,
+    nextFireAtIso: string | null | undefined,
+    guardStatus?: ScheduledTask["state"]["status"],
+    returningId?: boolean,
+  ): string => {
+    const now = isoNow();
+    const nextFireAtSql =
+      nextFireAtIso === null ||
+      nextFireAtIso === undefined ||
+      nextFireAtIso.length === 0
+        ? "NULL"
+        : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+    return `INSERT INTO ${TASK_TABLE} (
           id, agent_id, kind, prompt_instructions, context_request_json,
           trigger_json, priority, should_fire_json, completion_check_json,
           escalation_json, output_json, pipeline_json, subject_kind, subject_id,
@@ -306,8 +313,75 @@ export function createSchedulingSqlScheduledTaskStore(
           execution_profile = EXCLUDED.execution_profile,
           next_fire_at = EXCLUDED.next_fire_at,
           updated_at = ${sqlQuote(now)}
-        WHERE ${TASK_TABLE}.transfer_status IS NULL`,
+        WHERE ${TASK_TABLE}.transfer_status IS NULL${
+          guardStatus === undefined
+            ? ""
+            : `\n          AND (${TASK_TABLE}.state_json::jsonb ->> 'status') = ${sqlQuote(guardStatus)}`
+        }${returningId ? "\n        RETURNING id" : ""}`;
+  };
+  // `upsertIfStatus` must NOT resurrect a row a concurrent writer deleted.
+  // Reusing the upsert here would take the INSERT branch on a missing row,
+  // return it via RETURNING, and report a won CAS — the opposite of the
+  // in-memory store, which returns false when the row is gone. Deletion is a
+  // live path (deleteCodingAgentSchedule), so this is UPDATE-only: a missing
+  // row matches nothing and the caller correctly learns it lost the race.
+  const guardedUpdateStatement = (
+    task: ScheduledTask,
+    nextFireAtIso: string | null | undefined,
+    guardStatus: ScheduledTask["state"]["status"],
+  ): string => {
+    const now = isoNow();
+    const nextFireAtSql =
+      nextFireAtIso === null ||
+      nextFireAtIso === undefined ||
+      nextFireAtIso.length === 0
+        ? "NULL"
+        : `${sqlQuote(nextFireAtIso)}::timestamptz`;
+    return `UPDATE ${TASK_TABLE} SET
+          kind = ${sqlQuote(task.kind)},
+          prompt_instructions = ${sqlQuote(task.promptInstructions)},
+          context_request_json = ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+          trigger_json = ${sqlJson(task.trigger)},
+          priority = ${sqlQuote(task.priority)},
+          should_fire_json = ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+          completion_check_json = ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+          escalation_json = ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+          output_json = ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+          pipeline_json = ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+          subject_kind = ${sqlText(task.subject?.kind ?? null)},
+          subject_id = ${sqlText(task.subject?.id ?? null)},
+          idempotency_key = ${sqlText(task.idempotencyKey ?? null)},
+          respects_global_pause = ${sqlBoolean(task.respectsGlobalPause)},
+          state_json = ${sqlJson(task.state)},
+          source = ${sqlQuote(task.source)},
+          created_by = ${sqlQuote(task.createdBy)},
+          owner_visible = ${sqlBoolean(task.ownerVisible)},
+          metadata_json = ${sqlJson(task.metadata ?? {})},
+          execution_profile = ${sqlText(task.executionProfile ?? null)},
+          next_fire_at = ${nextFireAtSql},
+          updated_at = ${sqlQuote(now)}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(task.taskId)}
+          AND transfer_status IS NULL
+          AND (state_json::jsonb ->> 'status') = ${sqlQuote(guardStatus)}
+        RETURNING id`;
+  };
+  return {
+    async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
+      await executeSql(upsertStatement(task, options?.nextFireAtIso));
+    },
+    async upsertIfStatus(task, options) {
+      const rows = await executeSql(
+        guardedUpdateStatement(
+          task,
+          options.nextFireAtIso,
+          options.expectedStatus,
+        ),
       );
+      // Zero rows means the row is gone, transferred, or no longer in the
+      // expected status — all three are "a concurrent writer moved it", which
+      // is exactly what the caller needs to know.
+      return rows.length > 0;
     },
     async claimForFire(args: {
       taskId: string;

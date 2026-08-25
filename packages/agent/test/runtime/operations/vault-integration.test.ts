@@ -37,6 +37,8 @@ import {
   createTestVault,
   type SecretsManager,
   type TestVault,
+  type Vault,
+  VaultWriteVerificationError,
 } from "@elizaos/vault";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { defaultClassifier } from "../../../src/runtime/operations/classifier.js";
@@ -181,8 +183,8 @@ describe("vault × runtime-ops — accepted operation persists ref, never plaint
     const desc = await testVault.vault.describe(apiKeyRef);
     expect(desc?.sensitive).toBe(true);
 
-    // Invariant 4: the audit log records the route's set call by name and
-    // never contains the plaintext.
+    // Invariant 4: the audit log records the route's set plus exact read-back
+    // by name and never contains the plaintext.
     const audit = await testVault.getAuditRecords();
     const routeSet = audit.find(
       (a) =>
@@ -191,8 +193,40 @@ describe("vault × runtime-ops — accepted operation persists ref, never plaint
         a.caller === "provider-switch-route",
     );
     expect(routeSet).toBeDefined();
+    expect(
+      audit.find(
+        (a) =>
+          a.action === "reveal" &&
+          a.key === "providers.openai.api-key" &&
+          a.caller === "provider-switch-route:verify",
+      ),
+    ).toBeDefined();
     const auditRaw = readFileSync(testVault.auditLogPath, "utf8");
     expect(auditRaw).not.toContain(apiKey);
+  });
+
+  test("does not return a provider ref when protected read-back cannot be verified", async () => {
+    const unreadableVault = new Proxy(testVault.vault, {
+      get(target, property, receiver) {
+        if (property === "reveal") {
+          return async () => {
+            throw new Error("simulated protected read failure");
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as Vault;
+    const unreadableSecrets = createManager({ vault: unreadableVault });
+
+    await expect(
+      persistProviderApiKey({
+        secrets: unreadableSecrets,
+        normalizedProvider: "cerebras",
+        apiKey: "disposable-provider-fixture",
+        caller: "provider-switch-route",
+      }),
+    ).rejects.toBeInstanceOf(VaultWriteVerificationError);
   });
 });
 

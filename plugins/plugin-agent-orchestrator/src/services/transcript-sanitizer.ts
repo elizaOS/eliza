@@ -14,21 +14,13 @@
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 
 /**
- * Default hard cap for any single remnant of text after envelope stripping.
- * A deliverable above this is a multi-KB transcript dump, not a user answer, so
- * we elide it rather than relaying it verbatim. Mirrors the 2KB verbatim cap
- * the router already applies to captured deliverables.
- */
-export const DEFAULT_MAX_RELAY_CHARS = 2000;
-
-/**
  * Remove the orchestrator's OWN captured tool-output envelope blocks from relay
  * text. Robust to:
  *  - well-formed blocks with a title
  *  - empty-title blocks: `[tool output: ]` / `[tool output:]`
  *  - MULTIPLE blocks in one string
  *  - an UNTERMINATED trailing block: a dangling `[tool output:` with no closing
- *    `[/tool output]` (a truncated capture) is stripped from the marker to end.
+ *    `[/tool output]` is stripped from the marker to end.
  *
  * Preserves all surrounding prose and plain URLs (envelopes carry an explicit
  * `[/tool output]` fence or run to end-of-string; prose between blocks is
@@ -37,43 +29,32 @@ export const DEFAULT_MAX_RELAY_CHARS = 2000;
  */
 export function stripToolTranscript(text: string): string {
   if (!text) return "";
-  return (
-    text
-      // Well-formed and empty-title blocks (non-greedy body up to the fence).
-      .replace(/\[tool output:[^\]]*\][\s\S]*?\[\/tool output\]/g, "")
-      // Unterminated trailing block: dangling opener with no closing fence.
-      // Only fires if a `[tool output:` marker remains AFTER the pass above,
-      // which means it was never closed — strip it to end of string.
-      .replace(/\[tool output:[\s\S]*$/g, "")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim()
-  );
-}
-
-/**
- * Hard-cap any oversized text remnant. If `text` exceeds `maxChars`, TRUNCATE
- * it: keep the head and append a marker recording the original length. Applied
- * AFTER envelope stripping as defense-in-depth: even a remnant that is not a
- * recognized envelope (raw JSON, an unfenced dump) is bounded before relay.
- *
- * Never replaces the text wholesale — a legit long deliverable (a pure-prose
- * plan or report over the cap) must relay its head, not vanish into a marker
- * (regression from 37813124bf / #11605: the synthesis path posted literally
- * "[output elided — N chars]" as the completion summary).
- *
- * The truncated result is bounded to `maxChars`, so re-applying this function
- * (buildTaskResultLine re-sanitizes defensively) is a no-op.
- */
-export function elideLongBlocks(
-  text: string,
-  maxChars: number = DEFAULT_MAX_RELAY_CHARS,
-): string {
-  if (!text) return "";
-  if (text.length <= maxChars) return text;
-  const marker = `… [output truncated — ${text.length} chars total]`;
-  const headBudget = maxChars - marker.length - 1; // 1 = joining newline
-  if (headBudget <= 0) return marker; // degenerate tiny cap: marker only
-  return `${text.slice(0, headBudget).trimEnd()}\n${marker}`;
+  const opener = "[tool output:";
+  const closer = "[/tool output]";
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const blockStart = text.indexOf(opener, cursor);
+    if (blockStart < 0) break;
+    const titleEnd = text.indexOf("]", blockStart + opener.length);
+    if (titleEnd < 0) {
+      fragments.push(text.slice(cursor, blockStart));
+      cursor = text.length;
+      break;
+    }
+    const blockEnd = text.indexOf(closer, titleEnd + 1);
+    fragments.push(text.slice(cursor, blockStart));
+    if (blockEnd < 0) {
+      cursor = text.length;
+      break;
+    }
+    cursor = blockEnd + closer.length;
+  }
+  fragments.push(text.slice(cursor));
+  return fragments
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -132,27 +113,19 @@ export function stripStructuredProofLines(text: string): string {
 
 /**
  * Full relay-sanitization pipeline: strip envelope blocks, envelope summary
- * lines, and structured-proof lines, then hard-cap the remainder. Returns ""
+ * lines, and structured-proof lines. Returns ""
  * when nothing survives (callers substitute their own default, e.g.
  * "Task completed.").
  */
 export function sanitizeCompletionRelay(
   text: string | undefined | null,
-  maxChars: number = DEFAULT_MAX_RELAY_CHARS,
+  _maxChars?: number,
 ): string {
   if (!text) return "";
   const stripped = stripStructuredProofLines(
     stripEnvelopeSummaryLines(stripToolTranscript(text)),
   );
-  let out = elideLongBlocks(stripped, maxChars);
-  // The liveUrl rescue appends at the tail, which is exactly what elision
-  // truncates — re-assert it after the cap so the one load-bearing fact
-  // survives an oversized deliverable (bounded overshoot: one URL line).
-  const liveUrl = stripped.match(/^Live at (\S+)$/m)?.[1];
-  if (liveUrl && !out.includes(liveUrl)) {
-    out = `${out}\nLive at ${liveUrl}`;
-  }
-  return out;
+  return stripped;
 }
 
 export { TOOL_OUTPUT_END_MARKER };

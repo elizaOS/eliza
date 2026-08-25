@@ -57,11 +57,11 @@ export function LoginOptionsSkeleton({
       <GhostRow animated={animated} className="mx-auto h-4 w-3/4" />
       {/* "or continue with" divider row. */}
       <GhostRow animated={animated} className="mx-auto h-4 w-32" />
-      {/* OAuth grid: Google + Discord side by side, GitHub full width. */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* OAuth grid: one compact row on wide cards, stacked on mobile. */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <GhostRow animated={animated} className="h-touch" />
         <GhostRow animated={animated} className="h-touch" />
-        <GhostRow animated={animated} className="h-touch sm:col-span-2" />
+        <GhostRow animated={animated} className="h-touch" />
       </div>
       {/* "or sign in with a wallet" divider row. */}
       <GhostRow animated={animated} className="mx-auto h-4 w-32" />

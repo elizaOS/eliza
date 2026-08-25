@@ -20,8 +20,6 @@ import type { SessionInfo } from "../services/types.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
 
 const RECENCY_WINDOW_MS = 30 * 60_000;
-const MAX_FILES_LISTED = 20;
-const MAX_DIFF_LINES = 50;
 
 function readChangeSet(session: SessionInfo): WorkspaceChangeSet | undefined {
   const raw = (session.metadata as Record<string, unknown> | undefined)
@@ -118,11 +116,8 @@ export const codingSessionChangesProvider: Provider = {
       return { text: note, values: { recentCodingChanges: note }, data: {} };
     }
     const { session, changeSet } = top;
-    const files = changeSet.changedFiles.slice(0, MAX_FILES_LISTED);
-    const fileLine =
-      changeSet.changedFiles.length > MAX_FILES_LISTED
-        ? `${files.join(", ")} (+${changeSet.changedFiles.length - MAX_FILES_LISTED} more)`
-        : files.join(", ");
+    const files = changeSet.changedFiles;
+    const fileLine = files.join(", ");
 
     const lines = [
       "recent_coding_changes:",
@@ -135,14 +130,8 @@ export const codingSessionChangesProvider: Provider = {
       // for the recency window, so keep it lean (the full diff lives on
       // session metadata). Small site/app edits fit well under this.
       const diffLines = changeSet.diff.split("\n");
-      const shown = diffLines.slice(0, MAX_DIFF_LINES);
       lines.push("  diff: |");
-      for (const diffLine of shown) lines.push(`    ${diffLine}`);
-      if (diffLines.length > MAX_DIFF_LINES || changeSet.truncated) {
-        lines.push(
-          `    … [diff truncated — ${changeSet.changedFiles.length} file(s) total]`,
-        );
-      }
+      for (const diffLine of diffLines) lines.push(`    ${diffLine}`);
     }
     lines.push(
       "  note: The files and diff above ARE the real change set from your own coding work in this conversation — you have them right here. When the user asks what you changed or to see the diff, answer directly from this with a short, chat-friendly summary: name the file(s) and describe what changed, quoting the key changed line(s) when helpful. Keep it concise (a few lines). Do NOT say you lack the files, the source, the repository, or access — the change set is provided above. Never invent edits beyond it.",

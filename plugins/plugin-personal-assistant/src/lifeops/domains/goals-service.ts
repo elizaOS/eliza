@@ -51,7 +51,6 @@ import {
 import {
   GOAL_REVIEW_LOOKBACK_DAYS,
   GOAL_SEMANTIC_REVIEW_CACHE_TTL_MS,
-  MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
 } from "../service-constants.js";
 import {
@@ -66,6 +65,11 @@ import { summarizeOverviewSection } from "../service-helpers-occurrence.js";
 import { shouldDeliverReminderForIntensity } from "../service-helpers-reminder.js";
 import { fail, normalizeReminderUrgency } from "../service-normalize.js";
 import { addMinutes, getZonedDateParts } from "../time.js";
+import {
+  callerDefinitionScopes,
+  getCallerOccurrenceView,
+  listCallerDefinitions,
+} from "./definition-authorization.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 /** Days of inactivity after which a daily / interval / times-per-day goal is
@@ -195,8 +199,9 @@ export class GoalsDomain {
         .filter((link) => link.linkedType === "definition")
         .map((link) => link.linkedId),
     );
-    const definitions = await this.ctx.repository.listDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
     );
     return definitions
       .filter(
@@ -228,11 +233,15 @@ export class GoalsDomain {
         }
       }
     }
-    views.sort(
-      (left, right) =>
-        new Date(left.updatedAt).getTime() -
-        new Date(right.updatedAt).getTime(),
-    );
+    views.sort((left, right) => {
+      const leftTime = Number.isFinite(new Date(left.updatedAt).getTime())
+        ? new Date(left.updatedAt).getTime()
+        : 0;
+      const rightTime = Number.isFinite(new Date(right.updatedAt).getTime())
+        ? new Date(right.updatedAt).getTime()
+        : 0;
+      return leftTime - rightTime;
+    });
     return views;
   }
 
@@ -337,7 +346,7 @@ export class GoalsDomain {
       });
       return suggestions;
     }
-    for (const overdue of args.overdueOccurrences.slice(0, 2)) {
+    for (const overdue of args.overdueOccurrences) {
       suggestions.push({
         kind: LIFEOPS_GOAL_SUGGESTION_KINDS[2],
         title: overdue.title,
@@ -369,7 +378,6 @@ export class GoalsDomain {
       });
     }
     if (
-      suggestions.length < 3 &&
       args.linkedDefinitions.every((definition) => definition.kind === "task")
     ) {
       suggestions.push({
@@ -381,7 +389,7 @@ export class GoalsDomain {
         occurrenceId: null,
       });
     }
-    return suggestions.slice(0, 3);
+    return suggestions;
   }
 
   public scoreGoalSimilarity(args: {
@@ -413,7 +421,7 @@ export class GoalsDomain {
       suggestions.push(suggestion);
     };
 
-    for (const completion of args.recentCompletions.slice(0, 2)) {
+    for (const completion of args.recentCompletions) {
       pushSuggestion({
         sourceGoalId: args.goal.id,
         definitionId: completion.definitionId,
@@ -422,7 +430,7 @@ export class GoalsDomain {
       });
     }
 
-    for (const definition of args.linkedDefinitions.slice(0, 3)) {
+    for (const definition of args.linkedDefinitions) {
       pushSuggestion({
         sourceGoalId: args.goal.id,
         definitionId: definition.id,
@@ -431,7 +439,7 @@ export class GoalsDomain {
       });
     }
 
-    return suggestions.slice(0, 3);
+    return suggestions;
   }
 
   public formatLocalHourMinute(
@@ -475,25 +483,22 @@ export class GoalsDomain {
     now: Date;
   }): Promise<Record<string, unknown>> {
     const timeZone = resolveDefaultTimeZone();
-    const linkedDefinitionSummaries = args.linkedDefinitions
-      .slice(0, 8)
-      .map((definition) => ({
+    const linkedDefinitionSummaries = args.linkedDefinitions.map(
+      (definition) => ({
         id: definition.id,
         kind: definition.kind,
         title: definition.title,
         cadence: definition.cadence,
         status: definition.status,
-      }));
+      }),
+    );
     const sleepSignals = (
       await this.deps.listActivitySignals({
         sinceAt: new Date(
           args.now.getTime() - 30 * 24 * 60 * 60 * 1000,
         ).toISOString(),
-        limit: 80,
       })
-    )
-      .filter((signal) => signal.health?.sleep)
-      .slice(0, 30);
+    ).filter((signal) => signal.health?.sleep);
     const sleepSessions = sleepSignals
       .map((signal) => {
         const sleep = signal.health?.sleep;
@@ -512,8 +517,7 @@ export class GoalsDomain {
       })
       .filter(
         (session): session is NonNullable<typeof session> => session !== null,
-      )
-      .slice(0, 14);
+      );
     const sleepStartHours = sleepSessions
       .map((session) => {
         const localBedtime = session.localBedtime;
@@ -550,29 +554,23 @@ export class GoalsDomain {
       deterministicSummary: args.summary,
       reviewState: args.reviewState,
       linkedDefinitions: linkedDefinitionSummaries,
-      activeOccurrences: args.activeOccurrences
-        .slice(0, 8)
-        .map((occurrence) => ({
-          id: occurrence.id,
-          title: occurrence.title,
-          dueAt: occurrence.dueAt,
-          state: occurrence.state,
-        })),
-      overdueOccurrences: args.overdueOccurrences
-        .slice(0, 8)
-        .map((occurrence) => ({
-          id: occurrence.id,
-          title: occurrence.title,
-          dueAt: occurrence.dueAt,
-          state: occurrence.state,
-        })),
-      recentCompletions: args.recentCompletions
-        .slice(0, 8)
-        .map((occurrence) => ({
-          id: occurrence.id,
-          title: occurrence.title,
-          updatedAt: occurrence.updatedAt,
-        })),
+      activeOccurrences: args.activeOccurrences.map((occurrence) => ({
+        id: occurrence.id,
+        title: occurrence.title,
+        dueAt: occurrence.dueAt,
+        state: occurrence.state,
+      })),
+      overdueOccurrences: args.overdueOccurrences.map((occurrence) => ({
+        id: occurrence.id,
+        title: occurrence.title,
+        dueAt: occurrence.dueAt,
+        state: occurrence.state,
+      })),
+      recentCompletions: args.recentCompletions.map((occurrence) => ({
+        id: occurrence.id,
+        title: occurrence.title,
+        updatedAt: occurrence.updatedAt,
+      })),
       lastActivityAt: args.lastActivityAt,
       sleepSummary: {
         sampleCount: sleepSessions.length,
@@ -879,9 +877,9 @@ export class GoalsDomain {
     }
 
     matches.sort((left, right) => right.scoreSort - left.scoreSort);
-    const similarGoals = matches
-      .slice(0, 3)
-      .map(({ scoreSort: _scoreSort, ...match }) => match);
+    const similarGoals = matches.map(
+      ({ scoreSort: _scoreSort, ...match }) => match,
+    );
     const carryForwardSeen = new Set<string>();
     const suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[] = [];
     for (const match of similarGoals) {
@@ -900,7 +898,7 @@ export class GoalsDomain {
       referenceGoalId: reference.goalId ?? null,
       referenceTitle: reference.title,
       similarGoals,
-      suggestedCarryForward: suggestedCarryForward.slice(0, 4),
+      suggestedCarryForward,
       summary: topMatch
         ? `A similar completed goal, "${topMatch.title}", is the best carry-forward reference for "${reference.title}".`
         : null,
@@ -960,8 +958,9 @@ export class GoalsDomain {
   async explainOccurrence(
     occurrenceId: string,
   ): Promise<LifeOpsOccurrenceExplanation> {
-    const occurrence = await this.ctx.repository.getOccurrenceView(
-      this.ctx.agentId(),
+    const occurrence = await getCallerOccurrenceView(
+      this.ctx.repository,
+      this.ctx,
       occurrenceId,
     );
     if (!occurrence) {
@@ -1041,8 +1040,10 @@ export class GoalsDomain {
       timezone: resolveDefaultTimeZone(),
       now,
     });
-    const definitions = await this.ctx.repository.listActiveDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: true },
     );
     for (const definition of definitions) {
       await this.deps.refreshDefinitionOccurrences(definition, now);
@@ -1051,11 +1052,13 @@ export class GoalsDomain {
       definitions.map((definition) => [definition.id, definition]),
     );
     const horizon = addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString();
-    const overviewOccurrences =
+    const overviewOccurrences = (
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-      );
+        callerDefinitionScopes(this.ctx),
+      )
+    ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const reminderPlans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -1152,11 +1155,15 @@ export class GoalsDomain {
           eventUrgencies.get(reminder.ownerId) ?? "medium",
         ),
       ),
-    ].sort(
-      (left, right) =>
-        new Date(left.scheduledFor).getTime() -
-        new Date(right.scheduledFor).getTime(),
-    );
+    ].sort((left, right) => {
+      const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+        ? new Date(left.scheduledFor).getTime()
+        : 0;
+      const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+        ? new Date(right.scheduledFor).getTime()
+        : 0;
+      return leftTime - rightTime;
+    });
     const ownerSectionBase = {
       occurrences: selectOverviewOccurrences(
         overviewOccurrences.filter(
@@ -1164,9 +1171,9 @@ export class GoalsDomain {
         ),
       ),
       goals: goals.filter((goal) => goal.subjectType === "owner"),
-      reminders: allReminders
-        .filter((reminder) => reminder.subjectType === "owner")
-        .slice(0, MAX_OVERVIEW_REMINDERS),
+      reminders: allReminders.filter(
+        (reminder) => reminder.subjectType === "owner",
+      ),
     };
     const agentSectionBase = {
       occurrences: selectOverviewOccurrences(
@@ -1175,9 +1182,9 @@ export class GoalsDomain {
         ),
       ),
       goals: goals.filter((goal) => goal.subjectType === "agent"),
-      reminders: allReminders
-        .filter((reminder) => reminder.subjectType === "agent")
-        .slice(0, MAX_OVERVIEW_REMINDERS),
+      reminders: allReminders.filter(
+        (reminder) => reminder.subjectType === "agent",
+      ),
     };
     const owner: LifeOpsOverviewSection = {
       ...ownerSectionBase,

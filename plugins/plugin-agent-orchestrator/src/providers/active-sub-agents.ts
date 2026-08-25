@@ -5,12 +5,13 @@
  * spend-capped, or round-trip-capped session to resolve.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  Service,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type Service,
+  type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
@@ -189,20 +190,19 @@ export const activeSubAgentsProvider: Provider = {
     const stalled = stalledSessionIds(runtime);
     const approaching = approachingCapBySession(runtime);
 
-    // Pull live activity (tail of session output) for each session so the
+    // Pull complete live activity for each session so the
     // planner can answer "where are you" with concrete detail instead of
-    // just `status=busy`. The buffer mixes message chunks and captured
-    // tool output — we take the last ~200 chars, strip noise, and surface
-    // it as a one-line `live: …` suffix.
+    // just `status=busy`. The buffer mixes message chunks and captured tool
+    // output; preserving it avoids status decisions based on a misleading tail.
     const liveByName = new Map<string, string>();
     if (typeof service.getSessionOutput === "function") {
       await Promise.all(
         routed.map(async (session) => {
           try {
-            const raw = await service.getSessionOutput?.(session.id, 20);
+            const raw = await service.getSessionOutput?.(session.id);
             if (typeof raw !== "string") return;
-            const tail = summarizeOutputTail(raw);
-            if (tail) liveByName.set(session.id, tail);
+            const completeOutput = toWellFormedUnicode(raw.trim());
+            if (completeOutput) liveByName.set(session.id, completeOutput);
           } catch {
             // error-policy:J4 live-tail is per-session enrichment; unavailable output degrades to structural status only
             // ignore — fall back to structural status only
@@ -243,6 +243,7 @@ export const activeSubAgentsProvider: Provider = {
           status: s.status,
           stalled: stalled.has(s.id),
           approachingCap: approaching.get(s.id) ?? null,
+          workdir: s.workdir,
           workdirTail: workdirTail(s.workdir),
           originRoomId: (s.metadata as Record<string, unknown> | undefined)
             ?.roomId,
@@ -466,33 +467,10 @@ function formatLine(
   approachingCap?: ApproachingCapKind,
 ): string {
   const label = labelOf(session);
-  const tail = workdirTail(session.workdir);
   const bucket = stalled ? "stalled" : bucketStatus(session.status);
   const cap = approachingCap ? ` approachingCap=${approachingCap}` : "";
-  const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket}${cap} workdir=…${tail}`;
+  const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket}${cap} workdir=${session.workdir}`;
   return live ? `${base} live="${live}"` : base;
-}
-
-function summarizeOutputTail(raw: string): string {
-  if (!raw) return "";
-  // Strip "[tool output: ...]" envelope markers so the live indicator
-  // never leaks captured-transcript framing. Keep the inner text since
-  // it's typically a Read/Edit/Bash invocation summary.
-  const lines = raw
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(
-      (l) =>
-        l.length > 0 &&
-        !l.startsWith("[tool output:") &&
-        !l.startsWith("[/tool output]") &&
-        !l.startsWith("[sub-agent:"),
-    );
-  const last = lines.slice(-3).join(" / ");
-  if (!last) return "";
-  // Truncate to keep the provider compact in the planner context.
-  return last.length > 120 ? `${last.slice(0, 117)}...` : last;
 }
 
 function labelOf(session: SessionInfo): string {
@@ -503,6 +481,7 @@ function labelOf(session: SessionInfo): string {
   return session.name || session.id;
 }
 
+/** Compatibility display field; planner text and `workdir` retain the full path. */
 function workdirTail(workdir: string): string {
   if (!workdir) return "";
   const parts = workdir.split("/").filter(Boolean);

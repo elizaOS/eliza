@@ -141,12 +141,7 @@ export function PermissionRow({
           )}
         </span>
       )}
-      <StatusBadge
-        label={badge.label}
-        variant={badge.tone}
-        withDot
-        className="rounded-full font-semibold"
-      />
+      <StatusBadge label={badge.label} variant={badge.tone} withDot />
     </span>
   );
 
@@ -182,8 +177,7 @@ export function PermissionRow({
           <Button
             ref={actionRef}
             variant="default"
-            size="sm"
-            className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+            size="touch"
             onClick={action.type === "request" ? onRequest : onOpenSettings}
             aria-label={`${action.ariaLabelPrefix} ${name}`}
             {...actionAgentProps}

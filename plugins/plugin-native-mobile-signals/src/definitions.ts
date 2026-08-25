@@ -1,3 +1,7 @@
+/**
+ * Defines the cross-platform MobileSignals permission, capability, and snapshot
+ * contract consumed by Capacitor clients.
+ */
 import type { PluginListenerHandle } from "@capacitor/core";
 
 export type MobileSignalsPlatform = "android" | "ios" | "web";
@@ -79,8 +83,24 @@ export interface MobileSignalsOpenSettingsResult {
   reason: string | null;
 }
 
+export interface MobileSignalsPresentScreenTimeReportResult {
+  presented: boolean;
+  reason: string | null;
+}
+
 export interface MobileSignalsScreenTimeStatus {
   supported: boolean;
+  hostEnvironment: "device" | "simulator" | "android" | "web";
+  availability:
+    | "report-available"
+    | "authorization-required"
+    | "host-summary-available"
+    | "usage-access-required"
+    | "extension-missing"
+    | "presenter-missing"
+    | "provisioning-missing"
+    | "simulator-unavailable"
+    | "platform-unavailable";
   requirements: {
     entitlements: {
       familyControls: string;
@@ -100,6 +120,7 @@ export interface MobileSignalsScreenTimeStatus {
   };
   provisioning: {
     satisfied: boolean;
+    status: "verified" | "unknown" | "missing";
     inspected: "code-signature" | "not-inspectable";
     reason: string | null;
   };
@@ -117,19 +138,19 @@ export interface MobileSignalsScreenTimeStatus {
       path: string;
     }>;
   };
+  /** An iOS host can present an authorized report extension. Always false on Android/web. */
   reportAvailable: boolean;
-  /** Coarse, in-extension-rendered category summaries are available (no raw export). */
+  /** Coarse category totals are available to the host process. False on current iOS. */
   coarseSummaryAvailable: boolean;
-  /** `DeviceActivityMonitor` threshold-crossing events are available. */
+  /** Configured `DeviceActivityMonitor` threshold events reach the host signal path. */
   thresholdEventsAvailable: boolean;
   /**
    * Permanently `false` — a platform constraint, not a TODO. Apple's
    * DeviceActivity / FamilyControls model (iOS 15+) forbids exporting raw
-   * per-app usage to the host app: usage is only readable inside a rendered
-   * `DeviceActivityReport` extension (never exfiltrated) plus
-   * `DeviceActivityMonitor` threshold events. Host-side mobile screen-time is
-   * therefore scoped to coarse summaries + threshold events; there is no
-   * macOS-style per-window dwell on iOS. See issue #9970.
+   * per-app usage to the host app: usage is readable only inside a sandboxed
+   * `DeviceActivityReport` extension. The current iOS host therefore exposes
+   * neither usage totals nor threshold events; Android's UsageStats path keeps
+   * its separate host-readable summary. See issues #9970 and #20007.
    */
   rawUsageExportAvailable: false;
   android?: {
@@ -237,6 +258,7 @@ export interface MobileSignalsPlugin {
   openSettings(
     options?: MobileSignalsOpenSettingsOptions,
   ): Promise<MobileSignalsOpenSettingsResult>;
+  presentScreenTimeReport(): Promise<MobileSignalsPresentScreenTimeReportResult>;
   startMonitoring(
     options?: MobileSignalsStartOptions,
   ): Promise<MobileSignalsStartResult>;

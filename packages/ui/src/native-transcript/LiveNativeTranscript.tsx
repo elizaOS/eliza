@@ -121,7 +121,7 @@ export function LiveNativeTranscriptView({
           {activitySummary(view)}
         </span>
         <ChevronDown
-          className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+          className="size-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
           aria-hidden="true"
         />
       </summary>

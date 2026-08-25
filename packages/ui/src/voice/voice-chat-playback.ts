@@ -4,12 +4,7 @@
  */
 
 import { sanitizeSpeechText } from "@elizaos/shared";
-import {
-  MAX_SPOKEN_CHARS,
-  MOUTH_OPEN_STEP,
-  SHORT_AUDIO_CACHE_MAX_TOKENS,
-  type SpeechSegmentKind,
-} from "./voice-chat-types";
+import { MOUTH_OPEN_STEP, type SpeechSegmentKind } from "./voice-chat-types";
 
 // ── Text processing helpers ───────────────────────────────────────────
 
@@ -27,21 +22,14 @@ export function countSpeechTokens(input: string): number {
 }
 
 export function shouldCacheGeneratedSpeech(
-  input: string,
+  _input: string,
   segment: SpeechSegmentKind,
 ): boolean {
-  return (
-    segment !== "remainder" &&
-    countSpeechTokens(input) <= SHORT_AUDIO_CACHE_MAX_TOKENS
-  );
+  return segment !== "remainder";
 }
 
 export function capSpeechLength(input: string): string {
-  if (input.length <= MAX_SPOKEN_CHARS) return input;
-  const clipped = input.slice(0, MAX_SPOKEN_CHARS);
-  const splitAt = clipped.lastIndexOf(" ");
-  const body = splitAt > 120 ? clipped.slice(0, splitAt) : clipped;
-  return `${body.trim()}...`;
+  return input;
 }
 
 // ── Hidden model block stripping ──────────────────────────────────────

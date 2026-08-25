@@ -14,6 +14,7 @@ import type {
   ApiError,
   ChatActionResultSummary,
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatTokenUsage,
   ChatToolCallEvent,
   ChatTurnStatus,
@@ -313,6 +314,7 @@ declare module "./client-base" {
       agentName: string;
       noResponseReason?: "ignored";
       failureKind?: ChatFailureKind;
+      terminalFailure?: ChatTerminalFailure;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -329,6 +331,7 @@ declare module "./client-base" {
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       failureKind?: ChatFailureKind;
+      terminalFailure?: ChatTerminalFailure;
       localInference?: LocalInferenceChatMetadata;
       actionResults?: ChatActionResultSummary[];
     }>;
@@ -493,6 +496,8 @@ declare module "./client-base" {
        * as a normal assistant reply.
        */
       failureKind?: ChatFailureKind;
+      /** Typed terminal coding/runtime failure; authoritative over reply prose. */
+      terminalFailure?: ChatTerminalFailure;
       /** Structured "connect another account" request from CONNECT_ACCOUNT. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -542,6 +547,8 @@ declare module "./client-base" {
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */
       failureKind?: ChatFailureKind;
+      /** See sendConversationMessage above. */
+      terminalFailure?: ChatTerminalFailure;
       /** See sendConversationMessage above. */
       accountConnect?: AccountConnectRequest;
       localInference?: LocalInferenceChatMetadata;
@@ -1301,6 +1308,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;
+    terminalFailure?: ChatTerminalFailure;
     accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];

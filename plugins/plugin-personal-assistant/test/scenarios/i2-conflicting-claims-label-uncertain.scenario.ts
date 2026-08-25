@@ -54,7 +54,7 @@ export default scenario({
       text: "Summarize the Uma/Zane projector issue for me without deciding who is right.",
       // Seeded-token grounding: "promised"/"venue" exist only in the seeded
       // positions, so a passing reply must read the claims back from memory
-      // — parroting the user turn cannot satisfy this (echo-ratchet).
+      // — parroting the user turn cannot satisfy this (echo-guard).
       responseIncludesAny: ["promised", "venue"],
       responseExcludes: [
         "Uma is right",

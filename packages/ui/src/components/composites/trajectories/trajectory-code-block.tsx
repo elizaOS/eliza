@@ -43,13 +43,12 @@ export function TrajectoryCodeBlock({
         heading={label}
         description={linesLabel}
         actions={
-          <PagePanel.ActionRail className="rounded-sm px-1 py-1">
+          <PagePanel.ActionRail className="rounded-sm p-1">
             {lines > 20 ? (
               <Button
                 variant="outline"
-                size="sm"
+                size="dense"
                 type="button"
-                className="h-8 rounded-sm px-3 text-xs-tight"
                 onClick={() => setExpanded((current) => !current)}
               >
                 {expanded ? collapseLabel : expandLabel}
@@ -57,9 +56,8 @@ export function TrajectoryCodeBlock({
             ) : null}
             <Button
               variant="outline"
-              size="sm"
+              size="dense"
               type="button"
-              className="h-8 rounded-sm px-3 text-xs-tight"
               onClick={() => onCopy(content)}
               title={copyToClipboardLabel}
             >
@@ -72,7 +70,7 @@ export function TrajectoryCodeBlock({
         // biome-ignore lint/a11y/noNoninteractiveTabindex: overflowing code must be keyboard-scrollable
         tabIndex={0}
         aria-label={typeof label === "string" ? label : "Trajectory content"}
-        className="max-h-[28rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words px-4 py-4 text-xs leading-6 text-txt"
+        className="max-h-[28rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words p-4 text-xs leading-6 text-txt"
       >
         <pre>{displayContent}</pre>
       </section>

@@ -16,6 +16,9 @@ import {
 const homepagePublic = fileURLToPath(
   new URL("../../homepage/public/", import.meta.url),
 );
+const landingDemoSource = fileURLToPath(
+  new URL("../../homepage/src/lib/landing-demo.ts", import.meta.url),
+);
 const temporaryRoots = [];
 
 after(async () => {
@@ -42,6 +45,22 @@ test("every approved homepage asset exists in the source module", async () => {
         `homepage asset manifest source is not a file: ${relativePath}`,
       );
     }),
+  );
+});
+
+test("every avatar referenced by the shared landing demo is emitted", async () => {
+  const source = await readFile(landingDemoSource, "utf8");
+  const referencedAvatars = [
+    ...source.matchAll(/"\/(brand\/people\/[^"']+\.webp)"/g),
+  ].map((match) => match[1]);
+  const emittedAvatars = HOMEPAGE_PUBLIC_ASSETS.filter((relativePath) =>
+    relativePath.startsWith("brand/people/"),
+  );
+
+  assert.deepEqual(
+    [...new Set(emittedAvatars)].sort(),
+    [...new Set(referencedAvatars)].sort(),
+    "homepage avatar manifest must match the shared landing demo",
   );
 });
 

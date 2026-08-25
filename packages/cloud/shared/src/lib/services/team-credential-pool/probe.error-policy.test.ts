@@ -122,3 +122,56 @@ describe("probePooledApiKey error policy", () => {
     expect(new Set([healthy.status, transient.status, revoked.status]).size).toBe(3);
   });
 });
+describe("probePooledApiKey error truncation (surrogate-safe)", () => {
+  it("lone surrogate inside retained prefix is normalized to U+FFFD", async () => {
+    const loneHigh = "\uD800";
+    const body = `${"a".repeat(50)}${loneHigh}${"b".repeat(10)}`;
+    globalThis.fetch = async () => new Response(body, { status: 502 }) as unknown as Response;
+    try {
+      const result = await probePooledApiKey("anthropic-api", "sk-test");
+      const err = result.error as string;
+      expect(err.includes(loneHigh)).toBe(false);
+      expect(err.includes("\uFFFD")).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("truncation at 199 x + astral does not split surrogate and keeps exact oracle", async () => {
+    // 199 x (199) + fox (2) = 201 units; well-formed truncate to 200 must back off the split pair -> 199 x
+    const body = "x".repeat(199) + "🦊" + "y".repeat(10);
+    const prefix = "anthropic-api 502: ";
+    globalThis.fetch = async () => new Response(body, { status: 502 }) as unknown as Response;
+    try {
+      const result = await probePooledApiKey("anthropic-api", "sk-test");
+      const err = result.error as string;
+      const truncated = err.slice(prefix.length);
+      expect(truncated).toBe("x".repeat(199));
+      expect(truncated.length).toBe(199);
+      expect(truncated.includes("\uD83E")).toBe(false);
+      expect(() => encodeURIComponent(truncated)).not.toThrow();
+      // exact 200 case: 198 x + fox = 200 should retain fox well-formed
+      const body2 = "x".repeat(198) + "🦊" + "y".repeat(10);
+      globalThis.fetch = async () => new Response(body2, { status: 502 }) as unknown as Response;
+      const result2 = await probePooledApiKey("anthropic-api", "sk-test");
+      const truncated2 = (result2.error as string).slice(prefix.length);
+      expect(truncated2).toBe("x".repeat(198) + "🦊");
+      expect(truncated2.length).toBe(200);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("boundaries: 200 x + lone surrogate does not leak high surrogate", async () => {
+    const body = "x".repeat(200) + "\uD800" + "tail";
+    globalThis.fetch = async () => new Response(body, { status: 500 }) as unknown as Response;
+    try {
+      const result = await probePooledApiKey("anthropic-api", "sk-test");
+      const truncated = (result.error as string).slice("anthropic-api 500: ".length);
+      expect(truncated.length).toBeLessThanOrEqual(200);
+      expect(truncated.includes("\uD800")).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});

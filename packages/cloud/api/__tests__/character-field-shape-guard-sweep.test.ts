@@ -88,9 +88,16 @@ beforeAll(async () => {
     );
     await apply();
 
-    await dbWrite
-      .insert(organizations)
-      .values([{ id: ORG, name: "Org", slug: "org-shape-sweep" }]);
+    await dbWrite.insert(organizations).values([
+      {
+        id: ORG,
+        name: "Org",
+        slug: "org-shape-sweep",
+        // This sweep creates more than the default quota of five characters
+        // while exercising unrelated JSON-shape guards.
+        settings: { max_agents: 20 },
+      },
+    ]);
     await dbWrite.insert(users).values([
       {
         id: USER,

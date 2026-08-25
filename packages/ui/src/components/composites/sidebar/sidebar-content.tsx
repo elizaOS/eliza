@@ -106,7 +106,7 @@ export function SidebarNotice({
     <div
       data-sidebar-notice
       className={cn(
-        "flex items-center gap-2 rounded-sm border px-3 py-3 text-sm",
+        "flex items-center gap-2 rounded-sm border p-3 text-sm",
         tone === "danger"
           ? "border-danger/30 bg-danger/10 text-danger"
           : "border-border/40 bg-bg/35 text-muted",
@@ -202,9 +202,19 @@ export const SidebarItem = React.forwardRef<HTMLElement, SidebarItemProps>(
     return (
       <Button
         ref={(node) => assignRef(ref, node)}
-        variant="ghost"
+        variant={
+          active
+            ? "selection"
+            : variant === "accent-soft"
+              ? "surfaceAccent"
+              : variant === "dashed"
+                ? "outline"
+                : "ghostMuted"
+        }
+        size="eventRow"
+        data-state={active ? "on" : "off"}
         data-sidebar-item
-        className={sharedClassName}
+        className={className}
         {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}
       />
     );
@@ -225,7 +235,7 @@ export function SidebarItemIcon({
     <span
       data-sidebar-item-icon
       className={cn(
-        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm p-2",
+        "mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-sm p-2",
         active ? "bg-accent/18 text-txt-strong" : "bg-bg-accent/80 text-muted",
         className,
       )}
@@ -257,12 +267,11 @@ export const SidebarItemButton = React.forwardRef<
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="transparent"
+      size="rowContent"
+      align="start"
       data-sidebar-item-button
-      className={cn(
-        "flex h-auto min-w-0 flex-1 self-stretch items-start justify-start gap-3 rounded-none p-0 text-left font-normal hover:bg-transparent",
-        className,
-      )}
+      className={cn("flex min-w-0 flex-1 self-stretch items-start", className)}
       {...props}
     />
   );
@@ -341,14 +350,12 @@ export const SidebarRailItem = React.forwardRef<
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="transparent"
       size="icon-lg"
+      data-state={active ? "on" : "off"}
       data-sidebar-rail-item
       className={cn(
-        "relative h-11 w-11 shrink-0 rounded-sm border border-border/24 p-0 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
-        active
-          ? navActiveClassVertical
-          : "bg-card text-muted-strong hover:border-border/38 hover:text-txt ",
+        "relative shrink-0 border border-border/24 bg-card text-xs font-semibold tracking-[0.02em] text-muted-strong transition-[border-color,background-color,color,box-shadow,transform] duration-150 hover:border-border/38 hover:bg-surface hover:text-txt active:scale-[0.98] data-[state=on]:border-accent data-[state=on]:bg-accent-subtle data-[state=on]:text-txt",
         className,
       )}
       {...props}
@@ -359,7 +366,7 @@ export const SidebarRailItem = React.forwardRef<
       {indicatorTone ? (
         <span
           className={cn(
-            "absolute right-1.5 top-1.5 h-2 w-2 rounded-full",
+            "absolute right-1.5 top-1.5 size-2 rounded-full",
             indicatorTone === "accent" ? "bg-accent" : "bg-muted/70",
           )}
         />
@@ -377,10 +384,11 @@ export function SidebarItemAction({
 }: SidebarItemActionProps) {
   return (
     <Button
-      variant="ghost"
+      variant="transparent"
+      size="micro"
       data-sidebar-item-action
       className={cn(
-        "absolute right-1.5 top-1.5 h-auto rounded-sm bg-bg/80 px-1.5 py-0.5 text-2xs text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-danger",
+        "absolute right-1.5 top-1.5 bg-bg/80 text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-danger/10 hover:text-danger",
         className,
       )}
       {...props}

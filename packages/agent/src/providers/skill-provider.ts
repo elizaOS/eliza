@@ -9,17 +9,18 @@
  *
  * Three tiers of injection:
  *   - No match:  1-line footer (~25 tokens)
- *   - Moderate:  Compact top-3 list (~150 tokens)
- *   - Strong:    Full instructions of #1 match, capped at 2000 chars
+ *   - Moderate:  Every relevant skill with its complete description
+ *   - Strong:    Complete instructions of the best match
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  Service,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type ProviderResult,
+  type Service,
+  type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────
@@ -277,23 +278,26 @@ function scoreQuery(index: BM25Index, queryText: string): ScoredSkill[] {
       });
     }
   }
-  results.sort((a, b) => b.score - a.score);
+  results.sort((a, b) => {
+    const bScore =
+      typeof b.score === "number" && Number.isFinite(b.score) ? b.score : 0;
+    const aScore =
+      typeof a.score === "number" && Number.isFinite(a.score) ? a.score : 0;
+    return bScore - aScore || a.slug.localeCompare(b.slug);
+  });
   return results;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function truncateDesc(desc: string, maxLen: number): string {
-  if (desc.length <= maxLen) return desc;
-  return `${desc.substring(0, maxLen - 3)}...`;
+export function normalizeDescription(desc: string): string {
+  return toWellFormedUnicode(desc);
 }
 
 // ── Thresholds ───────────────────────────────────────────────────────────────
 
 const THRESHOLD_RELEVANT = 3;
 const THRESHOLD_HIGHLY_RELEVANT = 8;
-const MAX_INSTRUCTION_CHARS = 2000;
-const MAX_SKILL_MATCHES = 3;
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
@@ -360,14 +364,12 @@ export function createDynamicSkillProvider(): Provider {
           };
         }
 
-        // Tier 1: Moderate match — compact top-3 list
-        const topMatches = scored
-          .slice(0, MAX_SKILL_MATCHES)
-          .filter((s) => s.score >= THRESHOLD_RELEVANT);
+        // Tier 1: Moderate match — include every relevant skill.
+        const topMatches = scored.filter((s) => s.score >= THRESHOLD_RELEVANT);
         const compactList = topMatches
           .map(
             (s) =>
-              `- **${s.name}** (${s.slug}): ${truncateDesc(s.description, 80)}`,
+              `- **${s.name}** (${s.slug}): ${toWellFormedUnicode(s.description)}`,
           )
           .join("\n");
 
@@ -387,14 +389,12 @@ export function createDynamicSkillProvider(): Provider {
           };
         }
 
-        // Tier 2: Strong match — full instructions of #1, capped
+        // Tier 2: Strong match — complete instructions of #1.
         const instructions = service.getSkillInstructions(topMatch.slug);
         let body = "";
         if (instructions?.body) {
-          body =
-            instructions.body.length > MAX_INSTRUCTION_CHARS
-              ? `${instructions.body.substring(0, MAX_INSTRUCTION_CHARS)}\n\n...[truncated — use USE_SKILL for full instructions]`
-              : instructions.body;
+          const wellFormed = toWellFormedUnicode(instructions.body);
+          body = wellFormed;
         }
 
         const otherMatches =
@@ -420,6 +420,8 @@ export function createDynamicSkillProvider(): Provider {
           },
         };
       } catch (error) {
+        // error-policy:J4 user-facing degrade — skill matching failure falls back
+        // to a clean empty result rather than aborting the turn.
         return {
           text: "",
           values: { skillMatchTier: "error" as never },

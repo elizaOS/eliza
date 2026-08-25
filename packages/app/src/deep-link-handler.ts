@@ -11,8 +11,8 @@
  */
 
 import {
-  createNavigateViewEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
   dispatchOpenNotificationCenter,
 } from "@elizaos/ui/events";
 import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
@@ -60,7 +60,7 @@ export interface DeepLinkHandlerContext {
 function defaultDispatchNavigationIntent(
   intent: DeepLinkNavigationIntent,
 ): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+  dispatchNavigateViewRequest(intent);
 }
 
 /** True for an `https://<trusted-host>/<path>` universal/App link. */
@@ -102,7 +102,10 @@ export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
     // apps/deploy). Dispatched on the `eliza:navigate:view` bus — same as the
     // live main.tsx handler — because a hash write never opens a tab on the
     // mobile/Capacitor entrypoint (see resolveDeepLinkNavigationIntent).
-    const navigationIntent = resolveDeepLinkNavigationIntent(path);
+    const navigationIntent = resolveDeepLinkNavigationIntent(
+      path,
+      parsed.searchParams,
+    );
     if (navigationIntent) {
       (ctx.dispatchNavigationIntent ?? defaultDispatchNavigationIntent)(
         navigationIntent,

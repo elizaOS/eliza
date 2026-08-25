@@ -78,6 +78,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("Oura connector — recorded real API contract", () => {
@@ -203,5 +204,87 @@ describe("Oura connector — recorded real API contract", () => {
       expect(typeof s.startAt).toBe("string");
       expect(s.localDate).toBe(s.startAt.slice(0, 10));
     }
+  });
+
+  it("follows collection cursors beyond the former five-page ceiling", async () => {
+    let activityPages = 0;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/usercollection/personal_info")) {
+        return jsonResponse({ id: "oura-user" });
+      }
+      if (url.includes("/usercollection/daily_activity")) {
+        activityPages += 1;
+        return jsonResponse({
+          data: [],
+          next_token:
+            activityPages === 6 ? null : `activity-page-${activityPages + 1}`,
+        });
+      }
+      return jsonResponse({ data: [], next_token: null });
+    });
+
+    await expect(
+      syncHealthConnectorData({
+        token,
+        grantId: "grant-oura",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      }),
+    ).resolves.toMatchObject({ samples: [], workouts: [] });
+    expect(activityPages).toBe(6);
+  });
+
+  it("rejects a repeated Oura collection cursor", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/usercollection/personal_info")) {
+        return jsonResponse({ id: "oura-user" });
+      }
+      if (url.includes("/usercollection/daily_activity")) {
+        return jsonResponse({ data: [], next_token: "repeated-token" });
+      }
+      return jsonResponse({ data: [], next_token: null });
+    });
+
+    await expect(
+      syncHealthConnectorData({
+        token,
+        grantId: "grant-oura",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      }),
+    ).rejects.toThrow("Oura pagination repeated a next_token");
+  });
+
+  it("bounds endlessly advancing Oura cursors by the shared sync deadline", async () => {
+    let clock = 0;
+    let activityPages = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/usercollection/personal_info")) {
+        return jsonResponse({ id: "oura-user" });
+      }
+      if (url.includes("/usercollection/daily_activity")) {
+        activityPages += 1;
+        clock += 30_000;
+        return jsonResponse({
+          data: [],
+          next_token: `unique-${activityPages}`,
+        });
+      }
+      return jsonResponse({ data: [], next_token: null });
+    });
+
+    await expect(
+      syncHealthConnectorData({
+        token,
+        grantId: "grant-oura",
+        startDate: "2026-05-01",
+        endDate: "2026-05-01",
+      }),
+    ).rejects.toThrow("Oura pagination exceeded the sync deadline");
+    expect(activityPages).toBeLessThanOrEqual(2);
   });
 });

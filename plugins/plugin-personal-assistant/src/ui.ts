@@ -1,11 +1,11 @@
-// Renderer-safe browser entry for @elizaos/plugin-personal-assistant.
-//
-// The legacy /lifeops dashboard was decomposed into domain views, but the app
-// shell still imports this module for browser-only settings cards. Keep this
-// facade thin so Vite never follows the server-side plugin entrypoint into
-// connector/native dependencies. Renderer boot behavior (the LifeOps
-// activity-signal capture) lives in ./register.ts, not here — this module is a
-// pure export facade.
+/**
+ * Renderer-safe browser entry for @elizaos/plugin-personal-assistant.
+ *
+ * The legacy /lifeops dashboard was decomposed into domain views, but the app
+ * shell still imports this module for browser-only settings cards. This facade
+ * stays thin so Vite never follows the server-side plugin entrypoint into
+ * connector/native dependencies. Renderer boot behavior lives in register.ts.
+ */
 import "./api/client-lifeops.js";
 import React from "react";
 import { AppBlockerSettingsCard as AppBlockerSettingsCardImpl } from "./components/AppBlockerSettingsCard.js";
@@ -29,10 +29,6 @@ export function WebsiteBlockerSettingsCard(
   props: WebsiteBlockerSettingsCardProps,
 ) {
   return React.createElement(WebsiteBlockerSettingsCardImpl, props);
-}
-
-export function registerLifeOpsApp(): void {
-  // The host shell owns the route; this facade keeps renderer imports browser-safe.
 }
 
 export type { AppBlockerSettingsMode, WebsiteBlockerSettingsMode };

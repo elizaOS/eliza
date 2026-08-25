@@ -181,6 +181,23 @@ describe("protectedAgentProbesEnabled (pure gate — #16242)", () => {
       false,
     );
   });
+
+  it("blocks a native synthetic origin until a real agent authority exists", () => {
+    expect(
+      protectedAgentProbesEnabled(false, "https://localhost", "", true),
+    ).toBe(false);
+    expect(
+      protectedAgentProbesEnabled(true, "https://localhost", "", true),
+    ).toBe(false);
+    expect(
+      protectedAgentProbesEnabled(
+        true,
+        "https://localhost",
+        "https://agent.example.com",
+        true,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("shouldProbeExistingLocalInstall (startup restore — #16242)", () => {

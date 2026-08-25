@@ -139,7 +139,6 @@ import {
   createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
-  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
   ElizaError,
   EmbeddingDimensionProbeError,
   type Entity,
@@ -151,7 +150,6 @@ import {
   type Provider,
   type RuntimeStopOptions,
   requireConfirmedSendHandlerDelivery,
-  type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
   type TargetInfo,
@@ -257,35 +255,16 @@ import {
   resolvePreferredProviderPluginName,
   resolvePrimaryModel,
 } from "./model-resolution.ts";
+import { constructWithRuntimeInstallationIdentity } from "./runtime-installation-id.ts";
 
-type E2BCapabilityRouterModule =
-  typeof import("../services/e2b-capability-router.ts");
+type RemoteCodingRunnerModule =
+  typeof import("../services/remote-coding-runner.ts");
 
-async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
-  const moduleId = "../services/e2b-capability-router.ts";
+async function loadRemoteCodingRunnerModule(): Promise<RemoteCodingRunnerModule> {
+  const moduleId = "../services/remote-coding-runner.ts";
   return (await import(
     /* @vite-ignore */ moduleId
-  )) as E2BCapabilityRouterModule;
-}
-
-// The e2b (`e2b.dev`) SDK backend for the remote capability router lives in the
-// optional `@elizaos/plugin-e2b-sandbox` package — not in `@elizaos/agent`, so
-// the `e2b` dependency stays out of the trunk. When the router selects the
-// `e2b` provider we register the plugin's factory service so the router can
-// route filesystem / terminal / git into an e2b sandbox; if the plugin is not
-// installed we log and leave E2B unavailable rather than failing boot.
-async function registerE2BSandboxFactoryService(
-  runtime: IAgentRuntime,
-): Promise<boolean> {
-  if (runtime.getService(E2B_SANDBOX_FACTORY_SERVICE_TYPE)) return true;
-  const moduleId = "@elizaos/plugin-e2b-sandbox";
-  const mod = (await import(/* @vite-ignore */ moduleId)) as {
-    E2BSandboxFactoryService?: ServiceClass;
-  };
-  const ServiceClassRef = mod.E2BSandboxFactoryService;
-  if (!ServiceClassRef) return false;
-  await runtime.registerService(ServiceClassRef);
-  return true;
+  )) as RemoteCodingRunnerModule;
 }
 
 import {
@@ -356,7 +335,6 @@ import {
   applyPluginRoleGating,
   installProviderRoleGatingChokepoint,
 } from "./plugin-role-gating.ts";
-import { validateIntentActionMap } from "./prompt-compaction.ts";
 import rolesPlugin from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
 import {
@@ -1308,6 +1286,44 @@ export function ensureProvisionedCloudContainerConfig(
     changed = true;
   }
 
+  // A managed container normally routes inference through Eliza Cloud. The
+  // repository's explicitly opted-in local Docker acceptance lane is the one
+  // exception: it retains the managed Cloud credential/session and lifecycle,
+  // while a real direct provider owns the embedded runtime's text brain. Do
+  // this before the generic topology repair below, otherwise the provisioned
+  // marker rewrites the direct route back to cloud-proxy at every boot.
+  const directInferenceDisabledCloud = isExplicitFalseEnvValue(
+    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE", env),
+  );
+  const directProvider = readEffectiveEnvValue(config, "CEREBRAS_API_KEY", env)
+    ? "cerebras"
+    : readEffectiveEnvValue(config, "OPENAI_API_KEY", env)
+      ? "openai"
+      : undefined;
+  if (directInferenceDisabledCloud && directProvider) {
+    const existingRouting = resolveServiceRoutingInConfig(
+      config as Record<string, unknown>,
+    );
+    const smallModel = readEffectiveEnvValue(config, "OPENAI_SMALL_MODEL", env);
+    const largeModel = readEffectiveEnvValue(config, "OPENAI_LARGE_MODEL", env);
+    config.deploymentTarget = {
+      runtime: "local",
+    };
+    config.serviceRouting = {
+      ...(existingRouting ?? {}),
+      llmText: {
+        backend: directProvider,
+        transport: "direct",
+        ...(smallModel ? { smallModel } : {}),
+        ...(largeModel ? { largeModel } : {}),
+      },
+    };
+    logger.info(
+      `[eliza][cloud-topology] provisioned=true directProvider=${directProvider} -> runtime=local inference=false`,
+    );
+    return true;
+  }
+
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
@@ -2127,6 +2143,37 @@ export async function resolveConfigEnvVaultRefsForBoot(
   }
 }
 
+export const DEFAULT_CLOUD_FETCH_TIMEOUT_MS = 10_000;
+export const DEFAULT_CLOUD_GITHUB_TOKEN_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Generic JSON fetch with cloud timeout — deadline stays armed through
+ * response.json() so a stalled body still aborts. Caller signal is
+ * composed with the timeout via AbortSignal.any.
+ */
+export async function fetchJsonWithCloudTimeout(
+  url: string,
+  init: RequestInit = {},
+  options: {
+    timeoutMs?: number;
+    signal?: AbortSignal;
+    fetchImpl?: typeof fetch;
+  } = {},
+): Promise<unknown> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_CLOUD_FETCH_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
+  const fetchFn = options.fetchImpl ?? globalThis.fetch;
+  const res = await fetchFn(url, { ...init, signal });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+  // Signal remains armed through body consumption; a hanging json stalls aborts via TimeoutError
+  return await res.json();
+}
+
 /**
  * Auto-resolve Discord Application ID from the bot token via Discord API.
  * Called during async runtime init so that users only need a bot token.
@@ -2137,7 +2184,9 @@ export async function resolveConfigEnvVaultRefsForBoot(
 /** @internal Exported for testing. */
 export async function autoResolveDiscordAppId(
   tokenOverride?: string,
-  timeoutMs = 3_000,
+  timeoutMs = DEFAULT_CLOUD_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<void> {
   if (process.env.DISCORD_APPLICATION_ID) return;
 
@@ -2147,12 +2196,16 @@ export async function autoResolveDiscordAppId(
     process.env.DISCORD_BOT_TOKEN;
   if (!discordToken) return;
 
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
   try {
-    const res = await fetch(
+    const res = await fetchImpl(
       "https://discord.com/api/v10/oauth2/applications/@me",
       {
         headers: { Authorization: `Bot ${discordToken}` },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       },
     );
 
@@ -2176,39 +2229,61 @@ export async function autoResolveDiscordAppId(
 }
 
 /**
- * Fetch GitHub OAuth token from cloud if available and no local token is set.
+ * Result of the cloud GitHub token fetch: the OAuth access token that the
+ * cloud minted for ONE managed agent, plus the GitHub login for boot logging.
+ * The token is agent identity material and must stay scoped to that agent —
+ * it is bound into the owning runtime's secrets via
+ * {@link bindCloudGithubTokenToRuntime}, never written to `process.env`
+ * (#15904: a process-global write leaks one agent's GitHub identity to every
+ * co-tenant agent in the host and lets a later fetch overwrite an earlier
+ * agent's credential).
+ */
+export interface CloudGithubTokenResult {
+  accessToken: string;
+  githubUsername: string | null;
+}
+
+/**
+ * Fetch the GitHub OAuth token the cloud holds for this managed agent, if any.
  * Called during async runtime init after cloud config is applied.
  *
- * Flow: If the agent has a managed GitHub connection in the cloud, and no
- * local GITHUB_TOKEN is set, fetch the OAuth token from the cloud API and
- * inject it into process.env so plugins (plugin-github, git-workspace-service)
- * can use it for API calls and git credential helpers.
+ * Returns the token instead of applying it anywhere: the caller binds it to
+ * the specific runtime that owns `agentId` with
+ * {@link bindCloudGithubTokenToRuntime}. A host-level GITHUB_TOKEN/GITHUB_PAT
+ * in the launch env still wins (it was folded into runtime settings at
+ * construction), so the fetch is skipped entirely in that case.
  */
 /** @internal Exported for testing. */
 export async function autoFetchCloudGithubToken(
   agentId?: string,
-  timeoutMs = 3_000,
-): Promise<void> {
+  timeoutMs = DEFAULT_CLOUD_FETCH_TIMEOUT_MS,
+  callerSignal?: AbortSignal,
+  fetchImpl: typeof fetch = globalThis.fetch,
+): Promise<CloudGithubTokenResult | null> {
   // Skip if a local token is already configured
-  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return;
+  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
 
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
     process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
-  if (!cloudApiKey || !agentId) return;
+  if (!cloudApiKey || !agentId) return null;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
-  if (!managedNs) return;
+  if (!managedNs) return null;
 
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = callerSignal
+    ? AbortSignal.any([callerSignal, timeoutSignal])
+    : timeoutSignal;
   try {
     const url = `${cloudBaseUrl}/api/v1/${managedNs}/agents/${encodeURIComponent(agentId)}/github/token`;
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       headers: {
         Authorization: `Bearer ${cloudApiKey}`,
         Accept: "application/json",
       },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal,
     });
 
     if (!res.ok) {
@@ -2218,22 +2293,50 @@ export async function autoFetchCloudGithubToken(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
-      return;
+      return null;
     }
 
     const body = (await res.json()) as {
       success?: boolean;
       data?: { accessToken?: string; githubUsername?: string };
     };
-    if (!body.success || !body.data?.accessToken) return;
+    if (!body.success || !body.data?.accessToken) return null;
 
-    process.env.GITHUB_TOKEN = body.data.accessToken;
     logger.info(
       `[eliza] Fetched GitHub token from cloud for @${body.data.githubUsername || "unknown"}`,
     );
+    return {
+      accessToken: body.data.accessToken,
+      githubUsername: body.data.githubUsername ?? null,
+    };
   } catch (err) {
+    // error-policy:J4 boot-time cloud probe is best-effort; a missing managed
+    // GitHub connection degrades to "no token bound" and the connect UI stays
+    // the recovery path.
     logger.info(`[eliza] Could not fetch cloud GitHub token: ${err}`);
+    return null;
   }
+}
+
+/**
+ * Bind a cloud-fetched GitHub token to the runtime that owns it, as an
+ * agent-scoped secret resolved by `runtime.getSetting("GITHUB_TOKEN")`.
+ * Idempotent, and a no-op when the runtime already resolves a token (an
+ * explicit host env or per-agent secret always wins over the cloud fetch).
+ * Deliberately never touches `process.env`: subprocess spawners must pass the
+ * agent's own resolved token explicitly (see workspace-service), so one
+ * agent's cloud GitHub identity can never leak to co-tenant agents (#15904).
+ */
+/** @internal Exported for testing. */
+export function bindCloudGithubTokenToRuntime(
+  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  result: CloudGithubTokenResult | null,
+): boolean {
+  if (!result?.accessToken) return false;
+  const existing = runtime.getSetting("GITHUB_TOKEN");
+  if (typeof existing === "string" && existing.trim()) return false;
+  runtime.setSetting("GITHUB_TOKEN", result.accessToken, true);
+  return true;
 }
 
 /**
@@ -2269,7 +2372,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
-  const inferenceConfigured = topology.services.inference || isCloudContainer;
+  // ensureProvisionedCloudContainerConfig() repairs ordinary managed agents to
+  // a canonical Cloud route above. Reading that repaired topology is enough;
+  // the container marker alone must not overwrite the explicit local-Docker
+  // direct-provider lane back to Cloud between the two boot passes.
+  const inferenceConfigured = topology.services.inference;
   const shouldLoadCloudPlugin = topology.shouldLoadPlugin || isCloudContainer;
   const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
   const effectiveCloudApiKey =
@@ -2280,8 +2387,12 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // have the actual credential that plugin-elizacloud will use before Cloud can
   // register the high-priority chat-brain handlers.
   const inferenceAvailable =
-    isCloudContainer ||
-    (topology.services.inference && Boolean(effectiveCloudApiKey));
+    (topology.services.inference &&
+      (isCloudContainer || Boolean(effectiveCloudApiKey))) ||
+    (isCloudContainer &&
+      !isExplicitFalseEnvValue(
+        readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_INFERENCE"),
+      ));
 
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
@@ -4008,9 +4119,11 @@ export async function startEliza(
   applyCloudConfigToEnv(config);
 
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
-  // network, up to a 3s timeout each) without blocking. They only write
-  // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
-  // BLOCKING_CORE_PLUGIN reads. The Discord connector and GitHub/git plugins
+  // network, up to a 3s timeout each) without blocking. The Discord lookup
+  // writes DISCORD_APPLICATION_ID (an env var no BLOCKING_CORE_PLUGIN reads);
+  // the GitHub fetch returns a token that is bound to the owning runtime's
+  // agent-scoped secrets at the join site — never process.env (#15904). The
+  // Discord connector and GitHub/git plugins
   // both live in the DEFERRED set, so these joins are awaited inside
   // runDeferredBoot() (before the deferred plugin waves register), not on the
   // gated blocking path. Firing them here lets the round-trips overlap the
@@ -4366,7 +4479,7 @@ export async function startEliza(
     recursive: true,
   });
 
-  // 5. Create the Eliza bridge plugin (workspace context + session keys + compaction)
+  // 5. Create the Eliza bridge plugin (workspace context + session keys)
   const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
 
   // 5-pre0. Apply per-agent vault profile overrides to process.env.
@@ -4711,39 +4824,49 @@ export async function startEliza(
   await configureLocalEmbeddingEnvEarlyIfNeeded(config);
   opts?.abortSignal?.throwIfAborted();
   bootContext.enterPhase("construct-runtime");
-  let runtime = new AgentRuntime({
-    character,
-    // advancedCapabilities: true,
-    actionPlanning: true,
-    // advancedMemory is enabled via character.advancedMemory
-    enableSecretsManager: true,
-    plugins: [...subAgentCredentialPlugins, elizaPlugin, ...pluginsForRuntime],
-    ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-    // Sandbox options — only active when mode != "off"
-    ...(isSandboxActive
-      ? {
-          sandboxMode: true,
-          sandboxAuditHandler: sandboxAuditLog
-            ? (event: SandboxFetchAuditEvent) => {
-                sandboxAuditLog.recordTokenReplacement(
-                  event.direction,
-                  event.url,
-                  event.tokenIds,
-                );
-              }
-            : undefined,
-        }
-      : {}),
-    settings: buildRuntimeSettings(config, {
-      preferredProviderId,
-      brainProviderName: preferredTextRuntimeProviderName,
-      embeddingProviderName: preferredEmbeddingRuntimeProviderName,
-      visionModeSetting,
-      managedSkillsDir,
-      bundledSkillsDir,
-      workspaceSkillsDir,
-      connectorSecretsOverlay,
-    }),
+  let runtime = await constructWithRuntimeInstallationIdentity({
+    stateDirectory: resolveStateDir(),
+    abortSignal: opts?.abortSignal,
+    construct: (runtimeInstanceId) =>
+      new AgentRuntime({
+        character,
+        runtimeInstanceId,
+        // advancedCapabilities: true,
+        actionPlanning: true,
+        // advancedMemory is enabled via character.advancedMemory
+        enableSecretsManager: true,
+        plugins: [
+          ...subAgentCredentialPlugins,
+          elizaPlugin,
+          ...pluginsForRuntime,
+        ],
+        ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
+        // Sandbox options — only active when mode != "off"
+        ...(isSandboxActive
+          ? {
+              sandboxMode: true,
+              sandboxAuditHandler: sandboxAuditLog
+                ? (event: SandboxFetchAuditEvent) => {
+                    sandboxAuditLog.recordTokenReplacement(
+                      event.direction,
+                      event.url,
+                      event.tokenIds,
+                    );
+                  }
+                : undefined,
+            }
+          : {}),
+        settings: buildRuntimeSettings(config, {
+          preferredProviderId,
+          brainProviderName: preferredTextRuntimeProviderName,
+          embeddingProviderName: preferredEmbeddingRuntimeProviderName,
+          visionModeSetting,
+          managedSkillsDir,
+          bundledSkillsDir,
+          workspaceSkillsDir,
+          connectorSecretsOverlay,
+        }),
+      }),
   });
   installRuntimeMethodBindings(runtime);
   opts?.onRuntimeCreated?.(runtime);
@@ -4887,18 +5010,11 @@ export async function startEliza(
     if (isBundledMobileRuntime()) return;
     if (!shouldLoadRemoteCodingRunnerForBoot(runtime)) return;
     try {
-      const { registerE2BRemoteCapabilityRouterIfEnabled } =
-        await loadE2BCapabilityRouterModule();
-      const result = await registerE2BRemoteCapabilityRouterIfEnabled(runtime);
+      const { registerRemoteCodingCapabilityRouterIfEnabled } =
+        await loadRemoteCodingRunnerModule();
+      const result =
+        await registerRemoteCodingCapabilityRouterIfEnabled(runtime);
       if (result.registered) {
-        if (result.provider === "e2b") {
-          const loaded = await registerE2BSandboxFactoryService(runtime);
-          if (!loaded) {
-            logger.warn(
-              "[eliza] E2B remote runner selected but @elizaos/plugin-e2b-sandbox is not installed; E2B filesystem/terminal/git will be unavailable until it is added.",
-            );
-          }
-        }
         logger.info("[eliza] Remote coding runner registered");
       }
     } catch (err) {
@@ -4940,7 +5056,7 @@ export async function startEliza(
         logger.warn(message);
       }
     }
-    // Fast-path, no-wait: wrap useModel for compaction/tracing now so the very
+    // Fast-path, no-wait: wrap useModel for prompt optimization/tracing so the
     // first turn runs through the optimized prompt path.
     await installPromptOptimizationLayer(
       runtime,
@@ -5461,8 +5577,14 @@ export async function startEliza(
       requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
       waitForBlockingEnvironment: async () => {
         // In block-deferred mode the Discord/GitHub plugins register here (not
-        // in runDeferredBoot), so join the env-var lookups before this wave.
-        await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
+        // in runDeferredBoot), so join the boot lookups before this wave. The
+        // cloud GitHub token binds to THIS runtime's secrets only — never
+        // process.env (#15904).
+        const [, cloudGithubToken] = await Promise.all([
+          discordAppIdPromise,
+          cloudGithubTokenPromise,
+        ]);
+        bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
       },
       initializeCoreRuntime,
       ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
@@ -5661,14 +5783,17 @@ export async function startEliza(
 
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
-    // GitHub/git plugins live in this deferred wave and read the env vars these
-    // promises write. Also join the Claude Code OAuth probe (informational
-    // logging only). All self-handle their errors, so this only waits.
-    await Promise.all([
+    // GitHub/git plugins live in this deferred wave. The cloud GitHub token is
+    // bound to this runtime's agent-scoped secrets, never process.env, so a
+    // co-tenant agent can neither read nor overwrite it (#15904). Also join
+    // the Claude Code OAuth probe (informational logging only). All
+    // self-handle their errors, so this only waits.
+    const [, cloudGithubToken] = await Promise.all([
       discordAppIdPromise,
       cloudGithubTokenPromise,
       subscriptionCredentialsDeferredPromise,
     ]);
+    bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
     abortSignal.throwIfAborted();
     bootTimer.lap("deferred:env-lookups");
 
@@ -5851,13 +5976,6 @@ export async function startEliza(
     }
     bootTimer.lap("deferred:autonomy+warmup");
 
-    // Same timing reason: validate the intent→action map only once the deferred
-    // plugins have registered. Run during blocking init it would warn about
-    // actions like TASKS (agent-orchestrator) that simply hadn't loaded yet.
-    validateIntentActionMap(
-      runtime.actions.map((a) => a.name),
-      runtime.logger,
-    );
     // Validate live affinity only after deferred actions have registered.
     // Completeness coverage remains a static repository audit: several shell
     // and diagnostic views intentionally use universal element capabilities,

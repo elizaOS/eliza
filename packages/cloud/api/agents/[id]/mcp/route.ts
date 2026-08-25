@@ -9,6 +9,7 @@
  */
 
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -45,7 +46,7 @@ import { admitOrganizationInference } from "@/lib/services/organization-inferenc
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
+const DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS = 4096;
 
 const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
@@ -436,7 +437,7 @@ export async function handleToolCall(
       envForThinking,
       agentThinkingBudget,
     );
-    const baseOutputTokens = DEFAULT_MIN_OUTPUT_TOKENS;
+    const baseOutputTokens = DEFAULT_BILLING_OUTPUT_ESTIMATE_TOKENS;
     const estimatedOutputTokens =
       effectiveThinkingBudget != null
         ? baseOutputTokens + effectiveThinkingBudget
@@ -497,17 +498,11 @@ export async function handleToolCall(
       logger.info("[Agent MCP] Invoking configured provider", {
         agentId: character.id,
         model,
-        maxOutputTokens: estimatedOutputTokens,
         thinkingBudgetTokens: effectiveThinkingBudget,
       });
       const result = await streamText({
         model: getLanguageModel(model),
         messages,
-        // Cap the provider at the EXACT ceiling billing reserved above
-        // (`estimatedOutputTokens`), not a second, larger formula (#16148).
-        // Always sent — including the no-thinking 4096 floor — so final usage
-        // cannot outrun the admitted reservation.
-        maxOutputTokens: estimatedOutputTokens,
         ...mergeAnthropicCotProviderOptions(
           model,
           envForThinking,
@@ -523,6 +518,11 @@ export async function handleToolCall(
       for await (const delta of result.textStream) {
         fullText += delta;
       }
+      assertModelOutputComplete({
+        finishReason: await result.finishReason,
+        provider,
+        model,
+      });
 
       const usage = ProviderUsageSchema.parse(await result.usage);
 

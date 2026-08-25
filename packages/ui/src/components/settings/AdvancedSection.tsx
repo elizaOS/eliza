@@ -16,9 +16,10 @@ import {
   useIsDeveloperMode,
   useIsPreviewMode,
 } from "../../state";
+import { isDedicatedCloudAgentBase } from "../../utils/cloud-agent-base";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
 import { SettingsActionButton, SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -61,7 +62,12 @@ function BackupOptionList({
   }
 
   return (
-    <div className="overflow-hidden rounded-sm border border-line bg-bg">
+    <RadioGroup
+      value={selectedFileName}
+      onValueChange={onSelect}
+      className="gap-0 overflow-hidden rounded-sm border border-line bg-bg"
+      aria-label="Backup to restore"
+    >
       {backups.map((backup) => {
         const inputId = backupOptionInputId(backup.fileName);
         return (
@@ -70,14 +76,7 @@ function BackupOptionList({
             htmlFor={inputId}
             className="flex min-h-[3.25rem] cursor-pointer items-center gap-3 border-line border-t px-3 py-2 first:border-t-0"
           >
-            <Input
-              id={inputId}
-              type="radio"
-              name="agent-backup-file"
-              className="h-4 w-4 shrink-0 border-border p-0 accent-current"
-              checked={selectedFileName === backup.fileName}
-              onChange={() => onSelect(backup.fileName)}
-            />
+            <RadioGroupItem id={inputId} value={backup.fileName} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-txt-strong">
                 {formatBackupDate(backup.createdAt)}
@@ -90,7 +89,7 @@ function BackupOptionList({
           </label>
         );
       })}
-    </div>
+    </RadioGroup>
   );
 }
 
@@ -101,6 +100,7 @@ export function AdvancedSection() {
   }));
   const developerMode = useIsDeveloperMode();
   const previewMode = useIsPreviewMode();
+  const dedicatedCloudAgent = isDedicatedCloudAgentBase(client.getBaseUrl());
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [backupList, setBackupList] = useState<LocalAgentBackupMetadata[]>([]);
@@ -273,27 +273,34 @@ export function AdvancedSection() {
   return (
     <>
       <SettingsStack>
-        <SettingsGroup
-          title="Backups"
-          description="Save a snapshot of this agent, or restore it from an earlier one."
-        >
-          <SettingsRow
-            icon={Download}
-            label="Back up agent"
-            description="Create a snapshot you can restore later."
-            onClick={openExportModal}
-            buttonRef={exportOpenRef}
-            buttonProps={exportOpenAgentProps}
+        {dedicatedCloudAgent ? (
+          <SettingsGroup
+            title="Backups"
+            description="Manual backups are not available for Dedicated agents. Your conversations remain stored across reloads and restarts."
           />
-          <SettingsRow
-            icon={Upload}
-            label="Restore agent"
-            description="Roll back to a saved snapshot."
-            onClick={openImportModal}
-            buttonRef={importOpenRef}
-            buttonProps={importOpenAgentProps}
-          />
-        </SettingsGroup>
+        ) : (
+          <SettingsGroup
+            title="Backups"
+            description="Save a snapshot of this agent, or restore it from an earlier one."
+          >
+            <SettingsRow
+              icon={Download}
+              label="Back up agent"
+              description="Create a snapshot you can restore later."
+              onClick={openExportModal}
+              buttonRef={exportOpenRef}
+              buttonProps={exportOpenAgentProps}
+            />
+            <SettingsRow
+              icon={Upload}
+              label="Restore agent"
+              description="Roll back to a saved snapshot."
+              onClick={openImportModal}
+              buttonRef={importOpenRef}
+              buttonProps={importOpenAgentProps}
+            />
+          </SettingsGroup>
+        )}
 
         <SettingsGroup
           title="View visibility"
@@ -405,8 +412,7 @@ export function AdvancedSection() {
               <Button
                 ref={exportSubmitRef}
                 variant="default"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
+                size="touch"
                 disabled={createBackupBusy}
                 onClick={() => void handleCreateBackup()}
                 {...exportSubmitAgentProps}
@@ -477,8 +483,7 @@ export function AdvancedSection() {
               <Button
                 ref={importSubmitRef}
                 variant="default"
-                size="sm"
-                className="min-h-[2.625rem] px-4 rounded-sm"
+                size="touch"
                 disabled={restoreBackupBusy || !selectedBackupFileName}
                 onClick={() => void handleRestoreBackup()}
                 {...importSubmitAgentProps}

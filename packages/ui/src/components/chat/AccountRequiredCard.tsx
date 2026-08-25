@@ -84,31 +84,31 @@ function ReconnectProgressLine({
 }) {
   if (phase === "reconnecting") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted">
-        <Spinner className="h-3 w-3" />
-        Waiting for sign-in to finish...
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
+        <Spinner className="size-3" />
+        Waiting for sign-in to finish…
       </div>
     );
   }
   if (phase === "retrying") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-muted">
-        <Spinner className="h-3 w-3" />
-        Reconnected. Retrying...
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
+        <Spinner className="size-3" />
+        Reconnected. Retrying…
       </div>
     );
   }
   if (phase === "success") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-ok">
-        <CheckCircle2 className="h-3 w-3" />
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-ok">
+        <CheckCircle2 className="size-3" />
         Reconnected and sent.
       </div>
     );
   }
   if (phase === "failed") {
     return (
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-destructive">
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-destructive">
         <span className="min-w-0 flex-1 truncate">
           {error ?? "Reconnect failed."}
         </span>
@@ -116,11 +116,11 @@ function ReconnectProgressLine({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-6 shrink-0 gap-1 px-1.5 text-[10px]"
+            size="micro"
+            className="shrink-0"
             onClick={onRetry}
           >
-            <RefreshCw className="h-3 w-3" />
+            <RefreshCw className="size-3" />
             Try again
           </Button>
         ) : null}
@@ -188,7 +188,7 @@ export function AccountRequiredCard({
       aria-live="polite"
     >
       <div className="flex items-start gap-2">
-        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warn" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-txt">{title}</div>
           <div className="mt-0.5 leading-5 text-muted">
@@ -199,8 +199,8 @@ export function AccountRequiredCard({
 
       {loading ? (
         <div className="mt-2 flex items-center gap-2 text-muted">
-          <Spinner className="h-3 w-3" />
-          Loading {sourceLabel} accounts...
+          <Spinner className="size-3" />
+          Loading {sourceLabel} accounts…
         </div>
       ) : accounts.length > 0 ? (
         <div className="mt-2 grid gap-1.5">
@@ -228,10 +228,10 @@ export function AccountRequiredCard({
                 )}
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <UserRound className="h-3.5 w-3.5 shrink-0 text-muted" />
+                  <UserRound className="size-3.5 shrink-0 text-muted" />
                   <Button
-                    variant="ghost"
-                    className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal disabled:cursor-default"
+                    variant="publicRow"
+                    size="content"
                     disabled={!onSelectAccount}
                     onClick={() => onSelectAccount?.(account.id)}
                   >
@@ -239,13 +239,9 @@ export function AccountRequiredCard({
                       {connectorAccountDisplayName(account)}
                     </span>
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
-                      <StatusBadge
-                        label={status.label}
-                        tone={status.tone}
-                        className="px-1.5 py-0 text-[9px]"
-                      />
+                      <StatusBadge label={status.label} tone={status.tone} />
                       {account.handle || account.externalId ? (
-                        <span className="truncate text-[10px] text-muted">
+                        <span className="truncate text-2xs text-muted">
                           {account.handle ?? account.externalId}
                         </span>
                       ) : null}
@@ -255,15 +251,15 @@ export function AccountRequiredCard({
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 gap-1 px-2 text-[10px]"
+                      size="tiny"
+                      className="shrink-0"
                       disabled={reconnectBusy}
                       onClick={() => handleReconnect(account.id)}
                     >
                       {reconnectBusy ? (
-                        <Spinner className="h-3 w-3" />
+                        <Spinner className="size-3" />
                       ) : (
-                        <RefreshCw className="h-3 w-3" />
+                        <RefreshCw className="size-3" />
                       )}
                       Reconnect
                     </Button>
@@ -291,12 +287,11 @@ export function AccountRequiredCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-8 px-2.5 text-xs"
+            size="dense"
             disabled={connectBusy}
             onClick={onConnectAccount}
           >
-            {connectBusy ? <Spinner className="h-3 w-3" /> : null}
+            {connectBusy ? <Spinner className="size-3" /> : null}
             Connect account
           </Button>
         ) : null}
@@ -304,12 +299,11 @@ export function AccountRequiredCard({
           <Button
             type="button"
             variant="default"
-            size="sm"
-            className="h-8 px-2.5 text-xs"
+            size="dense"
             disabled={confirmBusy || !selectedAccount}
             onClick={onConfirm}
           >
-            {confirmBusy ? <Spinner className="h-3 w-3" /> : null}
+            {confirmBusy ? <Spinner className="size-3" /> : null}
             {confirmLabel}
           </Button>
         ) : null}

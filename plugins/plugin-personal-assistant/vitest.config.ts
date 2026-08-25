@@ -47,6 +47,7 @@ const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
+const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
@@ -174,7 +175,7 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
 const aiEntry = resolveCorePackageEntry("ai");
-const fsExtraEntry = resolveCorePackageEntry("fs-extra");
+const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = resolveCorePackageEntry("handlebars");
 const mammothEntry = resolveCorePackageEntry("mammoth");
 const markdownItRoot = resolveCorePackageRoot("markdown-it");
@@ -425,6 +426,17 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/security\/access$/,
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
+      },
+      // The owner-scope invariant test exercises the real chat-surface and
+      // trust-fallback owner derivations; anchor both to source ahead of the
+      // bare `@elizaos/agent` stub alias below.
+      {
+        find: /^@elizaos\/agent\/api\/client-chat-admin$/,
+        replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/owner-entity$/,
+        replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
       },
       {
         find: /^@elizaos\/agent\/services\/knowledge-graph$/,

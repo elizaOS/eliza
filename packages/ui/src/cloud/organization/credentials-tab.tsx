@@ -124,7 +124,7 @@ export function CredentialsTab({
               onClick={() => setIsInviteOpen(true)}
               className="font-mono text-sm md:text-base w-full sm:w-auto"
             >
-              <UserPlus className="h-4 w-4" />
+              <UserPlus className="size-4" />
               {t("cloud.credentialsTab.inviteAndConnect", {
                 defaultValue: "Invite & Connect",
               })}
@@ -136,7 +136,7 @@ export function CredentialsTab({
             onClick={() => setIsContributeOpen(true)}
             className="font-mono text-sm md:text-base w-full sm:w-auto"
           >
-            <KeyRound className="h-4 w-4" />
+            <KeyRound className="size-4" />
             {t("cloud.credentialsTab.contribute", {
               defaultValue: "Contribute Key",
             })}
@@ -147,7 +147,7 @@ export function CredentialsTab({
       {/* Credentials list */}
       {credentialsQuery.isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted" />
+          <Loader2 className="size-8 animate-spin text-muted" />
         </div>
       ) : (
         <CredentialsList

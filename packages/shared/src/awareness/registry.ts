@@ -8,14 +8,14 @@
  * errors are captured and surfaced as `[{id}: unavailable]` markers — the
  * registry itself NEVER throws from composeSummary / getDetail.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,
   DEFAULT_CACHE_TTL_MS,
   SELF_STATUS_SCHEMA_VERSION,
-  SUMMARY_CHAR_LIMIT,
-  SUMMARY_TOTAL_CHAR_LIMIT,
 } from "../contracts/awareness.js";
 
 const SANITIZE_PATTERNS: RegExp[] = [
@@ -40,6 +40,10 @@ function sanitize(input: string): string {
 interface CacheEntry {
   value: string;
   expiresAt: number;
+}
+
+export function normalizeSummaryLine(line: string): string {
+  return toWellFormedUnicode(line);
 }
 
 export class AwarenessRegistry {
@@ -79,15 +83,13 @@ export class AwarenessRegistry {
       if (contributor.trusted !== true) {
         line = sanitize(line);
       }
-      if (line.length > SUMMARY_CHAR_LIMIT) {
-        line = `${line.slice(0, SUMMARY_CHAR_LIMIT - 3)}...`;
-      }
+      line = normalizeSummaryLine(line);
 
       lines.push(line);
     }
 
     const header = `[Self Status v${SELF_STATUS_SCHEMA_VERSION}]`;
-    return this.applyGlobalBudget(lines, header);
+    return `${header}\n${lines.join("\n")}`;
   }
 
   async getDetail(
@@ -143,45 +145,6 @@ export class AwarenessRegistry {
       expiresAt: now + ttl,
     });
     return value;
-  }
-
-  private applyGlobalBudget(lines: string[], header: string): string {
-    const headerLen = header.length + 1;
-    let budget = SUMMARY_TOTAL_CHAR_LIMIT - headerLen;
-    const included: string[] = [];
-    let remaining = 0;
-    let bodyLen = 0;
-
-    for (let i = 0; i < lines.length; i++) {
-      const lineLen = lines[i].length + 1;
-      if (budget >= lineLen) {
-        bodyLen =
-          included.length === 0
-            ? lines[i].length
-            : bodyLen + 1 + lines[i].length;
-        included.push(lines[i]);
-        budget -= lineLen;
-      } else {
-        remaining = lines.length - i;
-        break;
-      }
-    }
-
-    if (remaining > 0) {
-      let suffix = `\n[+${remaining} more]`;
-      while (
-        bodyLen + suffix.length + headerLen + 1 > SUMMARY_TOTAL_CHAR_LIMIT &&
-        included.length > 1
-      ) {
-        const removed = included.pop() as string;
-        bodyLen -= removed.length + 1;
-        remaining++;
-        suffix = `\n[+${remaining} more]`;
-      }
-      return `${header}\n${included.join("\n")}${suffix}`;
-    }
-
-    return `${header}\n${included.join("\n")}`;
   }
 
   private async composeAllDetails(

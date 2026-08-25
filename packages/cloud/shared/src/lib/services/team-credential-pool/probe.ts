@@ -12,6 +12,7 @@
  * reject the contribution before it ever enters rotation.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import type { PooledDirectProvider } from "./provider-map";
@@ -88,7 +89,7 @@ export async function probePooledApiKey(
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        error: `${providerId} ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         latencyMs,
       };
     }

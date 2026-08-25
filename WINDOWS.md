@@ -192,8 +192,9 @@ A handful of plugins ship native modules:
 
 ## CI
 
-The scheduled [nightly workflow](.github/workflows/nightly.yml) provides the
-single Windows automation lane. It installs with the pinned Bun and Node
+The [platform smoke workflow](.github/workflows/platform-smoke.yml), delegated
+by the latest-tip [Develop Full authority](.github/workflows/develop-full.yml),
+provides the Windows automation lane. It installs with the pinned Bun and Node
 versions, builds core, and runs the core tests. Broader Windows packaging and
 installer checks remain explicit operator runs; they are not duplicated across
 pull-request workflows.

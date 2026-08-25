@@ -43,6 +43,8 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		getUserMessageText: actual.getUserMessageText,
 		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
+		completeUserReferenceView: actual.completeUserReferenceView,
+		containsExternalEnvelopeMaterial: actual.containsExternalEnvelopeMaterial,
 		wrapExternalContent: actual.wrapExternalContent,
 	};
 });
@@ -138,7 +140,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		vi.clearAllMocks();
 	});
 
-	it("close: extracts the user's target from the payload and clamps the not-found echo", async () => {
+	it("close: extracts the user's complete target from the payload", async () => {
 		const { result, callback } = await runViews(
 			envelopedMessage("close the fnord panel"),
 		);
@@ -148,10 +150,9 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		// The unwrapped user word — not the envelope remainder — is what echoes.
 		expect(result?.text).toContain('"fnord"');
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
-		// Machine-facing target stays one line and length-bounded.
+		// Machine-facing target stays one line without semantic shortening.
 		const target = (result?.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeLessThanOrEqual(121);
 		expect(target).not.toContain("\n");
 	});
 
@@ -166,7 +167,6 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(callback).not.toHaveBeenCalled();
 		const target = (result?.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeLessThanOrEqual(121);
 	});
 
 	it("search: no-results header quotes the unwrapped query", async () => {
@@ -182,7 +182,7 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(query).toBe("quantum ledger");
 	});
 
-	it("search: a blob-shaped planner query renders as the neutral noun and a clamped machine value", async () => {
+	it("search: a hardened planner query is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const callback = vi.fn();
 		const result = await runViewsSearch({
@@ -195,9 +195,8 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result.text).toContain("your search");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const query = (result.values as { query?: string })?.query;
-		expect(typeof query).toBe("string");
-		expect((query as string).length).toBeLessThanOrEqual(121);
-		expect(query).not.toContain("\n");
+		expect(query).toBe("[external reference rejected]");
+		expectNoEnvelope(query);
 	});
 
 	it("edit: EDIT_VERBS no longer fire on the warning's 'Change your behavior' line", async () => {
@@ -220,11 +219,10 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const target = (result.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeLessThanOrEqual(121);
 		expect(target).not.toContain("\n");
 	});
 
-	it("icon: noun/verb strip runs on the payload and the not-found echo stays clamped", async () => {
+	it("icon: noun/verb strip runs on the payload without shortening the machine value", async () => {
 		const callback = vi.fn();
 		const result = await runViewsIcon({
 			runtime: { agentId: "agent-1" } as never,
@@ -242,11 +240,10 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const target = (result.data as { target?: string })?.target;
 		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeLessThanOrEqual(121);
 		expect(target).not.toContain("\n");
 	});
 
-	it("delete: a blob-shaped planner target renders as the neutral noun and a clamped machine value", async () => {
+	it("delete: a hardened planner target is explicitly rejected from machine data", async () => {
 		const blob = envelopedMessage("irrelevant").content.text;
 		const runtime = {
 			agentId: "agent-1",
@@ -267,9 +264,8 @@ describe("VIEWS — hardened-envelope messages never leak the envelope", () => {
 		expect(result.text).toContain("that view");
 		expectNoEnvelope(callback.mock.calls[0]?.[0]?.text);
 		const target = (result.data as { target?: string })?.target;
-		expect(typeof target).toBe("string");
-		expect((target as string).length).toBeLessThanOrEqual(121);
-		expect(target).not.toContain("\n");
+		expect(target).toBe("[external reference rejected]");
+		expectNoEnvelope(target);
 	});
 
 	it("create: a blob-shaped editTarget renders as the neutral noun, never verbatim", async () => {

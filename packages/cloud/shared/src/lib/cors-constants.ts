@@ -40,6 +40,8 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // affiliate attribution (X-Affiliate-Code); must be in the allow-list or the
   // browser CORS preflight rejects requests that send them.
   "Idempotency-Key",
+  "X-Content-SHA256",
+  "X-Content-Length",
   "X-Storage-Object-Key",
   "X-Storage-Prefix",
   "X-Storage-Recursive",
@@ -54,6 +56,11 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-UI-Language",
   "X-Eliza-UI-Language",
+  // Privacy-safe shared-turn baseline correlation. The first-party client
+  // sends an opaque UUID plus a bounded attempt ordinal; the server validates
+  // both before emitting measurement logs (#22814).
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
   // Caller-to-gateway chat correlation. Accept W3C context when present;
   // X-Eliza-Trace-Id covers clients that cannot share Cloudflare's native id.
   "Traceparent",

@@ -50,6 +50,8 @@ export interface WorkflowDispatchResult {
 export interface WorkflowDispatchOptions {
   triggerData?: Record<string, unknown>;
   idempotencyKey?: string;
+  /** Trigger ancestry copied onto events emitted by this execution. */
+  triggerChainDepth?: number;
 }
 
 export interface WorkflowDispatchService {
@@ -155,14 +157,20 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
           return result.ok ? { ...result, dedup: true } : result;
         }
 
-        const promise = runDispatch(service, id, triggerData, idempotencyKey).finally(() => {
+        const promise = runDispatch(
+          service,
+          id,
+          triggerData,
+          idempotencyKey,
+          options.triggerChainDepth
+        ).finally(() => {
           inflight.delete(inflightKey);
         });
         inflight.set(inflightKey, promise);
         return promise;
       }
 
-      return runDispatch(service, id, triggerData, undefined);
+      return runDispatch(service, id, triggerData, undefined, options.triggerChainDepth);
     },
   };
 }
@@ -171,13 +179,15 @@ async function runDispatch(
   service: EmbeddedWorkflowService,
   workflowId: string,
   triggerData: Record<string, unknown>,
-  idempotencyKey: string | undefined
+  idempotencyKey: string | undefined,
+  triggerChainDepth: number | undefined
 ): Promise<WorkflowDispatchResult> {
   try {
     const execution = await service.executeWorkflow(workflowId, {
       mode: 'trigger',
       triggerData,
       idempotencyKey,
+      ...(triggerChainDepth !== undefined ? { triggerChainDepth } : {}),
     });
     return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
   } catch (err) {

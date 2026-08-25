@@ -68,11 +68,13 @@ export function AgentActivityBox({
         <Button
           key={s.sessionId}
           onClick={() => onSessionClick?.(s.sessionId)}
-          variant="ghost"
-          className="-mx-1 flex h-auto min-w-0 w-full items-center justify-start gap-1.5 whitespace-normal rounded-sm px-1 py-0 text-left font-normal transition-colors hover:bg-bg-hover"
+          variant="sectionToggle"
+          size="content"
+          align="start"
+          className="-mx-1 min-w-0"
         >
           <span
-            className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+            className={`inline-block size-1.5 rounded-full shrink-0 ${
               STATUS_DOT[s.status] ?? "bg-muted"
             }${PULSE_STATUSES.has(s.status) ? " animate-pulse" : ""}`}
           />

@@ -361,7 +361,7 @@ export const pluginEntrySchema = z.object({
 const accountAuthKind = z.enum([
   "oauth-cloud", // "Log in with X" routed through Eliza Cloud
   "oauth-local", // local-only OAuth (e.g. per-homeserver Matrix)
-  "qr", // QR-pairing (WhatsApp Baileys, Signal device-link)
+  "qr", // QR-pairing (for example, WhatsApp Baileys)
   "local-app", // local-app inspection (Discord-CDP, iMessage chat.db)
   "browser-extension", // browser companion
   "api-key", // manual paste of bot token / API key

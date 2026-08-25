@@ -109,6 +109,7 @@ describe("createMeetingTranscriptionPipeline", () => {
 
     const segments = await pipeline.finalize();
     expect(segments.map((s) => s.text)).toContain("welcome to the standup");
+    expect(segments[0].id).toBe(`${SESSION_ID}:t0:0`);
   });
 
   it("does not call ASR when the billing meter cannot reserve the next window", async () => {
@@ -204,14 +205,14 @@ describe("createMeetingTranscriptionPipeline", () => {
     const pendingUpdate = updates.find((u) => u.pending.length > 0);
     expect(pendingUpdate).toBeDefined();
     expect(pendingUpdate?.pending[0].text).toBe("hello team lets begin");
-    expect(pendingUpdate?.pending[0].id).toBe("12345678:t0:pending");
+    expect(pendingUpdate?.pending[0].id).toBe(`${SESSION_ID}:t0:pending`);
 
     pipeline.pushSpeakerAudio("t0", seconds(2));
     await tick(2000);
     const confirmedUpdate = updates.find((u) => u.confirmed.length > 0);
     expect(confirmedUpdate).toBeDefined();
     expect(confirmedUpdate?.confirmed).toHaveLength(1);
-    expect(confirmedUpdate?.confirmed[0].id).toBe("12345678:t0:0");
+    expect(confirmedUpdate?.confirmed[0].id).toBe(`${SESSION_ID}:t0:0`);
     expect(confirmedUpdate?.confirmed[0].text).toBe("hello team lets begin");
 
     unsubscribe();
@@ -333,7 +334,7 @@ describe("createMeetingTranscriptionPipeline", () => {
     );
   });
 
-  it("uses a self-introduction over a borrowed-device roster label", async () => {
+  it("withholds a self-introduction that conflicts with a borrowed-device roster", async () => {
     const backend = new ScriptedBackend();
     backend.enqueue(
       { text: "Hi, I'm Mina Chen." },
@@ -349,9 +350,8 @@ describe("createMeetingTranscriptionPipeline", () => {
 
     const [segment] = await pipeline.finalize();
     expect(segment?.speakerNameAttribution).toMatchObject({
-      resolution: "confirmed",
-      displayName: "Mina Chen",
-      confidence: 0.96,
+      resolution: "withheld",
+      requiresReview: true,
       reasonCodes: expect.arrayContaining(["borrowed_device_guardrail"]),
     });
     expect(segment?.speakerNameAttribution?.provenance).toEqual(
@@ -359,7 +359,7 @@ describe("createMeetingTranscriptionPipeline", () => {
         expect.objectContaining({ source: "self_introduction" }),
       ]),
     );
-    expect(segment?.speakerLabel).toBe("Mina Chen");
+    expect(segment?.speakerLabel).toBe("Speaker 1");
   });
 
   it("does not mistake ordinary first-person speech for a self-introduction", async () => {

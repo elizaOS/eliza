@@ -21,13 +21,15 @@ import type {
 } from "@elizaos/core";
 import {
   ChannelType,
+  completeUserReferenceView,
   logger as coreLogger,
   ElizaError,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
+  MESSAGE_SOURCE_TRIGGER_PROMPT,
   stringToUuid,
+  toWellFormedUnicode,
   unwrapUserMessageText,
-  userReferenceLogView,
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
@@ -62,6 +64,7 @@ import {
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
   type AgentType,
+  createSubscriptionExecutionAuthorization,
   type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
@@ -74,6 +77,7 @@ import type {
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
   callbackText,
+  canonicalSessionId,
   contentRecord,
   emitSessionEvent,
   errorResult,
@@ -96,16 +100,14 @@ import {
   resolveSession,
   setCurrentSession,
   setCurrentSessions,
-  shortId,
   waitForSpawnSlot,
 } from "./common.js";
+import { labelFrom } from "./task-label.js";
 import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
-const WORKSPACE_PATH_MAX_CHARS = 500;
-const ISSUE_RESULT_LIMIT = 25;
-const ISSUE_BODY_MAX_CHARS = 4_000;
+const MAX_BULK_ISSUE_CREATE = 25;
 
 type TaskOp =
   | "create"
@@ -326,11 +328,6 @@ function parseAgentPrefix(
   return { agentType: candidate, task: match[2] ?? part };
 }
 
-function labelFrom(task: string, index: number): string {
-  const cleaned = task.replace(/\s+/g, " ").trim();
-  return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
-}
-
 function objectValue(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -476,6 +473,17 @@ export function spawnOriginKeyFor(
   return root ? `${root}\0${agentType}` : undefined;
 }
 
+export function subscriptionAuthorizationForMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+  content: Record<string, unknown>,
+) {
+  if (content.source === MESSAGE_SOURCE_TRIGGER_PROMPT) return undefined;
+  if (content.source === MESSAGE_SOURCE_SUB_AGENT) return undefined;
+  if (message.entityId === runtime.agentId || !message.id) return undefined;
+  return createSubscriptionExecutionAuthorization(message.id, message.entityId);
+}
+
 function pickRoutingString(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -555,7 +563,7 @@ async function ensureDistinctTaskRoom(
     }
     await runtime.createRoom({
       id: roomId,
-      name: label?.trim() || `Task ${seed.slice(0, 18)}`,
+      name: label?.trim() || `Task ${seed}`,
       source: "orchestrator-task",
       type: ChannelType.GROUP,
       worldId,
@@ -891,18 +899,24 @@ async function runCreateLegacy(
   const maxSmithersTurns = readPositiveInteger(
     params.maxTurns ?? content.maxTurns,
   );
-  // A planner-supplied label is free text; clamp like the labelFrom fallback
-  // so listings, room names, and progress lines stay bounded.
+  // Preserve planner-supplied labels completely so listings and room names do
+  // not become ambiguous aliases for different tasks.
   const baseLabelParam = pickString(params, content, "label");
   const baseLabel = baseLabelParam
-    ? userReferenceLogView(baseLabelParam)
+    ? completeUserReferenceView(baseLabelParam)
     : undefined;
   const extraMetadata = additionalSessionMetadata(params, content);
-  const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
-    params,
-    content,
-    extraMetadata,
+  const useSmithers = shouldUseSmithersTaskRunner();
+  const durableTaskServiceAvailable = Boolean(
+    runtime.getService?.(OrchestratorTaskService.serviceType),
   );
+  // Durable Smithers sessions are the orchestrator's ongoing coding surface:
+  // the task service owns their bounded idle reclamation and follow-up state.
+  // Direct ACP compatibility runs remain one-shot unless they carry the
+  // validated app-verification retry contract.
+  const keepAliveAfterComplete =
+    (useSmithers && durableTaskServiceAvailable) ||
+    hasVerifiedRetryLifecycle(params, content, extraMetadata);
   const originConnectorMessageId = connectorMessageIdFromMemory(
     message,
     content,
@@ -932,11 +946,10 @@ async function runCreateLegacy(
   // Planner-supplied title/goal is unbounded free text (it can be a whole
   // blob); clamp at the persist/display seam — the stored task title and the
   // [TASK:] widget block both render it. labelFrom's fallback is already
-  // 80-clamped, so only the params-derived branch needs bounding.
   const plannerTitle =
     pickString(params, content, "title") ?? pickString(params, content, "goal");
   const taskTitle = plannerTitle
-    ? userReferenceLogView(plannerTitle)
+    ? completeUserReferenceView(plannerTitle)
     : tasks[0]
       ? labelFrom(tasks[0], 0)
       : "Coding task";
@@ -990,7 +1003,6 @@ async function runCreateLegacy(
       };
     }
   }
-  const useSmithers = shouldUseSmithersTaskRunner();
   let threadId: string | null = null;
   try {
     if (!taskService || typeof taskService.createTask !== "function") {
@@ -1124,6 +1136,11 @@ async function runCreateLegacy(
             };
       const session = await service.spawnSession({
         agentType,
+        subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+          runtime,
+          message,
+          content,
+        ),
         workdir: sessionWorkdir,
         isolateWorkdir,
         memoryContent,
@@ -1883,12 +1900,11 @@ async function runSpawnAgent(
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
       pickBoolean(params, content, "deferUserReply") === true;
-    // A planner-supplied label is free text; clamp like the derived fallback
-    // so listings, room names, and progress lines stay bounded.
+    // Preserve the complete task label; it is model-visible task identity.
     const labelParam = pickString(params, content, "label");
     const label = labelParam
-      ? userReferenceLogView(labelParam)
-      : task.slice(0, 80);
+      ? completeUserReferenceView(labelParam)
+      : labelFrom(task, 0);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
@@ -2031,6 +2047,11 @@ async function runSpawnAgent(
 
     const session = await service.spawnSession({
       agentType,
+      subscriptionExecutionAuthorization: subscriptionAuthorizationForMessage(
+        runtime,
+        message,
+        content,
+      ),
       workdir: effectiveWorkdir,
       isolateWorkdir,
       initialTask: taskWithRouteHints,
@@ -2125,20 +2146,37 @@ async function runSpawnAgent(
             });
           }
         } catch (error) {
-          // error-policy:J7 durable bookkeeping must not kill the already
-          // running session; the gap is surfaced through reportError so the
-          // owner sees the restart-durability exposure instead of silence.
+          // A live session without a durable owner cannot be recovered after a
+          // runtime restart. Stop it before returning a typed failure so the
+          // action never reports a successful dispatch that has no lifecycle
+          // record. If teardown itself fails, preserve both failures in
+          // diagnostics; the primary result remains the attach failure.
           durableTaskId = null;
+          try {
+            await service.stopSession(session.sessionId, true);
+          } catch (stopError) {
+            runtime.reportError?.(
+              "TASKS:spawn_agent.stop_orphan",
+              stopError instanceof Error
+                ? stopError
+                : new Error(String(stopError)),
+              { sessionId: session.sessionId, label },
+            );
+          }
           runtime.reportError?.(
             "TASKS:spawn_agent",
             error instanceof Error ? error : new Error(String(error)),
             { sessionId: session.sessionId, label },
           );
-          logger(runtime).error(
-            `[TASKS:spawn_agent] durable task persistence failed for ${session.sessionId}; session runs WITHOUT restart protection: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
+          throw new ElizaError("Failed to persist spawned task owner", {
+            code: "DURABLE_TASK_ATTACH_FAILED",
+            context: {
+              sessionId: session.sessionId,
+              label,
+              cause: error instanceof Error ? error.message : String(error),
+            },
+            cause: error instanceof Error ? error : undefined,
+          });
         }
       }
     }
@@ -2470,7 +2508,7 @@ async function runListAgents(
   const lines = [`Active task agents (${sessions.length}):`];
   for (const session of sessions) {
     lines.push(
-      `- ${labelFor(session)} [${shortId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
+      `- ${labelFor(session)} [${canonicalSessionId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
     );
   }
   const text = lines.join("\n");
@@ -3167,8 +3205,7 @@ async function runHistory(
           .filter(
             (task) =>
               !taskMatchesHistoryFilters(task, statuses, windowFilters, search),
-          )
-          .slice(0, 3);
+          );
         responseText = inFlight
           ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
           : excludedByFilters.length > 0
@@ -3666,14 +3703,14 @@ async function runProvisionWorkspace(
     if (state) {
       state.codingWorkspace = {
         id: workspace.id,
-        path: workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS),
+        path: workspace.path,
         branch: workspace.branch,
         isWorktree: workspace.isWorktree,
       };
     }
 
     const createdText =
-      `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
+      `Created workspace at ${workspace.path}\n` +
       `Branch: ${workspace.branch}\n` +
       `Type: ${workspace.isWorktree ? "worktree" : "clone"}`;
     if (callback) await callback({ text: createdText });
@@ -3689,7 +3726,7 @@ async function runProvisionWorkspace(
       turnComplete: true,
       data: {
         workspaceId: workspace.id,
-        path: workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS),
+        path: workspace.path,
         branch: workspace.branch,
         isWorktree: workspace.isWorktree,
       },
@@ -3877,17 +3914,46 @@ function formatGitHubAuthPrompt(
   );
 }
 
-function extractBulkItems(
+export function extractBulkItems(
   text: string,
 ): Array<{ title: string; body?: string }> {
   if (!text) return [];
 
-  const numberedPattern =
-    /(?:^|\s)(\d+)[).:-]\s*(.+?)(?=(?:\s+\d+[).:-]\s)|$)/gs;
   const items: Array<{ title: string; body?: string }> = [];
-
-  for (const match of text.matchAll(numberedPattern)) {
-    const raw = match[2].trim();
+  const markers: Array<{ start: number; contentStart: number }> = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (cursor > 0 && text[cursor - 1]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    let digitEnd = cursor;
+    while (
+      digitEnd < text.length &&
+      (text[digitEnd] ?? "") >= "0" &&
+      (text[digitEnd] ?? "") <= "9"
+    ) {
+      digitEnd += 1;
+    }
+    if (digitEnd === cursor || !").:-".includes(text[digitEnd] ?? "")) {
+      cursor += 1;
+      continue;
+    }
+    let contentStart = digitEnd + 1;
+    if (text[contentStart]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    while (contentStart < text.length && text[contentStart]?.trim() === "") {
+      contentStart += 1;
+    }
+    markers.push({ start: cursor, contentStart });
+    cursor = contentStart;
+  }
+  for (const [index, marker] of markers.entries()) {
+    const raw = text
+      .slice(marker.contentStart, markers[index + 1]?.start ?? text.length)
+      .trim();
     if (raw.length > 0) {
       items.push({ title: raw });
     }
@@ -3895,10 +3961,12 @@ function extractBulkItems(
 
   if (items.length >= 2) return items;
 
-  const bulletPattern = /(?:^|\n)\s*[-*•]\s+(.+)/g;
   const bulletItems: Array<{ title: string; body?: string }> = [];
-  for (const match of text.matchAll(bulletPattern)) {
-    const raw = match[1].trim();
+  for (const line of text.split("\n")) {
+    const candidate = line.trimStart();
+    if (!"-*•".includes(candidate[0] ?? "")) continue;
+    if (candidate.length < 2 || candidate[1]?.trim() !== "") continue;
+    const raw = candidate.slice(2).trim();
     if (raw.length > 0) {
       bulletItems.push({ title: raw });
     }
@@ -4004,10 +4072,17 @@ async function handleIssueAction(
             (params.text as string) ?? originalText,
           );
           if (items.length > 0) {
+            if (items.length > MAX_BULK_ISSUE_CREATE) {
+              return {
+                success: false,
+                error: "BULK_ISSUE_LIMIT_EXCEEDED",
+                text: `Requested ${items.length} issue creations; the atomic safety limit is ${MAX_BULK_ISSUE_CREATE}. No issues were created.`,
+              };
+            }
             const labels = parseLabels(params.labels);
             const created: IssueInfo[] = [];
             let bulkLabelNote = "";
-            for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
+            for (const item of items) {
               const { issue, labelNote } =
                 await createIssueWithBestEffortLabels(service, repo, {
                   title: item.title,
@@ -4073,12 +4148,10 @@ async function handleIssueAction(
       case "list": {
         const stateFilter = (params.state as string) ?? "open";
         const labels = parseLabels(params.labels);
-        const issues = (
-          await service.listIssues(repo, {
-            state: stateFilter as "open" | "closed" | "all",
-            labels: labels.length > 0 ? labels : undefined,
-          })
-        ).slice(0, ISSUE_RESULT_LIMIT);
+        const issues = await service.listIssues(repo, {
+          state: stateFilter as "open" | "closed" | "all",
+          labels: labels.length > 0 ? labels : undefined,
+        });
         const listText =
           issues.length === 0
             ? `No ${stateFilter} issues found in ${repo}.`
@@ -4108,7 +4181,8 @@ async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
+        const issueBody = toWellFormedUnicode(issue.body);
+        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,
           text: issueText,
@@ -4269,7 +4343,7 @@ async function runManageIssues(
   // Unwrapped: bulk-issue extraction and action/repo inference read this as
   // the user's request; a raw envelope read would mint GitHub issues out of
   // security-notice lines (and the slice could truncate the real payload).
-  const text = requestText(message).slice(0, ISSUE_BODY_MAX_CHARS);
+  const text = toWellFormedUnicode(requestText(message));
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction
@@ -5128,15 +5202,15 @@ export const tasksAction: Action & {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / opencode / claude / codex). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (elizaos / pi-agent / claude / codex). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work. " +
     "NOT for building a web app/page/site/interactive HTML the user wants hosted with a live link — that is APP action=create, which builds, verifies, AND publishes; a task workspace has no hosting path, so files built here never get a URL.",
   descriptionCompressed:
-    "ACP coding sub-agent elizaos|pi-agent|opencode|claude|codex: spawn|send|control|list|history",
+    "ACP coding sub-agent elizaos|pi-agent|claude|codex: spawn|send|control|list|history",
   routingHint:
-    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|opencode|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
+    'delegate coding/software/dev work to a coding sub-agent, or drive a coding adapter by name (elizaos|pi-agent|claude|codex) -> TASKS; GitHub issue operations ("any new issues?", list/create/comment/close/reopen an issue) -> TASKS_MANAGE_ISSUES — this IS the github-issues tool; do NOT use for personal reminders, check-ins, follow-ups, alarms or recurring routines ("remind me...", "every day...") -> use the exposed reminder/scheduling tool instead (TRIGGER_CREATE, SCHEDULED_TASKS, or OWNER_REMINDERS — whichever is exposed this turn); do NOT use for building a web app/page/site/interactive HTML the user wants hosted at a live link ("make me a website", "teach me with an interactive page", "host it and give me the link") -> APP action=create, which builds AND publishes — a coding task workspace has no hosting path; not for one-off inline file edits or shell commands -> FILE / BASH',
   suppressPostActionContinuation: true,
   // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
   // suppress the response-handler's draft reply: the action's own callback
@@ -5185,7 +5259,7 @@ export const tasksAction: Action & {
     {
       name: "agentType",
       description:
-        "Heuristic backend guess (elizaos, pi-agent, opencode, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
+        "Heuristic backend guess (elizaos, pi-agent, codex, or claude) for create / spawn_agent / control.resume. This is a weak hint — it loses to the operator default/pin and to character routing. To honor an EXPLICIT user request use requestedBackend instead.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -5199,11 +5273,11 @@ export const tasksAction: Action & {
     {
       name: "requestedBackend",
       description:
-        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, opencode, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
+        "Set ONLY when the user EXPLICITLY named a coding backend for THIS task (e.g. 'use codex', 'have claude build it') — one of elizaos, pi-agent, codex, claude. Leave unset if the user did not name one; never guess. Unlike agentType this overrides the configured default/pin.",
       required: false,
       schema: {
         type: "string" as const,
-        enum: ["elizaos", "pi-agent", "opencode", "codex", "claude"],
+        enum: ["elizaos", "pi-agent", "codex", "claude"],
       },
     },
     {
@@ -5664,7 +5738,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to AcpService.spawnSession with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],
@@ -5683,24 +5757,6 @@ export const tasksAction: Action & {
           actions: ["TASKS"],
           thought:
             "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "use opencode to write a script that prints hello world",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Spawning an opencode sub-agent for the script.",
-          actions: ["TASKS"],
-          thought:
-            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
         },
       },
     ],
@@ -5736,7 +5792,7 @@ export const tasksAction: Action & {
           text: "Spinning up a coding sub-agent for the auth refactor.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / opencode / claude / codex).",
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (elizaos / pi-agent / claude / codex).",
         },
       },
     ],

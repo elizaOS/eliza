@@ -29,6 +29,7 @@ import type { TranslateFn } from "../../../types";
 import { usePublishHomeAttention } from "../../../widgets/home-attention-store";
 import { HOME_SIGNAL_WEIGHTS } from "../../../widgets/home-priority";
 import { Badge } from "../../ui/badge";
+import { Button } from "../../ui/button";
 import {
   type AttentionGoal,
   GOALS_REFRESH_INTERVAL_MS,
@@ -103,13 +104,6 @@ function isWorkbenchTodoChangeEvent(
   );
 }
 
-function homeBadgeClassName(tone: "default" | "home", accent?: string): string {
-  if (tone !== "home") return accent ? `text-3xs ${accent}` : "text-3xs";
-  return accent
-    ? `border-white/15 bg-white/12 text-3xs ${accent}`
-    : "border-white/15 bg-white/12 text-3xs text-white/80";
-}
-
 function TodoRow({ todo }: { todo: WorkbenchTodo }) {
   const showDescription =
     todo.description.trim().length > 0 && todo.description !== todo.name;
@@ -119,7 +113,7 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
     <div data-testid="workbench-todo-row" className="py-1.5">
       <div className="flex items-start gap-2">
         <span
-          className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
+          className={`mt-1.5 inline-block size-2 shrink-0 rounded-full ${
             todo.isUrgent
               ? "bg-danger"
               : todo.priority != null
@@ -133,26 +127,17 @@ function TodoRow({ todo }: { todo: WorkbenchTodo }) {
               {todo.name}
             </span>
             {todo.isUrgent ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default", "text-danger")}
-              >
+              <Badge variant="secondary" tone="danger">
                 Urgent
               </Badge>
             ) : null}
             {todo.priority != null ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 P{todo.priority}
               </Badge>
             ) : null}
             {showType ? (
-              <Badge
-                variant="secondary"
-                className={homeBadgeClassName("default")}
-              >
+              <Badge variant="secondary" size="micro" tone="muted">
                 {todo.type}
               </Badge>
             ) : null}
@@ -185,15 +170,17 @@ function TodayTodoRow({
 }) {
   const overdue = isOverdue(todo, now);
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
+      size="row"
+      align="start"
       data-testid="today-todo-row"
       aria-label={`Complete todo "${todo.title}"`}
       onClick={onComplete}
-      className="flex min-h-11 w-full items-start gap-2 rounded-sm border border-white/15 p-3 text-left text-white"
     >
       <Circle
-        className={`mt-0.5 h-4 w-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
+        className={`mt-0.5 size-4 shrink-0 ${overdue ? "text-accent" : "text-white/70"}`}
       />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -201,20 +188,17 @@ function TodayTodoRow({
             {todo.title}
           </span>
           {overdue ? (
-            <Badge
-              variant="secondary"
-              className={homeBadgeClassName("home", "text-accent")}
-            >
+            <Badge variant="secondary" tone="accent">
               Overdue
             </Badge>
           ) : (
-            <Badge variant="secondary" className={homeBadgeClassName("home")}>
+            <Badge variant="secondary" size="micro" tone="muted">
               Due today
             </Badge>
           )}
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -236,17 +220,18 @@ function GoalAttentionRow({
   const status = atRisk ? "at risk" : "needs attention";
   const isHome = tone === "home";
   return (
-    <button
+    <Button
       type="button"
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      className={`flex min-h-11 w-full items-start gap-2 text-left ${
-        isHome ? "rounded-sm border border-white/15 p-3 text-white" : "py-1.5"
-      }`}
+      variant={isHome ? "outline" : "transparent"}
+      size={isHome ? "row" : "eventRow"}
+      align="start"
+      className="w-full"
     >
       <Target
-        className={`mt-0.5 h-4 w-4 shrink-0 ${
+        className={`mt-0.5 size-4 shrink-0 ${
           isHome ? "text-white/75" : atRisk ? "text-danger" : "text-accent"
         }`}
       />
@@ -259,18 +244,12 @@ function GoalAttentionRow({
           >
             {goal.title}
           </span>
-          <Badge
-            variant="secondary"
-            className={homeBadgeClassName(
-              tone,
-              atRisk ? "text-danger" : "text-accent",
-            )}
-          >
+          <Badge variant="secondary" tone={atRisk ? "danger" : "accent"}>
             {atRisk ? "At risk" : "Needs attention"}
           </Badge>
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 
@@ -296,7 +275,7 @@ function WorkbenchTodoItems({
   if (openTodos.length === 0) {
     return (
       <EmptyWidgetState
-        icon={<ListTodo className="h-8 w-8" />}
+        icon={<ListTodo className="size-8" />}
         title="No open todos"
       />
     );
@@ -522,7 +501,7 @@ function TodayHomeCard({
     <div className={`min-w-0 ${spanClassName}`}>
       <WidgetSection
         title={t("taskseventspanel.Today", { defaultValue: "Today" })}
-        icon={<ListTodo className="h-4 w-4" />}
+        icon={<ListTodo className="size-4" />}
         testId="chat-widget-todos"
         tone="home"
         onTitleClick={() => nav.openView("/todos", "todos")}
@@ -645,7 +624,7 @@ function WorkbenchTodoSidebar({ events }: ChatSidebarWidgetProps) {
   return (
     <WidgetSection
       title={t("taskseventspanel.Todos", { defaultValue: "Todos" })}
-      icon={<ListTodo className="h-4 w-4" />}
+      icon={<ListTodo className="size-4" />}
       testId="chat-widget-todos"
     >
       <WorkbenchTodoItems todos={todos} loading={todosLoading} />

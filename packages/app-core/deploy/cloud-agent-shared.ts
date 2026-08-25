@@ -38,6 +38,13 @@ const logger = {
   },
 };
 
+/** Warn that the loopback bridge uses an ephemeral credential without exposing it. */
+export function warnGeneratedBridgeSecret(): void {
+  logger.warn(
+    "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
+  );
+}
+
 /**
  * `.catch` handler for an optional plugin dynamic import: keeps the degrade
  * (agent boots without the plugin) but surfaces the import failure so a broken
@@ -115,6 +122,17 @@ export interface RuntimeWithDatabaseLiveness {
   checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
 
+/** Projects internal probe diagnostics into the public health-check contract. */
+export function publicDatabaseLiveness(
+  payload: DatabaseLivenessPayload,
+): Omit<DatabaseLivenessPayload, "message"> {
+  return {
+    ok: payload.ok,
+    status: payload.status,
+    terminal: payload.terminal,
+  };
+}
+
 const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /pglite is closed/i,
   /database is shutting down/i,
@@ -122,16 +140,52 @@ const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /cannot query.*closed/i,
   /closed database/i,
 ] as const;
+const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
+  "ok",
+  "unknown",
+  "transient_error",
+  "terminal_error",
+]);
+
+function readProbeDiagnosticProperty(
+  value: unknown,
+  property: PropertyKey,
+): unknown {
+  if (
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function")
+  ) {
+    return undefined;
+  }
+  try {
+    return Reflect.get(value, property);
+  } catch {
+    // error-policy:J7 liveness diagnostics must not mask the probe failure.
+    return undefined;
+  }
+}
 
 function describeDatabaseProbeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    // error-policy:J3 diagnostic formatting fallback for non-serializable input
-    return String(error);
+  const message = readProbeDiagnosticProperty(error, "message");
+  let text =
+    typeof message === "string" && message.trim() ? message : undefined;
+  if (text === undefined) {
+    try {
+      text = String(error);
+    } catch {
+      // error-policy:J7 hostile coercion still needs a printable marker.
+      text = "[uninspectable thrown value]";
+    }
   }
+  return Array.from(text, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+      ? `\\u{${code.toString(16)}}`
+      : character;
+  }).join("");
 }
 
 function isTerminalDatabaseProbeError(error: unknown): boolean {
@@ -139,9 +193,10 @@ function isTerminalDatabaseProbeError(error: unknown): boolean {
   let current: unknown = error;
   while (current && !seen.has(current)) {
     seen.add(current);
+    const diagnosticMessage = readProbeDiagnosticProperty(current, "message");
     const message =
-      current instanceof Error
-        ? current.message
+      typeof diagnosticMessage === "string"
+        ? diagnosticMessage
         : typeof current === "string"
           ? current
           : "";
@@ -152,12 +207,7 @@ function isTerminalDatabaseProbeError(error: unknown): boolean {
     ) {
       return true;
     }
-    current =
-      current instanceof Error
-        ? (current as Error & { cause?: unknown }).cause
-        : typeof current === "object" && current !== null && "cause" in current
-          ? (current as { cause?: unknown }).cause
-          : null;
+    current = readProbeDiagnosticProperty(current, "cause") ?? null;
   }
   return false;
 }
@@ -184,12 +234,27 @@ export async function checkRuntimeDatabaseLiveness(
   runtime: RuntimeWithDatabaseLiveness | null,
 ): Promise<DatabaseLivenessPayload> {
   if (!runtime) return { status: "unknown", ok: false, terminal: false };
-  if (typeof runtime.checkDatabaseLiveness === "function") {
-    return runtime.checkDatabaseLiveness();
-  }
-  const adapter = runtime.adapter;
-  if (!adapter) return { status: "unknown", ok: true, terminal: false };
   try {
+    if (typeof runtime.checkDatabaseLiveness === "function") {
+      const result = await runtime.checkDatabaseLiveness();
+      if (
+        !DATABASE_LIVENESS_STATUSES.has(result.status) ||
+        typeof result.ok !== "boolean" ||
+        typeof result.terminal !== "boolean"
+      ) {
+        throw new Error("runtime returned an invalid database liveness result");
+      }
+      return {
+        status: result.status,
+        ok: result.ok,
+        terminal: result.terminal,
+        ...(typeof result.message === "string"
+          ? { message: describeDatabaseProbeError(result.message) }
+          : {}),
+      };
+    }
+    const adapter = runtime.adapter;
+    if (!adapter) return { status: "unknown", ok: true, terminal: false };
     if (typeof adapter.getRawConnection === "function") {
       await probeDatabaseHandle(adapter.getRawConnection());
     } else if (typeof adapter.getConnection === "function") {
@@ -209,6 +274,10 @@ export async function checkRuntimeDatabaseLiveness(
   } catch (error) {
     // error-policy:J4 health probe translates database failure into liveness state
     const terminal = isTerminalDatabaseProbeError(error);
+    logger.error("database liveness probe failed", {
+      error: describeDatabaseProbeError(error),
+      terminal,
+    });
     return {
       status: terminal ? "terminal_error" : "transient_error",
       ok: false,
@@ -411,10 +480,20 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           ...(process.env.GROQ_API_KEY
             ? { GROQ_API_KEY: process.env.GROQ_API_KEY }
             : {}),
+          ...(process.env.CEREBRAS_API_KEY
+            ? { CEREBRAS_API_KEY: process.env.CEREBRAS_API_KEY }
+            : {}),
         },
       });
 
       const plugins = [];
+
+      if (process.env.CEREBRAS_API_KEY || process.env.OPENAI_API_KEY) {
+        const openaiPlugin = await import("@elizaos/plugin-openai")
+          .then((m) => m.default)
+          .catch(logPluginLoadFailure("@elizaos/plugin-openai"));
+        if (openaiPlugin) plugins.push(openaiPlugin);
+      }
 
       const cloudPlugin = await import("@elizaos/plugin-elizacloud")
         .then((m) => m.default)
@@ -775,7 +854,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           memoryUsage: process.memoryUsage().rss,
           runtimeReady: agentRuntime !== null,
           database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-          databaseLiveness,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
         }),
       );
       return;
@@ -811,6 +890,145 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         res.end(JSON.stringify({ error: "Unauthorized" }));
         return;
       }
+    }
+
+    // The provisioning worker probes the bridge/tailnet port, not the
+    // host-only REST mapping. Keep this response aligned with the REST health
+    // contract so lifecycle recovery never marks a healthy runtime dead.
+    if (req.method === "GET" && req.url === "/api/health") {
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
+      res.writeHead(databaseLiveness.terminal ? 503 : 200);
+      res.end(
+        JSON.stringify({
+          status: agentRuntime ? "healthy" : "initializing",
+          runtimeReady: agentRuntime !== null,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
+          lastActivityAt: state.lastActivityAt,
+        }),
+      );
+      return;
+    }
+
+    // Server-owned Shared→Dedicated cutover imports the exact personal
+    // conversation before flipping the active runtime. The minimal Cloud image
+    // must expose this boundary too; otherwise provisioning reports `running`
+    // while every cutover retries forever with a 503. Keep unsupported
+    // reminder/Todo payloads fail-closed until their runtime plugins are
+    // installed instead of returning a fabricated receipt.
+    const requestUrl = new URL(req.url ?? "/", "http://cloud-agent.local");
+    const importMatch =
+      req.method === "POST"
+        ? /^\/api\/conversations\/([^/]+)\/import$/.exec(requestUrl.pathname)
+        : null;
+    if (importMatch) {
+      if (!agentRuntime) {
+        res.writeHead(503);
+        res.end(JSON.stringify({ error: "Agent runtime not ready" }));
+        return;
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+      } catch {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "Invalid JSON" }));
+        return;
+      }
+      const messages = Array.isArray(body.messages) ? body.messages : null;
+      const tasks = Array.isArray(body.scheduledTasks)
+        ? body.scheduledTasks
+        : [];
+      const todo =
+        body.todoSnapshot && typeof body.todoSnapshot === "object"
+          ? (body.todoSnapshot as Record<string, unknown>)
+          : null;
+      const todos = todo && Array.isArray(todo.todos) ? todo.todos : [];
+      const mutations =
+        todo && Array.isArray(todo.mutations) ? todo.mutations : [];
+      const digest =
+        todo && typeof todo.digest === "string" ? todo.digest : null;
+      if (
+        !messages ||
+        tasks.length > 0 ||
+        todos.length > 0 ||
+        mutations.length > 0 ||
+        !digest
+      ) {
+        res.writeHead(messages ? 501 : 400);
+        res.end(
+          JSON.stringify({
+            error: messages
+              ? "This Cloud image cannot yet import reminders or Todos"
+              : "Body must include a messages array and exact Todo snapshot",
+          }),
+        );
+        return;
+      }
+      const existingSourceIds = new Set(
+        state.memories
+          .map((memory) => memory.sourceId)
+          .filter((value): value is string => typeof value === "string"),
+      );
+      let inserted = 0;
+      for (const value of messages) {
+        if (!value || typeof value !== "object") continue;
+        const message = value as Record<string, unknown>;
+        const role =
+          message.role === "assistant"
+            ? "assistant"
+            : message.role === "user"
+              ? "user"
+              : null;
+        const text =
+          typeof message.text === "string" ? message.text.trim() : "";
+        const sourceId =
+          typeof message.sourceId === "string" ? message.sourceId.trim() : "";
+        if (!role || !text || !sourceId) continue;
+        if (existingSourceIds.has(sourceId)) {
+          continue;
+        }
+        state.memories.push({
+          role,
+          text,
+          sourceId,
+          roomId: decodeURIComponent(importMatch[1]),
+          timestamp:
+            typeof message.timestamp === "number"
+              ? message.timestamp
+              : Date.now(),
+        });
+        existingSourceIds.add(sourceId);
+        inserted += 1;
+      }
+      trimMemories();
+      state.lastActivityAt = new Date().toISOString();
+      res.writeHead(200);
+      res.end(
+        JSON.stringify({
+          conversationId: decodeURIComponent(importMatch[1]),
+          complete: true,
+          sourceMessageCount: messages.length,
+          inserted,
+          skipped: messages.length - inserted,
+          sourceScheduledTaskCount: 0,
+          importedScheduledTasks: 0,
+          skippedScheduledTasks: 0,
+          activatedScheduledTasks: 0,
+          skippedActivatedScheduledTasks: 0,
+          sourceTodoCount: 0,
+          sourceTodoMutationCount: 0,
+          importedTodos: 0,
+          repairedTodos: 0,
+          skippedTodos: 0,
+          removedStaleTodos: 0,
+          importedTodoMutations: 0,
+          skippedTodoMutations: 0,
+          sourceTodoDigest: digest,
+          targetTodoDigest: digest,
+        }),
+      );
+      return;
     }
 
     if (req.method === "POST" && req.url === "/api/snapshot") {
@@ -976,7 +1194,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               memoriesCount: state.memories.length,
               startedAt: state.startedAt,
               database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-              databaseLiveness,
+              // The bridge RPC is renderer/cloud-readable; project away the
+              // internal probe diagnostic just like the HTTP health boundary.
+              databaseLiveness: publicDatabaseLiveness(databaseLiveness),
             },
           }),
         );
@@ -1019,10 +1239,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
     );
     if (bridgeSecretGenerated) {
-      logger.warn(
-        "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
-      );
-      logger.info(`Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
+      warnGeneratedBridgeSecret();
     }
   });
 

@@ -1,6 +1,6 @@
 /**
  * Connector cards for the Plugins view: renders each connector plugin (Discord,
- * Telegram, Signal, cloud OAuth connections, …) as an expandable card that
+ * Telegram, WhatsApp, cloud OAuth connections, …) as an expandable card that
  * co-renders its config form and its setup/account-management panel — including
  * the case where a mode delegates its setup panel to a *different* plugin id.
  * `ConnectorPluginGroups` groups the visible connectors and lays them out flat
@@ -255,8 +255,7 @@ function ConnectorOAuthRoleButton({
     <Button
       ref={ref}
       variant="outline"
-      size="sm"
-      className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+      size="denseWide"
       onClick={() => {
         void onConnect(role);
       }}
@@ -296,9 +295,9 @@ function ConnectorResourceLink({
   return (
     <Button
       ref={ref}
-      variant="outline"
-      size="sm"
-      className="h-8 rounded-sm border-border/40 bg-card/40 px-3 text-xs-tight font-semibold text-muted transition-all hover:border-accent hover:bg-accent/5 hover:text-txt"
+      variant="outlineAccent"
+      size="dense"
+      className="font-semibold"
       onClick={() => {
         void onOpen(url);
       }}
@@ -843,17 +842,17 @@ function ConnectorPluginCard({
   const BrandIcon = getBrandIcon(plugin.id);
   const connectorHeaderMedia = (
     <span
-      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border p-2.5 ${
+      className={`mt-0.5 flex size-11 shrink-0 items-center justify-center rounded-sm border p-2.5 ${
         isSelected
           ? "border-accent/30 bg-accent/18 text-txt-strong"
           : "border-border/50 bg-bg-accent/80 text-muted"
       }`}
     >
       {BrandIcon ? (
-        <BrandIcon className="h-5 w-5 shrink-0" />
+        <BrandIcon className="size-5 shrink-0" />
       ) : (
         renderResolvedIcon(plugin, {
-          className: "h-4 w-4 shrink-0 rounded-sm object-contain",
+          className: "size-4 shrink-0 rounded-sm object-contain",
           emojiClassName: "text-base",
         })
       )}
@@ -917,7 +916,7 @@ function ConnectorPluginCard({
           allParamsSet ? "text-ok" : "text-warn"
         }`}
       >
-        <StatusIcon className="h-5 w-5" aria-hidden="true" />
+        <StatusIcon className="size-5" aria-hidden="true" />
       </span>
       <Switch
         ref={toggleControl.ref}
@@ -935,11 +934,9 @@ function ConnectorPluginCard({
       />
       <Button
         ref={expandControl.ref}
-        variant="ghost"
-        size="icon"
-        className={`h-8 w-8 shrink-0 rounded-none border-0 bg-transparent transition-colors hover:bg-transparent ${
-          isExpanded ? "text-txt" : "text-muted hover:text-txt"
-        }`}
+        variant="disclosureMuted"
+        size="icon-sm"
+        className="shrink-0"
         onClick={(event) => {
           event?.stopPropagation();
           handleConnectorSectionToggle(plugin.id);
@@ -952,7 +949,7 @@ function ConnectorPluginCard({
         {...expandControl.agentProps}
       >
         <ChevronRight
-          className={`h-4 w-4 transition-transform ${
+          className={`size-4 transition-transform ${
             isExpanded ? "rotate-90" : ""
           }`}
         />
@@ -1011,8 +1008,7 @@ function ConnectorPluginCard({
                 <Button
                   ref={managedDiscordControl.ref}
                   variant="outline"
-                  size="sm"
-                  className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+                  size="denseWide"
                   onClick={() => {
                     void handleOpenManagedDiscord();
                   }}
@@ -1073,8 +1069,7 @@ function ConnectorPluginCard({
                   <Button
                     ref={managedDiscordContinueControl.ref}
                     variant="default"
-                    size="sm"
-                    className="h-9 rounded-sm px-4 text-xs-tight font-semibold"
+                    size="compact"
                     onClick={() => {
                       void handleConfirmManagedDiscordAgent();
                     }}
@@ -1114,12 +1109,9 @@ function ConnectorPluginCard({
                       )}
                       icon={
                         role === "agent" ? (
-                          <Bot className="h-3.5 w-3.5" aria-hidden="true" />
+                          <Bot className="size-3.5" aria-hidden="true" />
                         ) : (
-                          <UserRound
-                            className="h-3.5 w-3.5"
-                            aria-hidden="true"
-                          />
+                          <UserRound className="size-3.5" aria-hidden="true" />
                         )
                       }
                       label={
@@ -1157,8 +1149,7 @@ function ConnectorPluginCard({
                 <Button
                   ref={telegramOpenCloudControl.ref}
                   variant="outline"
-                  size="sm"
-                  className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+                  size="denseWide"
                   onClick={() => {
                     setState("cloudDashboardView", "billing");
                     setTab("settings");
@@ -1206,8 +1197,8 @@ function ConnectorPluginCard({
               <Button
                 ref={installControl.ref}
                 variant="default"
-                size="sm"
-                className="h-8 rounded-sm px-4 text-xs-tight font-bold"
+                size="denseWide"
+                className="font-bold"
                 disabled={installingPlugins.has(plugin.id)}
                 onClick={() =>
                   void handleInstallPlugin(plugin.id, plugin.npmName ?? "")
@@ -1281,16 +1272,7 @@ function ConnectorPluginCard({
                     ? "destructive"
                     : "outline"
               }
-              size="sm"
-              className={`h-8 rounded-sm px-4 text-xs-tight font-bold transition-all ${
-                testResult?.loading
-                  ? "cursor-wait opacity-70"
-                  : testResult?.success
-                    ? "border-ok bg-ok text-ok-fg hover:bg-ok/90"
-                    : testResult?.error
-                      ? "border-danger bg-danger text-danger-fg hover:bg-danger/90"
-                      : "border-border/40 bg-card/40 hover:border-accent/40"
-              }`}
+              size="denseWide"
               disabled={testResult?.loading}
               onClick={() => void handleTestConnection(plugin.id)}
               {...testControl.agentProps}
@@ -1302,9 +1284,8 @@ function ConnectorPluginCard({
             <>
               <Button
                 ref={resetControl.ref}
-                variant="ghost"
-                size="sm"
-                className="h-8 rounded-sm px-4 text-xs-tight font-semibold text-muted hover:text-txt"
+                variant="ghostMuted"
+                size="denseWide"
                 onClick={() => handleConfigReset(plugin.id)}
                 {...resetControl.agentProps}
               >
@@ -1313,12 +1294,7 @@ function ConnectorPluginCard({
               <Button
                 ref={saveControl.ref}
                 variant={saveSuccess ? "default" : "secondary"}
-                size="sm"
-                className={`h-8 rounded-sm px-4 text-xs-tight font-bold transition-all ${
-                  saveSuccess
-                    ? "bg-ok text-ok-fg hover:bg-ok/90"
-                    : "bg-accent text-accent-fg hover:bg-accent/90"
-                }`}
+                size="denseWide"
                 onClick={() => void handleConfigSave(plugin.id)}
                 disabled={isSaving}
                 {...saveControl.agentProps}

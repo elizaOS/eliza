@@ -1,7 +1,7 @@
 /**
- * RECENT_MESSAGES provider — builds the canonical bounded conversation
- * transcript injected into the planner prompt for the current room. Fetches room
- * memories (honoring the compaction start point), then filters, dedupes, and
+ * RECENT_MESSAGES provider — builds the canonical complete conversation
+ * transcript injected into the planner prompt for the current room. Fetches all
+ * retained room memories, then filters, dedupes, and
  * formats them into `# Conversation Messages` / `# Posts in Thread` blocks plus a
  * `# Received Message` / `# Focus your response` framing for the incoming turn.
  * Part of the basic-capabilities bundle and the single source of dialogue
@@ -12,23 +12,28 @@
  * transient orchestrator status posts, leaked tool transcripts and local-path
  * dumps, and consecutive- or assistant-run duplicates are all stripped so the
  * model never re-reads its own machinery or paraphrases it as fact on a later
- * turn. Rendered history is hard-capped to the runtime conversation length
- * regardless of how many rows the adapter returns, and a persisted compaction
- * ledger is prepended when present. On any error the provider degrades to an
+ * turn. Every retained dialogue row is rendered; runtime conversation-length
+ * settings and old compaction timestamps must never silently remove prompt
+ * history. On any error the provider degrades to an
  * empty, safe result rather than throwing — a throw here would drop the entire
  * turn's history.
  *
- * Also surfaces cross-room `recentInteractions` between the sender's identity
- * cluster and the agent, rendered as message or post interactions by room type.
- * That fetch only runs on a turn RECOMPOSE (the provider already present in the
- * cached state passed in): no Stage-1 template renders it, so the first compose
- * of a turn skips the cross-room queries entirely.
+ * Also surfaces cross-room `recentInteractions` between the sender's verified
+ * identity cluster and the agent. These are rendered in Stage 1 so a direct
+ * handoff question can be answered without a retrieval round trip, but only
+ * after the live destination is revalidated as an owner-exclusive DM.
  */
 
+import { buildCrossWorldConversationAccessContext } from "../../../access-context.ts";
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
+import {
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+	recordOwnerExclusiveSuppression,
+	revalidateOwnerExclusiveDisclosure,
+} from "../../../security/trusted-delivery-audience.ts";
 import type {
 	CustomMetadata,
 	Entity,
@@ -40,7 +45,6 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
-import { truncateWellFormed } from "../../../utils/well-formed.ts";
 import {
 	addHeader,
 	conversationMessagesHeader,
@@ -50,10 +54,6 @@ import {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
-const MAX_RECENT_MESSAGES_LOOKBACK = 50;
-const RECALL_REFERENTIAL_MESSAGES_LOOKBACK = 50;
-const MAX_RECENT_INTERACTIONS = 20;
-const MAX_COMPACT_LEDGER_CHARS = 4000;
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
 	"[tool output:",
 	"[/tool output]",
@@ -76,14 +76,8 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"transient_failure",
 	"handler_error",
 	"persistence_error",
+	"coding_verification_failed",
 ]);
-const RECALL_REFERENTIAL_PATTERNS = [
-	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,
-	/\b(?:my|our|the)\s+(?:last|previous|prior|earlier)\b.*\b(?:question|request|message|ask|thing|calculation|math|topic)\b/i,
-	/\b(?:last|previous|prior|earlier)\s+(?:math|calculation|question|request|message)\b/i,
-	/\b(?:earlier|previously|before)\b.*\b(?:i|we|you)\s+(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
-	/\b(?:remind me|recall|remember)\b.*\b(?:what|when|which)\b.*\b(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
-];
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -209,11 +203,6 @@ function normalizeDialogueText(memory: Memory): string {
 		: "";
 }
 
-function isRecallReferentialMessage(memory: Memory): boolean {
-	const text = normalizeDialogueText(memory);
-	return RECALL_REFERENTIAL_PATTERNS.some((pattern) => pattern.test(text));
-}
-
 function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
 	const deduped: Memory[] = [];
 	for (const message of messages) {
@@ -250,17 +239,6 @@ function dedupeAssistantRunMessages(
 		deduped.push(message);
 	}
 	return deduped;
-}
-
-function getConversationCompactionLedger(room: { metadata?: unknown } | null) {
-	const metadata =
-		room?.metadata && typeof room.metadata === "object"
-			? (room.metadata as Record<string, unknown>)
-			: {};
-	const compaction = metadata.conversationCompaction;
-	if (!compaction || typeof compaction !== "object") return "";
-	const ledger = (compaction as Record<string, unknown>).priorLedger;
-	return typeof ledger === "string" ? ledger.trim() : "";
 }
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
@@ -336,33 +314,77 @@ async function ensureFormattingEntities(
 	return Array.from(entitiesById.values());
 }
 
-// Cross-room history between the sender's identity cluster and the target
-// entity, excluding the current room, capped to the most recent 20 rows.
+// Cross-room history from rooms shared by the sender's identity cluster and
+// the target entity, excluding the current room.
 const getRecentInteractions = async (
 	runtime: IAgentRuntime,
-	sourceEntityId: UUID,
+	message: Memory,
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
 ): Promise<Memory[]> => {
-	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
-	const roomsByIdentity = await Promise.all(
-		sourceEntityIds.map((entityId) =>
-			runtime.getRoomsForParticipants([entityId, targetEntityId]),
-		),
+	// The standalone agent installs a richer, always-on provider for this exact
+	// cross-room surface. Let it own those rows so Stage 1 does not render the
+	// same private transcript once as structured RECENT_MESSAGES events and a
+	// second time as a recent-conversations text block. Hosts without that
+	// provider continue to use core's portable fallback below.
+	const hasDedicatedCrossRoomProvider = runtime.providers?.some((provider) => {
+		const name = provider.name?.trim().toLowerCase();
+		return (
+			name === "recent-conversations" &&
+			provider.alwaysInResponseState === true &&
+			provider.private !== true
+		);
+	});
+	if (hasDedicatedCrossRoomProvider) return [];
+
+	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+	if (
+		!disclosure.allowed ||
+		disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+	) {
+		if (!disclosure.allowed) {
+			recordOwnerExclusiveSuppression(message, disclosure.reason);
+		}
+		return [];
+	}
+	if (targetEntityId !== runtime.agentId) return [];
+	const accessContext = await buildCrossWorldConversationAccessContext(
+		runtime,
+		message,
 	);
-	const rooms = Array.from(new Set(roomsByIdentity.flat()));
-	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
+	const otherRooms = (accessContext.authorizedRoomIds ?? []).filter(
+		(room) => room !== excludeRoomId,
+	);
 	if (otherRooms.length === 0) {
 		return [];
 	}
 
 	// Check the existing memories in the database
-	return runtime.getMemoriesByRoomIds({
+	const interactions = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
-		limit: 20,
+		accessContext,
 	});
+	if (interactions.length > 0) {
+		markOwnerExclusiveDisclosureUsed(message);
+	}
+	return interactions;
 };
+
+function summarizeInteractionAttachments(memory: Memory): string {
+	return (memory.content.attachments ?? [])
+		.map((attachment) => {
+			const label =
+				attachment.filename ??
+				attachment.title ??
+				attachment.id ??
+				"attachment";
+			const mediaType = attachment.mimeType ?? attachment.contentType;
+			const readableContent = attachment.text ?? attachment.description;
+			return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
+		})
+		.join(" ");
+}
 
 export const recentMessagesProvider: Provider = {
 	name: spec.name,
@@ -372,6 +394,10 @@ export const recentMessagesProvider: Provider = {
 	contextGate: { anyOf: ["memory", "messaging"] },
 	cacheStable: false,
 	cacheScope: "turn",
+	// Stage 1 chooses routing contexts, so cross-world handoff evidence must be
+	// available before a context gate can use that choice. The provider itself
+	// revalidates owner-exclusive delivery before reading any other room.
+	alwaysInResponseState: true,
 	// GUEST floor: this is the CURRENT room's transcript — content every
 	// participant can already read in their client. Gating it at USER made the
 	// agent-host role gate (packages/agent plugin-role-gating) withhold the
@@ -384,71 +410,24 @@ export const recentMessagesProvider: Provider = {
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		state: State,
+		_state: State,
 	): Promise<ProviderResult> => {
 		try {
 			const { roomId } = message;
-			const configuredConversationLength = Math.min(
-				runtime.getConversationLength(),
-				MAX_RECENT_MESSAGES_LOOKBACK,
-			);
-			const conversationLength = isRecallReferentialMessage(message)
-				? RECALL_REFERENTIAL_MESSAGES_LOOKBACK
-				: configuredConversationLength;
-
-			// The cross-room interactions fetch (identity-cluster expansion, a
-			// rooms query per identity, then a 20-row pull across every other
-			// shared room) is consumed only by downstream state — action-time
-			// reads like MESSAGE target inference — never by the Stage-1 prompt
-			// or the simple-reply path. Stage 1 is the first compose of a turn
-			// (no prior result for this provider in the turn's cached state), so
-			// gate the fetch on a recompose: any pass whose state can reach a
-			// consumer builds over the cached state where this provider already
-			// ran (the planner names RECENT_MESSAGES in refreshProviders; action
-			// composes reuse the turn cache). Skipping on the first compose
-			// removes per-message cross-room DB work on turns that end at
-			// Stage 1.
-			const cachedProviderResults =
-				state?.data && typeof state.data === "object"
-					? (state.data as { providers?: unknown }).providers
-					: undefined;
-			const isTurnRecompose = Boolean(
-				cachedProviderResults &&
-					typeof cachedProviderResults === "object" &&
-					(cachedProviderResults as Record<string, unknown>)[spec.name],
-			);
-
-			// First get room to check for compaction point
-			const room = await runtime.getRoom(roomId);
-
-			// Check for compaction point - only load messages after this timestamp
-			const lastCompactionAt = room?.metadata?.lastCompactionAt as
-				| number
-				| undefined;
-			const compactLedger = getConversationCompactionLedger(room);
 
 			// Parallelize initial data fetching operations including recentInteractions
-			const [entitiesData, recentMessagesData, recentInteractionsData] =
+			const [entitiesData, recentMessagesData, recentInteractionsData, room] =
 				await Promise.all([
 					getEntityDetails({ runtime, roomId }),
 					runtime.getMemories({
 						tableName: "messages",
 						roomId,
-						limit: conversationLength,
 						unique: false,
-						// Use compaction point to filter history
-						start: lastCompactionAt,
 					}),
-					message.entityId !== runtime.agentId && isTurnRecompose
-						? getRecentInteractions(
-								runtime,
-								message.entityId,
-								runtime.agentId,
-								roomId,
-							).then((interactions) =>
-								interactions.slice(0, MAX_RECENT_INTERACTIONS),
-							)
+					message.entityId !== runtime.agentId
+						? getRecentInteractions(runtime, message, runtime.agentId, roomId)
 						: Promise.resolve([]),
+					runtime.getRoom(roomId),
 				]);
 
 			// Separate action results from regular messages
@@ -456,15 +435,6 @@ export const recentMessagesProvider: Provider = {
 				(msg) => msg.content && msg.content.type === "action_result",
 			);
 
-			// Hard cap on rendered history regardless of how many memories the
-			// DB returned. The `limit` parameter passed to `runtime.getMemories`
-			// is meant to bound this — but in practice some adapter paths and
-			// compaction-window combinations return the entire room's history.
-			// That dropped a single HANDLE_RESPONSE call to 220K+ characters of
-			// formatted history, ~55K tokens, plus duplicates from
-			// `appendPriorDialogueEvents` and `PLATFORM_CHAT_CONTEXT`. Slice to
-			// the runtime-configured conversation length (or the lookback
-			// ceiling) so the formatted text block is always bounded.
 			const rawDialogueMessages = recentMessagesData
 				.filter(
 					(msg) =>
@@ -475,11 +445,23 @@ export const recentMessagesProvider: Provider = {
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)
-				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+				.sort((a, b) => {
+					// Chronological (oldest first) is the order the prompt renders. A
+					// non-finite `createdAt` from an adapter row made the raw subtraction
+					// return NaN, which the sort spec treats as "equal", leaving the row
+					// at an arbitrary position in model-facing history. Normalize it to 0
+					// (oldest) and break exact ties on id so the window is deterministic.
+					const aCreatedAt = a.createdAt ?? 0;
+					const bCreatedAt = b.createdAt ?? 0;
+					const aSafe = Number.isFinite(aCreatedAt) ? aCreatedAt : 0;
+					const bSafe = Number.isFinite(bCreatedAt) ? bCreatedAt : 0;
+					if (aSafe !== bSafe) return aSafe - bSafe;
+					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+				});
 			const dialogueMessages = dedupeAssistantRunMessages(
 				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
 				runtime.agentId,
-			).slice(-conversationLength);
+			);
 
 			// Room entity lookups only include current participants. Historical room
 			// context can still contain messages from senders who left the room or
@@ -520,21 +502,8 @@ export const recentMessagesProvider: Provider = {
 					? addHeader("# Posts in Thread", formattedRecentPosts)
 					: "";
 
-			const compactedContext = compactLedger
-				? addHeader(
-						"# Conversation Compact Ledger",
-						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
-							? `${truncateWellFormed(compactLedger, MAX_COMPACT_LEDGER_CHARS)}...`
-							: compactLedger,
-					)
-				: "";
-			const recentPosts = [compactedContext, recentPostsBody]
-				.filter(Boolean)
-				.join("\n\n");
+			const recentPosts = recentPostsBody;
 
-			// Name the bounded window without advertising an action. Providers run
-			// on runtimes with different plugin and role surfaces; the Stage-1
-			// boundary is the authority that says whether older history is searchable.
 			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
 					? addHeader(
@@ -542,9 +511,7 @@ export const recentMessagesProvider: Provider = {
 							formattedRecentMessages,
 						)
 					: "";
-			const recentMessages = [compactedContext, recentMessagesBody]
-				.filter(Boolean)
-				.join("\n\n");
+			const recentMessages = recentMessagesBody;
 
 			// If there are no messages at all, and no current message to process, return a specific message.
 			// The check for dialogueMessages.length === 0 ensures we only show this if there's truly nothing.
@@ -690,7 +657,12 @@ export const recentMessagesProvider: Provider = {
 							"unknown";
 					}
 
-					return `${sender}: ${message.content.text}`;
+					return `${sender}: ${[
+						message.content.text,
+						summarizeInteractionAttachments(message),
+					]
+						.filter(Boolean)
+						.join(" ")}`;
 				});
 
 				return formattedInteractions.join("\n");
@@ -734,6 +706,12 @@ export const recentMessagesProvider: Provider = {
 			const data = {
 				recentMessages: dialogueMessages,
 				recentInteractions: recentInteractionsData,
+				...(recentInteractionsData.length > 0
+					? {
+							recentInteractionsDisclosure:
+								OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+						}
+					: {}),
 				actionResults: actionResultMessages,
 			};
 
@@ -752,6 +730,12 @@ export const recentMessagesProvider: Provider = {
 			// Combine all text sections
 			const text = [
 				isPostFormat ? recentPosts : recentMessages,
+				recentMessageInteractions
+					? addHeader(
+							"# Recent conversations across verified accounts",
+							recentMessageInteractions,
+						)
+					: "",
 				// Only add received message and focus headers if there are messages or a current message to process
 				recentMessages || recentPosts || message.content.text
 					? receivedMessageHeader
@@ -767,6 +751,11 @@ export const recentMessagesProvider: Provider = {
 				data: {
 					recentMessages: data.recentMessages,
 					recentInteractions: data.recentInteractions,
+					...(data.recentInteractionsDisclosure
+						? {
+								recentInteractionsDisclosure: data.recentInteractionsDisclosure,
+							}
+						: {}),
 					actionResults: data.actionResults,
 				},
 				values,

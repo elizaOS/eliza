@@ -4,7 +4,7 @@
  * see `analytics-data.ts` for the backend contract.
  */
 
-import type { AnalyticsTimeRange } from "@elizaos/cloud-shared/types";
+import type { AnalyticsTimeRange } from "@elizaos/cloud-sdk";
 
 export type { AnalyticsTimeRange };
 

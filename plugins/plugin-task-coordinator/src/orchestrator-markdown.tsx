@@ -1,6 +1,15 @@
 // Renders safe markdown prose inside orchestrator transcripts.
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+
+import {
+  Button,
+  Checkbox,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@elizaos/ui";
 import { Check, Copy } from "lucide-react";
 import { marked, type Token, type Tokens, type TokensList } from "marked";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -63,12 +72,11 @@ function renderToken(token: Token, key: string): ReactNode {
         return (
           <li key={itemKey} className="my-0.5 marker:text-muted">
             {item.task ? (
-              <Input
-                type="checkbox"
+              <Checkbox
                 checked={Boolean(item.checked)}
-                readOnly
+                disabled
                 aria-hidden
-                className="mr-1.5 h-4 w-4 p-0 align-middle accent-accent"
+                className="mr-1.5 align-middle"
               />
             ) : null}
             {renderChildren(item.tokens, itemKey)}
@@ -92,45 +100,45 @@ function renderToken(token: Token, key: string): ReactNode {
     case "table":
       return (
         <div key={key} className="my-1.5 overflow-x-auto">
-          <table className="w-full border-collapse text-2xs">
-            <thead>
-              <tr>
+          <Table density="dense">
+            <TableHeader>
+              <TableRow>
                 {token.header.map((cell: Tokens.TableCell, index: number) => {
                   const cellKey = `${key}.h${index}`;
                   return (
-                    <th
+                    <TableHead
                       key={cellKey}
                       style={alignStyle(cell.align)}
                       className="border border-border/60 bg-bg/40 px-2 py-1 text-left font-semibold text-txt"
                     >
                       {renderChildren(cell.tokens, cellKey)}
-                    </th>
+                    </TableHead>
                   );
                 })}
-              </tr>
-            </thead>
-            <tbody>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {token.rows.map((row: Tokens.TableCell[], rowIndex: number) => {
                 const rowKey = `${key}.r${rowIndex}`;
                 return (
-                  <tr key={rowKey}>
+                  <TableRow key={rowKey}>
                     {row.map((cell: Tokens.TableCell, cellIndex: number) => {
                       const cellKey = `${rowKey}c${cellIndex}`;
                       return (
-                        <td
+                        <TableCell
                           key={cellKey}
                           style={alignStyle(cell.align)}
                           className="border border-border/50 px-2 py-1 align-top"
                         >
                           {renderChildren(cell.tokens, cellKey)}
-                        </td>
+                        </TableCell>
                       );
                     })}
-                  </tr>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       );
     case "hr":
@@ -246,23 +254,23 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }): ReactNode {
           {lang}
         </div>
       ) : null}
-      <Button
-        unstyled
-        type="button"
-        onClick={copy}
-        aria-label={copied ? "Copied" : "Copy code"}
-        // Unobtrusive: faded until the block is hovered/focused, fully shown
-        // once copied. Green only as the success affordance.
-        className={`absolute right-1 top-1 z-10 rounded p-1 text-muted opacity-0 transition-[color,opacity] hover:bg-bg-hover/60 hover:text-txt focus-visible:opacity-100 group-hover/code:opacity-100 ${
-          copied ? "text-ok opacity-100" : ""
-        }`}
+      <span
+        className={`absolute right-1 top-1 z-10 opacity-0 focus-within:opacity-100 group-hover/code:opacity-100 ${copied ? "opacity-100" : ""}`}
       >
-        {copied ? (
-          <Check className="h-3.5 w-3.5" aria-hidden />
-        ) : (
-          <Copy className="h-3.5 w-3.5" aria-hidden />
-        )}
-      </Button>
+        <Button
+          variant={copied ? "surfaceAccent" : "ghostMuted"}
+          size="icon-sm"
+          type="button"
+          onClick={copy}
+          aria-label={copied ? "Copied" : "Copy code"}
+        >
+          {copied ? (
+            <Check className="size-3.5" aria-hidden />
+          ) : (
+            <Copy className="size-3.5" aria-hidden />
+          )}
+        </Button>
+      </span>
       <pre className="max-h-72 overflow-auto px-2.5 py-1.5 font-mono text-2xs leading-relaxed text-txt">
         <code className="whitespace-pre-wrap break-words">{code}</code>
       </pre>

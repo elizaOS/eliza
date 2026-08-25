@@ -3,6 +3,8 @@
  * attempt is claimed and fully snapshotted before Stripe is called; provider
  * retries reuse that attempt's stable idempotency key and fenced lease.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import Decimal from "decimal.js";
 import type Stripe from "stripe";
 import type {
@@ -259,7 +261,7 @@ function stripeErrorCode(error: unknown): string | null {
 
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "Unknown provider error";
-  return message.replaceAll(/\s+/g, " ").slice(0, 500);
+  return truncateWellFormed(toWellFormedUnicode(message.replaceAll(/\s+/g, " ")), 500);
 }
 
 function curatedProviderResult(paymentIntent: Stripe.PaymentIntent): Record<string, unknown> {

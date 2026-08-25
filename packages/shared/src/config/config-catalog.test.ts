@@ -11,6 +11,7 @@ import {
   evaluateLogicExpression,
   getByPath,
   isConfigKeySatisfied,
+  isSafeUntrustedRegexPattern,
   LOGIC_EXPRESSION_INVALID,
   LOGIC_EXPRESSION_UNBOUNDED,
   MAX_LOGIC_EXPRESSION_DEPTH,
@@ -18,6 +19,9 @@ import {
   MAX_LOGIC_EXPRESSION_NODES,
   MAX_LOGIC_EXPRESSION_PATH_LENGTH,
   MAX_LOGIC_EXPRESSION_PATH_SEGMENTS,
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
+  MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
+  matchesSafeUntrustedRegexPattern,
   runValidation,
   setByPath,
 } from "./config-catalog.js";
@@ -159,6 +163,70 @@ describe("config-catalog built-in validators", () => {
         {},
       ),
     ).toEqual({ valid: false, errors: ["Must be a finite number"] });
+  });
+
+  it("fails closed on nested-quantifier plugin patterns", () => {
+    const evil = "^(a+)+$";
+    const value = `${"a".repeat(30)}!`;
+    expect(isSafeUntrustedRegexPattern(evil)).toBe(false);
+    expect(builtInValidators.pattern(value, { pattern: evil })).toBe(false);
+    expect(
+      runValidation(
+        {
+          checks: [{ fn: "pattern", args: { pattern: evil }, message: "bad" }],
+        },
+        value,
+        {},
+      ),
+    ).toEqual({ valid: false, errors: ["bad"] });
+  });
+
+  it("fails closed on quantified-alternation patterns", () => {
+    expect(isSafeUntrustedRegexPattern("^(a|a)+$")).toBe(false);
+    expect(
+      builtInValidators.pattern(`${"a".repeat(28)}b`, { pattern: "^(a|a)+$" }),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["extra nested group", "^((a+))+$"],
+    ["overlapping alternation", "^(a|aa)+$"],
+    ["two overlapping repetitions", "^a+a+$"],
+    ["two bounded choices", "^a{1,40}a{1,40}$"],
+    ["backreference", "^(a)\\1$"],
+    ["lookahead", "^(?=a)a$"],
+    ["unbounded fixed repetition", "^a{4097}$"],
+  ])("fails closed on %s", (_case, pattern) => {
+    expect(isSafeUntrustedRegexPattern(pattern)).toBe(false);
+  });
+
+  it.each(["^a{2}$", "^a{2,4}$", "\\S", "^[A-Z]{2}[0-9]{4}$"])(
+    "accepts the constrained dialect: %s",
+    (pattern) => {
+      expect(isSafeUntrustedRegexPattern(pattern)).toBe(true);
+    },
+  );
+
+  it("fails closed on overlong patterns", () => {
+    const overlong = `a${"x".repeat(MAX_UNTRUSTED_REGEX_PATTERN_LENGTH)}`;
+    expect(isSafeUntrustedRegexPattern(overlong)).toBe(false);
+    expect(builtInValidators.pattern("a", { pattern: overlong })).toBe(false);
+  });
+
+  it("fails closed on an overlong subject before matching", () => {
+    expect(
+      matchesSafeUntrustedRegexPattern(
+        "^a+$",
+        "a".repeat(MAX_UNTRUSTED_REGEX_INPUT_LENGTH + 1),
+      ),
+    ).toBe(false);
+  });
+
+  it("still accepts an honest format pattern", () => {
+    const honest = "^[a-z0-9_-]{1,32}$";
+    expect(isSafeUntrustedRegexPattern(honest)).toBe(true);
+    expect(builtInValidators.pattern("ok_id", { pattern: honest })).toBe(true);
+    expect(builtInValidators.pattern("NO", { pattern: honest })).toBe(false);
   });
 });
 

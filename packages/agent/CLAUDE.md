@@ -31,7 +31,7 @@ src/
     roles.ts / roles/     Role definitions and role-resolution helpers
     agent-wallets.ts      Agent wallet bootstrap and TEE-gated wallet logic
     model-resolution.ts   Model name resolution helpers
-    prompt-optimization.ts / prompt-compaction.ts  Prompt optimization and compaction strategies
+    prompt-optimization.ts  Lossless prompt telemetry and active-view awareness
     tool-call-cache/ tool-call-cache-wrapper.ts  Tool-call result caching layer
     first-time-setup.ts   First-run initialization logic
     load-plugin-from-directory.ts / load-plugin-from-vfs.ts  Plugin loading from local dirs and VFS
@@ -43,7 +43,6 @@ src/
     view-action-affinity.ts  View↔action routing affinity
     web-search-tools.ts / vault-profile-resolver.ts  Miscellaneous runtime helpers
     trajectory-*.ts       Trajectory persistence / query / internals
-    conversation-compactor*.ts  Conversation summarization/compaction
     operations/           vault-bridge.ts (config env resolution + optimized-prompt integrity key), classifier.ts,
                           cold-strategy.ts, manager.ts, health.ts, health-checks.ts,
                           reload-hot.ts, repository.ts, types.ts
@@ -62,7 +61,7 @@ src/
     paths.ts              resolveUserPath() and state/path helpers
     env-vars.ts, schema.ts, model-metadata.ts, owner-contacts.ts
   services/               Business-logic services (capability-broker, permissions-registry, config-plugin-manager, plugin-installer/-compiler, relationships-graph, agent-export, shell-execution-router, provider-neutral tee-*)
-  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory, compact-conversation)
+  actions/                Eliza actions registered by createElizaPlugin (terminal, trigger, contact, settings, plugin, logs, runtime, database, memory)
   providers/              Providers for createElizaPlugin (workspace, admin-trust/-panel, session, rolodex, recent/relevant-conversations, pending-permissions, escalation-trigger, page-scoped-context, ...)
   triggers/               runtime.ts (registerTriggerTaskWorker), scheduling.ts, types.ts
   auth/                   Credential storage + OAuth/Anthropic/OpenAI-Codex flows (account-storage, oauth-flow, refresh-mutex)
@@ -73,13 +72,13 @@ src/
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
 scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
-docs/                     capability-router-remote-plugins.md, e2b-capability-routing.md, tee-agent-implementation-plan.md
+  docs/                     capability-router-remote-plugins.md, remote-coding-runner.md, tee-agent-implementation-plan.md
 ```
 
 ## Key exports / surface
 
 - **Binary:** `eliza-autonomous` → `src/bin.ts` → `runAutonomousCli()`. Commands: `serve`/`start`, `runtime`, `ios-bridge`, `android-bridge`, `benchmark`.
-- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory/compact actions.
+- **Boot:** `startEliza()`, `bootElizaRuntime()`, `startInCloudMode()` (`runtime/eliza.ts`); `createElizaPlugin()` (`runtime/eliza-plugin.ts`) — the `Plugin` named `"eliza"` registering services (`AgentEventService`, `ElizaCharacterPersistenceService`, `AgentMediaGenerationService`, `PermissionRegistry`), workspace/session/rolodex providers, and the terminal/trigger/contact/settings/plugin/logs/runtime/database/memory actions.
 - **HTTP:** `startApiServer()`, `dispatchRoute()`, route handlers (`@elizaos/agent/api`).
 - **Plugin sets:** `CORE_PLUGINS`, `BLOCKING_CORE_PLUGINS`, `DEFERRED_CORE_PLUGINS`, `OPTIONAL_CORE_PLUGINS`, `MOBILE_CORE_PLUGINS` (`runtime/core-plugins.ts`); `resolvePlugins()`, `collectPluginNames()`.
 - **Config:** `loadElizaConfig`/`saveElizaConfig`, `CharacterSchema`, `resolveUserPath`, `resolveDefaultAgentWorkspaceDir`.
@@ -140,7 +139,7 @@ Verified audio redaction:
 Capability router (remote plugins — see `docs/capability-router-remote-plugins.md`):
 - `ELIZA_CAPABILITY_ROUTER_ENABLED`, `ELIZA_CAPABILITY_ROUTER_URLS`, `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, `ELIZA_CAPABILITY_ROUTER_TRUST_POLICY`, `ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT`.
 
-Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`, `ELIZA_CONVERSATION_COMPACTOR`.
+Wallet/chain: `EVM_PRIVATE_KEY`, `SOLANA_PRIVATE_KEY`, `ELIZA_WALLET_NETWORK`, `{BSC,QUICKNODE_BSC,NODEREAL_BSC}_RPC_URL`. Misc: `GITHUB_TOKEN`, `LOG_LEVEL`.
 
 Stability (memory watchdog — `runtime/memory-watchdog.ts`, #10197): the boot
   sampler (`runtime/boot-telemetry.ts`) only *records* RSS; the watchdog *acts* on
@@ -173,8 +172,22 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
 - `core-plugins.ts` splits plugins into blocking vs deferred boot phases; slow feature/provider plugins must stay in the deferred set or boot regresses.
 - Several barrel re-exports avoid duplicate-symbol (`TS2308`) collisions and lazy-load heavy plugins (wallet, app-manager, elizacloud) — read the inline comments in `index.ts`/`api/index.ts`/`services/index.ts` before adding broad `export *` lines.
 - `lint`/`lint:check` and `format` cover the complete `src/` tree.
+- Grounded action replies pass complete conversation memories, action results,
+  trajectories, character context, and model output without trimming, deduping,
+  summarizing, or silently falling back from a partial prompt. Missing or invalid
+  context is an explicit failure; final-wire model limits are enforced by core.
 - Provider-neutral TEE policy and key release are gated behind `services/tee-boot-gate*`; the hardware-free trust pipeline is exercised by `scripts/tee-full-stack-local.ts`. Concrete attestation providers and hardware validation belong to their deployment; see `docs/tee-agent-implementation-plan.md`.
 - **Files / media storage.** Attachment bytes live in one content-addressed store, `api/media-store.ts` (`${STATE_DIR}/media/<sha256>.<ext>`, served pre-auth at `/api/media/<sha256>.<ext>` with `nosniff` and a download `Content-Disposition` for SVG/active types). `services/file-storage.ts` (`LocalFileStorageService`, fills `ServiceType.REMOTE_FILES`) is the contract the rest of the system resolves through `runtime.getService(ServiceType.REMOTE_FILES)` for `store`/`getUrl`/`list`/`delete`; authenticated `api/files-routes.ts` (`GET`/`DELETE /api/files`) and the `actions/files.ts` `FILES` tool both use it. `api/media-runtime.ts` rehosts inline `data:` and remote generated-media URLs on authenticated outgoing paths through the SSRF guard and runs the reference-aware orphan GC. Do not add a second file store, a `files` table, or a second refcount/GC engine; see issue #8876 and the root media invariant.
+- **Trajectory metadata is append-complete.** Persist every extracted insight and
+  observation in source order, including duplicates. Page sizes may bound a
+  storage call, but recency windows and item caps must never rewrite trajectory,
+  training, or later model context. Preserve each record's exact text regardless
+  of length or surrounding whitespace; reject malformed Unicode rather than
+  repairing the recorded request or response.
+- **Agent read actions are exhaustive.** `FILES`, `SEARCH_KNOWLEDGE`, and
+  `MEMORY` return every authorized match. Storage page sizes are internal
+  transport batches; repeated, changing, or incomplete traversals fail
+  explicitly and must never become a successful model-facing prefix.
 
 ## Package completion evidence
 

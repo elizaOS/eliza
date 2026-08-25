@@ -40,6 +40,115 @@ interface ProbableErrorShape {
   response?: { status?: unknown };
 }
 
+const RETRYABLE_NETWORK_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETDOWN",
+  "ENETUNREACH",
+  "EPIPE",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+function nestedProviderError(error: unknown): unknown {
+  if (error instanceof TwitterError && error.originalError !== undefined) {
+    return error.originalError;
+  }
+  if (typeof error !== "object" || error === null || !("cause" in error)) {
+    return undefined;
+  }
+  return (error as { cause?: unknown }).cause;
+}
+
+function directProviderStatus(error: unknown): number | undefined {
+  const probed = probeError(error);
+  const candidate =
+    probed.data?.status ??
+    probed.response?.status ??
+    probed.status ??
+    probed.code;
+  if (typeof candidate === "number" && Number.isInteger(candidate)) {
+    return candidate;
+  }
+  if (typeof candidate === "string" && /^(?:[1-5]\d\d)$/.test(candidate)) {
+    return Number(candidate);
+  }
+  return undefined;
+}
+
+/** Returns the first structured HTTP status retained by an error/cause chain. */
+export function getTwitterProviderStatus(error: unknown): number | undefined {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && !seen.has(current)) {
+    seen.add(current);
+    const status = directProviderStatus(current);
+    if (status !== undefined) return status;
+    current = nestedProviderError(current);
+  }
+  return undefined;
+}
+
+function structuredProviderErrorType(
+  error: unknown,
+): TwitterErrorType | undefined {
+  const status = directProviderStatus(error);
+  if (status === 401 || status === 403) return TwitterErrorType.AUTH;
+  if (status === 429) return TwitterErrorType.RATE_LIMIT;
+  if (status === 400 || status === 422) return TwitterErrorType.VALIDATION;
+  if (status !== undefined && status >= 400 && status < 500) {
+    return TwitterErrorType.API;
+  }
+  if (status !== undefined && status >= 500 && status < 600) {
+    return TwitterErrorType.NETWORK;
+  }
+
+  const code = probeError(error).code;
+  if (
+    typeof code === "string" &&
+    RETRYABLE_NETWORK_CODES.has(code.toUpperCase())
+  ) {
+    return TwitterErrorType.NETWORK;
+  }
+  return undefined;
+}
+
+/**
+ * Converts only structured provider evidence into a typed X error.
+ *
+ * Arbitrary prose is deliberately not classified: a message containing
+ * "rate limit" is not proof that a request was rejected before acceptance.
+ */
+export function normalizeTwitterProviderError(
+  error: unknown,
+): TwitterError | null {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && !seen.has(current)) {
+    seen.add(current);
+    if (
+      current instanceof TwitterError &&
+      current.type !== TwitterErrorType.UNKNOWN
+    ) {
+      return current;
+    }
+
+    const type = structuredProviderErrorType(current);
+    if (type !== undefined) {
+      const message =
+        current instanceof Error && current.message.trim().length > 0
+          ? current.message
+          : `X provider request failed (${type})`;
+      return new TwitterError(type, message, current);
+    }
+    current = nestedProviderError(current);
+  }
+  return null;
+}
+
 function probeError(error: unknown): ProbableErrorShape {
   if (typeof error === "object" && error !== null) {
     return error as ProbableErrorShape;

@@ -374,6 +374,8 @@ describe("EscalationService coalescing (real service)", () => {
     expect(second.id).toBe(first.id);
     expect(second.text).toContain("first burst");
     expect(second.text).toContain("second burst");
-    expect(EscalationService.getActiveEscalationSync()?.id).toBe(first.id);
+    expect(EscalationService.getActiveEscalationSync(runtime)?.id).toBe(
+      first.id,
+    );
   });
 });

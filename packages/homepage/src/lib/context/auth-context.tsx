@@ -8,10 +8,15 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
 import { signInWithSolana as siwsSignIn } from "@/lib/api/siws";
+import {
+  assertCanonicalSiwsIdentity,
+  confirmSiwsSession,
+} from "@/lib/context/siws-session";
 
 export interface TelegramAuthData {
   id: number;
@@ -183,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const siwsAttemptRef = useRef(0);
 
   const setSessionToken = useCallback((token: string | null) => {
     if (typeof window === "undefined") return;
@@ -193,27 +199,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadUserInfo = useCallback(
+    async (token: string): Promise<UserInfoResponse> =>
+      elizacloudFetch<UserInfoResponse>("/api/eliza-app/user/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+    [],
+  );
+
+  const commitUserInfo = useCallback((data: UserInfoResponse) => {
+    setUser(data.user);
+    setOrganization(data.organization);
+  }, []);
+
   const fetchUserInfo = useCallback(
     async (tokenOverride?: string): Promise<boolean> => {
       const token = tokenOverride || getAuthToken();
-      if (!token) {
-        return false;
-      }
+      if (!token) return false;
 
-      const data = await elizacloudFetch<UserInfoResponse>(
-        "/api/eliza-app/user/me",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      setUser(data.user);
-      setOrganization(data.organization);
+      const data = await loadUserInfo(token);
+      commitUserInfo(data);
       return true;
     },
-    [],
+    [loadUserInfo, commitUserInfo],
   );
 
   useEffect(() => {
@@ -451,64 +461,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithSolana = useCallback(async (): Promise<SolanaLoginResult> => {
+    const attempt = ++siwsAttemptRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const result = await siwsSignIn();
-      setSessionToken(result.apiKey);
-      try {
-        await fetchUserInfo(result.apiKey);
-      } catch (err) {
-        // The /api/eliza-app/user/me endpoint may not yet recognize a
-        // wallet-only session. Fall back to a synthetic ElizaAppUser so the
-        // homepage UI can show a wallet-linked dashboard.
-        console.warn(
-          "[Auth] user/me failed after SIWS — using synthetic wallet user",
-          err,
-        );
-        const now = new Date().toISOString();
-        setUser({
-          id: result.user.id,
-          telegram_id: null,
-          telegram_username: null,
-          telegram_first_name: null,
-          discord_id: null,
-          discord_username: null,
-          discord_global_name: null,
-          discord_avatar_url: null,
-          whatsapp_id: null,
-          whatsapp_name: null,
-          phone_number: null,
-          name: `${result.address.slice(0, 4)}…${result.address.slice(-4)}`,
-          avatar: null,
-          organization_id: result.user.organization_id,
-          created_at: now,
-        });
-        setOrganization(
-          result.organization
-            ? {
-                id: result.organization.id,
-                name: result.organization.name,
-                credit_balance: "0.00",
-              }
-            : null,
-        );
-      }
+      await confirmSiwsSession(result.apiKey, {
+        loadCanonicalUser: loadUserInfo,
+        validateCanonicalUser: (canonicalUser) => {
+          assertCanonicalSiwsIdentity(result, canonicalUser);
+        },
+        isCurrentAttempt: () => attempt === siwsAttemptRef.current,
+        storeToken: setSessionToken,
+        publishCanonicalUser: commitUserInfo,
+      });
       return { success: true, address: result.address };
     } catch (err) {
       const result = parseAuthError(err);
-      setError(result.error ?? "Solana sign-in failed");
+      if (attempt === siwsAttemptRef.current) {
+        setError(result.error ?? "Solana sign-in failed");
+      }
       return result;
     } finally {
-      setIsLoading(false);
+      if (attempt === siwsAttemptRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [setSessionToken, fetchUserInfo]);
+  }, [setSessionToken, loadUserInfo, commitUserInfo]);
 
   const logout = useCallback(() => {
+    siwsAttemptRef.current += 1;
     setSessionToken(null);
     setUser(null);
     setOrganization(null);
     setError(null);
+    setIsLoading(false);
   }, [setSessionToken]);
 
   const refreshUser = useCallback(async () => {

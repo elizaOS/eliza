@@ -19,6 +19,96 @@ SCENARIO_USE_DETERMINISTIC_MODEL=1 eliza-scenarios run ./test/scenarios
 eliza-scenarios list ./test/scenarios
 ```
 
+## When2Speak Stage-1 evaluation
+
+Run the full labeled JSONL through the same `runV5MessageRuntimeStage1` model
+boundary used by production group messages:
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --provider=anthropic \
+  --character-preset=eliza \
+  --shard-index=0 \
+  --shard-count=8
+```
+
+`--character-preset=minimal` keeps the evaluator's small `ScenarioAgent`
+identity and remains the default for compatibility. Use
+`--character-preset=eliza` to evaluate with the same built-in English Eliza
+style preset selected by the product runtime.
+
+The command writes `reports/group-chat-timing/when2speak.json`. It reports two
+separate objectives: agreement with the corpus SPEAK/SILENT labels and ambient
+restraint on turns without trusted direct-address evidence. It also reports
+SPEAK and SILENT precision/recall/F1, false intervention rate, missed
+intervention rate, and slices by trusted address, textual agent reference,
+speaker count, and context length. A textual `[AGENT]` placeholder remains
+untrusted dialogue content; the evaluator does not convert it into connector
+mention metadata. Row-level gold and predicted decisions make every aggregate
+auditable without redistributing the source dialogue in the report. It sends
+every accepted dialogue to Stage 1 in full. A malformed row is recorded as a
+failure and makes the command exit nonzero. Complete Stage-1 trajectories are
+written beside the report under `reports/group-chat-timing/trajectories`;
+override that location with `--run-dir=<dir>`.
+
+The evaluator writes an atomic checkpoint after every selected row by default.
+Use `--checkpoint-every=<n>` to reduce checkpoint frequency and
+`--resume=<in-progress-report>` to continue the same output after a provider
+failure. Every report binds the input path and SHA-256 content digest; resume
+rejects changed input content, changed cell identity, or duplicate/gapped prior
+rows, and a run fails if the input changes while it is being evaluated.
+Use `--start-row=<n>` for an explicitly partial diagnostic, and zero-based
+`--shard-index` with `--shard-count` to partition the physical JSONL rows
+without shortening any accepted dialogue. Reports record the backend and requested model separately;
+the requested identifier is not a claim about an alias the provider actually
+served.
+
+After every shard finishes, merge them into a comparative matrix. The merger
+reopens the source JSONL and rejects partial status, bounded runs, missing or
+duplicate shards, rows assigned to the wrong shard, source-content drift,
+duplicate rows, and incomplete physical-row coverage:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:merge -- \
+  --output=../../reports/group-chat-timing/matrix.json \
+  /path/to/shard-*.json
+```
+
+For long live cells, use the supervisor instead of launching shards by hand:
+
+```bash
+bun run --cwd packages/scenario-runner eval:timing:matrix -- \
+  --input=/path/to/finetune_test_dialogue.jsonl \
+  --output-dir=/path/to/model-cell \
+  --provider=cli \
+  --shard-count=8 \
+  --workers=4
+```
+
+It adopts complete shards, resumes validated `in-progress` checkpoints, keeps
+per-shard stdout/stderr and trajectories, retries only runtime/provider exits,
+and writes an atomic run manifest. A configuration exit is terminal. The run
+finishes only after the canonical merger proves that every physical input row
+belongs to exactly one complete shard in one model cell. Re-running the same
+command performs no model calls after that proof exists.
+
+Pinned Discord replay output can exercise the same Stage-1 boundary:
+
+```bash
+bun run --cwd packages/scenario-runner eval:when2speak -- \
+  --input=/tmp/discord-replay.jsonl \
+  --input-format=discord-replay \
+  --provider=cli
+```
+
+Only points whose current turn is inbound to the selected target seat are
+eligible. The converter's paired SILENT pseudo-label assigns the target seat to
+the author of the current turn in a two-author chain; those points are recorded
+as explicit eligibility exclusions instead of pretending production evaluates
+its own outbound message. Exclusions remain part of physical-row coverage but
+do not make the command fail; malformed rows remain failures and exit nonzero.
+
 ## Writing a scenario
 
 Create a `<name>.scenario.ts` file and export a `ScenarioDefinition`:
@@ -49,14 +139,38 @@ export default {
 } satisfies ScenarioDefinition;
 ```
 
+### Plugin requirements
+
+Declare npm plugin import specifiers in `requires.plugins`; the runner passes
+each value to the runtime module resolver and registers the exported plugin
+before startup. This supports scoped or unscoped packages and package subpath
+exports without guessing from the spelling. Relative, absolute, `file:`, and
+`workspace:` specifiers fail preflight with a typed error because they are not
+portable runtime package requirements.
+
+If a scenario seed registers an in-file fixture plugin, declare its runtime
+plugin name in `requires.fixturePlugins` instead. Fixture names are verified
+after seeding and are never treated as module specifiers.
+
 ### Turn kinds
 
 | Kind | What it does |
 |---|---|
 | `message` | Sends text through `runtime.messageService.handleMessage` (full conversational path) |
-| `action` | Calls a named action's `validate` + `handler` directly (bypasses LLM routing) |
+| `action` | Calls a runtime-registered action's `validate` + `handler` directly; `expectedValidation: "rejected"` proves an invalid input is refused without invoking the handler |
 | `api` | Makes an HTTP request to the agent's registered routes via a loopback server |
 | `tick` | Invokes the lifeops scheduler at a logical clock time |
+| `wait` | Waits for `durationMs`, or polls a bounded `until(ctx)` state predicate |
+
+### Multi-world rooms and linked accounts
+
+`rooms[].world` names a logical world and `rooms[].entity` names a canonical
+logical entity. Distinct connector `account` values can use the same `entity`
+to model verified linked accounts across platforms. Omitting both fields keeps
+the legacy single-world, account-derived identity behavior. Seeds and custom
+checks receive deterministic runtime IDs through `ctx.roomIds`, `ctx.worldIds`,
+`ctx.entityIds`, `ctx.accountEntityIds`, `ctx.roomWorldIds`, and
+`ctx.roomEntityIds`. A memory seed may set `roomId` to a logical room name.
 
 ### Assertions
 
@@ -80,6 +194,8 @@ eliza-scenarios run  <dir>
   --export-native <path>   Export trajectory JSONL for training corpus
   --runId <id>             Override the auto-generated run UUID
   --scenario id1,id2       Filter to specific scenario IDs
+  --provider <name>        Pin the live provider: groq, openai, anthropic,
+                           google, openrouter, or cli
   [fileGlob ...]           Filter by file glob pattern
 ```
 
@@ -126,6 +242,82 @@ same-process observations cannot satisfy these contracts.
 
 Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when deterministic mode is disabled.
 
+## Production manifest persistence
+
+`applyProductionManifest` seeds the scenario runtime through the same
+`AgentRuntime` repository methods used in production. Version 1 supports
+world-scoped entities, rooms and participants, message and non-message memory
+partitions, relationships, tasks, scheduled items, notifications, pending
+`execute_workflow` approvals, and provider cache state. Each domain is written
+and removed through its production owner; the manifest does not maintain a
+parallel mutable world store.
+
+Every apply returns a JSON-serializable receipt containing the exact created
+identifiers. `readProductionManifestSnapshot` projects canonical state back
+from the authoritative stores, while `resetProductionManifest` accepts that
+receipt in a later process, strictly reparses its keys, hashes, UUID sets, and
+participant containment, and requires its canonical hash to match the
+finalized receipt hash in authoritative world metadata before public read or
+reset. Each receipt carries a fresh generation fence. Reset then verifies
+namespace and generation ownership, persists an exact receipt-hash-bound
+`resetting` control record, deletes through the production boundaries, and
+proves absence before persisting `complete`. A retry after an ambiguous process
+exit resumes only that authorized generation, while a clean replay returns the
+same absence artifact; a never-issued or stale-generation receipt is rejected.
+Manifest input is
+admitted only as bounded, plain JSON data and recursively validated as lossless
+JSON before any write. Logical entity, relationship, and earlier-task
+references inside schedules are materialized to production IDs, then
+canonicalized back to logical IDs on readback. `proveProductionManifestReset`
+captures initial/readback/reset/reseed artifacts and requires byte-equivalent
+canonical snapshots.
+
+Receipts include the exact schedule, notification, approval, memory-partition,
+and provider-state ownership needed for restart-safe cleanup. Apply discovers
+idempotent production rows after post-commit failures and compensates them;
+notification enumeration used for cleanup includes expired rows. Approval
+seeding awaits its durable notification projection, so no background write can
+escape receipt finalization. The manifest generation fences deterministic rows
+and reset authority across processes; exclusive multi-host scheduling and
+virtual-clock authority remain controller-level composition dependencies.
+
+## Strict model fixtures
+
+Deterministic scenarios can declare a serializable `modelFixtures` manifest on
+the scenario definition. Each fixture names an exact model type plus optional
+input, prompt, tool-set, and response-schema matchers; its response may contain
+text, JSON, or tool calls. Cardinality defaults to exactly once. Ranges, latency,
+SSE chunking, declared errors, and wait-for-cancellation behavior are explicit.
+
+The runner begins a fresh registry scope for every scenario attempt and records
+only prompt/schema fingerprints, lengths, fixture names, matching reasons, and
+consumption counts in `ScenarioReport.modelFixtureDiagnostics`. Unmatched,
+ambiguous, over-consumed, and unused required fixtures fail the attempt. There
+is no fallback for a declared manifest. Direct action/API scenarios that never
+enter a model path may instead declare
+`modelFixtures: { mode: "model-free", reason: "..." }`; message, voice, tick,
+or judge work makes that declaration invalid. Wait turns are also model-free.
+
+Before final fixture validation, the executor waits a bounded interval for
+tracked post-delivery work and requests cancellation through each task's
+`AbortSignal`. A task that ignores cancellation leaves its runtime quarantined:
+the attempt fails and every later scenario is refused before its fixture scope
+or world can start. JavaScript cannot terminate arbitrary code that ignores an
+abort signal, so subprocess/generation isolation must end that container before
+the runtime can be replaced; quarantine is containment, not a claim that the
+task was killed.
+
+The rollout is staged: undeclared scenarios temporarily retain the legacy
+resolver and reports mark them `legacy-fallback`; declared attempts report
+`strict-fixtures` or `model-free`. Declared rows contain only direct action/API
+work or wait/seed/final checks and are validated again by the real executor
+before each attempt. Migration is complete when no scenario reports
+`legacy-fallback`.
+
+Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
+single tools, multiple tools, clarifications, terminal replies, evaluators,
+scheduled rendering, and adversarial/malformed outputs.
+
 ## Programmatic use
 
 ```ts
@@ -143,6 +335,6 @@ await cleanup();
 
 ## Notes
 
-- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
+- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. All declared plugins are registered before runtime initialization, preserving service availability for existing seeds. Test companions must scope dependency overrides and ledgers to the runtime, dispose them at shutdown, and declare a guaranteed cleanup assertion for exact completeness. The CLI rejects a shared batch that mixes the meetings test companion with production-only meetings scenarios; use process isolation for that selection. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.

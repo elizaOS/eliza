@@ -5,13 +5,15 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import * as SelectPrimitive from "@radix-ui/react-select";
-import { Check } from "lucide-react";
 import type { AccountStrategy } from "../../api/client-agent";
-import { CONFIG_SELECT_FLOATING_LAYER_NAME } from "../../lib/floating-layers";
-import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
-import { Select, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 interface RotationStrategyPickerProps {
   providerId: LinkedAccountProviderId;
@@ -90,7 +92,7 @@ export function RotationStrategyPicker({
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted">
+      <span className="text-2xs font-medium uppercase tracking-wider text-muted">
         {t("accounts.strategy.label", { defaultValue: "Strategy" })}
       </span>
       <Select
@@ -113,58 +115,29 @@ export function RotationStrategyPicker({
             })}
           />
         </SelectTrigger>
-        <SelectPrimitive.Portal>
-          <SelectPrimitive.Content
-            data-floating-layer={CONFIG_SELECT_FLOATING_LAYER_NAME}
-            position="popper"
-            sideOffset={4}
-            align="end"
-            collisionPadding={16}
-            style={{
-              width: "min(18rem, calc(100vw - 2rem))",
-              backgroundColor: "var(--card)",
-              borderColor: "var(--border, rgba(255, 255, 255, 0.18))",
-            }}
-            className="relative z-[12000] overflow-hidden rounded-sm border text-txt shadow-md"
-          >
-            <SelectPrimitive.Viewport className="w-full p-1">
-              {STRATEGY_OPTIONS.map((option) => (
-                // Only the label lives inside ItemText — that is what Radix mirrors
-                // into the (fixed-width) trigger. The description is a sibling, so
-                // it shows in the dropdown list but never overflows the trigger.
-                <SelectPrimitive.Item
-                  key={option.id}
-                  value={option.id}
-                  className={cn(
-                    "flex w-full cursor-default select-none items-start gap-1.5 rounded-sm py-1.5 pl-2 pr-2 outline-none",
-                    "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-                    "data-[highlighted]:bg-bg-accent",
-                  )}
-                >
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <SelectPrimitive.ItemText>
-                      <span className="text-sm font-medium text-txt">
-                        {t(option.labelKey, {
-                          defaultValue: option.labelFallback,
-                        })}
-                      </span>
-                    </SelectPrimitive.ItemText>
-                    <span className="text-xs text-muted">
-                      {t(option.descriptionKey, {
-                        defaultValue: option.descriptionFallback,
-                      })}
-                    </span>
-                  </div>
-                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                    <SelectPrimitive.ItemIndicator>
-                      <Check className="h-3 w-3" />
-                    </SelectPrimitive.ItemIndicator>
-                  </span>
-                </SelectPrimitive.Item>
-              ))}
-            </SelectPrimitive.Viewport>
-          </SelectPrimitive.Content>
-        </SelectPrimitive.Portal>
+        <SelectContent
+          position="popper"
+          sideOffset={4}
+          align="end"
+          collisionPadding={16}
+          className="w-[min(18rem,calc(100vw-2rem))]"
+        >
+          {STRATEGY_OPTIONS.map((option) => (
+            <SelectItem
+              key={option.id}
+              value={option.id}
+              description={t(option.descriptionKey, {
+                defaultValue: option.descriptionFallback,
+              })}
+            >
+              <span className="text-sm font-medium text-txt">
+                {t(option.labelKey, {
+                  defaultValue: option.labelFallback,
+                })}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
       </Select>
     </div>
   );

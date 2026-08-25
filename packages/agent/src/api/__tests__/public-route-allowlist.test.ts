@@ -283,8 +283,12 @@ const ALLOWLIST: Record<string, string> = {
     "browser-extension companion revoke; companion-token auth, not dashboard JWT",
   "/api/browser-bridge/companions/sessions/:id/complete":
     "browser-extension companion session complete; companion-token auth",
+  "/api/browser-bridge/companions/sessions/:id/actions/begin":
+    "browser-extension companion session action begin; companion-token auth (getBrowserCompanionAuth + pairing token), rate limited",
   "/api/browser-bridge/companions/sessions/:id/progress":
     "browser-extension companion session progress; companion-token auth",
+  "/api/browser-bridge/companions/preflight":
+    "browser-extension companion preflight; companion-token auth, same gate as /companions/sync",
   "/api/browser-bridge/companions/sync":
     "browser-extension companion sync; companion-token auth",
 
@@ -301,6 +305,8 @@ const ALLOWLIST: Record<string, string> = {
     "health-connector OAuth provider redirect; arrives without dashboard JWT",
   "/api/lifeops/connectors/health/:provider/success (lifeops.health.success)":
     "health-connector OAuth provider return; arrives without dashboard JWT",
+  "/api/lifeops/money/plaid/webhook (lifeops.money.plaid.webhook)":
+    "Plaid webhook delivery; ES256 signature, exact-body hash, freshness, ingress deadline, body bound, and per-address rate limit apply before state work",
 
   // plugin-calendar — Google pushes arrive without a dashboard session and
   // are authenticated against the persisted channel/resource/token binding.
@@ -328,10 +334,6 @@ const ALLOWLIST: Record<string, string> = {
     "Meta webhook verification must bypass auth",
   "/api/whatsapp/webhook (whatsapp-webhook-event)":
     "Meta webhook delivery must bypass auth",
-
-  // plugin-bluebubbles
-  "bluebubbles-webhook":
-    "BlueBubbles webhook delivery must bypass auth (path is a runtime const)",
 
   // @elizaos/ui cloud public pages — reachable by external/unauthenticated users.
   "payment/:paymentRequestId":
@@ -363,6 +365,8 @@ const ALLOWLIST: Record<string, string> = {
     "cloud public page: resumes the OpenID Provider authorization request after login; must render before authentication so the API origin can validate the parked request",
   "terms-of-service": "cloud public page: legal page, no auth",
   "privacy-policy": "cloud public page: legal page, no auth",
+  "account-deletion":
+    "cloud public page: legal page (store-mandated deletion instructions), no auth",
   bsc: "cloud public page: BSC landing page, no auth",
 };
 

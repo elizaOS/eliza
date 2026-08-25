@@ -47,8 +47,6 @@ const EMPTY: ProviderResult = {
   data: { pendingPrompts: [] },
 };
 
-const PROMPT_LINES_MAX = 5;
-
 function formatPromptLine(prompt: PendingPrompt): string {
   const expires = prompt.expiresAt ? ` (expires ${prompt.expiresAt})` : "";
   return `- task ${prompt.taskId}: ${prompt.promptSnippet} [reply=${prompt.expectedReplyKind}]${expires}`;
@@ -60,12 +58,7 @@ function formatPromptLine(prompt: PendingPrompt): string {
  */
 export function renderPendingPromptsText(prompts: PendingPrompt[]): string {
   if (prompts.length === 0) return "";
-  const lines = prompts
-    .slice(0, PROMPT_LINES_MAX)
-    .map((prompt) => formatPromptLine(prompt));
-  if (prompts.length > PROMPT_LINES_MAX) {
-    lines.push(`(+${prompts.length - PROMPT_LINES_MAX} more)`);
-  }
+  const lines = prompts.map((prompt) => formatPromptLine(prompt));
   return [
     "Open prompts in this room (route inbound to .complete/.acknowledge):",
     ...lines,

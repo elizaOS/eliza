@@ -123,7 +123,10 @@ function sortStable(value: unknown): unknown {
 	if (value && typeof value === "object") {
 		return Object.fromEntries(
 			Object.entries(value as Record<string, unknown>)
-				.sort(([left], [right]) => left.localeCompare(right))
+				// Code-unit order, not localeCompare: ICU collation is
+				// environment-dependent, so hashes derived from this output
+				// must not vary with the host locale.
+				.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
 				.map(([key, nestedValue]) => [key, sortStable(nestedValue)]),
 		);
 	}

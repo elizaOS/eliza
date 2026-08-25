@@ -73,6 +73,16 @@ function parsePositiveIntegerEnv(
   );
 }
 
+/** Resolve the retention shared by finished shell jobs and output artifacts. */
+export function resolveShellJobTtlMs(): number {
+  return parsePositiveIntegerEnv(
+    "SHELL_JOB_TTL_MS",
+    DEFAULT_JOB_TTL_MS,
+    MAX_JOB_TTL_MS,
+    MIN_JOB_TTL_MS,
+  );
+}
+
 export const DEFAULT_FORBIDDEN_COMMANDS: readonly string[] = [
   "rm -rf /",
   "rmdir",
@@ -124,12 +134,7 @@ export function loadShellConfig(): ShellConfig {
     MAX_BACKGROUND_MS,
     MIN_BACKGROUND_MS,
   );
-  const jobTtlMs = parsePositiveIntegerEnv(
-    "SHELL_JOB_TTL_MS",
-    DEFAULT_JOB_TTL_MS,
-    MAX_JOB_TTL_MS,
-    MIN_JOB_TTL_MS,
-  );
+  const jobTtlMs = resolveShellJobTtlMs();
   const allowBackground = process.env.SHELL_ALLOW_BACKGROUND !== "false";
 
   const customForbidden = process.env.SHELL_FORBIDDEN_COMMANDS

@@ -3,7 +3,7 @@
 A small, single-file Bun HTTP runner that exposes a sandboxed workspace
 (filesystem + process execution) over HTTP. It powers Eliza Cloud coding
 containers and home-machine remote-runner hosting, serving the contract consumed
-by `packages/agent/src/services/e2b-capability-router.ts`.
+by `packages/agent/src/services/remote-coding-runner.ts`.
 
 ## What it serves
 
@@ -30,7 +30,7 @@ POST /v1/processes/run                run a command (JSON body)
   `commandRunner`).
 - `Dockerfile` — `node:24-bookworm-slim` base; installs Bun plus `git`,
   `ripgrep`, `python3`, `jq`, `openssh-client`, and (by default) the Codex,
-  Claude Code, and opencode CLIs.
+  and Claude Code CLIs.
   Runs as the non-root `runner` user; healthcheck hits `/health`.
 
 ## Scripts (scope with `--cwd`)
@@ -44,8 +44,7 @@ bun run --cwd packages/cloud/services/coding-remote-runner docker:build # build 
 ```
 
 Disable the bundled coding CLIs at image-build time with
-`--build-arg INSTALL_CODEX=false`, `INSTALL_CLAUDE_CODE=false`, and
-`INSTALL_OPENCODE=false`.
+`--build-arg INSTALL_CODEX=false` and `INSTALL_CLAUDE_CODE=false`.
 
 ## Env vars
 

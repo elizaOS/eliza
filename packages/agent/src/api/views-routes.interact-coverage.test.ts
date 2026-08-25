@@ -13,12 +13,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { viewActionAffinityMap } from "../runtime/view-action-affinity.ts";
 import {
+  getView,
   registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
+  dispatchViewInteract,
   handleViewsRoutes,
   type ViewsRouteContext,
 } from "./views-routes.ts";
@@ -46,6 +48,11 @@ const SURFACE_PLUGIN = "@test/views-surface-grants";
 const PRIVATE_PLUGIN = "@test/views-owner-private";
 const privateServerInteract = vi.fn(async (capability: string) => ({
   success: true,
+  capability,
+}));
+const declaredServerInteract = vi.fn(async (capability: string) => ({
+  success: true,
+  text: `ran ${capability}`,
   capability,
 }));
 
@@ -195,12 +202,13 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
             path: "/declared-caps",
             capabilities: [
               { id: "do-thing", description: "The one declared capability." },
+              {
+                id: "human-only-thing",
+                description: "A direct human control.",
+                authority: "human",
+              },
             ],
-            serverInteract: async (capability) => ({
-              success: true,
-              text: `ran ${capability}`,
-              capability,
-            }),
+            serverInteract: declaredServerInteract,
           },
         ],
       },
@@ -244,6 +252,7 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
     unregisterPluginViews(SURFACE_PLUGIN);
     unregisterPluginViews(PRIVATE_PLUGIN);
     privateServerInteract.mockClear();
+    declaredServerInteract.mockClear();
     vi.restoreAllMocks();
   });
 
@@ -370,6 +379,42 @@ describe("per-view interact e2e — serverInteract reaches view capabilities hea
       text: "ran do-thing",
       capability: "do-thing",
     });
+  });
+
+  it("rejects a human-only capability at the real route before effects", async () => {
+    const { ctx, json, error } = makeCtx(
+      "POST",
+      "/api/views/declared-caps/interact",
+      {
+        capability: "human-only-thing",
+        params: { humanOverride: true },
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      'Capability "human-only-thing" on view "declared-caps" requires direct human interaction',
+      403,
+    );
+    expect(declaredServerInteract).not.toHaveBeenCalled();
+  });
+
+  it("rejects direct dispatch of a human-only capability before effects", async () => {
+    const entry = getView("declared-caps");
+    if (!entry) throw new Error("declared-caps fixture was not registered");
+    const result = await dispatchViewInteract(
+      entry,
+      "declared-caps",
+      "human-only-thing",
+      { humanOverride: true },
+      {},
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/requires direct human interaction/);
+    expect(declaredServerInteract).not.toHaveBeenCalled();
   });
 
   it.each(["read-private", "write-private"])(

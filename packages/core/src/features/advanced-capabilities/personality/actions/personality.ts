@@ -40,8 +40,6 @@ import {
 import {
 	FORMALITY_VALUES,
 	GLOBAL_PERSONALITY_SCOPE,
-	MAX_CUSTOM_DIRECTIVES,
-	MAX_DIRECTIVE_CHARS,
 	PERSONALITY_AUDIT_TABLE,
 	type PersonalityScope,
 	type PersonalitySlot,
@@ -325,9 +323,9 @@ export const personalityAction: Action = {
 		{
 			name: "directive",
 			description:
-				"add_directive: a free-text directive to attach to the user's slot (≤200 chars, ≤5 active directives, FIFO eviction).",
+				"add_directive: a free-text directive to attach to the user's slot.",
 			required: false,
-			schema: { type: "string", maxLength: MAX_DIRECTIVE_CHARS },
+			schema: { type: "string" },
 		},
 		{
 			name: "name",
@@ -814,11 +812,6 @@ async function runAddDirective(
 		await args.callback?.({ text, thought: "Missing directive" });
 		return paramError("add_directive", text);
 	}
-	if (directive.length > MAX_DIRECTIVE_CHARS) {
-		const text = `That directive is too long — keep it under ${MAX_DIRECTIVE_CHARS} characters.`;
-		await args.callback?.({ text, thought: "Directive too long" });
-		return paramError("add_directive", text);
-	}
 	const { before, after } = await args.store.addDirective({
 		userId: args.userId,
 		agentId: args.agentId,
@@ -833,10 +826,7 @@ async function runAddDirective(
 		before,
 		after,
 	);
-	const text =
-		after.custom_directives.length === MAX_CUSTOM_DIRECTIVES
-			? `Got it. (You're at the ${MAX_CUSTOM_DIRECTIVES}-directive limit; oldest entries get evicted as you add more.)`
-			: "Got it — I'll keep that in mind for our chats.";
+	const text = "Got it — I'll keep that in mind for our chats.";
 	await args.callback?.({
 		text,
 		thought: `Added directive: ${directive}`,

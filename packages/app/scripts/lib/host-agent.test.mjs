@@ -484,6 +484,26 @@ describe("host-agent helper", () => {
     }
   });
 
+  it("can leave pairing enabled for remote-device onboarding evidence", async () => {
+    const agent = await startDeviceE2eHostAgent({
+      repoRoot: process.cwd(),
+      artifactDir: makeTmpDir(),
+      readyAttempts: 250,
+      readyDelayMs: 20,
+      command: process.execPath,
+      args: ["-e", fakeHostAgentScript()],
+      env: {},
+      pairingDisabled: false,
+    });
+    try {
+      const response = await fetch(`${agent.apiBase}/api/health`);
+      expect(response.ok).toBe(true);
+      expect(await response.json()).toMatchObject({ pairingDisabled: "0" });
+    } finally {
+      await agent.stop();
+    }
+  });
+
   it("fails fast and closes the log fd when the child cannot spawn", async () => {
     const artifactDir = makeTmpDir();
     await expect(

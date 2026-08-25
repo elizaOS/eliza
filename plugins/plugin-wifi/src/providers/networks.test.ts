@@ -62,10 +62,7 @@ describe("wifiNetworksProvider — success mapping", () => {
 
     const result = await wifiNetworksProvider.get(runtime, message, state);
 
-    // Bridge called with the provider's own 25-network cap.
-    expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith({
-      limit: 25,
-    });
+    expect(wifiBridge.listAvailableNetworks).toHaveBeenCalledWith();
 
     expect(result.data?.networks).toEqual([
       {
@@ -95,7 +92,7 @@ describe("wifiNetworksProvider — success mapping", () => {
     }
 
     expect(result.data?.count).toBe(2);
-    expect(result.data?.limit).toBe(25);
+    expect(result.data).not.toHaveProperty("limit");
     expect(result.values?.wifiNetworksAvailable).toBe(true);
     expect(result.values?.wifiNetworkCount).toBe(2);
     expect(result.values?.wifiNetworksError).toBeUndefined();
@@ -127,7 +124,7 @@ describe("wifiNetworksProvider — success mapping", () => {
 });
 
 describe("wifiNetworksProvider — error branch", () => {
-  it("maps a rejected scan to wifiNetworksError + empty networks + limit 25", async () => {
+  it("maps a rejected scan to wifiNetworksError and empty networks", async () => {
     wifiBridge.listAvailableNetworks.mockRejectedValue(
       new Error("ACCESS_FINE_LOCATION denied"),
     );
@@ -142,7 +139,7 @@ describe("wifiNetworksProvider — error branch", () => {
     );
     expect(result.data?.networks).toEqual([]);
     expect(result.data?.count).toBe(0);
-    expect(result.data?.limit).toBe(25);
+    expect(result.data).not.toHaveProperty("limit");
     expect(result.data?.error).toBe("ACCESS_FINE_LOCATION denied");
   });
 

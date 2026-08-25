@@ -98,11 +98,11 @@ export function PaymentWaitingOverlay({
       <div className="w-full max-w-md border border-border bg-card p-6 text-txt-strong">
         <div className="flex flex-col items-center text-center">
           {isConfirmed ? (
-            <CheckCircle2 className="h-12 w-12 text-emerald-300" />
+            <CheckCircle2 className="size-12 text-status-success" />
           ) : isFailed ? (
-            <XCircle className="h-12 w-12 text-red-300" />
+            <XCircle className="size-12 text-destructive" />
           ) : (
-            <Loader2 className="h-12 w-12 animate-spin text-txt" />
+            <Loader2 className="size-12 animate-spin text-txt" />
           )}
 
           <h2 className="mt-5 text-xl font-semibold">
@@ -169,14 +169,14 @@ export function PaymentWaitingOverlay({
                   {t("cloud.paymentWaiting.viewOnExplorer", {
                     defaultValue: "View on explorer",
                   })}
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               )}
             </div>
           )}
 
           {error && !data && (
-            <p className="mt-4 text-sm text-red-200">
+            <p className="mt-4 text-sm text-destructive">
               {error instanceof Error
                 ? error.message
                 : t("cloud.paymentWaiting.statusLookupFailed", {
@@ -187,23 +187,15 @@ export function PaymentWaitingOverlay({
 
           <div className="mt-6 flex gap-3">
             {isConfirmed ? (
-              <Button onClick={onDismiss} className="rounded-xs">
+              <Button onClick={onDismiss}>
                 {t("cloud.paymentWaiting.done", { defaultValue: "Done" })}
               </Button>
             ) : isFailed ? (
-              <Button
-                onClick={onDismiss}
-                variant="surface"
-                className="rounded-xs"
-              >
+              <Button onClick={onDismiss} variant="surface">
                 {t("cloud.paymentWaiting.close", { defaultValue: "Close" })}
               </Button>
             ) : (
-              <Button
-                onClick={onDismiss}
-                variant="surface"
-                className="rounded-xs text-txt"
-              >
+              <Button onClick={onDismiss} variant="surface">
                 {t("cloud.paymentWaiting.hideKeepWatching", {
                   defaultValue: "Hide — keep watching in background",
                 })}

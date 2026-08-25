@@ -52,11 +52,10 @@ The plugin also auto-enables when a `connectors.whatsapp` block is present in ag
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `WHATSAPP_AUTH_DIR` | Yes (Baileys) | Directory to persist multi-file Baileys auth state |
-| `WHATSAPP_SESSION_PATH` | No | Alternative name for `WHATSAPP_AUTH_DIR` |
+| `WHATSAPP_AUTH_DIR` | Yes (manual Baileys config) | Exact connector-owned account directory below the resolved elizaOS state directory |
 | `WHATSAPP_AUTH_METHOD` | No | Force transport: `cloudapi` or `baileys` (overrides auto-detection) |
 
-**Transport detection:** `WHATSAPP_AUTH_METHOD` wins when set. Otherwise: `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Baileys takes precedence when both are set.
+**Transport detection:** `WHATSAPP_AUTH_METHOD` wins when set. Otherwise: `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Pairing derives `<state-dir>/connectors/whatsapp/accounts/<accountId>` automatically. Manual paths must match that exact authority; broad or arbitrary paths are rejected.
 
 ### Access Control
 
@@ -109,13 +108,17 @@ await service?.sendMessage({
 Use `ClientFactory` when you need direct access to Cloud API media endpoints:
 
 ```typescript
-import { ClientFactory } from "@elizaos/plugin-whatsapp";
+import { ClientFactory, resolveWhatsAppAuthDirectory } from "@elizaos/plugin-whatsapp";
 
 // Cloud API
 const client = ClientFactory.create({ accessToken: "...", phoneNumberId: "..." });
 
 // Baileys
-const client = ClientFactory.create({ authMethod: "baileys", authDir: "./wa-auth" });
+const client = ClientFactory.create({
+  authMethod: "baileys",
+  accountId: "default",
+  authDir: resolveWhatsAppAuthDirectory("default"),
+});
 ```
 
 ### Webhook Setup (Cloud API)

@@ -21,7 +21,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { EventType } from "@elizaos/core";
+import { ElizaError, EventType, toWellFormedUnicode } from "@elizaos/core";
 import {
   ConversationHarness,
   type ConversationHarnessOptions,
@@ -63,8 +63,8 @@ export interface TrajectoryProviderSnapshot {
   providers: Array<{
     name: string;
     text?: string;
-    valuesKeys?: string[];
-    dataKeys?: string[];
+    values?: Record<string, unknown>;
+    data?: Record<string, unknown>;
   }>;
   text?: string;
 }
@@ -165,15 +165,25 @@ function isTrajectoryMarkdownReviewEnabled(
 
 const MARKDOWN_MAX_LINE_LENGTH = 180;
 
-function truncateText(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max)}…[truncated]` : text;
+function assertWellFormedTrajectoryText(text: string, field: string): string {
+  if (toWellFormedUnicode(text) !== text) {
+    throw new ElizaError(`Trajectory ${field} contains malformed Unicode`, {
+      code: "TRAJECTORY_TEXT_MALFORMED_UNICODE",
+      context: { field },
+    });
+  }
+  return text;
 }
 
 function stringifyJson(value: unknown, space = 0): string {
-  const seen = new WeakSet<object>();
+  const ancestors: object[] = [];
   const text = JSON.stringify(
     value,
-    (_key, currentValue) => {
+    function completeTrajectoryReplacer(key, currentValue) {
+      assertWellFormedTrajectoryText(key, "object key");
+      if (typeof currentValue === "string") {
+        return assertWellFormedTrajectoryText(currentValue, "value");
+      }
       if (typeof currentValue === "function") {
         return `[Function ${currentValue.name || "anonymous"}]`;
       }
@@ -181,10 +191,22 @@ function stringifyJson(value: unknown, space = 0): string {
         return currentValue.toString();
       }
       if (typeof currentValue === "object" && currentValue !== null) {
-        if (seen.has(currentValue)) {
-          return "[Circular]";
+        while (
+          ancestors.length > 0 &&
+          ancestors[ancestors.length - 1] !== this
+        ) {
+          ancestors.pop();
         }
-        seen.add(currentValue);
+        if (ancestors.includes(currentValue)) {
+          throw new ElizaError(
+            "Trajectory value contains a circular reference and cannot be recorded completely",
+            {
+              code: "TRAJECTORY_SERIALIZATION_CIRCULAR",
+              context: { field: key || "root" },
+            },
+          );
+        }
+        ancestors.push(currentValue);
       }
       return currentValue;
     },
@@ -193,13 +215,14 @@ function stringifyJson(value: unknown, space = 0): string {
   return text ?? String(value);
 }
 
-function safeStringify(value: unknown, max = 64_000): string {
-  try {
-    if (typeof value === "string") return truncateText(value, max);
-    return truncateText(stringifyJson(value), max);
-  } catch {
-    return truncateText(String(value), max);
-  }
+function stringifyCompleteValue(value: unknown): string {
+  return typeof value === "string"
+    ? assertWellFormedTrajectoryText(value, "value")
+    : assertWellFormedTrajectoryText(stringifyJson(value), "serialization");
+}
+
+function snapshotCompleteValue<T>(value: T): T {
+  return JSON.parse(stringifyJson(value)) as T;
 }
 
 function stringifyTrajectoryRecord(value: unknown): string {
@@ -216,16 +239,12 @@ function prettyJsonString(value: string): string | null {
   }
 }
 
-function formatMarkdownPayload(value: unknown, max = 64_000): string {
-  try {
-    const text =
-      typeof value === "string"
-        ? (prettyJsonString(value) ?? value)
-        : stringifyJson(value, 2);
-    return truncateText(text, max);
-  } catch {
-    return truncateText(String(value), max);
-  }
+function formatCompleteMarkdownPayload(value: unknown): string {
+  const text =
+    typeof value === "string"
+      ? (prettyJsonString(value) ?? value)
+      : stringifyJson(value, 2);
+  return assertWellFormedTrajectoryText(text, "markdown payload");
 }
 
 function wrapMarkdownLongLines(
@@ -240,12 +259,11 @@ function wrapMarkdownLongLines(
       const chunks: string[] = [];
       let remaining = line;
       while (remaining.length > max) {
-        let splitAt = remaining.lastIndexOf(" ", max);
-        if (splitAt < Math.floor(max * 0.6)) splitAt = max;
+        const splitAt = /[\uD800-\uDBFF]/.test(remaining.charAt(max - 1))
+          ? max - 1
+          : max;
         chunks.push(remaining.slice(0, splitAt));
-        remaining = remaining.slice(
-          /\s/.test(remaining.charAt(splitAt)) ? splitAt + 1 : splitAt,
-        );
+        remaining = remaining.slice(splitAt);
       }
       if (remaining.length > 0) chunks.push(remaining);
       return chunks;
@@ -295,32 +313,7 @@ function markdownFence(value: string, language = ""): string[] {
   return [language ? `${fence}${language}` : fence, body, fence];
 }
 
-function summarizeEmbeddingResponse(response: string): string | null {
-  const trimmed = response.trim();
-  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (
-      !Array.isArray(parsed) ||
-      !parsed.every((value) => typeof value === "number")
-    ) {
-      return null;
-    }
-    const preview = parsed
-      .slice(0, 8)
-      .map((value) => Number(value).toFixed(4))
-      .join(", ");
-    return `Embedding vector (${parsed.length} dimensions). Preview: [${preview}${parsed.length > 8 ? ", ..." : ""}]`;
-  } catch {
-    return null;
-  }
-}
-
 function llmResponseForMarkdown(call: TrajectoryLlmCall): string {
-  if (call.purpose === "embedding" || call.modelType === "TEXT_EMBEDDING") {
-    const summary = summarizeEmbeddingResponse(call.response);
-    if (summary) return summary;
-  }
   return call.response;
 }
 
@@ -348,8 +341,8 @@ function formatUsageLine(call: TrajectoryLlmCall): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function markdownTableCell(value: unknown, max = 160): string {
-  return truncateText(String(value ?? ""), max)
+function markdownTableCell(value: unknown): string {
+  return assertWellFormedTrajectoryText(String(value ?? ""), "table cell")
     .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
     .replace(/\r?\n/g, "<br>");
@@ -379,7 +372,7 @@ export function renderTrajectoryRecordMarkdown(
     lines.push("## Metadata");
     lines.push("");
     lines.push(
-      ...markdownFence(formatMarkdownPayload(record.metadata), "json"),
+      ...markdownFence(formatCompleteMarkdownPayload(record.metadata), "json"),
     );
   }
 
@@ -416,17 +409,21 @@ export function renderTrajectoryRecordMarkdown(
         lines.push("");
         lines.push("#### System Prompt");
         lines.push("");
-        lines.push(...markdownFence(formatMarkdownPayload(call.systemPrompt)));
+        lines.push(
+          ...markdownFence(formatCompleteMarkdownPayload(call.systemPrompt)),
+        );
       }
       lines.push("");
       lines.push("#### Prompt");
       lines.push("");
-      lines.push(...markdownFence(formatMarkdownPayload(call.prompt)));
+      lines.push(...markdownFence(formatCompleteMarkdownPayload(call.prompt)));
       lines.push("");
       lines.push("#### Response");
       lines.push("");
       lines.push(
-        ...markdownFence(formatMarkdownPayload(llmResponseForMarkdown(call))),
+        ...markdownFence(
+          formatCompleteMarkdownPayload(llmResponseForMarkdown(call)),
+        ),
       );
     }
   }
@@ -461,7 +458,9 @@ export function renderTrajectoryRecordMarkdown(
           `- include: ${snapshot.includeList.map((name) => `\`${name}\``).join(", ")}`,
         );
       }
-      lines.push(...markdownFence(formatMarkdownPayload(snapshot), "json"));
+      lines.push(
+        ...markdownFence(formatCompleteMarkdownPayload(snapshot), "json"),
+      );
     }
   }
 
@@ -470,7 +469,10 @@ export function renderTrajectoryRecordMarkdown(
     lines.push("## Memory Writes");
     lines.push("");
     lines.push(
-      ...markdownFence(formatMarkdownPayload(record.memoriesWritten), "json"),
+      ...markdownFence(
+        formatCompleteMarkdownPayload(record.memoriesWritten),
+        "json",
+      ),
     );
   }
 
@@ -478,7 +480,9 @@ export function renderTrajectoryRecordMarkdown(
     lines.push("");
     lines.push("## Events");
     lines.push("");
-    lines.push(...markdownFence(formatMarkdownPayload(record.events), "json"));
+    lines.push(
+      ...markdownFence(formatCompleteMarkdownPayload(record.events), "json"),
+    );
   }
 
   return `${redactMarkdownSecrets(lines.join("\n")).trimEnd()}\n`;
@@ -542,14 +546,41 @@ export function serializeLlmCallResult(result: unknown): {
     const error = (result as { error?: unknown }).error;
     if (typeof error === "string" && error.trim()) {
       return {
-        response: safeStringify(result),
+        response: stringifyCompleteValue(result),
         error,
       };
     }
   }
 
   return {
-    response: typeof result === "string" ? result : safeStringify(result),
+    response:
+      typeof result === "string"
+        ? assertWellFormedTrajectoryText(result, "model response")
+        : stringifyCompleteValue(result),
+  };
+}
+
+export function serializeLlmCallParams(params: unknown): {
+  prompt: string;
+  systemPrompt?: string;
+} {
+  if (!params || typeof params !== "object" || Array.isArray(params)) {
+    return { prompt: stringifyCompleteValue(params) };
+  }
+  const paramsRecord = params as Record<string, unknown>;
+  const systemPrompt =
+    typeof paramsRecord.systemPrompt === "string"
+      ? assertWellFormedTrajectoryText(
+          paramsRecord.systemPrompt,
+          "model system prompt",
+        )
+      : undefined;
+  return {
+    // `prompt` is the legacy trajectory field name. Structured calls retain
+    // the complete request object here so adjacent model-bound fields cannot
+    // silently disappear merely because the request also has a prompt string.
+    prompt: stringifyCompleteValue(paramsRecord),
+    ...(systemPrompt === undefined ? {} : { systemPrompt }),
   };
 }
 
@@ -846,18 +877,7 @@ export class RecordingHarness {
     params: unknown,
     result: unknown,
   ): void {
-    const paramsRecord =
-      params && typeof params === "object"
-        ? (params as Record<string, unknown>)
-        : {};
-    const prompt =
-      typeof paramsRecord.prompt === "string"
-        ? paramsRecord.prompt
-        : safeStringify(paramsRecord);
-    const systemPrompt =
-      typeof paramsRecord.systemPrompt === "string"
-        ? paramsRecord.systemPrompt
-        : undefined;
+    const { prompt, systemPrompt } = serializeLlmCallParams(params);
     const serializedResult = serializeLlmCallResult(result);
     const usage = extractLlmTokenUsage(result);
     this.llmCalls.push({
@@ -906,7 +926,7 @@ export class RecordingHarness {
     const providers: TrajectoryProviderSnapshot["providers"] = [];
     for (const [name, value] of Object.entries(providersBlock)) {
       if (!value || typeof value !== "object") {
-        providers.push({ name, text: safeStringify(value, 1000) });
+        providers.push({ name, text: stringifyCompleteValue(value) });
         continue;
       }
       const v = value as {
@@ -916,9 +936,13 @@ export class RecordingHarness {
       };
       providers.push({
         name,
-        text: typeof v.text === "string" ? v.text.slice(0, 4000) : undefined,
-        valuesKeys: v.values ? Object.keys(v.values) : undefined,
-        dataKeys: v.data ? Object.keys(v.data) : undefined,
+        text:
+          typeof v.text === "string"
+            ? assertWellFormedTrajectoryText(v.text, `provider ${name} text`)
+            : undefined,
+        values:
+          v.values === undefined ? undefined : snapshotCompleteValue(v.values),
+        data: v.data === undefined ? undefined : snapshotCompleteValue(v.data),
       });
     }
     this.providerSnapshots.push({
@@ -926,7 +950,9 @@ export class RecordingHarness {
       includeList,
       providers,
       text:
-        typeof state.text === "string" ? state.text.slice(0, 8000) : undefined,
+        typeof state.text === "string"
+          ? assertWellFormedTrajectoryText(state.text, "composed state text")
+          : undefined,
     });
   }
 
@@ -936,7 +962,7 @@ export class RecordingHarness {
 
   dumpTrajectory(): TrajectoryRecord {
     if (!this.endedAt) this.endedAt = Date.now();
-    return {
+    const record: TrajectoryRecord = {
       caseId: this.caseId,
       scenarioId: this.scenarioId,
       startedAt: this.startedAt,
@@ -954,6 +980,8 @@ export class RecordingHarness {
       memoriesWritten: [...this.memoriesWritten],
       metadata: { ...this.metadata },
     };
+    stringifyJson(record);
+    return record;
   }
 
   async writeTrajectoryToFile(filePath: string): Promise<void> {

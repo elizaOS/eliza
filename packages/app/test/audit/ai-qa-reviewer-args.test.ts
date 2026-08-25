@@ -4,7 +4,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -47,7 +47,6 @@ describe("AI-QA reviewer arguments", () => {
       runDir: null,
       concurrency: 4,
       strict: false,
-      updateDebt: false,
     });
     expect(
       parseReviewerArgs([
@@ -61,9 +60,10 @@ describe("AI-QA reviewer arguments", () => {
       runDir: "reports/example",
       concurrency: 8,
       strict: true,
-      updateDebt: false,
     });
-    expect(parseReviewerArgs(["--update-debt"]).updateDebt).toBe(true);
+    expect(() => parseReviewerArgs(["--update-debt"])).toThrow(
+      "unknown argument: --update-debt",
+    );
   });
 
   it("supports the walkthrough-only verdict destination", () => {
@@ -81,14 +81,8 @@ describe("AI-QA reviewer arguments", () => {
     [["--strcit"], "unknown argument: --strcit"],
     [["positional"], "unknown argument: positional"],
     [["--strict", "--strict"], "--strict may be specified only once"],
-    [
-      ["--strict", "--update-debt"],
-      "--strict and --update-debt cannot be combined",
-    ],
-    [
-      ["--update-debt", "--strict"],
-      "--strict and --update-debt cannot be combined",
-    ],
+    [["--strict", "--update-debt"], "unknown argument: --update-debt"],
+    [["--update-debt", "--strict"], "unknown argument: --update-debt"],
     [
       ["--concurrency", "2", "--concurrency", "3"],
       "--concurrency may be specified only once",
@@ -131,34 +125,6 @@ describe("AI-QA reviewer arguments", () => {
       expect(result.stderr).toContain("unknown argument: --strcit");
       expect(result.stdout).not.toContain("skipping");
       expect(result.stdout).not.toContain("PASSED");
-    },
-  );
-
-  it.each(
-    reviewerScripts.flatMap((reviewer) => [
-      { ...reviewer, flags: ["--strict", "--update-debt"] },
-      { ...reviewer, flags: ["--update-debt", "--strict"] },
-    ]),
-  )(
-    "rejects conflicting flags before work at the real $label boundary: $flags",
-    ({ label, path, flags, supportsVerdictMd }) => {
-      const caseName = `${label.replaceAll(" ", "-")}-${flags[0].slice(2)}`;
-      const runDir = resolve(temporaryRoot, caseName, "run");
-      const verdictMd = resolve(temporaryRoot, caseName, "verdict.md");
-      const args = [path, ...flags, "--run-dir", runDir];
-      if (supportsVerdictMd) args.push("--verdict-md", verdictMd);
-      const result = spawnSync(process.execPath, args, {
-        encoding: "utf8",
-        env: keylessEnvironment,
-      });
-
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain(
-        "--strict and --update-debt cannot be combined",
-      );
-      expect(result.stdout).not.toContain("skipping");
-      expect(existsSync(runDir)).toBe(false);
-      expect(existsSync(verdictMd)).toBe(false);
     },
   );
 

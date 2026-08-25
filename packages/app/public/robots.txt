@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /steward/
+Disallow: /.well-known/
+Disallow: /embed/
+Sitemap: https://eliza.app/sitemap.xml

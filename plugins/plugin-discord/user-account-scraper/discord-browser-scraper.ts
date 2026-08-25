@@ -20,7 +20,6 @@ export const DISCORD_PROVIDER_ID = "discord";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
-const DISCORD_DM_PREVIEW_LIMIT = 5;
 
 function isDiscordHost(url: string): boolean {
   try {
@@ -269,8 +268,7 @@ export function probeDiscordCapturedPage(
   ) {
     return {
       ...emptyDiscordTabProbe(safeUrl),
-      rawSnippet:
-        normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+      rawSnippet: normalizeDiscordText(page.mainText ?? null) ?? null,
     };
   }
 
@@ -305,13 +303,12 @@ export function probeDiscordCapturedPage(
       username: null,
       discriminator: null,
     },
-    rawSnippet:
-      normalizeDiscordText(page.mainText ?? null)?.slice(0, 160) ?? null,
+    rawSnippet: normalizeDiscordText(page.mainText ?? null) ?? null,
     dmInbox: {
       visible: previews.length > 0 || safeUrl.includes("/channels/@me"),
       count: previews.length,
       selectedChannelId,
-      previews: previews.slice(0, DISCORD_DM_PREVIEW_LIMIT),
+      previews,
     },
   };
 }
@@ -357,8 +354,7 @@ export function probeDiscordDocumentState(
     const discriminator =
       normalizeDiscordText(tagEl?.textContent ?? null)?.replace(/^#/, "") ??
       null;
-    const snippet =
-      normalizeDiscordText(panel?.textContent ?? null)?.slice(0, 160) ?? null;
+    const snippet = normalizeDiscordText(panel?.textContent ?? null) ?? null;
     const selectedChannelId = selectedDiscordDmChannelId(safeUrl ?? null);
     const previews = extractDiscordDmPreviews(document, selectedChannelId);
 
@@ -375,7 +371,7 @@ export function probeDiscordDocumentState(
         visible: previews.length > 0 || selectedChannelId !== null,
         count: previews.length,
         selectedChannelId,
-        previews: previews.slice(0, DISCORD_DM_PREVIEW_LIMIT),
+        previews,
       },
     };
   } catch (error) {
@@ -388,7 +384,6 @@ export function probeDiscordDocumentState(
 
 export function buildDiscordProbeScript(): string {
   return `(() => {
-    const DISCORD_DM_PREVIEW_LIMIT = ${DISCORD_DM_PREVIEW_LIMIT};
     const normalizeDiscordText = ${normalizeDiscordText.toString()};
     const selectedDiscordDmChannelId = ${selectedDiscordDmChannelId.toString()};
     const discordAnchorTextParts = ${discordAnchorTextParts.toString()};

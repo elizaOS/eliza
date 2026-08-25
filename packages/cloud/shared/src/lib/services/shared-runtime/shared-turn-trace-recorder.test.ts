@@ -115,6 +115,45 @@ describe("recordSharedTurnTrace gating", () => {
     expect(insertTrace).not.toHaveBeenCalled();
   });
 
+  test("retains authenticated voice diagnostics even when the general sample is zero", async () => {
+    const inserted: NewSharedTurnTraceRow[] = [];
+    const insertTrace = mock(async (trace: NewSharedTurnTraceRow) => {
+      inserted.push(trace);
+    });
+    const historyProvenance = {
+      channelId: "private-room",
+      channelType: "VOICE_DM",
+      channelSource: "client_chat",
+      messages: [
+        {
+          id: "message-1",
+          role: "user" as const,
+          createdAt: 1_787_860_800_000,
+          interrupted: false,
+        },
+      ],
+    };
+    const recorded = await recordSharedTurnTrace(
+      {
+        insertTrace,
+        env: {
+          SHARED_TURN_TRACES_ENABLED: "true",
+          SHARED_TURN_TRACES_SAMPLE: "0",
+        },
+      },
+      summaryFixture({ historyProvenance }),
+      { forceRecord: true },
+    );
+    expect(recorded).toBe(true);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0].stages).toEqual({
+      finishReason: "reply",
+      stages: [{ name: "model" }],
+      historyProvenance,
+    });
+    expect(JSON.stringify(inserted[0])).not.toContain("message content");
+  });
+
   test("persists a sampled trace with tenant scope, timing, and compact payloads", async () => {
     const inserted: NewSharedTurnTraceRow[] = [];
     const insertTrace = mock(async (trace: NewSharedTurnTraceRow) => {
@@ -198,7 +237,7 @@ describe("recordSharedTurnTrace gating", () => {
   });
 });
 
-describe("buildTurnSummary compaction", () => {
+describe("buildTurnSummary", () => {
   const PROMPT_TEXT = "please book me a flight to Tokyo tomorrow morning";
   const REPLY_TEXT = "Here is the plan I drafted for your Tokyo trip";
 
@@ -257,7 +296,7 @@ describe("buildTurnSummary compaction", () => {
     expect(serialized).not.toContain("Tokyo");
   });
 
-  test("caps the action stage list so a pathological turn stays compact", () => {
+  test("records every action stage in a long turn", () => {
     const summary = buildTurnSummary({
       result: turnResult({
         actionResults: Array.from({ length: 40 }, (_, i) => ({
@@ -267,8 +306,8 @@ describe("buildTurnSummary compaction", () => {
       }),
       ...identity,
     });
-    // 1 model stage + the capped action stages.
-    expect(summary.stages.length).toBe(17);
+    expect(summary.stages.length).toBe(41);
+    expect(summary.stages.at(-1)).toEqual({ name: "action", tool: "ACTION_39" });
   });
 
   test("classifies capability-wall turns by capability label only", () => {
@@ -278,7 +317,7 @@ describe("buildTurnSummary compaction", () => {
         capabilityWall: {
           capability: "reminders",
           label: "Reminders",
-          reply: "Reminders need Dedicated — but I can draft the reminder text for you.",
+          constraint: "This transport has no trusted reminder delivery.",
         },
       }),
       ...identity,
@@ -286,6 +325,25 @@ describe("buildTurnSummary compaction", () => {
     expect(summary.finishReason).toBe("capability-wall");
     expect(summary.stages).toEqual([{ name: "capability-wall", tool: "reminders" }]);
     expect(JSON.stringify(summary)).not.toContain("Dedicated");
+  });
+
+  test("records model-backed capability responses as model plus wall", () => {
+    const summary = buildTurnSummary({
+      result: turnResult({
+        model: "gpt-oss-120b",
+        capabilityWall: {
+          capability: "reminders",
+          label: "Reminders",
+          constraint: "This transport has no trusted reminder delivery.",
+        },
+      }),
+      ...identity,
+    });
+    expect(summary.finishReason).toBe("capability-wall");
+    expect(summary.stages).toEqual([
+      { name: "model" },
+      { name: "capability-wall", tool: "reminders" },
+    ]);
   });
 
   test("classifies the designed no-model unavailable state as degraded", () => {

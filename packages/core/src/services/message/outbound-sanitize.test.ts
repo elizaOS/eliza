@@ -11,6 +11,7 @@
  * inline code-span protection. Each delta has a dedicated test naming it.
  */
 import { describe, expect, it } from "vitest";
+import { REASONING_TAG_NAMES } from "../../utils/reasoning-tags";
 import { sanitizeOutboundText } from "./outbound-sanitize";
 
 describe("sanitizeOutboundText — reasoning tags (Discord characterization)", () => {
@@ -28,14 +29,59 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 		);
 	});
 
+	it("bounds repeated unmatched openings without exposing their payload", () => {
+		const residue = `${"<reasoning>".repeat(20_000)}private payload`;
+		expect(sanitizeOutboundText(residue)).toBe("");
+	});
+
+	it("passes through a run of many partial/unterminated candidates without hanging", () => {
+		// Regression for the `[^>]*>` / `\s*>` backtracking terminator search a
+		// maintainer benchmarked at ~3.9s for 16k unterminated candidates: every
+		// candidate independently re-walked the remaining string looking for a
+		// '>' that never comes. None of these candidates ever forms a tag (no
+		// reachable '>'), so the text survives unchanged — same locked shape as
+		// "strips an unterminated open tag as unclosed-to-end" above, just at
+		// adversarial scale. The pass/fail signal here is TIME, covered by the
+		// linearity assertion below; this test only pins the output.
+		const run = `${"<tool_call ".repeat(16_000)}xno closing bracket anywhere in this turn`;
+		expect(sanitizeOutboundText(run)).toBe(run);
+	});
+
+	it("sanitizes in roughly linear time, not quadratically, on unterminated candidates", () => {
+		// A fixed-size input that merely "finishes" would not catch a regression
+		// back to the backtracking terminator search — it measures the same
+		// construction at two sizes an order of magnitude apart and asserts the
+		// growth is roughly proportional to size, not size squared.
+		const buildRun = (n: number) =>
+			`${"<tool_call ".repeat(n)}xno closing bracket anywhere in this turn`;
+		const small = buildRun(1_600);
+		const large = buildRun(16_000);
+
+		const timeOf = (fn: () => void): number => {
+			const start = performance.now();
+			fn();
+			return performance.now() - start;
+		};
+
+		timeOf(() => sanitizeOutboundText(small)); // JIT warm-up, excluded from the measurement
+		timeOf(() => sanitizeOutboundText(large));
+
+		const smallMs = Math.max(
+			timeOf(() => sanitizeOutboundText(small)),
+			0.05,
+		);
+		const largeMs = timeOf(() => sanitizeOutboundText(large));
+
+		// Input grew 10x; quadratic cost would grow ~100x. 25x leaves slack for
+		// scheduler/GC noise without masking a real regression.
+		expect(largeMs).toBeLessThan(smallMs * 25);
+		// Absolute ceiling: the pre-fix backtracking regex took multiple seconds
+		// at this size; a linear scan finishes in single-digit ms.
+		expect(largeMs).toBeLessThan(500);
+	});
+
 	it("strips every reasoning tag family", () => {
-		for (const tag of [
-			"thinking",
-			"reasoning",
-			"reflection",
-			"thought",
-			"antthinking",
-		]) {
+		for (const tag of REASONING_TAG_NAMES) {
 			expect(
 				sanitizeOutboundText(`Before.<${tag}>hidden</${tag}>After.`),
 				`paired <${tag}> is stripped`,
@@ -150,12 +196,24 @@ describe("sanitizeOutboundText — nested, malformed, and adversarial shapes", (
 	});
 
 	it("does not strip a tag-name prefix of a longer identifier", () => {
-		// \b after the tag name: <tool_callback> is a different tag, and with no
-		// matching listed tag the quick filter still fires on `<tool_call` — the
-		// text must survive both passes unchanged.
+		// The exact tag-name boundary keeps longer custom elements distinct.
 		expect(sanitizeOutboundText("See <thoughtful>notes</thoughtful>.")).toBe(
 			"See <thoughtful>notes</thoughtful>.",
 		);
+		expect(
+			sanitizeOutboundText("See <thought-provoking>notes</thought-provoking>."),
+		).toBe("See <thought-provoking>notes</thought-provoking>.");
+		expect(
+			sanitizeOutboundText(
+				"See <reasoning-disabled>notes</reasoning-disabled>.",
+			),
+		).toBe("See <reasoning-disabled>notes</reasoning-disabled>.");
+	});
+
+	it("strips canonical tags with whitespace around their names", () => {
+		expect(
+			sanitizeOutboundText("Before.< thinking >private</ thinking >After."),
+		).toBe("Before.After.");
 	});
 
 	it("strips an unterminated open tag as unclosed-to-end", () => {

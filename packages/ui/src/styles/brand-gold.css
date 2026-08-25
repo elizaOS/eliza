@@ -85,8 +85,6 @@
   --first-run-panel-shadow: none;
   --first-run-input-bg: rgba(255, 255, 255, 0.7);
   --first-run-input-border: transparent;
-  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
-  --first-run-text-support-shadow: none;
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
   --first-run-link: var(--accent);
@@ -149,8 +147,6 @@
   --first-run-panel-shadow: none;
   --first-run-input-bg: rgba(255, 255, 255, 0.7);
   --first-run-input-border: transparent;
-  --first-run-text-support-bg: rgba(255, 255, 255, 0.46);
-  --first-run-text-support-shadow: none;
 
   --first-run-divider: rgba(31, 41, 55, 0.16);
   --first-run-footer-border: rgba(31, 41, 55, 0.14);
@@ -197,6 +193,29 @@
   --header-bar-fg: #e8e8ec;
   --section-bar-bg: var(--rich-black);
   --section-bar-fg: #e8e8ec;
+
+  /* First-run text tokens default to dark-on-light values; without these
+     overrides, first-run/auth screens render near-invisible dark text on the
+     dark background (WCAG ratio ~1.05 on the sign-in heading). */
+  --first-run-text-strong: rgba(250, 250, 252, 0.98);
+  --first-run-text-primary: rgba(240, 240, 244, 0.96);
+  --first-run-text-subtle: rgba(208, 208, 216, 0.88);
+  --first-run-text-muted: rgba(192, 192, 202, 0.84);
+  --first-run-text-faint: rgba(160, 160, 172, 0.76);
+  --first-run-text-stroke: rgba(0, 0, 0, 0.42);
+  --first-run-input-bg: rgba(255, 255, 255, 0.08);
+  --first-run-card-bg: rgba(255, 255, 255, 0.05);
+  --first-run-card-bg-hover: rgba(255, 255, 255, 0.09);
+  --first-run-panel-bg: rgba(255, 255, 255, 0.05);
+  --first-run-roster-bg: rgba(255, 255, 255, 0.07);
+  /* Primary action: the light-mode 18% tint fill turns near-black on a dark
+     canvas while its foreground stays near-black (ratio ~1.0 — an invisible
+     Activate button). Use the solid brand accent with its dark label. */
+  --first-run-accent-bg: var(--accent);
+  --first-run-accent-bg-hover: var(--accent-hover);
+  --first-run-accent-border: transparent;
+  --first-run-accent-border-hover: transparent;
+  --first-run-accent-foreground: var(--accent-foreground);
 }
 
 [data-testid="companion-header-chat-controls"] > button {

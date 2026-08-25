@@ -1,203 +1,209 @@
-// Exercises cloud API tests provisioning agent default image.test behavior with deterministic Worker route fixtures.
-import { describe, expect, mock, test } from "bun:test";
+/** Pins the historical provisioning route as an observation-only compatibility surface. */
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  createProvisioningAgentObservationApp,
+  type ProvisioningAgentObservationDependencies,
+} from "../eliza-app/provisioning-agent/route";
 
-// Mock containersEnv BEFORE any import of the route module — DEFAULT_DOCKER_IMAGE
-// is evaluated at import time, so the mock must be in place first.
-mock.module("@/lib/config/containers-env", () => ({
-  containersEnv: {
-    defaultAgentImage: () => "ghcr.io/elizaos/eliza:stable",
-  },
-}));
+const listByOrganization = mock(
+  async (_organizationId: string) => [] as SandboxFixture[],
+);
+const validateAuthHeader = mock(async (header: string) =>
+  header.startsWith("Bearer ")
+    ? { userId: "user-1", organizationId: "org-1" }
+    : null,
+);
+const logError = mock();
 
-// Spread real modules so other exports survive for later test files.
-import * as agentSandboxesActual from "@/db/repositories/agent-sandboxes";
-import * as elizaAppActual from "@/lib/services/eliza-app";
-import * as elizaSandboxActual from "@/lib/services/eliza-sandbox";
-import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
-import * as loggerActual from "@/lib/utils/logger";
+const app = createProvisioningAgentObservationApp({
+  sandboxes: { listByOrganization },
+  sessions: { validateAuthHeader },
+  log: { error: logError },
+} as unknown as ProvisioningAgentObservationDependencies);
 
-const mockCreateAgent = mock(async () => ({
-  agent: {
-    id: "agent-test-1",
-    status: "pending",
-    bridge_url: null,
-  },
-  idempotent: false,
-}));
-
-const mockEnqueueAgentProvision = mock(async () => ({}));
-const mockListByOrganization = mock(async () => []);
-const mockCheckAgentCreditGate = mock(async () => ({
-  allowed: true as boolean,
-  balance: 10,
-  error: undefined as string | undefined,
-}));
-
-mock.module("@/db/repositories/agent-sandboxes", () => ({
-  ...agentSandboxesActual,
-  agentSandboxesRepository: {
-    ...agentSandboxesActual.agentSandboxesRepository,
-    listByOrganization: mockListByOrganization,
-  },
-}));
-
-mock.module("@/lib/services/eliza-app", () => ({
-  ...elizaAppActual,
-  elizaAppSessionService: {
-    ...elizaAppActual.elizaAppSessionService,
-    validateAuthHeader: mock(async (header: string) =>
-      header.startsWith("Bearer ")
-        ? { userId: "user-1", organizationId: "org-1" }
-        : null,
-    ),
-  },
-}));
-
-mock.module("@/lib/services/agent-billing-gate", () => ({
-  checkAgentCreditGate: mockCheckAgentCreditGate,
-}));
-
-mock.module("@/lib/services/eliza-sandbox", () => ({
-  ...elizaSandboxActual,
-  elizaSandboxService: {
-    ...elizaSandboxActual.elizaSandboxService,
-    createAgent: mockCreateAgent,
-  },
-}));
-
-mock.module("@/lib/services/provisioning-jobs", () => ({
-  ...provisioningJobsActual,
-  provisioningJobService: {
-    ...provisioningJobsActual.provisioningJobService,
-    enqueueAgentProvision: mockEnqueueAgentProvision,
-  },
-}));
-
-mock.module("@/lib/utils/logger", () => ({
-  ...loggerActual,
-  logger: {
-    ...loggerActual.logger,
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-  },
-}));
-
-// Import after all mocks are in place.
-const { default: app } = await import("../eliza-app/provisioning-agent/route");
-
-interface CreateAgentTestParams {
-  organizationId: string;
-  userId: string;
-  agentName: string;
-  dockerImage: string;
+interface SandboxFixture {
+  id: string;
+  status: string;
+  execution_tier: string;
+  bridge_url: string | null;
+  created_at: Date;
+  pool_status: string | null;
+  deleted_at: Date | null;
+  deletion_attempt_id: string | null;
+  user_id: string;
 }
 
-/** Extract the first argument of the first `createAgent` call, or null. */
-function firstCreateAgentCall(): CreateAgentTestParams | null {
-  // bun's mock type declares `calls` as `[]` (fixed empty tuple), so we widen
-  // through `unknown[]` before indexing.
-  const calls = mockCreateAgent.mock.calls as unknown as unknown[][];
-  if (calls.length === 0) return null;
-  return (calls[0]![0] ?? null) as CreateAgentTestParams | null;
+function sandbox(params: {
+  id: string;
+  status?: string;
+  executionTier?: string;
+  bridgeUrl?: string | null;
+  createdAt?: Date;
+  poolStatus?: string | null;
+  deletedAt?: Date | null;
+  deletionAttemptId?: string | null;
+  userId?: string;
+}): SandboxFixture {
+  return {
+    id: params.id,
+    status: params.status ?? "running",
+    execution_tier: params.executionTier ?? "dedicated-always",
+    bridge_url: params.bridgeUrl ?? null,
+    created_at: params.createdAt ?? new Date("2026-08-20T00:00:00Z"),
+    pool_status: params.poolStatus ?? null,
+    deleted_at: params.deletedAt ?? null,
+    deletion_attempt_id: params.deletionAttemptId ?? null,
+    user_id: params.userId ?? "user-1",
+  };
 }
 
-describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
-  test("POST handler passes the canonical ghcr.io image to createAgent", async () => {
-    mockListByOrganization.mockResolvedValue([]);
-    mockCreateAgent.mockResolvedValue({
-      agent: {
-        id: "agent-test-1",
-        status: "pending",
-        bridge_url: null,
-      },
-      idempotent: false,
-    });
+function request(method: "GET" | "POST", authorized = true) {
+  return new Request("http://localhost/", {
+    method,
+    headers: authorized ? { Authorization: "Bearer valid-session-token" } : {},
+  });
+}
 
-    // The Hono app's route handlers are at "/" — the router mounts the app
-    // at "/api/eliza-app/provisioning-agent" in production.
-    const req = new Request("http://localhost/", {
-      method: "POST",
-      headers: { Authorization: "Bearer valid-session-token" },
-    });
-
-    const res = await app.fetch(req);
-    expect(res.status).toBe(200);
-
-    // Assert createAgent was called with the canonical ghcr.io image
-    expect(mockCreateAgent).toHaveBeenCalledTimes(1);
-    const call = firstCreateAgentCall();
-    expect(call).toBeDefined();
-    expect(call!.dockerImage).toBe("ghcr.io/elizaos/eliza:stable");
+describe("provisioning-agent observation-only route", () => {
+  beforeEach(() => {
+    listByOrganization.mockReset();
+    listByOrganization.mockResolvedValue([]);
+    validateAuthHeader.mockClear();
+    logError.mockClear();
   });
 
-  test("rejects the legacy bare image name (no ghcr.io prefix)", async () => {
-    mockListByOrganization.mockResolvedValue([]);
-    mockCreateAgent.mockResolvedValue({
-      agent: {
-        id: "agent-test-1",
-        status: "pending",
-        bridge_url: null,
-      },
-      idempotent: false,
+  test("GET uses the canonical selector for mixed Shared and Dedicated rows", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "newest-shared",
+        executionTier: "shared",
+        createdAt: new Date("2026-08-20T03:00:00Z"),
+      }),
+      sandbox({
+        id: "older-dedicated",
+        createdAt: new Date("2026-08-20T01:00:00Z"),
+      }),
+      sandbox({
+        id: "newest-dedicated",
+        status: "error",
+        createdAt: new Date("2026-08-20T02:00:00Z"),
+      }),
+    ]);
+
+    const response = await app.fetch(request("GET"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: { status: "error", agentId: "newest-dedicated" },
     });
-
-    const req = new Request("http://localhost/", {
-      method: "POST",
-      headers: { Authorization: "Bearer valid-session-token" },
-    });
-
-    await app.fetch(req);
-
-    const call = firstCreateAgentCall();
-    expect(call).toBeDefined();
-    // Should NOT be the bare Docker Hub name that caused "unauthorized"
-    expect(call!.dockerImage).not.toBe("elizaos/eliza:latest");
   });
 
-  test("image starts with ghcr.io/ (the correct registry)", async () => {
-    mockListByOrganization.mockResolvedValue([]);
-    mockCreateAgent.mockResolvedValue({
-      agent: {
-        id: "agent-test-1",
-        status: "pending",
-        bridge_url: null,
-      },
-      idempotent: false,
+  test("GET reports none for a Shared-only organization", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({ id: "shared-only", executionTier: "shared" }),
+    ]);
+
+    const response = await app.fetch(request("GET"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: { status: "none" },
     });
-
-    const req = new Request("http://localhost/", {
-      method: "POST",
-      headers: { Authorization: "Bearer valid-session-token" },
-    });
-
-    await app.fetch(req);
-
-    const call = firstCreateAgentCall();
-    expect(call).toBeDefined();
-    expect(call!.dockerImage).toMatch(/^ghcr\.io\//);
   });
 
-  test("#11224: a credit-suspended org is blocked 402 — no dedicated agent created or provisioned", async () => {
-    mockListByOrganization.mockResolvedValue([]); // no existing sandbox → provision path
-    mockCreateAgent.mockClear();
-    mockEnqueueAgentProvision.mockClear();
-    mockCheckAgentCreditGate.mockResolvedValueOnce({
-      allowed: false,
-      balance: 0,
-      error: "Insufficient credits",
-    });
+  test("GET surfaces a newer failed deletion instead of falling back to an older running row", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "older-running",
+        bridgeUrl: "https://older.example",
+        createdAt: new Date("2026-08-20T01:00:00Z"),
+      }),
+      sandbox({
+        id: "newer-failed-deletion",
+        status: "deletion_failed",
+        deletionAttemptId: "delete-attempt-1",
+        createdAt: new Date("2026-08-20T02:00:00Z"),
+      }),
+    ]);
 
-    const req = new Request("http://localhost/", {
-      method: "POST",
-      headers: { Authorization: "Bearer valid-session-token" },
-    });
-    const res = await app.fetch(req);
+    const response = await app.fetch(request("GET"));
 
-    expect(res.status).toBe(402);
-    expect(await res.json()).toMatchObject({ code: "insufficient_credits" });
-    // The gate fires BEFORE any dedicated agent is minted/provisioned.
-    expect(mockCreateAgent).not.toHaveBeenCalled();
-    expect(mockEnqueueAgentProvision).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        status: "deletion_failed",
+        agentId: "newer-failed-deletion",
+      },
+    });
+  });
+
+  test("GET does not expose another organization member's Dedicated target", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({ id: "other-user", userId: "user-2" }),
+      sandbox({ id: "requesting-user", userId: "user-1", status: "sleeping" }),
+    ]);
+
+    const response = await app.fetch(request("GET"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: { status: "sleeping", agentId: "requesting-user" },
+    });
+  });
+
+  test("retired POST performs exactly the same observation and owns no mutation dependency", async () => {
+    const response = await app.fetch(request("POST"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: { status: "none" },
+    });
+    expect(validateAuthHeader).toHaveBeenCalledTimes(1);
+    expect(listByOrganization).toHaveBeenCalledWith("org-1");
+  });
+
+  test("retired POST returns an existing Dedicated status without changing it", async () => {
+    listByOrganization.mockResolvedValue([
+      sandbox({
+        id: "dedicated-running",
+        bridgeUrl: "https://agent.example",
+        executionTier: "dedicated-lazy",
+      }),
+    ]);
+
+    const response = await app.fetch(request("POST"));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      data: {
+        status: "running",
+        agentId: "dedicated-running",
+        bridgeUrl: "https://agent.example",
+      },
+    });
+    expect(listByOrganization).toHaveBeenCalledTimes(1);
+  });
+
+  test("both observation methods require a session", async () => {
+    for (const method of ["GET", "POST"] as const) {
+      const response = await app.fetch(request(method, false));
+      expect(response.status).toBe(401);
+    }
+    expect(listByOrganization).not.toHaveBeenCalled();
+  });
+
+  test("repository failures remain visible without a mutation fallback", async () => {
+    listByOrganization.mockRejectedValue(new Error("database unavailable"));
+
+    const response = await app.fetch(request("POST"));
+
+    expect(response.status).toBe(500);
+    expect(logError).toHaveBeenCalledTimes(1);
   });
 });

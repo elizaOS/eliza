@@ -463,7 +463,7 @@ export class SandboxManager {
     this.emitEvent({
       timestamp: Date.now(),
       type: "exec",
-      detail: options.command.substring(0, 200),
+      detail: options.command,
       metadata: {
         workdir: options.workdir ?? this.config.workdir ?? "/workspace",
       },
@@ -488,7 +488,7 @@ export class SandboxManager {
         type: "error",
         detail: `Sandbox exec failed: ${String(err)}`,
         metadata: {
-          command: options.command.substring(0, 200),
+          command: options.command,
         },
       });
       return {
@@ -590,10 +590,6 @@ export class SandboxManager {
 
   private emitEvent(event: SandboxEvent): void {
     this.eventLog.push(event);
-    // Keep bounded
-    if (this.eventLog.length > 1000) {
-      this.eventLog = this.eventLog.slice(-500);
-    }
   }
 
   getEventLog(): SandboxEvent[] {

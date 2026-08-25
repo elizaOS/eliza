@@ -13,6 +13,14 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import type {
+  EncryptedRemoteControlEnvelope,
+  RemoteCommandAction,
+  RemoteControllerPublicIdentity,
+  RemoteJsonValue,
+  RemoteTargetPublicIdentity,
+  SignedRemoteCommand,
+} from "@elizaos/shared/contracts/remote-control";
 import type { ExistingElizaInstallInfo } from "@elizaos/shared/types";
 import type { RPCSchema } from "electrobun/bun";
 import type {
@@ -185,6 +193,12 @@ export interface DesktopHttpRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  /**
+   * Base64-encoded binary response body. Set when the response Content-Type
+   * indicates a binary format (audio, image, etc.) so the renderer can
+   * reconstruct the original bytes without UTF-8 corruption.
+   */
+  bodyBase64?: string | null;
 }
 
 /**
@@ -484,6 +498,119 @@ export interface DetectedProvider {
   statusDetail?: string;
 }
 
+export type RendererSecureStoreKind =
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles";
+
+export type RendererSecureStoreResult =
+  | { ok: true; value?: string; deleted?: boolean }
+  | {
+      ok: false;
+      reason: "not_found" | "denied" | "unavailable" | "error";
+      message?: string;
+    };
+
+export interface RendererSecureStoreStatus {
+  backend:
+    | "macos_keychain"
+    | "windows_credential_manager"
+    | "linux_secret_service"
+    | "file_encrypted_fallback"
+    | "none";
+  available: boolean;
+  synchronized: false;
+  scope: "device" | "host" | "unavailable";
+  access: "app_only" | "user_session" | "unavailable";
+}
+
+export interface RuntimeCredentialParams {
+  runtimeId: string;
+}
+
+export interface RuntimeCredentialSetParams extends RuntimeCredentialParams {
+  accessToken: string;
+}
+
+export interface SshHostInspectParams extends RuntimeCredentialParams {
+  target: string;
+  sshPort: number;
+}
+
+export interface SshHostInspection {
+  target: string;
+  host: string;
+  sshPort: number;
+  fingerprints: Array<{ algorithm: string; fingerprint: string }>;
+  preferredFingerprint: string;
+  pinnedFingerprint: string | null;
+  changed: boolean;
+}
+
+export interface SshRuntimeStartParams extends SshHostInspectParams {
+  remoteApiPort: number;
+  expectedFingerprint: string;
+  identityFile?: string;
+  credentialRef?: string;
+}
+
+export interface SshRuntimeRequestParams extends RuntimeCredentialParams {
+  credentialRef?: string;
+  path: string;
+  method: "GET" | "POST" | "PATCH" | "DELETE";
+  headers: Record<string, string>;
+  body: string | null;
+  timeoutMs: number;
+}
+
+export interface RemoteControllerIdentityParams {
+  ownerId: string;
+  deviceId?: string;
+  displayName: string;
+  platform: "macos" | "windows" | "linux" | "ios" | "android" | "web";
+}
+
+export interface RemoteCommandCreateParams {
+  ownerId: string;
+  grantId: string;
+  grantRevision: number;
+  sessionId: string;
+  controllerDeviceId: string;
+  controllerKeyId: string;
+  targetRuntimeId: string;
+  targetKeyId: string;
+  targetEncryptionPublicKeyJwk: JsonWebKey;
+  action: RemoteCommandAction;
+  payload: RemoteJsonValue;
+}
+
+export interface RemoteCommandOpenResultParams {
+  ownerId: string;
+  controllerDeviceId: string;
+  envelope: EncryptedRemoteControlEnvelope;
+  command: SignedRemoteCommand;
+  targetIdentity: RemoteTargetPublicIdentity;
+}
+
+export type RemoteCommandOpenStartReceiptParams = RemoteCommandOpenResultParams;
+
+export interface RemoteTargetEnrollParams {
+  apiBaseUrl: string;
+  ownerId: string;
+  ownerAccessToken: string;
+  displayName: string;
+}
+
+export interface RemoteTargetRunnerStatusResponse {
+  running: boolean;
+  enrolled: boolean;
+  activeSessions: number;
+  pendingResults: number;
+  lastPollAt: number | null;
+  lastErrorCode: string | null;
+}
+
 // -- Screencapture --
 export interface ScreenSource {
   id: string;
@@ -550,18 +677,6 @@ export interface TalkModeConfig {
   modelSize?: string;
   language?: string;
   voiceId?: string;
-}
-
-// -- Music player (plugin-music-player HTTP routes) --
-/** Resolved HTTP URLs for plugin-music-player routes (agent process, not under /api). */
-export interface MusicPlayerDesktopPlaybackUrls {
-  ok: boolean;
-  reason?: string;
-  apiBase?: string;
-  guildId?: string;
-  streamUrl?: string;
-  nowPlayingUrl?: string;
-  queueUrl?: string;
 }
 
 // -- File Dialog --
@@ -2030,12 +2145,6 @@ export type ElizaDesktopRPCSchema = {
       talkmodeUpdateConfig: { params: TalkModeConfig; response: undefined };
       talkmodeAudioChunk: { params: { data: string }; response: undefined };
 
-      // ---- Music player (elizaOS plugin-music-player HTTP routes on agent) ----
-      musicPlayerGetDesktopPlaybackUrls: {
-        params: { guildId?: string };
-        response: MusicPlayerDesktopPlaybackUrls;
-      };
-
       // ---- Context Menu ----
       contextMenuAskAgent: {
         params: { text: string };
@@ -2062,6 +2171,153 @@ export type ElizaDesktopRPCSchema = {
       credentialsScanAndValidate: {
         params: { context: "first-run" | "tray-refresh" };
         response: { providers: DetectedProvider[] };
+      };
+      secureStoreGet: {
+        params: { kind: RendererSecureStoreKind };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreSet: {
+        params: { kind: RendererSecureStoreKind; value: string };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreDelete: {
+        params: { kind: RendererSecureStoreKind };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreStatus: {
+        params: undefined;
+        response: RendererSecureStoreStatus;
+      };
+      runtimeCredentialStore: {
+        params: RuntimeCredentialSetParams;
+        response: { stored: true };
+      };
+      runtimeCredentialDelete: {
+        params: RuntimeCredentialParams;
+        response: { deleted: boolean };
+      };
+      runtimeCredentialDeleteRecord: {
+        params: RuntimeCredentialParams;
+        response: { deleted: boolean };
+      };
+      sshRuntimeInspectHost: {
+        params: SshHostInspectParams;
+        response: SshHostInspection;
+      };
+      sshRuntimeStart: {
+        params: SshRuntimeStartParams;
+        response: {
+          apiBase: string;
+          localPort: number;
+          fingerprint: string;
+        };
+      };
+      sshRuntimeStop: {
+        params: RuntimeCredentialParams;
+        response: { stopped: boolean };
+      };
+      sshRuntimeStatus: {
+        params: RuntimeCredentialParams;
+        response: {
+          running: boolean;
+          localPort: number | null;
+          startedAt: number | null;
+        };
+      };
+      sshRuntimeRequest: {
+        params: SshRuntimeRequestParams;
+        response: {
+          status: number;
+          statusText: string;
+          headers: Record<string, string>;
+          body: string;
+        };
+      };
+      remoteControllerGetOrCreateIdentity: {
+        params: RemoteControllerIdentityParams;
+        response: RemoteControllerPublicIdentity;
+      };
+      remoteControllerCreateCommand: {
+        params: RemoteCommandCreateParams;
+        response: {
+          commandId: string;
+          expiresAt: number;
+          command: SignedRemoteCommand;
+          envelope: EncryptedRemoteControlEnvelope;
+          recoveredPending: boolean;
+          bindingDigest: string;
+        };
+      };
+      remoteControllerOpenResult: {
+        params: RemoteCommandOpenResultParams;
+        response: {
+          status: string;
+          result?: RemoteJsonValue;
+          errorCode?: string;
+        };
+      };
+      remoteControllerOpenStartReceipt: {
+        params: RemoteCommandOpenStartReceiptParams;
+        response: { startedAt: number; executionId: string };
+      };
+      remoteControllerClearSessionState: {
+        params: {
+          ownerId: string;
+          controllerDeviceId: string;
+          sessionId: string;
+        };
+        response: { cleared: boolean };
+      };
+      remoteControllerAcknowledgeEnqueue: {
+        params: {
+          ownerId: string;
+          controllerDeviceId: string;
+          sessionId: string;
+          commandId: string;
+          bindingDigest: string;
+        };
+        response: { acknowledged: boolean };
+      };
+      remoteTargetEnroll: {
+        params: RemoteTargetEnrollParams;
+        response: {
+          hostId: string;
+          status: "active";
+          identity: RemoteTargetPublicIdentity;
+        };
+      };
+      remoteTargetGetIdentity: {
+        params: Record<string, never>;
+        response: { enrolled: boolean; identity?: RemoteTargetPublicIdentity };
+      };
+      remoteTargetActivate: {
+        params: { sessionId: string; code: string };
+        response: {
+          sessionId: string;
+          status: "active";
+          controllerDisplayName: string;
+          grantExpiresAt: number;
+        };
+      };
+      remoteTargetStart: {
+        params: Record<string, never>;
+        response: { running: true };
+      };
+      remoteTargetStop: {
+        params: Record<string, never>;
+        response: { running: false };
+      };
+      remoteTargetStatus: {
+        params: Record<string, never>;
+        response: RemoteTargetRunnerStatusResponse;
+      };
+      remoteTargetRevoke: {
+        params: { sessionId: string };
+        response: { revoked: true };
+      };
+      remoteTargetFinalizeHostRevoke: {
+        params: { hostId: string };
+        response: { cleaned: true };
       };
 
       // ---- GPU Window ----
@@ -2682,9 +2938,6 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "talkmode:updateConfig": "talkmodeUpdateConfig",
   "talkmode:audioChunk": "talkmodeAudioChunk",
 
-  // Music player (desktop)
-  "musicPlayer:getDesktopPlaybackUrls": "musicPlayerGetDesktopPlaybackUrls",
-
   // Context Menu
   "contextMenu:askAgent": "contextMenuAskAgent",
   "contextMenu:createSkill": "contextMenuCreateSkill",
@@ -2694,6 +2947,32 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   // Credentials
   "credentials:scanProviders": "credentialsScanProviders",
   "credentials:scanAndValidate": "credentialsScanAndValidate",
+  "secureStore:get": "secureStoreGet",
+  "secureStore:set": "secureStoreSet",
+  "secureStore:delete": "secureStoreDelete",
+  "secureStore:status": "secureStoreStatus",
+  "runtimeCredential:store": "runtimeCredentialStore",
+  "runtimeCredential:delete": "runtimeCredentialDelete",
+  "runtimeCredential:deleteRecord": "runtimeCredentialDeleteRecord",
+  "sshRuntime:inspectHost": "sshRuntimeInspectHost",
+  "sshRuntime:start": "sshRuntimeStart",
+  "sshRuntime:stop": "sshRuntimeStop",
+  "sshRuntime:status": "sshRuntimeStatus",
+  "sshRuntime:request": "sshRuntimeRequest",
+  "remoteController:getOrCreateIdentity": "remoteControllerGetOrCreateIdentity",
+  "remoteController:createCommand": "remoteControllerCreateCommand",
+  "remoteController:openResult": "remoteControllerOpenResult",
+  "remoteController:openStartReceipt": "remoteControllerOpenStartReceipt",
+  "remoteController:clearSessionState": "remoteControllerClearSessionState",
+  "remoteController:acknowledgeEnqueue": "remoteControllerAcknowledgeEnqueue",
+  "remoteTarget:enroll": "remoteTargetEnroll",
+  "remoteTarget:getIdentity": "remoteTargetGetIdentity",
+  "remoteTarget:activate": "remoteTargetActivate",
+  "remoteTarget:start": "remoteTargetStart",
+  "remoteTarget:stop": "remoteTargetStop",
+  "remoteTarget:status": "remoteTargetStatus",
+  "remoteTarget:revoke": "remoteTargetRevoke",
+  "remoteTarget:finalizeHostRevoke": "remoteTargetFinalizeHostRevoke",
 
   // GPU Window
   "gpuWindow:create": "gpuWindowCreate",

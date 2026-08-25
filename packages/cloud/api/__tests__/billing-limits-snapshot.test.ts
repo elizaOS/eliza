@@ -1,9 +1,8 @@
 /**
- * Exercises the real GET /api/v1/billing/limits Hono route with mocked auth
- * and data boundaries. Pins the #19777 route contract: the organization comes
- * exclusively from the authenticated membership (a client-supplied org id is
- * ignored), viewers may read the snapshot, and an auth failure never leaks a
- * body. Snapshot assembly itself is covered in cloud-shared.
+ * Exercises the real GET /api/v1/billing/limits Hono boundary with mocked
+ * authentication and read-only data adapters. The canonical primary reader
+ * receives only the organization resolved from auth; query parameters never
+ * become a tenant-selection seam.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
@@ -15,6 +14,62 @@ const requireUserOrApiKeyWithOrg = mock(
     organization_id: "org-authed",
     role: "viewer",
   }),
+);
+
+const readPrimaryAccountBillingSnapshot = mock(
+  async (organizationId: string) => {
+    seenOrgIds.push(organizationId);
+    return {
+      observedAt: "2026-08-20T12:00:00.000Z",
+      organization: {
+        creditBalance: "15.000000",
+        balanceRevision: "9007199254740993",
+        balanceDecreaseRevision: "2",
+        coveredBalanceDecreaseRevision: "1",
+        settings: {},
+        isActive: true,
+        stripeCustomerIdPresent: false,
+        stripeCustomerIdValid: false,
+        defaultPaymentMethodIdPresent: false,
+        defaultPaymentMethodIdValid: false,
+        autoTopUpEnabled: false,
+        autoTopUpThreshold: null,
+        autoTopUpAmount: null,
+      },
+      cloudCharacterCount: "2",
+      sandboxCounts: { used: "1", reserved: "1", deleting: "0" },
+      containerCounts: { used: "0", reserved: "0", deleting: "0" },
+      containerSettings: {},
+      appCount: "1",
+      apiKeyCount: "1",
+      storageQuota: { bytesUsed: "42", bytesLimit: "1000" },
+      configuredTier: {
+        status: "available" as const,
+        tier: {
+          tierName: "paid",
+          completionsRpm: 60,
+          embeddingsRpm: 120,
+          standardRpm: 30,
+          strictRpm: 5,
+        },
+        tierSourceCreditTotal: "15.000000",
+        overrides: {
+          completionsRpm: null,
+          embeddingsRpm: null,
+          standardRpm: null,
+          strictRpm: null,
+        },
+      },
+      autoTopUp: {
+        control: null,
+        customerBindingAuthoritative: false,
+        blockingAttempt: false,
+        blockingLegacyQuarantine: false,
+      },
+      activeResources: [],
+      latestRateSegments: [],
+    };
+  },
 );
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -33,59 +88,29 @@ mock.module("@/lib/api/cloud-worker-errors", () => ({
 mock.module("@/lib/utils/logger", () => ({
   logger: { error: mock(), warn: mock(), info: mock() },
 }));
-mock.module("@/db/client", () => ({
-  dbRead: {
-    query: {
-      organizations: {
-        findFirst: async () => ({ credit_balance: "15", settings: {} }),
-      },
-    },
-    select: () => ({
-      from: () => ({
-        where: async () => [{ count: 2 }],
-      }),
-    }),
-  },
+mock.module("@/db/repositories/account-billing-snapshot", () => ({
+  readPrimaryAccountBillingSnapshot,
 }));
 mock.module("@/db/repositories/org-storage-quota", () => ({
   DEFAULT_ORG_STORAGE_BYTES_LIMIT: 5n * 1024n * 1024n * 1024n,
-  orgStorageQuotaRepository: {
-    findByOrganization: async (orgId: string) => {
-      seenOrgIds.push(orgId);
-      return { bytes_used: 42n, bytes_limit: 1000n };
-    },
-  },
 }));
 mock.module("@/lib/services/apps", () => ({
-  appsService: {
-    countByOrganization: async (orgId: string) => {
-      seenOrgIds.push(orgId);
-      return 1;
-    },
-  },
   getMaxAppsPerOrg: () => 25,
 }));
-mock.module("@/lib/services/container-quota", () => ({
-  containerQuotaService: {
-    checkQuota: async (orgId: string) => {
-      seenOrgIds.push(orgId);
-      return { allowed: true, current: 0, max: 10 };
-    },
-  },
+mock.module("@/lib/constants/agent-sandbox-quota", () => ({
+  getMaxNonTerminalAgentsForOrg: (balance: number | undefined) =>
+    balance === undefined ? 5 : 100,
 }));
-mock.module("@/lib/services/eliza-sandbox", () => ({
-  QUOTA_COUNTED_STATUSES: [
-    "pending",
-    "provisioning",
-    "running",
-    "stopped",
-    "sleeping",
-  ],
+mock.module("@/lib/constants/cloud-character-quota", () => ({
+  getMaxCloudCharactersForOrg: () => 100,
+}));
+mock.module("@/lib/constants/pricing", () => ({
+  getMaxContainersForOrg: () => 10,
 }));
 mock.module("@/lib/services/org-rate-limits", () => ({
-  readOrgTierFromSources: async (orgId: string) => {
-    seenOrgIds.push(orgId);
-    return { completionsRpm: 60, embeddingsRpm: 120 };
+  getOrgTierCacheOnly: async (organizationId: string) => {
+    seenOrgIds.push(organizationId);
+    return { kind: "warming" as const, cacheRead: "miss" as const };
   },
 }));
 
@@ -96,41 +121,62 @@ describe("GET /api/v1/billing/limits", () => {
   beforeEach(() => {
     seenOrgIds.length = 0;
     requireUserOrApiKeyWithOrg.mockClear();
+    readPrimaryAccountBillingSnapshot.mockClear();
     requireUserOrApiKeyWithOrg.mockImplementation(async () => ({
       organization_id: "org-authed",
       role: "viewer",
     }));
   });
 
-  test("a viewer reads the snapshot scoped to the authenticated org", async () => {
+  test("a viewer reads the additive snapshot scoped to the authenticated org", async () => {
     const response = await app.request("/api/v1/billing/limits");
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       success: boolean;
-      data: Record<string, Record<string, unknown>> & { observedAt: string };
+      data: {
+        schemaVersion: number;
+        observedAt: string;
+        storage: Record<string, unknown>;
+        v2: {
+          balance: Record<string, unknown>;
+          limits: { storage: { reserved: Record<string, unknown> } };
+        };
+      };
     };
     expect(body.success).toBe(true);
-    expect(typeof body.data.observedAt).toBe("string");
+    expect(body.data.schemaVersion).toBe(2);
+    expect(body.data.observedAt).toBe("2026-08-20T12:00:00.000Z");
     expect(body.data.storage).toEqual({
       source: "org-storage-quota",
       state: "available",
       bytesUsed: "42",
       bytesLimit: "1000",
     });
-    // Every boundary was queried with the AUTHENTICATED org.
+    expect(body.data.v2.balance).toMatchObject({
+      status: "available",
+      source: "organizations",
+      value: {
+        balance: { value: "15.000000", unit: "usd", currency: "USD" },
+        revision: "9007199254740993",
+      },
+    });
+    expect(body.data.v2.limits.storage.reserved).toMatchObject({
+      status: "unavailable",
+      error: { code: "storage_reservation_decomposition_unavailable" },
+    });
     expect(new Set(seenOrgIds)).toEqual(new Set(["org-authed"]));
   });
 
   test("a client-supplied organization id is ignored", async () => {
     const response = await app.request(
-      "/api/v1/billing/limits?organizationId=org-else",
+      "/api/v1/billing/limits?organizationId=org-forged",
     );
     expect(response.status).toBe(200);
     expect(seenOrgIds.every((id) => id === "org-authed")).toBe(true);
-    expect(seenOrgIds.some((id) => id === "org-else")).toBe(false);
+    expect(seenOrgIds.some((id) => id === "org-forged")).toBe(false);
   });
 
-  test("an auth failure yields the failure envelope, not a snapshot", async () => {
+  test("an auth failure yields the failure envelope without reading an organization", async () => {
     requireUserOrApiKeyWithOrg.mockImplementation(async () => {
       throw new Error("Unauthorized");
     });
@@ -138,6 +184,7 @@ describe("GET /api/v1/billing/limits", () => {
     expect(response.status).toBe(401);
     const body = (await response.json()) as { success: boolean };
     expect(body.success).toBe(false);
+    expect(readPrimaryAccountBillingSnapshot).not.toHaveBeenCalled();
     expect(seenOrgIds).toHaveLength(0);
   });
 });

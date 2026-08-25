@@ -9,7 +9,7 @@ import type {
   ImageGenerationParams,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import { logger, ModelType, recordLlmCall } from "@elizaos/core";
+import { ElizaError, logger, ModelType, recordLlmCall } from "@elizaos/core";
 import type {
   ImageDescriptionResult,
   ImageGenerationResult,
@@ -24,7 +24,6 @@ import {
   getBaseURL,
   getImageDescriptionAuthHeader,
   getImageDescriptionBaseURL,
-  getImageDescriptionMaxTokens,
   getImageDescriptionModel,
   getImageModel,
 } from "../utils/config";
@@ -119,13 +118,49 @@ export async function handleImageGeneration(
   }));
 }
 
-function parseTitleFromResponse(content: string): string {
-  const titleMatch = content.match(/title[:\s]+(.+?)(?:\n|$)/i);
-  return titleMatch?.[1]?.trim() ?? "Image Analysis";
-}
+const DEFAULT_IMAGE_TITLE = "Image Analysis";
 
-function parseDescriptionFromResponse(content: string): string {
-  return content.replace(/title[:\s]+(.+?)(?:\n|$)/i, "").trim();
+// A genuine title line must be the first non-blank content the model emitted,
+// e.g. "Title: <text>". Anchoring to the start prevents a mid-sentence mention
+// of the word "title" (books, posters, signs, UI screenshots) from hijacking
+// the split and truncating the description the agent reasons over.
+const LEADING_TITLE_LINE = /^\s*title\s*[:-]\s*(.*?)(?:\r?\n|$)/i;
+const LEADING_DESCRIPTION_LABEL = /^\s*description\s*[:-]\s*/i;
+
+/**
+ * Splits a vision model's reply into a `{ title, description }` pair. The
+ * documented contract shape is a leading `Title:` line followed by the
+ * description body (optionally prefixed with a `Description:` label). Any reply
+ * that does not start with a title line is treated as description-only so the
+ * required `description` field always carries the real image content instead of
+ * a silently truncated or emptied value.
+ */
+function parseImageDescriptionResponse(content: string): {
+  title: string;
+  description: string;
+} {
+  const trimmed = content.trim();
+  const titleLine = trimmed.match(LEADING_TITLE_LINE);
+
+  if (!titleLine) {
+    return { title: DEFAULT_IMAGE_TITLE, description: trimmed };
+  }
+
+  const titleText = titleLine[1]?.trim() ?? "";
+  const remainder = trimmed.slice(titleLine[0].length).trim();
+
+  if (remainder.length > 0) {
+    const description = remainder.replace(LEADING_DESCRIPTION_LABEL, "").trim();
+    return {
+      title: titleText.length > 0 ? titleText : DEFAULT_IMAGE_TITLE,
+      description,
+    };
+  }
+
+  // Single labelled line with no separate body: the labelled text is the only
+  // content the model returned, so preserve it as the description rather than
+  // dropping it and fall back to the default title.
+  return { title: DEFAULT_IMAGE_TITLE, description: titleText };
 }
 
 export async function handleImageDescription(
@@ -133,11 +168,6 @@ export async function handleImageDescription(
   params: ImageDescriptionParams | string
 ): Promise<ImageDescriptionResult> {
   const modelName = getImageDescriptionModel(runtime);
-  const paramsWithMaxTokens = params as ImageDescriptionParams & { maxTokens?: number };
-  const maxTokens =
-    typeof params === "object" && typeof paramsWithMaxTokens.maxTokens === "number"
-      ? paramsWithMaxTokens.maxTokens
-      : getImageDescriptionMaxTokens(runtime);
   logger.debug(`[OpenAI] Using IMAGE_DESCRIPTION model: ${modelName}`);
 
   let imageUrl: string;
@@ -173,7 +203,6 @@ export async function handleImageDescription(
         ],
       },
     ],
-    max_tokens: maxTokens,
   };
 
   const details: RecordLlmCallDetails = {
@@ -181,7 +210,8 @@ export async function handleImageDescription(
     systemPrompt: "",
     userPrompt: promptText,
     temperature: 0,
-    maxTokens,
+    maxTokens: 0,
+    maxTokensOmitted: true,
     purpose: "external_llm",
     actionType: "openai.chat.completions.create",
   };
@@ -204,6 +234,15 @@ export async function handleImageDescription(
     }
 
     const responseData = (await response.json()) as OpenAIChatCompletionResponse;
+    if (responseData.choices[0]?.finish_reason === "length") {
+      throw new ElizaError(
+        "OpenAI reached its output boundary; refusing partial image description",
+        {
+          code: "MODEL_INCOMPLETE_OUTPUT",
+          context: { provider: "openai", finishReason: "length" },
+        }
+      );
+    }
     const responseContent = responseData.choices[0]?.message.content;
     if (!responseContent) {
       throw new Error("OpenAI API returned empty image description");
@@ -237,8 +276,5 @@ export async function handleImageDescription(
     throw new Error("OpenAI API returned empty image description");
   }
 
-  return {
-    title: parseTitleFromResponse(content),
-    description: parseDescriptionFromResponse(content),
-  };
+  return parseImageDescriptionResponse(content);
 }

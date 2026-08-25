@@ -26,6 +26,8 @@ export type {
   NewDockerNode,
 };
 
+export type NewDockerNodeInput = Omit<NewDockerNode, "current_node_history_id">;
+
 export interface NodeIncarnationCasInput {
   id: string;
   nodeId: string;
@@ -53,6 +55,7 @@ const DOCKER_NODE_IDENTITY_FIELDS = [
   "id",
   "node_id",
   "node_incarnation",
+  "current_node_history_id",
   "fleet_kind",
   "infrastructure_provider",
   "provider_server_id",
@@ -133,9 +136,28 @@ export function stampDockerNodeEnvironmentMetadata(
   return { ...base, environment };
 }
 
-function currentEnvironmentPredicate() {
+/**
+ * Environment guard for node reads, split by consequence.
+ *
+ * `placement` fails CLOSED: with ENVIRONMENT set, only rows explicitly stamped
+ * with the same environment are eligible. An unlabeled row must never receive
+ * a placement — treating '' as "matches everything" is how a staging box
+ * registered in the production DB became a production placement target
+ * (elizaOS/eliza#22547), and deleting such a row leaves the gate open for the
+ * next one. Live fleets must therefore carry `metadata.environment`; the
+ * onboarding, bootstrap-callback, and admin-register paths all stamp it via
+ * {@link stampDockerNodeEnvironmentMetadata}.
+ *
+ * `operational` stays inclusive of unlabeled rows so health checks, disk
+ * monitoring, and the orphan reconciler keep watching legacy nodes, while
+ * still excluding rows stamped for a DIFFERENT environment.
+ */
+function currentEnvironmentPredicate(scope: "placement" | "operational") {
   const environment = currentDeploymentEnvironment();
   if (!environment) return sql`TRUE`;
+  if (scope === "placement") {
+    return sql`${dockerNodes.metadata}->>'environment' = ${environment}`;
+  }
   return sql`(
     COALESCE(${dockerNodes.metadata}->>'environment', '') = ''
     OR ${dockerNodes.metadata}->>'environment' = ${environment}
@@ -169,7 +191,7 @@ export class DockerNodesRepository {
     return dbRead
       .select()
       .from(dockerNodes)
-      .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate()))
+      .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate("operational")))
       .orderBy(asc(dockerNodes.node_id));
   }
 
@@ -189,7 +211,7 @@ export class DockerNodesRepository {
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           capacityAttestedPredicate(),
-          currentEnvironmentPredicate(),
+          currentEnvironmentPredicate("placement"),
         ),
       )
       .orderBy(asc(dockerNodes.node_id));
@@ -209,6 +231,11 @@ export class DockerNodesRepository {
     return r ?? null;
   }
 
+  /** Primary-authority lookup for decisions that must reject replica lag. */
+  async findByIdOnPrimary(id: string): Promise<DockerNode | null> {
+    return findDockerNodeByIdOnPrimary(id);
+  }
+
   /**
    * Find the least-loaded node that is enabled, healthy, and has available capacity.
    * Orders by (capacity - allocated_count) descending, picks the one with most room.
@@ -223,7 +250,7 @@ export class DockerNodesRepository {
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           eq(dockerNodes.status, "healthy"),
           capacityAttestedPredicate(),
-          currentEnvironmentPredicate(),
+          currentEnvironmentPredicate("placement"),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
       )
@@ -236,7 +263,12 @@ export class DockerNodesRepository {
   // WRITE OPERATIONS
   // ============================================================================
 
-  async create(data: NewDockerNode): Promise<DockerNode> {
+  async create(data: NewDockerNodeInput): Promise<DockerNode> {
+    if (Object.hasOwn(data, "current_node_history_id")) {
+      throw new AgentBackupSourceAuthorityError(
+        "Docker node creation cannot set trigger-owned current_node_history_id",
+      );
+    }
     const [r] = await dbWrite.insert(dockerNodes).values(data).returning();
     if (!r) throw new Error("Failed to create docker node record");
     return r;

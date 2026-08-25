@@ -51,15 +51,18 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ChatFailureKind } from "@elizaos/shared";
+import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/shared";
 import {
   isChatFailureKind,
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
   PostSeedMessagesRequestSchema,
   parseChatFailureKind,
+  parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
 import {
@@ -106,6 +109,7 @@ import {
   persistConversationMemory,
   persistExactConversationMemory,
   persistExactConversationMemoryResult,
+  persistInterruptedAssistantReceipt,
   readChatRequestPayload,
   releaseChatMessageId,
   resolveNoResponseFallback,
@@ -131,6 +135,10 @@ import {
   buildConversationRoomMetadata,
   sanitizeConversationMetadata,
 } from "./conversation-metadata.ts";
+import {
+  compareConversationsByRecency,
+  compareMemoriesByCreatedAt,
+} from "./conversation-sort.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { evictOldestConversation } from "./memory-bounds.ts";
 import { generateMessageCorpus, seedMessageCorpus } from "./message-corpus.ts";
@@ -305,6 +313,113 @@ export interface ConversationRouteContext extends RouteRequestContext {
   todoCutoverImporter?: typeof importSharedTodoCutover;
 }
 
+interface LocalVoiceRuntimeFence {
+  runtime: AgentRuntime;
+}
+
+type LocalVoiceRuntimeFenceResolution =
+  | { kind: "absent" }
+  | { kind: "invalid"; message: string }
+  | { kind: "conflict"; message: string }
+  | { kind: "valid"; fence: LocalVoiceRuntimeFence };
+
+function readCanonicalSingleHeader(
+  req: Pick<http.IncomingMessage, "headers">,
+  name: string,
+): string | null | "invalid" {
+  const value = req.headers[name.toLowerCase()];
+  if (value === undefined) return null;
+  if (
+    Array.isArray(value) ||
+    value.length === 0 ||
+    value.trim() !== value ||
+    value.includes(",")
+  ) {
+    return "invalid";
+  }
+  return value;
+}
+
+function resolveLocalVoiceRuntimeFence(
+  req: Pick<http.IncomingMessage, "headers">,
+  state: ConversationRouteState,
+  conversationId: string,
+): LocalVoiceRuntimeFenceResolution {
+  const expectedAgentId = readCanonicalSingleHeader(
+    req,
+    LOCAL_VOICE_RUNTIME_AGENT_HEADER,
+  );
+  const expectedConversationId = readCanonicalSingleHeader(
+    req,
+    LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER,
+  );
+  if (expectedAgentId === null && expectedConversationId === null) {
+    return { kind: "absent" };
+  }
+  if (
+    expectedAgentId === null ||
+    expectedConversationId === null ||
+    expectedAgentId === "invalid" ||
+    expectedConversationId === "invalid"
+  ) {
+    return {
+      kind: "invalid",
+      message: "Local voice runtime identity headers are invalid",
+    };
+  }
+  if (expectedConversationId !== conversationId) {
+    return {
+      kind: "conflict",
+      message: "Local voice conversation identity changed",
+    };
+  }
+  const runtime = state.runtime;
+  if (!runtime || String(runtime.agentId) !== expectedAgentId) {
+    return {
+      kind: "conflict",
+      message: "Local voice agent runtime changed",
+    };
+  }
+  return { kind: "valid", fence: { runtime } };
+}
+
+function isLocalVoiceRuntimeFenceCurrent(
+  state: ConversationRouteState,
+  fence: LocalVoiceRuntimeFence | null,
+  conversation?: ConversationMeta,
+): boolean {
+  return (
+    fence === null ||
+    (state.runtime === fence.runtime &&
+      (conversation === undefined ||
+        (state.conversations.get(conversation.id) === conversation &&
+          !state.deletedConversationIds.has(conversation.id))))
+  );
+}
+
+function assertLocalVoiceTurnFenceCurrent(
+  state: ConversationRouteState,
+  fence: LocalVoiceRuntimeFence | null,
+  conversation: ConversationMeta,
+): void {
+  if (fence === null) return;
+  if (state.runtime !== fence.runtime) {
+    throw new ElizaError("Local voice agent runtime changed", {
+      code: "LOCAL_VOICE_RUNTIME_FENCE_CHANGED",
+      context: { conversationId: conversation.id },
+    });
+  }
+  if (
+    state.conversations.get(conversation.id) !== conversation ||
+    state.deletedConversationIds.has(conversation.id)
+  ) {
+    throw new ElizaError("Local voice conversation changed", {
+      code: "LOCAL_VOICE_CONVERSATION_FENCE_CHANGED",
+      context: { conversationId: conversation.id },
+    });
+  }
+}
+
 function readViewInteractionClientId(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
@@ -368,14 +483,21 @@ function canonicalChatFingerprintValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
+        // Code-unit order, not localeCompare: ICU collation is locale-dependent
+        // and ranks canonically equivalent distinct keys as equal, so two
+        // replicas would fingerprint one turn differently and admit a duplicate.
+        .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
         .map(([key, entry]) => [key, canonicalChatFingerprintValue(entry)]),
     );
   }
   return value;
 }
 
-function buildConversationChatFingerprint(input: {
+/**
+ * Idempotency identity for one chat turn. Exported so the canonical key
+ * ordering it depends on can be pinned by test.
+ */
+export function buildConversationChatFingerprint(input: {
   prompt: string;
   images: unknown;
   source: unknown;
@@ -811,8 +933,10 @@ async function ensureWorldOwnershipAndRoles(
   ownerId: UUID,
   callerId: UUID,
   callerRole: WaifuChatWorldRole,
+  assertCurrent?: () => void,
 ): Promise<void> {
   const world = await runtime.getWorld(worldId);
+  assertCurrent?.();
   if (!world) {
     throw new ElizaError(
       "Conversation world is missing after connection initialization",
@@ -858,7 +982,9 @@ async function ensureWorldOwnershipAndRoles(
     needsUpdate = true;
   }
   if (needsUpdate) {
+    assertCurrent?.();
     await runtime.updateWorld(world);
+    assertCurrent?.();
   }
 }
 
@@ -906,6 +1032,7 @@ async function resolvePersistedAssistantTurn(
   channelType: ChannelType,
   roomHandlerLease: RoomHandlerLease,
   userMessageId?: UUID,
+  assertCurrent?: () => void,
 ): Promise<
   | { kind: "durable"; id: UUID; text: string }
   | { kind: "ephemeral"; text: string }
@@ -925,21 +1052,35 @@ async function resolvePersistedAssistantTurn(
       result,
       userMessageId,
     );
+    const generatedTerminalFailure = parseChatTerminalFailure(
+      generatedTurn.content.terminalFailure,
+    );
+    const terminalFailureNeedsReconciliation =
+      result.terminalFailure !== undefined &&
+      (generatedTerminalFailure?.kind !== result.terminalFailure.kind ||
+        generatedTerminalFailure?.message !== result.terminalFailure.message ||
+        generatedTerminalFailure?.transient !==
+          result.terminalFailure.transient ||
+        generatedTerminalFailure?.code !== result.terminalFailure.code);
     if (
       generatedText !== text ||
       (userMessageId !== undefined &&
-        generatedTurn.content.inReplyTo !== userMessageId)
+        generatedTurn.content.inReplyTo !== userMessageId) ||
+      terminalFailureNeedsReconciliation
     ) {
       try {
         await runtime.roomHandlerQueue.runInLease(
           roomId,
           roomHandlerLease,
-          () =>
-            runtime.updateMemory({
+          () => {
+            assertCurrent?.();
+            return runtime.updateMemory({
               ...generatedTurn,
               content: persistedContent,
-            }),
+            });
+          },
         );
+        assertCurrent?.();
       } catch (cause) {
         throw new AssistantReplyPersistenceError(
           "Failed to reconcile the persisted assistant reply",
@@ -971,6 +1112,7 @@ async function resolvePersistedAssistantTurn(
       turnStartedAt,
       crypto.randomUUID() as UUID,
       roomHandlerLease,
+      assertCurrent,
     );
   } catch (cause) {
     // error-policy:J2 attach the durable-turn boundary before the route
@@ -1045,6 +1187,7 @@ function captureConversationConnection(
     role: WaifuChatWorldRole;
     userName: string;
   },
+  requestFence?: () => void,
 ): ConversationConnectionDescriptor {
   const agentName = runtime.character.name ?? "Eliza";
   const ownerId = ensureAdminEntityIdForRuntime(state, runtime);
@@ -1062,6 +1205,7 @@ function captureConversationConnection(
     callerEntityId: caller.entityId,
     callerRole: caller.role,
     callerUserName: caller.userName,
+    requestFence,
   });
 }
 
@@ -1082,13 +1226,16 @@ async function establishConversationConnection(
       waifuRole: descriptor.callerRole,
     },
   });
+  descriptor.requestFence?.();
   await ensureWorldOwnershipAndRoles(
     descriptor.runtime,
     descriptor.worldId,
     descriptor.ownerId,
     descriptor.callerEntityId,
     descriptor.callerRole,
+    descriptor.requestFence,
   );
+  descriptor.requestFence?.();
 }
 
 async function ensureConversationRoom(
@@ -1302,9 +1449,11 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "usage",
   "actionResults",
   "failureKind",
+  "terminalFailure",
   "accountConnect",
   "localInference",
   "noResponseReason",
+  "interrupted",
 ]);
 
 function isChannelType(value: unknown): value is ChannelType {
@@ -1411,12 +1560,16 @@ function parseDurableConversationChatOutcome(
         !outcome.actionResults.every(isDurableChatActionResult))) ||
     (outcome.failureKind !== undefined &&
       !isChatFailureKind(outcome.failureKind)) ||
+    (outcome.terminalFailure !== undefined &&
+      parseChatTerminalFailure(outcome.terminalFailure) === undefined) ||
     (outcome.accountConnect !== undefined &&
       normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
     (outcome.localInference !== undefined &&
       !isRecord(outcome.localInference)) ||
     (outcome.noResponseReason !== undefined &&
-      outcome.noResponseReason !== "ignored")
+      outcome.noResponseReason !== "ignored") ||
+    (outcome.interrupted !== undefined &&
+      typeof outcome.interrupted !== "boolean")
   ) {
     return null;
   }
@@ -1424,6 +1577,7 @@ function parseDurableConversationChatOutcome(
     outcome.accountConnect === undefined
       ? undefined
       : normalizeAccountConnectRequest(outcome.accountConnect);
+  const terminalFailure = parseChatTerminalFailure(outcome.terminalFailure);
   return {
     text: outcome.text,
     agentName: outcome.agentName,
@@ -1458,6 +1612,7 @@ function parseDurableConversationChatOutcome(
     ...(typeof outcome.failureKind === "string"
       ? { failureKind: outcome.failureKind as ChatFailureKind }
       : {}),
+    ...(terminalFailure ? { terminalFailure } : {}),
     ...(accountConnect ? { accountConnect } : {}),
     ...(outcome.localInference !== undefined
       ? {
@@ -1469,6 +1624,7 @@ function parseDurableConversationChatOutcome(
     ...(outcome.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(outcome.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1508,6 +1664,7 @@ function buildRecoveredConversationChatOutcome(
 ): ChatMessageIdOutcome {
   const content = memory.content as Content;
   const failureKind = parseChatFailureKind(content.failureKind);
+  const terminalFailure = parseChatTerminalFailure(content.terminalFailure);
   const accountConnect = normalizeAccountConnectRequest(content.accountConnect);
   const localInference =
     content.localInference && typeof content.localInference === "object"
@@ -1525,6 +1682,7 @@ function buildRecoveredConversationChatOutcome(
       ? { thought: content.thought }
       : {}),
     ...(failureKind ? { failureKind } : {}),
+    ...(terminalFailure ? { terminalFailure } : {}),
     ...(accountConnect ? { accountConnect } : {}),
     ...(localInference ? { localInference } : {}),
     ...(normalizeActionCallbackHistory(content.actionCallbackHistory).length > 0
@@ -1533,6 +1691,7 @@ function buildRecoveredConversationChatOutcome(
     ...(content.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(content.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1544,6 +1703,7 @@ async function persistDurableConversationChatOutcome(
   fingerprint: string,
   outcome: ChatMessageIdOutcome,
   roomHandlerLease: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<void> {
   if (!clientMessageId) return;
   const userMessageId = conversationClientUserMemoryId(scope, clientMessageId);
@@ -1551,14 +1711,16 @@ async function persistDurableConversationChatOutcome(
     [userMessageId],
     "messages",
   );
+  assertCurrent?.();
   if (!userMemory || userMemory.roomId !== roomId) {
     throw new ElizaError("Durable chat outcome has no matching user message", {
       code: "CHAT_IDEMPOTENCY_USER_MEMORY_MISSING",
       context: { roomId, userMessageId, clientMessageId },
     });
   }
-  await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () =>
-    runtime.updateMemory({
+  await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () => {
+    assertCurrent?.();
+    return runtime.updateMemory({
       id: userMessageId,
       content: {
         ...userMemory.content,
@@ -1570,8 +1732,9 @@ async function persistDurableConversationChatOutcome(
           outcomeJson: JSON.stringify(outcome),
         } satisfies DurableConversationChatMarker,
       },
-    }),
-  );
+    });
+  });
+  assertCurrent?.();
 }
 
 async function recoverDurableConversationChatOutcome(
@@ -1582,6 +1745,7 @@ async function recoverDurableConversationChatOutcome(
   fingerprint: string,
   agentName: string,
   roomHandlerLease: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<DurableConversationChatRecovery> {
   if (!clientMessageId) return { kind: "none" };
   const userMessageId = conversationClientUserMemoryId(scope, clientMessageId);
@@ -1589,6 +1753,7 @@ async function recoverDurableConversationChatOutcome(
     [userMessageId],
     "messages",
   );
+  assertCurrent?.();
   if (!userMemory) return { kind: "none" };
   if (userMemory.roomId !== roomId) {
     return {
@@ -1637,10 +1802,10 @@ async function recoverDurableConversationChatOutcome(
     roomId,
     tableName: "messages",
     start: userMemory.createdAt,
-    limit: 1_000,
     orderBy: "createdAt",
     orderDirection: "asc",
   });
+  assertCurrent?.();
   const transformedUserMessageId = createUniqueUuid(runtime, userMessageId);
   const assistant = memories
     .filter(
@@ -1669,6 +1834,7 @@ async function recoverDurableConversationChatOutcome(
     const recoveryMessageId = stringToUuid(
       `conversation-incomplete-recovery:${userMessageId}`,
     ) as UUID;
+    assertCurrent?.();
     const persisted = await persistAssistantConversationMemory(
       runtime,
       roomId,
@@ -1681,7 +1847,9 @@ async function recoverDurableConversationChatOutcome(
       undefined,
       recoveryMessageId,
       roomHandlerLease,
+      assertCurrent,
     );
+    assertCurrent?.();
     if (!persisted?.id) {
       throw new ElizaError(
         "Failed to persist the incomplete chat recovery terminal",
@@ -1705,19 +1873,22 @@ async function recoverDurableConversationChatOutcome(
       fingerprint,
       outcome,
       roomHandlerLease,
+      assertCurrent,
     );
     return { kind: "settled", outcome };
   }
   if (assistant.content.inReplyTo !== userMessageId) {
-    await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () =>
-      runtime.updateMemory({
+    await runtime.roomHandlerQueue.runInLease(roomId, roomHandlerLease, () => {
+      assertCurrent?.();
+      return runtime.updateMemory({
         ...assistant,
         content: {
           ...assistant.content,
           inReplyTo: userMessageId,
         },
-      }),
-    );
+      });
+    });
+    assertCurrent?.();
     assistant.content = {
       ...assistant.content,
       inReplyTo: userMessageId,
@@ -1736,6 +1907,7 @@ async function recoverDurableConversationChatOutcome(
     fingerprint,
     outcome,
     roomHandlerLease,
+    assertCurrent,
   );
   return { kind: "settled", outcome };
 }
@@ -1765,12 +1937,23 @@ async function persistClientUserMemory(
   memory: ReturnType<typeof createMessageMemory>,
   clientMessageId: string | null | undefined,
   roomHandlerLease: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<void> {
   if (!clientMessageId) {
-    await persistConversationMemory(runtime, memory, roomHandlerLease);
+    await persistConversationMemory(
+      runtime,
+      memory,
+      roomHandlerLease,
+      assertCurrent,
+    );
     return;
   }
-  await persistExactConversationMemory(runtime, memory, roomHandlerLease);
+  await persistExactConversationMemory(
+    runtime,
+    memory,
+    roomHandlerLease,
+    assertCurrent,
+  );
 }
 
 interface CanonicalPendantProvenance {
@@ -1941,6 +2124,9 @@ function buildGenerationMessageIdOutcome(
       ? { actionResults: result.actionResults }
       : {}),
     ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+    ...(result.terminalFailure
+      ? { terminalFailure: result.terminalFailure }
+      : {}),
     ...(result.accountConnect ? { accountConnect: result.accountConnect } : {}),
     ...(result.localInference ? { localInference: result.localInference } : {}),
     ...(result.noResponseReason
@@ -1966,6 +2152,9 @@ function buildConversationJsonOutcome(
       ? { actionResults: outcome.actionResults }
       : {}),
     ...(outcome.failureKind ? { failureKind: outcome.failureKind } : {}),
+    ...(outcome.terminalFailure
+      ? { terminalFailure: outcome.terminalFailure }
+      : {}),
     ...(outcome.accountConnect
       ? { accountConnect: outcome.accountConnect }
       : {}),
@@ -1975,6 +2164,7 @@ function buildConversationJsonOutcome(
     ...(outcome.noResponseReason
       ? { noResponseReason: outcome.noResponseReason }
       : {}),
+    ...(outcome.interrupted ? { interrupted: true } : {}),
   };
 }
 
@@ -1994,6 +2184,7 @@ export async function persistRecentAssistantActionCallbackHistory(
   sinceMs: number,
   targetMemoryId?: UUID,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<boolean> {
   const normalizedHistory = normalizeActionCallbackHistory(
     actionCallbackHistory,
@@ -2008,8 +2199,8 @@ export async function persistRecentAssistantActionCallbackHistory(
       : await runtime.getMemories({
           roomId,
           tableName: "messages",
-          limit: 12,
         });
+    assertCurrent?.();
 
     const target = recent
       .filter(
@@ -2030,7 +2221,7 @@ export async function persistRecentAssistantActionCallbackHistory(
             : createdAt >= sinceMs - 2000)
         );
       })
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort(compareMemoriesByCreatedAt)
       .at(-1);
 
     if (!target || typeof target.id !== "string") {
@@ -2065,6 +2256,7 @@ export async function persistRecentAssistantActionCallbackHistory(
       return true;
     }
 
+    assertCurrent?.();
     await runtime.updateMemory({
       id: target.id as UUID,
       content: {
@@ -2072,6 +2264,7 @@ export async function persistRecentAssistantActionCallbackHistory(
         actionCallbackHistory: mergedHistory,
       } as Content,
     });
+    assertCurrent?.();
 
     return true;
   };
@@ -2291,6 +2484,8 @@ type ConversationRouteMessageRecord = {
    * here so the renderer's gate + Retry survive a GET /messages full-replace.
    */
   failureKind?: ChatFailureKind;
+  /** Complete typed terminal failure retained across history reloads. */
+  terminalFailure?: ChatTerminalFailure;
   /**
    * Structured "connect another account" request from the CONNECT_ACCOUNT
    * action. Persisted on the assistant memory as `content.accountConnect`
@@ -2298,6 +2493,14 @@ type ConversationRouteMessageRecord = {
    * the renderer's inline AddAccountDialog entry point survives a reload.
    */
   accountConnect?: AccountConnectRequest;
+  /**
+   * The turn ended by explicit Stop/disconnect abort. Persisted on the
+   * assistant memory as `content.interrupted` by
+   * `persistInterruptedAssistantReceipt`; round-tripped here so reload
+   * recovery renders the interrupted terminal state (zero-token receipts
+   * included) instead of a healthy reply or a missing row.
+   */
+  interrupted?: boolean;
 };
 
 // Greeting lookup and persistence share the room's history-writer boundary.
@@ -2363,7 +2566,6 @@ async function ensureConversationGreetingStoredUnlocked(
     memories = await runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
-      limit: 12,
     });
   } catch (error) {
     // error-policy:J2 greeting setup retains the storage cause for the route
@@ -2375,7 +2577,7 @@ async function ensureConversationGreetingStoredUnlocked(
     });
   }
 
-  memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  memories.sort(compareMemoriesByCreatedAt);
   const existingGreeting = memories.find((memory) => {
     const content = memory.content as Record<string, unknown> | undefined;
     return (
@@ -2559,10 +2761,7 @@ export async function handleConversationRoutes(
     const convos = Array.from(state.conversations.values())
       .filter((c) => !state.deletedConversationIds.has(c.id))
       .filter((c) => canWaifuAccessConversation(waifuAccess, c))
-      .sort(
-        (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-      );
+      .sort(compareConversationsByRecency);
     json(res, { conversations: convos });
     return true;
   }
@@ -2760,7 +2959,7 @@ export async function handleConversationRoutes(
         title: conv.title,
         roomId: conv.roomId,
         createdAt: new Date(conv.createdAt).toISOString(),
-        updatedAt: new Date(conv.lastMessageAt).toISOString(),
+        updatedAt: new Date(conv.lastMessageAt ?? conv.createdAt).toISOString(),
       });
     }
     evictOldestConversation(state.conversations, 500);
@@ -2932,7 +3131,7 @@ export async function handleConversationRoutes(
             });
       }
       // Sort by createdAt ascending
-      memories.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      memories.sort(compareMemoriesByCreatedAt);
       const agentId = runtime.agentId;
       // Per-viewer attachment disclosure (#14781): a boundary-role viewer
       // token (WaifuChat, artifact share-viewer) carries a principal; trunk
@@ -2978,6 +3177,9 @@ export async function handleConversationRoutes(
                 ? meta.chatFailureKind
                 : undefined;
           const failureKind = parseChatFailureKind(rawFailureKind);
+          const terminalFailure = parseChatTerminalFailure(
+            content.terminalFailure,
+          );
           // The CONNECT_ACCOUNT action stamps `content.accountConnect` on the
           // assistant memory. Validate + round-trip it so the inline
           // AddAccountDialog entry point survives the GET /messages replace.
@@ -2985,6 +3187,7 @@ export async function handleConversationRoutes(
             content.accountConnect,
           );
           const role = m.entityId === agentId ? "assistant" : "user";
+          const interrupted = content.interrupted === true;
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
             actionCallbackHistory,
@@ -3073,7 +3276,9 @@ export async function handleConversationRoutes(
             senderEntityId:
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
+            ...(terminalFailure ? { terminalFailure } : {}),
             ...(accountConnect ? { accountConnect } : {}),
+            ...(interrupted ? { interrupted: true } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -3081,7 +3286,13 @@ export async function handleConversationRoutes(
         // Without this filter they appear as blank chat bubbles. Image-only
         // turns (uploaded or generated media with no caption) are kept.
         .filter(
-          (m) => m.text.trim().length > 0 || (m.attachments?.length ?? 0) > 0,
+          (m) =>
+            m.text.trim().length > 0 ||
+            (m.attachments?.length ?? 0) > 0 ||
+            // A zero-token interrupted receipt has no text but IS the turn's
+            // terminal state; dropping it would leave the user turn unanswered
+            // on reload and invite regeneration.
+            m.interrupted === true,
         );
       const discordMessages = messages.filter((message) =>
         mayNeedDiscordMessageEnrichment(message.source),
@@ -3804,7 +4015,22 @@ export async function handleConversationRoutes(
       "conversation id",
     );
     if (convId === null) return true;
+    const fenceResolution = resolveLocalVoiceRuntimeFence(req, state, convId);
+    if (fenceResolution.kind === "invalid") {
+      error(res, fenceResolution.message, 400);
+      return true;
+    }
+    if (fenceResolution.kind === "conflict") {
+      error(res, fenceResolution.message, 409);
+      return true;
+    }
+    const localVoiceRuntimeFence =
+      fenceResolution.kind === "valid" ? fenceResolution.fence : null;
     const conv = await getConversationWithRestore(state, convId);
+    if (!isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)) {
+      error(res, "Local voice agent runtime changed", 409);
+      return true;
+    }
     if (!conv) {
       error(res, "Conversation not found", 404);
       return true;
@@ -3833,6 +4059,12 @@ export async function handleConversationRoutes(
     });
     if (!chatPayload) {
       finishStreamResponse();
+      return true;
+    }
+    if (!isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)) {
+      disconnectTracker.markCompleted();
+      disconnectTracker.dispose();
+      error(res, "Local voice agent runtime changed", 409);
       return true;
     }
     const {
@@ -3879,104 +4111,155 @@ export async function handleConversationRoutes(
         clientMessageId ?? null,
         chatReservation,
       );
-    const failStream = (message: string): true => {
-      releaseTurnReservation();
-      writeSse(res, { type: "error", message });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    };
+    try {
+      const failStream = (message: string): true => {
+        releaseTurnReservation();
+        writeSse(res, { type: "error", message });
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      };
 
-    // Runtime readiness is a lifecycle/API boundary. A chat request must fail
-    // immediately when capability is absent instead of occupying an SSE socket
-    // behind a hidden boot timer.
-    if (!runtime) {
-      return failStream("Agent is not running");
-    }
-
-    const caller = resolveConversationCaller(
-      req,
-      state,
-      trustedApiPrincipal,
-      runtime,
-    );
-    const userId = caller.entityId;
-    chatIdempotencyScope = buildConversationChatIdempotencyScope(
-      runtime,
-      conv.roomId,
-      caller.entityId,
-    );
-    const chatFingerprint = buildConversationChatFingerprint({
-      prompt,
-      images,
-      source,
-      channelType,
-      preferredLanguage,
-      metadata: chatMetadata,
-    });
-    const settleTurnReservation = async (
-      outcome: ChatMessageIdOutcome,
-    ): Promise<void> => {
-      if (clientMessageId) {
-        if (!runtimeTurnLease) {
-          throw new ElizaError("Chat outcome has no live room ownership", {
-            code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
-            context: { roomId: conv.roomId, clientMessageId },
-          });
-        }
-        await persistDurableConversationChatOutcome(
-          runtime,
-          conv.roomId,
-          chatIdempotencyScope,
-          clientMessageId,
-          chatFingerprint,
-          outcome,
-          runtimeTurnLease,
-        );
+      // Runtime readiness is a lifecycle/API boundary. A chat request must fail
+      // immediately when capability is absent instead of occupying an SSE socket
+      // behind a hidden boot timer.
+      if (!runtime) {
+        return failStream("Agent is not running");
       }
-      setChatMessageIdOutcome(
+
+      const caller = resolveConversationCaller(
+        req,
+        state,
+        trustedApiPrincipal,
+        runtime,
+      );
+      const userId = caller.entityId;
+      chatIdempotencyScope = buildConversationChatIdempotencyScope(
+        runtime,
+        conv.roomId,
+        caller.entityId,
+      );
+      const chatFingerprint = buildConversationChatFingerprint({
+        prompt,
+        images,
+        source,
+        channelType,
+        preferredLanguage,
+        metadata: chatMetadata,
+      });
+      const assertLocalVoiceTurnFence = () =>
+        assertLocalVoiceTurnFenceCurrent(state, localVoiceRuntimeFence, conv);
+      const settleTurnReservationInMemory = (
+        outcome: ChatMessageIdOutcome,
+      ): void => {
+        setChatMessageIdOutcome(
+          chatIdempotencyScope,
+          clientMessageId ?? null,
+          outcome,
+          chatReservation,
+        );
+        reservationSettled = true;
+      };
+      const settleTurnReservation = async (
+        outcome: ChatMessageIdOutcome,
+      ): Promise<void> => {
+        if (clientMessageId) {
+          if (!runtimeTurnLease) {
+            throw new ElizaError("Chat outcome has no live room ownership", {
+              code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
+              context: { roomId: conv.roomId, clientMessageId },
+            });
+          }
+          await persistDurableConversationChatOutcome(
+            runtime,
+            conv.roomId,
+            chatIdempotencyScope,
+            clientMessageId,
+            chatFingerprint,
+            outcome,
+            runtimeTurnLease,
+            assertLocalVoiceTurnFence,
+          );
+          assertLocalVoiceTurnFence();
+        }
+        settleTurnReservationInMemory(outcome);
+      };
+      const settleDurableAssistantOutcome = async (
+        outcome: ChatMessageIdOutcome,
+      ): Promise<void> => {
+        try {
+          await settleTurnReservation(outcome);
+        } catch (settlementError) {
+          assertLocalVoiceTurnFence();
+          // error-policy:J7 the assistant reply is already durable and can be
+          // reconstructed by its in-reply-to link after restart. Preserve the
+          // truthful terminal locally while reporting the failed marker write.
+          settleTurnReservationInMemory(outcome);
+          runtime.reportError(
+            "ConversationStream.durableReplySettlement",
+            settlementError,
+            {
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              clientMessageId,
+              messageId: outcome.messageId,
+            },
+          );
+          logger.warn(
+            {
+              err: getErrorMessage(settlementError),
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              messageId: outcome.messageId,
+            },
+            "[ConversationStream] durable assistant reply persisted but outcome marker settlement failed",
+          );
+        }
+      };
+      const idempotencyAdmission = await awaitConversationChatAdmission(
         chatIdempotencyScope,
         clientMessageId ?? null,
-        outcome,
-        chatReservation,
+        chatFingerprint,
+        disconnectTracker.signal,
       );
-      reservationSettled = true;
-    };
-    const idempotencyAdmission = await awaitConversationChatAdmission(
-      chatIdempotencyScope,
-      clientMessageId ?? null,
-      chatFingerprint,
-      disconnectTracker.signal,
-    );
-    if (idempotencyAdmission.kind === "aborted") {
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "settled") {
-      writeConversationDoneSse(res, idempotencyAdmission.outcome);
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "conflict") {
-      writeSse(res, {
-        type: "error",
-        message: idempotencyAdmission.error.message,
-        code: idempotencyAdmission.error.code,
-      });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    chatReservation = idempotencyAdmission.reservation;
-    try {
+      if (
+        !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
+      ) {
+        return failStream("Local voice agent runtime changed");
+      }
+      if (idempotencyAdmission.kind === "aborted") {
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      }
+      if (idempotencyAdmission.kind === "settled") {
+        writeConversationDoneSse(res, idempotencyAdmission.outcome);
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      }
+      if (idempotencyAdmission.kind === "conflict") {
+        writeSse(res, {
+          type: "error",
+          message: idempotencyAdmission.error.message,
+          code: idempotencyAdmission.error.code,
+        });
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      }
+      chatReservation = idempotencyAdmission.reservation;
       writeChatStatusSse(res, { kind: "thinking" });
       try {
         runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
           conv.roomId,
           disconnectTracker.signal,
         );
+        if (
+          !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
+        ) {
+          return failStream("Local voice agent runtime changed");
+        }
       } catch (err) {
         releaseTurnReservation();
         if (disconnectTracker.isAborted()) {
@@ -3998,15 +4281,37 @@ export async function handleConversationRoutes(
         ) {
           return failStream("Conversation was deleted");
         }
-        const durableRecovery = await recoverDurableConversationChatOutcome(
-          runtime,
-          conv.roomId,
-          chatIdempotencyScope,
-          clientMessageId,
-          chatFingerprint,
-          state.agentName,
-          runtimeTurnLease,
-        );
+        let durableRecovery: DurableConversationChatRecovery;
+        try {
+          durableRecovery = await recoverDurableConversationChatOutcome(
+            runtime,
+            conv.roomId,
+            chatIdempotencyScope,
+            clientMessageId,
+            chatFingerprint,
+            state.agentName,
+            runtimeTurnLease,
+            assertLocalVoiceTurnFence,
+          );
+        } catch (err) {
+          // error-policy:J1 A local voice generation-fence failure is
+          // translated at the open SSE transport boundary.
+          if (
+            !isLocalVoiceRuntimeFenceCurrent(
+              state,
+              localVoiceRuntimeFence,
+              conv,
+            )
+          ) {
+            return failStream(getErrorMessage(err));
+          }
+          throw err;
+        }
+        if (
+          !isLocalVoiceRuntimeFenceCurrent(state, localVoiceRuntimeFence, conv)
+        ) {
+          return failStream("Local voice agent runtime changed");
+        }
         if (durableRecovery.kind === "conflict") {
           releaseTurnReservation();
           writeSse(res, {
@@ -4019,7 +4324,23 @@ export async function handleConversationRoutes(
           return true;
         }
         if (durableRecovery.kind === "settled") {
-          await settleTurnReservation(durableRecovery.outcome);
+          try {
+            await settleTurnReservation(durableRecovery.outcome);
+            assertLocalVoiceTurnFence();
+          } catch (err) {
+            // error-policy:J1 A late settlement fence failure is translated
+            // before the route can emit a successful terminal frame.
+            if (
+              !isLocalVoiceRuntimeFenceCurrent(
+                state,
+                localVoiceRuntimeFence,
+                conv,
+              )
+            ) {
+              return failStream(getErrorMessage(err));
+            }
+            throw err;
+          }
           writeConversationDoneSse(res, durableRecovery.outcome);
           clearInterval(heartbeatInterval);
           finishStreamResponse();
@@ -4033,6 +4354,15 @@ export async function handleConversationRoutes(
             prompt,
             chatMetadata,
           );
+          if (
+            !isLocalVoiceRuntimeFenceCurrent(
+              state,
+              localVoiceRuntimeFence,
+              conv,
+            )
+          ) {
+            return failStream("Local voice agent runtime changed");
+          }
           userMessages = await buildUserMessages({
             images,
             prompt,
@@ -4043,6 +4373,15 @@ export async function handleConversationRoutes(
             messageSource: pendantProvenance ? "pendant" : source,
             metadata: chatMetadata,
           });
+          if (
+            !isLocalVoiceRuntimeFenceCurrent(
+              state,
+              localVoiceRuntimeFence,
+              conv,
+            )
+          ) {
+            return failStream("Local voice agent runtime changed");
+          }
           if (pendantProvenance) {
             stampCanonicalPendantMemory(userMessages, pendantProvenance);
           }
@@ -4065,6 +4404,7 @@ export async function handleConversationRoutes(
           runtime,
           conv,
           caller,
+          assertLocalVoiceTurnFence,
         );
         try {
           await scheduleConversationConnectionEnsure(connectionDescriptor, () =>
@@ -4103,6 +4443,7 @@ export async function handleConversationRoutes(
             messageToStore,
             clientMessageId ?? null,
             runtimeTurnLease,
+            assertLocalVoiceTurnFence,
           );
           assertConversationConnectionRuntime(
             state.runtime,
@@ -4142,6 +4483,7 @@ export async function handleConversationRoutes(
                   turnStartedAt,
                   routeOwnedId,
                   runtimeTurnLease,
+                  assertLocalVoiceTurnFence,
                 );
                 assertConversationConnectionRuntime(
                   state.runtime,
@@ -4206,6 +4548,11 @@ export async function handleConversationRoutes(
         let lastStatusSignature = "thinking::";
         let generationResult: ChatGenerationResult | null = null;
         try {
+          const assertCurrentGenerationOwner = () =>
+            assertConversationConnectionRuntime(
+              state.runtime,
+              connectionDescriptor,
+            );
           const result = await generateChatResponse(
             runtime,
             routedUserMessage,
@@ -4214,6 +4561,7 @@ export async function handleConversationRoutes(
               abortSignal: disconnectTracker.signal,
               roomHandlerLease: runtimeTurnLease,
               onStatus: (status) => {
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4234,6 +4582,7 @@ export async function handleConversationRoutes(
                 writeChatStatusSse(res, status);
               },
               onToolEvent: (event) => {
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4244,6 +4593,7 @@ export async function handleConversationRoutes(
               },
               onChunk: (chunk, origin) => {
                 if (!chunk) return;
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4260,6 +4610,7 @@ export async function handleConversationRoutes(
               },
               onSnapshot: (text, origin) => {
                 if (!text) return;
+                assertCurrentGenerationOwner();
                 if (
                   disconnectTracker.isAborted() ||
                   disconnectTracker.checkConnectionClosed()
@@ -4285,8 +4636,10 @@ export async function handleConversationRoutes(
                   provisional: origin === "action_callback",
                 });
               },
-              resolveNoResponseText: () =>
-                resolveNoResponseFallback(state.logBuffer, runtime),
+              resolveNoResponseText: () => {
+                assertCurrentGenerationOwner();
+                return resolveNoResponseFallback(state.logBuffer, runtime);
+              },
               preferredLanguage,
             },
           );
@@ -4333,6 +4686,7 @@ export async function handleConversationRoutes(
               channelType,
               runtimeTurnLease,
               messageToStore.id,
+              assertLocalVoiceTurnFence,
             );
             assertConversationConnectionRuntime(
               state.runtime,
@@ -4350,6 +4704,7 @@ export async function handleConversationRoutes(
                 turnStartedAt,
                 persistedAssistantId,
                 runtimeTurnLease,
+                assertLocalVoiceTurnFence,
               );
             }
             assertConversationConnectionRuntime(
@@ -4370,7 +4725,11 @@ export async function handleConversationRoutes(
                   : {}),
               },
             );
-            await settleTurnReservation(outcome);
+            if (persistedAssistant.kind === "durable") {
+              await settleDurableAssistantOutcome(outcome);
+            } else {
+              await settleTurnReservation(outcome);
+            }
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
@@ -4426,16 +4785,96 @@ export async function handleConversationRoutes(
             }
           } else if (isTurnAbortError(terminalError)) {
             logger.info(
-              { conversationId: conv.id, roomId: conv.roomId },
-              "[ConversationStream] generation aborted",
+              {
+                conversationId: conv.id,
+                roomId: conv.roomId,
+                streamedTextLength: streamedText.length,
+              },
+              "[ConversationStream] generation aborted; persisting interrupted receipt",
             );
+            // Stop/disconnect is a terminal outcome of the turn, not a
+            // discarded one: persist the interrupted receipt (partial text or
+            // the zero-token case) and settle the idempotency key so reload
+            // recovery and a retried clientMessageId adopt this durable state
+            // instead of regenerating (#17216).
             if (
               !getChatMessageIdOutcome(
                 chatIdempotencyScope,
                 clientMessageId ?? null,
               )
             ) {
-              releaseTurnReservation();
+              try {
+                assertConversationConnectionRuntime(
+                  state.runtime,
+                  connectionDescriptor,
+                );
+                const receiptId = crypto.randomUUID() as UUID;
+                const persisted = await persistInterruptedAssistantReceipt(
+                  runtime,
+                  conv.roomId,
+                  streamedText,
+                  channelType,
+                  messageToStore.id,
+                  receiptId,
+                  runtimeTurnLease,
+                  assertLocalVoiceTurnFence,
+                );
+                conv.updatedAt = new Date().toISOString();
+                const interruptedOutcome: ChatMessageIdOutcome = {
+                  text: streamedText,
+                  agentName: state.agentName,
+                  ...(persisted.id ? { messageId: persisted.id } : {}),
+                  userMessageId: messageToStore.id,
+                  interrupted: true,
+                };
+                try {
+                  await settleTurnReservation(interruptedOutcome);
+                } catch (settlementError) {
+                  assertLocalVoiceTurnFence();
+                  // error-policy:J7 the receipt is already durable and remains
+                  // recoverable through its deterministic in-reply-to link;
+                  // preserve that terminal outcome locally while reporting the
+                  // failed optimization that writes it onto the user marker.
+                  settleTurnReservationInMemory(interruptedOutcome);
+                  runtime.reportError(
+                    "ConversationStream.interruptedReceiptSettlement",
+                    settlementError,
+                    {
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      clientMessageId,
+                      receiptId: persisted.id,
+                    },
+                  );
+                  logger.warn(
+                    {
+                      err: getErrorMessage(settlementError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      receiptId: persisted.id,
+                    },
+                    "[ConversationStream] interrupted receipt persisted but outcome marker settlement failed",
+                  );
+                }
+                assertLocalVoiceTurnFence();
+                if (!disconnectTracker.isAborted()) {
+                  writeConversationDoneSse(res, interruptedOutcome);
+                }
+              } catch (persistErr) {
+                // error-policy:J4 the interrupted receipt is best-effort
+                // terminal state for an already-severed transport; on write
+                // failure the key is released so the client's next send owns a
+                // fresh turn rather than replaying a half-settled outcome.
+                logger.warn(
+                  {
+                    err: getErrorMessage(persistErr),
+                    conversationId: conv.id,
+                    roomId: conv.roomId,
+                  },
+                  "[ConversationStream] failed to persist interrupted receipt",
+                );
+                releaseTurnReservation();
+              }
             }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
@@ -4479,6 +4918,7 @@ export async function handleConversationRoutes(
                   turnStartedAt,
                   routeOwnedId,
                   runtimeTurnLease,
+                  assertLocalVoiceTurnFence,
                 );
                 assertConversationConnectionRuntime(
                   state.runtime,
@@ -4550,16 +4990,20 @@ export async function handleConversationRoutes(
                     await runtime.roomHandlerQueue.runInLease(
                       conv.roomId,
                       runtimeTurnLease,
-                      () =>
-                        runtime.updateMemory({
+                      async () => {
+                        assertLocalVoiceTurnFence();
+                        await runtime.updateMemory({
                           ...exactPersistedResponse,
                           content: buildPersistedAssistantContent(
                             generationResolvedText,
                             generationResult,
                             messageToStore.id,
                           ),
-                        }),
+                        });
+                        assertLocalVoiceTurnFence();
+                      },
                     );
+                    assertLocalVoiceTurnFence();
                   }
                   logger.warn(
                     {
@@ -4578,6 +5022,7 @@ export async function handleConversationRoutes(
                       turnStartedAt,
                       exactPersistedId,
                       runtimeTurnLease,
+                      assertLocalVoiceTurnFence,
                     );
                   }
                   assertConversationConnectionRuntime(
@@ -4636,6 +5081,7 @@ export async function handleConversationRoutes(
                   undefined,
                   routeOwnedId,
                   runtimeTurnLease,
+                  assertLocalVoiceTurnFence,
                 );
                 assertConversationConnectionRuntime(
                   state.runtime,
@@ -4688,8 +5134,36 @@ export async function handleConversationRoutes(
         await runtimeTurnLease.release();
         runtimeTurnLease = null;
       }
+    } catch (streamError) {
+      // error-policy:J2 context-adding rethrow: the terminal SSE `error` frame
+      // is emitted here, then the original failure is rethrown unchanged to the
+      // J1 HTTP boundary.
+      // Everything past `initSse` reports failure as a structured SSE `error`
+      // event; a throw out of turn setup must not become the one silent exit.
+      try {
+        if (!disconnectTracker.isAborted() && !res.writableEnded) {
+          writeSse(res, {
+            type: "error",
+            message: getErrorMessage(streamError),
+          });
+        }
+      } catch (frameError) {
+        // error-policy:J6 best-effort teardown: the terminal frame is a
+        // courtesy to a socket that is already gone, and the rethrow below
+        // still carries the real failure to the J1 boundary.
+        logger.warn(
+          `[conversation-stream] terminal error frame undeliverable: ${getErrorMessage(frameError)}`,
+        );
+      }
+      throw streamError;
     } finally {
       if (!reservationSettled) releaseTurnReservation();
+      // The heartbeat timer and the SSE socket are owned by this request, not
+      // by the HTTP error boundary that catches the rethrow above, so this is
+      // the only place a failed turn can release them. Both calls are
+      // idempotent: the ordinary exits already cleaned up and are unchanged.
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
     }
   }
 
@@ -5327,7 +5801,6 @@ export async function handleConversationRoutes(
       const memories = await state.runtime.getMemories({
         roomId: conv.roomId,
         tableName: "messages",
-        limit: 5,
       });
       const lastUserMemory = memories.find(
         (m) => m.entityId !== state.runtime?.agentId,
@@ -5451,7 +5924,6 @@ export async function handleConversationRoutes(
         const memories = await runtime.getMemories({
           roomId: conv.roomId,
           tableName: "messages",
-          limit: 10,
         });
         const hasUserMessage = memories.some((m) => m.entityId !== agentId);
         if (hasUserMessage) continue;
@@ -5534,7 +6006,6 @@ export async function handleConversationRoutes(
           const memories = await runtime.getMemories({
             roomId: conv.roomId,
             tableName: "messages",
-            limit: 1000,
           });
           const memoryIds = memories
             .map((memory) => memory.id)

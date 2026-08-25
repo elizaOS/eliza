@@ -10,13 +10,13 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type AgentRuntime,
+  deterministicOwnerEntityId,
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   type LegacyRouteHandler,
   logger,
   type Route,
   resolveCanonicalOwnerId,
-  stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -964,8 +964,7 @@ function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
   if (configured && z.string().uuid().safeParse(configured).success) {
     return configured as UUID;
   }
-  const agentName = runtime.character?.name?.trim();
-  return agentName ? stringToUuid(`${agentName}-admin-entity`) : null;
+  return deterministicOwnerEntityId(runtime.agentId);
 }
 
 export function buildPendantSessionRouteContext(

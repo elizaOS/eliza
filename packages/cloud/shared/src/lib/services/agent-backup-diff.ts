@@ -24,6 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { AGENT_BACKUP_CANONICAL_JSON, stableJsonString } from "@elizaos/shared/canonical-json";
 import type {
   AgentBackupDeltaData,
   AgentBackupPlainStateData,
@@ -75,21 +76,16 @@ export function emptyBackupState(): AgentBackupStateData {
 /**
  * Deterministic JSON with recursively sorted object keys. Used so two states
  * that differ only in key insertion order hash and compare equal.
+ *
+ * `state.config` and `state.memories` are agent- and plugin-controlled, so the
+ * walk is bounded: the sorted-key recursion this replaces carried no depth
+ * counter, no node budget and no cycle guard, and `RangeError`ed
+ * `computeStateHash`/`diffBackupState` on a deep or cyclic config instead of
+ * rejecting it. Canonical bytes are unchanged for every state that hashed
+ * before, so stored `content_hash` values stay valid.
  */
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
-      sorted[key] = canonicalize((value as Record<string, unknown>)[key]);
-    }
-    return sorted;
-  }
-  return value;
-}
-
 function stableStringify(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
+  return stableJsonString(value, AGENT_BACKUP_CANONICAL_JSON);
 }
 
 function valuesEqual(a: unknown, b: unknown): boolean {
@@ -330,7 +326,12 @@ export function resolveBackupChainBytes(
 export function selectPrunableBackupIds(nodes: BackupChainNode[], keep: number): string[] {
   if (nodes.length <= keep) return [];
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const newestFirst = [...nodes].sort((a, b) => b.createdAtMs - a.createdAtMs);
+  const newestFirst = [...nodes].sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAtMs) ? a.createdAtMs : 0;
+    const bTime = Number.isFinite(b.createdAtMs) ? b.createdAtMs : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return a.id.localeCompare(b.id);
+  });
 
   const keepSet = new Set<string>();
   for (const node of newestFirst.slice(0, Math.max(0, keep))) keepSet.add(node.id);
@@ -349,4 +350,4 @@ export function selectPrunableBackupIds(nodes: BackupChainNode[], keep: number):
   return newestFirst.filter((n) => !keepSet.has(n.id)).map((n) => n.id);
 }
 
-export const __testing = { canonicalize, stableStringify, sharedMemoryPrefix, EMPTY_STATE };
+export const __testing = { stableStringify, sharedMemoryPrefix, EMPTY_STATE };

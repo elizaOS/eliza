@@ -115,6 +115,29 @@ describe("local-inference handler-registry mirrors via the core API, not a patch
 		expect(rows[0]).not.toHaveProperty("handler");
 	});
 
+	it("orders non-finite priorities without producing an unstable comparator", async () => {
+		const { runtime, fire } = makeFakeRuntime([]);
+		handlerRegistry.installOn(runtime);
+
+		for (const [provider, priority] of [
+			["not-a-number", Number.NaN],
+			["negative-infinity", Number.NEGATIVE_INFINITY],
+			["finite", 12],
+			["positive-infinity", Number.POSITIVE_INFINITY],
+		] as const) {
+			await fire(payload({ modelType: "NON_FINITE_TYPE", provider, priority }));
+		}
+
+		expect(
+			handlerRegistry.getForType("NON_FINITE_TYPE").map((row) => row.provider),
+		).toEqual([
+			"positive-infinity",
+			"finite",
+			"not-a-number",
+			"negative-infinity",
+		]);
+	});
+
 	it("getForTypeExcluding drops the named provider", async () => {
 		const { runtime, fire } = makeFakeRuntime([]);
 		handlerRegistry.installOn(runtime);

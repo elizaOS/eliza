@@ -1057,20 +1057,24 @@ describe("deduct + reconcile legs under ONE request key (#10847 follow-up)", () 
   test("reconcile-refund replay reverses the creator exactly once (balance + counter)", async () => {
     if (!pgliteReady) return;
     const { appId, payerUserId, creatorUserId } = await seed();
+    let reservationTransactionId: string | undefined;
 
     await runWithRequestContext({ idempotencyKey: "settle-refund" }, async () => {
-      await appCreditsService.deductCredits({
+      const deduction = await appCreditsService.deductCredits({
         appId,
         userId: payerUserId,
         baseCost: 0.03,
         description: "inference (estimate)",
       });
+      reservationTransactionId = deduction.transactionId;
+      expect(reservationTransactionId).toBeTruthy();
       await appCreditsService.reconcileCredits({
         appId,
         userId: payerUserId,
         estimatedBaseCost: 0.03,
         actualBaseCost: 0.01,
         description: "inference (reconcile refund)",
+        reservationTransactionId,
       });
     });
     // +0.03 (deduct leg) − 0.02 (refund leg) at 100% markup.
@@ -1087,6 +1091,7 @@ describe("deduct + reconcile legs under ONE request key (#10847 follow-up)", () 
         estimatedBaseCost: 0.03,
         actualBaseCost: 0.01,
         description: "inference (reconcile refund retry)",
+        reservationTransactionId,
       }),
     );
     expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.01, 6);

@@ -2,6 +2,10 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
+  dedicatedCloudAgentIdFromBase,
+  isDedicatedCloudAgentBase,
+} from "../utils/cloud-agent-base";
+import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
@@ -17,6 +21,7 @@ describe("isTrustedRestoreApiBaseUrl", () => {
   it("trusts loopback and local-agent hosts", () => {
     expect(isTrustedRestoreApiBaseUrl("http://localhost:31337")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://127.0.0.1:31337")).toBe(true);
+    expect(isTrustedRestoreApiBaseUrl("http://127.0.0.2:31337")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://[::1]:2138")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://0.0.0.0")).toBe(true);
   });
@@ -122,6 +127,11 @@ describe("isTrustedCloudApiBaseUrl", () => {
     expect(isTrustedCloudApiBaseUrl(`${base}/${AGENT}`, OTHER_AGENT)).toBe(
       false,
     );
+    expect(isTrustedCloudApiBaseUrl(`${base}/${AGENT}/api`, AGENT)).toBe(true);
+    expect(isDedicatedCloudAgentBase(`${base}/${AGENT}/api`)).toBe(true);
+    expect(dedicatedCloudAgentIdFromBase(`${base}/${AGENT}/api`)).toBe(AGENT);
+    expect(isDedicatedCloudAgentBase(`${base}/${AGENT}`)).toBe(true);
+    expect(dedicatedCloudAgentIdFromBase(`${base}/${AGENT}`)).toBe(AGENT);
     expect(
       isTrustedCloudApiBaseUrl(`${base}/${encodeURIComponent(`${AGENT}/x`)}`),
     ).toBe(false);
@@ -160,7 +170,7 @@ describe("isTrustedCloudApiBaseUrl", () => {
     expect(isTrustedCloudApiBaseUrl("https://docs.elizacloud.ai")).toBe(false);
   });
 
-  it("allows strict loopback roots without widening to arbitrary paths", () => {
+  it("allows strict loopback roots and identity-bound local Shared adapters", () => {
     expect(isTrustedCloudApiBaseUrl("http://127.0.0.1:31337", AGENT)).toBe(
       true,
     );
@@ -171,6 +181,27 @@ describe("isTrustedCloudApiBaseUrl", () => {
     expect(isTrustedCloudApiBaseUrl("http://127.0.0.1:31337/api", AGENT)).toBe(
       false,
     );
+    const personalId = "personal:00000000-0000-5000-8000-000000000001";
+    const personalBase = `http://127.0.0.1:18787/api/v1/eliza/agents/${encodeURIComponent(personalId)}`;
+    expect(isTrustedCloudApiBaseUrl(personalBase, personalId)).toBe(true);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        personalBase,
+        "personal:00000000-0000-5000-8000-000000000002",
+      ),
+    ).toBe(false);
+    expect(isTrustedCloudApiBaseUrl(personalBase)).toBe(false);
+    const dedicatedProxy = `http://127.0.0.1:18787/api/v1/eliza/agents/${AGENT}`;
+    expect(isTrustedCloudApiBaseUrl(dedicatedProxy, AGENT)).toBe(true);
+    expect(isTrustedCloudApiBaseUrl(dedicatedProxy, OTHER_AGENT)).toBe(false);
+    expect(isDedicatedCloudAgentBase(dedicatedProxy)).toBe(true);
+    expect(dedicatedCloudAgentIdFromBase(dedicatedProxy)).toBe(AGENT);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        "http://127.0.0.1:18787/api/v1/eliza/agents/not-an-agent",
+        AGENT,
+      ),
+    ).toBe(false);
     expect(isTrustedCloudApiBaseUrl("http://127.0.0.1.evil.test", AGENT)).toBe(
       false,
     );

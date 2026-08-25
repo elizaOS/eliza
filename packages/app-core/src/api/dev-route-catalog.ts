@@ -220,18 +220,6 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
-    // My Apps is the canonical `/apps` destination (mirrors TAB_PATHS in
-    // packages/ui/src/navigation; the launcher grid lives at `/views`).
-    tabId: "my-apps",
-    path: "/apps",
-    label: "My Apps",
-    group: "Apps",
-    visibility: "all",
-    featureFlag: "VITE_ENABLE_APPS",
-    requiresAuth: true,
-    platformGate: null,
-  },
-  {
     tabId: "runtime",
     path: "/apps/runtime",
     label: "Runtime",
@@ -402,6 +390,18 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    // Owner-only vault workspace — reachable directly at /vault; not
+    // in any ALL_TAB_GROUPS launcher group, like rolodex/desktop/background.
+    tabId: "vault",
+    path: "/vault",
+    label: "Vault",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "rolodex",
     path: "/rolodex",
     label: "Rolodex",
@@ -497,11 +497,6 @@ const MODALS: DevRouteModal[] = [
     id: "whatsapp-qr",
     trigger:
       "Settings > Connectors > WhatsApp > Link device (renders the QR pairing overlay).",
-  },
-  {
-    id: "signal-qr",
-    trigger:
-      "Settings > Connectors > Signal > Link device (renders the QR pairing overlay).",
   },
 ];
 

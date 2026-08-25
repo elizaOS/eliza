@@ -16,6 +16,7 @@ import {
 	type Character,
 	type Content,
 	createUniqueUuid,
+	ElizaError,
 	type EventPayload,
 	getConnectorAdminWhitelist,
 	type IAgentRuntime,
@@ -25,6 +26,8 @@ import {
 	MemoryType,
 	type MessageConnectorChatContext,
 	type MessageConnectorCreateThreadParams,
+	type MessageConnectorManageServerAuthorization,
+	type MessageConnectorManageServerDestination,
 	type MessageConnectorPostToThreadParams,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
@@ -42,6 +45,8 @@ import {
 	stringToUuid,
 	type TargetInfo,
 	type ThreadHandle,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type UUID,
 	type World,
 } from "@elizaos/core";
@@ -142,6 +147,19 @@ import {
 import { DmChannelRegistry } from "./dm-channel-registry";
 import { getDiscordSettings } from "./environment";
 import {
+	executeGuildManagement,
+	type GuildManagementReceipt,
+	type GuildManagementRequest,
+	type ManageableGuild,
+	resolveGuildManagementGates,
+	type TemplateStateStore,
+} from "./guild-management";
+import {
+	resolveDiscordManageServerDestination,
+	revalidateDiscordManageServerAuthorization,
+} from "./guild-management-authorization";
+import type { GuildTemplate } from "./guild-templates";
+import {
 	extractDiscordOwnerUserIds,
 	extractDiscordTeamAdminUserIds,
 	isAliasedDiscordEntityId,
@@ -149,10 +167,12 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
+import { buildDiscordReplyPayload } from "./interactions";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	type DiscordOutboundDeliveryReservation,
+	INTERACTION_ONLY_FALLBACK_TEXT,
 	MessageManager,
 } from "./messages";
 import { chunkDiscordText } from "./messaging";
@@ -180,6 +200,7 @@ import type {
 } from "./types";
 import { DiscordEventTypes } from "./types";
 import {
+	buildDiscordComponents,
 	buildOutboundDiscordAttachment,
 	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
@@ -193,6 +214,48 @@ import {
 } from "./voice-target-registry";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
+
+// Loose coercion for planner-supplied manage_server params: unknown shapes
+// collapse to undefined so the management module's own validation reports
+// missing fields instead of type errors leaking through.
+function stringOrUndefined(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function booleanOrUndefined(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		const normalized = value.trim().toLowerCase();
+		if (["true", "yes", "1", "on"].includes(normalized)) return true;
+		if (["false", "no", "0", "off"].includes(normalized)) return false;
+	}
+	return undefined;
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "string" && value.trim()) {
+		const parsed = Number(value.trim());
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return undefined;
+}
+
+function stringArrayOrUndefined(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) {
+		if (typeof value === "string" && value.trim()) {
+			return value
+				.split(",")
+				.map((entry) => entry.trim())
+				.filter(Boolean);
+		}
+		return undefined;
+	}
+	return value.filter(
+		(entry): entry is string =>
+			typeof entry === "string" && Boolean(entry.trim()),
+	);
+}
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
@@ -452,6 +515,22 @@ type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
 		runtime: IAgentRuntime,
 		params: ConnectorUserLookupParams,
 	) => Promise<unknown>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+		},
+	) => Promise<{ summary: string; data?: Record<string, unknown> }>;
 };
 
 const DISCORD_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -477,6 +556,7 @@ const DISCORD_CONNECTOR_CAPABILITIES = [
 	"webhook_identity",
 	"rich_components",
 	"rich_embed",
+	"manage_server",
 ];
 
 function normalizeDiscordConnectorQuery(value: string): string {
@@ -487,6 +567,18 @@ function normalizeDiscordConnectorQuery(value: string): string {
 		.replace(/^#/, "")
 		.replace(/^@/, "")
 		.toLowerCase();
+}
+
+function normalizeRequestedConnectorLimit(
+	limit: number | undefined,
+): number | undefined {
+	if (limit === undefined) return undefined;
+	if (!Number.isSafeInteger(limit) || limit <= 0) {
+		throw new RangeError(
+			"Discord connector limit must be a positive safe integer",
+		);
+	}
+	return limit;
 }
 
 function scoreDiscordConnectorMatch(
@@ -903,8 +995,8 @@ export class DiscordService extends Service implements IDiscordService {
 		);
 	}
 
-	private createDiscordJsClient(): DiscordJsClient {
-		return new DiscordJsClient({
+	private createDiscordJsClient(accountId: string): DiscordJsClient {
+		const client = new DiscordJsClient({
 			intents: [
 				GatewayIntentBits.Guilds,
 				GatewayIntentBits.GuildMembers,
@@ -924,6 +1016,27 @@ export class DiscordService extends Service implements IDiscordService {
 				Partials.Reaction,
 			],
 		});
+		// discord.js builds its Client with `captureRejections: true`
+		// (BaseClient.js) and installs no Symbol.for("nodejs.rejection")
+		// handler, so a rejected async gateway listener is routed into
+		// `client.emit("error", ...)`. EventEmitter THROWS when "error" is
+		// emitted with no listener, and that throw lands on a process.nextTick
+		// stack that no call-stack try/catch can reach — an uncaughtException,
+		// which the agent crash guard turns into a whole-process restart.
+		//
+		// The per-attempt `once(Events.Error)` in attemptDiscordLogin is consumed
+		// by the FIRST such rejection, leaving the client error-listener-less
+		// from the second one on. This durable listener is what guarantees the
+		// client always has one. It owns the logging; the `once` keeps only the
+		// login-retry decision, so a single error still produces one line.
+		client.on(Events.Error, (error: unknown) => {
+			this.runtime.logger.error(
+				`Discord client error for account ${accountId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		});
+		return client;
 	}
 
 	private syncLegacyDefaultAliases(
@@ -1132,7 +1245,10 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		const voiceChannel = channel as BaseGuildVoiceChannel;
-		const normalizedStatus = status.trim().slice(0, 500);
+		const normalizedStatus = truncateWellFormed(
+			toWellFormedUnicode(status.trim()),
+			500,
+		);
 		await client.rest.put(`/channels/${voiceChannel.id}/voice-status`, {
 			body: {
 				status: normalizedStatus || null,
@@ -1386,7 +1502,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const state: DiscordAccountClientState = {
 			accountId,
 			account: { ...account, accountId },
-			client: this.createDiscordJsClient(),
+			client: this.createDiscordJsClient(accountId),
 			settings,
 			allowedChannelIds: settings.allowedChannelIds,
 			listenChannelIds: this.resolveListenChannelIdsForAccount(account),
@@ -1463,7 +1579,7 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 		if (!state.client) {
-			state.client = this.createDiscordJsClient();
+			state.client = this.createDiscordJsClient(state.accountId);
 		}
 		const client = state.client;
 		// Rebind message/reaction/guild listeners onto this (possibly fresh)
@@ -1607,12 +1723,9 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			scheduleRetry(closeEvent);
 		});
+		// Logging lives on the durable listener attached at client creation; this
+		// one only carries the login-retry decision for the current attempt.
 		client.once(Events.Error, (error: unknown) => {
-			this.runtime.logger.error(
-				`Discord client error for account ${state.accountId}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
@@ -1967,7 +2080,26 @@ export class DiscordService extends Service implements IDiscordService {
 						? targetChannelGuild.name
 						: undefined;
 
-					const textContent = normalizeDiscordMessageText(content.text);
+					// Project embedded interaction blocks the same way the reply path
+					// does. This handler serves runtime.sendMessageToTarget — the
+					// sub-agent relay / progress / notice path — and sending
+					// `content.text` raw leaked literal `[FOLLOWUPS]…[/FOLLOWUPS]`
+					// markup to Discord (live 2026-08-17, wind-chimes relay). Blocks
+					// become action rows on the final chunk; block-free text is
+					// byte-identical to the previous behavior.
+					const rendered = buildDiscordReplyPayload(runtime, content);
+					const renderedComponents =
+						rendered.components.length > 0
+							? buildDiscordComponents(rendered.components)
+							: undefined;
+					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
+					let textContent = normalizeDiscordMessageText(rendered.text);
+					if (textContent.trim().length === 0 && hasComponents) {
+						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
+					}
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
@@ -1984,6 +2116,7 @@ export class DiscordService extends Service implements IDiscordService {
 								name: dmRecipient.name,
 								source: "discord",
 								channelId: targetChannel.id,
+								serverId,
 								messageServerId: stringToUuid(serverId),
 								type: channelType,
 								worldId,
@@ -2005,6 +2138,7 @@ export class DiscordService extends Service implements IDiscordService {
 							attachmentUrls: content.attachments
 								?.map((media) => media.url)
 								.filter((url): url is string => typeof url === "string"),
+							interactionIdentity,
 						};
 						let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 						while (outboundDedupe.kind === "in_flight") {
@@ -2025,10 +2159,12 @@ export class DiscordService extends Service implements IDiscordService {
 									agentId: runtime.agentId,
 									channelId: targetChannel.id,
 									accountId,
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: truncateWellFormed(
+										toWellFormedUnicode(
+											textContent.replace(/\s+/g, " ").trim(),
+										),
+										200,
+									),
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);
@@ -2061,6 +2197,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[chunks.length - 1],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId && chunks.length === 1
 											? {
 													reply: {
@@ -2076,6 +2215,9 @@ export class DiscordService extends Service implements IDiscordService {
 									const sent = await targetChannel.send({
 										content: chunks[0],
 										files: files.length > 0 ? files : undefined,
+										...(renderedComponents
+											? { components: renderedComponents }
+											: {}),
 										...(outboundReplyToMessageId
 											? {
 													reply: {
@@ -2138,6 +2280,7 @@ export class DiscordService extends Service implements IDiscordService {
 							name: clientUser.displayName || clientUser.username || undefined,
 							source: "discord",
 							channelId: targetChannel.id,
+							serverId,
 							messageServerId: stringToUuid(serverId),
 							type: channelType,
 							worldId,
@@ -2500,10 +2643,7 @@ export class DiscordService extends Service implements IDiscordService {
 
 			if (normalizedQuery.length >= 2) {
 				try {
-					const members = await guild.members.fetch({
-						query: normalizedQuery,
-						limit: 10,
-					});
+					const members = await guild.members.fetch();
 					for (const member of members.values()) {
 						const score = scoreDiscordConnectorMatch(
 							normalizedQuery,
@@ -2613,7 +2753,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 		}
 
-		return this.dedupeConnectorTargets(results).slice(0, 25);
+		return this.dedupeConnectorTargets(results);
 	}
 
 	public async listConnectorRooms(
@@ -2679,7 +2819,7 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		targets.push(...(await this.listConnectorRooms(context)));
-		return this.dedupeConnectorTargets(targets).slice(0, 25);
+		return this.dedupeConnectorTargets(targets);
 	}
 
 	public async getConnectorChatContext(
@@ -2729,7 +2869,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
 		const cached = channelRecord.messages?.cache;
 		if (cached) {
-			for (const message of Array.from(cached.values()).slice(-10)) {
+			for (const message of cached.values()) {
 				if (!message.content.trim()) {
 					continue;
 				}
@@ -2943,34 +3083,63 @@ export class DiscordService extends Service implements IDiscordService {
 			params.target,
 			params,
 		);
-		const limit = Number.isFinite(params.limit)
-			? Math.max(1, Math.min(Number(params.limit), 100))
-			: 25;
-		const fetchParams: { limit: number; before?: string; after?: string } = {
-			limit,
-		};
-		if (params.before ?? params.cursor) {
-			fetchParams.before = params.before ?? params.cursor;
-		}
-		if (params.after) {
-			fetchParams.after = params.after;
-		}
-
-		const fetched = await channel.messages.fetch(fetchParams);
-		const memories: Memory[] = [];
-		for (const discordMessage of fetched.values()) {
-			const memory = await this.buildMemoryFromMessage(
-				discordMessage as Message,
-				{ accountId },
+		const requestedLimit = normalizeRequestedConnectorLimit(params.limit);
+		let before = params.before ?? params.cursor;
+		const afterBoundary = params.after;
+		if (before && afterBoundary) {
+			throw new RangeError(
+				"Discord message reads cannot combine before/cursor with after",
 			);
-			if (memory) {
-				memories.push(memory);
-			}
 		}
-		return memories.sort(
+		if (afterBoundary && !/^\d+$/.test(afterBoundary)) {
+			throw new RangeError("Discord after must be a snowflake message id");
+		}
+		const memories: Memory[] = [];
+		const seenCursors = new Set<string>();
+		while (requestedLimit === undefined || memories.length < requestedLimit) {
+			const pageLimit = Math.min(
+				100,
+				requestedLimit === undefined ? 100 : requestedLimit - memories.length,
+			);
+			const fetched = await channel.messages.fetch({
+				limit: pageLimit,
+				...(before ? { before } : {}),
+			});
+			const page = Array.from(fetched.values()) as Message[];
+			if (page.length === 0) break;
+			const eligible = afterBoundary
+				? page.filter((message) => BigInt(message.id) > BigInt(afterBoundary))
+				: page;
+			for (const discordMessage of eligible) {
+				const memory = await this.buildMemoryFromMessage(discordMessage, {
+					accountId,
+				});
+				if (memory) memories.push(memory);
+			}
+			if (
+				afterBoundary &&
+				page.some((message) => BigInt(message.id) <= BigInt(afterBoundary))
+			) {
+				break;
+			}
+			const cursorMessage = page.reduce((selected, candidate) => {
+				return candidate.createdTimestamp < selected.createdTimestamp
+					? candidate
+					: selected;
+			});
+			if (seenCursors.has(cursorMessage.id)) {
+				throw new Error("Discord message pagination repeated a cursor");
+			}
+			seenCursors.add(cursorMessage.id);
+			before = cursorMessage.id;
+		}
+		const sorted = memories.sort(
 			(left, right) =>
 				Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0),
 		);
+		return requestedLimit === undefined
+			? sorted
+			: sorted.slice(0, requestedLimit);
 	}
 
 	public async searchConnectorMessages(
@@ -2982,23 +3151,25 @@ export class DiscordService extends Service implements IDiscordService {
 			return [];
 		}
 		const author = params.author?.trim().toLowerCase();
+		const requestedLimit = normalizeRequestedConnectorLimit(params.limit);
 		const memories = await this.fetchConnectorMessages(context, {
 			...params,
-			limit: Math.max(params.limit ?? 100, 100),
+			limit: undefined,
 		});
-		return memories
-			.filter((memory) => {
-				const text = String(memory.content.text ?? "").toLowerCase();
-				const name = String(memory.content.name ?? "").toLowerCase();
-				const metadata = memory.metadata as Record<string, unknown> | undefined;
-				const sender = metadata?.sender as Record<string, unknown> | undefined;
-				const username = String(sender?.username ?? "").toLowerCase();
-				const matchesQuery = text.includes(query) || name.includes(query);
-				const matchesAuthor =
-					!author || name.includes(author) || username.includes(author);
-				return matchesQuery && matchesAuthor;
-			})
-			.slice(0, params.limit ?? 25);
+		const matches = memories.filter((memory) => {
+			const text = String(memory.content.text ?? "").toLowerCase();
+			const name = String(memory.content.name ?? "").toLowerCase();
+			const metadata = memory.metadata as Record<string, unknown> | undefined;
+			const sender = metadata?.sender as Record<string, unknown> | undefined;
+			const username = String(sender?.username ?? "").toLowerCase();
+			const matchesQuery = text.includes(query) || name.includes(query);
+			const matchesAuthor =
+				!author || name.includes(author) || username.includes(author);
+			return matchesQuery && matchesAuthor;
+		});
+		return requestedLimit === undefined
+			? matches
+			: matches.slice(0, requestedLimit);
 	}
 
 	public async reactConnectorMessage(
@@ -3463,6 +3634,7 @@ export class DiscordService extends Service implements IDiscordService {
 			channelId: channel.id,
 			worldId,
 			serverId: guild?.id,
+			messageServerId: guild?.id ? stringToUuid(guild.id) : undefined,
 			metadata: {
 				accountId,
 				discordChannelId: channel.id,
@@ -3497,6 +3669,179 @@ export class DiscordService extends Service implements IDiscordService {
 			params,
 		);
 		this.removeAllowedChannel(channel.id, accountId);
+	}
+
+	public resolveManageConnectorServerDestination(
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string; accountId?: string },
+	): MessageConnectorManageServerDestination {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		return resolveDiscordManageServerDestination(runtime, params, accountId);
+	}
+
+	/**
+	 * Structural guild management entry point for the message tool
+	 * (`MESSAGE op=manage_server source=discord`). Fail-closed: every write
+	 * requires the corresponding `actions.channels|roles|permissions|moderation`
+	 * gate to be explicitly enabled for this account, and role/member writes
+	 * validate Discord role hierarchy inside `executeGuildManagement`.
+	 */
+	public async manageConnectorServer(
+		runtime: IAgentRuntime,
+		params: {
+			target?: TargetInfo;
+			operation: string;
+			serverId?: string;
+			authorization: MessageConnectorManageServerAuthorization;
+			params?: Record<string, unknown>;
+			accountId?: string;
+		},
+	): Promise<{ summary: string; data?: Record<string, unknown> }> {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		const client = this.getClient(accountId);
+		if (!client?.isReady()) {
+			throw new Error(`Discord client is not ready for account ${accountId}.`);
+		}
+		if (
+			params.serverId !== params.authorization.serverId ||
+			params.target?.serverId !== params.authorization.serverId
+		) {
+			throw new ElizaError(
+				"Discord guild-management parameters do not match the trusted destination authorization.",
+				{
+					code: "DISCORD_MANAGE_SERVER_PROVENANCE_MISMATCH",
+					context: { accountId },
+				},
+			);
+		}
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			params.authorization.serverId,
+		);
+		const guild = await client.guilds.fetch(params.authorization.serverId);
+		await revalidateDiscordManageServerAuthorization(
+			runtime,
+			params.authorization,
+			accountId,
+			guild.id,
+		);
+		const gates = this.getGuildManagementGates(accountId);
+		const raw = params.params ?? {};
+		const request: GuildManagementRequest = {
+			operation: params.operation as GuildManagementRequest["operation"],
+			guildId: guild.id,
+			channelId: stringOrUndefined(raw.channelId ?? params.target?.channelId),
+			parentId: stringOrUndefined(raw.parentId),
+			roleId: stringOrUndefined(raw.roleId),
+			userId: stringOrUndefined(raw.userId),
+			name: stringOrUndefined(raw.name),
+			topic: stringOrUndefined(raw.topic),
+			channelType: stringOrUndefined(raw.channelType),
+			color: stringOrUndefined(raw.color),
+			hoist: booleanOrUndefined(raw.hoist),
+			mentionable: booleanOrUndefined(raw.mentionable),
+			permissions: stringArrayOrUndefined(raw.permissions),
+			allow: stringArrayOrUndefined(raw.allow),
+			deny: stringArrayOrUndefined(raw.deny),
+			overwriteId: stringOrUndefined(raw.overwriteId),
+			reason: stringOrUndefined(raw.reason),
+			durationMinutes: numberOrUndefined(raw.durationMinutes),
+			deleteMessageSeconds: numberOrUndefined(raw.deleteMessageSeconds),
+			maxAgeSeconds: numberOrUndefined(raw.maxAgeSeconds),
+			maxUses: numberOrUndefined(raw.maxUses),
+			unique: booleanOrUndefined(raw.unique),
+			template: stringOrUndefined(raw.template),
+			templateSpec:
+				raw.templateSpec && typeof raw.templateSpec === "object"
+					? (raw.templateSpec as GuildTemplate)
+					: undefined,
+			variables:
+				raw.variables && typeof raw.variables === "object"
+					? (raw.variables as Record<string, string>)
+					: undefined,
+			dryRun: booleanOrUndefined(raw.dryRun),
+		};
+		const stateStore: TemplateStateStore = {
+			get: async (guildId, templateId) =>
+				(await runtime.getCache<Record<string, string>>(
+					`discord:guild-template:${accountId}:${guildId}:${templateId}`,
+				)) ?? undefined,
+			set: async (guildId, templateId, state) => {
+				await runtime.setCache(
+					`discord:guild-template:${accountId}:${guildId}:${templateId}`,
+					state,
+				);
+			},
+		};
+		const receipt: GuildManagementReceipt = await executeGuildManagement(
+			{
+				guild: guild as unknown as ManageableGuild,
+				gates,
+				stateStore,
+				templateRegistry: this.getGuildTemplateRegistry(accountId),
+				agentName: this.runtime.character?.name,
+				reasonPrefix: `eliza:${this.runtime.character?.name ?? "agent"} guild management`,
+			},
+			request,
+		);
+		return {
+			summary: receipt.summary,
+			data: receipt as unknown as Record<string, unknown>,
+		};
+	}
+
+	/**
+	 * Structural-management gates for one account. Reads
+	 * `settings.discord.actions` with per-account overrides and env fallbacks
+	 * (`DISCORD_ACTIONS_CHANNELS|ROLES|PERMISSIONS|MODERATION`). Absent means
+	 * OFF — structural writes are opt-in.
+	 */
+	private getGuildManagementGates(accountId: string) {
+		const settings = this.runtime.character?.settings?.discord as
+			| {
+					actions?: Record<string, unknown>;
+					accounts?: Record<string, { actions?: Record<string, unknown> }>;
+			  }
+			| undefined;
+		const merged: Record<string, unknown> = {
+			...(settings?.actions ?? {}),
+			...(settings?.accounts?.[accountId]?.actions ?? {}),
+		};
+		for (const [envKey, gateKey] of [
+			["DISCORD_ACTIONS_CHANNELS", "channels"],
+			["DISCORD_ACTIONS_ROLES", "roles"],
+			["DISCORD_ACTIONS_PERMISSIONS", "permissions"],
+			["DISCORD_ACTIONS_MODERATION", "moderation"],
+		] as const) {
+			if (merged[gateKey] === undefined) {
+				const rawSetting = this.runtime.getSetting(envKey);
+				if (rawSetting !== undefined && rawSetting !== null) {
+					merged[gateKey] = parseBooleanFromText(String(rawSetting));
+				}
+			}
+		}
+		return resolveGuildManagementGates(merged);
+	}
+
+	/** Deployment-supplied template registry (merged over the built-ins). */
+	private getGuildTemplateRegistry(
+		accountId: string,
+	): Record<string, GuildTemplate> | undefined {
+		const settings = this.runtime.character?.settings?.discord as
+			| {
+					guildTemplates?: Record<string, GuildTemplate>;
+					accounts?: Record<
+						string,
+						{ guildTemplates?: Record<string, GuildTemplate> }
+					>;
+			  }
+			| undefined;
+		const base = settings?.guildTemplates;
+		const account = settings?.accounts?.[accountId]?.guildTemplates;
+		if (!base && !account) return undefined;
+		return { ...(base ?? {}), ...(account ?? {}) };
 	}
 
 	public async getConnectorUser(
@@ -3754,7 +4099,7 @@ export class DiscordService extends Service implements IDiscordService {
 							: {}),
 						label,
 						description:
-							"Discord connector for sending, reading, searching, reacting to, editing, deleting, pinning, joining, and leaving messages/channels.",
+							"Discord connector for sending, reading, searching, reacting to, editing, deleting, pinning, joining, and leaving messages/channels, plus gated structural server management (channels, categories, roles, permissions, invites, moderation, guild templates).",
 						capabilities: [...DISCORD_CONNECTOR_CAPABILITIES],
 						supportedTargetKinds: ["channel", "thread", "user"],
 						contexts: [...DISCORD_CONNECTOR_CONTEXTS],
@@ -3854,6 +4199,21 @@ export class DiscordService extends Service implements IDiscordService {
 								runtime,
 								scopedFetchParams(params),
 							),
+						resolveManageServerDestination: (runtime, params) =>
+							serviceInstance.resolveManageConnectorServerDestination(runtime, {
+								...params,
+								accountId:
+									accountIdFromRecord(params.target) ??
+									accountId ??
+									defaultAccountId,
+								target: params.target ? scopedTarget(params.target) : undefined,
+							}),
+						manageServerHandler: (runtime, params) =>
+							serviceInstance.manageConnectorServer(runtime, {
+								...params,
+								accountId: accountIdFromRecord(params.target) ?? accountId,
+								target: params.target ? scopedTarget(params.target) : undefined,
+							}),
 					};
 					runtime.registerMessageConnector(registration);
 					runtime.logger.info(

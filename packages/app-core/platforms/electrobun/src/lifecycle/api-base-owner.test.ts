@@ -119,6 +119,17 @@ describe("api-base-owner", () => {
     expect(injected).not.toContain("apiBase:");
   });
 
+  it("injects cloud-only runtime branding before an agent API base exists", () => {
+    process.env.ELIZA_DESKTOP_CLOUD_ONLY = "1";
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    expect(injected).toContain(
+      'window.__ELIZA_DESKTOP_RUNTIME_MODE__="cloud";',
+    );
+    expect(injected).not.toContain("apiBase:");
+  });
+
   it("marks a non-loopback current API base as an external desktop API base", () => {
     setCurrent("https://agent.example.com", "cloud-token");
 

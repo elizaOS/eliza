@@ -33,6 +33,7 @@ import copy
 import logging
 import os
 
+import aiohttp
 import wandb
 from atroposlib.envs.base import (
     APIServerConfig,
@@ -42,6 +43,11 @@ from atroposlib.envs.base import (
     ScoredDataGroup,
 )
 from pydantic import Field
+
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
 
 from .kl_controller import KLConfig, create_kl_controller
 from .multi_turn import GAEConfig, MultiTurnEpisodeManager
@@ -129,7 +135,7 @@ def build_observation_prompt(scenario: Scenario) -> str:
     # Prediction Markets
     if obs["markets"]:
         lines.append("PREDICTION MARKETS:")
-        for market in obs["markets"][:5]:  # Limit to 5
+        for market in obs["markets"]:
             lines.append(f"  [{market['id']}] {market['question']}")
             lines.append(
                 f"      YES: {market['yesPrice']:.2f} | NO: {market['noPrice']:.2f} | Vol: ${market['volume24h']:,.0f}"
@@ -153,7 +159,7 @@ def build_observation_prompt(scenario: Scenario) -> str:
     # News
     if obs["news"]:
         lines.append("RECENT NEWS:")
-        for news in obs["news"][:3]:  # Limit to 3
+        for news in obs["news"]:
             sentiment_icon = {"bullish": "📈", "bearish": "📉", "neutral": "➡️"}.get(
                 news["sentiment"], ""
             )
@@ -163,9 +169,9 @@ def build_observation_prompt(scenario: Scenario) -> str:
     # Social
     if obs["socialFeed"]:
         lines.append("SOCIAL FEED:")
-        for post in obs["socialFeed"][:3]:  # Limit to 3
+        for post in obs["socialFeed"]:
             verified = "✓" if post.get("verified") else ""
-            lines.append(f"  @{post['author']}{verified}: {post['content'][:80]}...")
+            lines.append(f"  @{post['author']}{verified}: {post['content']}")
         lines.append("")
 
     lines.append("What is your next action?")
@@ -397,9 +403,6 @@ class FeedOnlineEnvConfig(BaseEnvConfig):
     bridge_num_npcs: int = Field(
         default=20, description="Number of NPCs to create in simulation bridge"
     )
-
-    # Generation settings
-    max_response_tokens: int = Field(default=512, description="Maximum tokens for model response")
 
     temperature: float = Field(default=0.8, description="Temperature for generation")
 
@@ -718,19 +721,16 @@ class FeedOnlineEnv(BaseEnv):
             {"role": "user", "content": user_prompt},
         ]
 
-        # Check length before generation
-        prompt_tokens = len(
-            self.tokenizer.apply_chat_template(messages, add_generation_prompt=True)
-        )
-        if prompt_tokens > self.config.max_token_length - self.config.max_response_tokens:
-            logger.warning(f"Prompt too long ({prompt_tokens} tokens), skipping")
-            return None, []
-
         # Generate completions using direct HTTP API (OpenAI-compatible)
         # This mirrors feed_env's approach for maximum vLLM compatibility
-        import aiohttp
+        from .tokenization_utils import remaining_context_tokens, tokenize_for_trainer
 
-        from .tokenization_utils import tokenize_for_trainer
+        max_tokens = remaining_context_tokens(
+            self.tokenizer,
+            messages,
+            context_tokens=self.config.max_token_length,
+            source="online_env.collect_trajectories",
+        )
 
         # Get vLLM URL from server config (first config is the inference server)
         vllm_base_url = (
@@ -745,7 +745,7 @@ class FeedOnlineEnv(BaseEnv):
                         "model": self.config.tokenizer_name,
                         "messages": messages,
                         "n": self.config.group_size,
-                        "max_tokens": self.config.max_response_tokens,
+                        "max_tokens": max_tokens,
                         "temperature": self.config.temperature,
                     },
                     timeout=aiohttp.ClientTimeout(total=120),
@@ -764,9 +764,23 @@ class FeedOnlineEnv(BaseEnv):
             logger.error(f"Error calling vLLM: {type(e).__name__}: {e}")
             return None, []
 
-        # Build nodes manually by tokenizing each completion
-        nodes = []
+        complete_choices = []
         for choice in result["choices"]:
+            try:
+                complete_choices.append(
+                    require_complete_generation(choice, source="online_env.vllm")
+                )
+            except IncompleteGenerationError as exc:
+                logger.warning("Rejected rollout generation: %s", exc.rejection.as_dict())
+        logger.info(
+            "Rollout generation admission: attempted=%s accepted=%s",
+            len(result["choices"]),
+            len(complete_choices),
+        )
+
+        # Build nodes manually by tokenizing each complete completion
+        nodes = []
+        for choice in complete_choices:
             response_content = choice["message"]["content"] or ""
             finish_reason = choice.get("finish_reason", "stop")
 
@@ -962,17 +976,29 @@ class FeedOnlineEnv(BaseEnv):
                 {"role": "user", "content": user_prompt},
             ]
 
+            from .tokenization_utils import remaining_context_tokens
+
+            max_tokens = remaining_context_tokens(
+                self.tokenizer,
+                messages,
+                context_tokens=self.config.max_token_length,
+                source="online_env.evaluate",
+            )
+
             # Single completion for evaluation
             async with self.server.managed_server(tokenizer=self.tokenizer) as managed:
                 chat_completion = await managed.chat_completion(
                     messages=messages,
                     n=1,
-                    max_tokens=self.config.max_response_tokens,
+                    max_tokens=max_tokens,
                     temperature=0.3,  # Lower temperature for eval
                 )
 
             if chat_completion.choices:
-                response = chat_completion.choices[0].message.content or ""
+                choice = require_complete_generation(
+                    chat_completion.choices[0], source="online_env.evaluation"
+                )
+                response = choice.message.content or ""
                 score, metrics = score_trading_response(response, scenario, archetype)
 
                 eval_scores.append(score)
@@ -1087,7 +1113,7 @@ class FeedOnlineEnv(BaseEnv):
         for news in bridge_scenario.recent_news:
             scenario.add_news(
                 {
-                    "headline": news.content[:100],
+                    "headline": news.content,
                     "content": news.content,
                     "source": news.source,
                     "sentiment": "neutral"

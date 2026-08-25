@@ -132,7 +132,8 @@ function collectRecentConversationTexts(args: {
   runtime: IAgentRuntime;
   message?: Memory;
   state: State | undefined;
-  limit: number;
+  /** @deprecated Complete conversation context is always returned. */
+  limit?: number;
 }): Promise<string[]> {
   return deps().recentConversationTexts(args);
 }
@@ -1277,7 +1278,7 @@ export function buildCalendarEventDisambiguationFallback(args: {
    */
   timeZone?: string;
 }): string {
-  const previewLines = args.candidates.slice(0, 3).map((candidate) => {
+  const previewLines = args.candidates.map((candidate) => {
     const when = formatCalendarEventDateTime(candidate, {
       includeTimeZoneName: true,
       ...(args.timeZone && !candidate.isAllDay
@@ -1289,14 +1290,10 @@ export function buildCalendarEventDisambiguationFallback(args: {
   const intro = args.titleHint
     ? `I found multiple events matching ${describeUserReference(args.titleHint, "that event")}.`
     : "I found multiple matching calendar events.";
-  const suffix =
-    args.candidates.length > 3
-      ? ` There are ${args.candidates.length} matches total.`
-      : "";
   return [
     intro,
     ...previewLines,
-    `Tell me which one to ${args.action} by giving the title and date/time.${suffix}`,
+    `Tell me which one to ${args.action} by giving the title and date/time.`,
   ].join("\n");
 }
 
@@ -1738,7 +1735,9 @@ export function parseExplicitLocalDate(
     // Range-check and round-trip through Date.UTC so impossible dates
     // (month 25, Feb 30) fall through to the later branches instead of
     // rolling over (#21941).
-    const candidate = new Date(Date.UTC(parsedYear, month - 1, day));
+    const dCand = new Date(0);
+    dCand.setUTCFullYear(parsedYear, month - 1, day);
+    const candidate = dCand;
     const isRealDate =
       month >= 1 &&
       month <= 12 &&
@@ -1762,16 +1761,14 @@ export function parseExplicitLocalDate(
     const weekdayKey = normalizeLookupKey(weekdayMatch[2] ?? "");
     const targetWeekday = WEEKDAY_MAP[weekdayKey];
     if (targetWeekday !== undefined) {
-      const currentWeekday = new Date(
-        Date.UTC(
-          localToday.year,
-          Math.max(0, localToday.month - 1),
-          localToday.day,
-          12,
-          0,
-          0,
-        ),
-      ).getUTCDay();
+      const dCur = new Date(0);
+      dCur.setUTCFullYear(
+        localToday.year,
+        Math.max(0, localToday.month - 1),
+        localToday.day,
+      );
+      dCur.setUTCHours(12, 0, 0, 0);
+      const currentWeekday = dCur.getUTCDay();
       let delta = (targetWeekday - currentWeekday + 7) % 7;
       if (qualifier === "next") {
         delta = delta === 0 ? 7 : delta + 7;
@@ -2090,8 +2087,7 @@ function formatCreateEventCalendarContext(
     return lines.join("\n");
   }
 
-  const visibleEvents = context.feed.events.slice(0, 40);
-  for (const event of visibleEvents) {
+  for (const event of context.feed.events) {
     const when = event.isAllDay
       ? formatCalendarMoment(event)
       : formatCalendarEventDateTime(event, {
@@ -2100,11 +2096,6 @@ function formatCreateEventCalendarContext(
         });
     lines.push(
       `- ${when} — ${event.title}${event.location ? ` @ ${event.location}` : ""}`,
-    );
-  }
-  if (context.feed.events.length > visibleEvents.length) {
-    lines.push(
-      `... ${context.feed.events.length - visibleEvents.length} more upcoming events omitted`,
     );
   }
   return lines.join("\n");
@@ -3459,7 +3450,7 @@ function formatCalendarCandidateForGrounding(
     `title: ${candidate.event.title}`,
     `startAt: ${candidate.event.startAt}`,
     `location: ${candidate.event.location}`,
-    `description: ${(candidate.event.description).slice(0, 240)}`,
+    `description: ${candidate.event.description}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -3514,7 +3505,7 @@ async function groundCalendarSearchMatchesWithLlm(
 function buildCalendarGroundingCandidates(
   events: LifeOpsCalendarEvent[],
 ): RankedCalendarSearchCandidate[] {
-  return events.slice(0, 24).map((event, index) => ({
+  return events.map((event, index) => ({
     event,
     score: Math.max(1, 24 - index),
     matchedQueries: [],
@@ -3590,7 +3581,7 @@ function formatTripWindowResults(
   }
 
   const lines = [`Here's what's on your calendar while you're in ${location}:`];
-  for (const event of events.slice(0, 12)) {
+  for (const event of events) {
     lines.push(`- ${formatCalendarMoment(event)}: **${event.title}**`);
   }
   return lines.join("\n");
@@ -3622,7 +3613,7 @@ export function formatCalendarSearchResults(
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
-  for (const event of events.slice(0, 8)) {
+  for (const event of events) {
     const when = event.isAllDay
       ? "all day"
       : formatCalendarEventDateTime(event);
@@ -3631,7 +3622,7 @@ export function formatCalendarSearchResults(
       lines.push(`  Location: ${event.location}`);
     }
     if (event.description) {
-      lines.push(`  ${event.description.slice(0, 120)}`);
+      lines.push(`  ${event.description}`);
     }
   }
   return lines.join("\n");
@@ -5220,7 +5211,6 @@ const calendarAction: CalendarHandlerAction = {
             runtime,
             message,
             state,
-            limit: 8,
           })
         ).join("\n");
         if (queriesForSearch.length === 0) {
@@ -5363,9 +5353,11 @@ const calendarAction: CalendarHandlerAction = {
             if (right.score !== left.score) {
               return right.score - left.score;
             }
-            return (
-              Date.parse(left.event.startAt) - Date.parse(right.event.startAt)
-            );
+            const aTime = Date.parse(left.event.startAt);
+            const bTime = Date.parse(right.event.startAt);
+            const aSafe = Number.isFinite(aTime) ? aTime : 0;
+            const bSafe = Number.isFinite(bTime) ? bTime : 0;
+            return aSafe - bSafe;
           });
         const strongestScore = rankedEvents[0]?.score ?? 0;
         const strongestThreshold =
@@ -5379,7 +5371,7 @@ const calendarAction: CalendarHandlerAction = {
             state,
             intent,
             queriesForSearch,
-            rankedEvents.slice(0, 6),
+            rankedEvents,
           );
           if (groundedIds) {
             const groundedIdSet = new Set(groundedIds);
@@ -5395,7 +5387,7 @@ const calendarAction: CalendarHandlerAction = {
             intent,
             queriesForSearch,
             rankedEvents.length > 0
-              ? rankedEvents.slice(0, 12)
+              ? rankedEvents
               : buildCalendarGroundingCandidates(feed.events),
           );
           if (groundedIds && groundedIds.length > 0) {

@@ -75,6 +75,8 @@ mock.module("@elizaos/core", () => ({
   redactLogArgs: (a: unknown) => a,
   redactSensitiveText: workerCoreStub.redactSensitiveText,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
+  truncateWellFormed: workerCoreStub.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:

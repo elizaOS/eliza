@@ -22,6 +22,7 @@ import {
 import {
   clearCurrentViewState,
   handleViewsRoutes,
+  resolveViewInteractResult,
   setViewsBroadcastWs,
   type ViewsRouteContext,
 } from "../api/views-routes.ts";
@@ -122,6 +123,32 @@ async function navigateTo(id: string): Promise<void> {
   await handleViewsRoutes(ctx);
 }
 
+/** Report the mounted shell owner through the real elements route. */
+async function reportMountedClient(
+  id: string,
+  clientId: string,
+): Promise<void> {
+  const body = {
+    clientId,
+    elements: [{ id: "provider-select", role: "select", label: "Provider" }],
+  };
+  const req = Readable.from([
+    Buffer.from(JSON.stringify(body)),
+  ]) as unknown as http.IncomingMessage;
+  req.headers = { "content-type": "application/json" };
+  const pathname = `/api/views/${encodeURIComponent(id)}/elements`;
+  const ctx: ViewsRouteContext = {
+    req,
+    res: {} as http.ServerResponse,
+    method: "POST",
+    pathname,
+    url: new URL(`http://local${pathname}`),
+    json: vi.fn(),
+    error: vi.fn(),
+  };
+  await handleViewsRoutes(ctx);
+}
+
 /**
  * Minimal runtime whose registerAction/unregisterAction mutate a name→action
  * map, so the test can register scoped actions and then invoke the real
@@ -209,6 +236,59 @@ describe("view-scoped action validate() gating on the active view", () => {
 });
 
 describe("view-scoped action handler drives the interact protocol", () => {
+  it("targets the active mounted client instead of a mixed view's serverInteract", async () => {
+    const settings = makeInteractiveView(
+      INTERACTIVE_VIEW_ID,
+      new Set(["provider-select", "save-button"]),
+    );
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "scoped action fixtures",
+        views: [settings.view],
+      },
+      process.cwd(),
+    );
+    await navigateTo(INTERACTIVE_VIEW_ID);
+    await reportMountedClient(INTERACTIVE_VIEW_ID, "mounted-settings-shell");
+
+    const targetedFrames: Array<Record<string, unknown>> = [];
+    setViewsBroadcastWs(vi.fn(), (clientId, payload) => {
+      expect(clientId).toBe("mounted-settings-shell");
+      const frame = payload as Record<string, unknown>;
+      targetedFrames.push(frame);
+      resolveViewInteractResult({
+        requestId: String(frame.requestId),
+        success: true,
+        result: {
+          ok: true,
+          id: (frame.params as Record<string, unknown> | undefined)?.id,
+        },
+      });
+      return 1;
+    });
+
+    const action = buildViewScopedAction(
+      INTERACTIVE_VIEW_ID,
+      settings.view.scopedActions[0],
+    );
+    const result = await action.handler(
+      { agentId: "runtime-owner" } as unknown as IAgentRuntime,
+      fakeMessage,
+      undefined,
+      { parameters: { provider: "anthropic" } },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(targetedFrames).toHaveLength(3);
+    expect(targetedFrames.map((frame) => frame.capability)).toEqual([
+      "agent-focus",
+      "agent-fill",
+      "agent-click",
+    ]);
+    expect(settings.interactionRuntimes).toEqual([]);
+  });
+
   it("resolves a named action to the real agent-fill/click sequence", async () => {
     const settings = makeInteractiveView(
       INTERACTIVE_VIEW_ID,

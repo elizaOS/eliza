@@ -12,7 +12,7 @@
  * harness: cache/token-verify/db services are in-memory mocks; no live model.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const existingUser = {
   id: "user-1",
@@ -26,15 +26,22 @@ const existingUser = {
 };
 
 let characterCreateCalls: Array<Record<string, unknown>> = [];
+let characterHealthProbeCalls: string[] = [];
+let characterBootstrapHealthy = false;
+let cachedSessionUser: typeof existingUser | null = null;
+const cacheSet = mock(async (_key: string, user: typeof existingUser) => {
+  cachedSessionUser = user;
+});
 
 mock.module("./cache/client", () => ({
   cache: {
-    get: async () => null,
-    set: async () => undefined,
+    get: async () => cachedSessionUser,
+    set: cacheSet,
     del: async () => undefined,
   },
 }));
 mock.module("./auth/steward-client", () => ({
+  isValidStewardTelegramId: () => false,
   isStagingSessionTokenCandidate: () => false,
   verifyStewardTokenCached: async () => ({ userId: "steward-123" }),
   invalidateStewardTokenCache: async () => undefined,
@@ -72,6 +79,7 @@ mock.module("./services/users", () => ({
 // when getCurrentUserFromRequest resolves (the Workers cancellation hazard).
 let apiKeyHealCalls: Array<[string, string]> = [];
 let apiKeyHealSettled = false;
+let apiKeyHealError: Error | undefined;
 mock.module("./services/api-keys", () => ({
   apiKeysService: {
     listByOrganization: async () => [{ user_id: "user-1" }],
@@ -80,6 +88,7 @@ mock.module("./services/api-keys", () => ({
       apiKeyHealCalls.push([userId, organizationId]);
       await new Promise((resolve) => setTimeout(resolve, 10));
       apiKeyHealSettled = true;
+      if (apiKeyHealError) throw apiKeyHealError;
     },
     validateApiKey: async () => null,
     incrementUsageDebounced: () => undefined,
@@ -87,7 +96,10 @@ mock.module("./services/api-keys", () => ({
 }));
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    existsForOrganization: async () => false,
+    hasHealthyCloudCharacterMirror: async (organizationId: string) => {
+      characterHealthProbeCalls.push(organizationId);
+      return characterBootstrapHealthy;
+    },
     create: async (data: Record<string, unknown>) => {
       characterCreateCalls.push(data);
       return { id: "char-1" };
@@ -124,10 +136,17 @@ mock.module("./services/email", () => ({
 
 const { getCurrentUserFromRequest } = await import("./auth");
 
+beforeEach(() => {
+  characterCreateCalls = [];
+  characterHealthProbeCalls = [];
+  characterBootstrapHealthy = false;
+  cachedSessionUser = null;
+  cacheSet.mockClear();
+  apiKeyHealError = undefined;
+});
+
 describe("session-resolution default-character self-heal", () => {
   test("cache miss for an existing user with a character-less org re-seeds the default Eliza", async () => {
-    characterCreateCalls = [];
-
     const request = new Request("http://localhost/api/anything", {
       headers: { cookie: "steward-token=tok-abc" },
     });
@@ -141,6 +160,20 @@ describe("session-resolution default-character self-heal", () => {
     expect(characterCreateCalls[0].name).toBe("Eliza");
     expect(characterCreateCalls[0].user_id).toBe("user-1");
     expect(characterCreateCalls[0].organization_id).toBe("org-1");
+    expect(characterHealthProbeCalls).toEqual(["org-1"]);
+  });
+
+  test("healthy cache miss uses the read probe without entering bootstrap", async () => {
+    characterBootstrapHealthy = true;
+    const request = new Request("http://localhost/api/anything", {
+      headers: { cookie: "steward-token=tok-abc" },
+    });
+
+    const user = await getCurrentUserFromRequest(request);
+
+    expect(user?.id).toBe("user-1");
+    expect(characterHealthProbeCalls).toEqual(["org-1"]);
+    expect(characterCreateCalls).toHaveLength(0);
   });
 
   test("the default API-key self-heal is AWAITED, not void-fired (Workers cancels un-awaited promises)", async () => {
@@ -157,5 +190,26 @@ describe("session-resolution default-character self-heal", () => {
     expect(apiKeyHealCalls).toEqual([["user-1", "org-1"]]);
     // Settles on a later tick: only an awaited call can have completed here.
     expect(apiKeyHealSettled).toBe(true);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+  });
+
+  test("a failed required API-key heal cannot plant a cache hit that bypasses retry", async () => {
+    apiKeyHealCalls = [];
+    apiKeyHealSettled = false;
+    apiKeyHealError = new Error("default key unavailable");
+    const request = new Request("http://localhost/api/anything", {
+      headers: { cookie: "steward-token=tok-abc" },
+    });
+
+    await expect(getCurrentUserFromRequest(request)).resolves.toBeNull();
+    expect(apiKeyHealCalls).toEqual([["user-1", "org-1"]]);
+    expect(cacheSet).not.toHaveBeenCalled();
+    expect(cachedSessionUser).toBeNull();
+
+    apiKeyHealError = undefined;
+    const retriedUser = await getCurrentUserFromRequest(request);
+    expect(retriedUser?.id).toBe("user-1");
+    expect(apiKeyHealCalls).toHaveLength(2);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
   });
 });

@@ -1149,7 +1149,18 @@ export async function withStandaloneTrajectory<T>(
 		return callback();
 	}
 
-	const trajectoryLogger = resolveTrajectoryLogger(runtime);
+	let trajectoryLogger: TrajectoryLoggerLike | null;
+	try {
+		trajectoryLogger = resolveTrajectoryLogger(runtime);
+	} catch (error) {
+		// error-policy:J7 capture setup is diagnostic; a host without the full
+		// service-registry surface still runs the business callback uncaptured.
+		runtime.reportError?.("StandaloneTrajectory.resolve", error, {
+			source: options.source,
+			diagnosticOnly: true,
+		});
+		return callback();
+	}
 	if (
 		!trajectoryLogger ||
 		typeof trajectoryLogger.startTrajectory !== "function" ||

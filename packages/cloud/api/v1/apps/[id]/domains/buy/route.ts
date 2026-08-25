@@ -17,8 +17,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
@@ -54,11 +54,7 @@ const app = new Hono<AppEnv>();
 // A domain registration spends credits and commits an external purchase. If
 // the shared limiter is unavailable, reject before route authentication and
 // before any idempotency, ledger, registrar, persistence, or DNS side effect.
-const domainBuyRateLimit = rateLimit({
-  ...RateLimitPresets.CRITICAL,
-  failClosed: true,
-  localLease: false,
-});
+const domainBuyRateLimit = moneyRateLimit(RateLimitPresets.CRITICAL);
 
 app.post("/", domainBuyRateLimit, async (c) => {
   try {

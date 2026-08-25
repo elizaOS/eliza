@@ -42,6 +42,7 @@ export * from "./gmail-message-connector.js";
 export * from "./google-oauth-callback.js";
 export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
+export * from "./people.js";
 export * from "./scopes.js";
 export * from "./types.js";
 export { GoogleChatService, GoogleWorkspaceService };

@@ -25,18 +25,43 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { enforceTlsForRemote } from "@elizaos/cloud-shared/db/client";
+import { ElizaError } from "@elizaos/core";
 import pg from "pg";
+import {
+  phoneErrorDiagnostic,
+  phoneErrorHasCode,
+} from "../../shared/src/lib/services/phone-error-diagnostics";
+import { runCleanupSteps } from "./error-preserving-cleanup";
 import { loadEnvFiles } from "./local-dev-helpers";
+import {
+  isRawJsonParameter,
+  jsonbParameterPlaceholder,
+  parsedJsonValidationValue,
+  parsePgTimestampWithoutTimezoneUtc,
+  phoneJsonAllowsNull,
+  phoneJsonShape,
+  prepareRawPhoneJson,
+  rawJsonHasObjectTopLevel,
+  rawJsonParameterValue,
+} from "./phone-jsonb-copy";
 
 // Existing shell env wins so a one-off `NEW_POSTGRES_URL=… bun run …` works.
 // Then .env.local fills gaps; then .env fills the rest.
 loadEnvFiles([".env.local", ".env"]);
 
 // Imports below depend on env being loaded first because they read process.env at module init.
-const { putObjectText } = await import("../../shared/src/lib/storage/object-store");
-const { ObjectNamespaces } = await import("../../shared/src/lib/storage/object-namespace");
+const { buildObjectFieldKey, putObjectText } = await import(
+  "../../shared/src/lib/storage/object-store"
+);
+const { ObjectNamespaces } = await import(
+  "../../shared/src/lib/storage/object-namespace"
+);
+const { requirePhoneJsonObject, validatePhoneMediaUrls } = await import(
+  "../../shared/src/lib/services/phone-payload-validation"
+);
 const { putTrajectoryPayload } = await import(
   "../../shared/src/lib/services/trajectory-object-storage"
 );
@@ -45,11 +70,134 @@ const { objectStorageConfigured } = await import(
 );
 
 const { Client } = pg;
-type PgClient = pg.Client;
+export type PgClient = pg.Client;
+
+export type DatabaseMigrationStage =
+  | "arguments"
+  | "configuration"
+  | "database_connect"
+  | "database_disconnect"
+  | "destination_schema"
+  | "progress_state"
+  | "session_setup"
+  | "table_copy"
+  | "table_discovery"
+  | "unknown";
+
+export interface DatabaseMigrationFatalDiagnostic {
+  code: string;
+  stage: DatabaseMigrationStage;
+}
+
+const FATAL_CODE_BY_STAGE: Readonly<Record<DatabaseMigrationStage, string>> = {
+  arguments: "DATABASE_MIGRATION_ARGUMENT_INVALID",
+  configuration: "DATABASE_MIGRATION_CONFIGURATION_INVALID",
+  database_connect: "DATABASE_MIGRATION_CONNECTION_FAILED",
+  database_disconnect: "DATABASE_MIGRATION_DISCONNECT_FAILED",
+  destination_schema: "DATABASE_MIGRATION_SCHEMA_FAILED",
+  progress_state: "DATABASE_MIGRATION_PROGRESS_STATE_FAILED",
+  session_setup: "DATABASE_MIGRATION_SESSION_SETUP_FAILED",
+  table_copy: "DATABASE_MIGRATION_COPY_FAILED",
+  table_discovery: "DATABASE_MIGRATION_DISCOVERY_FAILED",
+  unknown: "DATABASE_MIGRATION_FAILED",
+};
+
+const FATAL_CODE_BY_ERROR_CLASS: Readonly<
+  Partial<Record<ReturnType<typeof phoneErrorDiagnostic>["errorClass"], string>>
+> = {
+  object_storage_failed: "DATABASE_MIGRATION_OBJECT_STORAGE_FAILED",
+  payload_invalid: "DATABASE_MIGRATION_PAYLOAD_INVALID",
+  payload_pointer_invalid: "DATABASE_MIGRATION_POINTER_INVALID",
+  payload_unavailable: "DATABASE_MIGRATION_PAYLOAD_UNAVAILABLE",
+  postgres_undefined_table: "DATABASE_MIGRATION_SCHEMA_REQUIRED",
+  schema_migration_required: "DATABASE_MIGRATION_SCHEMA_REQUIRED",
+};
+
+const DATABASE_MIGRATION_STAGE_ERROR_CODE = "DATABASE_MIGRATION_STAGE_FAILED";
+
+function isDatabaseMigrationStage(
+  value: unknown,
+): value is Exclude<DatabaseMigrationStage, "unknown"> {
+  return (
+    value === "arguments" ||
+    value === "configuration" ||
+    value === "database_connect" ||
+    value === "database_disconnect" ||
+    value === "destination_schema" ||
+    value === "progress_state" ||
+    value === "session_setup" ||
+    value === "table_copy" ||
+    value === "table_discovery"
+  );
+}
+
+function databaseMigrationStageFromError(
+  error: unknown,
+): DatabaseMigrationStage {
+  try {
+    if (
+      !(error instanceof ElizaError) ||
+      error.code !== DATABASE_MIGRATION_STAGE_ERROR_CODE
+    ) {
+      return "unknown";
+    }
+    const stage = error.context?.stage;
+    return isDatabaseMigrationStage(stage) ? stage : "unknown";
+  } catch {
+    // error-policy:J3 hostile error accessors are absent diagnostics.
+    return "unknown";
+  }
+}
+
+/** Attach a bounded operational stage without copying provider or row text. */
+export async function withDatabaseMigrationStage<T>(
+  stage: Exclude<DatabaseMigrationStage, "unknown">,
+  operation: () => T | Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (cause) {
+    // error-policy:J2 preserve the failure behind a static admin stage.
+    if (databaseMigrationStageFromError(cause) !== "unknown") throw cause;
+    throw new ElizaError("Database migration stage failed", {
+      code: DATABASE_MIGRATION_STAGE_ERROR_CODE,
+      context: { stage },
+      cause,
+      severity: "fatal",
+    });
+  }
+}
+
+/** Return only allowlisted fatal fields suitable for admin logs. */
+export function databaseMigrationFatalDiagnostic(
+  error: unknown,
+): DatabaseMigrationFatalDiagnostic {
+  const stage = databaseMigrationStageFromError(error);
+  const errorClass = phoneErrorDiagnostic(error).errorClass;
+  const pointerCode = phoneErrorHasCode(
+    error,
+    "PHONE_MIGRATION_POINTER_INVALID",
+  )
+    ? "DATABASE_MIGRATION_POINTER_INVALID"
+    : undefined;
+  return {
+    code:
+      pointerCode ??
+      FATAL_CODE_BY_ERROR_CLASS[errorClass] ??
+      FATAL_CODE_BY_STAGE[stage],
+    stage,
+  };
+}
+
+// PostgreSQL timestamp-without-time-zone values in Cloud follow the UTC
+// convention. Read and bind Dates in UTC so a host timezone cannot shift the
+// destination row away from the date encoded into its R2 object key.
+pg.defaults.parseInputDatesAsUTC = true;
+pg.types.setTypeParser(1114, parsePgTimestampWithoutTimezoneUtc);
 
 // ───────────────────────────────────────────────────────────── CLI parsing ──
 
-interface CliArgs {
+export interface CliArgs {
   dryRun: boolean;
   noR2: boolean;
   reset: boolean;
@@ -150,7 +298,7 @@ interface R2TextField {
   inlineValueWhenOffloaded?: string;
 }
 
-interface R2JsonField extends R2TextField {
+interface R2JsonField extends Omit<R2TextField, "inlineValueWhenOffloaded"> {
   inlineValueWhenOffloaded?: (value: unknown) => unknown;
 }
 
@@ -298,19 +446,21 @@ const R2_TABLES: Record<string, R2OffloadConfig> = {
         field: "message_body",
       },
       {
-        column: "media_urls",
-        storageColumn: "media_urls_storage",
-        keyColumn: "media_urls_key",
-        namespace: ObjectNamespaces.PhoneMessagePayloads,
-        field: "media_urls",
-        inlineValueWhenOffloaded: "[]",
-      },
-      {
         column: "agent_response",
         storageColumn: "agent_response_storage",
         keyColumn: "agent_response_key",
         namespace: ObjectNamespaces.PhoneMessagePayloads,
         field: "agent_response",
+      },
+    ],
+    json: [
+      {
+        column: "media_urls",
+        storageColumn: "media_urls_storage",
+        keyColumn: "media_urls_key",
+        namespace: ObjectNamespaces.PhoneMessagePayloads,
+        field: "media_urls",
+        inlineValueWhenOffloaded: emptyArrayWhenOffloaded,
       },
       {
         column: "metadata",
@@ -318,10 +468,9 @@ const R2_TABLES: Record<string, R2OffloadConfig> = {
         keyColumn: "metadata_key",
         namespace: ObjectNamespaces.PhoneMessagePayloads,
         field: "metadata",
-        inlineValueWhenOffloaded: "{}",
+        inlineValueWhenOffloaded: emptyRecordWhenOffloaded,
       },
     ],
-    json: [],
   },
   twilio_inbound_calls: {
     text: [],
@@ -425,7 +574,7 @@ interface TableInfo {
   cursorIsText: boolean;
 }
 
-interface CopyStats {
+export interface CopyStats {
   source: number;
   copied: number;
   skipped: number;
@@ -528,9 +677,26 @@ async function ensureProgressTable(client: PgClient): Promise<void> {
   `);
 }
 
-async function loadProgress(
+function emptyProgress(): {
+  cursor: string | null;
+  copied: number;
+  r2Uploads: number;
+  r2Bytes: number;
+  completed: boolean;
+} {
+  return {
+    cursor: null,
+    copied: 0,
+    r2Uploads: 0,
+    r2Bytes: 0,
+    completed: false,
+  };
+}
+
+export async function loadProgress(
   client: PgClient,
   table: string,
+  dryRun = false,
 ): Promise<{
   cursor: string | null;
   copied: number;
@@ -538,6 +704,7 @@ async function loadProgress(
   r2Bytes: number;
   completed: boolean;
 }> {
+  if (dryRun) return emptyProgress();
   const r = await client.query<{
     last_cursor: string | null;
     rows_copied: string;
@@ -550,13 +717,7 @@ async function loadProgress(
     [table],
   );
   if (r.rowCount === 0) {
-    return {
-      cursor: null,
-      copied: 0,
-      r2Uploads: 0,
-      r2Bytes: 0,
-      completed: false,
-    };
+    return emptyProgress();
   }
   const row = r.rows[0];
   return {
@@ -598,6 +759,16 @@ async function resetProgress(client: PgClient): Promise<void> {
   await ensureProgressTable(client);
 }
 
+/** Initialize durable cursors only for a real write run. */
+export async function prepareProgressState(
+  client: PgClient,
+  options: { dryRun: boolean; reset: boolean },
+): Promise<void> {
+  if (options.dryRun) return;
+  await ensureProgressTable(client);
+  if (options.reset) await resetProgress(client);
+}
+
 // ────────────────────────────────────────────────────────── R2 offload helpers ──
 
 function byteLength(value: string): number {
@@ -626,6 +797,10 @@ function emptyRecordWhenOffloaded(): Record<string, unknown> {
   return {};
 }
 
+function emptyArrayWhenOffloaded(): unknown[] {
+  return [];
+}
+
 function emptyAgentBackupStateWhenOffloaded(): {
   memories: unknown[];
   config: Record<string, unknown>;
@@ -648,6 +823,7 @@ async function offloadText(
   rowId: string,
   createdAt: Date,
   minBytes: number,
+  writeVersion?: string,
 ): Promise<OffloadResult> {
   if (value == null)
     return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
@@ -662,6 +838,7 @@ async function offloadText(
     createdAt,
     body: value,
     contentType: "text/plain; charset=utf-8",
+    ...(writeVersion ? { version: writeVersion, immutable: true } : {}),
   });
   return {
     inlineValue: field.inlineValueWhenOffloaded ?? "",
@@ -678,10 +855,14 @@ async function offloadJson(
   rowId: string,
   createdAt: Date,
   minBytes: number,
+  writeVersion?: string,
 ): Promise<OffloadResult> {
   if (value == null)
     return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
-  const body = JSON.stringify(value);
+  const parsedValue = parsedJsonValidationValue(value);
+  const body = isRawJsonParameter(value)
+    ? rawJsonParameterValue(value)
+    : JSON.stringify(value);
   const bytes = byteLength(body);
   if (bytes < minBytes)
     return { inlineValue: value, storage: "inline", key: null, bytes: 0 };
@@ -693,15 +874,117 @@ async function offloadJson(
     createdAt,
     body,
     contentType: "application/json; charset=utf-8",
+    ...(writeVersion ? { version: writeVersion, immutable: true } : {}),
   });
   return {
     inlineValue: field.inlineValueWhenOffloaded
-      ? field.inlineValueWhenOffloaded(value)
+      ? field.inlineValueWhenOffloaded(parsedValue)
       : null,
     storage: "r2",
     key,
     bytes,
   };
+}
+
+async function applyConfiguredR2Offloads(input: {
+  tableName: string;
+  rowOut: Record<string, unknown>;
+  config: R2OffloadConfig;
+  primaryKeyColumn: string | undefined;
+  minBytes: number;
+}): Promise<{ uploads: number; bytes: number }> {
+  const phoneIdentity =
+    input.tableName === "phone_message_log"
+      ? phoneMessageRowIdentity(input.rowOut)
+      : null;
+  const organizationId =
+    phoneIdentity?.organizationId ??
+    String(input.rowOut.organization_id ?? "no-org");
+  const rowId =
+    phoneIdentity?.rowId ??
+    String(input.rowOut.id ?? input.rowOut[input.primaryKeyColumn ?? "id"]);
+  const createdAt =
+    phoneIdentity?.createdAt ??
+    (input.rowOut.created_at as Date | null) ??
+    new Date();
+  // Phone pointers use a create-only, immutable generation. If SQL later loses
+  // a conflict or fails, this can leave only a harmless unreferenced object;
+  // it can never overwrite the object authorized by an existing row.
+  const phoneWriteVersion = phoneIdentity
+    ? randomUUID().toLowerCase()
+    : undefined;
+  let uploads = 0;
+  let bytes = 0;
+
+  if (input.config.trajectoryBundle) {
+    // Source row already lives in R2: copy the pointer through, don't re-upload.
+    const alreadyOffloaded = input.rowOut.trajectory_payload_storage === "r2";
+    if (!alreadyOffloaded) {
+      const result = await offloadTrajectoryBundle(
+        input.rowOut,
+        input.minBytes,
+      );
+      if (result.storage === "r2") {
+        input.rowOut.trajectory_payload_storage = "r2";
+        input.rowOut.trajectory_payload_key = result.key;
+        if (result.blankPrompts) {
+          input.rowOut.system_prompt = null;
+          input.rowOut.user_prompt = null;
+          input.rowOut.response_text = null;
+        }
+        uploads += 1;
+        bytes += result.bytes;
+      }
+    }
+  }
+
+  for (const field of input.config.text) {
+    if (!(field.column in input.rowOut)) continue;
+    if (input.rowOut[field.storageColumn] === "r2") continue;
+    input.rowOut[field.storageColumn] = "inline";
+    input.rowOut[field.keyColumn] = null;
+    const result = await offloadText(
+      field,
+      (input.rowOut[field.column] as string | null) ?? null,
+      organizationId,
+      rowId,
+      createdAt,
+      input.minBytes,
+      phoneWriteVersion,
+    );
+    if (result.storage === "r2") {
+      input.rowOut[field.column] = result.inlineValue;
+      input.rowOut[field.storageColumn] = "r2";
+      input.rowOut[field.keyColumn] = result.key;
+      uploads += 1;
+      bytes += result.bytes;
+    }
+  }
+
+  for (const field of input.config.json) {
+    if (!(field.column in input.rowOut)) continue;
+    if (input.rowOut[field.storageColumn] === "r2") continue;
+    input.rowOut[field.storageColumn] = "inline";
+    input.rowOut[field.keyColumn] = null;
+    const result = await offloadJson(
+      field,
+      input.rowOut[field.column],
+      organizationId,
+      rowId,
+      createdAt,
+      input.minBytes,
+      phoneWriteVersion,
+    );
+    if (result.storage === "r2") {
+      input.rowOut[field.column] = result.inlineValue;
+      input.rowOut[field.storageColumn] = "r2";
+      input.rowOut[field.keyColumn] = result.key;
+      uploads += 1;
+      bytes += result.bytes;
+    }
+  }
+
+  return { uploads, bytes };
 }
 
 async function offloadTrajectoryBundle(
@@ -752,19 +1035,239 @@ function isJsonish(dataType: string): boolean {
  */
 function coerceForInsert(value: unknown, destDataType: string): unknown {
   if (value === null || value === undefined) return null;
+  if (isRawJsonParameter(value)) return rawJsonParameterValue(value);
   if (isJsonish(destDataType)) return JSON.stringify(value);
   return value;
 }
 
 function placeholder(idx: number, destDataType: string): string {
   const base = `$${idx}`;
-  if (isJsonish(destDataType)) return `${base}::jsonb`;
+  if (isJsonish(destDataType)) return jsonbParameterPlaceholder(idx);
   return base;
+}
+
+function parseJsonForDestination(input: {
+  table: string;
+  column: string;
+  value: unknown;
+  sourceDataType: string;
+  destinationDataType: string;
+}): unknown {
+  if (
+    input.value === null ||
+    input.value === undefined ||
+    !isJsonish(input.destinationDataType) ||
+    isJsonish(input.sourceDataType)
+  ) {
+    return input.value;
+  }
+  if (typeof input.value !== "string") {
+    throw new ElizaError(
+      "Database copy cannot convert a source value to JSONB",
+      {
+        code: "DATABASE_MIGRATION_JSON_INVALID",
+        context: {
+          table: input.table,
+          column: input.column,
+          rule: "json_source_value",
+        },
+      },
+    );
+  }
+  try {
+    return JSON.parse(input.value) as unknown;
+  } catch (cause) {
+    // error-policy:J3 malformed legacy data aborts the batch before writes.
+    throw new ElizaError("Malformed legacy JSON during database copy", {
+      code: "DATABASE_MIGRATION_JSON_INVALID",
+      context: { table: input.table, column: input.column, rule: "valid_json" },
+      cause,
+    });
+  }
+}
+
+function assertPhoneJsonShape(
+  table: string,
+  column: string,
+  value: unknown,
+): void {
+  const shape = phoneJsonShape(table, column);
+  if (!shape) return;
+  if (value === null || value === undefined) {
+    if (phoneJsonAllowsNull(table, column) === false) {
+      throw new ElizaError("Required phone JSON is null", {
+        code: "PHONE_MIGRATION_JSON_INVALID",
+        context: { table, column, rule: "not_null" },
+      });
+    }
+    return;
+  }
+  const parsedValue = parsedJsonValidationValue(value);
+  if (shape === "string_array") {
+    validatePhoneMediaUrls(parsedValue);
+    return;
+  }
+  if (isRawJsonParameter(value) && rawJsonHasObjectTopLevel(value)) {
+    // The source lexeme is syntactically valid JSON and PostgreSQL, not
+    // JavaScript, remains authoritative for numbers outside IEEE-754 range.
+    return;
+  }
+  requirePhoneJsonObject(parsedValue, { field: `${table}.${column}` });
+}
+
+const PHONE_MESSAGE_OWNER_ORG_ALIAS = "__phone_message_owner_organization_id";
+const CANONICAL_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOWERCASE_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function phoneMessageRowIdentity(row: Record<string, unknown>): {
+  organizationId: string;
+  rowId: string;
+  createdAt: Date;
+} {
+  // Newer sources carry the immutable message owner directly. Legacy sources
+  // fall back to the joined phone-number owner captured during the copy.
+  const immutableOrganizationId = row.organization_id;
+  const currentPhoneOrganizationId = row[PHONE_MESSAGE_OWNER_ORG_ALIAS];
+  const organizationId = immutableOrganizationId ?? currentPhoneOrganizationId;
+  const rowId = row.id;
+  const rawCreatedAt = row.created_at;
+  const createdAt =
+    rawCreatedAt instanceof Date
+      ? rawCreatedAt
+      : parsePgTimestampWithoutTimezoneUtc(String(rawCreatedAt));
+  if (
+    typeof organizationId !== "string" ||
+    !CANONICAL_UUID_PATTERN.test(organizationId) ||
+    typeof rowId !== "string" ||
+    !CANONICAL_UUID_PATTERN.test(rowId) ||
+    !Number.isFinite(createdAt.getTime())
+  ) {
+    throw new ElizaError(
+      "phone_message_log is missing its tenant-owned row identity",
+      {
+        code: "PHONE_MIGRATION_POINTER_INVALID",
+        context: { table: "phone_message_log", rule: "tenant_row_identity" },
+      },
+    );
+  }
+  if (
+    immutableOrganizationId !== undefined &&
+    (typeof currentPhoneOrganizationId !== "string" ||
+      !CANONICAL_UUID_PATTERN.test(currentPhoneOrganizationId) ||
+      organizationId.toLowerCase() !== currentPhoneOrganizationId.toLowerCase())
+  ) {
+    throw new ElizaError(
+      "phone_message_log tenant does not match its phone owner",
+      {
+        code: "PHONE_MIGRATION_POINTER_INVALID",
+        context: { table: "phone_message_log", rule: "tenant_owner_mismatch" },
+      },
+    );
+  }
+  return {
+    organizationId: organizationId.toLowerCase(),
+    rowId: rowId.toLowerCase(),
+    createdAt,
+  };
+}
+
+function phonePayloadKeyMatches(
+  key: string,
+  expectedLegacyKey: string,
+  extension: "json" | "txt",
+): boolean {
+  if (key === expectedLegacyKey) return true;
+  const prefix = expectedLegacyKey.slice(0, -extension.length);
+  const suffix = `.${extension}`;
+  if (!key.startsWith(prefix) || !key.endsWith(suffix)) return false;
+  return LOWERCASE_UUID_PATTERN.test(key.slice(prefix.length, -suffix.length));
+}
+
+function assertPhoneMessagePointerStates(row: Record<string, unknown>): void {
+  const identity = phoneMessageRowIdentity(row);
+  const config = R2_TABLES.phone_message_log;
+  for (const [fields, extension] of [
+    [config.text, "txt"],
+    [config.json, "json"],
+  ] as const) {
+    for (const field of fields) {
+      if (!(field.column in row)) continue;
+      const storage =
+        field.storageColumn in row ? row[field.storageColumn] : "inline";
+      const key = row[field.keyColumn];
+      if (storage === "inline") {
+        if (key !== null && key !== undefined) {
+          throw new ElizaError(
+            `phone_message_log.${field.column} has an inline value with an object key`,
+            {
+              code: "PHONE_MIGRATION_POINTER_INVALID",
+              context: {
+                table: "phone_message_log",
+                column: field.column,
+                rule: "inline_key_must_be_null",
+              },
+            },
+          );
+        }
+        continue;
+      }
+      if (storage !== "r2" || typeof key !== "string") {
+        throw new ElizaError(
+          `phone_message_log.${field.column} has an invalid object pointer state`,
+          {
+            code: "PHONE_MIGRATION_POINTER_INVALID",
+            context: {
+              table: "phone_message_log",
+              column: field.column,
+              rule: "storage_pointer_state",
+            },
+          },
+        );
+      }
+      const expectedKey = buildObjectFieldKey({
+        namespace: field.namespace as never,
+        organizationId: identity.organizationId,
+        objectId: identity.rowId,
+        field: field.field,
+        createdAt: identity.createdAt,
+        extension,
+      });
+      const legacyJsonTextKey =
+        extension === "json"
+          ? buildObjectFieldKey({
+              namespace: field.namespace as never,
+              organizationId: identity.organizationId,
+              objectId: identity.rowId,
+              field: field.field,
+              createdAt: identity.createdAt,
+              extension: "txt",
+            })
+          : null;
+      if (
+        !phonePayloadKeyMatches(key, expectedKey, extension) &&
+        key !== legacyJsonTextKey
+      ) {
+        throw new ElizaError(
+          `phone_message_log.${field.column} object key does not match its tenant-owned row`,
+          {
+            code: "PHONE_MIGRATION_POINTER_INVALID",
+            context: {
+              table: "phone_message_log",
+              column: field.column,
+              rule: "tenant_key_mismatch",
+            },
+          },
+        );
+      }
+    }
+  }
 }
 
 // ───────────────────────────────────────────────────────── per-table copy ──
 
-async function copyTable(
+export async function copyTable(
   source: PgClient,
   dest: PgClient,
   tableName: string,
@@ -812,7 +1315,7 @@ async function copyTable(
   );
   const sourceTotal = Number(srcCount.rows[0].c);
 
-  const prog = await loadProgress(dest, tableName);
+  const prog = await loadProgress(dest, tableName, args.dryRun);
   if (prog.completed) {
     console.log(
       `  - already completed (${prog.copied} rows). Use --reset to redo.`,
@@ -839,8 +1342,28 @@ async function copyTable(
   }
 
   // SELECT list = all source columns the destination also has, in source order.
-  const selectCols = sharedCols.map((c) => `"${c.name}"`).join(", ");
-  const cursorCol = `"${srcInfo.cursorColumn}"`;
+  // Phone payload keys require the tenant from their owning phone-number row.
+  // Every phone JSON column is selected as raw text so dry-runs against a
+  // legacy TEXT destination and writes into JSONB preserve numeric lexemes.
+  const dstTypes = new Map(dstInfo.columns.map((c) => [c.name, c.dataType]));
+  const sourceAlias = "source_row";
+  const selectCols = sharedCols
+    .map((c) => {
+      const rawPhoneJson = phoneJsonShape(tableName, c.name) !== null;
+      return rawPhoneJson
+        ? `${sourceAlias}."${c.name}"::text AS "${c.name}"`
+        : `${sourceAlias}."${c.name}"`;
+    })
+    .join(", ");
+  const phoneOwnerSelect =
+    tableName === "phone_message_log"
+      ? `, phone_owner.organization_id::text AS "${PHONE_MESSAGE_OWNER_ORG_ALIAS}"`
+      : "";
+  const phoneOwnerJoin =
+    tableName === "phone_message_log"
+      ? `LEFT JOIN public."agent_phone_numbers" AS phone_owner ON phone_owner.id = ${sourceAlias}.phone_number_id`
+      : "";
+  const cursorCol = `${sourceAlias}."${srcInfo.cursorColumn}"`;
   const cursorTypeCast = srcInfo.cursorIsText ? "::text" : "::text";
 
   let cursor = prog.cursor;
@@ -849,6 +1372,11 @@ async function copyTable(
   let r2Bytes = prog.r2Bytes;
   let totalSkippedConflicts = 0;
   let batchNum = 0;
+  const insertCols = sharedCols.map((c) => c.name);
+  // Each row may add storage/key columns the destination has but the source didn't include.
+  const dstColSet = new Set(
+    dstInfo.columns.filter((c) => !c.isGenerated).map((c) => c.name),
+  );
 
   while (true) {
     batchNum += 1;
@@ -860,105 +1388,81 @@ async function copyTable(
     }
 
     const result = await source.query<Record<string, unknown>>(
-      `SELECT ${selectCols} FROM public."${tableName}" ${where} ORDER BY ${cursorCol} LIMIT $1`,
+      `SELECT ${selectCols}${phoneOwnerSelect} FROM public."${tableName}" AS ${sourceAlias} ${phoneOwnerJoin} ${where} ORDER BY ${cursorCol} LIMIT $1`,
       params,
     );
-    if (result.rowCount === 0) break;
+    const batchRowCount = result.rows.length;
+    if (batchRowCount === 0) break;
+
+    // Convert and validate the entire batch before the first external object write.
+    const preparedRows = result.rows.map((row) => {
+      const rowOut: Record<string, unknown> = { ...row };
+      for (const sourceColumn of sharedCols) {
+        const destinationDataType =
+          dstTypes.get(sourceColumn.name) ?? sourceColumn.dataType;
+        rowOut[sourceColumn.name] =
+          phoneJsonShape(tableName, sourceColumn.name) !== null
+            ? prepareRawPhoneJson({
+                table: tableName,
+                column: sourceColumn.name,
+                value: rowOut[sourceColumn.name],
+              })
+            : parseJsonForDestination({
+                table: tableName,
+                column: sourceColumn.name,
+                value: rowOut[sourceColumn.name],
+                sourceDataType: sourceColumn.dataType,
+                destinationDataType,
+              });
+        assertPhoneJsonShape(
+          tableName,
+          sourceColumn.name,
+          rowOut[sourceColumn.name],
+        );
+      }
+      if (tableName === "phone_message_log") {
+        if (
+          dstColSet.has("organization_id") &&
+          !("organization_id" in rowOut)
+        ) {
+          rowOut.organization_id =
+            phoneMessageRowIdentity(rowOut).organizationId;
+        }
+        assertPhoneMessagePointerStates(rowOut);
+      }
+      return { row, rowOut };
+    });
 
     if (args.dryRun) {
-      const last = result.rows[result.rowCount - 1];
+      const last = result.rows[batchRowCount - 1];
       cursor = String(last[srcInfo.cursorColumn]);
-      copied += result.rowCount;
+      copied += batchRowCount;
       console.log(
-        `    batch ${batchNum}: would copy ${result.rowCount} rows (cursor=${cursor.slice(0, 12)}...)`,
+        `    batch ${batchNum}: would copy ${batchRowCount} rows (cursor=${cursor.slice(0, 12)}...)`,
       );
       continue;
     }
 
-    // Apply R2 offload + collect insert columns/values per row.
-    const insertCols = sharedCols.map((c) => c.name);
-    // Destination types drive coercion + casting (jsonb on dest needs stringified JSON).
-    const dstTypes = new Map(dstInfo.columns.map((c) => [c.name, c.dataType]));
-
-    // Pre-flight: each row may add storage/key columns the destination has but the source
-    // didn't include. We always include them when the destination has them.
-    const dstColSet = new Set(
-      dstInfo.columns.filter((c) => !c.isGenerated).map((c) => c.name),
-    );
+    // Object-store I/O completes before the destination transaction starts, so
+    // slow providers never extend SQL row/table lock lifetimes. Phone objects
+    // are immutable/versioned; a later SQL failure only leaves a safe orphan.
+    if (r2Cfg) {
+      for (const { rowOut } of preparedRows) {
+        const offloaded = await applyConfiguredR2Offloads({
+          tableName,
+          rowOut,
+          config: r2Cfg,
+          primaryKeyColumn: srcInfo.primaryKey[0],
+          minBytes: args.r2MinBytes,
+        });
+        r2Uploads += offloaded.uploads;
+        r2Bytes += offloaded.bytes;
+      }
+    }
 
     await dest.query("BEGIN");
     try {
-      for (const row of result.rows) {
-        const rowOut: Record<string, unknown> = { ...row };
-
-        if (r2Cfg) {
-          const orgId = String(rowOut.organization_id ?? "no-org");
-          const rowId = String(
-            rowOut.id ?? rowOut[srcInfo.primaryKey[0] ?? "id"],
-          );
-          const createdAt = (rowOut.created_at as Date | null) ?? new Date();
-
-          if (r2Cfg.trajectoryBundle) {
-            // Source row already lives in R2: copy the pointer through, don't re-upload.
-            const alreadyOffloaded = rowOut.trajectory_payload_storage === "r2";
-            if (!alreadyOffloaded) {
-              const r = await offloadTrajectoryBundle(rowOut, args.r2MinBytes);
-              if (r.storage === "r2") {
-                rowOut.trajectory_payload_storage = "r2";
-                rowOut.trajectory_payload_key = r.key;
-                if (r.blankPrompts) {
-                  rowOut.system_prompt = null;
-                  rowOut.user_prompt = null;
-                  rowOut.response_text = null;
-                }
-                r2Uploads += 1;
-                r2Bytes += r.bytes;
-              }
-            }
-          }
-
-          for (const f of r2Cfg.text) {
-            if (!(f.column in rowOut)) continue;
-            // Source row already lives in R2: copy the pointer through, don't re-upload.
-            if (rowOut[f.storageColumn] === "r2") continue;
-            const r = await offloadText(
-              f,
-              (rowOut[f.column] as string | null) ?? null,
-              orgId,
-              rowId,
-              createdAt,
-              args.r2MinBytes,
-            );
-            if (r.storage === "r2") {
-              rowOut[f.column] = r.inlineValue;
-              rowOut[f.storageColumn] = "r2";
-              rowOut[f.keyColumn] = r.key;
-              r2Uploads += 1;
-              r2Bytes += r.bytes;
-            }
-          }
-
-          for (const f of r2Cfg.json) {
-            if (!(f.column in rowOut)) continue;
-            if (rowOut[f.storageColumn] === "r2") continue;
-            const r = await offloadJson(
-              f,
-              rowOut[f.column],
-              orgId,
-              rowId,
-              createdAt,
-              args.r2MinBytes,
-            );
-            if (r.storage === "r2") {
-              rowOut[f.column] = r.inlineValue;
-              rowOut[f.storageColumn] = "r2";
-              rowOut[f.keyColumn] = r.key;
-              r2Uploads += 1;
-              r2Bytes += r.bytes;
-            }
-          }
-        }
-
+      for (const { row, rowOut } of preparedRows) {
         if (tableName === "jobs") {
           rowOut.agent_id ??= stringRecordField(row.data, "agentId");
           rowOut.character_id ??= stringRecordField(row.data, "characterId");
@@ -988,6 +1492,12 @@ async function copyTable(
           if (dstColSet.has("agent_id")) finalCols.add("agent_id");
           if (dstColSet.has("character_id")) finalCols.add("character_id");
         }
+        if (
+          tableName === "phone_message_log" &&
+          dstColSet.has("organization_id")
+        ) {
+          finalCols.add("organization_id");
+        }
         const orderedCols = [...finalCols];
 
         const values: unknown[] = [];
@@ -1012,7 +1522,7 @@ async function copyTable(
         else copied += 1;
       }
 
-      const last = result.rows[result.rowCount - 1];
+      const last = result.rows[batchRowCount - 1];
       cursor = String(last[srcInfo.cursorColumn]);
       await saveProgress(
         dest,
@@ -1025,14 +1535,15 @@ async function copyTable(
       );
       await dest.query("COMMIT");
     } catch (err) {
+      // error-policy:J1 roll back the entire destination batch and propagate.
       await dest.query("ROLLBACK");
       throw err;
     }
 
     process.stdout.write(
-      `    batch ${batchNum}: ${result.rowCount} processed (copied=${copied}, conflicts=${totalSkippedConflicts}, r2=${r2Uploads})\r`,
+      `    batch ${batchNum}: ${batchRowCount} processed (copied=${copied}, conflicts=${totalSkippedConflicts}, r2=${r2Uploads})\r`,
     );
-    if (result.rowCount < args.batchSize) break;
+    if (batchRowCount < args.batchSize) break;
   }
 
   if (!args.dryRun) {
@@ -1058,20 +1569,16 @@ async function copyTable(
 
 // ─────────────────────────────────────────── apply schema migrations to dest ──
 
+export const DESTINATION_MIGRATION_SCRIPT = path.join(
+  import.meta.dir,
+  "migrate-with-diagnostics.ts",
+);
+
 function runDestMigrations(newUrl: string): void {
   console.log("→ Applying drizzle migrations to destination…");
   const child = spawnSync(
-    "bun",
-    [
-      "run",
-      path.join(
-        "packages",
-        "scripts",
-        "cloud",
-        "admin",
-        "migrate-with-diagnostics.ts",
-      ),
-    ],
+    process.execPath,
+    ["--conditions=eliza-source", DESTINATION_MIGRATION_SCRIPT],
     {
       stdio: "inherit",
       env: {
@@ -1138,7 +1645,7 @@ async function topologicalOrder(
   for (const r of fks.rows) {
     if (!setT.has(r.table_name) || !setT.has(r.foreign_table_name)) continue;
     if (r.table_name === r.foreign_table_name) continue;
-    deps.get(r.table_name)!.add(r.foreign_table_name);
+    deps.get(r.table_name)?.add(r.foreign_table_name);
   }
 
   const ordered: string[] = [];
@@ -1167,6 +1674,7 @@ async function trySessionReplicationReplica(
     );
     return r.rows[0]?.s === "replica";
   } catch {
+    // error-policy:J4 lack of replica mode falls back to FK-aware ordering.
     return false;
   }
 }
@@ -1174,21 +1682,35 @@ async function trySessionReplicationReplica(
 // ───────────────────────────────────────────────────────────────── main ──
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const args = await withDatabaseMigrationStage("arguments", () =>
+    parseArgs(process.argv.slice(2)),
+  );
 
-  const sourceUrl = process.env.DATABASE_URL;
-  const destUrl = process.env.NEW_POSTGRES_URL ?? process.env.NEW_DATABASE_URL;
-  if (!sourceUrl) throw new Error("DATABASE_URL (source) is required.");
-  if (!destUrl) {
-    throw new Error(
-      "NEW_POSTGRES_URL (destination) is required. Add it to .env or export it before running.",
-    );
-  }
-  if (sourceUrl === destUrl) {
-    throw new Error(
-      "Source and destination DATABASE_URL are identical — refusing to run.",
-    );
-  }
+  const { sourceUrl, destUrl } = await withDatabaseMigrationStage(
+    "configuration",
+    () => {
+      const sourceUrl = process.env.DATABASE_URL;
+      const destUrl =
+        process.env.NEW_POSTGRES_URL ?? process.env.NEW_DATABASE_URL;
+      if (!sourceUrl) throw new Error("DATABASE_URL (source) is required.");
+      if (!destUrl) {
+        throw new Error(
+          "NEW_POSTGRES_URL (destination) is required. Add it to .env or export it before running.",
+        );
+      }
+      if (sourceUrl === destUrl) {
+        throw new Error(
+          "Source and destination DATABASE_URL are identical — refusing to run.",
+        );
+      }
+      return { sourceUrl, destUrl };
+    },
+  );
+  const r2Configured = args.noR2
+    ? false
+    : await withDatabaseMigrationStage("configuration", () =>
+        objectStorageConfigured(),
+      );
 
   console.log(`source:      ${sourceUrl.replace(/\/\/[^@]+@/, "//***@")}`);
   console.log(`destination: ${destUrl.replace(/\/\/[^@]+@/, "//***@")}`);
@@ -1197,7 +1719,7 @@ async function main(): Promise<void> {
     `r2:          ${
       args.noR2
         ? "disabled (--no-r2)"
-        : objectStorageConfigured()
+        : r2Configured
           ? "enabled"
           : "not configured"
     }`,
@@ -1208,7 +1730,9 @@ async function main(): Promise<void> {
 
   // 1. Apply destination schema unless skipped.
   if (!args.skipMigrate && !args.dryRun) {
-    runDestMigrations(destUrl);
+    await withDatabaseMigrationStage("destination_schema", () =>
+      runDestMigrations(destUrl),
+    );
   } else {
     console.log(
       "→ Skipping destination schema migrations (--skip-migrate or --dry-run)",
@@ -1216,26 +1740,46 @@ async function main(): Promise<void> {
   }
 
   // 2. Connect.
-  const { url: sourceConnUrl, ssl: sourceSsl } = enforceTlsForRemote(sourceUrl);
-  const { url: destConnUrl, ssl: destSsl } = enforceTlsForRemote(destUrl);
-  const source = new Client({
-    connectionString: sourceConnUrl,
-    ...(sourceSsl ? { ssl: sourceSsl } : {}),
-  });
-  const dest = new Client({
-    connectionString: destConnUrl,
-    ...(destSsl ? { ssl: destSsl } : {}),
-  });
-  await source.connect();
-  await dest.connect();
+  const { source, dest } = await withDatabaseMigrationStage(
+    "database_connect",
+    async () => {
+      const { url: sourceConnUrl, ssl: sourceSsl } =
+        enforceTlsForRemote(sourceUrl);
+      const { url: destConnUrl, ssl: destSsl } = enforceTlsForRemote(destUrl);
+      const source = new Client({
+        connectionString: sourceConnUrl,
+        ...(sourceSsl ? { ssl: sourceSsl } : {}),
+      });
+      const dest = new Client({
+        connectionString: destConnUrl,
+        ...(destSsl ? { ssl: destSsl } : {}),
+      });
+      await source.connect();
+      await dest.connect();
+      return { source, dest };
+    },
+  );
 
+  let primaryFailure: { error: unknown } | null = null;
   try {
-    // 3. Reset progress if asked.
-    await ensureProgressTable(dest);
+    await withDatabaseMigrationStage("session_setup", () =>
+      Promise.all([
+        source.query("SET TIME ZONE 'UTC'"),
+        dest.query("SET TIME ZONE 'UTC'"),
+      ]),
+    );
+
+    // 3. Initialize/reset progress only for a write run. Dry-run must remain
+    // read-only even when the destination has never had a state table.
     if (args.reset && !args.dryRun) {
       console.log("→ --reset: dropping _migration_state");
-      await resetProgress(dest);
     }
+    await withDatabaseMigrationStage("progress_state", () =>
+      prepareProgressState(dest, {
+        dryRun: args.dryRun,
+        reset: args.reset,
+      }),
+    );
 
     // 4. Try to disable triggers on dest so we don't have to topo-sort.
     let useTopoOrder = true;
@@ -1254,14 +1798,18 @@ async function main(): Promise<void> {
     }
 
     // 5. Pick tables.
-    const allTables = await listTables(source);
+    const allTables = await withDatabaseMigrationStage("table_discovery", () =>
+      listTables(source),
+    );
     let tables = allTables.filter(
       (t) => !ALWAYS_SKIP.has(t) && !args.skip.has(t),
     );
-    if (args.only) tables = tables.filter((t) => args.only!.has(t));
+    if (args.only) tables = tables.filter((t) => args.only?.has(t));
 
     if (useTopoOrder) {
-      tables = await topologicalOrder(source, tables);
+      tables = await withDatabaseMigrationStage("table_discovery", () =>
+        topologicalOrder(source, tables),
+      );
     }
 
     console.log(
@@ -1276,7 +1824,9 @@ async function main(): Promise<void> {
     const summary: Array<{ table: string; stats: CopyStats }> = [];
     for (const table of tables) {
       console.log(`\n[${table}]`);
-      const stats = await copyTable(source, dest, table, args);
+      const stats = await withDatabaseMigrationStage("table_copy", () =>
+        copyTable(source, dest, table, args),
+      );
       summary.push({ table, stats });
     }
 
@@ -1287,6 +1837,7 @@ async function main(): Promise<void> {
       try {
         await checkRedis(newRedisUrl);
       } catch (err) {
+        // error-policy:J4 Redis is a post-copy reachability diagnostic only.
         console.error(`  ✗ Redis check failed: ${(err as Error).message}`);
       }
     } else if (!newRedisUrl) {
@@ -1326,13 +1877,46 @@ async function main(): Promise<void> {
       )}                r2:${totalR2Uploads} (${(totalR2Bytes / 1024 / 1024).toFixed(2)} MiB)`,
     );
     console.log("────────────────────────────────────────────────────────────");
+  } catch (error) {
+    primaryFailure = { error };
+    throw error;
   } finally {
-    await source.end();
-    await dest.end();
+    await runCleanupSteps(
+      [
+        {
+          label: "source database disconnect",
+          run: () =>
+            withDatabaseMigrationStage("database_disconnect", () =>
+              source.end(),
+            ),
+        },
+        {
+          label: "destination database disconnect",
+          run: () =>
+            withDatabaseMigrationStage("database_disconnect", () => dest.end()),
+        },
+      ],
+      () => {
+        // error-policy:J6 both disconnects are attempted and the primary
+        // migration failure retains precedence over teardown diagnostics.
+        console.error("[migrate-database] cleanup failure", {
+          code: "DATABASE_MIGRATION_DISCONNECT_FAILED",
+          stage: "database_disconnect",
+        });
+      },
+      primaryFailure,
+    );
   }
 }
 
-main().catch((err) => {
-  console.error("\n[migrate-database] fatal:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    // error-policy:J1 abort the admin copy and emit only an allowlisted class;
+    // Error.name/message/cause may contain provider or row data.
+    console.error(
+      "\n[migrate-database] fatal:",
+      databaseMigrationFatalDiagnostic(error),
+    );
+    process.exit(1);
+  });
+}

@@ -8,6 +8,7 @@
  * show/hide/quit — all through the electrobun-rpc bridge. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
+import { logger } from "@elizaos/logger";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -20,13 +21,17 @@ import {
   dispatchOpenNotificationCenter,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
+import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
   setDesktopLauncherEntries,
 } from "@elizaos/ui/state/desktop-tray-launcher";
 import { useApp } from "@elizaos/ui/state/useApp";
-import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
+import {
+  openDesktopSettingsWindow,
+  openDesktopWorkspaceWindow,
+} from "@elizaos/ui/utils/desktop-workspace";
 import { useEffect } from "react";
 import {
   DESKTOP_VIEW_WINDOWS,
@@ -69,6 +74,7 @@ export function DesktopTrayRuntime() {
     handleResetAppliedFromMain,
     handleStart,
     handleStop,
+    setActionNotice,
     setTab,
     switchShellView,
     t,
@@ -227,7 +233,7 @@ export function DesktopTrayRuntime() {
             await showAndFocusWindow();
             return;
           case "tray-open-desktop-workspace":
-            await openDesktopSettingsWindow("desktop");
+            await openDesktopWorkspaceWindow();
             return;
           case "tray-open-voice-controls":
             await openDesktopSettingsWindow("voice");
@@ -278,10 +284,22 @@ export function DesktopTrayRuntime() {
         }
       };
 
-      // error-policy:J6 best-effort UI dispatch from a DOM event handler; a
-      // failed tray action leaves the window in its current (visible) state,
-      // which the user sees and can retry — nothing to unwind here.
-      void run().catch(() => {});
+      void run().catch((error: unknown) => {
+        // error-policy:J4 Tray commands terminate at this UI boundary, so an
+        // RPC failure must remain visibly distinct from successful dispatch.
+        // This wraps all eleven tray actions, so the cause is logged rather
+        // than discarded — otherwise every one of them collapses into the same
+        // undiagnosable notice.
+        logger.error({ error }, "[DesktopTrayRuntime] tray action failed");
+        setActionNotice(
+          t("desktop.tray.actionFailed", {
+            defaultValue:
+              "Unable to complete the desktop action. Please retry.",
+          }),
+          "error",
+          TOAST_TTL_MS.notificationInterruptive,
+        );
+      });
     };
 
     document.addEventListener(TRAY_ACTION_EVENT, handleTrayAction);
@@ -293,6 +311,7 @@ export function DesktopTrayRuntime() {
     handleRestart,
     handleStart,
     handleStop,
+    setActionNotice,
     setTab,
     switchShellView,
     t,

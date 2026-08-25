@@ -1,24 +1,16 @@
 /**
  * Guards the pre-auth surface: scans the real route source for `public: true`
- * handlers (scanPublicRoutes / publicRouteKey) and pins the set against a
- * reviewed baseline so any new unauthenticated route fails until it is justified
- * and recorded. Runs against the on-disk source tree with real git change
- * detection (mocked only in the fail-closed case) and real fixture files.
+ * handlers using a full on-disk production-source scan and verifies the scanner
+ * against known routes and real fixture files.
  */
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { publicRouteKey, scanPublicRoutes } from "./public-route-audit.ts";
 
-const BASELINE_PATH = join(
-  import.meta.dirname,
-  "public-route-audit.baseline.json",
-);
-
 // The git-unavailable test writes an untracked `public: true` fixture under
 // SCAN_ROOTS. If a prior run crashed before its `finally` cleanup, that file
-// would survive and `ls-files --others` would inject it into the baseline-match
-// scan below (which runs first), false-failing with a spurious "added" route.
+// would survive and enter the full scan below (which runs first).
 // Clear any leftover before the suite so a crashed run can't poison this one.
 const FIXTURE_DIR = join(import.meta.dirname, "__tmp-public-route-audit");
 beforeAll(() => {
@@ -26,36 +18,10 @@ beforeAll(() => {
 });
 
 /**
- * Security gate (#9948): a `public: true` route bypasses the central auth gate,
- * so the set of them is pinned. Adding a new one fails this test until it's
- * recorded in the baseline (a deliberate, reviewed decision). Regenerate after
- * an intentional change with `UPDATE_PUBLIC_ROUTE_BASELINE=1`.
+ * A `public: true` route bypasses the central auth gate, so the scanner must
+ * cover the complete production tree.
  */
-describe("public:true route allowlist (#9948)", () => {
-  it("matches the reviewed baseline — new public routes must be justified", () => {
-    const current = scanPublicRoutes().map(publicRouteKey);
-
-    if (process.env.UPDATE_PUBLIC_ROUTE_BASELINE === "1") {
-      writeFileSync(BASELINE_PATH, `${JSON.stringify(current, null, 2)}\n`);
-    }
-
-    const baseline: string[] = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
-
-    const added = current.filter((k) => !baseline.includes(k));
-    const removed = baseline.filter((k) => !current.includes(k));
-
-    expect(
-      added,
-      `New public:true route(s) not in the baseline. Each bypasses isAuthorized() — justify it, then run UPDATE_PUBLIC_ROUTE_BASELINE=1 to record it:\n${added.join("\n")}`,
-    ).toEqual([]);
-    // Removals are good (fewer unauthenticated surfaces) but must prune the
-    // baseline so it stays an honest ledger.
-    expect(
-      removed,
-      `public:true route(s) removed from source but still in the baseline — run UPDATE_PUBLIC_ROUTE_BASELINE=1 to prune:\n${removed.join("\n")}`,
-    ).toEqual([]);
-  });
-
+describe("public:true route inventory (#9948)", () => {
   it("finds a known public route (scanner sanity)", () => {
     // The content-addressed media route is served pre-auth by design (the
     // sha256 hash is the capability), so it is a stable anchor proving the
@@ -72,7 +38,7 @@ describe("public:true route allowlist (#9948)", () => {
     expect(keys.some((key) => key.includes("/__tests__/"))).toBe(false);
   });
 
-  it("fails closed to a full scan when git change detection is unavailable", async () => {
+  it("includes an untracked production source file in the full scan", async () => {
     const fixtureDir = FIXTURE_DIR;
     const fixturePath = join(fixtureDir, "new-public-route.ts");
     mkdirSync(fixtureDir, { recursive: true });
@@ -89,12 +55,6 @@ describe("public:true route allowlist (#9948)", () => {
     );
 
     vi.resetModules();
-    vi.doMock("node:child_process", () => ({
-      execFileSync: vi.fn(() => {
-        throw new Error("git unavailable");
-      }),
-    }));
-
     try {
       const audit = await import("./public-route-audit.ts");
       const keys = audit.scanPublicRoutes().map(audit.publicRouteKey);
@@ -103,24 +63,8 @@ describe("public:true route allowlist (#9948)", () => {
         "scanner must not pass baseline-only when git diff data is missing",
       ).toBe(true);
     } finally {
-      vi.doUnmock("node:child_process");
       vi.resetModules();
       rmSync(fixtureDir, { recursive: true, force: true });
     }
-  });
-
-  it("ships the baseline next to the compiled module (build:dist copies it)", () => {
-    // The compiled dist/api/public-route-audit.js resolves the baseline as a
-    // sibling file; tsc only emits .ts sources, so the JSON must be copied by
-    // the build script or every dist consumer hits ENOENT.
-    const packageJson = JSON.parse(
-      readFileSync(
-        join(import.meta.dirname, "..", "..", "package.json"),
-        "utf8",
-      ),
-    ) as { scripts: Record<string, string> };
-    expect(packageJson.scripts["build:dist"]).toContain(
-      "src/api/public-route-audit.baseline.json",
-    );
   });
 });

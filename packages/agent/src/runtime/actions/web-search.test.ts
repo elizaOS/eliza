@@ -1,7 +1,8 @@
 /**
  * Behavioral and routing-contract tests for the WEB_SEARCH action:
  * inline-vs-server capability gating, provider fallback (parallel → exa),
- * response parsing, result-length capping, and fresh-data handoff to WEB_FETCH.
+ * response parsing, complete result preservation, and fresh-data handoff to
+ * WEB_FETCH.
  * The shared transport fetch is stubbed, so no real network leaves the suite.
  */
 import type {
@@ -102,6 +103,21 @@ describe("WEB_SEARCH action", () => {
     expect(webSearch.description).toContain("search snippets lag live values");
   });
 
+  it("declares and accepts the planner's snake_case result-count alias", async () => {
+    expect(webSearch.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "num_results" }),
+      ]),
+    );
+    mockProviders({ parallel: mcpJson("RESULT: current elizaOS update") });
+    const { result } = await runHandler({
+      query: "latest elizaOS",
+      num_results: 4,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("current elizaOS update");
+  });
+
   it("is available by default through the inline action surface", async () => {
     delete process.env.ELIZA_WEB_SEARCH;
     delete process.env.ELIZA_INLINE_WEB_SEARCH;
@@ -197,14 +213,11 @@ describe("WEB_SEARCH action", () => {
     expect(result.data).toMatchObject({ provider: "exa" });
   });
 
-  it("caps the result text handed back to the model", async () => {
+  it("preserves the complete result text handed back to the model", async () => {
     mockProviders({ parallel: mcpJson("y".repeat(20_000)) });
     const { result } = await runHandler({ query: "x" });
     expect(result.success).toBe(true);
-    // The "\n[truncated]" marker is reserved WITHIN the 4000-char cap (the
-    // truncation-suffix-reserve contract), so the total never exceeds the cap.
-    expect((result.text ?? "").length).toBe(4_000);
-    expect(result.text).toMatch(/\[truncated\]$/);
-    expect(result.data).toMatchObject({ truncated: true });
+    expect(result.text).toBe("y".repeat(20_000));
+    expect(result.data).toMatchObject({ truncated: false });
   });
 });

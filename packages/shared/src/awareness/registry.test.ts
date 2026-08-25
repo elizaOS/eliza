@@ -3,10 +3,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  type AwarenessContributor,
-  SUMMARY_TOTAL_CHAR_LIMIT,
-} from "../contracts/awareness.ts";
+import type { AwarenessContributor } from "../contracts/awareness.ts";
 import { AwarenessRegistry } from "./registry.ts";
 
 describe("AwarenessRegistry", () => {
@@ -56,7 +53,7 @@ describe("AwarenessRegistry", () => {
     expect(summary).toBe("[Self Status v1]\nAgent active");
   });
 
-  it("enforces the global summary budget and reports omitted contributors", async () => {
+  it("retains every contributor summary without a global character budget", async () => {
     for (let index = 0; index < 20; index += 1) {
       registry.register({
         id: `module-${index}`,
@@ -67,10 +64,8 @@ describe("AwarenessRegistry", () => {
     }
 
     const summary = await registry.composeSummary(mockRuntime);
-    expect(summary.length).toBeLessThanOrEqual(SUMMARY_TOTAL_CHAR_LIMIT);
-    expect(summary).toMatch(/\[\+\d+ more\]$/);
     expect(summary).toContain("module-0-");
-    expect(summary).not.toContain("module-19-");
+    expect(summary).toContain("module-19-");
   });
 
   it("surfaces unavailable marker when contributor summary throws", async () => {

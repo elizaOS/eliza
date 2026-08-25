@@ -142,6 +142,23 @@ describe("native transcript producer transport", () => {
     expect(isNativeChatFailureRetryable(failureKind)).toBe(retryable);
   });
 
+  it("lets typed transience override the static failure-kind retry policy", () => {
+    expect(
+      isNativeChatFailureRetryable("coding_tool_failure", {
+        kind: "coding_tool_failure",
+        message: "Shell unavailable.",
+        transient: true,
+      }),
+    ).toBe(true);
+    expect(
+      isNativeChatFailureRetryable("planner_exhaustion", {
+        kind: "planner_exhaustion",
+        message: "The planner cannot continue.",
+        transient: false,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps primary and replay snapshots on one stable logical turn", () => {
     const seen: unknown[] = [];
     const listener = (event: Event) => {

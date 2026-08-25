@@ -1,0 +1,20 @@
+#!/bin/sh
+# Mount the 9p virtfs "capshare" tag at the kiosk capture dir for headless
+# render validation. Only invoked by elizaos-kiosk-capture.service, which is
+# gated on the elizaos.capture_dir= kernel cmdline a QEMU harness sets.
+set -eu
+
+CAPTURE_DIR=""
+for tok in $(cat /proc/cmdline 2>/dev/null); do
+    case "$tok" in
+        elizaos.capture_dir=*) CAPTURE_DIR="${tok#elizaos.capture_dir=}" ;;
+    esac
+done
+
+[ -n "${CAPTURE_DIR}" ] || exit 0
+
+mkdir -p "${CAPTURE_DIR}"
+# 9p over virtio; mapped-xattr security model on the host side.
+mount -t 9p -o trans=virtio,version=9p2000.L,msize=262144,rw capshare "${CAPTURE_DIR}"
+chmod 0777 "${CAPTURE_DIR}"
+echo "elizaos-capture: mounted capshare at ${CAPTURE_DIR}"

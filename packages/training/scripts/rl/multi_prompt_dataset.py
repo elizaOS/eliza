@@ -423,13 +423,16 @@ class MultiPromptDatasetBuilder:
         user_prompt = llm_call.user_prompt
         response = llm_call.response
 
-        # Only truncate if absolutely necessary (very long prompts)
-        # This is a safety measure, not a modification of normal prompts
+        # A training row must remain byte-for-byte faithful to the recorded
+        # model call. Reject rows outside this dataset's configured boundary;
+        # silently shortening them teaches behavior from a request that never
+        # occurred.
         if len(system_prompt) > self.max_context_length:
             logger.warning(
-                f"System prompt truncated from {len(system_prompt)} to {self.max_context_length} chars"
+                "Skipping LLM call: system prompt exceeds configured context "
+                f"({len(system_prompt)} > {self.max_context_length} chars)"
             )
-            system_prompt = system_prompt[: self.max_context_length] + "..."
+            return None
 
         # Determine if this LLM call led to an action
         # Action calls that directly produced the step's action get credit

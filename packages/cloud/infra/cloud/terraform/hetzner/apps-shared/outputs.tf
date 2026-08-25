@@ -31,6 +31,13 @@ output "tenant_db_admin_dsn" {
   sensitive   = true
 }
 
+output "tenant_db_backup_configured" {
+  description = "True when the off-host encrypted backup pipeline (#21729) is fully configured. False means Hetzner host snapshots are the ONLY safeguard — an accepted alpha risk, not a recovery strategy. Non-sensitive on purpose: it exposes arming state, never credentials."
+  # The boolean is derived from sensitive credentials, so terraform taints it;
+  # nonsensitive() is deliberate — arming state leaks nothing about the values.
+  value = nonsensitive(local.backup_enabled)
+}
+
 output "tenant_db_pooler_endpoint" {
   description = "Host:port of the pgbouncer SESSION-mode pooler (#8321 P0 #2). To route per-tenant APP connections through the pooler, set tenant_db_clusters.host to THIS value (the app-facing per-tenant DSN host) once the tenant-db node has been (re)rolled with the pgbouncer cloud-init. The admin DSN above stays on :5432. Leaving host at :5432 keeps the pooler inert."
   value       = "${cidrhost(var.subnet_cidr, 10)}:6432"

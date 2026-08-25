@@ -10,9 +10,26 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "../../../types/index.ts";
 import {
-	REPLY_CONTEXT_WINDOW_RADIUS,
+	normalizeSingleLine,
 	replyContextProvider,
+	withWellFormedText,
 } from "./replyContext.ts";
+
+function isWellFormed(value: string): boolean {
+	for (let index = 0; index < value.length; index += 1) {
+		const codeUnit = value.charCodeAt(index);
+		if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+			const next = value.charCodeAt(index + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) {
+				return false;
+			}
+			index += 1;
+		} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+			return false;
+		}
+	}
+	return true;
+}
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -146,25 +163,18 @@ describe("replyContextProvider", () => {
 		// Identifies the target by sender + snippet.
 		expect(result.text).toContain("direct reply to this earlier message");
 		expect(result.text).toContain("turn 4");
-		// Window: the target (t=500) plus RADIUS turns on each side — turns 1..7
-		// (createdAt 200..800), none of which are in the recent tail (t>=900).
+		// Every retained turn outside the recent tail is included.
 		const replyContextMessages = result.data?.replyContextMessages;
 		expect(replyContextMessages).toBeDefined();
 		if (!replyContextMessages) {
 			throw new Error("Expected reply-context messages to be returned");
 		}
 		const windowIds = (replyContextMessages as Memory[]).map((m) => m.id);
-		expect(windowIds).toContain(thread[1].id); // RADIUS older
+		expect(windowIds).toContain(thread[0].id);
 		expect(windowIds).toContain(thread[4].id); // the target itself
-		expect(windowIds).toContain(thread[7].id); // RADIUS newer
-		// Symmetric radius: never reaches beyond RADIUS on either side.
-		expect(windowIds).not.toContain(thread[0].id); // t=100, RADIUS+1 older
+		expect(windowIds).toContain(thread[7].id);
 		expect(windowIds).not.toContain(thread[8].id); // t=900, in the recent tail
-		// Both half-windows are [target, ±RADIUS]; merged unique that is
-		// 2*RADIUS+1 turns (the shared target counted once).
-		expect(replyContextMessages).toHaveLength(
-			2 * REPLY_CONTEXT_WINDOW_RADIUS + 1,
-		);
+		expect(replyContextMessages).toHaveLength(8);
 	});
 
 	it("dedupes window turns already shown in the recent transcript", async () => {
@@ -191,11 +201,10 @@ describe("replyContextProvider", () => {
 			{ values: {}, data: {}, text: "" },
 		);
 
-		// The surrounding turns are all in the recent transcript, so none are
-		// re-rendered; the provider still identifies WHICH message was replied to.
-		expect(result.data?.replyContextMessages).toHaveLength(0);
+		// The recent tail is deduped while every older retained turn is supplied.
+		expect(result.data?.replyContextMessages).toHaveLength(4);
 		expect(result.text).toContain("turn 7");
-		expect(result.text).toContain("already appear in the recent conversation");
+		expect(result.text).toContain("turn 0");
 	});
 
 	it("ignores a reply id that resolves to another room", async () => {
@@ -232,5 +241,24 @@ describe("replyContextProvider", () => {
 		);
 
 		expect(result.text).toBe("");
+	});
+});
+
+describe("normalizeSingleLine", () => {
+	it("preserves complete text while normalizing whitespace and Unicode", () => {
+		const text = `  ${"a".repeat(2_000)}🦊  \n  tail\uD800  `;
+		const out = normalizeSingleLine(text);
+		expect(out).toBe(`${"a".repeat(2_000)}🦊 tail�`);
+		expect(isWellFormed(out)).toBe(true);
+	});
+});
+
+describe("withWellFormedText", () => {
+	it("preserves long content and repairs lone surrogates", () => {
+		const lone = `ok \uD800 ${"x".repeat(2_000)}`;
+		const memory = mem("m4", USER_ID, lone, 400);
+		const normalized = withWellFormedText(memory);
+		expect(normalized.content.text).toBe(`ok � ${"x".repeat(2_000)}`);
+		expect(isWellFormed(normalized.content.text as string)).toBe(true);
 	});
 });

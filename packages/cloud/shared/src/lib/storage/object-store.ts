@@ -246,6 +246,8 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_LOCATOR_MISMATCH"
   | "OBJECT_STORAGE_VERSION_MISMATCH"
   | "OBJECT_STORAGE_DELETE_UNCONFIRMED"
+  | "OBJECT_STORAGE_DELETE_ABORTED"
+  | "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED"
   | "OBJECT_STORAGE_UPLOAD_TOO_LARGE"
   | "OBJECT_STORAGE_IMMUTABLE_CONFLICT"
   | "OBJECT_STORAGE_IMMUTABLE_PUT_UNSUPPORTED"
@@ -263,14 +265,17 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_READ_TRUNCATED"
   | "OBJECT_STORAGE_READ_OVERFLOW"
   | "OBJECT_STORAGE_READ_HASH_MISMATCH"
-  | "OBJECT_STORAGE_READ_FAILED";
+  | "OBJECT_STORAGE_READ_FAILED"
+  | "OBJECT_STORAGE_FIELD_POINTER_INVALID"
+  | "OBJECT_STORAGE_FIELD_UNAVAILABLE"
+  | "OBJECT_STORAGE_FIELD_JSON_INVALID";
 
 /** Static, key-free lifecycle failure safe to surface in structured logs. */
 export class ObjectStorageLifecycleError extends Error {
   readonly code: ObjectStorageLifecycleErrorCode;
 
-  constructor(code: ObjectStorageLifecycleErrorCode, message: string) {
-    super(message);
+  constructor(code: ObjectStorageLifecycleErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ObjectStorageLifecycleError";
     this.code = code;
   }
@@ -384,6 +389,56 @@ export function shouldUseObjectStorage(): boolean {
   return storageConfigured();
 }
 
+/**
+ * Hard ceiling on what a single field may persist inline in a SQL text or
+ * jsonb column. Without it the offload helpers degrade into unbounded inline
+ * writes whenever object storage is unconfigured, which is how quarter-gigabyte
+ * failure dumps reached the `jobs.error` column (elizaOS/eliza#22553).
+ */
+const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
+
+function maxInlineBytes(): number {
+  const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES;
+  if (!raw) return DEFAULT_MAX_INLINE_BYTES;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1024) return DEFAULT_MAX_INLINE_BYTES;
+  return Math.floor(parsed);
+}
+
+/** Raised when a payload exceeds the inline ceiling and cannot be offloaded. */
+export class InlinePayloadTooLargeError extends Error {
+  readonly code = "INLINE_PAYLOAD_TOO_LARGE";
+  readonly field: string;
+  readonly sizeBytes: number;
+  readonly maxInlineBytes: number;
+
+  constructor(input: { field: string; sizeBytes: number; maxBytes: number }) {
+    super(
+      `Inline payload for field "${input.field}" is ${input.sizeBytes} bytes, above the ` +
+        `${input.maxBytes}-byte SQL inline ceiling, and object storage is not configured to ` +
+        `offload it. Set SQL_HEAVY_PAYLOAD_STORAGE with a heavy-payload bucket, or persist a ` +
+        `bounded summary instead of the full payload.`,
+    );
+    this.name = "InlinePayloadTooLargeError";
+    this.field = input.field;
+    this.sizeBytes = input.sizeBytes;
+    this.maxInlineBytes = input.maxBytes;
+  }
+}
+
+/** Byte size at which a value is refused inline storage. */
+export function inlinePayloadCeilingBytes(): number {
+  return maxInlineBytes();
+}
+
+export function assertInlinePayloadFits(field: string, value: string): void {
+  const cap = maxInlineBytes();
+  const size = byteLength(value);
+  if (size > cap) {
+    throw new InlinePayloadTooLargeError({ field, sizeBytes: size, maxBytes: cap });
+  }
+}
+
 function minBytes(): number {
   const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MIN_BYTES;
   if (!raw) return 0;
@@ -401,7 +456,32 @@ function previewBytes(): number {
 }
 
 function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
+  // Count UTF-8 bytes without materializing a second payload-sized buffer.
+  // These helpers run specifically on values large enough to threaten SQL;
+  // TextEncoder.encode() would transiently duplicate a 250 MB dump before the
+  // ceiling could reject or clamp it.
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff && index + 1 < value.length) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else {
+      // BMP code points and unpaired surrogates encode to three bytes; the
+      // latter matches TextEncoder's U+FFFD replacement behavior.
+      bytes += 3;
+    }
+  }
+  return bytes;
 }
 
 function shouldOffload(value: string): boolean {
@@ -427,21 +507,27 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._=-]/g, "_");
 }
 
-function objectKey(params: {
+/** Derive the immutable tenant/object/field key used by pointer-backed SQL rows. */
+export function buildObjectFieldKey(params: {
   namespace: ObjectNamespace;
   organizationId: string;
   objectId: string;
   field: string;
   createdAt: Date;
   extension: "json" | "txt";
+  /** Optional immutable write generation. Legacy callers omit it. */
+  version?: string;
 }): string {
   const day = params.createdAt.toISOString().slice(0, 10);
+  const filename = params.version
+    ? `${safeSegment(params.field)}.${safeSegment(params.version)}.${params.extension}`
+    : `${safeSegment(params.field)}.${params.extension}`;
   return [
     params.namespace,
     safeSegment(params.organizationId),
     day,
     safeSegment(params.objectId),
-    `${safeSegment(params.field)}.${params.extension}`,
+    filename,
   ].join("/");
 }
 
@@ -453,15 +539,25 @@ export async function putObjectText(params: {
   createdAt: Date;
   body: string;
   contentType: string;
+  version?: string;
+  /** Create-only write. Required for versioned SQL pointers. */
+  immutable?: boolean;
 }): Promise<string> {
   const extension = params.contentType.includes("json") ? "json" : "txt";
-  const key = objectKey({ ...params, extension });
+  const key = buildObjectFieldKey({ ...params, extension });
 
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
-    await runtimeBucket.put(key, params.body, {
+    const result = await runtimeBucket.put(key, params.body, {
+      ...(params.immutable ? { onlyIf: new Headers({ "if-none-match": "*" }) } : {}),
       httpMetadata: { contentType: params.contentType },
     });
+    if (params.immutable && result === null) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
     return key;
   }
 
@@ -471,14 +567,27 @@ export async function putObjectText(params: {
     throw new Error("Object storage requested but client or bucket is not configured");
   }
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: params.body,
+        ContentType: params.contentType,
+        ...(params.immutable ? { IfNoneMatch: "*" } : {}),
+      }),
+    );
+  } catch (error) {
+    // error-policy:J1 translate only the create-only conflict; all other
+    // provider failures retain their original authority for existing callers.
+    if (params.immutable && classifyImmutableWriteFailure(error) === "precondition") {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
+    throw error;
+  }
   return key;
 }
 
@@ -761,7 +870,7 @@ async function headObjectOnBackend(
   keyFingerprint: string,
   requestChecksum = false,
   providerVersionId?: string,
-  control?: ImmutableUploadAbortContext,
+  control?: ProviderRequestAbortContext,
 ): Promise<ObjectHeadReceipt> {
   if (backend.runtimeBucket) {
     const request = backend.runtimeBucket.head(key);
@@ -1433,7 +1542,7 @@ export async function getExactObjectAtBackend(params: {
   return getExactObjectOnBackend(params.backend, params.input);
 }
 
-interface ImmutableUploadAbortContext {
+interface ProviderRequestAbortContext {
   readonly signal: AbortSignal;
   ensureActive(): void;
   failure(): ObjectStorageLifecycleError;
@@ -1442,22 +1551,31 @@ interface ImmutableUploadAbortContext {
   dispose(): void;
 }
 
-function createImmutableUploadAbortContext(
+function createProviderRequestAbortContext(
   input: ObjectRequestControl,
-): ImmutableUploadAbortContext {
+  policy: Readonly<{
+    operation: string;
+    deadlineCode: ObjectStorageLifecycleErrorCode;
+    abortCode: ObjectStorageLifecycleErrorCode;
+  }> = {
+    operation: "Immutable object upload",
+    deadlineCode: "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_UPLOAD_ABORTED",
+  },
+): ProviderRequestAbortContext {
   const now = Date.now();
   const suppliedDeadline = input.deadline?.getTime();
   if (suppliedDeadline !== undefined && !Number.isFinite(suppliedDeadline)) {
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_METADATA_INVALID",
-      "Immutable object upload requires a valid absolute deadline",
+      `${policy.operation} requires a valid absolute deadline`,
     );
   }
   const deadlineAt = suppliedDeadline ?? now + DEFAULT_IMMUTABLE_UPLOAD_DURATION_MS;
   if (deadlineAt - now > MAX_IMMUTABLE_UPLOAD_DURATION_MS) {
     throw new ObjectStorageLifecycleError(
       "OBJECT_STORAGE_METADATA_INVALID",
-      "Immutable object upload deadline exceeds the bounded provider-I/O window",
+      `${policy.operation} deadline exceeds the bounded provider-I/O window`,
     );
   }
 
@@ -1488,12 +1606,12 @@ function createImmutableUploadAbortContext(
   const failure = () =>
     source === "deadline"
       ? new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_UPLOAD_DEADLINE_EXCEEDED",
-          "Immutable object provider I/O exceeded its deadline",
+          policy.deadlineCode,
+          `${policy.operation} provider I/O exceeded its deadline`,
         )
       : new ObjectStorageLifecycleError(
-          "OBJECT_STORAGE_UPLOAD_ABORTED",
-          "Immutable object provider I/O was aborted",
+          policy.abortCode,
+          `${policy.operation} provider I/O was aborted`,
         );
 
   const ensureActive = () => {
@@ -1548,7 +1666,7 @@ export async function headObject(
   control: ObjectRequestControl = {},
 ): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
-  const context = createImmutableUploadAbortContext(control);
+  const context = createProviderRequestAbortContext(control);
   try {
     const [backend, keyFingerprint] = await context.race(
       Promise.all([resolveLifecycleBackend(), fingerprintKey(key)]),
@@ -1567,7 +1685,7 @@ export async function headObjectAtBackend(
 ): Promise<ObjectHeadReceipt> {
   requireExactKey(key);
   requireExactBackendLocator(backend.locator);
-  const context = createImmutableUploadAbortContext(control);
+  const context = createProviderRequestAbortContext(control);
   try {
     const keyFingerprint = await context.race(fingerprintKey(key));
     return await headObjectOnBackend(backend, key, keyFingerprint, false, undefined, context);
@@ -1691,7 +1809,7 @@ function immutableReceiptFromHead(
 
 async function immutableRetryBackoff(
   attempt: number,
-  context: ImmutableUploadAbortContext,
+  context: ProviderRequestAbortContext,
 ): Promise<void> {
   const delayMs = 25 * 2 ** Math.max(0, attempt - 1);
   await context.wait(delayMs);
@@ -1727,10 +1845,10 @@ async function putImmutableObjectOnBackend(params: {
     );
   }
   const body = immutableUploadBytes(params.body, params.transferBodyOwnership === true);
-  let context: ImmutableUploadAbortContext | undefined;
+  let context: ProviderRequestAbortContext | undefined;
   let digestBytes: Uint8Array<ArrayBuffer> | undefined;
   try {
-    context = createImmutableUploadAbortContext(params);
+    context = createProviderRequestAbortContext(params);
     const backend = params.backend;
     const [keyFingerprint, sha256] = await context.race(
       Promise.all([fingerprintKey(params.key), immutableSha256(body)]),
@@ -1931,7 +2049,9 @@ export async function putImmutableObjectAtBackend(params: {
 async function deleteObjectOnBackend(
   backend: ExactObjectStorageBackend,
   target: ObjectDeleteTarget,
+  control: ProviderRequestAbortContext,
 ): Promise<ObjectDeleteReceipt> {
+  control.ensureActive();
   requireExactKey(target.key);
   requireExactBackendLocator(backend.locator);
   const keyFingerprint = await fingerprintKey(target.key);
@@ -1953,6 +2073,7 @@ async function deleteObjectOnBackend(
     keyFingerprint,
     false,
     providerVersionId,
+    control,
   );
   if (before.status === "absent") {
     return {
@@ -1977,22 +2098,25 @@ async function deleteObjectOnBackend(
 
   let providerRequestId: string | null = null;
   if (backend.runtimeBucket) {
-    await backend.runtimeBucket.delete(target.key);
+    await control.race(backend.runtimeBucket.delete(target.key));
   } else {
     try {
-      const output = await backend.s3Client.send(
-        new DeleteObjectCommand({
-          Bucket: backend.locator.bucket,
-          Key: target.key,
-          VersionId:
-            target.locator.versionSource === "provider"
-              ? (target.locator.version ?? undefined)
-              : undefined,
-          IfMatch:
-            target.locator.versionSource === "etag"
-              ? (target.locator.version ?? undefined)
-              : undefined,
-        }),
+      const output = await control.race(
+        backend.s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: backend.locator.bucket,
+            Key: target.key,
+            VersionId:
+              target.locator.versionSource === "provider"
+                ? (target.locator.version ?? undefined)
+                : undefined,
+            IfMatch:
+              target.locator.versionSource === "etag"
+                ? (target.locator.version ?? undefined)
+                : undefined,
+          }),
+          { abortSignal: control.signal },
+        ),
       );
       providerRequestId = output.$metadata.requestId ?? null;
     } catch (error) {
@@ -2012,6 +2136,7 @@ async function deleteObjectOnBackend(
     keyFingerprint,
     false,
     providerVersionId,
+    control,
   );
   if (after.status !== "absent") {
     throw new ObjectStorageLifecycleError(
@@ -2029,16 +2154,40 @@ async function deleteObjectOnBackend(
 }
 
 /** Delete using the legacy process-global backend selector. */
-export async function deleteObject(target: ObjectDeleteTarget): Promise<ObjectDeleteReceipt> {
-  return deleteObjectOnBackend(await resolveLifecycleBackend(), target);
+export async function deleteObject(
+  target: ObjectDeleteTarget,
+  control: ObjectRequestControl = {},
+): Promise<ObjectDeleteReceipt> {
+  const context = createProviderRequestAbortContext(control, {
+    operation: "Exact object deletion",
+    deadlineCode: "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_DELETE_ABORTED",
+  });
+  try {
+    return await context.race(
+      resolveLifecycleBackend().then((backend) => deleteObjectOnBackend(backend, target, context)),
+    );
+  } finally {
+    context.dispose();
+  }
 }
 
 /** Delete one exact object on a caller-resolved backend and prove absence. */
 export async function deleteObjectAtBackend(params: {
   backend: ExactObjectStorageBackend;
   target: ObjectDeleteTarget;
+  control?: ObjectRequestControl;
 }): Promise<ObjectDeleteReceipt> {
-  return deleteObjectOnBackend(params.backend, params.target);
+  const context = createProviderRequestAbortContext(params.control ?? {}, {
+    operation: "Exact object deletion",
+    deadlineCode: "OBJECT_STORAGE_DELETE_DEADLINE_EXCEEDED",
+    abortCode: "OBJECT_STORAGE_DELETE_ABORTED",
+  });
+  try {
+    return await deleteObjectOnBackend(params.backend, params.target, context);
+  } finally {
+    context.dispose();
+  }
 }
 
 /**
@@ -2074,9 +2223,14 @@ export async function offloadTextField(params: {
   value: string | null | undefined;
   keepPreview?: boolean;
   inlineValueWhenOffloaded?: string;
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<string>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
-  if (!shouldOffload(params.value)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(params.value)) {
+    assertInlinePayloadFits(params.field, params.value);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
@@ -2086,6 +2240,8 @@ export async function offloadTextField(params: {
     createdAt: params.createdAt,
     body: params.value,
     contentType: "text/plain; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2105,10 +2261,17 @@ export async function offloadJsonField<T>(params: {
   createdAt: Date;
   value: T | null | undefined;
   inlineValueWhenOffloaded: T | null;
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<T>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   const body = JSON.stringify(params.value);
-  if (!shouldOffload(body)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(body)) {
+    // Structured payloads cannot be truncated without becoming invalid, so an
+    // oversize inline JSON write always fails rather than degrading silently.
+    assertInlinePayloadFits(params.field, body);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
@@ -2118,6 +2281,8 @@ export async function offloadJsonField<T>(params: {
     createdAt: params.createdAt,
     body,
     contentType: "application/json; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2131,18 +2296,91 @@ export async function hydrateTextField(params: {
   storage: string;
   key: string | null;
   inlineValue: string | null;
+  strict?: boolean;
 }): Promise<string | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  return (await getObjectText(params.key)) ?? params.inlineValue;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed field is missing its exact object key",
+    );
+  }
+  try {
+    const hydrated = await getObjectText(params.key);
+    if (hydrated !== null) return hydrated;
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (!params.strict) return params.inlineValue;
+  throw new ObjectStorageLifecycleError(
+    "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+    "Object-backed field is unavailable at the storage boundary",
+  );
 }
 
 export async function hydrateJsonField<T>(params: {
   storage: string;
   key: string | null;
   inlineValue: T | null;
+  strict?: boolean;
 }): Promise<T | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  const raw = await getObjectText(params.key);
-  if (!raw) return params.inlineValue;
-  return JSON.parse(raw) as T;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed JSON field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed JSON field is missing its exact object key",
+    );
+  }
+
+  let raw: string | null;
+  try {
+    raw = await getObjectText(params.key);
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (raw === null || (!params.strict && raw.length === 0)) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch (cause) {
+    // error-policy:J2 preserve the parse failure without exposing object content.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_JSON_INVALID",
+      "Object-backed JSON field contains malformed JSON",
+      { cause },
+    );
+  }
 }

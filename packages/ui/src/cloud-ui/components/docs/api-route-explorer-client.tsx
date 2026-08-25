@@ -184,7 +184,7 @@ export function ApiRouteExplorerClient({
             <div className="border-b border-border p-4 bg-bg-elevated">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-muted" />
+                  <div className="size-2 rounded-full bg-muted" />
                   <span className="text-xs font-bold uppercase tracking-[0.18em] text-muted">
                     Route Explorer
                   </span>
@@ -198,7 +198,7 @@ export function ApiRouteExplorerClient({
                     type="checkbox"
                     checked={showAll}
                     onChange={(e) => setShowAll(e.target.checked)}
-                    className="accent-txt w-3.5 h-3.5"
+                    className="accent-txt size-3.5"
                   />
                   Show all
                 </label>
@@ -212,10 +212,12 @@ export function ApiRouteExplorerClient({
                   strokeWidth={2}
                 />
                 <Input
+                  variant="embeddedSearch"
+                  density="search"
+                  adornment="leading"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search endpoints..."
-                  className="w-full min-h-touch pl-10 pr-4 py-2.5 rounded-sm border border-border bg-bg text-sm text-txt placeholder:text-muted transition-colors"
+                  placeholder="Search endpoints…"
                 />
               </div>
 
@@ -255,16 +257,14 @@ export function ApiRouteExplorerClient({
                           r.path.replace("/api/v1/", "").replace(/\//g, " / ");
                         return (
                           <Button
-                            variant="ghost"
+                            variant="choice"
+                            size="row"
+                            align="start"
+                            data-state={active ? "on" : "off"}
                             key={key}
                             type="button"
                             onClick={() => setSelectedKey(key)}
-                            className={cn(
-                              "w-full min-h-touch text-left rounded-sm border px-3 py-2.5 transition-colors my-1",
-                              active
-                                ? "bg-bg-muted border-border-strong"
-                                : "border-transparent hover:bg-bg-hover hover:border-border",
-                            )}
+                            className="my-1 w-full"
                           >
                             <div className="flex items-start gap-2">
                               <div className="flex flex-wrap gap-1 pt-0.5 shrink-0">
@@ -375,7 +375,7 @@ export function ApiRouteExplorerClient({
               <div className="py-5 border-b border-border">
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Auth */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Lock
                         aria-hidden="true"
@@ -403,7 +403,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Rate Limit */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Zap
                         aria-hidden="true"
@@ -420,7 +420,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Category */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Tag
                         aria-hidden="true"
@@ -438,7 +438,7 @@ export function ApiRouteExplorerClient({
                   </div>
 
                   {/* Pricing */}
-                  <div className="p-4 bg-bg border border-border rounded-sm">
+                  <div className="p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <DollarSign
                         aria-hidden="true"
@@ -549,7 +549,7 @@ export function ApiRouteExplorerClient({
           ) : (
             /* Empty state */
             <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-bg-muted flex items-center justify-center mb-4">
+              <div className="size-16 rounded-full bg-bg-muted flex items-center justify-center mb-4">
                 <Terminal
                   aria-hidden="true"
                   className="size-8 text-muted"

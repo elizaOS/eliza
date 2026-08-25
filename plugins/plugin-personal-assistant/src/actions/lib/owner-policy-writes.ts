@@ -6,6 +6,7 @@
  */
 
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import type {
   LifeOpsDefinitionRecord,
   LifeOpsDomain,
@@ -71,7 +72,7 @@ function policyProvenance(intent: string): OwnerFactProvenance {
     recordedAt: new Date().toISOString(),
   };
   if (intent.length > 0) {
-    provenance.note = intent.slice(0, 200);
+    provenance.note = toWellFormedUnicode(intent);
   }
   return provenance;
 }

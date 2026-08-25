@@ -18,6 +18,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const walletStateHarness = vi.hoisted(() => ({
   connected: false,
   pendingApprovals: 0,
+  plugins: [] as Array<{ name: string }>,
+}));
+
+const apiBaseHarness = vi.hoisted(() => ({
+  base: "https://remote-agent.example/api-root",
+}));
+
+vi.mock("../../utils/asset-url", () => ({
+  resolveApiUrl: (path: string) => `${apiBaseHarness.base}${path}`,
 }));
 
 vi.mock("../../state", async (importOriginal) => {
@@ -45,7 +54,7 @@ vi.mock("../../state", async (importOriginal) => {
       typeof options.defaultValue === "string"
         ? options.defaultValue
         : _key,
-    plugins: [],
+    plugins: walletStateHarness.plugins,
     uiTheme: "dark",
     walletAddresses: [],
     walletConfig: null,
@@ -85,7 +94,10 @@ vi.mock("../../api", async (importOriginal) => {
 
 import { client } from "../../api";
 import { shellHistory } from "../../surface-realm-channel";
-import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
+import {
+  BrowserWorkspaceView,
+  normalizeBrowserWorkspaceInputUrl,
+} from "./BrowserWorkspaceView";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_REQUEST_TYPE,
@@ -147,6 +159,7 @@ function deferred<T>(): {
 beforeEach(() => {
   walletStateHarness.connected = false;
   walletStateHarness.pendingApprovals = 0;
+  walletStateHarness.plugins.splice(0);
   vi.mocked(client.getBrowserWorkspace).mockResolvedValue({
     mode: "web",
     tabs: [],
@@ -167,6 +180,36 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe("Browser workspace URL normalization", () => {
+  const translate = (key: string, vars?: Record<string, unknown>): string =>
+    String(vars?.defaultValue ?? key);
+
+  it("resolves local app paths against the active remote agent API base", () => {
+    expect(
+      normalizeBrowserWorkspaceInputUrl("/api/apps/local/demo/", translate),
+    ).toBe("https://remote-agent.example/api-root/api/apps/local/demo/");
+  });
+
+  it("preserves external http(s) and adds https to a schemeless host", () => {
+    expect(
+      normalizeBrowserWorkspaceInputUrl("https://example.com/a", translate),
+    ).toBe("https://example.com/a");
+    expect(normalizeBrowserWorkspaceInputUrl("example.com/a", translate)).toBe(
+      "https://example.com/a",
+    );
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,no",
+    "http://[",
+    "//evil.example/path",
+    "/\\evil.example/path",
+  ])("rejects an unsafe or malformed target: %s", (url) => {
+    expect(() => normalizeBrowserWorkspaceInputUrl(url, translate)).toThrow();
+  });
+});
+
 describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () => {
   it("renders a main landmark with the view testid and NO shared ViewHeader row", async () => {
     render(<BrowserWorkspaceView />);
@@ -179,6 +222,30 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     // The fullscreen framing owns its chrome: the shared back-arrow ViewHeader
     // must not render (the shell no longer stacks a host top bar either).
     expect(screen.queryByTestId("view-header")).toBeNull();
+  });
+
+  it("keeps bridge recovery reachable without adding idle administration UI", async () => {
+    walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByText("No page open")).not.toBeNull();
+    expect(screen.queryByTestId("browser-bridge-controls")).toBeNull();
+    expect(screen.queryByText("Install Agent Browser Bridge")).toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
+  });
+
+  it("keeps bridge recovery reachable while a browser tab is open", async () => {
+    walletStateHarness.plugins.push({ name: "@elizaos/plugin-browser" });
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    render(<BrowserWorkspaceView />);
+
+    expect(await screen.findByTitle("Google")).not.toBeNull();
+    expect(
+      await screen.findByTestId("browser-session-policy-error"),
+    ).not.toBeNull();
+    expect(screen.getByTestId("browser-session-policy-dock")).not.toBeNull();
   });
 
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
@@ -196,7 +263,7 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     ).toBe(true);
     const back = screen.getByRole("button", { name: "Back to launcher" });
     expect(toolbar.contains(back)).toBe(true);
-    expect(back.className).toMatch(/(?:^|\s)h-11(?:\s|$)/);
+    expect(back.className).toMatch(/(?:^|\s)(?:h-11|size-11)(?:\s|$)/);
   });
 
   it("invokes launcher navigation once from the toolbar back button", async () => {
@@ -254,7 +321,8 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
       screen.getByTestId("browser-workspace-address-input").className,
     ).not.toContain("sm:col-span-1");
     for (const control of toolbar.querySelectorAll("button, input")) {
-      expect(control.className).toMatch(/(?:h-11|min-h-11)/);
+      // size-11 is the merged h-11 w-11 form; all three satisfy the 44px floor.
+      expect(control.className).toMatch(/(?:h-11|min-h-11|size-11)/);
     }
   });
 

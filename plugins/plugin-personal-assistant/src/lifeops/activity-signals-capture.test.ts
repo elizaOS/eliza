@@ -81,6 +81,7 @@ const h = vi.hoisted(() => {
     dispatchStatus: vi.fn(),
     capacitorGetPlatform: vi.fn(() => "web"),
     capacitorIsNative: vi.fn(() => false),
+    capacitorIsPluginAvailable: vi.fn(() => true),
     mobile,
   };
 });
@@ -170,6 +171,7 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: h.capacitorGetPlatform,
     isNativePlatform: h.capacitorIsNative,
+    isPluginAvailable: h.capacitorIsPluginAvailable,
   },
 }));
 
@@ -269,6 +271,7 @@ describe("startLifeOpsActivitySignalCapture", () => {
     h.authSubscribers.clear();
     h.capacitorGetPlatform.mockReturnValue("web");
     h.capacitorIsNative.mockReturnValue(false);
+    h.capacitorIsPluginAvailable.mockReturnValue(true);
     h.mobile.checkPermissions.mockResolvedValue({ status: "granted" });
     h.mobile.addListener.mockImplementation(
       async (_event: string, cb: (signal: unknown) => void) => {
@@ -722,6 +725,20 @@ describe("startLifeOpsActivitySignalCapture", () => {
     expect(h.dispatchStatus).toHaveBeenCalledWith(
       expect.objectContaining({ status: "capture_error", message: "boom" }),
     );
+  });
+
+  it("stands down when the native MobileSignals plugin is intentionally absent", async () => {
+    mockNativeMobile();
+    h.capacitorIsPluginAvailable.mockReturnValue(false);
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(h.mobile.checkPermissions).not.toHaveBeenCalled();
+    expect(h.mobile.startMonitoring).not.toHaveBeenCalled();
   });
 
   it("surfaces an unexpected (non-transport) status-probe failure instead of reading it as not-ready", async () => {

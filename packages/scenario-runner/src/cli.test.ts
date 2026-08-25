@@ -29,6 +29,7 @@ import {
   writeReport as writeReportToDisk,
   writeScenarioRunViewer as writeScenarioRunViewerToDisk,
 } from "./reporter.ts";
+import { scenarioLiveProviderPreflightProblems } from "./runtime-factory.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const ENV_KEYS = [
@@ -38,6 +39,10 @@ const ENV_KEYS = [
   "ELIZA_LIFEOPS_RUN_ID",
   "ELIZA_LIFEOPS_SCENARIO_ID",
   "LIFEOPS_LIVE_JUDGE_MIN_SCORE",
+  "SCENARIO_TURN_TIMEOUT_MS",
+  "OPENAI_API_KEY",
+  "CEREBRAS_API_KEY",
+  "SCENARIO_JUDGE_REQUIRE_INDEPENDENT",
   "SKIP_REASON",
 ] as const;
 const DETERMINISTIC_PROVIDER_NAME = "deterministic-model-provider" as const;
@@ -219,11 +224,13 @@ function createDependencies(
   return {
     availableProviderNames: vi.fn(() => ["unit-test"]),
     shouldUseDeterministicModel: vi.fn(() => true),
+    scenarioLiveProviderPreflightProblems: vi.fn(() => []),
     createScenarioRuntime: vi.fn(async () => ({
       runtime: {} as never,
       pgliteDir: tmpdir(),
       executionProfile: "simulated" as const,
       registeredPluginPackages: [],
+      scenarioDeclaredActionNames: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -282,7 +289,7 @@ describe("scenario-runner CLI", () => {
     vi.restoreAllMocks();
   });
 
-  it("parses run filters and rejects invalid lanes without exiting the process", () => {
+  it("parses run filters and provider selection, rejecting invalid values", () => {
     const parsed = parseArgs([
       "run",
       tempDir,
@@ -290,6 +297,8 @@ describe("scenario-runner CLI", () => {
       "alpha,beta",
       "--lane",
       "pr-deterministic",
+      "--provider",
+      "cli",
       "nested/*.scenario.ts",
     ]);
 
@@ -297,10 +306,119 @@ describe("scenario-runner CLI", () => {
     expect(parsed.dir).toBe(path.resolve(tempDir));
     expect([...(parsed.filter ?? [])]).toEqual(["alpha", "beta"]);
     expect(parsed.lane).toBe("pr-deterministic");
+    expect(parsed.provider).toBe("cli");
     expect(parsed.fileGlobs).toEqual(["nested/*.scenario.ts"]);
     expect(() => parseArgs(["list", tempDir, "--lane", "bad-lane"])).toThrow(
       CliUsageError,
     );
+    expect(() =>
+      parseArgs(["run", tempDir, "--provider", "not-a-provider"]),
+    ).toThrow(CliUsageError);
+  });
+
+  it("passes the requested live provider to runtime construction", async () => {
+    writeScenario(tempDir, "provider-selected", { lane: "live-only" });
+    const createScenarioRuntime = vi.fn(
+      createDependencies(() => "passed").createScenarioRuntime,
+    );
+    const dependencies = createDependencies(() => "passed", {
+      availableProviderNames: vi.fn(() => ["anthropic"]),
+      shouldUseDeterministicModel: vi.fn(() => false),
+      createScenarioRuntime,
+    });
+
+    await expect(
+      runCli(["run", tempDir, "--provider", "anthropic"], dependencies),
+    ).resolves.toBe(0);
+    expect(createScenarioRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredProvider: "anthropic" }),
+    );
+  });
+
+  it("fails before runtime construction when a requested provider is unavailable or deterministic mode is enabled", async () => {
+    writeScenario(tempDir, "provider-preflight", { lane: "live-only" });
+    const createScenarioRuntime = vi.fn();
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "anthropic"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => false),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain("requested provider anthropic is unavailable");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+
+    stderr = "";
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "openai"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => true),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain(
+      "cannot be combined with deterministic model mode",
+    );
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["blank", "   "],
+  ] as const)(
+    "fails before runtime construction when the requested provider credential is %s",
+    async (_credentialState, openaiKey) => {
+      writeScenario(tempDir, "provider-exact-key", { lane: "live-only" });
+      const createScenarioRuntime = vi.fn();
+      process.env.CEREBRAS_API_KEY = "judge-key";
+      process.env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT = "1";
+      if (openaiKey === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = openaiKey;
+
+      await expect(
+        runCli(
+          ["run", tempDir, "--provider", "openai"],
+          createDependencies(() => "passed", {
+            availableProviderNames: vi.fn(() => ["openai"]),
+            shouldUseDeterministicModel: vi.fn(() => false),
+            scenarioLiveProviderPreflightProblems,
+            createScenarioRuntime,
+          }),
+        ),
+      ).resolves.toBe(2);
+      expect(stderr).toContain("--provider openai requires OPENAI_API_KEY");
+      expect(createScenarioRuntime).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fails before runtime construction when acting and judge identities match", async () => {
+    writeScenario(tempDir, "provider-independent-judge", {
+      lane: "live-only",
+    });
+    const createScenarioRuntime = vi.fn();
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--provider", "openai"],
+        createDependencies(() => "passed", {
+          availableProviderNames: vi.fn(() => ["openai"]),
+          shouldUseDeterministicModel: vi.fn(() => false),
+          scenarioLiveProviderPreflightProblems: vi.fn(() => [
+            "acting provider cerebras cannot also be the independent judge provider",
+          ]),
+          createScenarioRuntime,
+        }),
+      ),
+    ).resolves.toBe(2);
+    expect(stderr).toContain("cannot also be the independent judge provider");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("forwards declared plugins to a simulated scenario runtime", async () => {
@@ -313,6 +431,7 @@ describe("scenario-runner CLI", () => {
       pgliteDir: tmpdir(),
       executionProfile: "simulated" as const,
       registeredPluginPackages: ["@elizaos/plugin-maps"],
+      scenarioDeclaredActionNames: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -388,6 +507,7 @@ describe("scenario-runner CLI", () => {
       pgliteDir: tmpdir(),
       executionProfile: "provider-qualified" as const,
       registeredPluginPackages: ["@elizaos/plugin-personal-assistant"],
+      scenarioDeclaredActionNames: [],
       providerName: "openai" as const,
       providerConfig: {
         name: "openai" as const,
@@ -490,6 +610,7 @@ describe("scenario-runner CLI", () => {
         pgliteDir: tmpdir(),
         executionProfile: "provider-qualified" as const,
         registeredPluginPackages: [],
+        scenarioDeclaredActionNames: [],
         providerName: "openai" as const,
         providerConfig: {
           name: "openai" as const,
@@ -534,6 +655,7 @@ describe("scenario-runner CLI", () => {
         pgliteDir: tmpdir(),
         executionProfile: "provider-qualified" as const,
         registeredPluginPackages: [],
+        scenarioDeclaredActionNames: [],
         providerName: "openai" as const,
         providerConfig: {
           name: "openai" as const,
@@ -610,6 +732,63 @@ describe("scenario-runner CLI", () => {
 
     expect(code).toBe(2);
     expect(stderr).toContain("skipped without SKIP_REASON");
+  });
+
+  it("rejects trailing garbage in the per-turn timeout environment", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "500junk";
+    writeScenario(tempDir, "cli-timeout-config");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+    expect(dependencies.runScenario).not.toHaveBeenCalled();
+  });
+
+  it("still accepts a clean per-turn timeout value", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "500";
+    writeScenario(tempDir, "cli-timeout-ok");
+    const dependencies = createDependencies(() => "passed");
+
+    await runCli(["run", tempDir], dependencies);
+    expect(dependencies.runScenario).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ turnTimeoutMs: 500 }),
+    );
+  });
+
+  it("still accepts an explicitly signed positive timeout", async () => {
+    // `Number.parseInt` accepted "+500"; rejecting it would be a regression.
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "+500";
+    writeScenario(tempDir, "cli-timeout-signed");
+    const dependencies = createDependencies(() => "passed");
+
+    await runCli(["run", tempDir], dependencies);
+    expect(dependencies.runScenario).toHaveBeenCalled();
+  });
+
+  it("rejects a timeout beyond the safe integer range", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "9007199254740993";
+    writeScenario(tempDir, "cli-timeout-unsafe");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "SCENARIO_TURN_TIMEOUT_MS must be a positive integer",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it("rejects a timeout beyond Node's supported timer range", async () => {
+    process.env.SCENARIO_TURN_TIMEOUT_MS = "2147483648";
+    writeScenario(tempDir, "cli-timeout-timer-overflow");
+    const dependencies = createDependencies(() => "passed");
+
+    await expect(runCli(["run", tempDir], dependencies)).rejects.toThrow(
+      "no greater than 2147483647",
+    );
+    expect(dependencies.createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("allows skipped scenarios when SKIP_REASON documents the skip", async () => {

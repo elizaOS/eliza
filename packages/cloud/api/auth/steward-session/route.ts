@@ -10,7 +10,7 @@ import {
   type StewardTelegramClaimConfirmationRequest,
   sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import {
@@ -18,6 +18,7 @@ import {
   hasElizaNonSimpleRequestMarker,
 } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import { primeVerifiedUserSessionCache } from "@/lib/auth/session-user-cache";
 import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
   type StewardVerifyEnv,
@@ -38,10 +39,12 @@ import {
 import {
   describeSyncError,
   StewardPhoneAccountConflictError,
+  type StewardSyncExecutionContext,
   StewardTelegramAccountClaimError,
   syncUserFromSteward,
 } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
+import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
@@ -78,6 +81,19 @@ function checkNonSimpleMarker(c: {
   req: { header: (name: string) => string | undefined };
 }): boolean {
   return hasElizaNonSimpleRequestMarker(c.req);
+}
+
+function getWorkerExecutionContext(
+  c: Context<AppEnv>,
+): StewardSyncExecutionContext | undefined {
+  try {
+    const candidate = c.executionCtx;
+    return typeof candidate?.waitUntil === "function" ? candidate : undefined;
+  } catch {
+    // error-policy:J4 Hono throws when a route is invoked without a Worker
+    // execution context; non-Worker callers preserve inline provisioning.
+    return undefined;
+  }
 }
 
 let stewardAuthMetricCounter = 0;
@@ -232,6 +248,27 @@ app.post("/", async (c) => {
       return c.json(errorBody("Invalid token", "invalid_token"), 401);
     }
 
+    const verifiedTelegramId =
+      claims.authMethod === "telegram" ? claims.telegramId : undefined;
+    if (claims.telegramId && !verifiedTelegramId) {
+      logStewardAuth("telegram-claims-invalid", null);
+      return c.json(errorBody("Invalid token", "invalid_token"), 401);
+    }
+
+    // A signed Telegram login and a browser-supplied DM continuation are two
+    // independent authorities. Never let a caller combine them to select one
+    // Telegram identity while authenticating as another.
+    if (verifiedTelegramId && telegramContinuation) {
+      logStewardAuth("telegram-authority-ambiguous", null);
+      return c.json(
+        errorBody(
+          "Telegram login cannot consume an account continuation",
+          "telegram_claim_conflict",
+        ),
+        409,
+      );
+    }
+
     // Cross-host logout barrier — BRIDGE-ISSUED tokens only. After an explicit
     // logout, the app origin's surviving bridge-minted token must not re-plant
     // the domain-wide cookies via its background session sync (that would
@@ -316,6 +353,7 @@ app.post("/", async (c) => {
       }
     }
 
+    const executionCtx = getWorkerExecutionContext(c);
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
     if (claims.stagingSessionBinding) {
       if (telegramContinuation) {
@@ -345,9 +383,31 @@ app.post("/", async (c) => {
           walletAddress: claims.walletAddress ?? claims.address,
           walletChainType: claims.walletChain,
           verifiedPhone,
+          verifiedTelegramId,
           telegramContinuation: telegramContinuation ?? undefined,
           sharedRuntimeConversationNamespace:
             c.env.SHARED_RUNTIME_CONVERSATIONS,
+          executionCtx,
+          afterRequiredSignupProvisioning: async (user) => {
+            try {
+              // The first authenticated browser request follows immediately.
+              // Prime its authorization projection after strict API-key
+              // readiness but before optional onboarding work starts, so that
+              // request does not race into the slower durable cache-miss path.
+              await primeVerifiedUserSessionCache(token, user);
+            } catch (error) {
+              // error-policy:J4 Cache priming is a latency optimization. Identity is
+              // already durable and the ordinary authenticated cache-miss path can
+              // recover, so a cache write failure must not strand the new account.
+              logger.warn(
+                "[steward-auth] New-user session cache prime failed",
+                {
+                  userId: user.id,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+            }
+          },
         });
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {
@@ -434,28 +494,32 @@ app.post("/", async (c) => {
     });
 
     logStewardAuth("ok", ttl);
-    await getAuditDispatcher()
-      .emit({
-        actor: { type: "user", id: cloudUser.id },
-        action: "auth.login",
-        result: "success",
-        resource: null,
-        org_id: cloudUser.organization_id ?? undefined,
-        ip: getRequestIp(c),
-        user_agent: c.req.header("user-agent") ?? undefined,
-        request_id: c.get("requestId"),
-        metadata: { provider: "steward", method: "session_exchange" },
-      })
-      // error-policy:J7 audit write must not block the login response; a dropped auth audit is logged.
-      .catch((err) =>
-        logger.error(
-          "[StewardSession] audit emit for successful login failed",
-          {
-            userId: cloudUser.id,
-            error: err instanceof Error ? err.message : String(err),
-          },
-        ),
-      );
+    // The required sink remains owned by the Worker lifetime, but its database
+    // RTT is not account readiness and must not delay the successful response.
+    await settleOffResponsePath(executionCtx, async () => {
+      await getAuditDispatcher()
+        .emit({
+          actor: { type: "user", id: cloudUser.id },
+          action: "auth.login",
+          result: "success",
+          resource: null,
+          org_id: cloudUser.organization_id ?? undefined,
+          ip: getRequestIp(c),
+          user_agent: c.req.header("user-agent") ?? undefined,
+          request_id: c.get("requestId"),
+          metadata: { provider: "steward", method: "session_exchange" },
+        })
+        // error-policy:J7 audit write must not block the login response; a dropped auth audit is logged.
+        .catch((err) =>
+          logger.error(
+            "[StewardSession] audit emit for successful login failed",
+            {
+              userId: cloudUser.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          ),
+        );
+    });
     const response: StewardSessionResponse = {
       ok: true,
       userId: cloudUser.id,

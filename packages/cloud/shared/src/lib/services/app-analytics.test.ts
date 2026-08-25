@@ -184,6 +184,74 @@ describe("AppAnalyticsService.buildSessionAnalytics", () => {
     expect(analytics.sessions[0]?.entryPath).toBe("/a");
     expect(analytics.sessions[0]?.exitPath).toBe("/b");
   });
+
+  test("filters invalid created_at so fallback toISOString cannot throw", () => {
+    const service = new AppAnalyticsService();
+    const invalidAt = new Date(Number.NaN);
+    expect(Number.isNaN(invalidAt.getTime())).toBe(true);
+
+    // Without explicit session_id the fallback derives sessionId via
+    // visitorId + ":" + created_at.toISOString().slice(0,13). An invalid Date
+    // must not reach that path.
+    const withoutSessionId = service.buildSessionAnalytics([
+      {
+        ...BASE_REQUEST,
+        id: "00000000-0000-4000-8000-000000000061",
+        metadata: {},
+        created_at: invalidAt,
+      },
+      request("00000000-0000-4000-8000-000000000062", "2026-07-02T12:00:00Z", {
+        visitor_id: "visitor-a",
+        session_id: "session-a",
+        page_url: "/a",
+      }),
+    ]);
+    // Invalid record is filtered; only the valid session remains and no throw occurs.
+    expect(withoutSessionId.summary.totalSessions).toBe(1);
+    expect(withoutSessionId.sessions[0]?.sessionId).toBe("session-a");
+    expect(withoutSessionId.summary.totalPageViews).toBe(1);
+
+    // With explicit session_id the invalid Date would still be pushed into
+    // session.pages and later cause startedAt/endedAt.toISOString() to throw.
+    const withSessionId = service.buildSessionAnalytics([
+      {
+        ...BASE_REQUEST,
+        id: "00000000-0000-4000-8000-000000000063",
+        metadata: { visitor_id: "visitor-a", session_id: "session-a", page_url: "/a" },
+        created_at: invalidAt,
+      },
+      request("00000000-0000-4000-8000-000000000064", "2026-07-02T12:02:00Z", {
+        visitor_id: "visitor-a",
+        session_id: "session-a",
+        page_url: "/b",
+      }),
+    ]);
+    expect(withSessionId.summary.totalSessions).toBe(1);
+    expect(withSessionId.sessions[0]?.pageViews).toBe(1);
+    expect(withSessionId.sessions[0]?.durationMs).toBe(0);
+  });
+
+  test("filters all-invalid batch to empty analytics without throwing", () => {
+    const service = new AppAnalyticsService();
+    const invalidAt = new Date(Number.NaN);
+    const analytics = service.buildSessionAnalytics([
+      {
+        ...BASE_REQUEST,
+        id: "00000000-0000-4000-8000-000000000071",
+        metadata: {},
+        created_at: invalidAt,
+      },
+      {
+        ...BASE_REQUEST,
+        id: "00000000-0000-4000-8000-000000000072",
+        metadata: { session_id: "s1" },
+        created_at: invalidAt,
+      },
+    ]);
+    expect(analytics.summary.totalSessions).toBe(0);
+    expect(analytics.sessions).toEqual([]);
+    expect(analytics.summary.totalPageViews).toBe(0);
+  });
 });
 
 describe("AppAnalyticsService.calculateAppPricing", () => {

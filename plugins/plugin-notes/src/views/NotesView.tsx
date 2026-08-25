@@ -35,6 +35,15 @@ function noteContent(note: StickyNoteModel): string {
   return body ? `${note.title}\n${body}` : note.title;
 }
 
+const NOTE_CARD_BASE_STYLE = {
+  ...GLASS_PANEL_STYLE,
+  minHeight: 150,
+  padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 9,
+} as const;
+
 function NoteCard({ note }: { note: StickyNoteModel }) {
   const content = noteContent(note);
   const card = useAgentElement<HTMLElement>({
@@ -56,12 +65,7 @@ function NoteCard({ note }: { note: StickyNoteModel }) {
       ref={card.ref}
       {...card.agentProps}
       style={{
-        ...GLASS_PANEL_STYLE,
-        minHeight: 150,
-        padding: 16,
-        display: "flex",
-        flexDirection: "column",
-        gap: 9,
+        ...NOTE_CARD_BASE_STYLE,
         background: `linear-gradient(145deg, ${material.fill}, color-mix(in srgb, var(--card, #111) 78%, transparent))`,
       }}
     >

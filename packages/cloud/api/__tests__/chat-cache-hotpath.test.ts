@@ -32,15 +32,15 @@ mock.module("ai", () => ({
   streamText,
 }));
 
-const getCurrentUser = mock(async () => {
+const getCurrentUser = mock(async (): Promise<unknown> => {
   throw new Error("database auth must not run on the Worker hot path");
 });
 mock.module("@/lib/auth/workers-hono-auth", () => ({ getCurrentUser }));
 
-const getAnonymousUser = mock(async () => {
+const getAnonymousUser = mock(async (): Promise<unknown> => {
   throw new Error("anonymous database auth must not run for an org caller");
 });
-const reserveAnonymousMessageSlot = mock(async () => {
+const reserveAnonymousMessageSlot = mock(async (): Promise<unknown> => {
   throw new Error("anonymous database quota must not run for an org caller");
 });
 mock.module("@/lib/auth-anonymous", () => ({
@@ -52,23 +52,25 @@ let anonymousResolutionImpl: () => Promise<unknown> = async () => {
   throw new Error("anonymous gate must not run for an org caller");
 };
 const resolveAnonymousChatContext = mock(() => anonymousResolutionImpl());
-const reserveAnonymousChatSlot = mock(async () => ({
-  kind: "admitted" as const,
-  lease: {
-    credential: {
-      sessionToken: "anonymous-token",
-      context: {
-        sessionId: "anonymous-session",
-        userId: "anonymous-user",
-        messageCount: 0,
-        messagesLimit: 10,
+const reserveAnonymousChatSlot = mock(
+  async (): Promise<unknown> => ({
+    kind: "admitted" as const,
+    lease: {
+      credential: {
+        sessionToken: "anonymous-token",
+        context: {
+          sessionId: "anonymous-session",
+          userId: "anonymous-user",
+          messageCount: 0,
+          messagesLimit: 10,
+        },
       },
+      requestId: "anonymous-request",
     },
-    requestId: "anonymous-request",
-  },
-  remaining: 9,
-  limit: 10,
-}));
+    remaining: 9,
+    limit: 10,
+  }),
+);
 const refundAnonymousChatSlot = mock(async () => undefined);
 const commitAnonymousChatSlot = mock(async () => undefined);
 const markAnonymousChatSlotDispatched = mock(async () => {
@@ -114,7 +116,7 @@ mock.module("@/lib/providers/language-model", () => ({
   resolveAiProviderSource: () => "openai",
 }));
 
-const shouldBlockUser = mock(async () => {
+const shouldBlockUser = mock(async (): Promise<boolean> => {
   throw new Error("database moderation must not run after cached auth");
 });
 mock.module("@/lib/services/content-moderation", () => ({
@@ -458,6 +460,161 @@ describe("/v1/chat Worker cache hot path", () => {
     expect(streamText).not.toHaveBeenCalled();
     expect(refundAnonymousChatSlot).toHaveBeenCalledTimes(1);
     expect(commitAnonymousChatSlot).not.toHaveBeenCalled();
+  });
+
+  test("returns the Durable Object hourly Retry-After before provider dispatch", async () => {
+    authResolutionImpl = async () => ({ kind: "slow_path" as const });
+    anonymousResolutionImpl = async () => ({
+      kind: "ready" as const,
+      blocked: false,
+      credential: {
+        sessionToken: "anonymous-token",
+        context: {
+          sessionId: "anonymous-session",
+          userId: "anonymous-user",
+          messageCount: 0,
+          messagesLimit: 10,
+        },
+      },
+    });
+    reserveAnonymousChatSlot.mockResolvedValueOnce({
+      kind: "limited",
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+      retryAfter: 23,
+    });
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "eliza-anon-session=anonymous-token",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("23");
+    await expect(response.json()).resolves.toMatchObject({
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+    });
+    expect(streamText).not.toHaveBeenCalled();
+    expect(markAnonymousChatSlotDispatched).not.toHaveBeenCalled();
+    expect(reserveAnonymousMessageSlot).not.toHaveBeenCalled();
+  });
+
+  test("returns the database fallback hourly Retry-After before provider dispatch", async () => {
+    getCurrentUser.mockResolvedValueOnce(null);
+    getAnonymousUser.mockResolvedValueOnce({
+      user: { id: "anonymous-user", organization_id: null },
+      session: {
+        id: "anonymous-session",
+        session_token: "anonymous-token",
+        message_count: 0,
+        messages_limit: 10,
+      },
+    });
+    shouldBlockUser.mockResolvedValueOnce(false);
+    reserveAnonymousMessageSlot.mockResolvedValueOnce({
+      allowed: false,
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+      retryAfter: 31,
+    });
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "eliza-anon-session=anonymous-token",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("31");
+    await expect(response.json()).resolves.toMatchObject({
+      reason: "hourly_limit",
+      remaining: 0,
+      limit: 10,
+    });
+    expect(reserveAnonymousMessageSlot).toHaveBeenCalledWith("anonymous-token");
+    expect(streamText).not.toHaveBeenCalled();
+    expect(markAnonymousChatSlotDispatched).not.toHaveBeenCalled();
+    expect(reserveAnonymousChatSlot).not.toHaveBeenCalled();
+  });
+
+  test("keeps the non-resetting message limit free of Retry-After", async () => {
+    authResolutionImpl = async () => ({ kind: "slow_path" as const });
+    anonymousResolutionImpl = async () => ({
+      kind: "ready" as const,
+      blocked: false,
+      credential: {
+        sessionToken: "anonymous-token",
+        context: {
+          sessionId: "anonymous-session",
+          userId: "anonymous-user",
+          messageCount: 10,
+          messagesLimit: 10,
+        },
+      },
+    });
+    reserveAnonymousChatSlot.mockResolvedValueOnce({
+      kind: "limited",
+      reason: "message_limit",
+      remaining: 0,
+      limit: 10,
+    });
+    const executionCtx = {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext;
+
+    const response = await chatRoute.fetch(
+      new Request("https://api.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "eliza-anon-session=anonymous-token",
+        },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      }),
+      {} as never,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      reason: "message_limit",
+      remaining: 0,
+      limit: 10,
+    });
+    expect(streamText).not.toHaveBeenCalled();
+    expect(markAnonymousChatSlotDispatched).not.toHaveBeenCalled();
   });
 
   test("settles the admission when the UI-message stream tears down without callbacks", async () => {

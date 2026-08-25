@@ -32,7 +32,12 @@ interface RequestRecord {
 
 interface HarnessOptions {
   asyncDelete?: boolean;
-  bridgeReply?: "valid" | "invalid" | "warming-once";
+  bridgeReply?:
+    | "valid"
+    | "invalid"
+    | "warming-once"
+    | "warming-always"
+    | "foreign-retryable-503";
   bridgeDelayMs?: number;
   cleanupDelete?: "success" | "fail" | "retain";
   create?:
@@ -47,7 +52,8 @@ interface HarnessOptions {
     | "throw-without-commit";
   existingPreflight?: JsonObject[];
   pairing?: "negative" | "positive";
-  sseReply?: "valid" | "invalid";
+  retryAfter?: string;
+  sseReply?: "valid" | "invalid" | "warming-once" | "malformed-503";
 }
 
 function requestBody(init: RequestInit | undefined): JsonObject | null {
@@ -84,6 +90,8 @@ function makeHarness(options: HarnessOptions = {}) {
   let clock = 1_000;
   let agentExists = false;
   let bridgeAttempts = 0;
+  let sseAttempts = 0;
+  const sleeps: number[] = [];
   const agentTier =
     options.create === "wrong-tier" ? "dedicated-lazy" : "shared";
   const createdAgentName =
@@ -186,14 +194,32 @@ function makeHarness(options: HarnessOptions = {}) {
     ) {
       bridgeAttempts += 1;
       clock += options.bridgeDelayMs ?? 0;
-      if (options.bridgeReply === "warming-once" && bridgeAttempts === 1) {
+      if (
+        options.bridgeReply === "warming-always" ||
+        (options.bridgeReply === "warming-once" && bridgeAttempts === 1)
+      ) {
         return Response.json(
           {
             success: false,
             error: "Shared runtime cache is warming. Retry shortly.",
+            code: "shared_runtime_cache_warming",
             retryable: true,
           },
-          { status: 503 },
+          {
+            status: 503,
+            headers: { "Retry-After": options.retryAfter ?? "1" },
+          },
+        );
+      }
+      if (options.bridgeReply === "foreign-retryable-503") {
+        return Response.json(
+          {
+            success: false,
+            error: "Inference is unavailable.",
+            code: "inference_unavailable",
+            retryable: true,
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
         );
       }
       const token = tokenFromBody(body, "shared-bridge-");
@@ -214,6 +240,27 @@ function makeHarness(options: HarnessOptions = {}) {
       parsedUrl.pathname === `/api/v1/eliza/agents/${AGENT_ID}/stream` &&
       method === "POST"
     ) {
+      sseAttempts += 1;
+      if (options.sseReply === "malformed-503") {
+        return new Response("not-json", {
+          status: 503,
+          headers: { "Retry-After": "1" },
+        });
+      }
+      if (options.sseReply === "warming-once" && sseAttempts === 1) {
+        return Response.json(
+          {
+            success: false,
+            error: "Agent authorization cache is warming. Retry shortly.",
+            code: "agent_cache_warming",
+            retryable: true,
+          },
+          {
+            status: 503,
+            headers: { "Retry-After": options.retryAfter ?? "1" },
+          },
+        );
+      }
       const token = tokenFromBody(body, "shared-sse-");
       const text =
         options.sseReply === "invalid"
@@ -307,18 +354,20 @@ function makeHarness(options: HarnessOptions = {}) {
 
   return {
     requests,
+    sleeps,
     options: {
       apiKey: "test-staging-key",
       baseUrl: BASE_URL,
       fetch: fetchImpl as typeof fetch,
       now: () => clock,
       sleep: async (ms: number) => {
+        sleeps.push(ms);
         clock += Math.max(1, ms);
       },
       suffix: SUFFIX,
       cleanupTimeoutMs: 5,
-      totalTimeoutMs: 100,
-      cleanupReserveMs: 20,
+      totalTimeoutMs: 100_000,
+      cleanupReserveMs: 20_000,
       createRecoveryTimeoutMs: 5,
       pollIntervalMs: 1,
     },
@@ -564,15 +613,110 @@ describe("shared staging onboarding smoke", () => {
     ).toBe(true);
   });
 
-  test("retries one cache-warming bridge response within the request budget", async () => {
-    const harness = makeHarness({ bridgeReply: "warming-once" });
+  test("retries only a structured bridge warming response and honors Retry-After", async () => {
+    const harness = makeHarness({
+      bridgeReply: "warming-once",
+      retryAfter: "7",
+    });
     const evidence = await runSharedStagingOnboardingSmoke(harness.options);
 
     expect(evidence.verdict).toBe("pass");
     expect(evidence.capacity.chatRequests).toBe(3);
+    expect(harness.sleeps).toContain(7_000);
     expect(evidence.capacity.chatRequests).toBeLessThanOrEqual(
       evidence.capacity.maxChatRequests,
     );
+    expect(
+      harness.requests.filter(
+        (request) =>
+          request.method === "POST" &&
+          new URL(request.url).pathname.endsWith("/pairing-token"),
+      ),
+    ).toHaveLength(1);
+    expect(
+      harness.requests.filter((request) => request.method === "DELETE"),
+    ).toHaveLength(1);
+    expect(evidence.path.pairingUnavailable).toBe(true);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+  });
+
+  test("retries structured SSE warming without consuming the bridge budget", async () => {
+    const harness = makeHarness({ sseReply: "warming-once", retryAfter: "3" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.verdict).toBe("pass");
+    expect(evidence.capacity.chatRequests).toBe(3);
+    expect(harness.sleeps).toContain(3_000);
+    expect(evidence.path.successfulPaths).toBe(2);
+    expect(evidence.path.pairingUnavailable).toBe(true);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+  });
+
+  test("fails closed without retrying a malformed SSE response and still cleans up", async () => {
+    const harness = makeHarness({ sseReply: "malformed-503" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "sse",
+      code: "invalid_json_response_http_503",
+    });
+    expect(evidence.capacity.chatRequests).toBe(2);
+    expect(
+      harness.requests.filter(
+        (request) =>
+          request.method === "POST" &&
+          new URL(request.url).pathname.endsWith("/stream"),
+      ),
+    ).toHaveLength(1);
+    expect(evidence.path.pairingUnavailable).toBe(false);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+  });
+
+  test("does not retry a non-warming retryable 503", async () => {
+    const harness = makeHarness({ bridgeReply: "foreign-retryable-503" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "bridge",
+      code: "unexpected_http_503",
+    });
+    expect(evidence.capacity.chatRequests).toBe(1);
+    expect(harness.sleeps).not.toContain(1_000);
+    expect(evidence.path.pairingUnavailable).toBe(false);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+  });
+
+  test("bounds repeated structured warming and still performs exact cleanup", async () => {
+    const harness = makeHarness({
+      bridgeReply: "warming-always",
+      retryAfter: "0",
+    });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "bridge",
+      code: "unexpected_http_503",
+    });
+    expect(evidence.capacity.chatRequests).toBe(
+      evidence.capacity.maxChatRequests / 2,
+    );
+    expect(evidence.path.pairingUnavailable).toBe(false);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
   });
 
   test("reserves cleanup capacity when the operation deadline is exhausted", async () => {

@@ -25,12 +25,17 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
+import { readCsrfTokenFromCookie } from "../../api/auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "../../api/auth/sessions";
+import { desktopHttpTransportForUrl } from "../../api/desktop-http-transport";
 import {
   DEFAULT_DIRECT_CLOUD_API_BASE_URL,
   resolveDirectCloudAuthApiBase,
@@ -48,6 +53,7 @@ const ELIZA_CLOUD_API_HOSTS = new Set([
   new URL(DEFAULT_DIRECT_CLOUD_API_BASE_URL).hostname,
   new URL(STAGING_DIRECT_CLOUD_API_BASE_URL).hostname,
 ]);
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /**
  * True only inside a native (Capacitor iOS/Android) or Electrobun desktop
@@ -151,19 +157,36 @@ function readStewardToken(): string | null {
   }
 }
 
-function clearStoredStewardTokenIfCurrent(token: string): void {
+/**
+ * Delete the stored Steward JWT if it is still the one being retired, then
+ * only broadcast logout once the delete actually succeeded. `clearStoredStewardToken()`
+ * is async and can reject (a native/Electrobun protected-storage delete can be
+ * denied), so this awaits it: a denied delete must never announce "cleared" —
+ * that would tell every listener the credential is gone while it is still
+ * live in protected storage.
+ */
+async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
   if (typeof window === "undefined") return;
-  if (readStoredStewardToken() === token) {
-    clearStoredStewardToken();
-    window.dispatchEvent(new CustomEvent("steward-token-sync"));
+  if (readStoredStewardToken() !== token) return;
+  try {
+    await clearStoredStewardToken();
+  } catch (error) {
+    logger.error(
+      { error },
+      "[api-client] denied delete left the expired Steward JWT in storage; not broadcasting logout",
+    );
+    return;
   }
+  window.dispatchEvent(new CustomEvent("steward-token-sync"));
 }
 
-function readLiveNativeStewardToken(token: string): string | null {
+async function readLiveNativeStewardToken(
+  token: string,
+): Promise<string | null> {
   const claims = decodeJwtPayload(token);
   const expMs = typeof claims?.exp === "number" ? claims.exp * 1000 : null;
   if (!claims || expMs === null || expMs <= Date.now()) {
-    clearStoredStewardTokenIfCurrent(token);
+    await clearStoredStewardTokenIfCurrent(token);
     return null;
   }
   return token;
@@ -181,8 +204,13 @@ function readLiveNativeStewardToken(token: string): string | null {
  * API key), read here from boot config because this module has no client handle.
  * The Cloud API accepts both a Steward JWT and the owner API key. On web the
  * fallback never applies — it resolves to the steward token or nothing.
+ *
+ * Async because an expired native JWT must go through the awaited protected-
+ * storage delete (`readLiveNativeStewardToken` →
+ * `clearStoredStewardTokenIfCurrent`) before this resolves, so a denied delete
+ * is observed here rather than raced past.
  */
-export function readCloudBearerToken(): string | null {
+export async function readCloudBearerToken(): Promise<string | null> {
   const nativeRuntime = isNativeCloudRuntime();
   // Resolve the supported owner-key fallback before expiry cleanup dispatches
   // the canonical session-clear event. That event may synchronously remove the
@@ -195,14 +223,14 @@ export function readCloudBearerToken(): string | null {
   const stewardToken = readStewardToken()?.trim();
   if (stewardToken) {
     if (!nativeRuntime) return stewardToken;
-    const liveToken = readLiveNativeStewardToken(stewardToken);
+    const liveToken = await readLiveNativeStewardToken(stewardToken);
     if (liveToken) return liveToken;
   }
   return nativeCloudApiKey;
 }
 
 // ---------------------------------------------------------------------------
-// Native/Electrobun transport — routes the resolved Cloud API request through
+// Capacitor transport — routes the resolved Cloud API request through
 // `CapacitorHttp` (bypassing the WebView CORS sandbox) and re-wraps the result
 // as a standard `Response`, so the shared payload/error handling below is
 // identical to the web `fetch` path.
@@ -360,7 +388,7 @@ function errorDetails(
     const trimmed = payload.trim();
     const message = trimmed.startsWith("<")
       ? `Request failed with status ${status}; API returned a non-JSON response`
-      : trimmed.slice(0, 500);
+      : truncateWellFormed(toWellFormedUnicode(trimmed), 500);
     return { code: `HTTP_${status}`, message };
   }
 
@@ -381,31 +409,51 @@ export async function apiFetch(
     headers.set("Content-Type", "application/json");
   }
   if (!skipAuth) {
-    const token = readCloudBearerToken();
+    const token = await readCloudBearerToken();
     if (token && !headers.has("Authorization")) {
       headers.set("Authorization", `Bearer ${token}`);
     }
+  }
+  // Browser cookie sessions require the readable CSRF cookie to be mirrored
+  // into the mutation header. Native/Electrobun calls are bearer-only and must
+  // not forward a synthetic WebView origin's cookie to Eliza Cloud.
+  const method = (rest.method ?? "GET").toUpperCase();
+  if (
+    !isNativeCloudRuntime() &&
+    STATE_CHANGING_METHODS.has(method) &&
+    !headers.has(CSRF_HEADER_NAME)
+  ) {
+    const csrfToken = readCsrfTokenFromCookie();
+    if (csrfToken) headers.set(CSRF_HEADER_NAME, csrfToken);
   }
 
   const url = resolveApiUrl(path);
   const requestBody =
     json !== undefined ? JSON.stringify(json) : (body ?? null);
 
-  // Native/Electrobun: ride `CapacitorHttp` so the request leaves the WebView
-  // sandbox and reaches the allowlisted Cloud API host. Web: the original
-  // same-origin `fetch` path, byte-for-byte unchanged.
-  const res = isNativeCloudRuntime()
-    ? await nativeApiFetch(url, {
-        method: rest.method,
-        headers,
-        body: requestBody,
-      })
-    : await fetch(url, {
-        ...rest,
-        credentials: "include",
-        headers,
-        body: requestBody,
-      });
+  // Electrobun has its own main-process HTTP bridge; CapacitorHttp is not
+  // installed in the macOS shell and otherwise falls back to a CORS-blocked
+  // WKWebView request. Capacitor keeps its native plugin, while web retains the
+  // original same-origin fetch path.
+  const desktopTransport = desktopHttpTransportForUrl(url);
+  const res = desktopTransport
+    ? await desktopTransport.request(
+        url,
+        { ...rest, headers, body: requestBody },
+        undefined,
+      )
+    : Capacitor.isNativePlatform()
+      ? await nativeApiFetch(url, {
+          method: rest.method,
+          headers,
+          body: requestBody,
+        })
+      : await fetch(url, {
+          ...rest,
+          credentials: "include",
+          headers,
+          body: requestBody,
+        });
 
   if (!res.ok) {
     // A 401 on an authed call means our session was rejected (token revoked or

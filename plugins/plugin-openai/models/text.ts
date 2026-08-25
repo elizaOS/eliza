@@ -13,18 +13,30 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  assertModelOutputComplete,
+  assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  cloneSchemaForBoundedTransport,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
+  JSON_SCHEMA_ARRAY_KEYWORDS,
+  JSON_SCHEMA_MAP_KEYWORDS,
+  JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  MAX_WELL_FORMED_DEPTH,
   ModelType,
   normalizeSchemaForCerebras,
   recordLlmCall,
   resolveEffectiveSystemPrompt,
   sanitizeFunctionNameForCerebras,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  wellFormedUnicodeSchemaStructure,
 } from "@elizaos/core";
 import {
   generateText,
@@ -326,12 +338,6 @@ function normalizeCerebrasModelId(modelName: string): string {
     .replace(/:(?!free$).+$/, "");
 }
 
-function isCerebrasReasoningModel(modelName: string | undefined): boolean {
-  if (!modelName) return false;
-  const id = normalizeCerebrasModelId(modelName);
-  return id === "gpt-oss-120b" || id === "zai-glm-4.7";
-}
-
 function isOpenCodeGoEndpoint(value: string | undefined): boolean {
   if (!value) return false;
   try {
@@ -372,6 +378,7 @@ function resolveThinkingOffReasoningEffort(
   if (isCerebrasMode(runtime)) {
     if (cerebrasId === "gpt-oss-120b") return "low";
     if (cerebrasId === "zai-glm-4.7") return "none";
+    if (cerebrasId === "gemma-4-31b") return "none";
   }
 
   const exactModelId = modelName.trim().toLowerCase();
@@ -379,10 +386,27 @@ function resolveThinkingOffReasoningEffort(
   return undefined;
 }
 
+/**
+ * Per-model Cerebras reasoning default, restricted to models whose provider
+ * documentation declares the field. `gemma-4-31b` has no documented reasoning
+ * contract, so no default is emitted at all — an undocumented
+ * `reasoning_effort` value reaches the wire and can be rejected by the
+ * endpoint; callers that deliberately configure a different effort remain
+ * authoritative.
+ */
+function resolveCerebrasDefaultReasoningEffort(
+  modelName: string | undefined
+): ReasoningEffort | "none" | undefined {
+  if (!modelName) return undefined;
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
+  return undefined;
+}
+
 function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
-): ReasoningEffort | undefined {
+): ReasoningEffort | "none" | undefined {
   const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized) {
@@ -394,11 +418,10 @@ function resolveReasoningEffort(
     );
   }
   // The exact provider contract gates this default: family lookalikes may
-  // reject the field, while both supported reasoning models need a bounded
-  // budget so visible content survives a capped response. An explicit valid
-  // value above wins over this default.
-  if (isCerebrasMode(runtime) && isCerebrasReasoningModel(modelName)) {
-    return "low";
+  // reject the field, while each documented model has its own safe default.
+  // An explicit valid value above always wins over this default.
+  if (isCerebrasMode(runtime)) {
+    return resolveCerebrasDefaultReasoningEffort(modelName);
   }
   return undefined;
 }
@@ -670,6 +693,19 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
   return restored;
 }
 
+function sanitizeToolDescriptionPreservingDescriptors<T extends object>(tool: T): T {
+  const descriptor = Object.getOwnPropertyDescriptor(tool, "description");
+  if (!descriptor || !("value" in descriptor) || typeof descriptor.value !== "string") {
+    return tool;
+  }
+  const description = toWellFormedUnicode(descriptor.value);
+  if (description === descriptor.value) return tool;
+  const sanitized = Object.create(Object.getPrototypeOf(tool)) as T;
+  Object.defineProperties(sanitized, Object.getOwnPropertyDescriptors(tool));
+  Object.defineProperty(sanitized, "description", { ...descriptor, value: description });
+  return sanitized;
+}
+
 /**
  * Native tool normalization plus the strict-safe record/map transform selected
  * for #13111. Tool schemas still close every object with additionalProperties:
@@ -680,23 +716,66 @@ function restoreStrictSafePlannerArgs(value: unknown): unknown {
  */
 function normalizeNativeToolsForCall(
   tools: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): NormalizedNativeToolsResult {
   const recordArgTransformsByTool: Record<string, RecordArgTransform[]> = {};
+  const toolNameMap = new Map<string, string>();
 
   if (!tools) {
-    return { recordArgTransformsByTool };
+    return { recordArgTransformsByTool, toolNameMap };
   }
 
   // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
-  // intact so custom tool instances, execute hooks, and dynamic tool metadata
-  // are preserved.
+  // descriptor-compatible so custom tool instances, execute hooks, lazy schema
+  // wrappers, and dynamic metadata are preserved. Raw object-style definitions
+  // are still sanitized before the SDK observes them.
   if (!Array.isArray(tools)) {
-    return { tools: tools as ToolSet, recordArgTransformsByTool };
+    const toolSet = tools as ToolSet;
+    const descriptors = Object.getOwnPropertyDescriptors(toolSet);
+    let changed = false;
+    const sanitized = Object.create(Object.getPrototypeOf(toolSet)) as ToolSet;
+    for (const key of Reflect.ownKeys(descriptors)) {
+      const descriptor = descriptors[key as keyof typeof descriptors];
+      if (!descriptor) continue;
+      const sanitizedKey: string = typeof key === "string" ? toWellFormedUnicode(key) : String(key);
+      if (Object.hasOwn(sanitized, sanitizedKey)) {
+        throw new ElizaError("[OpenAI] Native tool names collide after Unicode normalization.", {
+          code: "OPENAI_TOOL_NAME_COLLISION",
+          severity: "ephemeral",
+        });
+      }
+      let nextDescriptor = descriptor;
+      if ("value" in descriptor) {
+        const tool = descriptor.value;
+        if (tool && typeof tool === "object") {
+          const inputSchemaDescriptor = Object.getOwnPropertyDescriptor(tool, "inputSchema");
+          const parametersDescriptor = Object.getOwnPropertyDescriptor(tool, "parameters");
+          const sanitizedTool = inputSchemaDescriptor
+            ? sanitizeToolDescriptionPreservingDescriptors(tool)
+            : parametersDescriptor
+              ? deepToWellFormedUnicode(tool)
+              : sanitizeToolDescriptionPreservingDescriptors(tool);
+          if (sanitizedTool !== tool) {
+            nextDescriptor = { ...descriptor, value: sanitizedTool };
+            changed = true;
+          }
+        }
+      }
+      if (sanitizedKey !== key && typeof key === "string") {
+        const originalKey = key as string;
+        toolNameMap.set(originalKey, sanitizedKey);
+        changed = true;
+      }
+      Object.defineProperty(sanitized, sanitizedKey, nextDescriptor);
+    }
+    return {
+      tools: changed ? sanitized : toolSet,
+      recordArgTransformsByTool,
+      toolNameMap,
+    };
   }
 
   const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  const toolNameMap = new Map<string, string>();
   const originalNameByRegisteredName = new Map<string, string>();
 
   // Cerebras's grammar compiler treats strictness as request-wide, not
@@ -732,7 +811,7 @@ function normalizeNativeToolsForCall(
     // A missing schema means the tool takes no arguments. Provider-specific
     // normalization below turns this bare object into the explicit closed
     // shape required by strict grammar compilers.
-    const rawSchema =
+    const declaredSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =
       typeof tool.strict === "boolean"
@@ -741,6 +820,33 @@ function normalizeNativeToolsForCall(
           ? functionTool.strict
           : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
+    // The production strict Cerebras path used to call sanitizeJsonSchema
+    // (raw Array.isArray / object spread / Object.entries / .map / unbounded
+    // recursion) BEFORE any descriptor-safe walker, so an 8k-deep, cyclic,
+    // revoked, or accessor-bearing schema RangeError'd or leaked a trap
+    // there. The pre-pass is a bounded, descriptor-only STRUCTURAL CLONE, not
+    // Cerebras normalization: running the normalizer here would close every
+    // declared open map with `additionalProperties: false` before
+    // sanitizeJsonSchema could read that declaration and build the
+    // `__eliza_record_entries` reverse transform (#11249). Provider semantics
+    // are applied by the normalizeSchemaForCerebras call after sanitization.
+    let rawSchema: unknown = declaredSchema;
+    if (options.cerebrasMode) {
+      // The bounded transport clone is the SCHEMA depth authority: after it
+      // passes, the Unicode pass must not re-fail the same graph on a smaller,
+      // container-counting budget. The structure walker uses one depth unit per
+      // schema node (same accounting as normalizeSchemaForCerebras) and carries
+      // annotation subtrees by reference so hostile annotation getters are
+      // never observed here — admissibility is enforced at the wire boundary.
+      rawSchema = cloneSchemaForBoundedTransport(rawSchema);
+    }
+    if (options.sanitizeUnicode) {
+      rawSchema = options.cerebrasMode
+        ? wellFormedUnicodeSchemaStructure(rawSchema, {
+            maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+          })
+        : deepToWellFormedUnicode(rawSchema);
+    }
     let inputSchema: JSONSchema7;
     if (strict === false) {
       if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
@@ -771,7 +877,10 @@ function normalizeNativeToolsForCall(
     // surface it to the model under that name. Tool calls come back with the
     // sanitized name, which the runtime resolves through its action registry —
     // any caller relying on dotted action names should pre-sanitize.
-    const registeredName = options.cerebrasMode ? sanitizeFunctionNameForCerebras(name) : name;
+    const wellFormedName = deepToWellFormedUnicode(name);
+    const registeredName = options.cerebrasMode
+      ? sanitizeFunctionNameForCerebras(wellFormedName)
+      : wellFormedName;
     const collidingOriginalName = originalNameByRegisteredName.get(registeredName);
     if (collidingOriginalName !== undefined && collidingOriginalName !== name) {
       throw new ElizaError("[OpenAI] Native tool names collide after provider normalization.", {
@@ -790,8 +899,19 @@ function normalizeNativeToolsForCall(
     }
 
     toolSet[registeredName] = {
-      ...(description ? { description } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      // Caller-controlled strings are sanitized HERE, before the AI SDK
+      // jsonSchema() wrapper: the wrapper exposes `jsonSchema` as a lazy
+      // enumerable accessor which the strict deep sanitizer rejects fatally,
+      // so the assembled ToolSet must never be deep-walked afterwards (every
+      // child RESPONSE_HANDLER call died on it, live 2026-08-21).
+      ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
+      inputSchema: jsonSchema(
+        (options.cerebrasMode
+          ? wellFormedUnicodeSchemaStructure(inputSchema, {
+              maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+            })
+          : deepToWellFormedUnicode(inputSchema)) as JSONSchema7
+      ),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -809,7 +929,7 @@ function normalizeNativeToolsForCall(
 
 function normalizeNativeTools(
   tools: unknown,
-  options: { cerebrasMode?: boolean } = {}
+  options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): ToolSet | undefined {
   return normalizeNativeToolsForCall(tools, options).tools;
 }
@@ -1118,9 +1238,26 @@ function restoreRecordArgAtPath(
     return value.map((item) => restoreRecordArgAtPath(item, rest, transform));
   }
   if (/^items\[\d+\]$/.test(token)) {
-    return Array.isArray(value)
-      ? value.map((item) => restoreRecordArgAtPath(item, rest, transform))
-      : value;
+    if (!Array.isArray(value)) return value;
+    const index = Number.parseInt(token.slice(6, -1), 10);
+    if (index >= value.length) return value;
+    const restored = [...value];
+    restored[index] = restoreRecordArgAtPath(value[index], rest, transform);
+    return restored;
+  }
+  if (token === "*") {
+    const record = asOptionalRecord(value);
+    if (!record) return value;
+    const restored: Record<string, unknown> = Object.create(null);
+    for (const [key, nested] of Object.entries(record)) {
+      Object.defineProperty(restored, key, {
+        configurable: true,
+        enumerable: true,
+        value: restoreRecordArgAtPath(nested, rest, transform),
+        writable: true,
+      });
+    }
+    return restored;
   }
 
   const record = asOptionalRecord(value);
@@ -1338,7 +1475,11 @@ function chooseRecordEntriesKey(properties: Record<string, unknown>): string {
   return `${STRICT_SAFE_RECORD_ENTRIES_KEY}_${index}`;
 }
 
-function strictSafeRecordValueSchema(additionalProperties: unknown): {
+function strictSafeRecordValueSchema(
+  additionalProperties: unknown,
+  transforms?: RecordArgTransform[],
+  path = "$"
+): {
   schema: JSONSchema7;
   mode: RecordArgValueMode;
 } {
@@ -1354,7 +1495,7 @@ function strictSafeRecordValueSchema(additionalProperties: unknown): {
   }
   return {
     mode: "schema",
-    schema: sanitizeJsonSchema(additionalProperties),
+    schema: sanitizeJsonSchema(additionalProperties, false, `${path}.*`, transforms),
   };
 }
 
@@ -1471,7 +1612,9 @@ function sanitizeJsonSchema(
           : {};
       const entriesKey = chooseRecordEntriesKey(properties);
       const { schema: valueSchema, mode } = strictSafeRecordValueSchema(
-        sanitized.additionalProperties
+        sanitized.additionalProperties,
+        transforms,
+        path
       );
       properties[entriesKey] = strictSafeRecordEntriesSchema(valueSchema);
       sanitized.properties = properties;
@@ -1508,37 +1651,68 @@ function sanitizeJsonSchema(
       : sanitizeJsonSchema(sanitized.items, false, `${path}.items`, transforms);
   }
 
-  for (const unionKey of ["anyOf", "oneOf", "allOf"] as const) {
-    const value = sanitized[unionKey];
+  for (const arrayKey of JSON_SCHEMA_ARRAY_KEYWORDS) {
+    const value = sanitized[arrayKey];
     if (Array.isArray(value)) {
-      sanitized[unionKey] = value.map((item, i) =>
-        sanitizeJsonSchema(item, false, `${path}.${unionKey}[${i}]`, transforms)
+      sanitized[arrayKey] = value.map((item, index) =>
+        sanitizeJsonSchema(
+          item,
+          false,
+          arrayKey === "prefixItems" ? `${path}.items[${index}]` : path,
+          transforms
+        )
       );
     }
   }
 
-  // Every other schema-bearing keyword must be walked too, or a stripped
-  // keyword nested inside one survives to the wire. `$defs`/`definitions`
-  // matter most in practice: zod's `toJSONSchema` hoists reused/nullable
-  // sub-schemas into `$defs`, so a `.max()`/`.regex()` on a shared field would
-  // otherwise slip through the strip. `contains`/`propertyNames`/`not`/`if`/
-  // `then`/`else` take a single sub-schema; `patternProperties`/`$defs`/
-  // `definitions` are maps of them.
-  for (const singleKey of ["contains", "propertyNames", "not", "if", "then", "else"] as const) {
+  // Walk the same standard schema-bearing keyword table as the bounded core
+  // clone. `additionalProperties` is handled above because it also creates the
+  // strict-safe record transform. Conditional schemas keep the current
+  // instance path; tuple/item schemas use the array wildcard/index path that
+  // reverse argument restoration understands.
+  for (const singleKey of JSON_SCHEMA_SINGLE_KEYWORDS) {
+    if (singleKey === "additionalProperties") continue;
     const value = sanitized[singleKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      sanitized[singleKey] = sanitizeJsonSchema(value, false, `${path}.${singleKey}`, transforms);
+      const childPath =
+        singleKey === "contains" ||
+        singleKey === "unevaluatedItems" ||
+        singleKey === "additionalItems"
+          ? `${path}.items`
+          : singleKey === "unevaluatedProperties"
+            ? `${path}.*`
+            : path;
+      sanitized[singleKey] = sanitizeJsonSchema(value, false, childPath, transforms);
     }
   }
-  for (const mapKey of ["patternProperties", "$defs", "definitions"] as const) {
+  for (const mapKey of JSON_SCHEMA_MAP_KEYWORDS) {
+    if (mapKey === "properties") continue;
     const value = sanitized[mapKey];
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const walked: Record<string, unknown> = {};
       for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
-        walked[key] = sanitizeJsonSchema(sub, false, `${path}.${mapKey}.${key}`, transforms);
+        const childPath =
+          mapKey === "dependentSchemas"
+            ? path
+            : mapKey === "patternProperties"
+              ? `${path}.*`
+              : `${path}.${mapKey}.${key}`;
+        walked[key] = sanitizeJsonSchema(sub, false, childPath, transforms);
       }
       sanitized[mapKey] = walked;
     }
+  }
+  for (const mixedMapKey of JSON_SCHEMA_MIXED_MAP_KEYWORDS) {
+    const value = sanitized[mixedMapKey];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const walked: Record<string, unknown> = {};
+    for (const [key, sub] of Object.entries(value as Record<string, unknown>)) {
+      walked[key] =
+        !sub || typeof sub !== "object" || Array.isArray(sub)
+          ? sub
+          : sanitizeJsonSchema(sub, false, path, transforms);
+    }
+    sanitized[mixedMapKey] = walked;
   }
 
   return sanitized as JSONSchema7;
@@ -1712,11 +1886,14 @@ function createLlmCallDetails(
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
-        : params.omitMaxTokens
+        : params.omitMaxTokens || params.maxTokens === undefined
           ? 0
-          : (params.maxTokens ?? 8192),
+          : params.maxTokens,
     maxTokensOmitted:
-      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
+      (params.omitMaxTokens || params.maxTokens === undefined) &&
+      typeof nativeParams?.maxOutputTokens !== "number"
+        ? true
+        : undefined,
     purpose: "external_llm",
     actionType,
   };
@@ -1805,7 +1982,7 @@ function providerErrorBodyMessage(error: unknown): string | undefined {
         // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
         // still diagnostic; return a bounded excerpt instead of dropping it.
       }
-      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+      return truncateWellFormed(toWellFormedUnicode(body.replace(/\s+/g, " ").trim()), 300);
     }
     node = record.cause;
   }
@@ -2215,7 +2392,21 @@ async function generateTextByModelType(
   const cerebrasMode = isCerebrasMode(runtime);
   const normalizedToolResult = normalizeNativeToolsForCall(paramsWithAttachments.tools, {
     cerebrasMode,
+    // Plain array definitions are sanitized only after the provider-specific
+    // bounded structural pre-pass and before jsonSchema() introduces its lazy
+    // accessor. Existing ToolSets use the descriptor-only branch above.
+    sanitizeUnicode: true,
   });
+  // Wire boundary for annotation data: the pre-passes carry annotations by
+  // reference (getters never observed), so admissibility is checked HERE,
+  // descriptor-only, before any provider dispatch. Accessors are detected via
+  // Object.getOwnPropertyDescriptor and rejected without invocation; cycles
+  // and over-depth fail closed with the typed WELL_FORMED_* contract.
+  if (normalizedToolResult.tools) {
+    assertSchemaAnnotationsSerializable(paramsWithAttachments.tools, {
+      maxDepth: MAX_WELL_FORMED_DEPTH,
+    });
+  }
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,
@@ -2278,11 +2469,19 @@ async function generateTextByModelType(
   // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
   // so EVERY outgoing string — including tool descriptions/schemas, output
   // schemas, and provider options — is forced to well-formed Unicode here.
-  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  // Already sanitized pre-wrap inside normalizeNativeToolsForCall — the
+  // jsonSchema() wrapper's lazy accessor makes the assembled set unwalkable.
+  const sanitizedTools = normalizedTools;
   const sanitizedToolChoice = normalizedToolChoice
     ? deepToWellFormedUnicode(normalizedToolChoice)
     : undefined;
-  const sanitizedOutput = requestedOutput ? deepToWellFormedUnicode(requestedOutput) : undefined;
+  // NOT deep-sanitized: the AI SDK's Output wrapper exposes `jsonSchema` as a
+  // lazy accessor, which the strict walk rejects fatally — and every child
+  // RESPONSE_HANDLER call with responseFormat json_object died on it (live
+  // 2026-08-21). Caller-controlled strings were already sanitized BEFORE
+  // wrapping (sanitizedResponseSchema above); bare Output.json() carries no
+  // caller data at all, so skipping the walk loses nothing.
+  const sanitizedOutput = requestedOutput;
   const sanitizedProviderOptions = providerOptions
     ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
     : undefined;
@@ -2293,10 +2492,10 @@ async function generateTextByModelType(
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
-    // Omit the cap when the caller opted out (direct-channel Stage-1) so the
-    // model's own max applies — a hardcoded value 400s when it exceeds the
-    // model's limit. Other callers keep the 8192 default.
-    ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
+    // An omitted caller cap delegates the output boundary to the provider/model.
+    ...(params.omitMaxTokens || params.maxTokens === undefined
+      ? {}
+      : { maxOutputTokens: params.maxTokens }),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2351,6 +2550,11 @@ async function generateTextByModelType(
         details.finishReason = result.finishReason;
         if (result.usage) applyUsageToDetails(details, result.usage);
         return { ...result, text, toolCalls };
+      });
+      assertModelOutputComplete({
+        finishReason: buffered.finishReason,
+        provider: usageProvider,
+        model: modelName,
       });
       if (buffered.usage) {
         emitModelUsageEvent(
@@ -2503,7 +2707,7 @@ async function generateTextByModelType(
       resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
     const sdkTextPromise = streamCompanions.text;
-    const textPromise =
+    const rawTextPromise =
       params.streamStructured === true
         ? handledStructuredTextPromise
         : handledMappedPromise(sdkTextPromise, restoreResponseText);
@@ -2514,9 +2718,18 @@ async function generateTextByModelType(
       restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(
-      rawFinishReasonPromise,
-      (r) => r as string | undefined
+    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
+      const finishReason = r as string | undefined;
+      assertModelOutputComplete({
+        finishReason,
+        provider: usageProvider,
+        model: modelName,
+      });
+      return finishReason;
+    });
+    const textPromise = handledMappedPromise(
+      Promise.all([rawTextPromise, finishReasonPromise]),
+      ([text]) => text
     );
     const finalizeStreamingTelemetry = async () => {
       if (telemetryFinalized) {
@@ -2545,6 +2758,15 @@ async function generateTextByModelType(
       }
       if (finishReasonResult.status === "fulfilled") {
         details.finishReason = finishReasonResult.value as string | undefined;
+        try {
+          assertModelOutputComplete({
+            finishReason: finishReasonResult.value,
+            provider: usageProvider,
+            model: modelName,
+          });
+        } catch (error) {
+          companionStreamError ??= error;
+        }
       } else {
         companionStreamError ??= finishReasonResult.reason;
       }
@@ -2665,6 +2887,12 @@ async function generateTextByModelType(
     };
   });
 
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: usageProvider,
+    model: modelName,
+  });
+
   if (result.usage) {
     emitModelUsageEvent(
       runtime,
@@ -2782,6 +3010,13 @@ export const __INTERNAL_normalizeNativeTools = normalizeNativeTools;
 export const __INTERNAL_normalizeNativeToolsForCall = normalizeNativeToolsForCall;
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_restoreRecordArgToolCalls = restoreRecordArgToolCalls;
+/** @internal — exported for schema-keyword parity tests only. */
+export const __INTERNAL_sanitizeSchemaKeywords = {
+  arrays: JSON_SCHEMA_ARRAY_KEYWORDS,
+  maps: JSON_SCHEMA_MAP_KEYWORDS,
+  mixedMaps: JSON_SCHEMA_MIXED_MAP_KEYWORDS,
+  singles: JSON_SCHEMA_SINGLE_KEYWORDS,
+};
 /** @internal — exported for unit tests only. */
 export const __INTERNAL_providerErrorBodyMessage = providerErrorBodyMessage;
 /** @internal — exported for unit tests only. */

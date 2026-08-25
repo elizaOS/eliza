@@ -38,7 +38,7 @@ export const Catalog: Story = {
     <div className="grid grid-cols-3 gap-6">
       {marks.map(([label, Mark]) => (
         <div key={label} className="flex flex-col items-center gap-2 text-txt">
-          <Mark className="h-8 w-8" title={label} />
+          <Mark className="size-8" title={label} />
           <span className="text-xs text-muted">{label}</span>
         </div>
       ))}

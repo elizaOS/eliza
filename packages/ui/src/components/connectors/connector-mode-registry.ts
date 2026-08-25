@@ -267,8 +267,8 @@ export function registerConnectorChannelModeFallback(
  * lens (a mode omitting `channelMode` is lens-neutral and always matches). A
  * connector with no declared modes uses its registered fallback classification;
  * with neither, it shows under both lenses. A connector whose every declared
- * mode is classified into the *other* lens (e.g. Slack under `"delegate"`,
- * Signal under `"bot"`) is filtered out of that lens by the Connectors surface.
+ * mode is classified into the *other* lens (e.g. Slack under `"delegate"`)
+ * is filtered out of that lens by the Connectors surface.
  */
 export function connectorSupportsChannelMode(
   connectorId: string,
@@ -448,19 +448,6 @@ registerConnectorModes("x", [
   },
 ]);
 
-registerConnectorModes("signal", [
-  {
-    id: "qr",
-    label: "QR Pair",
-    labelKey: "connectormode.signal.qr.label",
-    description: "Link as a device to your Signal account via QR code",
-    descriptionKey: "connectormode.signal.qr.description",
-    managementMode: "local-setup",
-    setupPluginId: "signal",
-    channelMode: "delegate",
-  },
-]);
-
 registerConnectorModes("whatsapp", [
   {
     id: "qr",
@@ -492,33 +479,8 @@ registerConnectorModes("whatsapp", [
 
 registerConnectorModes("imessage", [
   {
-    id: "blooio",
-    label: "Blooio (Cloud)",
-    labelKey: "connectormode.imessage.blooio.label",
-    description:
-      "Hosted iMessage/SMS transport. No Mac or local relay is required.",
-    descriptionKey: "connectormode.imessage.blooio.description",
-    managementMode: "cloud-managed",
-    setupPluginId: "blooio",
-    channelMode: "bot",
-    cloudOnly: true,
-    defaultPriority: 0,
-  },
-  {
-    id: "cloud-bluebubbles",
-    label: "iPhone Cloud Gateway",
-    description:
-      "Register a Mac-hosted BlueBubbles relay for your real iPhone number; each sender reaches their own Eliza Cloud agent.",
-    managementMode: "cloud-managed",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    cloudOnly: true,
-    cloudGatewaySetup: "phone-registration",
-    defaultPriority: 1,
-  },
-  {
     id: "direct",
-    label: "Direct (chat.db)",
+    label: "Messages on this Mac",
     labelKey: "connectormode.imessage.direct.label",
     description:
       "Read iMessage database directly on this Mac. Requires Full Disk Access.",
@@ -527,43 +489,7 @@ registerConnectorModes("imessage", [
     setupPluginId: "imessage",
     channelMode: "delegate",
     hideOnManagedCloud: true,
-    defaultPriority: 2,
-  },
-  {
-    id: "bluebubbles",
-    label: "BlueBubbles",
-    labelKey: "connectormode.imessage.bluebubbles.label",
-    description:
-      "Bridge via BlueBubbles server app. Works locally or over network.",
-    descriptionKey: "connectormode.imessage.bluebubbles.description",
-    managementMode: "local-config",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-  },
-]);
-
-registerConnectorModes("bluebubbles", [
-  {
-    id: "cloud",
-    label: "iPhone Cloud Gateway",
-    description:
-      "Register this Mac/iPhone bridge with Eliza Cloud so each sender reaches their own agent.",
-    managementMode: "cloud-managed",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    cloudOnly: true,
-    cloudGatewaySetup: "phone-registration",
     defaultPriority: 0,
-  },
-  {
-    id: "local",
-    label: "Local Agent",
-    description:
-      "Connect this app directly to a BlueBubbles server on your local network.",
-    managementMode: "local-config",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
-    defaultPriority: 1,
   },
 ]);
 
@@ -589,7 +515,6 @@ for (const connectorId of [
   "tlon",
   "nextcloud-talk",
   "twitch",
-  "blooio",
 ]) {
   registerConnectorChannelModeFallback(connectorId, "bot");
 }

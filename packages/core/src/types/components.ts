@@ -14,7 +14,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
-import type { Memory } from "./memory";
+import type { DisclosureSubject, Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
@@ -171,6 +171,14 @@ export interface MessageHandlerPlan {
 	requiresTool?: boolean;
 	contextSlices?: string[];
 	candidateActions?: string[];
+	/**
+	 * Stage 1's declared user intents for the turn, verbatim ("delete
+	 * reminder", "create reminder", …). Multi-intent turns feed these to the
+	 * planner context so the loop serves every declared leg or says which it
+	 * did not — small planner models otherwise complete leg one and finish
+	 * (live: "delete and recreate my reminder" deleted, never recreated).
+	 */
+	intents?: string[];
 	parentActionHints?: string[];
 	/**
 	 * Per-turn cap on the planner's required-tool miss budget, set by the
@@ -342,10 +350,20 @@ export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
  * Non-overridable policy for components whose prompt or result can contain
  * owner-private data. Unlike a role gate, this binds access to the attested
  * destination audience as well as the actor.
+ *
+ * Two forms, both fail-closed:
+ *  - `owner_exclusive` (the original, unchanged): the destination must be a
+ *    verified owner-only room — evaluated by `decisionFromAudience`.
+ *  - `audience_admission` (added with the min-over-members policy wiring): the
+ *    gate admits the component only when the ATTESTED delivery audience as a
+ *    whole earns full disclosure for `subject`, computed by
+ *    `resolveAudienceAdmission` over the same attested census. One ungranted
+ *    non-agent member caps the room, exactly like `owner_exclusive` is the
+ *    degenerate two-party-owner-DM case of this policy.
  */
-export interface DisclosureGate {
-	require: "owner_exclusive";
-}
+export type DisclosureGate =
+	| { require: "owner_exclusive" }
+	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
 	/** Action name */
@@ -706,6 +724,14 @@ export interface ProviderResult {
 	/** Human-readable text for LLM prompt inclusion */
 	text?: string;
 
+	/**
+	 * Complete, explicit retrieval representation used only when the primary
+	 * text cannot fit the selected model's input boundary. This must describe
+	 * how the omitted bodies can be retrieved losslessly; it is an atomic
+	 * alternative to `text`, never a truncated prefix or summary of it.
+	 */
+	overflowText?: string;
+
 	/** Key-value pairs for template variable substitution */
 	values?: Record<string, ProviderValue>;
 
@@ -835,8 +861,16 @@ export interface Provider {
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 
-	/** Non-overridable destination-audience policy for sensitive context. */
-	disclosureGate?: DisclosureGate;
+	/**
+	 * Non-overridable destination-audience policy for sensitive context.
+	 *
+	 * Deliberately narrower than `Action.disclosureGate`: every provider
+	 * enforcement site in `runtime.ts` tests `require === "owner_exclusive"`
+	 * literally, so a provider declaring `audience_admission` would compose
+	 * into the prompt with NO enforcement at all. Widen this only in the same
+	 * change that wires the provider path.
+	 */
+	disclosureGate?: Extract<DisclosureGate, { require: "owner_exclusive" }>;
 
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
@@ -965,9 +999,10 @@ export interface ActionResult {
 
 	/**
 	 * Optional model-bound projection of `data`. When present, prompt renderers
-	 * use this object while runtime state and trajectories retain the complete
-	 * `data` payload. Use it when an action's machine result is substantially
-	 * larger than the fields a model needs to continue or evaluate the turn.
+	 * use only this object and never additionally serialize `data`. Exact source
+	 * pages remain in `text`; progressive readers put model-safe `ReadView`
+	 * metadata here and keep native locators and complete bodies out of both
+	 * prompt projections and trajectories.
 	 */
 	promptData?: ProviderDataRecord;
 
@@ -994,9 +1029,12 @@ export interface ActionResult {
 	 * incomplete planner scope retain the normal evaluator path.
 	 *
 	 * Use for UI effects whose wording must remain model-owned (for example,
-	 * navigation). Do not pair it with canned `userFacingText`.
+	 * navigation). Do not pair it with canned `userFacingText`; use the narrowly
+	 * vetted `modelReplyFallback` only for provider-outage recovery.
 	 */
 	modelReplyRequired?: boolean;
+	/** Safe action-owned prose used only if required model synthesis is unavailable. */
+	modelReplyFallback?: string;
 
 	/**
 	 * Explicit chain-control override. `false` aborts the remaining planner queue

@@ -52,7 +52,7 @@ export const myAction: Action = {
   description: "One-paragraph description for the planner.",
   descriptionCompressed: "Short tagline (under 80 chars).",
   parameters: [
-    { name: "file_path", description: "Absolute path", required: true,
+    { name: "file_path", description: "Absolute or session-cwd-relative path", required: true,
       schema: { type: "string" } },
     // ...
   ],
@@ -100,10 +100,15 @@ export const myAction: Action = {
   fallback.
 - **NOTEBOOK_EDIT** — `file_path` is required and must be absolute.
 - **GLOB / GREP / LS** — `path` parameter optional. When omitted, default to
-  `SessionCwdService.getCwd(conversationId)`. When provided, must be absolute,
-  validated through SandboxService.
+  `SessionCwdService.getCwd(conversationId)`. When provided, resolve a relative
+  value against that session cwd, then validate the resulting absolute path
+  through SandboxService. GLOB patterns are relative to the validated root and
+  cannot be absolute or traverse above it; every match is validated as well.
 - **SHELL** — runs with `cwd` defaulting to `SessionCwdService.getCwd(...)`.
   Optional `cwd` parameter overrides; must be absolute and within roots.
+  Workspace roots validate only this working directory. SHELL is trusted host
+  execution and commands may read or write outside configured roots; do not
+  describe the path policy or command analyzer as OS filesystem confinement.
 - **WORKTREE action=enter** — call `SandboxService.addRoot` and
   `SessionCwdService.pushWorktree` so the new path is reachable.
 

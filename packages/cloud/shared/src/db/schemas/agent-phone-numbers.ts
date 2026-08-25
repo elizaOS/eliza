@@ -1,8 +1,12 @@
-// Defines the agent phone numbers Drizzle table shape used by cloud repositories and services.
+/** Defines phone-number routing and the typed payload log consumed by Cloud phone services. */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
+  foreignKey,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -79,7 +83,7 @@ export const agentPhoneNumbers = pgTable(
     max_messages_per_day: text("max_messages_per_day").default("1000"),
 
     // Metadata
-    metadata: text("metadata").default("{}"), // JSON string for provider-specific data
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
 
     // Timestamps
     created_at: timestamp("created_at").notNull().defaultNow(),
@@ -92,10 +96,18 @@ export const agentPhoneNumbers = pgTable(
       table.phone_number,
       table.organization_id,
     ),
+    id_organization_idx: uniqueIndex("agent_phone_numbers_id_organization_idx").on(
+      table.id,
+      table.organization_id,
+    ),
     organization_idx: index("agent_phone_numbers_organization_idx").on(table.organization_id),
     agent_idx: index("agent_phone_numbers_agent_idx").on(table.agent_id),
     provider_idx: index("agent_phone_numbers_provider_idx").on(table.provider),
     is_active_idx: index("agent_phone_numbers_is_active_idx").on(table.is_active),
+    metadata_object_check: check(
+      "agent_phone_numbers_metadata_object_check",
+      sql`${table.metadata} IS NULL OR jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
   }),
 );
 
@@ -106,6 +118,12 @@ export const phoneMessageLog = pgTable(
   "phone_message_log",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+
+    // Immutable tenant owner captured when the message is created. Do not
+    // derive historical message access from a phone number's current owner.
+    organization_id: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
 
     // Link to phone number mapping
     phone_number_id: uuid("phone_number_id")
@@ -122,7 +140,7 @@ export const phoneMessageLog = pgTable(
     message_type: text("message_type").notNull().default("sms"), // 'sms' | 'mms' | 'voice'
 
     // Media attachments (for MMS)
-    media_urls: text("media_urls"), // JSON array of media URLs
+    media_urls: jsonb("media_urls").$type<string[]>(),
     media_urls_storage: text("media_urls_storage").notNull().default("inline"),
     media_urls_key: text("media_urls_key"),
 
@@ -140,7 +158,7 @@ export const phoneMessageLog = pgTable(
     response_time_ms: text("response_time_ms"),
 
     // Metadata
-    metadata: text("metadata").default("{}"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
     metadata_storage: text("metadata_storage").notNull().default("inline"),
     metadata_key: text("metadata_key"),
 
@@ -149,6 +167,12 @@ export const phoneMessageLog = pgTable(
     responded_at: timestamp("responded_at"),
   },
   (table) => ({
+    phone_owner_fk: foreignKey({
+      columns: [table.phone_number_id, table.organization_id],
+      foreignColumns: [agentPhoneNumbers.id, agentPhoneNumbers.organization_id],
+      name: "phone_message_log_phone_owner_fk",
+    }).onDelete("cascade"),
+    organization_idx: index("phone_message_log_organization_idx").on(table.organization_id),
     phone_number_idx: index("phone_message_log_phone_number_idx").on(table.phone_number_id),
     direction_idx: index("phone_message_log_direction_idx").on(table.direction),
     status_idx: index("phone_message_log_status_idx").on(table.status),
@@ -165,6 +189,17 @@ export const phoneMessageLog = pgTable(
       table.phone_number_id,
       table.status,
       table.created_at,
+    ),
+    media_urls_array_check: check(
+      "phone_message_log_media_urls_array_check",
+      sql`${table.media_urls} IS NULL OR (
+        jsonb_typeof(${table.media_urls}) = 'array'
+        AND NOT jsonb_path_exists(${table.media_urls}, 'strict $[*] ? (@.type() != "string")')
+      )`,
+    ),
+    metadata_object_check: check(
+      "phone_message_log_metadata_object_check",
+      sql`${table.metadata} IS NULL OR jsonb_typeof(${table.metadata}) = 'object'`,
     ),
   }),
 );

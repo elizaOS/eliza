@@ -4,6 +4,7 @@
  * LifeOpsServiceError.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { LifeOpsServiceError } from "@elizaos/shared";
 import type {
   LifeOpsCircadianState,
   LifeOpsWorkflowRun,
@@ -11,7 +12,26 @@ import type {
 
 // LifeOpsServiceError is a runtime-level primitive in `@elizaos/shared`,
 // re-exported here for `./service-types.js` callers.
-export { LifeOpsServiceError } from "@elizaos/shared";
+export { LifeOpsServiceError };
+
+export class LifeOpsWorkflowRunFailedUncompensatedError extends LifeOpsServiceError {
+  readonly cause: unknown;
+
+  constructor(
+    readonly run: LifeOpsWorkflowRun,
+    readonly failedCompensationKinds: readonly string[],
+    cause: unknown,
+    status = 500,
+  ) {
+    super(
+      status,
+      `workflow run ${run.id} failed with uncompensated side effects`,
+      "WORKFLOW_RUN_FAILED_UNCOMPENSATED",
+    );
+    this.name = "LifeOpsWorkflowRunFailedUncompensatedError";
+    this.cause = cause;
+  }
+}
 
 export type LifeOpsWorkflowSchedulerState = {
   managedBy: "task_worker";
@@ -33,6 +53,7 @@ export type LifeOpsWorkflowSchedulerState = {
 export type ExecuteWorkflowResult = {
   run: LifeOpsWorkflowRun;
   error: unknown | null;
+  disposition: "executed" | "replayed" | "in_progress";
 };
 
 export type RuntimeMessageTarget = Parameters<

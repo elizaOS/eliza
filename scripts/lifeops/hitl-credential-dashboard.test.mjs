@@ -15,8 +15,50 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import {
+  dashboardErrorResponse,
+  HttpError,
+} from "./hitl-credential-dashboard.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+
+test("credential dashboard does not serialize unexpected exception details", () => {
+  const marker = "<script>internal/path/database.sql</script>";
+  const error = new Error(marker);
+  error.stack = `Error: ${marker}\n    at /private/service.ts:42:7`;
+
+  assert.deepEqual(dashboardErrorResponse(error), {
+    status: 500,
+    body: { error: "Credential dashboard request failed" },
+  });
+});
+
+test("credential dashboard contains hostile thrown proxies", () => {
+  const hostile = new Proxy(Object.create(null), {
+    getPrototypeOf() {
+      throw new Error("prototype secret");
+    },
+    get() {
+      throw new Error("getter secret");
+    },
+  });
+
+  assert.deepEqual(dashboardErrorResponse(hostile), {
+    status: 500,
+    body: { error: "Credential dashboard request failed" },
+  });
+});
+
+test("credential dashboard bounds and escapes typed client errors", () => {
+  const marker = `bad\n\u202e${"x".repeat(2_000)}`;
+  const response = dashboardErrorResponse(new HttpError(400, marker));
+
+  assert.equal(response.status, 400);
+  assert.match(response.body.error, /^bad\\u\{a\}\\u\{202e\}/);
+  assert.match(response.body.error, /…\[truncated\]$/);
+  assert.ok(response.body.error.length < 600);
+  assert.doesNotMatch(response.body.error, /[\n\u202e]/u);
+});
 
 function tempDir(prefix) {
   return realpathSync(mkdtempSync(join(tmpdir(), prefix)));
@@ -48,6 +90,15 @@ function waitForDashboard(child) {
       );
     });
   });
+}
+
+async function stopDashboard(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolvePromise) => {
+    child.once("exit", resolvePromise);
+  });
+  child.kill("SIGTERM");
+  await exited;
 }
 
 async function postEnv(baseUrl, headers, value) {
@@ -135,8 +186,7 @@ test("credential dashboard rejects cross-site writes and requires its page sessi
       /TELEGRAM_BOT_TOKEN=operator-token-value/,
     );
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    await stopDashboard(child);
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -189,9 +239,50 @@ test("discord loopback OAuth surfaces fail closed without registration or a know
     const callbackHtml = await callback.text();
     assert.match(callbackHtml, /unknown or expired/);
     assert.equal(existsSync(envPath), false);
+
+    const authHeaders = {
+      Origin: sameOrigin,
+      "Content-Type": "application/json",
+      "X-HITL-Session": tokenMatch[1],
+    };
+    for (const [key, value] of [
+      ["DISCORD_CLIENT_ID", "123456789"],
+      ["DISCORD_CLIENT_SECRET", "test-only-secret"],
+    ]) {
+      const saved = await fetch(`${baseUrl}api/env`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ key, value, target: "home" }),
+      });
+      assert.equal(saved.status, 200);
+    }
+
+    const registeredStart = await fetch(
+      `${baseUrl}api/oneclick/discord-oauth/start`,
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ target: "home" }),
+      },
+    );
+    assert.equal(registeredStart.status, 200);
+    const { authorizeUrl } = await registeredStart.json();
+    const state = new URL(authorizeUrl).searchParams.get("state");
+    assert.ok(state);
+
+    const payload = `<img src=x onerror=alert(1)>"'&`;
+    const hostileCallback = await fetch(
+      `${baseUrl}oauth/discord/callback?state=${encodeURIComponent(state)}&error=${encodeURIComponent(payload)}`,
+    );
+    assert.equal(hostileCallback.status, 400);
+    const hostileCallbackHtml = await hostileCallback.text();
+    assert.doesNotMatch(hostileCallbackHtml, /<img src=x/);
+    assert.match(
+      hostileCallbackHtml,
+      /&lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;/,
+    );
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    await stopDashboard(child);
     rmSync(home, { recursive: true, force: true });
   }
 });

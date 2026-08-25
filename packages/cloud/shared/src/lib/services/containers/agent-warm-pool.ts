@@ -18,9 +18,12 @@
 
 import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
+import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
+import { jobsRepository } from "../../../db/repositories/jobs";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
+import { JOB_TYPES } from "../provisioning-job-types";
 import {
   computeForecast,
   DEFAULT_WARM_POOL_POLICY,
@@ -52,17 +55,61 @@ export interface ReplenishDecision {
   reason: string;
 }
 
+/**
+ * Live-tenant contention observed at replenish time. Warm fill is strictly
+ * lower priority than tenant provisioning: pool creates ride the same node
+ * capacity and the same daemon, so a fill burst launched while tenant work is
+ * queued (or while the cluster is nearly full) would starve paying tenants of
+ * the exact slots the pool exists to serve. See #16961's activation checklist.
+ */
+export interface TenantContentionSnapshot {
+  /** In-flight (pending/in_progress) tenant `agent_provision` jobs. */
+  pendingTenantJobs: number;
+  /**
+   * Sum of `capacity - allocated_count` across currently placeable nodes.
+   * Allocation counters already include in-flight pool creates, so this is
+   * the schedulable slack the pool and tenants compete over.
+   */
+  clusterFreeCapacity: number;
+}
+
+/**
+ * Warm-pool slots the cluster may grant without dipping tenant-schedulable
+ * slack below `pendingTenantJobs + tenantReserveSlots`. Shared by the burst
+ * decision and by the per-create revalidation inside `replenish()`, so both
+ * apply the identical floor to whatever contention reading they hold.
+ */
+export function grantableWarmSlots(
+  contention: TenantContentionSnapshot,
+  policy: WarmPoolPolicy,
+): number {
+  const reservedForTenants = Math.max(0, contention.pendingTenantJobs) + policy.tenantReserveSlots;
+  return Math.max(0, contention.clusterFreeCapacity - reservedForTenants);
+}
+
 export function decideReplenish(
   state: PoolStateSnapshot,
   policy: WarmPoolPolicy,
+  contention: TenantContentionSnapshot,
 ): ReplenishDecision {
   const total = state.readyCount + state.provisioningCount;
   const headroom = Math.max(0, policy.maxPoolSize - total);
   const deficit = Math.max(0, state.targetPoolSize - total);
-  const toCreate = Math.max(0, Math.min(deficit, policy.replenishBurstLimit, headroom));
+  const uncontended = Math.max(0, Math.min(deficit, policy.replenishBurstLimit, headroom));
+
+  // Starvation guard: every queued tenant job needs a slot before the pool
+  // may take one, and `tenantReserveSlots` stays free on top of that so an
+  // arrival between two daemon polls never cold-queues behind warm fill.
+  const grantableSlots = grantableWarmSlots(contention, policy);
+  const toCreate = Math.min(uncontended, grantableSlots);
 
   let reason: string;
-  if (toCreate > 0) {
+  if (uncontended > 0 && toCreate < uncontended) {
+    reason =
+      `tenant starvation guard: free ${contention.clusterFreeCapacity}, ` +
+      `pending tenant jobs ${contention.pendingTenantJobs}, reserve ${policy.tenantReserveSlots}; ` +
+      `creating ${toCreate} (wanted ${uncontended})`;
+  } else if (toCreate > 0) {
     const burstLimited = deficit > policy.replenishBurstLimit;
     reason = burstLimited
       ? `total ${total} < target ${state.targetPoolSize}; creating ${toCreate} (burst limit ${policy.replenishBurstLimit})`
@@ -267,6 +314,8 @@ export interface PoolContainerCreator {
 export interface ReplenishResult {
   decision: ReplenishDecision;
   state: PoolStateSnapshot;
+  /** The last contention reading the burst acted on, not the opening one. */
+  contention: TenantContentionSnapshot;
   reconciliation: WarmPoolReconciliationResult;
   created: Array<{ id: string; nodeId: string | null }>;
   failed: Array<{ error: string }>;
@@ -346,11 +395,30 @@ export class WarmPoolManager {
     };
   }
 
+  /**
+   * Read the live-tenant contention inputs for the starvation guard: the
+   * queued tenant provision backlog and the schedulable slack across
+   * placeable nodes. Both reads are cheap aggregates against state the
+   * daemon already maintains; neither mutates anything.
+   */
+  private async tenantContention(): Promise<TenantContentionSnapshot> {
+    const [pendingTenantJobs, placeableNodes] = await Promise.all([
+      jobsRepository.countInFlightByType(JOB_TYPES.AGENT_PROVISION),
+      dockerNodesRepository.findPlaceable(),
+    ]);
+    const clusterFreeCapacity = placeableNodes.reduce(
+      (sum, node) => sum + Math.max(0, node.capacity - node.allocated_count),
+      0,
+    );
+    return { pendingTenantJobs, clusterFreeCapacity };
+  }
+
   async replenish(image: string, targetDigest?: string): Promise<ReplenishResult> {
     if (!containersEnv.warmPoolEnabled()) {
       return {
         decision: { toCreate: 0, reason: "WARM_POOL_ENABLED=false (no-op)" },
         state: emptyState(),
+        contention: { pendingTenantJobs: 0, clusterFreeCapacity: 0 },
         reconciliation: emptyReconciliation(),
         created: [],
         failed: [],
@@ -362,12 +430,33 @@ export class WarmPoolManager {
     // before the capacity snapshot decides whether to create a replacement.
     const reconciliation = await this.reconcileUnclaimable();
     const state = await this.snapshot(image, targetDigest);
-    const decision = decideReplenish(state, this.policy);
+    const contention = await this.tenantContention();
+    const decision = decideReplenish(state, this.policy, contention);
     const created: Array<{ id: string; nodeId: string | null }> = [];
     const failed: Array<{ error: string }> = [];
     if (targetDigest) immutableImageReference(image, targetDigest);
 
+    // A single pool create takes tens of seconds, so a burst decided from one
+    // snapshot would stay blind to tenant jobs queued mid-burst for minutes.
+    // Re-read contention before every create after the first and abandon the
+    // remainder the moment the tenant floor stops granting a slot. This
+    // narrows — but does not close — the window: placement itself is still
+    // non-transactional (see `docker-sandbox-provider` create path), so a warm
+    // and a tenant create can still select the same last slot concurrently.
+    let observedContention = contention;
     for (let i = 0; i < decision.toCreate; i++) {
+      if (i > 0) {
+        observedContention = await this.tenantContention();
+        if (grantableWarmSlots(observedContention, this.policy) < 1) {
+          logger.info("[warm-pool] replenish burst yielded to tenant demand mid-flight", {
+            createdSoFar: created.length,
+            plannedCreates: decision.toCreate,
+            pendingTenantJobs: observedContention.pendingTenantJobs,
+            clusterFreeCapacity: observedContention.clusterFreeCapacity,
+          });
+          break;
+        }
+      }
       try {
         const result = targetDigest
           ? await this.creator.createPoolContainer(image, targetDigest)
@@ -391,6 +480,8 @@ export class WarmPoolManager {
       ready: state.readyCount,
       provisioning: state.provisioningCount,
       target: state.targetPoolSize,
+      pendingTenantJobs: observedContention.pendingTenantJobs,
+      clusterFreeCapacity: observedContention.clusterFreeCapacity,
       created: created.length,
       failed: failed.length,
       reconciled: {
@@ -400,7 +491,7 @@ export class WarmPoolManager {
         failed: reconciliation.failed.length,
       },
     });
-    return { decision, state, reconciliation, created, failed };
+    return { decision, state, contention: observedContention, reconciliation, created, failed };
   }
 
   async drainIdle(image: string): Promise<DrainResult> {

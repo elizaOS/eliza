@@ -230,8 +230,6 @@ describe("handleCommandsRoutes", () => {
       expect(restart).toBeDefined();
       // `restart` is auth-required in the registry; the route must not flatten it.
       expect(restart?.requiresAuth).toBe(true);
-      const compact = payload.commands.find((c) => c.key === "compact");
-      expect(compact?.requiresAuth).toBe(true);
       // A non-auth command stays false so the flag is genuinely sourced, not constant.
       const help = payload.commands.find((c) => c.key === "help");
       expect(help?.requiresAuth).toBe(false);

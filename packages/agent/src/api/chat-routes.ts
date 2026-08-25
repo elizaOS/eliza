@@ -54,11 +54,13 @@ import {
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
   timeInferenceSpan,
+  toWellFormedUnicode,
   trackPostDeliveryTask,
   type UUID,
 } from "@elizaos/core";
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatToolCallEvent,
   ChatTurnStatus,
   LinkedAccountProviderId,
@@ -72,6 +74,7 @@ import {
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
   parseChatFailureKind,
+  parseChatTerminalFailure,
   readAliasedEnv,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
@@ -106,6 +109,7 @@ import {
   extractCompatTextContent,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
+  scopeCompatRoomKey,
 } from "./compat-utils.ts";
 import {
   isInsufficientCreditsError,
@@ -301,9 +305,17 @@ export interface ChatMessageIdOutcome {
   usage?: ChatGenerationResult["usage"];
   actionResults?: ChatActionResultSummary[];
   failureKind?: ChatFailureKind;
+  terminalFailure?: ChatTerminalFailure;
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   noResponseReason?: "ignored";
+  /**
+   * The turn ended by explicit Stop/disconnect abort. `text` carries the
+   * partial reply that streamed before the abort (possibly empty for a
+   * zero-token Stop) and `messageId` its durable interrupted receipt, so a
+   * retried key adopts the interrupted outcome instead of regenerating.
+   */
+  interrupted?: boolean;
 }
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
@@ -441,16 +453,6 @@ function readRuntimeStringSetting(
   return typeof env === "string" && env.trim().length > 0 ? env.trim() : null;
 }
 
-function readPositiveIntegerSetting(
-  runtime: AgentRuntime,
-  key: string,
-  fallback: number,
-): number {
-  const raw = readRuntimeStringSetting(runtime, key);
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
-
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
   const optIn = readRuntimeStringSetting(
     runtime,
@@ -566,17 +568,22 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
     .trim();
 }
 
-const ANDROID_LOCAL_HISTORY_LIMIT = 6;
-const ANDROID_LOCAL_HISTORY_TEXT_LIMIT = 700;
-
-function compareCreatedAtAscending(
-  left: { createdAt?: number },
-  right: { createdAt?: number },
+export function compareCreatedAtAscending(
+  left: { createdAt?: number; id?: string },
+  right: { createdAt?: number; id?: string },
 ): number {
-  if (left.createdAt === right.createdAt) return 0;
-  if (left.createdAt === undefined) return -1;
-  if (right.createdAt === undefined) return 1;
-  return left.createdAt - right.createdAt;
+  if (left.createdAt === right.createdAt) {
+    return (left.id ?? "").localeCompare(right.id ?? "");
+  }
+  const leftVal =
+    typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+      ? left.createdAt
+      : -1;
+  const rightVal =
+    typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+      ? right.createdAt
+      : -1;
+  return leftVal - rightVal || (left.id ?? "").localeCompare(right.id ?? "");
 }
 
 async function buildAndroidLocalDirectChatPrompt(args: {
@@ -589,22 +596,17 @@ async function buildAndroidLocalDirectChatPrompt(args: {
     const recent = await args.runtime.getMemories({
       roomId: args.message.roomId,
       tableName: "messages",
-      // Allow for the current message already being persisted before generation.
-      limit: ANDROID_LOCAL_HISTORY_LIMIT + 1,
       includeEmbedding: false,
     });
     history = recent
       .filter((memory) => memory.id !== args.message.id)
       .sort(compareCreatedAtAscending)
-      .slice(-ANDROID_LOCAL_HISTORY_LIMIT)
       .flatMap((memory) => {
         const text = extractCompatTextContent(memory.content).trim();
         if (!text) return [];
         const role =
           memory.entityId === args.runtime.agentId ? "Assistant" : "User";
-        return [
-          `${role}: ${escapeAndroidLocalChatTemplateTokens(text.slice(0, ANDROID_LOCAL_HISTORY_TEXT_LIMIT))}`,
-        ];
+        return [`${role}: ${escapeAndroidLocalChatTemplateTokens(text)}`];
       });
   } catch (err) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — the full message
@@ -701,18 +703,7 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = text.replace(/\s+/g, " ").trim();
-  if (text.length <= 700) {
-    return text;
-  }
-  const truncated = text.slice(0, 700);
-  const sentenceEnd = Math.max(
-    truncated.lastIndexOf("."),
-    truncated.lastIndexOf("!"),
-    truncated.lastIndexOf("?"),
-  );
-  return (
-    sentenceEnd >= 80 ? truncated.slice(0, sentenceEnd + 1) : truncated
-  ).trim();
+  return toWellFormedUnicode(text);
 }
 
 async function rewriteDirectActionCallbackText(args: {
@@ -759,7 +750,6 @@ async function rewriteDirectActionCallbackText(args: {
           error: args.content?.error,
         })}`,
       ].join("\n"),
-      maxTokens: 260,
       signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
@@ -800,17 +790,11 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     userText,
   });
   if (!prompt) return null;
-  const maxTokens = readPositiveIntegerSetting(
-    args.runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    128,
-  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
       promptChars: prompt.length,
-      maxTokens,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -843,7 +827,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
   };
   const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
     prompt,
-    maxTokens,
     stopSequences: ["<end_of_turn>", "<start_of_turn>"],
     temperature: 0,
     providerOptions: {
@@ -879,7 +862,6 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     mode: "api_fast_path",
     latencyMs,
     promptChars: prompt.length,
-    maxTokens,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {
@@ -939,6 +921,7 @@ export interface ChatGenerationResult {
   thought?: string;
   noResponseReason?: "ignored";
   failureKind?: ChatFailureKind;
+  terminalFailure?: ChatTerminalFailure;
   /** Structured "connect another account" request carried from the CONNECT_ACCOUNT action. */
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
@@ -1605,6 +1588,29 @@ export function markSyntheticChatFailureContent<T extends Content>(
   } as T;
 }
 
+/** Keeps append-only delivery truthful when a late typed failure contradicts prose. */
+function terminalFailureVisibleText(
+  deliveredText: string,
+  failure: ChatTerminalFailure,
+): string {
+  const delivered = deliveredText.trimEnd();
+  if (!delivered) return failure.message;
+  if (delivered.includes(failure.message)) return deliveredText;
+  return `${delivered}\n\nTask failed: ${failure.message}`;
+}
+
+/** Converts the public DTO to Content's JSON-compatible indexed object shape. */
+function terminalFailureContentValue(
+  failure: ChatTerminalFailure,
+): Record<string, string | boolean> {
+  return {
+    kind: failure.kind,
+    message: failure.message,
+    transient: failure.transient,
+    ...(failure.code ? { code: failure.code } : {}),
+  };
+}
+
 function normalizeActionName(value: unknown): string {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
@@ -1894,29 +1900,45 @@ function walletActionMatchesIntent(
   return attributedOperations.length > 0;
 }
 
-function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
+function sanitizeActionResultValue(
+  value: unknown,
+  ancestors: WeakSet<object> = new WeakSet(),
+): unknown {
   if (value === null) return null;
   if (typeof value === "boolean") return value;
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    return value.length > 1000 ? `${value.slice(0, 997)}...` : value;
+    return toWellFormedUnicode(value);
   }
   if (Array.isArray(value)) {
-    if (depth >= 2) return undefined;
-    return value
-      .slice(0, 20)
-      .map((entry) => sanitizeActionResultValue(entry, depth + 1))
-      .filter((entry) => entry !== undefined);
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular array");
+    }
+    ancestors.add(value);
+    try {
+      return value
+        .map((entry) => sanitizeActionResultValue(entry, ancestors))
+        .filter((entry) => entry !== undefined);
+    } finally {
+      ancestors.delete(value);
+    }
   }
   if (value && typeof value === "object") {
-    if (depth >= 2) return undefined;
-    const output: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value).slice(0, 20)) {
-      const safe = sanitizeActionResultValue(entry, depth + 1);
-      if (safe !== undefined) output[key] = safe;
+    if (ancestors.has(value)) {
+      throw new Error("Action result contains a circular object");
     }
-    return output;
+    ancestors.add(value);
+    try {
+      const output: Record<string, unknown> = {};
+      for (const [key, entry] of Object.entries(value)) {
+        const safe = sanitizeActionResultValue(entry, ancestors);
+        if (safe !== undefined) output[key] = safe;
+      }
+      return output;
+    } finally {
+      ancestors.delete(value);
+    }
   }
   return undefined;
 }
@@ -1927,7 +1949,7 @@ function sanitizeActionResultValues(
   if (!values || typeof values !== "object" || Array.isArray(values))
     return undefined;
   const output: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(values).slice(0, 20)) {
+  for (const [key, value] of Object.entries(values)) {
     const safe = sanitizeActionResultValue(value);
     if (safe !== undefined) output[key] = safe;
   }
@@ -1969,7 +1991,7 @@ function summarizeActionResultForClient(
   };
 }
 
-function summarizeRuntimeActionResults(
+export function summarizeRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
   turnActionResults?: unknown[],
@@ -1980,8 +2002,7 @@ function summarizeRuntimeActionResults(
       : readRuntimeActionResults(runtime, messageId);
   return actionResults
     .map(summarizeActionResultForClient)
-    .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
-    .slice(-8);
+    .filter((entry): entry is ChatActionResultSummary => Boolean(entry));
 }
 
 function resolveFinalTranscriptVisibility(
@@ -2653,11 +2674,15 @@ export async function persistConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   memory.id ??= crypto.randomUUID() as UUID;
   const stampedMemory = stampAppConversationProvenance(runtime, memory);
   try {
-    const write = () => runtime.createMemory(stampedMemory, "messages");
+    const write = () => {
+      assertCurrent?.();
+      return runtime.createMemory(stampedMemory, "messages");
+    };
     await (roomHandlerLease
       ? runtime.roomHandlerQueue.runInLease(
           stampedMemory.roomId,
@@ -2665,6 +2690,7 @@ export async function persistConversationMemory(
           write,
         )
       : write());
+    assertCurrent?.();
   } catch (err) {
     if (isDuplicateMemoryError(err)) return stampedMemory;
     throw err;
@@ -2676,12 +2702,14 @@ export async function persistExactConversationMemory(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<ReturnType<typeof createMessageMemory>> {
   return (
     await persistExactConversationMemoryResult(
       runtime,
       memory,
       roomHandlerLease,
+      assertCurrent,
     )
   ).memory;
 }
@@ -2690,6 +2718,7 @@ export async function persistExactConversationMemoryResult(
   runtime: AgentRuntime,
   memory: ReturnType<typeof createMessageMemory>,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<{
   created: boolean;
   memory: ReturnType<typeof createMessageMemory>;
@@ -2710,6 +2739,7 @@ export async function persistExactConversationMemoryResult(
       [stampedMemory.id as UUID],
       "messages",
     );
+    assertCurrent?.();
     return existing ?? null;
   };
   const assertExact = (
@@ -2742,7 +2772,10 @@ export async function persistExactConversationMemoryResult(
   if (existing) return { created: false, memory: assertExact(existing) };
 
   try {
-    const write = () => runtime.createMemory(stampedMemory, "messages");
+    const write = () => {
+      assertCurrent?.();
+      return runtime.createMemory(stampedMemory, "messages");
+    };
     await (roomHandlerLease
       ? runtime.roomHandlerQueue.runInLease(
           stampedMemory.roomId,
@@ -2750,6 +2783,7 @@ export async function persistExactConversationMemoryResult(
           write,
         )
       : write());
+    assertCurrent?.();
     return { created: true, memory: stampedMemory };
   } catch (cause) {
     const raced = await loadExisting();
@@ -2829,6 +2863,30 @@ export async function getRecentVisibleAssistantMemoryTextSince(
   );
 }
 
+/**
+ * Orders candidate assistant turns newest-first, treating a missing or
+ * non-finite `createdAt` as epoch zero so a poisoned timestamp can never make
+ * the comparator inconsistent, and breaking ties on ascending id so the
+ * selected turn is deterministic rather than dependent on storage order.
+ */
+export function compareAssistantTurnRecencyDescending(
+  a: { createdAt?: number; id?: string },
+  b: { createdAt?: number; id?: string },
+): number {
+  const bCreated =
+    typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+      ? b.createdAt
+      : 0;
+  const aCreated =
+    typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+      ? a.createdAt
+      : 0;
+  return (
+    bCreated - aCreated ||
+    (a.id ? String(a.id) : "").localeCompare(b.id ? String(b.id) : "")
+  );
+}
+
 export async function getRecentVisibleAssistantMemorySince(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2857,7 +2915,7 @@ export async function getRecentVisibleAssistantMemorySince(
           createdAt >= sinceMs - slackMs
         );
       })
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
+      .sort(compareAssistantTurnRecencyDescending)[0];
 
     const text = (
       persistedAssistantTurn?.content as { text?: string } | undefined
@@ -2882,6 +2940,7 @@ export async function persistAssistantConversationMemory(
   // to reconcile optimistic and proactive-message copies.
   memoryId?: UUID,
   roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
 ): Promise<Memory | null> {
   const persistedContent = markSyntheticChatFailureContent(
     typeof content === "string"
@@ -2924,8 +2983,59 @@ export async function persistAssistantConversationMemory(
     content: persistedContent,
   });
   return memoryId
-    ? await persistExactConversationMemory(runtime, memory, roomHandlerLease)
-    : await persistConversationMemory(runtime, memory, roomHandlerLease);
+    ? await persistExactConversationMemory(
+        runtime,
+        memory,
+        roomHandlerLease,
+        assertCurrent,
+      )
+    : await persistConversationMemory(
+        runtime,
+        memory,
+        roomHandlerLease,
+        assertCurrent,
+      );
+}
+
+/**
+ * Persist the terminal receipt for an aborted (Stop/disconnect) turn before
+ * the route releases it. Unlike `persistAssistantConversationMemory` this
+ * MUST persist even when no token streamed — a zero-token Stop still owns a
+ * durable `interrupted` assistant row, otherwise reload recovery finds a user
+ * turn with no terminal receipt and the transport is free to regenerate
+ * (#17216). The row carries `content.interrupted: true`, which the GET
+ * /messages DTO round-trips so the renderer shows the interrupted state
+ * instead of a healthy-looking reply.
+ */
+export async function persistInterruptedAssistantReceipt(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  partialText: string,
+  channelType: ChannelType,
+  inReplyTo: UUID | undefined,
+  memoryId: UUID,
+  roomHandlerLease?: RoomHandlerLease,
+  assertCurrent?: () => void,
+): Promise<Memory> {
+  const memory = createMessageMemory({
+    id: memoryId,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: partialText,
+      interrupted: true,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+      channelType,
+      ...(inReplyTo ? { inReplyTo } : {}),
+    } satisfies Content,
+  });
+  return persistExactConversationMemory(
+    runtime,
+    memory,
+    roomHandlerLease,
+    assertCurrent,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -3431,6 +3541,7 @@ async function generateChatResponseWithTiming(
           >
         >
       | undefined;
+    let terminalFailure: ChatTerminalFailure | undefined;
     let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
     let capturedUsage: CapturedModelUsage | null = null;
@@ -3794,6 +3905,19 @@ async function generateChatResponseWithTiming(
           // disconnect. The remaining path finalizes that result and only runs
           // new work while the owner signal is live.
 
+          terminalFailure = parseChatTerminalFailure(result?.terminalFailure);
+          if (terminalFailure) {
+            const failureText =
+              opts?.onChunk && !opts.onSnapshot
+                ? terminalFailureVisibleText(responseText, terminalFailure)
+                : terminalFailure.message;
+            if (opts?.onSnapshot) {
+              emitSnapshot(failureText);
+            } else {
+              responseText = failureText;
+            }
+          }
+
           // Ensure MESSAGE_SENT hooks run for API chat flows.
           try {
             const responseMessages = Array.isArray(result?.responseMessages)
@@ -3802,13 +3926,21 @@ async function generateChatResponseWithTiming(
                   content?: Content;
                 }>)
               : [];
-            const fallbackResponseContent =
+            const baseFallbackResponseContent =
               result?.responseContent &&
               typeof result.responseContent === "object"
                 ? (result.responseContent as Content)
                 : responseText
                   ? ({ text: responseText } as Content)
                   : null;
+            const fallbackResponseContent = terminalFailure
+              ? ({
+                  ...(baseFallbackResponseContent ?? {}),
+                  text: responseText,
+                  failureKind: terminalFailure.kind,
+                  terminalFailure: terminalFailureContentValue(terminalFailure),
+                } satisfies Content)
+              : baseFallbackResponseContent;
             // Safety net ONLY for flows where the message handler produced no
             // responseMessages of its own. When responseMessages exist the
             // handler already emitted MESSAGE_SENT for each (message.ts), so
@@ -4096,7 +4228,9 @@ async function generateChatResponseWithTiming(
       ? null
       : await resolveExactDocumentValueForChat(runtime, message);
     const normalizedResponseText = trimWalletProgressPrefix(
-      exactDocumentValue || responseText || resultText || "",
+      terminalFailure
+        ? responseText
+        : exactDocumentValue || responseText || resultText || "",
     );
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
@@ -4156,12 +4290,22 @@ async function generateChatResponseWithTiming(
           (id): id is UUID => typeof id === "string" && id.length > 0,
         )
       : [];
+    const terminalFailureKind = terminalFailure?.kind;
     const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
         ? (() => {
             const content = {
               ...result.responseContent,
               text: finalText,
+              ...(terminalFailureKind
+                ? { failureKind: terminalFailureKind }
+                : {}),
+              ...(terminalFailure
+                ? {
+                    terminalFailure:
+                      terminalFailureContentValue(terminalFailure),
+                  }
+                : {}),
             } satisfies Content;
             delete content.transcriptVisibility;
             if (transcriptVisibility) {
@@ -4172,6 +4316,15 @@ async function generateChatResponseWithTiming(
         : finalText
           ? ({
               text: finalText,
+              ...(terminalFailureKind
+                ? { failureKind: terminalFailureKind }
+                : {}),
+              ...(terminalFailure
+                ? {
+                    terminalFailure:
+                      terminalFailureContentValue(terminalFailure),
+                  }
+                : {}),
               ...(transcriptVisibility ? { transcriptVisibility } : {}),
             } satisfies Content)
           : null;
@@ -4191,8 +4344,9 @@ async function generateChatResponseWithTiming(
         ? responseRecord.localInference
         : undefined;
     const responseMetadata = asRecord(responseRecord?.metadata);
-    const rawFailureKind =
-      typeof responseRecord?.failureKind === "string"
+    const rawFailureKind = terminalFailureKind
+      ? terminalFailureKind
+      : typeof responseRecord?.failureKind === "string"
         ? responseRecord.failureKind
         : typeof responseMetadata?.chatFailureKind === "string"
           ? responseMetadata.chatFailureKind
@@ -4252,6 +4406,7 @@ async function generateChatResponseWithTiming(
         ? { noResponseReason: "ignored" as const }
         : {}),
       ...(failureKind ? { failureKind } : {}),
+      ...(terminalFailure ? { terminalFailure } : {}),
       ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
       ...(usedActionCallbacks ? { usedActionCallbacks: true } : {}),
@@ -4405,7 +4560,6 @@ Title:`;
 
   const title = await runtime.useModel(modelClass, {
     prompt,
-    maxTokens: 20,
     temperature: 0.7,
     signal: options?.signal,
   });
@@ -4670,7 +4824,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5044,7 +5198,7 @@ export async function handleChatRoutes(
       return true;
     }
 
-    const roomKey = resolveCompatRoomKey(safeBody).slice(0, 120);
+    const roomKey = scopeCompatRoomKey(resolveCompatRoomKey(safeBody));
     const wantsStream =
       safeBody.stream === true ||
       (req.headers.accept ?? "").includes("text/event-stream");
@@ -5434,7 +5588,7 @@ export async function handleChatRoutes(
         runtime,
         agentName,
         "agent-message",
-        `${agentIdParam}:${userId}`.slice(0, 120),
+        scopeCompatRoomKey(`${agentIdParam}:${userId}`),
         messagePrincipal,
       );
 

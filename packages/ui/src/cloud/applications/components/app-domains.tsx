@@ -38,6 +38,7 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Tooltip,
   TooltipContent,
@@ -157,9 +158,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   description: t("cloud.appDomains.sslProvisioningNow", {
                     defaultValue: "SSL certificate is now being provisioned",
                   }),
-                  icon: (
-                    <CheckCircle2 className="h-4 w-4 text-status-success" />
-                  ),
+                  icon: <CheckCircle2 className="size-4 text-status-success" />,
                 },
               );
             }
@@ -350,7 +349,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-sm font-medium text-txt-strong flex items-center gap-2">
-                <Globe className="h-4 w-4 text-accent" />
+                <Globe className="size-4 text-accent" />
                 {t("cloud.appDomains.title", { defaultValue: "Domains" })}
               </h3>
               <p className="text-xs text-muted mt-1">
@@ -363,12 +362,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
               !hasCustomDomain &&
               !showAddForm &&
               !isLoading && (
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  size="sm"
-                  className="min-h-touch bg-accent hover:bg-accent-hover text-accent-foreground rounded-sm"
-                >
-                  <Plus className="h-4 w-4 mr-1.5" />
+                <Button onClick={() => setShowAddForm(true)} size="sm">
+                  <Plus className="size-4 mr-1.5" />
                   {t("cloud.appDomains.addDomain", {
                     defaultValue: "Add Domain",
                   })}
@@ -393,7 +388,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
               />
               <div className="p-3 rounded-sm bg-bg-muted border border-border">
                 <div className="flex items-start gap-2">
-                  <Info className="h-4 w-4 text-muted-strong shrink-0 mt-0.5" />
+                  <Info className="size-4 text-muted-strong shrink-0 mt-0.5" />
                   <div>
                     <p className="text-xs text-txt-strong font-medium">
                       {t("cloud.appDomains.developmentUrl", {
@@ -413,8 +408,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
           ) : !primaryDomain ? (
             /* No App Deployed */
             <div className="p-6 rounded-sm bg-accent-subtle border border-accent/20 text-center">
-              <div className="w-12 h-12 rounded-full bg-accent-subtle flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="h-6 w-6 text-accent" />
+              <div className="size-12 rounded-full bg-accent-subtle flex items-center justify-center mx-auto mb-3">
+                <AlertTriangle className="size-6 text-accent" />
               </div>
               <h4 className="text-sm font-medium text-txt-strong mb-1">
                 {t("cloud.appDomains.noAppDeployed", {
@@ -497,20 +492,16 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-bg-muted border-border rounded-sm placeholder:text-muted"
+                          variant="form"
+                          className="flex-1"
                         />
                         <div className="flex gap-2">
                           <Button
                             onClick={handleAddDomain}
                             disabled={isAdding || !newDomain.trim()}
-                            className={`h-9 px-4 min-h-touch ${
-                              isAdding || !newDomain.trim()
-                                ? "bg-bg-muted text-muted"
-                                : "bg-accent hover:bg-accent-hover text-accent-foreground"
-                            }`}
                           >
                             {isAdding ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="size-4 animate-spin" />
                             ) : (
                               t("cloud.appDomains.addDomain", {
                                 defaultValue: "Add Domain",
@@ -523,7 +514,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setShowAddForm(false);
                               setNewDomain("");
                             }}
-                            className="h-9 px-4 min-h-touch border-border-strong text-txt-strong hover:bg-bg-hover"
                           >
                             {t("cloud.appDomains.cancel", {
                               defaultValue: "Cancel",
@@ -565,9 +555,9 @@ export function AppDomains({ appId }: AppDomainsProps) {
         <AnimatePresence>
           {needsVerification && (
             <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, transform: "translateY(10px)" }}
+              animate={{ opacity: 1, transform: "translateY(0px)" }}
+              exit={{ opacity: 0, transform: "translateY(-10px)" }}
             >
               <DnsConfigPanel
                 domain={primaryDomain?.customDomain || ""}
@@ -686,7 +676,7 @@ function DomainCard({
           </div>
           {isVerified && (
             <div className="flex items-center gap-1 text-status-success mt-2">
-              <Lock className="h-3 w-3" />
+              <Lock className="size-3" />
               <span className="text-xs">
                 {t("cloud.appDomains.sslTlsSecured", {
                   defaultValue: "SSL/TLS Secured",
@@ -696,7 +686,7 @@ function DomainCard({
           )}
           {!isVerified && type === "custom" && (
             <div className="flex items-center gap-1 text-accent mt-2">
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="size-3" />
               <span className="text-xs">
                 {t("cloud.appDomains.dnsVerificationPending", {
                   defaultValue: "DNS verification pending",
@@ -715,7 +705,7 @@ function DomainCard({
             copiedLabel={t("cloud.appDomains.copied", {
               defaultValue: "Copied",
             })}
-            className="h-8 w-8 min-h-touch justify-center p-0 hover:text-txt-strong"
+            className="size-8 min-h-touch justify-center p-0 hover:text-txt-strong"
           />
 
           {isVerified && url && (
@@ -733,9 +723,9 @@ function DomainCard({
                       e.preventDefault();
                     }
                   }}
-                  className="inline-flex items-center justify-center h-8 w-8 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover rounded-sm transition-colors"
+                  className="inline-flex items-center justify-center size-8 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover rounded-sm transition-colors"
                 >
-                  <ExternalLink className="h-4 w-4" />
+                  <ExternalLink className="size-4" />
                 </a>
               </TooltipTrigger>
               <TooltipContent
@@ -754,13 +744,12 @@ function DomainCard({
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="icon-sm"
                   onClick={onRefresh}
                   disabled={isChecking}
-                  className="h-8 w-8 p-0 min-h-touch text-muted hover:text-txt-strong hover:bg-bg-hover"
                 >
                   <RefreshCw
-                    className={`h-4 w-4 ${isChecking ? "animate-spin" : ""}`}
+                    className={`size-4 ${isChecking ? "animate-spin" : ""}`}
                   />
                 </Button>
               </TooltipTrigger>
@@ -781,15 +770,14 @@ function DomainCard({
                 <TooltipTrigger asChild>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="sm"
+                      variant="surfaceDestructive"
+                      size="icon-sm"
                       disabled={isRemoving}
-                      className="h-8 w-8 p-0 min-h-touch text-muted hover:text-destructive hover:bg-destructive-subtle"
                     >
                       {isRemoving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="size-4 animate-spin" />
                       ) : (
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       )}
                     </Button>
                   </AlertDialogTrigger>
@@ -855,32 +843,31 @@ function DomainStatusBadge({
   const t = useCloudT();
   if (status === "verified" && sslStatus === "active") {
     return (
-      <Badge className="bg-status-success-bg text-status-success border-status-success/30 gap-1 text-2xs">
-        <span className="relative flex h-1.5 w-1.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-status-success opacity-50 motion-reduce:animate-none" />
-          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-status-success" />
-        </span>
-        {t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
-      </Badge>
+      <StatusBadge
+        status="success"
+        pulse
+        label={t("cloud.appDomains.statusActive", { defaultValue: "Active" })}
+      />
     );
   }
 
   if (sslStatus === "provisioning") {
     return (
-      <Badge className="bg-bg-muted text-muted-strong border-border-strong gap-1 text-2xs">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        {t("cloud.appDomains.statusSslProvisioning", {
+      <StatusBadge
+        status="processing"
+        label={t("cloud.appDomains.statusSslProvisioning", {
           defaultValue: "SSL Provisioning",
         })}
-      </Badge>
+      />
     );
   }
 
   return (
-    <Badge className="bg-accent-subtle text-accent border-accent/30 gap-1 text-2xs">
-      <Clock className="h-3 w-3" />
-      {t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
-    </Badge>
+    <StatusBadge
+      status="warning"
+      icon={<Clock />}
+      label={t("cloud.appDomains.statusPending", { defaultValue: "Pending" })}
+    />
   );
 }
 
@@ -923,7 +910,7 @@ function DnsConfigPanel({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Zap className="h-4 w-4 text-accent" />
+          <Zap className="size-4 text-accent" />
           <div>
             <h3 className="text-sm font-medium text-txt-strong">
               {t("cloud.appDomains.configureDns", {
@@ -951,12 +938,11 @@ function DnsConfigPanel({
             size="sm"
             onClick={onRefresh}
             disabled={isChecking}
-            className="min-h-touch border-border hover:bg-bg-hover rounded-sm"
           >
             {isChecking ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              <Loader2 className="size-4 mr-1.5 animate-spin" />
             ) : (
-              <RefreshCw className="h-4 w-4 mr-1.5" />
+              <RefreshCw className="size-4 mr-1.5" />
             )}
             {t("cloud.appDomains.verify", { defaultValue: "Verify" })}
           </Button>
@@ -975,7 +961,7 @@ function DnsConfigPanel({
       >
         {currentStatus === "valid" ? (
           <>
-            <CheckCircle2 className="h-4 w-4 text-status-success shrink-0 mt-0.5" />
+            <CheckCircle2 className="size-4 text-status-success shrink-0 mt-0.5" />
             <div>
               <p className="text-xs text-status-success font-medium">
                 {t("cloud.appDomains.dnsVerified", {
@@ -991,7 +977,7 @@ function DnsConfigPanel({
           </>
         ) : currentStatus === "invalid" ? (
           <>
-            <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
             <div>
               <p className="text-xs text-destructive font-medium">
                 {t("cloud.appDomains.dnsConfigIssue", {
@@ -1007,7 +993,7 @@ function DnsConfigPanel({
           </>
         ) : (
           <>
-            <Loader2 className="h-4 w-4 text-accent animate-spin shrink-0 mt-0.5" />
+            <Loader2 className="size-4 text-accent animate-spin shrink-0 mt-0.5" />
             <div>
               <p className="text-xs text-accent font-medium">
                 {t("cloud.appDomains.waitingForPropagation", {
@@ -1096,12 +1082,7 @@ function DnsRecordRow({
     <div className="group bg-bg-muted rounded-sm border border-border p-3">
       {/* Desktop */}
       <div className="hidden sm:flex items-center gap-3">
-        <Badge
-          variant="outline"
-          className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-        >
-          {type}
-        </Badge>
+        <Badge variant="outline">{type}</Badge>
         <span className="font-mono text-xs text-txt-strong flex-1 truncate">
           {name}
         </span>
@@ -1117,29 +1098,23 @@ function DnsRecordRow({
           copiedLabel={t("cloud.appDomains.copied", {
             defaultValue: "Copied",
           })}
-          className="h-7 w-7 justify-center p-0 hover:text-txt-strong opacity-0 group-hover:opacity-100 transition-opacity"
+          className="size-7 justify-center p-0 hover:text-txt-strong opacity-0 group-hover:opacity-100 transition-opacity"
         />
       </div>
 
       {/* Mobile */}
       <div className="sm:hidden space-y-2">
         <div className="flex items-center justify-between">
-          <Badge
-            variant="outline"
-            className="font-mono text-2xs border-border-strong text-muted bg-bg-muted"
-          >
-            {type}
-          </Badge>
+          <Badge variant="outline">{type}</Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => copyToClipboard(value, valueLabel)}
-            className="h-7 px-2 min-h-touch text-muted hover:text-txt-strong"
           >
             {copiedValue === value ? (
-              <Check className="h-3.5 w-3.5 text-status-success" />
+              <Check className="size-3.5 text-status-success" />
             ) : (
-              <Copy className="h-3.5 w-3.5" />
+              <Copy className="size-3.5" />
             )}
             <span className="ml-1.5 text-2xs">
               {t("cloud.appDomains.copy", { defaultValue: "Copy" })}

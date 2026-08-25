@@ -94,8 +94,9 @@ describe("App navigate-view shell handler", () => {
     expect(directTabForNavigateView({ viewPath: "/views" }, "/views")).toBe(
       "views",
     );
-    // `/apps` is the My Apps view now (the launcher grid is `/views`), so it has
-    // no direct-tab fast path — it resolves through the normal path→tab lookup.
+    // `/apps` is a retired My Apps deep link that resolves to the consolidated
+    // Projects surface (#17031; the launcher grid is `/views`), so it has no
+    // direct-tab fast path — it resolves through the normal path→tab lookup.
     expect(directTabForNavigateView({ viewPath: "/apps" }, "/apps")).toBeNull();
     expect(
       directTabForNavigateView(

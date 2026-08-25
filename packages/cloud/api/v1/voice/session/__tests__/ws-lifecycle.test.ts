@@ -11,6 +11,7 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { decode, encode } from "@msgpack/msgpack";
+import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
@@ -41,6 +42,8 @@ mock.module("@elizaos/core", () => ({
   redactLogArgs: (args: unknown) => args,
   redactSensitiveText: (text: string) => text,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
+  truncateWellFormed: workerCoreStub.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:
@@ -438,6 +441,7 @@ function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
   enqueueChunk: (chunk: string) => void;
   finish: () => void;
+  fail: () => void;
   ready: Promise<void>;
 } {
   const encoder = new TextEncoder();
@@ -468,6 +472,14 @@ function makeControlledCanonicalChunkFetch(): {
       controller?.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
       controller?.close();
     },
+    fail() {
+      controller?.enqueue(
+        encoder.encode(
+          `event: error\ndata: ${JSON.stringify({ message: "provider failed" })}\n\n`,
+        ),
+      );
+      controller?.close();
+    },
     ready,
   };
 }
@@ -493,6 +505,8 @@ async function connectSession(opts: {
   openingGreeting?: string;
   openingPrompt?: string;
   openingClientMessageId?: string;
+  openingHistoryCutoffAt?: number;
+  openingFallbackGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
   onClearAudio?: () => void;
   fish?: {
@@ -540,6 +554,12 @@ async function connectSession(opts: {
         ...(opts.openingPrompt ? { openingPrompt: opts.openingPrompt } : {}),
         ...(opts.openingClientMessageId
           ? { openingClientMessageId: opts.openingClientMessageId }
+          : {}),
+        ...(opts.openingHistoryCutoffAt !== undefined
+          ? { openingHistoryCutoffAt: opts.openingHistoryCutoffAt }
+          : {}),
+        ...(opts.openingFallbackGreeting
+          ? { openingFallbackGreeting: opts.openingFallbackGreeting }
           : {}),
         ...(opts.cacheWarmingRetryDelaysMs
           ? {
@@ -671,6 +691,7 @@ describe("voice-session WS lifecycle", () => {
       client,
       openingPrompt: "The user called. Greet them using existing history.",
       openingClientMessageId: "twilio-call:CA123:started",
+      openingHistoryCutoffAt: 1_725_000_000_000,
       fetchImpl: (async (_url: string, init?: RequestInit) => {
         requests.push(
           JSON.parse(String(init?.body)) as Record<string, unknown>,
@@ -688,10 +709,121 @@ describe("voice-session WS lifecycle", () => {
         text: "The user called. Greet them using existing history.",
         messageRole: "system",
         clientMessageId: "twilio-call:CA123:started",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
       }),
     ]);
     expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
       "Good to hear from you again.",
+    );
+  });
+
+  test("speaks a safe fixed greeting when contextual opener generation fails", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-fallback:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: (async () =>
+        new Response("provider unavailable", {
+          status: 503,
+        })) as unknown as typeof fetch,
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "error", retryable: true }),
+    );
+  });
+
+  test("speaks the safe fallback when the contextual opener completes without speech", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-empty:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: makeCanonicalChunkFetch([], {}),
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+  });
+
+  test("speaks the safe fallback when unspoken model text precedes a stream failure", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-partial:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: (async () => {
+        const encoder = new TextEncoder();
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  `event: chunk\ndata: ${JSON.stringify({ chunk: "Hi" })}\n\n`,
+                ),
+              );
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "provider failed" })}\n\n`,
+                ),
+              );
+              controller.close();
+            },
+          }),
+          { headers: { "Content-Type": "text/event-stream" } },
+        );
+      }) as unknown as typeof fetch,
+    });
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Hello, thanks for calling Eliza.",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "error", retryable: true }),
+    );
+  });
+
+  test("does not double-speak the fallback after contextual model audio starts", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "Generate a contextual greeting.",
+      openingClientMessageId: "twilio-call:CA-spoken:opening",
+      openingFallbackGreeting: "Hello, thanks for calling Eliza.",
+      fetchImpl: controlled.fetchImpl,
+    });
+    await controlled.ready;
+    controlled.enqueueChunk("Welcome home friend.");
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toContain(
+      "Welcome home ",
+    );
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+
+    controlled.fail();
+    await flush();
+    await flush();
+
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).not.toContain(
+      "Hello, thanks for calling Eliza.",
     );
   });
 
@@ -726,7 +858,9 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(endOfTurnLog?.[1]).toMatchObject({
       transcriptChars: "hello agent".length,
-      configuredEndTimeoutMs: 1_200,
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
+      configuredEndTimeoutMs: 640,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
       lastTranscriptToFinalMs: expect.any(Number),
@@ -918,6 +1052,100 @@ describe("voice-session WS lifecycle", () => {
       },
     ]);
     expect(JSON.stringify(client.controlFrames)).not.toContain("not-forwarded");
+  });
+
+  test("forwards a terminal APP launch through the originating Session turn trace", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Opened Demo."], {
+        actionResults: [
+          {
+            actionName: "APP",
+            success: true,
+            values: {
+              mode: "launch",
+              viewId: "browser",
+              viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+            },
+          },
+        ],
+      }),
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "launch demo");
+    await flush();
+    await flush();
+
+    const firstText = client.controlFrames.find(
+      (frame): frame is Extract<ServerControlFrame, { t: "llm_first_text" }> =>
+        frame.t === "llm_first_text",
+    );
+    const navigation = client.controlFrames.filter(
+      (frame) => frame.t === "navigate_view",
+    );
+    expect(firstText).toBeDefined();
+    if (!firstText) throw new Error("expected an llm_first_text control frame");
+    expect(navigation).toEqual([
+      {
+        t: "navigate_view",
+        viewId: "browser",
+        viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+        traceId: firstText.traceId,
+      },
+    ]);
+  });
+
+  test("does not forward ambiguous or non-canonical APP launch handoffs", async () => {
+    for (const actionResults of [
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=javascript%3Aalert(1)",
+          },
+        },
+      ],
+      [
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fone.example",
+          },
+        },
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Ftwo.example",
+          },
+        },
+      ],
+    ]) {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeCanonicalChunkFetch(["Opened Demo."], { actionResults }),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "launch demo");
+      await flush();
+      await flush();
+      expect(
+        client.controlFrames.filter((frame) => frame.t === "navigate_view"),
+      ).toEqual([]);
+    }
   });
 
   test("prewarms Eliza tenancy context when the live session starts", async () => {
@@ -1193,6 +1421,32 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(client.controlTypes()).toContain("usage");
     expect(client.controlTypes()).not.toContain("speaking_start");
+  });
+
+  test("speaks an explicit recovery prompt for punctuation-only model output", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["?"]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "answer me");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe(
+      "Sorry, I couldn't form a response. Could you say that again?",
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "unspeakable_llm_reply",
+        retryable: true,
+      }),
+    );
+    expect(client.controlTypes()).toContain("speaking_start");
   });
 
   test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
@@ -1612,6 +1866,8 @@ describe("voice-session WS lifecycle", () => {
       ([message]) => message === "[voice-session] first-turn latency",
     );
     expect(latencyLog?.[1]).toMatchObject({
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
       upstreamAttemptCount: 3,
       prewarmStatus: "not_configured",
       ttsTransportReadyMs: expect.any(Number),

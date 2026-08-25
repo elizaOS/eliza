@@ -319,6 +319,16 @@ function filterDefined<T extends object>(obj: T): Partial<T> {
   ) as Partial<T>;
 }
 
+function stripSlackCredentials<T extends SlackAccountConfig>(
+  config: T,
+): Partial<T> {
+  const next: Partial<T> = { ...config };
+  for (const key of SLACK_CREDENTIAL_KEYS) {
+    delete next[key];
+  }
+  return next;
+}
+
 function mergeSlackAccountConfig(
   runtime: IAgentRuntime,
   accountId: string,
@@ -350,10 +360,18 @@ function mergeSlackAccountConfig(
   };
 
   // Merge order: env defaults < base config < account config
-  // Filter undefined values to prevent them from overwriting defined values
+  // Filter undefined values to prevent them from overwriting defined values.
+  // Named / ghost accountIds inherit policy defaults only. Owner bot, app,
+  // user, and signing credentials stay on the default account so an explicit
+  // unknown accountId cannot send or verify as the owner.
+  const inheritedBase =
+    accountId === DEFAULT_ACCOUNT_ID
+      ? filterDefined(baseConfig)
+      : filterDefined(stripSlackCredentials(baseConfig));
+
   return {
     ...filterDefined(envConfig),
-    ...filterDefined(baseConfig),
+    ...inheritedBase,
     ...filterDefined(accountConfig),
   };
 }
@@ -400,10 +418,12 @@ export function resolveSlackAccount(
       ? "env"
       : "none";
 
-  // Resolve signing secret
-  const signingSecret =
-    merged.signingSecret ??
-    (runtime.getSetting("SLACK_SIGNING_SECRET") as string);
+  // Resolve signing secret. Env fallback is default-account only, matching
+  // bot / app / user token inheritance.
+  const envSigningSecret = allowEnv
+    ? (runtime.getSetting("SLACK_SIGNING_SECRET") as string)
+    : undefined;
+  const signingSecret = merged.signingSecret ?? envSigningSecret;
 
   // Resolve user token
   const envUserToken = allowEnv

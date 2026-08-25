@@ -3,7 +3,6 @@ FROM node:24-bookworm-slim
 ARG BUN_VERSION=1.3.14
 ARG INSTALL_CODEX=true
 ARG INSTALL_CLAUDE_CODE=true
-ARG INSTALL_OPENCODE=true
 
 ENV BUN_INSTALL=/root/.bun
 ENV PATH=/root/.bun/bin:/usr/local/bin:$PATH
@@ -27,7 +26,6 @@ RUN curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
 
 RUN if [ "$INSTALL_CODEX" = "true" ]; then npm install -g @openai/codex; fi \
   && if [ "$INSTALL_CLAUDE_CODE" = "true" ]; then npm install -g @anthropic-ai/claude-code; fi \
-  && if [ "$INSTALL_OPENCODE" = "true" ]; then npm install -g opencode-ai; fi \
   && npm cache clean --force
 
 WORKDIR /app

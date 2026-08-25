@@ -46,6 +46,105 @@ function resolveLeadMinutes(cadence: LifeOpsCadence): number {
   return cadence.visibilityLeadMinutes ?? 0;
 }
 
+/**
+ * Materializes the single active-day occurrence for a count-quota cadence:
+ * exactly one occurrence per local date (key `quota:<localDateKey>:day`)
+ * spanning the owner's day — or the union of the timing windows when the owner
+ * named them. Progress toward the target lives in append-only progress events;
+ * the occurrence only carries the quota descriptor in `derivedTarget`.
+ */
+function buildQuotaOccurrence(
+  definition: LifeOpsTaskDefinition,
+  existing: LifeOpsOccurrence | undefined,
+  cadence: Extract<LifeOpsCadence, { kind: "count_per_day" }>,
+  windowMap: Map<string, LifeOpsTimeWindowDefinition>,
+  localDate: Pick<ZonedDateParts, "year" | "month" | "day">,
+  localDateKey: string,
+  now: Date,
+): LifeOpsOccurrence {
+  let startMinute = 0;
+  let endMinute = 24 * 60 - 1;
+  let windowName: string | null = null;
+  if (cadence.timing.kind === "windows") {
+    const windows = cadence.timing.windows
+      .map((name) => windowMap.get(name))
+      .filter((window): window is LifeOpsTimeWindowDefinition =>
+        Boolean(window),
+      );
+    if (windows.length > 0) {
+      startMinute = Math.min(...windows.map((window) => window.startMinute));
+      endMinute = Math.max(...windows.map((window) => window.endMinute));
+      windowName = cadence.timing.windows.join("+");
+    }
+  }
+  const startDate = addDaysToLocalDate(
+    localDate,
+    Math.floor(startMinute / (24 * 60)),
+  );
+  const endDate = addDaysToLocalDate(
+    localDate,
+    Math.floor(endMinute / (24 * 60)),
+  );
+  const startMinuteOfDay = startMinute % (24 * 60);
+  const endMinuteOfDay = endMinute % (24 * 60);
+  const scheduledAt = buildUtcDateFromLocalParts(definition.timezone, {
+    ...startDate,
+    hour: Math.floor(startMinuteOfDay / 60),
+    minute: startMinuteOfDay % 60,
+    second: 0,
+  } satisfies ZonedDateParts);
+  const dueAt = buildUtcDateFromLocalParts(definition.timezone, {
+    ...endDate,
+    hour: Math.floor(endMinuteOfDay / 60),
+    minute: endMinuteOfDay % 60,
+    second: 59,
+  } satisfies ZonedDateParts);
+  const relevanceStartAt = addMinutes(
+    scheduledAt,
+    -(cadence.visibilityLeadMinutes ?? 0),
+  );
+  const relevanceEndAt = addMinutes(dueAt, cadence.visibilityLagMinutes ?? 0);
+  const occurrenceKey = buildOccurrenceKey("quota", localDateKey, "day");
+  return {
+    id: existing?.id ?? crypto.randomUUID(),
+    agentId: definition.agentId,
+    domain: definition.domain,
+    subjectType: definition.subjectType,
+    subjectId: definition.subjectId,
+    visibilityScope: definition.visibilityScope,
+    contextPolicy: definition.contextPolicy,
+    definitionId: definition.id,
+    occurrenceKey,
+    scheduledAt: scheduledAt.toISOString(),
+    dueAt: dueAt.toISOString(),
+    relevanceStartAt: relevanceStartAt.toISOString(),
+    relevanceEndAt: relevanceEndAt.toISOString(),
+    windowName,
+    state: resolveOccurrenceState(
+      existing?.state,
+      relevanceStartAt,
+      relevanceEndAt,
+      now,
+      existing?.snoozedUntil ?? null,
+    ),
+    snoozedUntil: existing?.snoozedUntil ?? null,
+    completionPayload: existing?.completionPayload ?? null,
+    derivedTarget: {
+      kind: "count_per_day",
+      targetCount: cadence.targetCount,
+      unit: cadence.unit,
+      perOccurrenceWork: cadence.perOccurrenceWork,
+    },
+    metadata: {
+      ...(existing?.metadata ?? {}),
+      localDateKey,
+      cadenceKind: cadence.kind,
+    },
+    createdAt: existing?.createdAt ?? now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+}
+
 function resolveLagMinutes(cadence: LifeOpsCadence): number {
   if (cadence.kind === "once") {
     return cadence.visibilityLagMinutes ?? 6 * 60;
@@ -493,6 +592,21 @@ export function materializeDefinitionOccurrences(
   for (let offset = -lookbackDays; offset <= lookaheadDays; offset += 1) {
     const localDate = addDaysToLocalDate(anchorDate, offset);
     const localDateKey = getLocalDateKey(localDate);
+
+    if (definition.cadence.kind === "count_per_day") {
+      materialized.push(
+        buildQuotaOccurrence(
+          definition,
+          existingByKey.get(buildOccurrenceKey("quota", localDateKey, "day")),
+          definition.cadence,
+          windowMap,
+          localDate,
+          localDateKey,
+          now,
+        ),
+      );
+      continue;
+    }
 
     if (definition.cadence.kind === "weekly") {
       const weekday = getWeekdayForLocalDate(localDate);

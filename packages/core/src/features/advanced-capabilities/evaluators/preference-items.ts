@@ -77,9 +77,6 @@ import {
 	STRENGTHEN_DELTA,
 } from "./reflection-items.ts";
 
-const RECENT_MESSAGES_LIMIT = 10;
-const PREFERENCE_FACT_LOOKBACK = 60;
-const MAX_KNOWN_PREFERENCES = 15;
 // Slot writes shape EVERY subsequent prompt for this user (and verbosity is
 // hard-enforced post-generation), so only high-confidence signals may touch
 // the PersonalityStore. Preference facts have no gate — they go through the
@@ -177,14 +174,12 @@ async function preparePreferences(
 		runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: RECENT_MESSAGES_LIMIT,
 			unique: false,
 		}),
 		runtime.getMemories({
 			tableName: "facts",
 			roomId: message.roomId,
 			entityId: message.entityId,
-			limit: PREFERENCE_FACT_LOOKBACK,
 			unique: false,
 		}),
 	]);
@@ -216,7 +211,7 @@ function formatSlotForPrompt(slot: PersonalitySlot | null): string {
 
 function formatKnownPreferences(facts: Memory[]): string {
 	const lines: string[] = [];
-	for (const fact of facts.slice(0, MAX_KNOWN_PREFERENCES)) {
+	for (const fact of facts) {
 		const text = fact.content.text ?? "";
 		if (text) lines.push(`- ${text}`);
 	}
@@ -469,7 +464,6 @@ ${formatRecentMessages(prepared.recentMessages)}`;
 								tableName: "facts",
 								roomId: message.roomId,
 								entityId: message.entityId,
-								limit: PREFERENCE_FACT_LOOKBACK,
 								unique: false,
 							})
 						).filter(isDurablePreferenceFact)

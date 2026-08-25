@@ -1,8 +1,23 @@
 /**
  * Proves the launch-critical personal Eliza path against the real local Worker,
- * PGlite database, and Durable Objects. External model credentials are blanked:
- * the first turn is a deterministic Shared capability refusal, so any accidental
- * provider dispatch changes the response or fails instead of spending money.
+ * PGlite database, and Durable Objects. External model credentials are blanked,
+ * so no paid provider can be dialed; the OpenRouter backup (the route the
+ * shared default model takes once Cerebras is unconfigured) is pointed at an
+ * in-spec scripted model that answers the first turn with one fixed capability
+ * refusal. Since #22844 the Shared capability wall is no longer a canned reply
+ * but a constraint the runtime injects into the model prompt, so the refusal is
+ * model-voiced: this spec pins that injected constraint verbatim and counts the
+ * scripted model's calls, which also proves the racing first deliveries land
+ * exactly one model turn.
+ *
+ * Harness notes:
+ * - Env passthrough: the Worker only sees env keys sync-api-dev-vars knows
+ *   (.env.example keys, real values in cloud/shared/.env[.local], and the
+ *   provider-key allowlist). OPENROUTER_BASE_URL is an explicit provider
+ *   override, so the loopback route is forwarded without developer-local files.
+ * - Request shape: every Telegram delivery carries the connector account id the
+ *   gateway sends (required by the route since #24322), and the Steward claim
+ *   carries the explicit Telegram claim confirmation marker (#21925).
  */
 
 import { randomUUID } from "node:crypto";
@@ -10,8 +25,9 @@ import { mintStewardTokenFromClaims } from "@elizaos/cloud-shared/lib/auth/stewa
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 // The coverage classifier requires a direct Playwright marker for changed specs.
 import type {} from "@playwright/test";
+import { type RunningMockLlm, startMockLlm } from "../src/fixtures/mock-llm";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
-import { expect, test } from "../src/helpers/test-fixtures";
+import { test as base, expect } from "../src/helpers/test-fixtures";
 
 const STEWARD_JWT_SECRET = "personal-eliza-first-five-local-secret-32-bytes";
 const STEWARD_USER_ID = "steward-personal-eliza-first-five";
@@ -19,28 +35,17 @@ const RUN_ID = randomUUID();
 const TELEGRAM_USER_ID = BigInt(
   `0x${RUN_ID.replaceAll("-", "").slice(0, 15)}`,
 ).toString();
+const TELEGRAM_CONNECTOR_ACCOUNT = "telegram:first-five-bot";
 const CAPABILITY_REQUEST = "save this as a note";
+// Served by the in-spec scripted model for the capability request and asserted
+// exactly; the runtime voices the wall through the model since #22844.
 const CAPABILITY_REPLY =
-  "Persistent notes need Dedicated. I can remember this conversation, but Shared doesn't manage a separate notes store.";
-
-test.use({
-  stackOptions: {
-    frontend: false,
-    env: {
-      STEWARD_JWT_SECRET,
-      STEWARD_TENANT_ID: "elizacloud",
-      // The sync script normally preserves real provider keys from a developer's
-      // shell/.env. An explicit empty override keeps this proof offline and free.
-      PRESERVE_E2E_PROVIDER_ENV: "1",
-      CEREBRAS_API_KEY: "",
-      OPENROUTER_API_KEY: "",
-      OPENAI_API_KEY: "",
-      OPENAI_BASE_URL: "",
-      ANTHROPIC_API_KEY: "",
-      GROQ_API_KEY: "",
-    },
-  },
-});
+  "I can't save notes on this chat, so nothing was stored. I'll keep it in our conversation instead: save this as a note.";
+// The capability wall the runtime injects for a notes request, pinned verbatim
+// to shared-capability-wall.ts (constraint) and run-shared-agent-turn.ts
+// (prompt block).
+const NOTES_CAPABILITY_CONSTRAINT =
+  "Unavailable actions detected in this turn:\n- Notes: This runtime has no separate persistent notes store, so it cannot read or change notes.";
 
 interface SharedDeliveryResponse {
   success?: boolean;
@@ -48,10 +53,91 @@ interface SharedDeliveryResponse {
     identity?: { id?: string; runtime?: string };
     account?: { userId?: string; organizationId?: string };
     reply?: string;
+    /** Only group turns carry a send authority; a DM turn never does. */
+    groupDelivery?: unknown;
   };
   code?: string;
   retryable?: boolean;
 }
+
+const test = base.extend<
+  Record<never, never>,
+  { scriptedModel: RunningMockLlm }
+>({
+  // The scripted model binds an ephemeral loopback port before the stack
+  // boots, so the worker env can name it and nothing collides with other
+  // local stacks.
+  scriptedModel: [
+    // biome-ignore lint/correctness/noEmptyPattern: Playwright derives fixture dependencies from this destructuring pattern; the model has none.
+    async ({}, use) => {
+      const model = await startMockLlm({
+        fixtures: [
+          {
+            name: "notes-capability-refusal",
+            times: 1,
+            match: (call) => {
+              const prompt = String(call.params.prompt);
+              return (
+                call.toolNames.includes("HANDLE_RESPONSE") &&
+                prompt.includes(CAPABILITY_REQUEST) &&
+                prompt.includes(NOTES_CAPABILITY_CONSTRAINT)
+              );
+            },
+            response: {
+              finishReason: "tool_calls",
+              toolCalls: [
+                {
+                  id: "call_capability_refusal",
+                  name: "HANDLE_RESPONSE",
+                  arguments: {
+                    shouldRespond: "RESPOND",
+                    contexts: ["simple"],
+                    intents: ["decline unavailable notes action"],
+                    replyText: CAPABILITY_REPLY,
+                    replyEffectStatus: "none",
+                    candidateActionNames: [],
+                    facts: [],
+                    relationships: [],
+                    topics: ["notes"],
+                    addressedTo: [],
+                    emotion: "none",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+      try {
+        await use(model);
+      } finally {
+        await model.stop();
+      }
+    },
+    { scope: "worker" },
+  ],
+  stackOptions: async ({ scriptedModel }, use) => {
+    await use({
+      frontend: false,
+      env: {
+        STEWARD_JWT_SECRET,
+        STEWARD_TENANT_ID: "elizacloud",
+        // The sync script normally preserves real provider keys from a
+        // developer's shell/.env. Explicit empty overrides keep this proof
+        // offline and free; the OpenRouter backup alone is pointed at the
+        // scripted model.
+        PRESERVE_E2E_PROVIDER_ENV: "1",
+        CEREBRAS_API_KEY: "",
+        OPENAI_API_KEY: "",
+        OPENAI_BASE_URL: "",
+        ANTHROPIC_API_KEY: "",
+        GROQ_API_KEY: "",
+        OPENROUTER_API_KEY: "local-scripted-model-key",
+        OPENROUTER_BASE_URL: scriptedModel.url,
+      },
+    });
+  },
+});
 
 interface SharedHistoryResponse {
   messages?: Array<{ id: string; role: "user" | "assistant"; text: string }>;
@@ -82,6 +168,7 @@ async function postTelegramDelivery(
       body: JSON.stringify({
         platform: "telegram",
         project: "eliza-app",
+        connectorAccountId: TELEGRAM_CONNECTOR_ACCOUNT,
         chatId: TELEGRAM_USER_ID,
         telegramUserId: TELEGRAM_USER_ID,
         telegramUsername: "first_five_nubs",
@@ -152,6 +239,7 @@ async function waitForMirroredHistory(agentId: string): Promise<{
 test.describe("personal Eliza first five minutes", () => {
   test("keeps first contact rowless and free, replays it, then claims the same account and history", async ({
     stack,
+    scriptedModel,
   }) => {
     test.setTimeout(180_000);
 
@@ -174,7 +262,14 @@ test.describe("personal Eliza first five minutes", () => {
         `first delivery failed: ${JSON.stringify(delivery.json)}`,
       ).toBe(200);
       expect(delivery.json.data?.reply).toBe(CAPABILITY_REPLY);
+      expect(delivery.json.data?.identity?.runtime).toBe("shared");
+      expect(delivery.json.data?.groupDelivery).toBeUndefined();
     }
+    // One landed turn: the racing pair produced exactly one model call, and
+    // that call carried the capability wall for the notes request, so the
+    // refusal was governed by the runtime rather than improvised by the model.
+    expect(scriptedModel.requestCount()).toBe(1);
+    expect(() => scriptedModel.assertFixturesConsumed()).not.toThrow();
 
     const account = firstDeliveries[0]?.json.data?.account;
     const personalId = firstDeliveries[0]?.json.data?.identity?.id;
@@ -266,6 +361,9 @@ test.describe("personal Eliza first five minutes", () => {
     expect(connect.status, JSON.stringify(connect.json)).toBe(200);
     expect(connect.json.data?.account).toEqual(account);
     expect(connect.json.data?.identity?.id).toBe(personalId);
+    expect(connect.json.data?.groupDelivery).toBeUndefined();
+    // /connect is route-owned: no model turn.
+    expect(scriptedModel.requestCount()).toBe(1);
     const reply = connect.json.data?.reply;
     if (!reply) throw new Error("Telegram /connect did not return a reply");
     const continuationToken = continuationTokenFromReply(reply);
@@ -292,9 +390,13 @@ test.describe("personal Eliza first five minutes", () => {
           "Content-Type": "application/json",
           Origin: stack.urls.api,
         },
+        // The browser's explicit claim ceremony: since #21925 a continuation
+        // is only honoured with this marker, which ordinary login sync never
+        // sends.
         body: JSON.stringify({
           token: minted.token,
           telegramContinuation: continuationToken,
+          telegramClaimConfirmation: "explicit",
         }),
       },
     );
@@ -388,5 +490,7 @@ test.describe("personal Eliza first five minutes", () => {
         account.organizationId,
       ),
     ).toHaveLength(0);
+    // Nor did the claim or the authenticated reads dispatch any model work.
+    expect(scriptedModel.requestCount()).toBe(1);
   });
 });

@@ -108,10 +108,15 @@ export async function routeAutonomyTextToUser(
   }
   if (!conv) {
     // Fall back to most recently updated conversation
-    const sorted = Array.from(state.conversations.values()).sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
+    const sorted = Array.from(state.conversations.values()).sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.updatedAt).getTime())
+        ? new Date(a.updatedAt).getTime()
+        : 0;
+      const bTime = Number.isFinite(new Date(b.updatedAt).getTime())
+        ? new Date(b.updatedAt).getTime()
+        : 0;
+      return bTime - aTime;
+    });
     conv = sorted[0];
   }
   if (!conv) return; // No conversations exist yet
@@ -441,15 +446,16 @@ async function buildTaskResultLine(task: {
     // originalTask can be the ENTIRE composed kickoff prompt (the tasks.ts
     // "--- Swarm Coordination ---" scaffold plus embedded examples) — relaying
     // it raw posted a wall of prompt text to a live Discord room. Prefer the
-    // spawn label; a kickoff-shaped originalTask is never usable, otherwise a
-    // single capped line keeps the lifecycle notice a notice.
+    // spawn label; a kickoff-shaped originalTask is never usable. Otherwise
+    // the complete first line keeps the lifecycle notice tied to the task
+    // without silently changing its text.
     const label = task.label?.trim();
     const firstLine = task.originalTask.split("\n", 1)[0]?.trim() ?? "";
     const ask =
       label ||
       (task.originalTask.includes("--- Swarm Coordination ---")
         ? "coding task"
-        : firstLine.slice(0, 140) || "coding task");
+        : firstLine || "coding task");
     return `${ask} — ${task.status} before completion.`;
   }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
@@ -478,10 +484,11 @@ async function buildTaskResultLine(task: {
   if (validationSummary) return validationSummary;
   // Same rule as the non-completed branch: originalTask can be the entire
   // composed kickoff prompt — never echo it raw. Prefer the label; a
-  // kickoff-shaped task is unusable; otherwise one capped line.
+  // kickoff-shaped task is unusable; otherwise preserve its complete first
+  // line.
   const taskLine = task.originalTask.includes("--- Swarm Coordination ---")
     ? task.label?.trim() || "Task completed."
-    : task.originalTask.split("\n", 1)[0]?.trim().slice(0, 140) ||
+    : task.originalTask.split("\n", 1)[0]?.trim() ||
       task.label?.trim() ||
       "Task completed.";
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
@@ -893,11 +900,19 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             if (displayText && displayText.length > 2) {
               const conv = st.activeConversationId
                 ? st.conversations.get(st.activeConversationId)
-                : Array.from(st.conversations.values()).sort(
-                    (a, b) =>
-                      new Date(b.updatedAt).getTime() -
+                : Array.from(st.conversations.values()).sort((a, b) => {
+                    const aTime = Number.isFinite(
                       new Date(a.updatedAt).getTime(),
-                  )[0];
+                    )
+                      ? new Date(a.updatedAt).getTime()
+                      : 0;
+                    const bTime = Number.isFinite(
+                      new Date(b.updatedAt).getTime(),
+                    )
+                      ? new Date(b.updatedAt).getTime()
+                      : 0;
+                    return bTime - aTime;
+                  })[0];
               if (conv) {
                 st.broadcastWs?.({
                   type: "proactive-message",

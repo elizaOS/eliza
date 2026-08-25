@@ -32,7 +32,6 @@ export type LifeOpsMessageReliabilityChannel =
   | "x_dm"
   | "discord"
   | "telegram"
-  | "signal"
   | "whatsapp"
   | "sms";
 
@@ -46,7 +45,6 @@ const MESSAGE_CHANNEL_WEIGHTS: Record<
   x_dm: 0.8,
   discord: 0.8,
   telegram: 0.8,
-  signal: 0.8,
   whatsapp: 0.8,
   sms: 0.8,
 };
@@ -122,7 +120,6 @@ function normalizeMessageReliabilityChannel(
   if (normalized.includes("discord")) return "discord";
   if (normalized.includes("imessage")) return "imessage";
   if (normalized.includes("whatsapp")) return "whatsapp";
-  if (normalized.includes("signal")) return "signal";
   if (normalized.includes("sms") || normalized.includes("twilio")) {
     return "sms";
   }

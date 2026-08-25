@@ -21,6 +21,8 @@ from urllib.parse import urlparse
 
 from openai import OpenAI
 
+from lib.generation_integrity import require_complete_generation
+
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 JUDGE_SCHEMA_VERSION = "groq-judge-v1"
 JUDGE_API_KEY_ENV_VARS = (
@@ -334,7 +336,8 @@ def _completion_text(response: Any) -> str:
     choices = getattr(response, "choices", []) or []
     if not choices:
         raise ValueError("Groq judge response contained no choices.")
-    message = getattr(choices[0], "message", None)
+    choice = require_complete_generation(choices[0], source="groq_judge_bundles")
+    message = getattr(choice, "message", None)
     content = getattr(message, "content", None)
     if not isinstance(content, str) or not content.strip():
         raise ValueError("Groq judge response contained no textual content.")

@@ -45,6 +45,8 @@ import {
 	createUniqueUuid,
 	hasRoleAccess,
 	type IAgentRuntime,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	type ConnectorCommand,
@@ -63,7 +65,7 @@ import {
 	type SlashCommand,
 	type SlashCommandOption,
 } from "./slash-commands";
-import { getMessageService, getMessagingAPI } from "./utils";
+import { getMessageService, getMessagingAPI, splitMessage } from "./utils";
 
 /** How long to wait for the agent to produce a reply before giving up. */
 const AGENT_REPLY_TIMEOUT_MS = 60_000;
@@ -71,6 +73,22 @@ const AGENT_REPLY_TIMEOUT_MS = 60_000;
 /** The catalog surface this bridge serves. */
 const DISCORD_SURFACE = "discord";
 const DISCORD_EMBED_COMMAND = "app";
+
+async function replyEphemeralInFull(
+	interaction: ChatInputCommandInteraction,
+	text: string,
+): Promise<void> {
+	const chunks = splitMessage(text, 1_900);
+	const first = chunks.shift() ?? " ";
+	await safeInteractionCall(() =>
+		interaction.reply({ content: first, ephemeral: true }),
+	);
+	for (const chunk of chunks) {
+		await safeInteractionCall(() =>
+			interaction.followUp({ content: chunk, ephemeral: true }),
+		);
+	}
+}
 
 /**
  * Map a Discord interaction onto the runtime entity / room the rest of the
@@ -280,10 +298,16 @@ async function routeCommandToAgent(
 	}
 
 	const content =
-		replied.trim().length > 0
-			? replied.slice(0, 1900)
-			: `Ran \`${commandText}\`.`;
-	await safeInteractionCall(() => interaction.editReply({ content }));
+		replied.trim().length > 0 ? replied : `Ran \`${commandText}\`.`;
+	const chunks = splitMessage(content, 1_900);
+	await safeInteractionCall(() =>
+		interaction.editReply({ content: chunks.shift() ?? " " }),
+	);
+	for (const chunk of chunks) {
+		await safeInteractionCall(() =>
+			interaction.followUp({ content: chunk, ephemeral: true }),
+		);
+	}
 }
 
 /**
@@ -307,12 +331,7 @@ async function dispatchAgentCommand(
 		...(sender.senderName ? { senderName: sender.senderName } : {}),
 	});
 	if (resolved.handled && resolved.reply !== undefined) {
-		await safeInteractionCall(() =>
-			interaction.reply({
-				content: resolved.reply?.slice(0, 1900) ?? "",
-				ephemeral: true,
-			}),
-		);
+		await replyEphemeralInFull(interaction, resolved.reply ?? "");
 		return;
 	}
 
@@ -400,14 +419,28 @@ function buildExecute(command: ConnectorCommand): SlashCommand["execute"] {
 }
 
 /** Map a catalog option onto the plugin's `SlashCommandOption` shape. */
-function mapOption(
+export function mapOption(
 	option: ConnectorCommand["options"][number],
 ): SlashCommandOption {
 	const choices =
-		option.choices.length > 0
-			? option.choices
-					.slice(0, 25)
-					.map((value) => ({ name: value.slice(0, 100), value }))
+		option.choices.length > 0 &&
+		option.choices.length <= 25 &&
+		option.choices.every(
+			(value) =>
+				value.length > 0 &&
+				value.length <= 100 &&
+				toWellFormedUnicode(value) === value,
+		)
+			? option.choices.map((value) => {
+					const wellFormed = toWellFormedUnicode(value);
+					return {
+						name:
+							wellFormed.length > 100
+								? truncateWellFormed(wellFormed, 100)
+								: wellFormed,
+						value,
+					};
+				})
 			: undefined;
 	return {
 		name: option.name,

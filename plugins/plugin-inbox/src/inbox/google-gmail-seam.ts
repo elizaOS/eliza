@@ -271,7 +271,7 @@ function gmailMessageFromGoogle(args: {
     replyTo: message.replyTo?.email ?? null,
     to: (message.to ?? []).map((item) => item.email),
     cc: (message.cc ?? []).map((item) => item.email),
-    snippet: message.snippet ?? message.bodyText?.slice(0, 240) ?? "",
+    snippet: message.snippet ?? message.bodyText ?? "",
     receivedAt,
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),
@@ -312,7 +312,7 @@ export interface InboxGmailGateway {
   searchGmail(args: {
     grant: LifeOpsConnectorGrant;
     query: string;
-    maxResults: number;
+    maxResults?: number;
     includeSpamTrash?: boolean;
     now?: Date;
   }): Promise<LifeOpsGmailSearchFeed>;
@@ -379,7 +379,7 @@ export function createInboxGmailGateway(
       const googleMessages = await searchMessages({
         accountId: accountIdForGrant(args.grant),
         query,
-        limit: args.maxResults,
+        ...(args.maxResults === undefined ? {} : { limit: args.maxResults }),
       });
       const messages = googleMessages.map((message) =>
         gmailMessageFromGoogle({

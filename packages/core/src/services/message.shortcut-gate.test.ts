@@ -431,26 +431,25 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(useModel).not.toHaveBeenCalled();
 	});
 
-	// #16230: a shortcut action's INTERNAL model call (e.g. the /compact
-	// compactor's ledger extraction) must not stream into the turn's visible
+	// #16230: a shortcut action's internal model call must not stream into the turn's visible
 	// reply. runShortcutGate runs the handler inside runWithSuppressedModelStream,
 	// so intermediate model output never reaches the chat SSE sink; the designed
 	// reply reaches the client through the captured callback text.
 	it("keeps a shortcut action's internal model output off the visible stream, surfacing only the reply (#16230)", async () => {
 		const LEDGER = '```json\n{"state":{"facts":["internal fact"]}}\n```';
-		const SUMMARY = "Compacted 8 older message(s); preserved the latest 4.";
+		const SUMMARY = "Shortcut completed.";
 		const visibleSink = vi.fn();
 
 		const registry = new ShortcutRegistry();
 		registry.register({
-			id: "cmd:compact",
+			id: "cmd:probe",
 			kind: "explicit",
-			aliases: ["/compact"],
-			target: { kind: "action", name: "COMPACT_CONVERSATION" },
+			aliases: ["/probe"],
+			target: { kind: "action", name: "PROBE" },
 		});
-		const compactAction: Action = {
-			name: "COMPACT_CONVERSATION",
-			description: "compact the conversation",
+		const probeAction: Action = {
+			name: "PROBE",
+			description: "exercise shortcut stream suppression",
 			validate: async () => true,
 			handler: async (rt, _message, _state, _options, callback) => {
 				// Internal model call: streaming happens inside useModel, which reads
@@ -465,7 +464,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		};
 		const runtime = {
 			agentId: "00000000-0000-0000-0000-0000000000a1" as UUID,
-			actions: [compactAction],
+			actions: [probeAction],
 			shortcutRegistry: registry,
 			getRoom: vi.fn(async () => null),
 			reportError: vi.fn(),
@@ -491,7 +490,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 				runShortcutGate({
 					// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
 					runtime: runtime as any,
-					message: msg("/compact"),
+					message: msg("/probe"),
 					state: {} as State,
 					responseId,
 					senderRole: "OWNER",
@@ -507,7 +506,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			{
 				success: true,
 				text: SUMMARY,
-				data: { actionName: "COMPACT_CONVERSATION" },
+				data: { actionName: "PROBE" },
 			},
 		]);
 	});

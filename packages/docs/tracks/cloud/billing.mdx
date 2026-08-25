@@ -3,9 +3,14 @@ title: Cloud Billing
 description: "Credits, top-up, Stripe, creator earnings."
 ---
 
-Eliza Cloud bills in **credits**. Credits cover inference, hosted containers,
-storage, and add-ons. They are USD-backed under the hood: 100 credits equals
-$1.00 in the current credit ledger.
+Eliza Cloud bills organization balances in **USD-denominated cloud credits**.
+One cloud credit equals **$1.00 USD** across checkout, balances, APIs, and the
+dashboard. Credits cover inference, hosted containers, storage, and add-ons.
+
+Older user-MCP integrations may still send `creditsPerRequest`, a legacy
+cent-like pricing-point field where 100 points equal $1. New integrations
+should use `priceUsd`; the server converts that price without rescaling stored
+organization balances.
 
 ## Top up
 

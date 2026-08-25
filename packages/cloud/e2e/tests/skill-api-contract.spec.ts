@@ -138,7 +138,7 @@ test.describe("skill ↔ API contract", () => {
     ).toBe(true);
 
     const orgCheckout = await c("POST", "/api/v1/credits/checkout", {
-      credits: 25,
+      amountUsd: 25,
       success_url: "https://example.com/ok",
       cancel_url: "https://example.com/no",
     });

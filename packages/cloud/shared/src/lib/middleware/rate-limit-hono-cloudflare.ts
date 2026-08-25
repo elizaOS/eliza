@@ -730,6 +730,31 @@ export const RateLimitPresets = {
   AGGRESSIVE: { windowMs: 60_000, maxRequests: 100, keyGenerator: getIpKey },
 } as const;
 
+/**
+ * Authoritative limiter policy for state-changing money routes (#22982).
+ *
+ * Preserves the caller's window, max, and key generator, then forces
+ * fail-closed shared-Redis checks. Caller options cannot weaken these flags:
+ * a Redis outage must 503, and a healthy allow must not be served from the
+ * per-isolate lease.
+ */
+export function moneyRateLimitConfig(base: RateLimitConfig): RateLimitConfig {
+  return {
+    ...base,
+    failClosed: true,
+    localLease: false,
+    redisUnavailableFallback: undefined,
+  };
+}
+
+export function moneyRateLimit(
+  base: RateLimitConfig,
+  cloudflare?: CloudflareRateLimitOptions,
+  dependencies?: RateLimitDependencies,
+): MiddlewareHandler<AppEnv> {
+  return rateLimit(moneyRateLimitConfig(base), cloudflare, dependencies);
+}
+
 export { getDefaultKey, getIpKey, getRequestIp };
 export const _multiplier = multiplier;
 export const _resetRedisUnavailableFallbackBuckets = () => redisUnavailableFallbackBuckets.clear();

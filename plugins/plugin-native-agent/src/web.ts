@@ -26,6 +26,22 @@ interface ElizaWindow extends Window {
   __ELIZA_API_TOKEN__?: string;
 }
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const CHAT_REQUEST_TIMEOUT_MS = 120_000;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
+
+function requestTimeoutMs(timeoutMs: unknown): number {
+  if (timeoutMs === undefined) return DEFAULT_REQUEST_TIMEOUT_MS;
+  if (
+    typeof timeoutMs !== "number" ||
+    !Number.isFinite(timeoutMs) ||
+    timeoutMs <= 0
+  ) {
+    throw new Error("Agent.request timeoutMs must be a finite positive number");
+  }
+  return Math.min(Math.ceil(timeoutMs), MAX_TIMER_TIMEOUT_MS);
+}
+
 function readConfiguredApiBase(): string | undefined {
   if (typeof window === "undefined") return undefined;
   const base = (window as ElizaWindow).__ELIZAOS_APP_BOOT_CONFIG__?.apiBase;
@@ -135,6 +151,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
 
     const res = await fetch(`${this.apiBase()}/api/conversations`, {
       method: "POST",
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: {
         "Content-Type": "application/json",
         ...this.authHeaders(),
@@ -165,6 +182,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       `${this.apiBase()}/api/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
         method: "POST",
+        signal: AbortSignal.timeout(CHAT_REQUEST_TIMEOUT_MS),
         headers: {
           "Content-Type": "application/json",
           ...this.authHeaders(),
@@ -253,6 +271,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     }
     const res = await fetch(`${this.apiBase()}/api/agent/start`, {
       method: "POST",
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
     const data = await res.json();
@@ -265,6 +284,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     }
     const res = await fetch(`${this.apiBase()}/api/agent/stop`, {
       method: "POST",
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
     return res.json();
@@ -281,6 +301,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
       };
     }
     const res = await fetch(`${this.apiBase()}/api/status`, {
+      signal: AbortSignal.timeout(DEFAULT_REQUEST_TIMEOUT_MS),
       headers: this.authHeaders(),
     });
     return res.json();
@@ -305,6 +326,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   async request(options: AgentRequestOptions): Promise<AgentRequestResult> {
     const path = assertRequestPath(options.path);
     const method = assertRequestMethod(options.method);
+    const timeoutMs = requestTimeoutMs(options.timeoutMs);
     if (this.isLocalAgentIpcBase()) {
       return {
         status: 503,
@@ -319,6 +341,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     }
     const res = await fetch(`${this.apiBase()}${path}`, {
       method,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         ...this.authHeaders(),
         ...options.headers,

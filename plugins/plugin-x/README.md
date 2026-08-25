@@ -57,7 +57,7 @@ TWITTER_DRY_RUN=false             # simulate writes, post nothing
 TWITTER_POST_IMMEDIATELY=false    # post once on startup
 TWITTER_TARGET_USERS=             # comma-separated usernames; empty or "*" = all
 TWITTER_NICKNAMES=                # comma-separated nicknames the agent answers to (TWITTER_IDENTITY provider)
-TWITTER_MAX_TWEET_LENGTH=280
+TWITTER_MAX_TWEET_LENGTH=280       # X-weighted units; oversized posts fail without rewriting
 TWITTER_RETRY_LIMIT=5
 TWITTER_DM_POLL_INTERVAL_SECONDS=60 # minimum 15 seconds
 

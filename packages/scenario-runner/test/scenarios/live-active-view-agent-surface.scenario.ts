@@ -333,7 +333,7 @@ export default scenario({
   tags: ["live", "app-control", "views", "active-view"],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-app-control", "scenario-active-view-routes"],
+    plugins: ["@elizaos/plugin-app-control"],
   },
   seed: [
     {

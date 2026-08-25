@@ -167,6 +167,10 @@ async function runScreenStreaming(): Promise<string | undefined> {
 export default scenario({
   id: "deterministic-screen-streaming",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Seed and final checks exercise runtime state without model calls.",
+  },
   title: "Continuous screen streaming dedups identical frames (1 remote call)",
   domain: "computeruse",
   tags: [

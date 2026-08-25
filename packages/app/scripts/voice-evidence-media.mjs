@@ -113,7 +113,13 @@ function packagedBinary(name) {
   }
 }
 
-export function resolveMediaTools(env = process.env) {
+/**
+ * Locate ffmpeg/ffprobe without asserting they exist. Callers that can offer a
+ * degraded path (the test suite, which reports an explicit skip rather than
+ * failing a whole CI lane on an unprovisioned runner) use this; evidence
+ * production uses `resolveMediaTools`, which fails closed.
+ */
+export function findMediaTools(env = process.env) {
   const ffmpeg = [
     env.ELIZA_FFMPEG_BIN,
     "ffmpeg",
@@ -124,12 +130,18 @@ export function resolveMediaTools(env = process.env) {
     "ffprobe",
     packagedBinary("ffprobe-static"),
   ].find(executable);
-  if (!ffmpeg || !ffprobe) {
+  if (!ffmpeg || !ffprobe) return undefined;
+  return { ffmpeg, ffprobe };
+}
+
+export function resolveMediaTools(env = process.env) {
+  const tools = findMediaTools(env);
+  if (!tools) {
     throw new Error(
       "Voice evidence requires ffmpeg and ffprobe; run bun run evidence:install-tools.",
     );
   }
-  return { ffmpeg, ffprobe };
+  return tools;
 }
 
 function walkFiles(root) {

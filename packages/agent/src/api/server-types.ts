@@ -30,8 +30,6 @@ export interface StoppablePairingSession {
   stop: () => void | Promise<void>;
 }
 
-export type PairingSnapshotLike = Record<string, unknown>;
-
 export interface TelegramAccountAuthSessionLike {
   stop: () => void | Promise<void>;
 }
@@ -221,10 +219,6 @@ export interface ServerState {
   connectorHealthMonitor: ConnectorHealthMonitor | null;
   /** Active WhatsApp pairing sessions (QR code flow). */
   whatsappPairingSessions?: Map<string, StoppablePairingSession>;
-  /** Active Signal pairing sessions (device linking flow). */
-  signalPairingSessions?: Map<string, StoppablePairingSession>;
-  /** Last known Signal pairing snapshots, including terminal failures. */
-  signalPairingSnapshots?: Map<string, PairingSnapshotLike>;
   /** Active Telegram account auth session (user-account login flow). */
   telegramAccountAuthSession?: TelegramAccountAuthSessionLike | null;
 }

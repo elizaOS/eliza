@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const callbackState = vi.hoisted(() => ({
   hasCallback: true,
+  returnedState: "state-1" as string | null,
   expectedState: "state-1" as string | null,
   pkceVerifier: "verifier-1" as string | undefined,
   exchangeCalls: 0,
@@ -29,6 +30,7 @@ const callbackState = vi.hoisted(() => ({
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => callbackState.hasCallback,
   consumeStewardCodeFromQuery: () => "callback-code",
+  consumeStewardOAuthStateFromCallback: () => callbackState.returnedState,
   stripLegacyTokenHashFromAddressBar: () => false,
   exchangeStewardCodeViaApi: () => {
     callbackState.exchangeCalls += 1;
@@ -117,6 +119,7 @@ function renderSection(initialUrl = "/login?code=callback-code&state=state-1") {
 describe("StewardLoginSection — OAuth callback completion state (#13519)", () => {
   beforeEach(() => {
     callbackState.hasCallback = true;
+    callbackState.returnedState = "state-1";
     callbackState.expectedState = "state-1";
     callbackState.pkceVerifier = "verifier-1";
     callbackState.exchangeCalls = 0;
@@ -200,6 +203,7 @@ describe("StewardLoginSection — OAuth callback completion state (#13519)", () 
   });
 
   it("refuses the exchange when the callback carries no state echo", async () => {
+    callbackState.returnedState = null;
     renderSection("/login?code=callback-code");
 
     await waitFor(() =>

@@ -5,10 +5,7 @@
  * consume (timestamp strings → `Date`). Gated on the synchronous session check
  * so we never fire before the session is restored from storage.
  */
-import type {
-  CurrentUserDto,
-  CurrentUserResponse,
-} from "@elizaos/cloud-shared/types";
+import type { CurrentUserDto, CurrentUserResponse } from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import { useSessionAuth } from "../../lib/use-session-auth";

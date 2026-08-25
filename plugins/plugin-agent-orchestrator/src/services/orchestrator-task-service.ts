@@ -7,9 +7,10 @@
  *
  * 1. **Event bridge.** Subscribes to {@link AcpService} session events and
  *    records them against the owning task — status, tool activity, messages,
- *    token usage. A sub-agent's `task_complete` moves the task to `validating`,
- *    never straight to `done`; promotion to `done` requires an explicit
- *    {@link OrchestratorTaskService.validateTask} call.
+ *    token usage. Session completion is evidence; only the elected coordinator
+ *    may move the aggregate task to `validating` after required contributor
+ *    receipts are delivered and reviewed. Promotion to `done` requires an
+ *    explicit {@link OrchestratorTaskService.validateTask} call.
  * 2. **Lifecycle API.** Create / list / inspect / update / pause / resume /
  *    archive / reopen / delete / fork tasks, spawn and steer sub-agents through
  *    the mandatory goal wrapper, and aggregate cross-task status.
@@ -40,6 +41,7 @@ import {
   Service,
   TRACE_ENV,
   type TrajectoryUsageRollup,
+  toWellFormedUnicode,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -58,6 +60,7 @@ import {
   type SerializableSpawnOpts,
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
+import { deriveChildTerminalResult } from "./child-terminal-result.js";
 import {
   extractWriteLedger,
   verifyClaimedFiles,
@@ -153,7 +156,6 @@ import { OrchestratorTaskStore } from "./orchestrator-task-store.js";
 import {
   type AttemptReflection,
   type CreateTaskInput,
-  MAX_ATTEMPT_REFLECTIONS,
   MAX_SESSION_RETRY_ATTEMPTS,
   nextTaskStatus,
   type OrchestratorAccountAssignment,
@@ -174,6 +176,7 @@ import {
   resolveStateLostRespawnCap,
   resolveTaskTransition,
   stateLostRespawnUnderCap,
+  type TaskCompletionRole,
   type TaskLifecycleTrigger,
   type TaskListFilter,
   type TaskMessageDirection,
@@ -194,6 +197,7 @@ import {
   renderDeterministicVerdict,
 } from "./producible-evidence.js";
 import {
+  assertProjectIdRegistered,
   resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
@@ -217,6 +221,7 @@ import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   TASK_SUPERVISOR_SERVICE_TYPE,
   type TaskSupervisorService,
@@ -227,6 +232,8 @@ import {
   SessionCapError,
   type SessionInfo,
   type SpawnResult,
+  type SubscriptionExecutionAuthorization,
+  subscriptionExecutionAuthorizationFromMetadata,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
@@ -307,9 +314,8 @@ function configuredDefaultAgentType(runtime: {
   // Fall back to process.env. runtime.getSetting reads character
   // settings/secrets, not raw env, so a deployment that configures the default
   // agent purely via an env var (e.g. ELIZA_ACP_DEFAULT_AGENT=codex on a
-  // container) would otherwise be ignored and the spawn would fall through to
-  // the "opencode" fallback, which may not be installed. This mirrors the env
-  // resolution the spawn-workdir path already does.
+  // container) would otherwise be ignored. This mirrors the env resolution the
+  // spawn-workdir path already does.
   for (const key of ["ELIZA_ACP_DEFAULT_AGENT", "ELIZA_DEFAULT_AGENT_TYPE"]) {
     const raw = process.env[key];
     if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
@@ -321,10 +327,6 @@ function configuredDefaultAgentType(runtime: {
  *  read-only execution verifier (#8898), distinct from the text judge's
  *  `llm-goal-verifier`, so the validation event's origin is unambiguous. */
 const INDEPENDENT_ACP_VERIFIER_NAME = "independent-acp-verifier";
-
-/** Cap on child trajectories ingested per task_complete (#13775) so a runaway
- *  sub-agent can't flood the task doc; the store's MAX_ARTIFACTS also clamps. */
-const MAX_CHILD_TRAJECTORY_ARTIFACTS = 20;
 
 /** Default retention window for per-task child-trajectory dirs under the state
  *  dir (#14109). A per-task `<stateDir>/orchestrator/child-trajectories/<taskId>`
@@ -401,6 +403,12 @@ export interface SpawnAgentForTaskOptions {
    * the max-nesting-depth cap so self-spawning can't run away.
    */
   nestingDepth?: number;
+  /** Internal completion authority; ordinary callers rely on first-session election. */
+  completionRole?: TaskCompletionRole;
+  /** Internal lineage for a contributor spawned by another coding session. */
+  parentSessionId?: string;
+  /** Internal barrier membership; contributors are required by default. */
+  requiredForTaskCompletion?: boolean;
   /**
    * Internal: the admission-queue drain sets this false so a cap race during a
    * replayed dispatch RETHROWS SessionCapError instead of self-parking. The
@@ -409,6 +417,8 @@ export interface SpawnAgentForTaskOptions {
    * enqueuedAt and push the task to the back of its band.
    */
   parkOnCap?: boolean;
+  /** Interactive authority minted by the route/action boundary and persisted. */
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
 }
 
 /**
@@ -561,6 +571,15 @@ function isSerializableSpawnOpts(
     const field = value[key];
     if (field !== undefined && typeof field !== "string") return false;
   }
+  if (
+    value.subscriptionExecutionAuthorization !== undefined &&
+    !subscriptionExecutionAuthorizationFromMetadata({
+      subscriptionExecutionAuthorization:
+        value.subscriptionExecutionAuthorization,
+    })
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -625,8 +644,8 @@ function readAttemptReflections(
   return out;
 }
 
-function truncate(text: string, max = 2000): string {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+function normalizeTaskText(text: string): string {
+  return toWellFormedUnicode(text);
 }
 
 /**
@@ -679,7 +698,11 @@ function latestActiveSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => !TERMINAL_TASK_SESSION_STATUSES.has(session.status))
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** The session whose workspace the residuals gate inspects when the caller has
@@ -691,7 +714,11 @@ function latestWorkspaceSession(
 ): OrchestratorTaskSession | undefined {
   return doc.sessions
     .filter((session) => session.workdir.trim().length > 0)
-    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+        (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+    )[0];
 }
 
 /** Whether the residuals gate must treat the workspace as a REQUIRED git repo
@@ -839,7 +866,7 @@ function eventExcerpt(
 ): string {
   const data =
     Object.keys(event.data).length > 0
-      ? `\nData: ${truncate(JSON.stringify(event.data), 1200)}`
+      ? `\nData: ${normalizeTaskText(JSON.stringify(event.data))}`
       : "";
   return `Event ${event.id} (${event.eventType}): ${event.summary}${data}`;
 }
@@ -858,7 +885,7 @@ function retryInstruction(
     lines.push(
       "",
       `Source message ${source.id} (${source.senderKind}/${source.direction}):`,
-      truncate(source.content),
+      normalizeTaskText(source.content),
     );
   }
   return lines.join("\n");
@@ -887,7 +914,7 @@ function withPlanRevisionContext(
     `Revision: ${revision.id}`,
   ];
   if (revision.editSummary) lines.push(`Summary: ${revision.editSummary}`);
-  lines.push(`Plan: ${truncate(JSON.stringify(revision.plan), 2000)}`);
+  lines.push(`Plan: ${normalizeTaskText(JSON.stringify(revision.plan))}`);
   return lines.join("\n");
 }
 
@@ -959,21 +986,21 @@ function describeEvent(event: string, data: unknown): string {
       return `Running ${title}`;
     }
     case "message":
-      return truncate(str(record.text) ?? "Sub-agent message", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent message");
     case "reasoning":
-      return truncate(str(record.text) ?? "Sub-agent reasoning", 160);
+      return normalizeTaskText(str(record.text) ?? "Sub-agent reasoning");
     case "plan": {
       const count = Array.isArray(record.entries) ? record.entries.length : 0;
       return `Updated plan — ${count} item${count === 1 ? "" : "s"}`;
     }
     case "blocked":
-      return truncate(str(record.message) ?? "Blocked on input", 160);
+      return normalizeTaskText(str(record.message) ?? "Blocked on input");
     case "login_required":
       return "Sub-agent requires authentication";
     case "task_complete":
       return "Sub-agent reported completion (pending validation)";
     case "error":
-      return truncate(str(record.message) ?? "Sub-agent error", 160);
+      return normalizeTaskText(str(record.message) ?? "Sub-agent error");
     case "stopped":
       return "Sub-agent stopped";
     case "reconnected":
@@ -1031,6 +1058,8 @@ export class OrchestratorTaskService extends Service {
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
   private readonly autoVerifyInFlight = new Set<string>();
+  /** Tasks currently handing contributor receipts to their elected coordinator. */
+  private readonly completionReviewDispatchInFlight = new Set<string>();
 
   /** Per-task async mutex serializing the two completion-metadata writers
    * (autoVerifyCompletion and validateTask). Both replace `task.metadata`
@@ -1163,6 +1192,7 @@ export class OrchestratorTaskService extends Service {
     if (acp) {
       this.subscribeToAcp(acp);
       this.queueSmithersRecovery(acp);
+      this.queueCompletionBarrierRecovery();
       return;
     }
     // ACP may not be registered yet — service start order during boot isn't
@@ -1174,7 +1204,7 @@ export class OrchestratorTaskService extends Service {
   private subscribeToAcp(acp: AcpService): void {
     this.unsubscribe = acp.onSessionEvent(
       (sessionId, event, data, sessionSnapshot, turnId) => {
-        void this.onSessionEvent(
+        return this.onSessionEvent(
           sessionId,
           event,
           data,
@@ -1202,6 +1232,7 @@ export class OrchestratorTaskService extends Service {
       if (this.started && !this.unsubscribe) {
         this.subscribeToAcp(acp);
         this.queueSmithersRecovery(acp);
+        this.queueCompletionBarrierRecovery();
       }
     } catch (error) {
       // error-policy:J7 background ACP bind; the failure is warned and observable
@@ -1248,6 +1279,35 @@ export class OrchestratorTaskService extends Service {
         {},
       );
     });
+  }
+
+  private queueCompletionBarrierRecovery(): void {
+    void this.recoverCompletionBarriers().catch((err) => {
+      // error-policy:J7 persisted receipt delivery is retried on the next boot
+      // or terminal event; a recovery failure cannot prevent service startup.
+      this.runtime.reportError?.(
+        "OrchestratorTask.recoverCompletionBarriers",
+        err,
+        {},
+      );
+    });
+  }
+
+  /** Retry persisted coordinator-review deliveries after a runtime restart. */
+  async recoverCompletionBarriers(): Promise<number> {
+    const tasks = await this.store.listTasks();
+    let recovered = 0;
+    for (const task of tasks) {
+      if (!task.completionCoordinatorSessionId) continue;
+      const doc = await this.store.getTask(task.id);
+      const coordinator = doc?.sessions.find(
+        (session) => session.sessionId === task.completionCoordinatorSessionId,
+      );
+      if (!coordinator?.aggregateCompletionRequestedAt) continue;
+      await this.dispatchContributionReview(task.id);
+      recovered++;
+    }
+    return recovered;
   }
 
   /**
@@ -1608,6 +1668,37 @@ export class OrchestratorTaskService extends Service {
           ? snapshotTaskId
           : await this.resolveTaskId(sessionId);
       if (!taskId) return;
+      if (
+        sessionSnapshot &&
+        !(await this.store.findSession(sessionId, taskId))
+      ) {
+        await this.attachSession(taskId, {
+          sessionId,
+          agentType: sessionSnapshot.agentType,
+          workdir: sessionSnapshot.workdir,
+          status: sessionSnapshot.status,
+          metadata: sessionSnapshot.metadata,
+          ...(typeof sessionSnapshot.metadata?.label === "string"
+            ? { label: sessionSnapshot.metadata.label }
+            : sessionSnapshot.name
+              ? { label: sessionSnapshot.name }
+              : {}),
+          ...(typeof sessionSnapshot.metadata?.initialTask === "string"
+            ? { originalTask: sessionSnapshot.metadata.initialTask }
+            : {}),
+        });
+      }
+      const rawData = isRecord(data) ? data : { value: data };
+      const taskDoc = await this.store.getTask(taskId);
+      const childTerminalResult = taskDoc
+        ? deriveChildTerminalResult(taskDoc, {
+            eventType: event,
+            sessionId,
+            summary: describeEvent(event, data),
+            data: rawData,
+            timestamp: Date.now(),
+          })
+        : undefined;
       await this.store.addEvent({
         id: randomUUID(),
         taskId,
@@ -1615,7 +1706,10 @@ export class OrchestratorTaskService extends Service {
         ...(turnId ? { turnId } : {}),
         eventType: event,
         summary: describeEvent(event, data),
-        data: isRecord(data) ? data : { value: data },
+        data: {
+          ...rawData,
+          ...(childTerminalResult ? { childTerminalResult } : {}),
+        },
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
@@ -1640,6 +1734,283 @@ export class OrchestratorTaskService extends Service {
           note: "further event-record failures for this session are suppressed",
         });
       }
+      // Account identity is an authority boundary: its caller awaits this
+      // consumer before exposing failover credentials to a child. Other
+      // telemetry events retain their established diagnostics-only behavior.
+      if (event === "account_switched") throw err;
+    }
+  }
+
+  /**
+   * Resolve legacy rows into one durable completion authority. The task-level
+   * id is authoritative; pre-rollout documents elect their explicit
+   * coordinator-role row or, failing that, the earliest registered session.
+   */
+  private async completionCoordinatorLocked(
+    taskId: string,
+    doc: OrchestratorTaskDocument,
+    preferredLegacySessionId?: string,
+  ): Promise<OrchestratorTaskSession | undefined> {
+    const durable = doc.task.completionCoordinatorSessionId;
+    const candidate =
+      (durable
+        ? doc.sessions.find((session) => session.sessionId === durable)
+        : undefined) ??
+      doc.sessions.find(
+        (session) => session.completionRole === "coordinator",
+      ) ??
+      (preferredLegacySessionId
+        ? doc.sessions.find(
+            (session) => session.sessionId === preferredLegacySessionId,
+          )
+        : undefined) ??
+      [...doc.sessions].sort(
+        (left, right) => left.registeredAt - right.registeredAt,
+      )[0];
+    if (!candidate) return undefined;
+    if (durable !== candidate.sessionId) {
+      await this.store.updateTask(taskId, {
+        completionCoordinatorSessionId: candidate.sessionId,
+      });
+    }
+    if (candidate.completionRole !== "coordinator") {
+      await this.store.updateSession(
+        candidate.sessionId,
+        { completionRole: "coordinator", requiredForTaskCompletion: false },
+        taskId,
+      );
+      return {
+        ...candidate,
+        completionRole: "coordinator",
+        requiredForTaskCompletion: false,
+      };
+    }
+    return candidate;
+  }
+
+  private requiredContributors(
+    doc: OrchestratorTaskDocument,
+    coordinatorSessionId: string,
+  ): OrchestratorTaskSession[] {
+    return doc.sessions.filter((session) => {
+      if (session.sessionId === coordinatorSessionId) return false;
+      return (
+        session.completionRole === "contributor" &&
+        session.requiredForTaskCompletion === true
+      );
+    });
+  }
+
+  /**
+   * Session completion is evidence, not aggregate completion. This method runs
+   * only under the per-task write lock, so simultaneous sibling completions
+   * observe one coordinator, one required set, and one review state.
+   */
+  private async aggregateCompletionGateLocked(
+    taskId: string,
+    completingSessionId: string,
+  ): Promise<{ authorized: boolean; dispatchReview: boolean }> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return { authorized: false, dispatchReview: false };
+    const coordinator = await this.completionCoordinatorLocked(
+      taskId,
+      doc,
+      completingSessionId,
+    );
+    if (!coordinator) return { authorized: false, dispatchReview: false };
+    const refreshed = (await this.store.getTask(taskId)) ?? doc;
+    const contributors = this.requiredContributors(
+      refreshed,
+      coordinator.sessionId,
+    );
+    const completingCoordinator = completingSessionId === coordinator.sessionId;
+    if (contributors.length === 0) {
+      return {
+        authorized: completingCoordinator,
+        dispatchReview: false,
+      };
+    }
+
+    if (completingCoordinator) {
+      await this.store.updateSession(
+        coordinator.sessionId,
+        { aggregateCompletionRequestedAt: nowIso() },
+        taskId,
+      );
+    }
+    const allCompleted = contributors.every(
+      (session) => session.status === "completed" && session.taskDelivered,
+    );
+    if (!allCompleted) {
+      return { authorized: false, dispatchReview: false };
+    }
+
+    const latestCoordinator = (
+      await this.store.findSession(coordinator.sessionId, taskId)
+    )?.session;
+    const coordinatorRequested = Boolean(
+      latestCoordinator?.aggregateCompletionRequestedAt,
+    );
+    const undelivered = contributors.filter(
+      (session) => !session.completionReceiptDeliveredAt,
+    );
+    if (undelivered.length > 0) {
+      return {
+        authorized: false,
+        dispatchReview: coordinatorRequested,
+      };
+    }
+    if (!completingCoordinator) {
+      return { authorized: false, dispatchReview: false };
+    }
+
+    const reviewedAt = nowIso();
+    for (const contributor of contributors) {
+      if (!contributor.contributionReviewedAt) {
+        await this.store.updateSession(
+          contributor.sessionId,
+          { contributionReviewedAt: reviewedAt },
+          taskId,
+        );
+      }
+    }
+    return { authorized: true, dispatchReview: false };
+  }
+
+  private completionReviewPrompt(
+    task: OrchestratorTaskRecord,
+    contributors: readonly OrchestratorTaskSession[],
+  ): string {
+    const receipts = contributors
+      .map(
+        (session) =>
+          `- ${session.label} (${session.sessionId}): ${session.completionSummary ?? "Completed without a textual summary."}`,
+      )
+      .join("\n");
+    return [
+      "[System] Required contributor receipts are now settled for this coding task.",
+      `Goal: ${task.goal}`,
+      "Review every receipt and the shared workspace state. Resolve any conflicts or missing work, run the appropriate verification, then report completion again only if the aggregate goal is genuinely finished.",
+      "Contributor receipts:",
+      receipts,
+    ].join("\n\n");
+  }
+
+  /** Deliver pending required receipts and persist success/failure atomically. */
+  private async dispatchContributionReview(taskId: string): Promise<void> {
+    if (this.completionReviewDispatchInFlight.has(taskId)) return;
+    this.completionReviewDispatchInFlight.add(taskId);
+    try {
+      await this.withTaskWriteLock(taskId, async () => {
+        const doc = await this.store.getTask(taskId);
+        if (!doc) return;
+        const coordinator = await this.completionCoordinatorLocked(taskId, doc);
+        if (!coordinator?.aggregateCompletionRequestedAt) return;
+        const refreshed = (await this.store.getTask(taskId)) ?? doc;
+        const contributors = this.requiredContributors(
+          refreshed,
+          coordinator.sessionId,
+        );
+        if (
+          contributors.length === 0 ||
+          contributors.some(
+            (session) =>
+              session.status !== "completed" || !session.taskDelivered,
+          )
+        ) {
+          return;
+        }
+        const undelivered = contributors.filter(
+          (session) => !session.completionReceiptDeliveredAt,
+        );
+        if (undelivered.length === 0) return;
+        const acp = this.acp();
+        if (!acp) throw new Error("ACP service unavailable");
+        try {
+          const delivery = await acp.sendToSession(
+            coordinator.sessionId,
+            this.completionReviewPrompt(refreshed.task, undelivered),
+          );
+          const stopReason = delivery.stopReason.toLowerCase();
+          if (
+            delivery.terminalFailure ||
+            delivery.error ||
+            stopReason === "cancelled" ||
+            stopReason === "stopped" ||
+            stopReason === "error" ||
+            /max|length|interrupt/.test(stopReason)
+          ) {
+            throw new Error(
+              delivery.terminalFailure?.message ??
+                delivery.error ??
+                `Coordinator review prompt did not settle: ${delivery.stopReason}`,
+            );
+          }
+          const deliveredAt = nowIso();
+          for (const contributor of undelivered) {
+            await this.store.updateSession(
+              contributor.sessionId,
+              {
+                completionReceiptDeliveredAt: deliveredAt,
+                completionReceiptDeliveryError: null,
+              },
+              taskId,
+            );
+          }
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId: coordinator.sessionId,
+            eventType: "completion_review_delivered",
+            summary:
+              "Required contributor receipts delivered for coordinator review",
+            data: {
+              coordinatorSessionId: coordinator.sessionId,
+              contributorSessionIds: undelivered.map(
+                (session) => session.sessionId,
+              ),
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          for (const contributor of undelivered) {
+            await this.store.updateSession(
+              contributor.sessionId,
+              { completionReceiptDeliveryError: message },
+              taskId,
+            );
+          }
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId: coordinator.sessionId,
+            eventType: "completion_review_delivery_failed",
+            summary: `Could not deliver contributor receipts to the completion coordinator: ${message}`,
+            data: {
+              coordinatorSessionId: coordinator.sessionId,
+              contributorSessionIds: undelivered.map(
+                (session) => session.sessionId,
+              ),
+              retryable: true,
+              retryMethod: "recoverCompletionBarriers",
+              error: message,
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          await this.advanceTaskStatus(taskId, "awaiting_user");
+          this.emitChange(taskId);
+          this.runtime.reportError?.(
+            "OrchestratorTask.dispatchContributionReview",
+            err,
+            { taskId, coordinatorSessionId: coordinator.sessionId },
+          );
+        }
+      });
+    } finally {
+      this.completionReviewDispatchInFlight.delete(taskId);
     }
   }
 
@@ -1722,35 +2093,48 @@ export class OrchestratorTaskService extends Service {
         );
         break;
       case "task_complete": {
-        const summary = str(record.response);
-        await this.store.updateSession(
-          sessionId,
-          {
-            status: "completed",
-            taskDelivered: true,
-            completionSummary: summary ? truncate(summary) : undefined,
-            stoppedAt: Date.now(),
-          },
-          taskId,
-        );
-        await this.mirrorChangeSetToStore(taskId, sessionId);
-        // Completion metadata is written before validation advances so clients
-        // never observe a successful completion without its associated PR.
-        await this.mirrorPullRequestToStore(taskId, summary ?? "");
-        // Attach the sub-agent's own recorded trajectories (its inner model
-        // prompts/responses) as task artifacts under the shared traceId (#13775).
-        // error-policy:J7 diagnostics-must-not-kill-the-loop — trace ingest is
-        // observability; a failure is reported but must not block task validation.
-        try {
-          await this.ingestChildTrajectories(taskId, sessionId);
-        } catch (err) {
-          this.runtime.reportError?.(
-            "OrchestratorTaskService.ingestChildTrajectories",
-            err,
-            { taskId, sessionId },
+        const summary = str(record.response) ?? "";
+        const gate = await this.withTaskWriteLock(taskId, async () => {
+          await this.store.updateSession(
+            sessionId,
+            {
+              status: "completed",
+              taskDelivered: true,
+              completionSummary: summary,
+              stoppedAt: Date.now(),
+            },
+            taskId,
           );
+          await this.mirrorChangeSetToStore(taskId, sessionId);
+          // Completion metadata is written before validation advances so clients
+          // never observe a successful completion without its associated PR.
+          await this.mirrorPullRequestToStore(taskId, summary);
+          // Attach the sub-agent's own recorded trajectories (its inner model
+          // prompts/responses) as task artifacts under the shared traceId (#13775).
+          // error-policy:J7 diagnostics-must-not-kill-the-loop — trace ingest is
+          // observability; a failure is reported but must not block task validation.
+          try {
+            await this.ingestChildTrajectories(taskId, sessionId);
+          } catch (err) {
+            this.runtime.reportError?.(
+              "OrchestratorTaskService.ingestChildTrajectories",
+              err,
+              { taskId, sessionId },
+            );
+          }
+          const decision = await this.aggregateCompletionGateLocked(
+            taskId,
+            sessionId,
+          );
+          if (decision.authorized) {
+            await this.advanceTaskStatus(taskId, "completion_reported");
+          }
+          return decision;
+        });
+        if (gate.dispatchReview) {
+          void this.dispatchContributionReview(taskId);
         }
-        await this.advanceTaskStatus(taskId, "completion_reported");
+        if (!gate.authorized) break;
         // Cross-surface arbitration for the digest emitter: stamp this
         // completion on the supervisor BEFORE its next tick, so the room's
         // status digest yields to the completion relay the router posts for
@@ -1773,7 +2157,7 @@ export class OrchestratorTaskService extends Service {
         // stays fast; the verifier gates itself on the flag + criteria presence,
         // and evidence assembly never throws into this path.
         const { evidence: completionEvidence, bundle: completionBundle } =
-          await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
+          await this.buildCompletionEvidence(taskId, sessionId, summary);
         // Thread the RAW final message (record.response) through alongside the
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
@@ -1782,7 +2166,7 @@ export class OrchestratorTaskService extends Service {
           taskId,
           sessionId,
           completionEvidence,
-          summary ?? "",
+          summary,
           completionBundle,
         );
         break;
@@ -2244,22 +2628,22 @@ export class OrchestratorTaskService extends Service {
     const freshFiles = files.filter((path) => !existingArtifactPaths.has(path));
     if (freshFiles.length === 0) return [];
 
-    // Newest first, capped so a runaway child can't flood the task doc; the
-    // store's MAX_ARTIFACTS also clamps. Cap applies to genuinely-new files only
-    // so a large already-ingested backlog can't starve fresh trajectories out of
-    // the window.
+    // Newest first while retaining every genuinely new trajectory.
     const withMtime = await Promise.all(
       freshFiles.map(async (path) => ({
         path,
         mtimeMs: (await stat(path)).mtimeMs,
       })),
     );
-    withMtime.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    const capped = withMtime.slice(0, MAX_CHILD_TRAJECTORY_ARTIFACTS);
+    withMtime.sort(
+      (a, b) =>
+        (Number.isFinite(b.mtimeMs) ? b.mtimeMs : 0) -
+        (Number.isFinite(a.mtimeMs) ? a.mtimeMs : 0),
+    );
 
     const session = (await this.store.findSession(sessionId, taskId))?.session;
     const ingested: string[] = [];
-    for (const { path } of capped) {
+    for (const { path } of withMtime) {
       // The recorder names files `<trajectoryId>.json`.
       const trajectoryId = basename(path, ".json");
       await this.store.addArtifact({
@@ -3146,6 +3530,7 @@ export class OrchestratorTaskService extends Service {
    * binding.
    */
   private bindProject(input: CreateTaskInput): CreateTaskInput {
+    assertProjectIdRegistered(input.projectId);
     const projectId = resolveTaskProjectId(input);
     const { workdir: _workdir, ...rest } = input;
     const worldId =
@@ -3236,6 +3621,7 @@ export class OrchestratorTaskService extends Service {
   async getTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    assertProjectIdRegistered(doc.task.projectId);
     return this.withAdmissionPosition(toTaskThreadDetail(doc));
   }
 
@@ -3380,6 +3766,7 @@ export class OrchestratorTaskService extends Service {
         createdAt: nowIso(),
       });
       await this.spawnAgentForTask(taskId, {
+        completionRole: "coordinator",
         task: "Resume this task from its current durable context. Reinspect the task timeline and any partial work, then continue until the goal is met or you are blocked.",
       });
     }
@@ -3810,9 +4197,10 @@ export class OrchestratorTaskService extends Service {
    * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
-   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
-   *    the task `validating` (never a false promotion on a verifier crash); a
-   *    passing/skipped verdict falls through.
+   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict
+   *    reopens a retryable worker turn without consuming its corrective-attempt
+   *    budget (never a false promotion on a verifier crash); a passing/skipped
+   *    verdict falls through.
    * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
@@ -3849,12 +4237,50 @@ export class OrchestratorTaskService extends Service {
       );
     } catch (err) {
       // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
+      // failure warns and must not break the session-event write path. Recover
+      // the durable state too: logging alone used to strand the task forever in
+      // `validating`, with no retry surface and no terminal signal.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.autoVerifyCompletion",
+        err,
+        { taskId, sessionId },
+      );
+      try {
+        await this.withTaskWriteLock(taskId, () =>
+          this.retryInconclusiveVerification({
+            taskId,
+            sessionId,
+            eventType: "auto_verify_inconclusive",
+            verifier: "auto-verifier-infrastructure",
+            summary: `Automatic verification could not run: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            correction:
+              "Automatic verification was temporarily unavailable. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+          }),
+        );
+      } catch (recoveryErr) {
+        // error-policy:J7 diagnostics/recovery must not reject the detached
+        // event handler. A second failure is reported distinctly.
+        this.log("error", "failed to recover inconclusive auto verification", {
+          taskId,
+          sessionId,
+          error:
+            recoveryErr instanceof Error
+              ? recoveryErr.message
+              : String(recoveryErr),
+        });
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.autoVerifyRecovery",
+          recoveryErr,
+          { taskId, sessionId },
+        );
+      }
     } finally {
       this.autoVerifyInFlight.delete(taskId);
     }
@@ -4039,9 +4465,23 @@ export class OrchestratorTaskService extends Service {
       }
 
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior after deterministic gates:
-      // stay `validating` for a human/manual caller, with no model spend.
-      if (acceptanceCriteria.length === 0) return;
+      // With no criteria there is nothing for the model judge to decide. Once
+      // the deterministic residuals/ground-truth gates above are clear, finish
+      // explicitly instead of leaving the task permanently `validating`.
+      if (acceptanceCriteria.length === 0) {
+        await this.validateTaskLocked(taskId, {
+          passed: true,
+          summary:
+            "No acceptance criteria were specified; deterministic completion gates passed.",
+          evidence:
+            completionEvidence.trim() ||
+            rawCompletion.trim() ||
+            "Criteria-free completion passed deterministic gates.",
+          verifier: "criteria-free-completion-gate",
+        });
+        this.emitChange(taskId);
+        return;
+      }
 
       // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
@@ -4227,17 +4667,10 @@ export class OrchestratorTaskService extends Service {
       );
       if (independent) {
         if (independent.inconclusive) {
-          // A verifier crash/empty verdict is never a pass — but a silent
-          // return here parked the task in `validating` forever with no
-          // re-prompt, no escalation, and no signal to the task creator
-          // (observed live: a website-build task whose final task_complete hit
-          // "no usable CompletionEnvelope" and then sat `validating` for
-          // hours while the user asked "is it done?"). Route it through the
-          // shared re-engage/escalate path like every other non-pass verdict:
-          // under the attempts cap the worker is re-prompted to re-report
-          // with the structured envelope (making the next verify decidable);
-          // at the cap the task parks on waiting_on_user instead of ghosting.
-          await this.reEngageOrEscalate({
+          // A verifier crash/empty verdict is an infrastructure outcome, not
+          // evidence that the worker failed a criterion. Re-open a retryable
+          // turn, but preserve the worker's bounded corrective-attempt budget.
+          await this.retryInconclusiveVerification({
             taskId,
             sessionId,
             correction: [
@@ -4250,11 +4683,6 @@ export class OrchestratorTaskService extends Service {
             eventType: "independent_verify_inconclusive",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
             summary: independent.summary,
-            missing: [
-              ...independent.unmet,
-              ...independent.failedCommands.map((c) => `command failed: ${c}`),
-            ],
-            attempt: attempts,
           });
           return;
         }
@@ -4317,6 +4745,19 @@ export class OrchestratorTaskService extends Service {
         },
       );
 
+      if (verdict.inconclusive) {
+        await this.retryInconclusiveVerification({
+          taskId,
+          sessionId,
+          eventType: "goal_verify_inconclusive",
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          summary: verdict.summary,
+          correction:
+            "The goal-verification model was temporarily unavailable or returned no usable verdict. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+        });
+        return;
+      }
+
       if (verdict.passed) {
         await this.validateTaskLocked(taskId, {
           passed: true,
@@ -4348,6 +4789,70 @@ export class OrchestratorTaskService extends Service {
         attempt: attempts,
       });
     }
+  }
+
+  /**
+   * Re-open a task when the verifier itself could not decide. This deliberately
+   * does not write `autoVerifyAttempts` or `attemptReflections`: those counters
+   * measure worker proof failures, not provider outages, malformed judge
+   * responses, or verifier subprocess failures.
+   */
+  private async retryInconclusiveVerification(args: {
+    taskId: string;
+    sessionId: string;
+    correction: string;
+    eventType: string;
+    verifier: string;
+    summary: string;
+  }): Promise<void> {
+    const { taskId, sessionId, correction, eventType, verifier, summary } =
+      args;
+    const doc = await this.store.getTask(taskId);
+    if (doc?.task.status !== "validating") return;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data: { verifier, retryable: true },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    try {
+      await this.store.updateSession(sessionId, {
+        status: "ready",
+        taskDelivered: false,
+        stoppedAt: undefined,
+      });
+      await this.sendToTaskAgent(
+        taskId,
+        sessionId,
+        correction,
+        "validation_failed",
+      );
+      await this.advanceTaskStatus(taskId, "validation_failed");
+    } catch (sendErr) {
+      // error-policy:J1 boundary — an inconclusive verifier plus an unavailable
+      // worker is surfaced to a human instead of remaining stuck validating.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_retry_failed",
+        summary:
+          "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
+        data: {
+          verifier,
+          retryable: true,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "awaiting_user");
+    }
+    this.emitChange(taskId);
   }
 
   /**
@@ -4414,7 +4919,7 @@ export class OrchestratorTaskService extends Service {
     const attemptReflections = [
       ...readAttemptReflections(doc.task.metadata),
       { attempt: attempt + 1, missing, summary },
-    ].slice(-MAX_ATTEMPT_REFLECTIONS);
+    ];
     await this.store.updateTask(taskId, {
       metadata: {
         ...doc.task.metadata,
@@ -4711,6 +5216,7 @@ export class OrchestratorTaskService extends Service {
       // the default framework (opencode + Cerebras) into a per-task workdir.
       try {
         await this.spawnAgentForTask(taskId, {
+          completionRole: "coordinator",
           task: content,
           workdir: await ensureTaskWorkdir(taskId),
         });
@@ -4804,6 +5310,7 @@ export class OrchestratorTaskService extends Service {
     if (mode === "new-session") {
       await this.spawnAgentForTask(taskId, {
         ...input.agent,
+        completionRole: "coordinator",
         task: instruction,
       });
       if (planRevision) {
@@ -4923,6 +5430,7 @@ export class OrchestratorTaskService extends Service {
     await this.advanceTaskStatus(taskId, "retrying");
     await this.spawnAgentForTask(taskId, {
       ...input.agent,
+      completionRole: "coordinator",
       task: withPlanRevisionContext(
         rerunInstruction(event, input.instruction),
         planRevision,
@@ -4959,6 +5467,7 @@ export class OrchestratorTaskService extends Service {
     });
     const restartedDetail = await this.spawnAgentForTask(taskId, {
       ...input.agent,
+      completionRole: "coordinator",
       task: instruction,
     });
     const firstRestartedSessionId = restartedDetail?.sessions.at(-1)?.sessionId;
@@ -5153,6 +5662,74 @@ export class OrchestratorTaskService extends Service {
 
   // ---- sub-agent control -------------------------------------------------
 
+  /**
+   * Explicitly transfer aggregate-completion authority to another session.
+   * The task-level id remains the source of truth across partial legacy rows;
+   * role fields are maintained for inspection and future reloads.
+   */
+  async transferCompletionCoordinator(
+    taskId: string,
+    nextSessionId: string,
+  ): Promise<TaskThreadDetailDto | null> {
+    return this.withTaskWriteLock(taskId, async () => {
+      const doc = await this.store.getTask(taskId);
+      if (!doc) return null;
+      await this.transferCompletionCoordinatorLocked(
+        taskId,
+        doc,
+        nextSessionId,
+      );
+      return this.getTask(taskId);
+    });
+  }
+
+  private async transferCompletionCoordinatorLocked(
+    taskId: string,
+    doc: OrchestratorTaskDocument,
+    nextSessionId: string,
+  ): Promise<void> {
+    const next = doc.sessions.find(
+      (session) => session.sessionId === nextSessionId,
+    );
+    if (!next) {
+      throw new Error(
+        `Cannot transfer completion authority: session ${nextSessionId} is not attached to task ${taskId}`,
+      );
+    }
+    const previousId = doc.task.completionCoordinatorSessionId;
+    if (previousId && previousId !== nextSessionId) {
+      await this.store.updateSession(
+        previousId,
+        {
+          completionRole: "contributor",
+          requiredForTaskCompletion: false,
+        },
+        taskId,
+      );
+    }
+    await this.store.updateSession(
+      nextSessionId,
+      {
+        completionRole: "coordinator",
+        requiredForTaskCompletion: false,
+      },
+      taskId,
+    );
+    await this.store.updateTask(taskId, {
+      completionCoordinatorSessionId: nextSessionId,
+    });
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId: nextSessionId,
+      eventType: "completion_authority_transferred",
+      summary: "Aggregate completion authority transferred",
+      data: { previousSessionId: previousId, nextSessionId },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+  }
+
   async spawnAgentForTask(
     taskId: string,
     opts: SpawnAgentForTaskOptions = {},
@@ -5277,10 +5854,20 @@ export class OrchestratorTaskService extends Service {
     // ambiguous value to the child.
     const traceEnv = this.buildChildTraceEnv(taskId);
 
+    const subscriptionExecutionAuthorization =
+      opts.subscriptionExecutionAuthorization;
+
     const framework =
       opts.framework ??
       policy.preferredFramework ??
       configuredDefaultAgentType(this.runtime);
+    const intendedCompletionRole: TaskCompletionRole =
+      opts.completionRole ??
+      (opts.parentSessionId || nestingDepth > 0
+        ? "contributor"
+        : doc.task.completionCoordinatorSessionId
+          ? "contributor"
+          : "coordinator");
 
     // W3 wave cap layers on top of the existing global ACP admission queue.
     // Default-OFF supervisor means this lookup is behavior-neutral. When the
@@ -5296,6 +5883,7 @@ export class OrchestratorTaskService extends Service {
     ) {
       const wave = await waveSupervisor.concurrencyForTask(taskId);
       if (
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5309,6 +5897,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw new WaveConcurrencyCapError(
@@ -5330,6 +5919,7 @@ export class OrchestratorTaskService extends Service {
         // vendored CLI. opencode remains available only as an explicit
         // selection (settings/routing/request).
         agentType: framework,
+        subscriptionExecutionAuthorization,
         workdir,
         initialTask: goalPrompt,
         model: opts.model ?? policy.model,
@@ -5362,6 +5952,13 @@ export class OrchestratorTaskService extends Service {
           // Carried so a child this sub-agent spawns can compute its own depth
           // (parent depth + 1) and the nesting guard above can enforce the cap.
           nestingDepth,
+          completionRole: intendedCompletionRole,
+          ...(opts.parentSessionId
+            ? { parentSessionId: opts.parentSessionId }
+            : {}),
+          requiredForTaskCompletion:
+            opts.requiredForTaskCompletion ??
+            intendedCompletionRole === "contributor",
         },
       });
     } catch (err) {
@@ -5375,6 +5972,7 @@ export class OrchestratorTaskService extends Service {
       if (
         err instanceof SessionCapError &&
         err.slotClass === "worker" &&
+        normalizeTaskAgentAdapter(framework) !== "kimi" &&
         nestingDepth === 0 &&
         opts.parkOnCap !== false &&
         this.admissionQueueEnabled()
@@ -5388,6 +5986,7 @@ export class OrchestratorTaskService extends Service {
           task: opts.task,
           approvalPreset: opts.approvalPreset,
           providerSource: opts.providerSource ?? policy.providerSource,
+          subscriptionExecutionAuthorization,
         });
       }
       throw err;
@@ -5400,7 +5999,7 @@ export class OrchestratorTaskService extends Service {
     const orchestratorOwnedArtifacts =
       readOwnedArtifactsFromMetadata(resultMetadata);
     const ts = nowIso();
-    const session: OrchestratorTaskSession = {
+    let session: OrchestratorTaskSession = {
       id: randomUUID(),
       taskId,
       sessionId: result.sessionId,
@@ -5427,6 +6026,13 @@ export class OrchestratorTaskService extends Service {
       lastActivityAt: Date.now(),
       idleCheckCount: 0,
       taskDelivered: false,
+      completionRole: intendedCompletionRole,
+      ...(opts.parentSessionId
+        ? { parentSessionId: opts.parentSessionId }
+        : {}),
+      requiredForTaskCompletion:
+        opts.requiredForTaskCompletion ??
+        intendedCompletionRole === "contributor",
       lastSeenDecisionIndex: 0,
       spawnedAt: Date.now(),
       retryCount: 0,
@@ -5444,13 +6050,14 @@ export class OrchestratorTaskService extends Service {
       ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
         ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
         : {}),
-      metadata:
-        orchestratorOwnedArtifacts.length > 0
+      metadata: {
+        ...(orchestratorOwnedArtifacts.length > 0
           ? {
               [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
                 orchestratorOwnedArtifacts,
             }
-          : {},
+          : {}),
+      },
       createdAt: ts,
       updatedAt: ts,
     };
@@ -5471,7 +6078,33 @@ export class OrchestratorTaskService extends Service {
       // next drain would replay the stale admission record and dispatch a
       // DUPLICATE agent for the same goal. No-op for non-parked tasks.
       await this.dequeueAdmission(taskId);
-      await this.store.addSession(session);
+      await this.withTaskWriteLock(taskId, async () => {
+        const latest = await this.store.getTask(taskId);
+        const elected = latest?.task.completionCoordinatorSessionId;
+        const explicitTransfer = opts.completionRole === "coordinator";
+        const role: TaskCompletionRole =
+          explicitTransfer ||
+          (!elected && intendedCompletionRole === "coordinator")
+            ? "coordinator"
+            : "contributor";
+        session = {
+          ...session,
+          completionRole: role,
+          requiredForTaskCompletion:
+            opts.requiredForTaskCompletion ?? role === "contributor",
+        };
+        await this.store.addSession(session);
+        if (role === "coordinator" && elected !== session.sessionId) {
+          const withSession = await this.store.getTask(taskId);
+          if (withSession) {
+            await this.transferCompletionCoordinatorLocked(
+              taskId,
+              withSession,
+              session.sessionId,
+            );
+          }
+        }
+      });
       // Pin (or re-pin, on explicit override) the durable workdir/repo binding
       // from the workdir the session actually landed in, so subsequent
       // follow-up spawns of this task reuse it deterministically (#13776).
@@ -5606,6 +6239,19 @@ export class OrchestratorTaskService extends Service {
       if (existing) return true;
     }
     const account = accountMetaFromSessionMetadata(input.metadata);
+    const metadataRole = input.metadata?.completionRole;
+    const completionRole: TaskCompletionRole | undefined =
+      metadataRole === "coordinator" || metadataRole === "contributor"
+        ? metadataRole
+        : undefined;
+    const metadataParentSessionId = input.metadata?.parentSessionId;
+    const parentSessionId =
+      typeof metadataParentSessionId === "string" && metadataParentSessionId
+        ? metadataParentSessionId
+        : undefined;
+    const metadataRequired = input.metadata?.requiredForTaskCompletion;
+    const requiredForTaskCompletion =
+      typeof metadataRequired === "boolean" ? metadataRequired : undefined;
     const ts = nowIso();
     const now = Date.now();
     const originalTask = input.originalTask ?? doc.task.goal;
@@ -5636,6 +6282,11 @@ export class OrchestratorTaskService extends Service {
       lastActivityAt: now,
       idleCheckCount: 0,
       taskDelivered: false,
+      ...(completionRole ? { completionRole } : {}),
+      ...(parentSessionId ? { parentSessionId } : {}),
+      ...(requiredForTaskCompletion === undefined
+        ? {}
+        : { requiredForTaskCompletion }),
       lastSeenDecisionIndex: 0,
       spawnedAt: now,
       ...(TERMINAL_TASK_SESSION_STATUSES.has(input.status)
@@ -5665,7 +6316,65 @@ export class OrchestratorTaskService extends Service {
         previousOwner.taskId,
       );
     }
-    await this.store.addSession(session);
+    await this.withTaskWriteLock(taskId, async () => {
+      const latest = (await this.store.getTask(taskId)) ?? doc;
+      const retryOfSessionId =
+        typeof input.metadata?.retryOfSessionId === "string"
+          ? input.metadata.retryOfSessionId
+          : undefined;
+      const predecessor = retryOfSessionId
+        ? latest.sessions.find(
+            (candidate) => candidate.sessionId === retryOfSessionId,
+          )
+        : undefined;
+      if (predecessor) {
+        session.parentSessionId ??= predecessor.parentSessionId;
+        if (
+          latest.task.completionCoordinatorSessionId === predecessor.sessionId
+        ) {
+          session.completionRole = "coordinator";
+          session.requiredForTaskCompletion = false;
+        } else if (
+          predecessor.completionRole === "contributor" &&
+          predecessor.requiredForTaskCompletion === true
+        ) {
+          session.completionRole = "contributor";
+          session.requiredForTaskCompletion = true;
+        }
+      }
+      await this.store.addSession(session);
+      if (session.completionRole === "coordinator") {
+        const withSession = (await this.store.getTask(taskId)) ?? latest;
+        await this.transferCompletionCoordinatorLocked(
+          taskId,
+          withSession,
+          session.sessionId,
+        );
+      } else if (
+        predecessor &&
+        session.completionRole === "contributor" &&
+        session.requiredForTaskCompletion === true
+      ) {
+        await this.store.updateSession(
+          predecessor.sessionId,
+          { requiredForTaskCompletion: false },
+          taskId,
+        );
+        await this.store.addEvent({
+          id: randomUUID(),
+          taskId,
+          sessionId: session.sessionId,
+          eventType: "completion_contribution_transferred",
+          summary: "Required contribution transferred to successor session",
+          data: {
+            previousSessionId: predecessor.sessionId,
+            nextSessionId: session.sessionId,
+          },
+          timestamp: Date.now(),
+          createdAt: nowIso(),
+        });
+      }
+    });
     this.sessionTaskIndex.set(input.sessionId, taskId);
     // Pin the durable workdir/repo binding at first spawn so follow-up spawns of
     // this task reuse it instead of re-resolving from routing env (#13776).
@@ -5969,7 +6678,11 @@ export class OrchestratorTaskService extends Service {
       });
     }
 
-    rooms.sort((a, b) => b.activeAgentCount - a.activeAgentCount);
+    rooms.sort(
+      (a, b) =>
+        (Number.isFinite(b.activeAgentCount) ? b.activeAgentCount : 0) -
+        (Number.isFinite(a.activeAgentCount) ? a.activeAgentCount : 0),
+    );
     return { rooms };
   }
 
@@ -6582,7 +7295,17 @@ export class OrchestratorTaskService extends Service {
       });
     }
     if (candidates.length === 0) return false;
-    candidates.sort((a, b) => a.createdAt - b.createdAt);
+    candidates.sort((a, b) => {
+      const aTime =
+        typeof a.createdAt === "number" && Number.isFinite(a.createdAt)
+          ? a.createdAt
+          : 0;
+      const bTime =
+        typeof b.createdAt === "number" && Number.isFinite(b.createdAt)
+          ? b.createdAt
+          : 0;
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
     const victim = candidates[0];
     if (!victim) return false;
     try {
@@ -6628,7 +7351,17 @@ function paginate<T extends { timestamp: number }>(
   opts: { limit?: number; cursor?: string },
 ): PageResult<T> {
   const limit = opts.limit && opts.limit > 0 ? Math.min(opts.limit, 500) : 100;
-  const sorted = [...items].sort((a, b) => b.timestamp - a.timestamp);
+  const sorted = [...items].sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   const start = opts.cursor
     ? Math.max(0, Number.parseInt(opts.cursor, 10) || 0)
     : 0;

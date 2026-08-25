@@ -46,6 +46,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { StatusBadge } from "../../components/ui/status-badge";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
@@ -156,40 +157,48 @@ function getStatusBadge(status: DiscordGatewayConnection["status"], t: TFn) {
   switch (status) {
     case "connected":
       return (
-        <Badge variant="default" className="bg-green-500">
-          <CheckCircle className="h-3 w-3 mr-1" />
-          {t("cloud.discord.statusConnected", { defaultValue: "Connected" })}
-        </Badge>
+        <StatusBadge
+          status="success"
+          icon={<CheckCircle />}
+          label={t("cloud.discord.statusConnected", {
+            defaultValue: "Connected",
+          })}
+        />
       );
     case "connecting":
       return (
-        <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-600">
-          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          {t("cloud.discord.statusConnecting", { defaultValue: "Connecting" })}
-        </Badge>
+        <StatusBadge
+          status="processing"
+          label={t("cloud.discord.statusConnecting", {
+            defaultValue: "Connecting",
+          })}
+        />
       );
     case "pending":
       return (
-        <Badge variant="secondary" className="bg-surface text-txt">
-          <Clock className="h-3 w-3 mr-1" />
-          {t("cloud.discord.statusPending", { defaultValue: "Pending" })}
-        </Badge>
+        <StatusBadge
+          status="muted"
+          icon={<Clock />}
+          label={t("cloud.discord.statusPending", { defaultValue: "Pending" })}
+        />
       );
     case "disconnected":
       return (
-        <Badge variant="secondary" className="bg-gray-500/20 text-gray-500">
-          <XCircle className="h-3 w-3 mr-1" />
-          {t("cloud.discord.statusDisconnected", {
+        <StatusBadge
+          status="muted"
+          icon={<XCircle />}
+          label={t("cloud.discord.statusDisconnected", {
             defaultValue: "Disconnected",
           })}
-        </Badge>
+        />
       );
     case "error":
       return (
-        <Badge variant="destructive">
-          <AlertCircle className="h-3 w-3 mr-1" />
-          {t("cloud.discord.statusError", { defaultValue: "Error" })}
-        </Badge>
+        <StatusBadge
+          status="danger"
+          icon={<AlertCircle />}
+          label={t("cloud.discord.statusError", { defaultValue: "Error" })}
+        />
       );
   }
 }
@@ -651,8 +660,8 @@ export function DiscordGatewayConnection() {
                   <div className="border rounded-sm">
                     <CollapsibleTrigger asChild>
                       <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                          <Bot className="h-6 w-6 text-txt-strong" />
+                        <div className="size-12 rounded-full bg-accent flex items-center justify-center shrink-0">
+                          <Bot className="size-6 text-txt-strong" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -671,7 +680,7 @@ export function DiscordGatewayConnection() {
                                 defaultValue: "Character: {{name}}",
                               })
                             ) : (
-                              <span className="text-yellow-600">
+                              <span className="text-status-warning">
                                 {t("cloud.discord.noCharacterLinked", {
                                   defaultValue: "No character linked",
                                 })}
@@ -710,7 +719,7 @@ export function DiscordGatewayConnection() {
                             </span>
                           </div>
                           {conn.errorMessage && (
-                            <div className="text-sm text-red-500 mt-1">
+                            <div className="text-sm text-destructive mt-1">
                               {conn.errorMessage}
                             </div>
                           )}
@@ -727,13 +736,13 @@ export function DiscordGatewayConnection() {
                               );
                             }}
                           >
-                            <ExternalLink className="h-4 w-4 mr-1" />
+                            <ExternalLink className="size-4 mr-1" />
                             {t("cloud.discord.addToServer", {
                               defaultValue: "Add to Server",
                             })}
                           </Button>
                           <Settings
-                            className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                            className={`size-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                           />
                         </div>
                       </div>
@@ -787,7 +796,7 @@ export function DiscordGatewayConnection() {
                                     disabled={isLoadingCharacters}
                                   >
                                     <RefreshCw
-                                      className={`h-4 w-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
+                                      className={`size-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
                                     />
                                   </Button>
                                 </div>
@@ -1020,9 +1029,9 @@ export function DiscordGatewayConnection() {
                                 disabled={savingId === conn.id}
                               >
                                 {savingId === conn.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                  <Loader2 className="size-4 animate-spin mr-2" />
                                 ) : (
-                                  <Save className="h-4 w-4 mr-2" />
+                                  <Save className="size-4 mr-2" />
                                 )}
                                 {t("cloud.discord.saveChanges", {
                                   defaultValue: "Save Changes",
@@ -1046,7 +1055,7 @@ export function DiscordGatewayConnection() {
               className="w-full"
               onClick={() => setShowForm(true)}
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="size-4 mr-2" />
               {t("cloud.discord.addAnotherBot", {
                 defaultValue: "Add Another Bot",
               })}
@@ -1067,7 +1076,7 @@ export function DiscordGatewayConnection() {
                   size="sm"
                   onClick={() => setShowForm(false)}
                 >
-                  <XCircle className="h-4 w-4" />
+                  <XCircle className="size-4" />
                 </Button>
               </div>
 
@@ -1309,7 +1318,7 @@ export function DiscordGatewayConnection() {
             <Input
               id="botToken"
               type="password"
-              placeholder="MTIzNDU2Nzg5MDEyMzQ1Njc4.Gg..."
+              placeholder="MTIzNDU2Nzg5MDEyMzQ1Njc4.Gg…"
               value={botToken}
               onChange={(e) => setBotToken(e.target.value)}
             />
@@ -1366,7 +1375,7 @@ export function DiscordGatewayConnection() {
                 })}
               >
                 <RefreshCw
-                  className={`h-4 w-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
+                  className={`size-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
                 />
               </Button>
             </div>
@@ -1501,12 +1510,12 @@ export function DiscordGatewayConnection() {
         >
           {isCreating ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              <Loader2 className="size-4 animate-spin mr-2" />
               {t("cloud.discord.connecting", { defaultValue: "Connecting..." })}
             </>
           ) : (
             <>
-              <DiscordIcon className="h-4 w-4 mr-2" />
+              <DiscordIcon className="size-4 mr-2" />
               {t("cloud.discord.connectBot", {
                 defaultValue: "Connect Discord Bot",
               })}
@@ -1515,7 +1524,7 @@ export function DiscordGatewayConnection() {
         </Button>
 
         {characters.length === 0 && (
-          <p className="text-sm text-center text-yellow-600">
+          <p className="text-sm text-center text-status-warning">
             {t("cloud.discord.needCharacterFirst", {
               defaultValue:
                 "You need to create a character first before connecting a Discord bot.",

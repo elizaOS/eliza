@@ -1,5 +1,6 @@
 /** Defines normalized webhook events, configuration, and platform adapters. */
 import type { TelegramDeliveryHooks } from "@elizaos/cloud-services-common/telegram-delivery";
+import { ElizaError } from "@elizaos/core";
 export type Platform = "telegram" | "blooio" | "twilio" | "whatsapp";
 
 export interface ChatEvent {
@@ -15,6 +16,14 @@ export interface ChatEvent {
   senderName?: string;
   text: string;
   isCommand?: boolean;
+  /** Deterministic group-policy classification, before model should-respond. */
+  groupInvocation?: "mention" | "command" | "reply" | "ambient";
+  /** Provider-verified sender authority for group-control operations. */
+  groupActorRole?: "creator" | "administrator" | "member" | "unknown";
+  /** Bot/account membership transition for a provider group. */
+  membershipChange?: "joined" | "removed";
+  /** Provider message referenced by an inline reply, when exposed. */
+  replyToMessageId?: string;
   /** Provider-accepted message time, used only for coarse ingress latency. */
   providerSentAtMs?: number;
   mediaUrls?: string[];
@@ -41,7 +50,10 @@ export interface PlatformAdapter {
     rawBody: string,
     config: WebhookConfig,
   ): Promise<boolean>;
-  extractEvent(rawBody: string): Promise<ChatEvent | null>;
+  extractEvent(
+    rawBody: string,
+    config?: WebhookConfig,
+  ): Promise<ChatEvent | null>;
   sendReply(
     config: WebhookConfig,
     event: ChatEvent,
@@ -53,8 +65,11 @@ export interface PlatformAdapter {
     event: ChatEvent,
     text: string,
     deliveryHooks?: TelegramDeliveryHooks,
+    mediaUrls?: readonly string[],
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Clears an explicit provider typing state when the adapter supports it. */
+  stopTypingIndicator?(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */
   resolveVoiceNote?(
     config: WebhookConfig,
@@ -64,6 +79,32 @@ export interface PlatformAdapter {
 
 export interface PlatformDeliveryReceipt {
   providerMessageIds: string[];
+}
+
+/** Carries whether a provider failure is safe to replay across the gateway boundary. */
+export class PlatformDeliveryError extends ElizaError {
+  override readonly name: string = "PlatformDeliveryError";
+
+  constructor(
+    message: string,
+    readonly deliveryStatus: "failed" | "uncertain",
+    code: string,
+    readonly retryable: boolean,
+    readonly providerStatus?: number,
+    options?: { cause?: unknown; context?: Record<string, unknown> },
+  ) {
+    super(message, {
+      code,
+      cause: options?.cause,
+      context: {
+        deliveryStatus,
+        retryable,
+        ...(providerStatus === undefined ? {} : { providerStatus }),
+        ...options?.context,
+      },
+      severity: deliveryStatus === "uncertain" ? "fatal" : "ephemeral",
+    });
+  }
 }
 
 export interface ResolvedVoiceNote {
@@ -77,6 +118,7 @@ export interface ResolvedVoiceNote {
 export interface WebhookConfig {
   // Telegram
   botToken?: string;
+  botUsername?: string;
   webhookSecret?: string;
   // Blooio
   apiKey?: string;

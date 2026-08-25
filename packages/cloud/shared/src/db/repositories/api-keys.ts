@@ -1,10 +1,12 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
 
 export type { ApiKey, NewApiKey };
+
+const MOBILE_RECOVERY_LIST_LIMIT = 100;
 
 /**
  * Repository for API key database operations.
@@ -37,6 +39,20 @@ export class ApiKeysRepository {
     });
   }
 
+  /** Reads one row from the primary for mutation authorization. */
+  async findByIdConsistent(id: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: eq(apiKeys.id, id),
+    });
+  }
+
+  /** Generic key-management surfaces never expose mobile lifecycle credentials. */
+  async findManageableById(id: string): Promise<ApiKey | undefined> {
+    return await dbRead.query.apiKeys.findFirst({
+      where: and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)),
+    });
+  }
+
   /**
    * Finds an API key by its hash.
    */
@@ -46,12 +62,23 @@ export class ApiKeysRepository {
     });
   }
 
+  /** Reads any matching row from the primary, including inactive mobile credentials. */
+  async findByHashConsistent(hash: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: eq(apiKeys.key_hash, hash),
+    });
+  }
+
   /**
    * Finds an active, non-expired API key by hash.
    */
   async findActiveByHash(hash: string): Promise<ApiKey | undefined> {
     const apiKey = await dbRead.query.apiKeys.findFirst({
-      where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
+      where: and(
+        eq(apiKeys.key_hash, hash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
 
     if (!apiKey) {
@@ -69,13 +96,17 @@ export class ApiKeysRepository {
   /**
    * Finds an active API key by hash on the primary connection.
    *
-   * Use this only to confirm a read-intent miss before negative-caching auth.
-   * Newly-created keys must not be rejected just because a prior read path
-   * returned stale data.
+   * Credential validation uses this before caching a positive result. A
+   * read-intent replica can lag either creation or revocation, while the
+   * primary is the lifecycle authority for both transitions.
    */
   async findActiveByHashConsistent(hash: string): Promise<ApiKey | undefined> {
     const apiKey = await dbWrite.query.apiKeys.findFirst({
-      where: and(eq(apiKeys.key_hash, hash), eq(apiKeys.is_active, true)),
+      where: and(
+        eq(apiKeys.key_hash, hash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
 
     if (!apiKey) {
@@ -111,13 +142,29 @@ export class ApiKeysRepository {
    */
   async listByOrganization(organizationId: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
-      where: eq(apiKeys.organization_id, organizationId),
+      where: and(
+        eq(apiKeys.organization_id, organizationId),
+        isNull(apiKeys.deleted_at),
+        isNull(apiKeys.source_app_id),
+      ),
     });
   }
 
   async findByUserAndName(userId: string, name: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
       where: and(eq(apiKeys.user_id, userId), eq(apiKeys.name, name)),
+    });
+  }
+
+  /** Lists active matching keys on the primary before a bulk lifecycle mutation. */
+  async findActiveByUserAndNameConsistent(userId: string, name: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.name, name),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
   }
 
@@ -129,6 +176,21 @@ export class ApiKeysRepository {
   async listByUser(userId: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
       where: eq(apiKeys.user_id, userId),
+    });
+  }
+
+  /** Lists active keys for one user and organization on the primary. */
+  async listActiveByUserAndOrganizationConsistent(
+    userId: string,
+    organizationId: string,
+  ): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+      ),
     });
   }
 
@@ -170,7 +232,7 @@ export class ApiKeysRepository {
         ...data,
         updated_at: new Date(),
       })
-      .where(eq(apiKeys.id, id))
+      .where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)))
       .returning();
     return updated;
   }
@@ -195,7 +257,110 @@ export class ApiKeysRepository {
    * Deletes an API key by ID.
    */
   async delete(id: string): Promise<void> {
-    await dbWrite.delete(apiKeys).where(eq(apiKeys.id, id));
+    await dbWrite.delete(apiKeys).where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)));
+  }
+
+  async findExactActiveMobileConsistent(id: string, keyHash: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: and(
+        eq(apiKeys.id, id),
+        eq(apiKeys.key_hash, keyHash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+        isNotNull(apiKeys.source_app_id),
+      ),
+    });
+  }
+
+  /** Lists mobile lifecycle credentials from primary storage for account recovery. */
+  async listMobileByOwnerConsistent(userId: string, organizationId: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+      orderBy: [desc(apiKeys.created_at)],
+      limit: MOBILE_RECOVERY_LIST_LIMIT,
+    });
+  }
+
+  /** Resolves one mobile credential without revealing whether another owner has it. */
+  async findMobileByOwnerConsistent(
+    id: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: and(
+        eq(apiKeys.id, id),
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+    });
+  }
+
+  /** Tombstones an account-owned mobile credential and erases recoverable secret bytes. */
+  async tombstoneMobileByOwner(
+    id: string,
+    userId: string,
+    organizationId: string,
+    revokedAt: Date,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await dbWrite
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.user_id, userId),
+          eq(apiKeys.organization_id, organizationId),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
+  }
+
+  /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
+  async tombstoneExactMobileCredential(
+    id: string,
+    keyHash: string,
+    revokedAt: Date,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await dbWrite
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.key_hash, keyHash),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {

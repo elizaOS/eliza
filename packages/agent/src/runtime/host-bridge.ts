@@ -47,6 +47,23 @@ export interface AgentHttpRequestAuthorization {
   principal?: string;
 }
 
+/** Browser-bound authority the agent permits an embedding host to consider. */
+export interface AgentHttpRequestAuthorizationOptions {
+  /**
+   * False when an explicit request Origin is outside the credentialed CORS
+   * trust set. Hosts must then ignore ambient cookies while retaining explicit
+   * bearer-token authentication.
+   */
+  allowCookieAuth: boolean;
+  /**
+   * False for boundaries that require a real browser owner session. The host
+   * must not replace that session with ambient same-machine trust.
+   */
+  allowTrustedLocalBypass?: boolean;
+  /** False when explicit bearer credentials must not substitute for a cookie. */
+  allowBearerAuth?: boolean;
+}
+
 /** Public (digest-free) consumer-key record surfaced to the owner dashboard. */
 export interface AccountPoolConsumerKeySummary {
   id: string;
@@ -129,6 +146,7 @@ export interface AgentHostBridge {
   resolveHttpRequestAuthorization?(
     req: HttpIncomingMessage,
     runtime: AgentRuntime | null,
+    options: AgentHttpRequestAuthorizationOptions,
   ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
   /**
    * Cloud-SSO popup handoff (`GET /pair?token=…`). Owned by the host; a

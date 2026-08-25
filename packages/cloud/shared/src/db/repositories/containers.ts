@@ -13,6 +13,7 @@ import {
   type InferInsertModel,
   type InferSelectModel,
   inArray,
+  ne,
   notInArray,
   sql,
 } from "drizzle-orm";
@@ -24,7 +25,7 @@ import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { hydrateTextField, offloadTextField } from "../../lib/storage/object-store";
 import { type Database, dbRead, dbWrite } from "../helpers";
 import { containerComputeStopIntents } from "../schemas/compute-stop-intents";
-import { containers } from "../schemas/containers";
+import { containers, TERMINAL_CONTAINER_STATUS } from "../schemas/containers";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { dockerNodes } from "../schemas/docker-nodes";
 import { organizationConfig } from "../schemas/organization-config";
@@ -46,7 +47,9 @@ export type ContainerStatus =
   | "stopped"
   | "failed"
   | "deleting"
-  | "deleted";
+  // Spelled through the shared constant so the CAS predicate and this union can
+  // never drift apart.
+  | typeof TERMINAL_CONTAINER_STATUS;
 
 export interface QuotaCheckResult {
   /** Distinguishes an authoritative quota decision from an unreadable source. */
@@ -55,6 +58,12 @@ export interface QuotaCheckResult {
   current: number;
   max: number;
   error?: string;
+}
+
+/** Result of admitting one canonical project intent under the organization lock. */
+export interface ContainerProjectIntentResult {
+  container: Container;
+  created: boolean;
 }
 
 function resolveContainerLimitFromDatabaseSources(
@@ -635,6 +644,31 @@ export class ContainersRepository {
 
   /**
    * Updates container status and optional error message.
+   *
+   * Compare-and-set on the hard-terminal status. Lifecycle writers read the row
+   * and write it back in two separate awaited round-trips with no enclosing
+   * transaction (`ContainerRepoAppContainerStore.markRunning` reads at one
+   * statement and lands `updateStatus` at another), and a `CONTAINER_DELETE`
+   * job for the same container is independently claimable during a deploy
+   * overlap — `claimPendingJobs` keys `FOR UPDATE SKIP LOCKED` on JOB rows by
+   * type/status/scheduled_for, never by `containerId`. Without this predicate a
+   * late write resurrects a container that a completed delete already drove to
+   * `deleted`, silently: the row counts toward the organization container quota
+   * again (`checkQuota` excludes only `deleting`/`deleted`), and the app-container
+   * orphan reconciler treats a non-terminal row as LIVE, so it can never detect
+   * or repair the mismatch.
+   *
+   * Scoped to `deleted` ONLY. Every other status is legitimately re-entered by
+   * the lifecycle (a failed deploy retries, `stopped` is restarted by
+   * `prepareFundedRestart`), so a broader CAS would reject transitions the live
+   * path accepts today. Re-asserting `deleted` on a deleted row stays a
+   * permitted idempotent write. Same shape as
+   * `agentSandboxesRepository.markReconnectedFromDisconnected`/
+   * `markRunningFromProvisioning`, which already compare-and-set this exact
+   * class of transition.
+   *
+   * @returns the updated row, or null when the row is absent OR the CAS lost —
+   * callers that must not proceed on a terminal row have to check for null.
    */
   async updateStatus(
     id: string,
@@ -648,7 +682,11 @@ export class ContainersRepository {
         error_message: errorMessage || null,
         updated_at: new Date(),
       })
-      .where(eq(containers.id, id))
+      .where(
+        status === TERMINAL_CONTAINER_STATUS
+          ? eq(containers.id, id)
+          : and(eq(containers.id, id), ne(containers.status, TERMINAL_CONTAINER_STATUS)),
+      )
       .returning();
 
     return updated ? await hydrateContainerDeploymentLog(updated) : null;
@@ -728,6 +766,29 @@ export class ContainersRepository {
    * Uses row-level locking (FOR UPDATE) to ensure atomicity.
    */
   async createWithQuotaCheck(data: NewContainer, transaction?: Database): Promise<Container> {
+    const result = await this.createWithQuotaAndOptionalProjectIntent(data, false, transaction);
+    return result.container;
+  }
+
+  /**
+   * Atomically admits one active `(organization_id, project_name)` intent.
+   *
+   * The organization row lock is shared with quota enforcement, so a replica
+   * preflight can never authorize a second provider-bound create. A retry sees
+   * the primary row and returns it without consuming quota or inserting again.
+   */
+  async createWithProjectIntentAndQuotaCheck(
+    data: NewContainer,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
+    return await this.createWithQuotaAndOptionalProjectIntent(data, true, transaction);
+  }
+
+  private async createWithQuotaAndOptionalProjectIntent(
+    data: NewContainer,
+    enforceProjectIntent: boolean,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
     const executeInTransaction = async (tx: Database) => {
       // 1. Lock the organization row to prevent concurrent quota checks
       const [org] = await tx
@@ -741,6 +802,27 @@ export class ContainersRepository {
 
       if (!org) {
         throw new Error("Organization not found");
+      }
+
+      if (enforceProjectIntent) {
+        const [existing] = await tx
+          .select()
+          .from(containers)
+          .where(
+            and(
+              eq(containers.organization_id, data.organization_id),
+              eq(containers.project_name, data.project_name),
+              notInArray(containers.status, ["stopped", "failed", "deleting", "deleted"]),
+            ),
+          )
+          .orderBy(desc(containers.created_at))
+          .limit(1);
+        if (existing) {
+          return {
+            container: await hydrateContainerDeploymentLog(existing),
+            created: false,
+          };
+        }
       }
 
       // Get organization config for settings
@@ -804,7 +886,10 @@ export class ContainersRepository {
 
       const [container] = await tx.insert(containers).values(values).returning();
 
-      return await hydrateContainerDeploymentLog(container);
+      return {
+        container: await hydrateContainerDeploymentLog(container),
+        created: true,
+      };
     };
 
     // Use external transaction if provided, otherwise create new one

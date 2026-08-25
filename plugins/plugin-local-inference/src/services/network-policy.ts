@@ -143,11 +143,18 @@ export function capacitorAndroidProbe(): NetworkProbe {
 
 /**
  * Capacitor iOS probe (R5 §4.2). Connection type from `@capacitor/network`
- * plus iOS `NWPathMonitor.currentPath.isExpensive` via the
- * `@elizaos/capacitor-network-policy` Capacitor plugin at
+ * plus iOS `NWPathMonitor.currentPath.isExpensive` and `.isConstrained` via
+ * the `@elizaos/capacitor-network-policy` Capacitor plugin at
  * `plugins/plugin-native-network-policy/`. The plugin exposes
  * `(window as any).ElizaNetworkPolicy.getPathHints()`; falls back to
  * `metered: null` when the bridge is missing.
+ *
+ * Both hints fold into the `metered` signal: `isExpensive` is Apple's
+ * "treat as metered" flag, and `isConstrained` (Low Data Mode) means the
+ * user explicitly asked the OS to limit non-essential traffic, which the
+ * plugin contract (`plugin-native-network-policy/src/definitions.ts`)
+ * requires the updater to honor as metered so a multi-GB voice-model pull
+ * prompts instead of silently downloading.
  */
 export function capacitorIosProbe(): NetworkProbe {
 	return {
@@ -164,7 +171,10 @@ export function capacitorIosProbe(): NetworkProbe {
 							? "none"
 							: "unknown";
 			const hints = await readIosPathHintsShim();
-			const metered = hints === null ? null : Boolean(hints.isExpensive);
+			const metered =
+				hints === null
+					? null
+					: Boolean(hints.isExpensive) || Boolean(hints.isConstrained);
 			return { connectionType: ctype, metered };
 		},
 	};

@@ -73,7 +73,7 @@ function resolveBinary(opts) {
     path.join(os.homedir(), ".cache", "eliza-mtp", "buun-llama-cpp", "build"),
     path.join(os.homedir(), ".eliza", "local-inference", "bin", "mtp"),
   ];
-  const platform = `${process.platform}-${process.arch}`.replace("darwin", "darwin").replace("linux", "linux");
+  const platform = `${process.platform}-${process.arch}`;
   const backends = opts.backend ? [opts.backend] : ["cuda", "vulkan", "cpu"];
   const candidates = [];
   for (const root of cacheRoots) {

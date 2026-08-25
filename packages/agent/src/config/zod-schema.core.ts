@@ -9,10 +9,7 @@
  */
 import { isSafeExecutableValue } from "@elizaos/shared";
 import * as zod from "zod";
-import {
-  DEFAULT_MODEL_CONTEXT_WINDOW,
-  DEFAULT_MODEL_MAX_TOKENS,
-} from "./model-metadata.ts";
+import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -59,7 +56,7 @@ export const ModelDefinitionSchema = z
       .int()
       .positive()
       .default(DEFAULT_MODEL_CONTEXT_WINDOW),
-    maxTokens: z.number().int().positive().default(DEFAULT_MODEL_MAX_TOKENS),
+    maxTokens: z.number().int().positive().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     compat: ModelCompatSchema,
   })
@@ -357,7 +354,6 @@ export const QueueModeBySurfaceSchema = z
     discord: QueueModeSchema.optional(),
     slack: QueueModeSchema.optional(),
     mattermost: QueueModeSchema.optional(),
-    signal: QueueModeSchema.optional(),
     imessage: QueueModeSchema.optional(),
     msteams: QueueModeSchema.optional(),
     webchat: QueueModeSchema.optional(),
@@ -492,7 +488,6 @@ export const MediaUnderstandingModelSchema = z
     command: z.string().optional(),
     args: z.array(z.string()).optional(),
     prompt: z.string().optional(),
-    maxChars: z.number().int().positive().optional(),
     maxBytes: z.number().int().positive().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     language: z.string().optional(),
@@ -511,7 +506,6 @@ export const ToolsMediaUnderstandingSchema = z
     enabled: z.boolean().optional(),
     scope: MediaUnderstandingScopeSchema,
     maxBytes: z.number().int().positive().optional(),
-    maxChars: z.number().int().positive().optional(),
     prompt: z.string().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
     language: z.string().optional(),

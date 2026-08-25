@@ -17,8 +17,8 @@ import {
   validateWebhookTimestamp,
 } from "@/lib/config/crypto";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
 import { isOxaPayConfigured } from "@/lib/services/oxapay";
@@ -117,7 +117,7 @@ async function rollbackClaimedWebhookEvent(eventId: string): Promise<void> {
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   const ip = getClientIp(c);
   const allowedIps = getWebhookAllowedIps(c.env);
 

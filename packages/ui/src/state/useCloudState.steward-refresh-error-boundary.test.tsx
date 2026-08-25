@@ -16,7 +16,16 @@ import { setBootConfig } from "../config/boot-config";
 
 const clientCloudMocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(),
+  replaceStoredStewardTokenIfCurrent: vi.fn(),
   resolveDirectCloudAuthApiBase: vi.fn(),
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
+  replaceStoredStewardTokenIfCurrent:
+    clientCloudMocks.replaceStoredStewardTokenIfCurrent,
 }));
 
 vi.mock("../api/client-cloud", () => ({
@@ -56,6 +65,16 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
     clientCloudMocks.refreshCloudStewardSession.mockResolvedValue({
       token: "fresh",
     });
+    clientCloudMocks.replaceStoredStewardTokenIfCurrent.mockReset();
+    clientCloudMocks.replaceStoredStewardTokenIfCurrent.mockImplementation(
+      async (expectedToken: string, replacementToken: string) => {
+        if (localStorage.getItem(STEWARD_TOKEN_KEY) !== expectedToken) {
+          return false;
+        }
+        localStorage.setItem(STEWARD_TOKEN_KEY, replacementToken);
+        return true;
+      },
+    );
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockReset();
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockImplementation(
       (base: string) => base,
@@ -107,5 +126,51 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
       ),
     );
     expect(clientCloudMocks.refreshCloudStewardSession).not.toHaveBeenCalled();
+  });
+
+  it("observes protected persistence denial without publishing the refreshed token", async () => {
+    const persistenceFailure = new Error("native secure store denied");
+    clientCloudMocks.replaceStoredStewardTokenIfCurrent.mockRejectedValueOnce(
+      persistenceFailure,
+    );
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    armStewardRefresh();
+
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        { err: persistenceFailure },
+        "[useCloudState] steward session refresh failed",
+      ),
+    );
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+      "near-expiry-steward-jwt",
+    );
+  });
+
+  it("does not restore a refreshed token after logout wins the race", async () => {
+    let releaseRefresh: (value: { token: string }) => void = () => {};
+    clientCloudMocks.refreshCloudStewardSession.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseRefresh = resolve;
+      }),
+    );
+
+    armStewardRefresh();
+    await waitFor(() =>
+      expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalled(),
+    );
+    localStorage.removeItem(STEWARD_TOKEN_KEY);
+    releaseRefresh({ token: "stale-refreshed-token" });
+
+    await waitFor(() =>
+      expect(
+        clientCloudMocks.replaceStoredStewardTokenIfCurrent,
+      ).toHaveBeenCalledWith(
+        "near-expiry-steward-jwt",
+        "stale-refreshed-token",
+      ),
+    );
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 });

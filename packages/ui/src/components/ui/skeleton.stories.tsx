@@ -21,7 +21,7 @@ export const Default: Story = {};
 
 export const Line: Story = { args: { className: "h-4 w-64" } };
 
-export const Circle: Story = { args: { className: "h-12 w-12 rounded-full" } };
+export const Circle: Story = { args: { className: "size-12 rounded-full" } };
 
 export const Block: Story = { args: { className: "h-32 w-64" } };
 
@@ -40,7 +40,7 @@ export const Card: Story = {
 export const Row: Story = {
   render: () => (
     <div className="flex items-center gap-3">
-      <Skeleton className="h-12 w-12 rounded-full" />
+      <Skeleton className="size-12 rounded-full" />
       <div className="flex flex-col gap-2">
         <Skeleton className="h-4 w-48" />
         <Skeleton className="h-4 w-32" />

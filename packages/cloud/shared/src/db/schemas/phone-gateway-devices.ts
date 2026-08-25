@@ -1,6 +1,17 @@
-// Defines the phone gateway devices Drizzle table shape used by cloud repositories and services.
+/** Defines shared phone-gateway devices with typed authentication and routing metadata. */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { phoneProviderEnum } from "./agent-phone-numbers";
 
 /**
@@ -29,7 +40,7 @@ export const phoneGatewayDevices = pgTable(
     can_receive_sms: boolean("can_receive_sms").notNull().default(true),
     can_send_imessage: boolean("can_send_imessage").notNull().default(true),
     can_receive_imessage: boolean("can_receive_imessage").notNull().default(true),
-    metadata: text("metadata").notNull().default("{}"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
     last_seen_at: timestamp("last_seen_at"),
@@ -43,6 +54,10 @@ export const phoneGatewayDevices = pgTable(
     organization_idx: index("phone_gateway_devices_organization_idx").on(table.organization_id),
     phone_number_idx: index("phone_gateway_devices_phone_number_idx").on(table.phone_number),
     is_active_idx: index("phone_gateway_devices_is_active_idx").on(table.is_active),
+    metadata_object_check: check(
+      "phone_gateway_devices_metadata_object_check",
+      sql`jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
   }),
 );
 

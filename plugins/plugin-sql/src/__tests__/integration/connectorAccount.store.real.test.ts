@@ -4,7 +4,14 @@
  * isolated PGlite/Postgres adapter via `BaseDrizzleAdapter` delegation — no
  * mocked adapter.
  */
-import type { UUID } from "@elizaos/core";
+import {
+  CONNECTOR_JSON_BOUNDED,
+  CONNECTOR_JSON_UNBOUNDED,
+  type ConnectorAccountJsonObject,
+  MAX_CONNECTOR_JSON_DEPTH,
+  MAX_CONNECTOR_JSON_NODES,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
@@ -79,6 +86,104 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
         accountKey: "user-renamed",
       })
     ).resolves.toMatchObject({ id: initial.id });
+  });
+
+  it("rejects hostile connector JSON before changing the persisted account", async () => {
+    const initial = await adapter.upsertConnectorAccount({
+      provider: "github",
+      accountKey: "bounded-user",
+      displayName: "Before",
+      profile: { safe: "persisted" },
+    });
+    let accessorCalls = 0;
+    const hostile = Object.defineProperty({}, "secret", {
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return "must-not-run";
+      },
+    }) as ConnectorAccountJsonObject;
+
+    await expect(
+      adapter.upsertConnectorAccount({
+        id: initial.id,
+        provider: "github",
+        accountKey: "bounded-user",
+        displayName: "After",
+        profile: hostile,
+      })
+    ).rejects.toMatchObject({ code: CONNECTOR_JSON_UNBOUNDED });
+    expect(accessorCalls).toBe(0);
+    await expect(adapter.getConnectorAccount({ id: initial.id })).resolves.toMatchObject({
+      displayName: "Before",
+      profile: { safe: "persisted" },
+    });
+  });
+
+  it("enforces exact depth and node boundaries while accepting shared DAGs and cloning reads", async () => {
+    const nested = (levels: number): ConnectorAccountJsonObject => {
+      const root: ConnectorAccountJsonObject = {};
+      let cursor = root;
+      for (let index = 0; index < levels; index += 1) {
+        const next: ConnectorAccountJsonObject = {};
+        cursor.next = next;
+        cursor = next;
+      }
+      cursor.value = "leaf";
+      return root;
+    };
+    const shared = { value: "shared" };
+    const acceptedWidth = Object.fromEntries(
+      Array.from({ length: Math.floor((MAX_CONNECTOR_JSON_NODES - 1) / 2) }, (_, index) => [
+        `k${index}`,
+        null,
+      ])
+    );
+    const rejectedWidth = { ...acceptedWidth, overflow: null };
+
+    const account = await adapter.upsertConnectorAccount({
+      provider: "github",
+      accountKey: "json-boundaries",
+      profile: {
+        nested: nested(MAX_CONNECTOR_JSON_DEPTH - 1),
+        literal: [CONNECTOR_JSON_BOUNDED, "kept"],
+      },
+      metadata: { first: shared, second: shared },
+    });
+    const literalRead = await adapter.getConnectorAccount({ id: account.id });
+    if (!literalRead) throw new Error("Expected connector account");
+    expect(literalRead.profile.literal).toEqual([CONNECTOR_JSON_BOUNDED, "kept"]);
+    await expect(
+      adapter.upsertConnectorAccount({
+        id: account.id,
+        provider: "github",
+        accountKey: "json-boundaries",
+        profile: nested(MAX_CONNECTOR_JSON_DEPTH + 1),
+      })
+    ).rejects.toMatchObject({ code: CONNECTOR_JSON_UNBOUNDED });
+    await expect(
+      adapter.upsertConnectorAccount({
+        id: account.id,
+        provider: "github",
+        accountKey: "json-boundaries",
+        profile: acceptedWidth,
+      })
+    ).resolves.toMatchObject({ profile: acceptedWidth });
+    await expect(
+      adapter.upsertConnectorAccount({
+        id: account.id,
+        provider: "github",
+        accountKey: "json-boundaries",
+        profile: rejectedWidth,
+      })
+    ).rejects.toMatchObject({ code: CONNECTOR_JSON_UNBOUNDED });
+
+    const firstRead = await adapter.getConnectorAccount({ id: account.id });
+    if (!firstRead) throw new Error("Expected connector account");
+    firstRead.profile.mutated = true;
+    await expect(adapter.getConnectorAccount({ id: account.id })).resolves.not.toMatchObject({
+      profile: { mutated: true },
+    });
   });
 
   it("soft-deletes by composite key and hides the deleted account from normal reads", async () => {
@@ -276,6 +381,65 @@ describe("ConnectorAccountStore (via BaseDrizzleAdapter delegation)", () => {
       (entry) => "client_secret" in entry.metadata
     );
     expect(redacted?.metadata.client_secret).toBe("[REDACTED]");
+  });
+
+  it("persists a visible bounded sentinel instead of dropping hostile audit metadata", async () => {
+    const account = await adapter.upsertConnectorAccount({
+      provider: "twitter",
+      accountKey: "audit-bounds",
+    });
+    let accessorCalls = 0;
+    const metadata = Object.defineProperty({ note: "visible" }, "hostile", {
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return "must-not-run";
+      },
+    });
+
+    const event = await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "account.audit-bounded",
+      metadata,
+    });
+    expect(accessorCalls).toBe(0);
+    expect(event.metadata).toEqual({
+      note: "visible",
+      hostile: CONNECTOR_JSON_BOUNDED,
+    });
+
+    const cycle: unknown[] = [];
+    cycle.push(cycle);
+    const arrayWithAccessor = Object.defineProperty([], "0", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        accessorCalls += 1;
+        return "must-not-run";
+      },
+    });
+    Object.defineProperty(arrayWithAccessor, "length", { value: 2 });
+    Object.defineProperty(arrayWithAccessor, "1", {
+      configurable: true,
+      enumerable: true,
+      value: "after-hostile",
+    });
+
+    const roundTrip = await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "account.audit-array-bounds",
+      metadata: {
+        literal: [CONNECTOR_JSON_BOUNDED, "kept"],
+        accessor: arrayWithAccessor,
+        cycle: [cycle, "after-cycle"],
+      },
+    });
+    expect(accessorCalls).toBe(0);
+    expect(roundTrip.metadata).toEqual({
+      literal: [CONNECTOR_JSON_BOUNDED, "kept"],
+      accessor: [CONNECTOR_JSON_BOUNDED, "after-hostile"],
+      cycle: [[CONNECTOR_JSON_BOUNDED], "after-cycle"],
+    });
   });
 
   it("hashes oauth state, treats consume as single-use, and ignores expired flows", async () => {

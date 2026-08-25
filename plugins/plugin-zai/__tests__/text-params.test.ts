@@ -1,4 +1,4 @@
-/** Unit tests for text-param resolution (model selection, max-token caps, thinking body) driving mocked `ai.generateText` and the z.ai client — no live model. */
+/** Unit tests for text-param resolution (model selection, output-boundary omission, thinking body) driving mocked `ai.generateText` and the z.ai client — no live model. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateTextMock = vi.fn(async () => ({ text: "ok", usage: undefined }));
@@ -13,6 +13,13 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 }));
 
 vi.mock("@elizaos/core", () => ({
+  assertModelOutputComplete: ({ finishReason }: { finishReason?: string }) => {
+    if (finishReason === "length") {
+      throw Object.assign(new Error("incomplete"), {
+        code: "MODEL_OUTPUT_INCOMPLETE",
+      });
+    }
+  },
   ElizaError: class extends Error {
     readonly code: string;
     readonly context?: Record<string, unknown>;
@@ -60,6 +67,22 @@ describe("z.ai text parameter resolution", () => {
         temperature: 0.2,
       })
     );
+    expect(generateTextMock.mock.calls[0]?.[0]).not.toHaveProperty("maxTokens");
+  });
+
+  it("passes an output limit only when the caller supplies it", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        return key === "ZAI_API_KEY" ? "test-key" : undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(runtime as never, {
+      prompt: "hello",
+      maxTokens: 333,
+    });
+    expect(generateTextMock.mock.calls[0]?.[0]).toHaveProperty("maxTokens", 333);
   });
 
   it("honors a per-call model override before z.ai slot defaults", async () => {
@@ -86,6 +109,26 @@ describe("z.ai text parameter resolution", () => {
         model: { modelName: "glm-workflow" },
       })
     );
+  });
+
+  it("omits an output boundary by default and forwards an explicit caller request", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+    const { handleTextSmall } = await import("../models/text");
+
+    await handleTextSmall(runtime as never, { prompt: "provider maximum" });
+    await handleTextSmall(runtime as never, { prompt: "explicit", maxTokens: 123 });
+
+    const defaultCall = generateTextMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const explicitCall = generateTextMock.mock.calls[1]?.[0] as Record<string, unknown>;
+    expect(defaultCall).not.toHaveProperty("maxOutputTokens");
+    expect(defaultCall).not.toHaveProperty("maxTokens");
+    expect(explicitCall.maxOutputTokens).toBe(123);
   });
 
   it("uses deprecated CoT budget settings to enable z.ai thinking mode", async () => {
@@ -203,7 +246,7 @@ describe("z.ai text parameter resolution", () => {
     expect(forwardedInit.body).toBe("not-json");
   });
 
-  it("sends at most one stop sequence because z.ai supports one stop word", async () => {
+  it("rejects multiple stop sequences instead of silently dropping model semantics", async () => {
     const runtime = {
       character: {},
       getSetting(key: string) {
@@ -219,12 +262,102 @@ describe("z.ai text parameter resolution", () => {
         prompt: "hello",
         stopSequences: ["</one>", "</two>"],
       })
+    ).rejects.toMatchObject({
+      code: "ZAI_STOP_SEQUENCE_LIMIT_EXCEEDED",
+      context: { maximum: 1, received: 2 },
+    });
+
+    expect(createOpenAICompatibleMock).not.toHaveBeenCalled();
+    expect(generateTextMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the one stop sequence supported by z.ai", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        stopSequences: ["</one>"],
+      })
     ).resolves.toBe("ok");
 
     expect(generateTextMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        stopSequences: ["</one>"],
-      })
+      expect.objectContaining({ stopSequences: ["</one>"] })
     );
   });
+
+  it("handles valid providerOptions and rejects cyclic providerOptions with ZAI_PROVIDER_OPTIONS_UNBOUNDED", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: { agentName: "test-agent", extra: { foo: "bar" } },
+      })
+    ).resolves.toBe("ok");
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: cyclic as never,
+      })
+    ).rejects.toMatchObject({
+      code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED",
+    });
+
+    expect(generateTextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["small", "handleTextSmall"],
+    ["large", "handleTextLarge"],
+  ] as const)(
+    "rejects malformed present providerOptions before %s provider dispatch",
+    async (_size, handlerName) => {
+      const runtime = {
+        character: {},
+        getSetting(key: string) {
+          if (key === "ZAI_API_KEY") return "test-key";
+          return undefined;
+        },
+      };
+      const handlers = await import("../models/text");
+      const handler = handlers[handlerName];
+
+      for (const providerOptions of [
+        { agentName: "keep", bad: 1n },
+        new Date(0),
+        { nested: new Map([["enabled", true]]) },
+      ]) {
+        await expect(
+          handler(runtime as never, {
+            prompt: "hello",
+            providerOptions: providerOptions as never,
+          })
+        ).rejects.toMatchObject({ code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED" });
+      }
+
+      expect(createOpenAICompatibleMock).not.toHaveBeenCalled();
+      expect(generateTextMock).not.toHaveBeenCalled();
+    }
+  );
 });

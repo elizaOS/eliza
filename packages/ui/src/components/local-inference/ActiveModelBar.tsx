@@ -56,7 +56,7 @@ export function ActiveModelBar({
       title={`${label} · ${status}`}
     >
       <span
-        className={`inline-flex h-2 w-2 rounded-full ${dotClass}`}
+        className={`inline-flex size-2 rounded-full ${dotClass}`}
         aria-hidden
       />
       <div className="min-w-0 flex-1 truncate">
@@ -64,9 +64,8 @@ export function ActiveModelBar({
         <span className="ml-1.5 text-muted">{status}</span>
       </div>
       <Button
-        size="sm"
-        variant="outline"
-        className="h-7 rounded-sm px-2 text-xs"
+        size="tiny"
+        variant="outlineMuted"
         onClick={onUnload}
         disabled={busy}
       >

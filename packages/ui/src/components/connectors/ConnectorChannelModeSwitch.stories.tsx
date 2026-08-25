@@ -6,29 +6,17 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ConnectorChannelModeSwitch } from "./ConnectorChannelModeSwitch";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    return () => {};
-  },
-});
 
 const meta = {
   title: "Connectors/ConnectorChannelModeSwitch",
   component: ConnectorChannelModeSwitch,
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <Story />
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
 } satisfies Meta<typeof ConnectorChannelModeSwitch>;

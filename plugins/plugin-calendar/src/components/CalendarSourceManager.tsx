@@ -271,8 +271,9 @@ export function CalendarSourceManager({
     >
       <Button
         ref={manageRef}
-        unstyled
-        className="flex min-h-9 w-full items-center gap-2 px-1 text-left text-xs font-medium text-muted-strong transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        variant="sectionToggle"
+        size="content"
+        align="start"
         aria-controls={contentId}
         aria-expanded={open}
         aria-label={t("calendarSources.manage", {
@@ -281,7 +282,7 @@ export function CalendarSourceManager({
         onClick={() => setOpen((current) => !current)}
         {...manageAgentProps}
       >
-        <Settings2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <Settings2 className="size-3.5 shrink-0" aria-hidden />
         <span className="flex-1">
           {t("calendarSources.manage", {
             defaultValue: "Manage calendar sources",
@@ -296,7 +297,7 @@ export function CalendarSourceManager({
           </span>
         ) : null}
         <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
+          className={`size-3.5 shrink-0 transition-transform ${
             open ? "rotate-180" : ""
           }`}
           aria-hidden
@@ -331,11 +332,7 @@ export function CalendarSourceManager({
               role="alert"
             >
               <span>{state.error}</span>
-              <Button
-                unstyled
-                className="font-semibold underline underline-offset-2 hover:text-txt"
-                onClick={() => void state.refresh()}
-              >
+              <Button variant="mutedLink" onClick={() => void state.refresh()}>
                 {t("common.retry", { defaultValue: "Retry" })}
               </Button>
             </div>
@@ -355,8 +352,8 @@ export function CalendarSourceManager({
                 })}
               </p>
               <Button
-                unstyled
-                className="mt-1 inline-flex items-center gap-1 font-semibold text-muted-strong underline underline-offset-2 hover:text-txt"
+                variant="mutedLink"
+                className="mt-1"
                 onClick={() => openCalendarConnectorSettings()}
               >
                 {t("calendarSources.openConnectorSettings", {
@@ -478,8 +475,8 @@ export function CalendarSourceManager({
 
                     {row.reconnectConnectorId ? (
                       <Button
-                        unstyled
-                        className="mt-2 text-xs font-semibold text-muted-strong underline underline-offset-2 hover:text-txt"
+                        variant="mutedLink"
+                        className="mt-2"
                         onClick={() =>
                           openCalendarConnectorSettings(
                             row.reconnectConnectorId ?? undefined,
@@ -505,15 +502,14 @@ export function CalendarSourceManager({
 
           {model.rows.length > 0 ? (
             <Button
-              unstyled
-              className="mt-2 inline-flex min-h-8 items-center gap-1.5 text-xs font-medium text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              variant="ghostMuted"
+              size="compact"
+              className="mt-2"
               disabled={state.refreshing}
               onClick={() => void state.refresh()}
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${
-                  state.refreshing ? "animate-spin" : ""
-                }`}
+                className={`size-3.5 ${state.refreshing ? "animate-spin" : ""}`}
                 aria-hidden
               />
               {state.refreshing
@@ -556,8 +552,7 @@ export function CalendarSourceManager({
               >
                 <span>{icsError}</span>
                 <Button
-                  unstyled
-                  className="font-semibold underline underline-offset-2 hover:text-txt"
+                  variant="mutedLink"
                   onClick={() => void loadIcsSources()}
                 >
                   {t("common.retry", { defaultValue: "Retry" })}
@@ -601,8 +596,9 @@ export function CalendarSourceManager({
                       </p>
                     </div>
                     <Button
-                      unstyled
-                      className="shrink-0 text-xs font-semibold text-muted-strong underline underline-offset-2 hover:text-danger"
+                      variant="dangerGhost"
+                      size="content"
+                      className="shrink-0"
                       disabled={icsRemovingId === source.id}
                       aria-label={t("calendarSources.icsRemoveAria", {
                         defaultValue: "Remove subscription {{name}}",
@@ -635,6 +631,7 @@ export function CalendarSourceManager({
               }}
             >
               <Input
+                density="denseResponsive"
                 value={icsName}
                 onChange={(changeEvent) => setIcsName(changeEvent.target.value)}
                 placeholder={t("calendarSources.icsNamePlaceholder", {
@@ -644,9 +641,10 @@ export function CalendarSourceManager({
                   defaultValue: "Subscription name",
                 })}
                 disabled={icsSubmitting}
-                className="h-8 w-40 text-xs"
+                className="w-40"
               />
               <Input
+                density="denseResponsive"
                 value={icsUrl}
                 onChange={(changeEvent) => setIcsUrl(changeEvent.target.value)}
                 placeholder={t("calendarSources.icsUrlPlaceholder", {
@@ -656,14 +654,9 @@ export function CalendarSourceManager({
                   defaultValue: "Subscription URL",
                 })}
                 disabled={icsSubmitting}
-                className="h-8 min-w-0 flex-1 text-xs"
+                className="min-w-0 flex-1"
               />
-              <Button
-                type="submit"
-                size="sm"
-                className="h-8 px-2.5 text-xs font-semibold"
-                disabled={!icsSubscribeReady}
-              >
+              <Button type="submit" size="dense" disabled={!icsSubscribeReady}>
                 {icsSubmitting
                   ? t("calendarSources.icsSubscribing", {
                       defaultValue: "Subscribing…",

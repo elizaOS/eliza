@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -54,6 +55,8 @@ public final class BionicDecodeLoopTest {
         assertEquals(20, fake.totalDecoded);
         assertEquals(20, r.produced);
         assertTrue("eval work must not exceed the cap", fake.totalDecoded <= 20);
+        assertTrue(r.incomplete);
+        assertEquals("generation_boundary", r.finishReason);
     }
 
     @Test
@@ -69,12 +72,14 @@ public final class BionicDecodeLoopTest {
     }
 
     @Test
-    public void capDefaultsWhenRequestCarriesNone() throws Exception {
+    public void missingRealBoundaryIsRejected() throws Exception {
         final GreedyFake fake = new GreedyFake();
-        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
-            fake, 0, BionicDecodeLoop.MAX_STEP_TOKENS, null);
-        assertEquals(BionicDecodeLoop.DEFAULT_CAP_TOKENS, r.produced);
-        assertEquals(BionicDecodeLoop.DEFAULT_CAP_TOKENS, fake.totalDecoded);
+        try {
+            BionicDecodeLoop.run(fake, 0, BionicDecodeLoop.MAX_STEP_TOKENS, null);
+            fail("expected a missing generation boundary to be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertEquals(0, fake.totalDecoded);
+        }
     }
 
     @Test
@@ -108,6 +113,8 @@ public final class BionicDecodeLoopTest {
         assertEquals(9, r.produced);
         assertEquals("Hello world", r.text);
         assertEquals(Arrays.asList(8, 8), caps);
+        assertFalse(r.incomplete);
+        assertEquals("model_terminal", r.finishReason);
     }
 
     @Test
@@ -153,6 +160,94 @@ public final class BionicDecodeLoopTest {
         assertEquals(Arrays.asList("done"), frames);
     }
 
+    @Test
+    public void mandatoryStopSequencesSplitAcrossStepsNeverLeak() throws Exception {
+        final List<String> stops =
+            Arrays.asList("<end_of_turn>", "<start_of_turn>", "<endoftext>");
+        for (String marker : stops) {
+            final List<String> frames = new ArrayList<>();
+            final int split = marker.length() / 2;
+            final String[] pieces = {
+                "Ready" + marker.substring(0, split),
+                marker.substring(split) + "ignored",
+                "never reached"
+            };
+            final int[] call = {0};
+            final BionicDecodeLoop.StepFn fn = stepCap ->
+                new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+
+            final BionicDecodeLoop.Result r =
+                BionicDecodeLoop.run(fn, 64, 2, stops, frames::add);
+
+            assertEquals("Ready", r.text);
+            assertEquals(Arrays.asList("Ready"), frames);
+            assertFalse(r.text.contains(marker));
+            assertFalse(String.join("", frames).contains(marker));
+            assertEquals(4, r.produced);
+            assertEquals(2, call[0]);
+            assertFalse(r.incomplete);
+            assertEquals("stop_sequence", r.finishReason);
+        }
+    }
+
+    @Test
+    public void longUnrelatedStopDoesNotDelaySafeText() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final StringBuilder longStop = new StringBuilder();
+        for (int i = 0; i < 1024; i++) longStop.append('x');
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            call[0]++;
+            if (call[0] == 1) {
+                return new BionicDecodeLoop.Step("safe output", 2, false);
+            }
+            assertEquals(Arrays.asList("safe output"), frames);
+            return new BionicDecodeLoop.Step("", 1, true);
+        };
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 8, Arrays.asList(longStop.toString()), frames::add);
+
+        assertEquals("safe output", r.text);
+        assertEquals(Arrays.asList("safe output"), frames);
+        assertEquals(2, call[0]);
+    }
+
+    @Test
+    public void overlappingStopPrefixesWithholdOnlyTheLongestPendingSuffix() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final String[] pieces = {"visible<sto", "p>hidden", "never reached"};
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            if (call[0] == 1) assertEquals(Arrays.asList("visible"), frames);
+            return new BionicDecodeLoop.Step(pieces[call[0]++], 2, false);
+        };
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 2, Arrays.asList("<stop-extra>", "<stop>"), frames::add);
+
+        assertEquals("visible", r.text);
+        assertEquals(Arrays.asList("visible"), frames);
+        assertEquals(2, call[0]);
+    }
+
+    @Test
+    public void partialStopPrefixFlushesWhenDecodeEndsNormally() throws Exception {
+        final List<String> frames = new ArrayList<>();
+        final int[] call = {0};
+        final BionicDecodeLoop.StepFn fn = stepCap -> {
+            call[0]++;
+            return new BionicDecodeLoop.Step("answer<end_", 3, true);
+        };
+
+        final BionicDecodeLoop.Result r = BionicDecodeLoop.run(
+            fn, 64, 8, Arrays.asList("<end_of_turn>"), frames::add);
+
+        assertEquals("answer<end_", r.text);
+        assertEquals(Arrays.asList("answer", "<end_"), frames);
+        assertEquals(1, call[0]);
+    }
+
     // ── Termination + failure propagation ──────────────────────────────────
 
     @Test
@@ -166,10 +261,11 @@ public final class BionicDecodeLoopTest {
         // Each zero-progress step is counted as 1 so the loop provably ends.
         assertEquals(5, calls[0]);
         assertEquals(5, r.produced);
+        assertTrue(r.incomplete);
     }
 
     @Test
-    public void nullStepEndsTheTurnWithPartialOutput() throws Exception {
+    public void nullStepMarksTheTurnIncomplete() throws Exception {
         final int[] call = {0};
         final BionicDecodeLoop.StepFn fn = stepCap -> {
             if (call[0]++ == 0) return new BionicDecodeLoop.Step("partial", 4, false);
@@ -178,6 +274,8 @@ public final class BionicDecodeLoopTest {
         final BionicDecodeLoop.Result r = BionicDecodeLoop.run(fn, 64, 4, null);
         assertEquals(4, r.produced);
         assertEquals("partial", r.text);
+        assertTrue(r.incomplete);
+        assertEquals("native_no_step", r.finishReason);
     }
 
     @Test

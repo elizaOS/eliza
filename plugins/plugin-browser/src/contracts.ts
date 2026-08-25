@@ -8,7 +8,7 @@
 
 import type { LifeOpsBrowserSession } from "./lifeops-session-contracts.js";
 
-export const BROWSER_BRIDGE_KINDS = ["chrome", "safari"] as const;
+export const BROWSER_BRIDGE_KINDS = ["chrome", "firefox", "safari"] as const;
 export type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
 
 export const BROWSER_BRIDGE_TRACKING_MODES = [
@@ -228,6 +228,7 @@ export interface CreateBrowserBridgeCompanionPairingRequest {
   profileLabel?: string | null;
   label?: string | null;
   extensionVersion?: string | null;
+  pairingKind?: "manual" | "native_enrollment";
   metadata?: Record<string, unknown>;
 }
 
@@ -235,6 +236,11 @@ export interface BrowserBridgeCompanionPairingResponse {
   companion: BrowserBridgeCompanionStatus;
   pairingToken: string;
   pairingTokenExpiresAt: string | null;
+}
+
+export interface BrowserBridgeCompanionRevocationResetResponse {
+  companion: BrowserBridgeCompanionStatus;
+  resetAt: string;
 }
 
 export interface BrowserBridgeCompanionConfig {
@@ -271,11 +277,27 @@ export interface BrowserBridgeCompanionRevokeResponse {
   revokedAt: string;
 }
 
+export interface BrowserBridgeCompanionPreflightRequest {
+  companion: UpsertBrowserBridgeCompanionRequest;
+}
+
+export interface BrowserBridgeCompanionSyncRequest
+  extends SyncBrowserBridgeStateRequest {
+  settingsVersion: string;
+}
+
+export interface BrowserBridgeCompanionPreflightResponse {
+  companion: BrowserBridgeCompanionStatus;
+  settings: BrowserBridgeSettings;
+  settingsVersion: string;
+}
+
 export interface BrowserBridgeCompanionSyncResponse {
   companion: BrowserBridgeCompanionStatus;
   tabs: BrowserBridgeTabSummary[];
   currentPage: BrowserBridgePageContext | null;
   settings: BrowserBridgeSettings;
+  settingsVersion: string;
   session: LifeOpsBrowserSession | null;
 }
 
@@ -285,10 +307,24 @@ export interface UpdateBrowserBridgeSessionProgressRequest {
   metadata?: Record<string, unknown>;
 }
 
+export interface BrowserBridgeCompanionSessionProgressRequest
+  extends UpdateBrowserBridgeSessionProgressRequest {
+  completedActionId: string;
+  attemptId: string;
+}
+
+export interface BrowserBridgeCompanionSessionBeginRequest {
+  currentActionIndex: number;
+  actionId: string;
+  attemptId: string;
+}
+
 export const BROWSER_BRIDGE_PACKAGE_PATH_TARGETS = [
   "extension_root",
   "chrome_build",
   "chrome_package",
+  "firefox_build",
+  "firefox_package",
   "safari_web_extension",
   "safari_app",
   "safari_package",
@@ -300,6 +336,8 @@ export interface BrowserBridgeCompanionPackageStatus {
   extensionPath: string | null;
   chromeBuildPath: string | null;
   chromePackagePath: string | null;
+  firefoxBuildPath: string | null;
+  firefoxPackagePath: string | null;
   safariWebExtensionPath: string | null;
   safariAppPath: string | null;
   safariPackagePath: string | null;
@@ -309,11 +347,14 @@ export interface BrowserBridgeCompanionPackageStatus {
 export interface BrowserBridgeCompanionReleaseAsset {
   fileName: string;
   downloadUrl: string | null;
+  sha256: string | null;
 }
 
 export interface BrowserBridgeCompanionReleaseTarget {
   installKind:
     | "chrome_web_store"
+    | "firefox_addons"
+    | "firefox_unsigned_submission"
     | "apple_app_store"
     | "github_release"
     | "local_download";
@@ -330,9 +371,11 @@ export interface BrowserBridgeCompanionReleaseManifest {
   releasePageUrl: string | null;
   chromeVersion: string;
   chromeVersionName: string;
+  firefoxVersion: string;
   safariMarketingVersion: string;
   safariBuildVersion: string;
   chrome: BrowserBridgeCompanionReleaseTarget;
+  firefox: BrowserBridgeCompanionReleaseTarget;
   safari: BrowserBridgeCompanionReleaseTarget;
   generatedAt: string;
 }

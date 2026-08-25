@@ -138,12 +138,12 @@ describe("mapDiscordMemoryToRef", () => {
 		expect(mapDiscordMemoryToRef(memory)).toBeNull();
 	});
 
-	it("clips long bodies into the snippet", () => {
-		const long = "x".repeat(600);
+	it("preserves complete long bodies in the model-facing snippet", () => {
+		const long = `${"x".repeat(600)}tail`;
 		const ref = mapDiscordMemoryToRef(
 			discordMemory({ messageId: "1", channelId: "2", text: long }),
 		);
-		expect(ref?.snippet.length).toBeLessThanOrEqual(240);
+		expect(ref?.snippet).toBe(long);
 		expect(ref?.body).toBe(long);
 	});
 });
@@ -199,6 +199,33 @@ describe("DiscordTriageAdapter", () => {
 			limit: 2,
 		});
 		expect(refs.map((r) => r.externalId)).toEqual(["10", "20"]);
+	});
+
+	it("preserves every discovered channel and message when limit is omitted", async () => {
+		const channels = Array.from({ length: 30 }, (_, index) => ({
+			channelId: `c${index}`,
+		}));
+		const messagesByChannel = Object.fromEntries(
+			channels.map(({ channelId }, channelIndex) => [
+				channelId,
+				Array.from({ length: 20 }, (_, messageIndex) =>
+					discordMemory({
+						messageId: `${channelIndex}-${messageIndex}`,
+						channelId,
+						createdAt: channelIndex * 100 + messageIndex,
+					}),
+				),
+			]),
+		);
+		const service = createFakeDiscordService({ channels, messagesByChannel });
+
+		const refs = await new DiscordTriageAdapter().listMessages(
+			createRuntime(service),
+			{},
+		);
+
+		expect(refs).toHaveLength(600);
+		expect(new Set(refs.map((ref) => ref.channelId)).size).toBe(30);
 	});
 
 	it("skips the agent's own messages", async () => {
@@ -353,5 +380,29 @@ describe("DiscordTriageAdapter", () => {
 				"discord-draft:nope",
 			),
 		).rejects.toThrow(/no cached draft/);
+	});
+
+	it("preserves complete long draft previews and valid surrogate pairs", async () => {
+		const service = createFakeDiscordService({
+			channels: [{ channelId: "c1" }],
+			messagesByChannel: {
+				c1: [discordMemory({ messageId: "89", channelId: "c1" })],
+			},
+		});
+		const runtime = createRuntime(service);
+		const adapter = new DiscordTriageAdapter();
+		await adapter.listMessages(runtime, {});
+
+		const longBody = `${"a".repeat(240)}🦊${"b".repeat(500)}tail`;
+		const { preview } = await adapter.createDraft(runtime, {
+			source: "discord",
+			inReplyToId: "discord:89",
+			to: [{ identifier: "111222333444555666" }],
+			body: longBody,
+		});
+
+		expect(preview.isWellFormed()).toBe(true);
+		expect(preview).toBe(longBody);
+		expect(preview.endsWith("tail")).toBe(true);
 	});
 });

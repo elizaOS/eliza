@@ -101,6 +101,20 @@ describe("createVoiceCancellationToken", () => {
     expect(token.aborted).toBe(true);
     expect(token.reason).toBe("external");
   });
+
+  it("detaches from a linked signal when the token aborts independently", () => {
+    const ctrl = new AbortController();
+    const remove = vi.spyOn(ctrl.signal, "removeEventListener");
+    const token = createVoiceCancellationToken({
+      runId: "r",
+      linkSignal: ctrl.signal,
+    });
+
+    token.abort("barge-in");
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(token.aborted).toBe(true);
+  });
 });
 
 describe("createAbortedVoiceCancellationToken", () => {

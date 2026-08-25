@@ -63,7 +63,7 @@ export type SwarmActivityStatus =
 	| "waiting"
 	| "idle";
 
-/** One entry of a live plan/checklist (opencode `plan` / todowrite). */
+/** One entry of a live plan/checklist (`plan` / todowrite). */
 export interface SwarmActivityPlanEntry {
 	content: string;
 	status: "pending" | "in_progress" | "completed" | string;

@@ -78,4 +78,28 @@ describe("formatClockTime", () => {
       formatClockTime(Date.parse("2026-01-01T08:30:00Z"), "en-US"),
     ).toMatch(/\d{1,2}:\d{2}/);
   });
+
+  it("sorts timeline items safely when timestamp contains NaN", () => {
+    const items = [
+      { id: "item-nan", timestamp: NaN },
+      { id: "item-newer", timestamp: 2000 },
+      { id: "item-older", timestamp: 1000 },
+    ];
+
+    items.sort((a, b) => {
+      const aTime =
+        typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+          ? a.timestamp
+          : 0;
+      const bTime =
+        typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+          ? b.timestamp
+          : 0;
+      return aTime - bTime || a.id.localeCompare(b.id);
+    });
+
+    expect(items[0]?.id).toBe("item-nan");
+    expect(items[1]?.id).toBe("item-older");
+    expect(items[2]?.id).toBe("item-newer");
+  });
 });

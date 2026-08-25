@@ -77,7 +77,6 @@ function makeHarness(row: ChatDbMessage, settings: Partial<IMessageSettings>): H
   // Skip the lazy Apple Contacts load so the harness stays offline.
   internal.contactsLoadAttempted = true;
   internal.settings = {
-    cliPath: "imsg",
     pollIntervalMs: 5000,
     heartbeatIntervalMs: 60_000,
     dmPolicy: "pairing",

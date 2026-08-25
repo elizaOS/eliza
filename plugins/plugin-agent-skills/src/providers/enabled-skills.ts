@@ -8,22 +8,19 @@
  * Empty when no skills are enabled — never pollutes the prompt.
  */
 
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	ProviderResult,
-	State,
+import {
+	type IAgentRuntime,
+	type Memory,
+	type Provider,
+	type ProviderResult,
+	type State,
+	toWellFormedUnicode,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 
-const MAX_DESCRIPTION_CHARS = 120;
-const MAX_SKILLS_LISTED = 50;
-
-function truncateDescription(value: string): string {
+function normalizeDescription(value: string): string {
 	const cleaned = value.replace(/\s+/g, " ").trim();
-	if (cleaned.length <= MAX_DESCRIPTION_CHARS) return cleaned;
-	return `${cleaned.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
+	return toWellFormedUnicode(cleaned);
 }
 
 export const enabledSkillsProvider: Provider = {
@@ -58,38 +55,29 @@ export const enabledSkillsProvider: Provider = {
 				return { text: "" };
 			}
 
-			const listed = enabled.slice(0, MAX_SKILLS_LISTED);
-			const remaining = enabled.length - listed.length;
-
-		const lines = listed.map((skill) => {
-			const description = truncateDescription(skill.description || "");
+		const lines = enabled.map((skill) => {
+			const description = normalizeDescription(skill.description || "");
 			const tail = description ? ` — ${description}` : "";
 			return `- **${skill.name}** (\`${skill.slug}\`)${tail}`;
 		});
 
-		const overflow =
-			remaining > 0
-				? `\n\n…and ${remaining} more — use SKILL op=search to find them.`
-				: "";
-
 		const text =
 			`## Enabled skills\n` +
 			`Use USE_SKILL with one of these slugs to invoke:\n` +
-			`${lines.join("\n")}${overflow}`;
+			`${lines.join("\n")}`;
 
 			return {
 				text,
 				values: {
 					enabledSkillCount: enabled.length,
-					enabledSkillSlugs: listed.map((s) => s.slug).join(", "),
+					enabledSkillSlugs: enabled.map((s) => s.slug).join(", "),
 				},
 				data: {
-					enabledSkills: listed.map((skill) => ({
+					enabledSkills: enabled.map((skill) => ({
 						slug: skill.slug,
 						name: skill.name,
 						description: skill.description,
 					})),
-					truncated: remaining > 0,
 					totalEnabled: enabled.length,
 				},
 			};

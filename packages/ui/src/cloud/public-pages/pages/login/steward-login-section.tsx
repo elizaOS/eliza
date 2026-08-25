@@ -2,8 +2,8 @@
  * Steward login section for the app-hosted login page.
  *
  * Supports phone OTP when Steward advertises SMS, passkey where browser
- * WebAuthn is actually available, plus email magic-link, OAuth, wallets, and
- * the post-redirect OAuth `code` consumption + cookie sync.
+ * WebAuthn is actually available, plus email magic-link, OAuth, Telegram,
+ * wallets, and the post-redirect OAuth `code` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -28,8 +28,10 @@ import type {
   StewardAuthResult,
   StewardMfaRequiredResult,
   StewardProviders,
+  StewardTelegramLoginPayload,
 } from "@stwd/sdk";
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
+import type { CountryCode } from "libphonenumber-js/min";
 import { AlertCircle, Phone } from "lucide-react";
 import {
   lazy,
@@ -47,10 +49,19 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { toast } from "sonner";
-import { DiscordIcon } from "../../../../cloud-ui/components/icons";
+import {
+  DiscordIcon,
+  TelegramIcon,
+} from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "../../../../components/ui/select";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -81,6 +92,7 @@ import {
 } from "../../lib/steward-oauth-url";
 import {
   consumeStewardCodeFromQuery,
+  consumeStewardOAuthStateFromCallback,
   exchangeStewardCodeViaApi,
   hasStewardOAuthCallbackInUrl,
   recoverStewardEmailSessionViaCookie,
@@ -97,6 +109,19 @@ import {
   resolveWebPasskeyCapability,
   type WebPasskeyCapability,
 } from "./passkey-capability";
+import {
+  hasPasskeyDeviceHint,
+  rememberPasskeyDeviceHint,
+} from "./passkey-device-hints";
+import {
+  inferPhoneCountry,
+  normalizePhoneForCountry,
+  PHONE_COUNTRY_OPTIONS,
+} from "./phone-country";
+import {
+  configuredTelegramBotUsername,
+  TelegramLoginWidget,
+} from "./telegram-login-widget";
 
 const Github = ({ className }: { className?: string }) => (
   <svg
@@ -115,6 +140,26 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
   import.meta.env.VITE_PLAYWRIGHT_TEST_AUTH === "true" ||
   (typeof process !== "undefined" &&
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
+/**
+ * Optional local-stack API key for the "Continue with local test account"
+ * shortcut. It is never bundled by default: the operator who arms
+ * `PLAYWRIGHT_TEST_AUTH` on the local Cloud Worker exports the key that the
+ * e2e preload (or their own seed) minted, and `/api/test/auth/session` trades
+ * it for a test session cookie. The button stays hidden when the key is absent.
+ */
+function readLocalDedicatedTestApiKey(): string | null {
+  const fromVite = import.meta.env.VITE_LOCAL_DEDICATED_TEST_API_KEY;
+  if (typeof fromVite === "string" && fromVite.trim()) return fromVite.trim();
+  const fromNext =
+    typeof process !== "undefined"
+      ? process.env?.NEXT_PUBLIC_LOCAL_DEDICATED_TEST_API_KEY
+      : undefined;
+  if (typeof fromNext === "string" && fromNext.trim()) return fromNext.trim();
+  return null;
+}
+const LOCAL_DEDICATED_TEST_API_KEY = readLocalDedicatedTestApiKey();
+const LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED =
+  PLAYWRIGHT_TEST_AUTH_ENABLED && LOCAL_DEDICATED_TEST_API_KEY !== null;
 
 type AuthStep =
   | "idle"
@@ -131,12 +176,35 @@ type EmailCheckState =
   | "locked"
   | "invalid";
 
-function persistStewardToken(token: string): void {
-  writeStoredStewardToken(token);
+async function persistStewardToken(token: string): Promise<void> {
+  await writeStoredStewardToken(token);
   if (readStoredStewardToken() !== token) {
     throw new Error(
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
     );
+  }
+}
+
+/**
+ * Parse the `/api/test/auth/session` reply. Malformed bodies become an explicit
+ * empty result so the caller reports the HTTP failure instead of a fake token.
+ */
+function parseLocalTestSessionResponse(raw: string): {
+  error?: string;
+  token?: string;
+} {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const record = parsed as Record<string, unknown>;
+    return {
+      ...(typeof record.error === "string" ? { error: record.error } : {}),
+      ...(typeof record.token === "string" ? { token: record.token } : {}),
+    };
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — a non-JSON body yields an
+    // explicit empty result; the caller surfaces the HTTP status as the error.
+    return {};
   }
 }
 
@@ -170,13 +238,16 @@ function stripLegacyTokenParamsFromAddressBar(): boolean {
 }
 
 type Provider =
+  | "local"
   | "passkey"
   | "email"
   | "sms"
   | "google"
   | "discord"
   | "github"
+  | "telegram"
   | "twitter"
+  | "apple"
   | "ethereum"
   | "solana";
 
@@ -197,6 +268,23 @@ function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
+const STEWARD_OAUTH_PROVIDERS = [
+  "google",
+  "discord",
+  "github",
+  "twitter",
+  "apple",
+] as const satisfies readonly StewardOAuthProvider[];
+
+function isStewardOAuthProviderEnabled(
+  providers: StewardProviders,
+  provider: StewardOAuthProvider,
+): boolean {
+  if (providers.oauth?.includes(provider)) return true;
+  if (provider === "apple") return false;
+  return providers[provider] === true;
+}
+
 const DEFAULT_PROVIDERS: StewardProviders = {
   passkey: true,
   email: true,
@@ -207,6 +295,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   discord: false,
   github: false,
   twitter: false,
+  telegram: false,
   oauth: [],
 };
 
@@ -313,11 +402,6 @@ function sanitizeOneTimeCode(value: string): string {
   return value.replace(/[^0-9]/g, "").slice(0, 6);
 }
 
-function normalizeE164Phone(value: string): string | null {
-  const normalized = value.trim().replace(/[\s().-]/g, "");
-  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
-}
-
 function challengeExpiresAtMs(challenge: StewardEmailLoginChallenge): number {
   if (typeof challenge.expiresAt === "number") {
     return challenge.expiresAt < 10_000_000_000
@@ -387,6 +471,7 @@ function normalizeSessionCachedProviders(
   const discord = record.discord;
   const github = record.github;
   const twitter = record.twitter;
+  const telegram = record.telegram;
   const oauth = record.oauth;
   if (
     typeof passkey !== "boolean" ||
@@ -399,7 +484,8 @@ function normalizeSessionCachedProviders(
     typeof twitter !== "boolean" ||
     !Array.isArray(oauth) ||
     !oauth.every((provider) => typeof provider === "string") ||
-    (record.sms !== undefined && typeof record.sms !== "boolean")
+    (record.sms !== undefined && typeof record.sms !== "boolean") ||
+    (telegram !== undefined && typeof telegram !== "boolean")
   ) {
     return null;
   }
@@ -414,6 +500,7 @@ function normalizeSessionCachedProviders(
     twitter,
     oauth,
     ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+    ...(typeof telegram === "boolean" ? { telegram } : {}),
   };
 }
 
@@ -466,6 +553,13 @@ export default function StewardLoginSection() {
   const navigate = useNavigate();
   const pathname = useLocation().pathname;
   const stewardApiUrl = useMemo(() => resolveBrowserStewardApiUrl(), []);
+  const [phoneCountry, setPhoneCountry] = useState<CountryCode>(() =>
+    inferPhoneCountry(),
+  );
+  const telegramBotUsername = useMemo(
+    () => configuredTelegramBotUsername(),
+    [],
+  );
 
   const auth = useMemo(() => {
     const privateSession = new Map<string, string>();
@@ -490,17 +584,29 @@ export default function StewardLoginSection() {
   const [phone, setPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  const [passkeyEmailGrant, setPasskeyEmailGrant] = useState<string | null>(
+    null,
+  );
   const [emailCode, setEmailCode] = useState("");
   const [emailChallenge, setEmailChallenge] =
     useState<StewardEmailLoginChallenge | null>(null);
   const [emailCheckState, setEmailCheckState] =
     useState<EmailCheckState>("pending");
+  // When Steward does not declare which factors the email carried, the code
+  // entry stays behind an opt-in disclosure so the waiting screen never
+  // asserts a six-digit code the email may not contain (#19213).
+  const [showUndeclaredCodeEntry, setShowUndeclaredCodeEntry] = useState(false);
   const [resendRemainingSeconds, setResendRemainingSeconds] = useState(0);
   const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
+  const [showPasskeyEnrollmentRecovery, setShowPasskeyEnrollmentRecovery] =
+    useState(false);
+  const [telegramIntent, setTelegramIntent] = useState(false);
+  const telegramIntentButtonRef = useRef<HTMLButtonElement>(null);
+  const telegramRegionRef = useRef<HTMLFieldSetElement>(null);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -519,6 +625,12 @@ export default function StewardLoginSection() {
   const walletOptionsRegionRef = useRef<HTMLDivElement>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
+  // Do not expose fresh-login controls while an older session is still being
+  // restored. Otherwise a delayed restore can overtake an OTP request and make
+  // requesting a code look like successful authentication.
+  const [sessionRecoveryComplete, setSessionRecoveryComplete] = useState(
+    PLAYWRIGHT_TEST_AUTH_ENABLED,
+  );
   const [externalSuccessDestination, setExternalSuccessDestination] = useState<
     string | null
   >(null);
@@ -562,9 +674,11 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const hasOAuthProviders = Boolean(
-    providers.google || providers.discord || providers.github,
+  const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+    isStewardOAuthProviderEnabled(providers, provider),
   );
+  const hasIdentityProviders =
+    enabledOAuthProviders.length > 0 || providers.telegram === true;
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
@@ -705,7 +819,7 @@ export default function StewardLoginSection() {
       // into the attacker's account. The verifier is consumed ONLY when the
       // state matches, so the user's own in-flight flow survives clicking a
       // foreign link.
-      const returnedState = searchParams.get("state");
+      const returnedState = consumeStewardOAuthStateFromCallback();
       const expectedState = peekStewardOAuthState();
       if (!returnedState || !expectedState || returnedState !== expectedState) {
         stripLegacyTokenParamsFromAddressBar();
@@ -747,7 +861,7 @@ export default function StewardLoginSection() {
               "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
             );
           }
-          persistStewardToken(token);
+          await persistStewardToken(token);
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
             resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
@@ -772,9 +886,12 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
-    if (searchParams.get("code")) return;
-    if (searchParams.get("error")) return;
+    if (searchParams.get("code") || searchParams.get("error")) {
+      setSessionRecoveryComplete(true);
+      return;
+    }
 
+    setSessionRecoveryComplete(false);
     let cancelled = false;
 
     const tryRecoverSession = async () => {
@@ -802,7 +919,7 @@ export default function StewardLoginSection() {
           const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
-            writeStoredStewardToken(refreshed.token);
+            await writeStoredStewardToken(refreshed.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
             setRedirectTo(resolveLoginReturnTo(searchParams));
           }
@@ -817,6 +934,8 @@ export default function StewardLoginSection() {
             ),
           );
         }
+      } finally {
+        if (!cancelled) setSessionRecoveryComplete(true);
       }
     };
 
@@ -874,7 +993,7 @@ export default function StewardLoginSection() {
             if (cancelled) return;
             if (recovered) {
               if (recovered.token) {
-                persistStewardToken(recovered.token);
+                await persistStewardToken(recovered.token);
                 window.dispatchEvent(new CustomEvent("steward-token-sync"));
               }
               setExternalSuccessDestination(resolveLoginReturnTo(searchParams));
@@ -949,7 +1068,7 @@ export default function StewardLoginSection() {
             return;
           }
           if (recovered.token) {
-            persistStewardToken(recovered.token);
+            await persistStewardToken(recovered.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
           }
           setExternalSuccessDestination(message.destination);
@@ -1008,6 +1127,8 @@ export default function StewardLoginSection() {
     refreshToken?: string | null,
     options?: { verifiedPhone: string },
   ) {
+    setPasskeyEmailGrant(null);
+    setShowPasskeyEnrollmentRecovery(false);
     if (options) {
       await syncStewardSessionCookie(token, refreshToken, options);
     } else {
@@ -1016,12 +1137,56 @@ export default function StewardLoginSection() {
     // Publish the browser token only after the authoritative Cloud sync wins.
     // Otherwise StewardProviderRuntime can race a second unhinted sync against
     // phone-account promotion.
-    persistStewardToken(token);
+    await persistStewardToken(token);
     toast.success("Signed in!");
     setRedirectTo(
       resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
     );
     setStep("success");
+  }
+
+  async function handleLocalDedicatedSignIn() {
+    if (!LOCAL_DEDICATED_TEST_API_KEY) return;
+    setLoading("local");
+    setError(null);
+    try {
+      const localSessionUrl = new URL(
+        "/api/test/auth/session",
+        import.meta.env.VITE_API_URL || window.location.origin,
+      );
+      const response = await fetch(localSessionUrl, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Authorization: `Bearer ${LOCAL_DEDICATED_TEST_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const result = parseLocalTestSessionResponse(await response.text());
+      if (!response.ok || !result.token) {
+        throw new Error(
+          result.error ?? "Could not start the local Cloud test session.",
+        );
+      }
+      // `useSessionAuth` recognises the Playwright marker cookie as the
+      // test-session signal; the API only sets the httpOnly session cookie,
+      // so this dev-only path must plant the readable marker itself.
+      // biome-ignore lint/suspicious/noDocumentCookie: the marker must be readable synchronously by the session hook; the Cookie Store API is async and not universally available.
+      document.cookie = "eliza-test-auth=1; Path=/; SameSite=Lax; Max-Age=3600";
+      await persistStewardToken(LOCAL_DEDICATED_TEST_API_KEY);
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+      setRedirectTo(resolveLoginReturnTo(searchParams));
+      setStep("success");
+    } catch (localSignInError) {
+      setError(
+        getErrorMessage(
+          localSignInError,
+          "Could not start the local Cloud test session.",
+        ),
+      );
+    } finally {
+      setLoading(null);
+    }
   }
 
   function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
@@ -1047,6 +1212,28 @@ export default function StewardLoginSection() {
     );
   }
 
+  function isPasskeyAlreadyRegistered(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    if (e instanceof StewardApiError && e.status === 409) {
+      const data = e.data;
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "code" in data &&
+        data.code === "passkey_already_registered"
+      ) {
+        return true;
+      }
+    }
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
+    return (
+      msg.includes("previously registered") ||
+      msg.includes("already registered") ||
+      msg.includes("invalidstateerror") ||
+      msg.includes("error_authenticator_previously_registered")
+    );
+  }
+
   // UV errors surface when the Steward server or browser WebAuthn layer requires
   // user verification (PIN/biometric) but the assertion didn't satisfy it. They
   // must NOT silently fall through to startPasskeySignup() — the user already
@@ -1061,30 +1248,36 @@ export default function StewardLoginSection() {
     );
   }
 
-  async function handlePasskey() {
+  function validatePasskeyIntent(): boolean {
     if (!showPasskey) {
       if (providers.email !== false) {
-        await handleEmail();
-        return;
+        void handleEmail();
+        return false;
       }
       setError(
         "Passkeys are not available in this browser. Use Google, Discord, or open this sign-in link on another device.",
       );
-      return;
+      return false;
     }
     if (!email.trim()) {
       setError("Enter your email first");
-      return;
+      return false;
     }
+    return true;
+  }
+
+  async function runScopedPasskeyLogin() {
     setLoading("passkey");
     setError(null);
     setShowPasskeyRecovery(false);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
       const result = requireCompletedAuth(
         await auth.signInWithPasskey(email.trim(), {
           fallbackToRegistration: false,
         }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
       // error-policy:J4 authentication failures remain visibly distinct and
@@ -1094,14 +1287,9 @@ export default function StewardLoginSection() {
           "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
-      } else if (
-        isUserCancelled(e) ||
-        (e instanceof StewardApiError && e.status === 404)
-      ) {
-        // A discoverable-credential request intentionally cannot reveal whether
-        // an account or passkey exists. Chromium reports the same NotAllowedError
-        // for an empty credential result and a cancelled prompt, so recovery must
-        // remain an explicit user choice instead of silently sending signup mail.
+      } else if (isUserCancelled(e)) {
+        // A browser-owned cancellation is ambiguous, so keep recovery as an
+        // explicit user choice rather than sending signup mail automatically.
         setShowPasskeyRecovery(true);
         setLoading(null);
       } else {
@@ -1111,11 +1299,34 @@ export default function StewardLoginSection() {
     }
   }
 
+  async function handlePasskey() {
+    if (!validatePasskeyIntent()) return;
+    setLoading("passkey");
+    setError(null);
+    setShowPasskeyRecovery(false);
+
+    const hinted = await hasPasskeyDeviceHint(email);
+    if (!hinted) {
+      // A new device-local email goes straight to verified enrollment. This
+      // decision never asks Steward whether an account or passkey exists.
+      await startPasskeySignup();
+      return;
+    }
+    await runScopedPasskeyLogin();
+  }
+
+  async function handleExistingPasskey() {
+    if (!validatePasskeyIntent()) return;
+    await runScopedPasskeyLogin();
+  }
+
   async function startPasskeySignup() {
     setLoading("passkey");
     setError(null);
     try {
       await auth.sendEmailOtp(email.trim());
+      setPasskeyEmailGrant(null);
+      setShowPasskeyEnrollmentRecovery(false);
       setOtpCode("");
       setShowPasskeyRecovery(false);
       setStep("otp-entry");
@@ -1134,20 +1345,47 @@ export default function StewardLoginSection() {
     }
     setLoading("passkey");
     setError(null);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
-      const { emailGrant } = await auth.verifyEmailOtp(email.trim(), code);
+      let emailGrant = passkeyEmailGrant;
+      if (!emailGrant) {
+        ({ emailGrant } = await auth.verifyEmailOtp(email.trim(), code));
+        setPasskeyEmailGrant(emailGrant);
+      }
       const result = requireCompletedAuth(
         await auth.addPasskey(email.trim(), { emailGrant }),
       );
+      await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
+      // error-policy:J4 an OTP-proven account with a persisted credential
+      // recovers through authentication; ambiguous browser cancellation keeps
+      // registration retry plus explicit alternate sign-in choices visible.
+      if (isPasskeyAlreadyRegistered(e)) {
+        await rememberPasskeyDeviceHint(email);
+        setPasskeyEmailGrant(null);
+        setOtpCode("");
+        setShowPasskeyEnrollmentRecovery(false);
+        setStep("idle");
+        await runScopedPasskeyLogin();
+        return;
+      }
       if (isUserCancelled(e)) {
         setError("Passkey setup was cancelled. Tap Create passkey to retry.");
+        setShowPasskeyEnrollmentRecovery(true);
       } else {
         setError(getErrorMessage(e, "That code didn't work. Try again."));
       }
       setLoading(null);
     }
+  }
+
+  async function handleEnrollmentExistingPasskey() {
+    setPasskeyEmailGrant(null);
+    setOtpCode("");
+    setShowPasskeyEnrollmentRecovery(false);
+    setStep("idle");
+    await runScopedPasskeyLogin();
   }
 
   async function handleEmail() {
@@ -1157,6 +1395,8 @@ export default function StewardLoginSection() {
     }
     setLoading("email");
     setError(null);
+    setPasskeyEmailGrant(null);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
       // The magic link can open in a new same-origin tab. Persist the pending
       // destination before asking Steward to send it so the callback can
@@ -1168,6 +1408,7 @@ export default function StewardLoginSection() {
       );
       setEmailChallenge(challenge);
       setEmailCode("");
+      setShowUndeclaredCodeEntry(false);
       setEmailCheckState("pending");
       setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
       setStep("email-sent");
@@ -1179,10 +1420,17 @@ export default function StewardLoginSection() {
   }
 
   async function handleSendSms() {
-    const normalizedPhone = normalizeE164Phone(phone);
+    const normalizedPhone = normalizePhoneForCountry(phone, phoneCountry);
     if (!normalizedPhone) {
+      const selectedCountry = PHONE_COUNTRY_OPTIONS.find(
+        (option) => option.code === phoneCountry,
+      );
       setError(
-        "Enter a complete phone number with country code, such as +1 415 555 2671.",
+        t("cloud.login.error.invalidPhone", {
+          defaultValue:
+            "Enter a valid phone number for {{country}}, or include + and the country code.",
+          country: selectedCountry?.name ?? phoneCountry,
+        }),
       );
       return;
     }
@@ -1267,6 +1515,7 @@ export default function StewardLoginSection() {
     setStep("idle");
     setEmailChallenge(null);
     setEmailCode("");
+    setShowUndeclaredCodeEntry(false);
     setEmailCheckState("pending");
     setError(null);
     setLoading(null);
@@ -1319,6 +1568,40 @@ export default function StewardLoginSection() {
     window.location.href = authorizeUrl;
   }
 
+  function handleTelegramError(message: string) {
+    setError(message);
+    setLoading(null);
+    setTelegramIntent(false);
+    window.setTimeout(
+      () => telegramIntentButtonRef.current?.focus({ preventScroll: true }),
+      0,
+    );
+  }
+
+  async function handleTelegramAuth(payload: StewardTelegramLoginPayload) {
+    setLoading("telegram");
+    setError(null);
+    try {
+      const result = requireCompletedAuth(
+        await auth.signInWithTelegram(payload, {
+          tenantId: STEWARD_TENANT_ID,
+        }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (telegramError: unknown) {
+      // error-policy:J4 Steward or Cloud session failures remain visibly
+      // distinct and leave the user on the login surface for a safe retry.
+      setError(
+        getErrorMessage(telegramError, "Telegram sign-in failed. Try again."),
+      );
+      setLoading(null);
+      window.setTimeout(
+        () => telegramRegionRef.current?.focus({ preventScroll: true }),
+        0,
+      );
+    }
+  }
+
   // First wallet click: mount the lazy wallet stack and remember which chain
   // to auto-start once it's up, so the user doesn't have to click twice.
   function handleWalletIntent(kind: WalletKind) {
@@ -1336,6 +1619,11 @@ export default function StewardLoginSection() {
     walletOptionsRegionRef.current?.focus({ preventScroll: true });
   }, [walletButtonsMounted]);
 
+  useEffect(() => {
+    if (!telegramIntent) return;
+    telegramRegionRef.current?.focus({ preventScroll: true });
+  }, [telegramIntent]);
+
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
   }
@@ -1351,7 +1639,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.completingSignIn", {
               defaultValue: "Completing sign-in…",
@@ -1366,7 +1654,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.redirecting", {
               defaultValue: "Redirecting to Eliza...",
@@ -1416,6 +1704,8 @@ export default function StewardLoginSection() {
             })}
           </label>
           <Input
+            variant="form"
+            density="relaxed"
             id="sms-sign-in-code"
             type="text"
             inputMode="numeric"
@@ -1431,16 +1721,16 @@ export default function StewardLoginSection() {
               if (event.key === "Enter") handleVerifySms();
             }}
             disabled={loading !== null}
-            className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+            className="hosted-signin-focus-emphasis"
           />
         </div>
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifySms}
           disabled={loading !== null || smsCode.length !== 6}
-          className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          className="hosted-signin-focus-emphasis w-full"
         >
           {loading === "sms" ? (
             <Spinner />
@@ -1454,9 +1744,9 @@ export default function StewardLoginSection() {
 
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis"
             onClick={handleSendSms}
             disabled={resendDisabled}
           >
@@ -1467,9 +1757,9 @@ export default function StewardLoginSection() {
                 })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="hosted-signin-focus-emphasis inline-flex min-h-touch items-center rounded-md border border-transparent px-3 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className="hosted-signin-focus-emphasis"
             onClick={cancelSmsLogin}
           >
             {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -1502,7 +1792,7 @@ export default function StewardLoginSection() {
           </p>
           <Button
             type="button"
-            className="hosted-signin-focus-emphasis min-h-touch w-full rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground hover:bg-accent-hover"
+            className="hosted-signin-focus-emphasis w-full"
             onClick={() =>
               setRedirectTo(
                 externalSuccessDestination ??
@@ -1517,9 +1807,24 @@ export default function StewardLoginSection() {
     );
   }
   if (step === "email-sent") {
-    const hasCompanionCode = Boolean(
+    // challengeId/pollSecret are status-polling credentials, not proof the
+    // email carried a six-digit code — tenant templates may render the magic
+    // link only (#19213). The asserting code UI appears only when Steward
+    // explicitly declared code delivery; when it stayed silent the code entry
+    // hides behind a non-asserting disclosure; an explicit link-only
+    // declaration removes every mention of a code.
+    const canVerifyCode = Boolean(
       emailChallenge?.challengeId && emailChallenge.pollSecret,
     );
+    const codeEntryMode: "asserted" | "undeclared" | "link-only" =
+      !canVerifyCode || emailChallenge?.emailCodeDelivered === false
+        ? "link-only"
+        : emailChallenge?.emailCodeDelivered === true
+          ? "asserted"
+          : "undeclared";
+    const showCodeEntry =
+      codeEntryMode === "asserted" ||
+      (codeEntryMode === "undeclared" && showUndeclaredCodeEntry);
     const resendDisabled = loading !== null || resendRemainingSeconds > 0;
     const checkEmailTitle =
       emailCheckState === "approved"
@@ -1540,7 +1845,7 @@ export default function StewardLoginSection() {
             ? "Too many attempts were made. Request a new email in a moment."
             : emailCheckState === "invalid"
               ? "That sign-in email is no longer valid. Request a new email to continue."
-              : hasCompanionCode
+              : codeEntryMode === "asserted"
                 ? "Open the link on this device or enter the six-digit code we sent."
                 : "Check your inbox and open the magic link to sign in.";
 
@@ -1566,7 +1871,22 @@ export default function StewardLoginSection() {
           </Alert>
         )}
 
-        {hasCompanionCode && (
+        {codeEntryMode === "undeclared" &&
+          !showUndeclaredCodeEntry &&
+          emailCheckState === "pending" && (
+            <Button
+              variant="ghostMuted"
+              type="button"
+              onClick={() => setShowUndeclaredCodeEntry(true)}
+              className=""
+            >
+              {t("cloud.login.emailCode.haveCode", {
+                defaultValue: "My email includes a six-digit code",
+              })}
+            </Button>
+          )}
+
+        {showCodeEntry && (
           <div className="space-y-2">
             <label
               htmlFor="email-sign-in-code"
@@ -1577,6 +1897,8 @@ export default function StewardLoginSection() {
               })}
             </label>
             <Input
+              variant="form"
+              density="relaxed"
               id="email-sign-in-code"
               type="text"
               inputMode="numeric"
@@ -1593,7 +1915,6 @@ export default function StewardLoginSection() {
                 if (e.key === "Enter") handleVerifyEmailCode();
               }}
               disabled={loading !== null || emailCheckState !== "pending"}
-              className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
             />
             <p
               id="email-sign-in-code-hint"
@@ -1607,9 +1928,9 @@ export default function StewardLoginSection() {
           </div>
         )}
 
-        {hasCompanionCode && (
+        {showCodeEntry && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleVerifyEmailCode}
             disabled={
@@ -1617,7 +1938,7 @@ export default function StewardLoginSection() {
               emailCode.length !== 6 ||
               emailCheckState !== "pending"
             }
-            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="w-full"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.emailCode.verify", {
@@ -1626,11 +1947,15 @@ export default function StewardLoginSection() {
           </Button>
         )}
 
-        {hasCompanionCode && emailCheckState === "pending" && (
+        {canVerifyCode && emailCheckState === "pending" && (
           <p className="text-xs text-muted" role="status">
-            {t("cloud.login.emailStatus.pending", {
-              defaultValue: "Waiting for the link or code.",
-            })}
+            {showCodeEntry
+              ? t("cloud.login.emailStatus.pending", {
+                  defaultValue: "Waiting for the link or code.",
+                })
+              : t("cloud.login.emailStatus.pendingLink", {
+                  defaultValue: "Waiting for the link.",
+                })}
           </p>
         )}
 
@@ -1644,9 +1969,9 @@ export default function StewardLoginSection() {
         )}
 
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+          className=""
           onClick={handleEmail}
           disabled={resendDisabled}
         >
@@ -1657,9 +1982,9 @@ export default function StewardLoginSection() {
               })}
         </Button>
         <Button
-          variant="ghost"
+          variant="ghostMuted"
           type="button"
-          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+          className=""
           onClick={cancelEmailLogin}
         >
           {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
@@ -1693,6 +2018,8 @@ export default function StewardLoginSection() {
         )}
 
         <Input
+          variant="form"
+          density="relaxed"
           type="text"
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -1707,15 +2034,14 @@ export default function StewardLoginSection() {
             if (e.key === "Enter") handleVerifyOtpAndRegister();
           }}
           disabled={loading !== null}
-          className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-lg tracking-[0.5em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
         />
 
         <Button
-          variant="ghost"
+          variant="default"
           type="button"
           onClick={handleVerifyOtpAndRegister}
           disabled={loading !== null || otpCode.trim().length < 4}
-          className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          className="w-full"
         >
           {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
           {t("cloud.login.otp.createPasskey", {
@@ -1723,14 +2049,58 @@ export default function StewardLoginSection() {
           })}
         </Button>
 
+        {showPasskeyEnrollmentRecovery && (
+          <section
+            aria-label={t("cloud.login.otp.recoveryLabel", {
+              defaultValue: "Other passkey options",
+            })}
+            className="space-y-2 rounded-md border border-border-strong bg-bg-elevated p-3"
+          >
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.otp.recoveryMessage", {
+                defaultValue:
+                  "Already saved this passkey? Sign in with it, or use a Magic Link.",
+              })}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                variant="outlineMuted"
+                type="button"
+                onClick={handleEnrollmentExistingPasskey}
+                disabled={loading !== null}
+                className=""
+              >
+                {t("cloud.login.button.existingPasskey", {
+                  defaultValue: "Use existing passkey",
+                })}
+              </Button>
+              {providers.email !== false && (
+                <Button
+                  variant="outlineMuted"
+                  type="button"
+                  onClick={handleEmail}
+                  disabled={loading !== null}
+                  className=""
+                >
+                  {t("cloud.login.passkeyRecovery.magicLink", {
+                    defaultValue: "Use Magic Link",
+                  })}
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
+
         <div className="flex items-center justify-between text-sm">
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
+            className=""
             onClick={() => {
               setStep("idle");
               setOtpCode("");
+              setPasskeyEmailGrant(null);
+              setShowPasskeyEnrollmentRecovery(false);
               setError(null);
               setLoading(null);
             }}
@@ -1738,9 +2108,9 @@ export default function StewardLoginSection() {
             ← {t("cloud.login.back", { defaultValue: "Back" })}
           </Button>
           <Button
-            variant="ghost"
+            variant="ghostMuted"
             type="button"
-            className="inline-flex min-h-touch items-center rounded-md px-2 font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+            className=""
             disabled={loading !== null}
             onClick={startPasskeySignup}
           >
@@ -1754,7 +2124,7 @@ export default function StewardLoginSection() {
   // Provider discovery in flight: a pulsing skeleton with the final option
   // stack's exact geometry, so the real options materialize in place with no
   // card resize (#18256) instead of replacing a short spinner block.
-  if (!providersLoaded) {
+  if (!providersLoaded || !sessionRecoveryComplete) {
     return (
       <div
         role="status"
@@ -1774,6 +2144,9 @@ export default function StewardLoginSection() {
   }
 
   const isLoading = loading !== null;
+  const selectedPhoneCountry =
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === "US");
 
   return (
     <div className="space-y-4">
@@ -1784,37 +2157,96 @@ export default function StewardLoginSection() {
         </Alert>
       )}
 
+      {LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED && (
+        <div className="space-y-2">
+          <Button
+            type="button"
+            onClick={handleLocalDedicatedSignIn}
+            disabled={isLoading}
+            className="hosted-signin-focus-emphasis w-full"
+          >
+            {loading === "local" ? <Spinner /> : null}
+            {loading === "local"
+              ? "Starting local session…"
+              : "Continue with local test account"}
+          </Button>
+          <p className="text-center text-xs leading-relaxed text-muted">
+            Development only. Uses the real local Cloud account, balance, and
+            permissions paths.
+          </p>
+        </div>
+      )}
+
       {providers.sms && (
         <>
           <div className="space-y-2">
             <label
               htmlFor="steward-login-phone"
-              className="block text-left text-sm font-medium text-txt"
+              className="block text-center text-sm font-medium text-txt"
             >
               {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
             </label>
-            <Input
-              id="steward-login-phone"
-              type="tel"
-              name="phone"
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+1 415 555 2671"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") handleSendSms();
-              }}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-            />
+            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong">
+              <Select
+                name="phone-country"
+                value={phoneCountry}
+                onValueChange={(value) => setPhoneCountry(value as CountryCode)}
+                disabled={isLoading}
+              >
+                <SelectTrigger
+                  aria-label={t("cloud.login.phoneCountryLabel", {
+                    defaultValue: "Country calling code",
+                  })}
+                  className="hosted-signin-focus-emphasis h-auto min-h-touch w-24 shrink-0 rounded-none border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
+                >
+                  <span className="truncate">
+                    {selectedPhoneCountry?.code ?? phoneCountry} +
+                    {selectedPhoneCountry?.dialCode ?? "1"}
+                  </span>
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  align="start"
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-bg-elevated text-txt [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                >
+                  {PHONE_COUNTRY_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.code}
+                      value={option.code}
+                      className="cursor-pointer data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong"
+                    >
+                      {option.code} +{option.dialCode} — {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                variant="embeddedSearch"
+                density="relaxed"
+                id="steward-login-phone"
+                type="tel"
+                name="phone"
+                inputMode="tel"
+                autoComplete="tel-national"
+                placeholder={t("cloud.login.phonePlaceholder", {
+                  defaultValue: "Phone number",
+                })}
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleSendSms();
+                }}
+                disabled={isLoading}
+                className="hosted-signin-focus-emphasis flex-1"
+              />
+            </div>
           </div>
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handleSendSms}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis w-full"
           >
             {loading === "sms" ? (
               <Spinner />
@@ -1838,11 +2270,13 @@ export default function StewardLoginSection() {
       <div className="space-y-2">
         <label
           htmlFor="steward-login-email"
-          className="block text-left text-sm font-medium text-txt"
+          className="block text-center text-sm font-medium text-txt"
         >
           {t("cloud.login.emailLabel", { defaultValue: "Email" })}
         </label>
         <Input
+          variant="form"
+          density="relaxed"
           ref={emailInputRef}
           id="steward-login-email"
           type="email"
@@ -1851,7 +2285,11 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setPasskeyEmailGrant(null);
+            setShowPasskeyEnrollmentRecovery(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {
@@ -1862,19 +2300,25 @@ export default function StewardLoginSection() {
             }
           }}
           disabled={isLoading}
-          className="hosted-signin-focus-emphasis w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-          autoComplete={showPasskey ? "email webauthn" : "email"}
+          className="hosted-signin-focus-emphasis"
+          // Do NOT add the "webauthn" autocomplete token here. It arms browser
+          // conditional-mediation passkey autofill, which prompts for an
+          // EXISTING account's discoverable credential the moment a brand-new
+          // email is typed, hijacking signup. The explicit Passkey button below
+          // still offers email-scoped passkey sign-in via handlePasskey().
+          // Port of Steward PR #690.
+          autoComplete="email"
         />
       </div>
 
       <div className="flex gap-2">
         {showPasskey && (
           <Button
-            variant="ghost"
+            variant="default"
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex-1"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1882,11 +2326,11 @@ export default function StewardLoginSection() {
         )}
         {providers.email !== false && (
           <Button
-            variant="ghost"
+            variant="outlineMuted"
             type="button"
             onClick={handleEmail}
             disabled={isLoading}
-            className="hosted-signin-focus-emphasis flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-3 font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis flex-1"
           >
             {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
             {t("cloud.login.button.magicLink", { defaultValue: "Magic Link" })}
@@ -1894,13 +2338,23 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      {showPasskey ? (
-        <p className="text-center text-xs text-muted">
-          {t("cloud.login.signupHint", {
-            defaultValue: "New here? Passkey sets up your account in seconds.",
+      {showPasskey && (
+        <Button
+          variant="ghostMuted"
+          type="button"
+          onClick={handleExistingPasskey}
+          disabled={isLoading}
+          className="hosted-signin-focus-emphasis w-full"
+        >
+          {t("cloud.login.button.existingPasskey", {
+            defaultValue: "Use an existing passkey",
           })}
-        </p>
-      ) : providers.passkey !== false && passkeyCapability === null ? (
+        </Button>
+      )}
+
+      {!showPasskey &&
+      providers.passkey !== false &&
+      passkeyCapability === null ? (
         <p className="text-center text-xs text-muted" role="status">
           {t("cloud.login.checkingPasskey", {
             defaultValue:
@@ -1933,11 +2387,11 @@ export default function StewardLoginSection() {
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {providers.email !== false && (
               <Button
-                variant="ghost"
+                variant="outlineMuted"
                 type="button"
                 onClick={handleEmail}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch rounded-md border border-border-strong bg-bg-elevated px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                className="hosted-signin-focus-emphasis"
               >
                 {t("cloud.login.passkeyRecovery.magicLink", {
                   defaultValue: "Use Magic Link",
@@ -1948,7 +2402,7 @@ export default function StewardLoginSection() {
               type="button"
               onClick={startPasskeySignup}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+              className="hosted-signin-focus-emphasis"
             >
               {t("cloud.login.passkeyRecovery.setup", {
                 defaultValue: "Set up passkey",
@@ -1958,81 +2412,125 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasOAuthProviders && (
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted">
-            {t("cloud.login.orContinueWith", {
-              defaultValue: "or continue with",
-            })}
-          </span>
-          <div className="h-px flex-1 bg-border" />
+      {hasIdentityProviders && (
+        <div className="grid grid-cols-2 gap-2">
+          {enabledOAuthProviders.map((provider) => (
+            <Button
+              key={provider}
+              variant="outlineMuted"
+              type="button"
+              aria-label={stewardOAuthProviderLabel(provider)}
+              onClick={() => handleOAuth(provider)}
+              disabled={isLoading}
+              className="hosted-signin-focus-emphasis"
+            >
+              {loading === provider ? (
+                <Spinner />
+              ) : (
+                <StewardOAuthIcon provider={provider} />
+              )}
+              {provider === "twitter"
+                ? null
+                : ` ${stewardOAuthProviderLabel(provider)}`}
+            </Button>
+          ))}
+          {providers.telegram && (
+            <Button
+              ref={telegramIntentButtonRef}
+              variant="outlineMuted"
+              type="button"
+              aria-expanded={telegramIntent}
+              aria-controls="steward-telegram-login-widget"
+              onClick={() => {
+                setError(null);
+                setTelegramIntent(true);
+              }}
+              disabled={isLoading || telegramIntent}
+              className="hosted-signin-focus-emphasis"
+            >
+              {loading === "telegram" ? (
+                <Spinner />
+              ) : (
+                <TelegramIcon className="size-4" />
+              )}{" "}
+              {t("cloud.login.button.telegram", {
+                defaultValue: "Telegram",
+              })}
+            </Button>
+          )}
         </div>
       )}
 
-      {hasOAuthProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {providers.google && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("google")}
+      {providers.telegram && telegramIntent && (
+        <fieldset
+          id="steward-telegram-login-widget"
+          ref={telegramRegionRef}
+          aria-label={t("cloud.login.telegramRegion", {
+            defaultValue: "Telegram sign-in",
+          })}
+          tabIndex={-1}
+          className="space-y-2 outline-none"
+        >
+          {telegramBotUsername ? (
+            <TelegramLoginWidget
+              botUsername={telegramBotUsername}
               disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-            >
-              {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
-              {t("cloud.login.button.google", { defaultValue: "Google" })}
-            </Button>
+              onAuth={handleTelegramAuth}
+              onError={handleTelegramError}
+            />
+          ) : (
+            <Alert variant="destructive">
+              <AlertCircle />
+              <AlertDescription>
+                Telegram sign-in is not configured for this deployment.
+              </AlertDescription>
+            </Alert>
           )}
-          {providers.discord && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("discord")}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-            >
-              {loading === "discord" ? (
-                <Spinner />
-              ) : (
-                <DiscordIcon className="h-4 w-4" />
-              )}{" "}
-              {t("cloud.login.button.discord", { defaultValue: "Discord" })}
-            </Button>
-          )}
-          {providers.github && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("github")}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50 sm:col-span-2"
-            >
-              {loading === "github" ? (
-                <Spinner />
-              ) : (
-                <Github className="h-4 w-4" />
-              )}{" "}
-              {t("cloud.login.button.github", { defaultValue: "GitHub" })}
-            </Button>
-          )}
-        </div>
+          <Button
+            variant="ghostMuted"
+            type="button"
+            onClick={() => {
+              setTelegramIntent(false);
+              window.setTimeout(
+                () =>
+                  telegramIntentButtonRef.current?.focus({
+                    preventScroll: true,
+                  }),
+                0,
+              );
+            }}
+            disabled={isLoading}
+            className="w-full"
+          >
+            {t("cloud.login.button.cancelTelegram", {
+              defaultValue: "Use another sign-in method",
+            })}
+          </Button>
+        </fieldset>
       )}
 
       {showWallets && (
         <>
           <Button
-            variant="ghost"
+            variant="outlineMuted"
             type="button"
             aria-expanded={showWalletOptions || walletButtonsMounted}
             aria-controls="steward-wallet-options"
             onClick={() => setShowWalletOptions((v) => !v)}
             disabled={isLoading || walletButtonsMounted}
-            className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="hosted-signin-focus-emphasis w-full"
           >
-            {t("cloud.login.moreOptions", {
-              defaultValue: "Continue with a wallet",
-            })}
+            {walletButtonsMounted
+              ? t("cloud.login.walletOptions", {
+                  defaultValue: "Wallet options",
+                })
+              : showWalletOptions
+                ? t("cloud.login.collapseWalletOptions", {
+                    defaultValue: "Collapse wallet options",
+                  })
+                : t("cloud.login.moreOptions", {
+                    defaultValue: "Continue with a wallet",
+                  })}
           </Button>
 
           <div
@@ -2041,84 +2539,71 @@ export default function StewardLoginSection() {
             tabIndex={-1}
             hidden={!showWalletOptions && !walletButtonsMounted}
           >
-            {(showWalletOptions || walletButtonsMounted) && (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1 bg-border" />
-                  <span className="text-xs text-muted">
-                    {t("cloud.login.orSignInWallet", {
-                      defaultValue: "or sign in with a wallet",
-                    })}
-                  </span>
-                  <div className="h-px flex-1 bg-border" />
+            {(showWalletOptions || walletButtonsMounted) &&
+              (walletButtonsMounted ? (
+                <Suspense
+                  fallback={
+                    <div className="flex min-h-touch items-center justify-center py-2.5">
+                      <Spinner />
+                    </div>
+                  }
+                >
+                  <StewardWalletProviders>
+                    <WalletButtons
+                      auth={auth}
+                      autoStart={autoStartWallet}
+                      disabled={isLoading}
+                      loadingProvider={
+                        loading === "ethereum" || loading === "solana"
+                          ? (loading as WalletKind)
+                          : null
+                      }
+                      onAutoStartHandled={() => setAutoStartWallet(null)}
+                      onLoadingChange={(kind) => setLoading(kind)}
+                      onSuccess={(result) =>
+                        handleSuccess(result.token, result.refreshToken)
+                      }
+                      onError={(walletError) => {
+                        setError(
+                          walletError.message ||
+                            t("cloud.login.error.walletFailed", {
+                              defaultValue: "Wallet sign-in failed",
+                            }),
+                        );
+                      }}
+                    />
+                  </StewardWalletProviders>
+                </Suspense>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {providers.siwe && (
+                    <Button
+                      variant="outlineMuted"
+                      type="button"
+                      onClick={() => handleWalletIntent("ethereum")}
+                      disabled={isLoading}
+                      className="hosted-signin-focus-emphasis"
+                    >
+                      {t("cloud.login.wallet.evm", {
+                        defaultValue: "EVM wallet",
+                      })}
+                    </Button>
+                  )}
+                  {providers.siws && (
+                    <Button
+                      variant="outlineMuted"
+                      type="button"
+                      onClick={() => handleWalletIntent("solana")}
+                      disabled={isLoading}
+                      className="hosted-signin-focus-emphasis"
+                    >
+                      {t("cloud.login.wallet.solana", {
+                        defaultValue: "Solana wallet",
+                      })}
+                    </Button>
+                  )}
                 </div>
-
-                {walletButtonsMounted ? (
-                  <Suspense
-                    fallback={
-                      <div className="flex min-h-touch items-center justify-center py-2.5">
-                        <Spinner />
-                      </div>
-                    }
-                  >
-                    <StewardWalletProviders>
-                      <WalletButtons
-                        auth={auth}
-                        autoStart={autoStartWallet}
-                        disabled={isLoading}
-                        loadingProvider={
-                          loading === "ethereum" || loading === "solana"
-                            ? (loading as WalletKind)
-                            : null
-                        }
-                        onAutoStartHandled={() => setAutoStartWallet(null)}
-                        onLoadingChange={(kind) => setLoading(kind)}
-                        onSuccess={(result) =>
-                          handleSuccess(result.token, result.refreshToken)
-                        }
-                        onError={(walletError) => {
-                          setError(
-                            walletError.message ||
-                              t("cloud.login.error.walletFailed", {
-                                defaultValue: "Wallet sign-in failed",
-                              }),
-                          );
-                        }}
-                      />
-                    </StewardWalletProviders>
-                  </Suspense>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {providers.siwe && (
-                      <Button
-                        variant="ghost"
-                        type="button"
-                        onClick={() => handleWalletIntent("ethereum")}
-                        disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        {t("cloud.login.wallet.evm", {
-                          defaultValue: "EVM wallet",
-                        })}
-                      </Button>
-                    )}
-                    {providers.siws && (
-                      <Button
-                        variant="ghost"
-                        type="button"
-                        onClick={() => handleWalletIntent("solana")}
-                        disabled={isLoading}
-                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        {t("cloud.login.wallet.solana", {
-                          defaultValue: "Solana wallet",
-                        })}
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
+              ))}
           </div>
         </>
       )}
@@ -2134,13 +2619,69 @@ export default function StewardLoginSection() {
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+  );
+}
+
+function stewardOAuthProviderLabel(provider: StewardOAuthProvider): string {
+  switch (provider) {
+    case "google":
+      return "Google";
+    case "discord":
+      return "Discord";
+    case "github":
+      return "GitHub";
+    case "twitter":
+      return "X";
+    case "apple":
+      return "Apple";
+  }
+}
+
+function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
+  switch (provider) {
+    case "google":
+      return <GoogleIcon />;
+    case "discord":
+      return <DiscordIcon className="size-4" />;
+    case "github":
+      return <Github className="size-4" />;
+    case "twitter":
+      return <XIcon />;
+    case "apple":
+      return <AppleIcon />;
+  }
+}
+
+function AppleIcon() {
+  return (
+    <svg
+      className="size-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.79 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.1v-.01ZM12.03 7.25C11.88 5.02 13.69 3.18 15.77 3c.29 2.58-2.34 4.5-3.74 4.25Z" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      className="size-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+    </svg>
   );
 }
 
 function GoogleIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -2164,7 +2705,7 @@ function GoogleIcon() {
 function PasskeyIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
@@ -2182,7 +2723,7 @@ function PasskeyIcon() {
 function EmailIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"

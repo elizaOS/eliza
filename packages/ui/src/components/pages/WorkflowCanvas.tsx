@@ -33,12 +33,12 @@ import {
 
 function StepIcon({ kind }: { kind: WorkflowStepManifest["kind"] }) {
   if (kind === "branch" || kind === "parallel")
-    return <GitBranch className="h-4 w-4" />;
-  if (kind === "approval") return <Check className="h-4 w-4" />;
-  if (kind === "timer") return <Clock3 className="h-4 w-4" />;
-  if (kind === "ui") return <LayoutDashboard className="h-4 w-4" />;
-  if (kind === "workflow") return <WorkflowIcon className="h-4 w-4" />;
-  return <Bot className="h-4 w-4" />;
+    return <GitBranch className="size-4" />;
+  if (kind === "approval") return <Check className="size-4" />;
+  if (kind === "timer") return <Clock3 className="size-4" />;
+  if (kind === "ui") return <LayoutDashboard className="size-4" />;
+  if (kind === "workflow") return <WorkflowIcon className="size-4" />;
+  return <Bot className="size-4" />;
 }
 
 function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
@@ -66,7 +66,7 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
         isConnectable={false}
         className="!border-0 !bg-transparent !opacity-0"
       />
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
         <StepIcon kind={step.kind} />
       </span>
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -74,13 +74,13 @@ function WorkflowStepNode({ data, selected }: NodeProps<WorkflowCanvasNode>) {
       </span>
       {state !== "idle" ? (
         <span
-          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+          className={`size-2.5 shrink-0 rounded-full ${
             state === "failed"
               ? "bg-destructive"
               : state === "finished"
-                ? "bg-emerald-500"
+                ? "bg-status-success"
                 : state === "waiting"
-                  ? "bg-amber-500"
+                  ? "bg-warning"
                   : "animate-pulse bg-primary"
           }`}
           title={state}
@@ -147,35 +147,39 @@ export function WorkflowCanvas({
           />
         </ReactFlow>
       ) : (
-        <button
+        <Button
           type="button"
-          className="grid h-full w-full place-items-center text-muted-foreground/50"
+          variant="ghostMuted"
+          size="fill"
+          className="grid place-items-center"
           onClick={onAddStep}
           aria-label="Add first step with Eliza"
         >
-          <Plus className="h-8 w-8" />
-        </button>
+          <Plus className="size-8" />
+        </Button>
       )}
       <Button
-        variant="ghost"
+        variant="surface"
         size="icon-sm"
-        className="absolute right-3 top-3 z-10 rounded-full bg-card/90 shadow-sm hover:bg-primary/15"
+        shape="circle"
+        className="absolute right-3 top-3 z-10"
         onClick={onAddStep}
         aria-label="Add step with Eliza"
         title="Add step"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="size-4" />
       </Button>
       {selected ? (
         <Button
-          variant="ghost"
-          className="absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2 gap-2 rounded-full bg-card/95 px-3 shadow-lg hover:bg-primary/15"
+          variant="surface"
+          size="pillDense"
+          className="absolute bottom-3 left-1/2 z-10 max-w-[calc(100%-6rem)] -translate-x-1/2"
           onClick={() => onEditStep(selected)}
           title={[selected.kind, selected.agent, selected.description]
             .filter(Boolean)
             .join(" · ")}
         >
-          <MessageSquareText className="h-3.5 w-3.5" />
+          <MessageSquareText className="size-3.5" />
           <span className="truncate text-xs">{selected.label}</span>
         </Button>
       ) : null}

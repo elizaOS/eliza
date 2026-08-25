@@ -257,8 +257,8 @@ export function DesktopTalkModePanel() {
 
   if (!desktopRuntime) {
     return (
-      <Card className="border-border/60 bg-card/92 ">
-        <CardContent className="px-4 py-4 text-xs leading-5 text-muted">
+      <Card variant="panel">
+        <CardContent className="p-4 text-xs leading-5 text-muted">
           {t("voiceconfigview.DesktopTalkModeDesktopOnly")}
         </CardContent>
       </Card>
@@ -266,8 +266,8 @@ export function DesktopTalkModePanel() {
   }
 
   return (
-    <Card className="border-border/60 bg-card/92 ">
-      <CardHeader className="px-4 py-4 pb-0">
+    <Card variant="panel">
+      <CardHeader className="p-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <CardTitle className="text-sm">
             {t("voiceconfigview.DesktopTalkMode")}
@@ -275,8 +275,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={refreshRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-refresh",
@@ -331,7 +329,6 @@ export function DesktopTalkModePanel() {
         <Input
           ref={phraseRef}
           type="text"
-          className="min-h-10 rounded-sm bg-bg text-xs"
           value={phrase}
           onChange={(event) => setPhrase(event.target.value)}
           placeholder={t("voiceconfigview.testPhrase")}
@@ -342,8 +339,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={startStopRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-start-stop",
@@ -384,8 +379,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={speakRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-speak",
@@ -408,8 +401,6 @@ export function DesktopTalkModePanel() {
           <Button
             ref={stopSpeakingRef}
             variant="outline"
-            size="sm"
-            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-stop-speaking",
@@ -453,8 +444,9 @@ function RemoveTriggerButton({
     <Button
       ref={ref}
       variant="ghost"
-      size="icon"
-      className="ml-1 h-5 w-5 rounded-full p-0 leading-none text-muted-strong hover:bg-bg-hover hover:text-txt"
+      size="icon-sm"
+      shape="circle"
+      className="ml-1"
       onClick={onRemove}
       aria-label={label}
       {...agentProps}
@@ -487,8 +479,7 @@ function ModelSizeButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      size="sm"
-      className="h-auto min-h-12 flex-col rounded-sm py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -752,7 +743,7 @@ export function WakeWordSection({
         <span className="text-xs font-semibold">
           {t("voiceconfigview.Triggers")}
         </span>
-        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-sm border border-border/60 bg-bg px-2 py-2">
+        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-sm border border-border/60 bg-bg p-2">
           {triggers.map((trigger) => (
             <span
               key={trigger}
@@ -774,7 +765,9 @@ export function WakeWordSection({
           <Input
             ref={addTriggerRef}
             type="text"
-            className="h-7 min-w-[120px] flex-1 border-0 bg-transparent px-1 text-xs shadow-none "
+            variant="embeddedToken"
+            className="min-w-[120px] flex-1"
+            density="compact"
             placeholder={t("voiceconfigview.AddTrigger")}
             value={triggerInput}
             onChange={(e) => setTriggerInput(e.target.value)}
@@ -803,11 +796,11 @@ export function WakeWordSection({
         <Input
           ref={gapRef}
           type="range"
+          variant="nativeRange"
           min={0.1}
           max={2.0}
           step={0.05}
           value={postTriggerGap}
-          className="h-auto border-0 bg-transparent p-0 accent-accent"
           aria-label={t("voiceconfigview.PostTriggerGap", {
             defaultValue: "Post-trigger gap",
           })}
@@ -874,8 +867,7 @@ function AsrProviderButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      size="sm"
-      className="h-auto min-h-14 flex-col rounded-sm py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -929,7 +921,7 @@ function AsrAdvancedSection({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted">
+        <span className="text-xs-tight font-semibold uppercase tracking-[0.08em] text-muted">
           {t("voiceconfigview.AsrProvider", {
             defaultValue: "Speech-to-text",
           })}
@@ -998,7 +990,7 @@ function TtsProviderButton({
     <Button
       ref={ref}
       variant={active ? "default" : "outline"}
-      className="h-auto min-h-14 flex-col rounded-md py-2"
+      size="tile"
       onClick={onSelect}
       {...agentProps}
     >
@@ -1032,12 +1024,10 @@ function PremadeVoiceButton({
   return (
     <Button
       ref={ref}
-      variant={active ? "default" : "outline"}
-      className={`h-auto min-h-16 flex-col items-start rounded-md px-3 py-2.5 text-left transition-all ${
-        active
-          ? "border-accent/45 bg-accent/12 text-txt "
-          : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-surface"
-      }`}
+      variant="choice"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
       onClick={onSelect}
       {...agentProps}
     >
@@ -1408,7 +1398,7 @@ export function VoiceConfigView() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Button
                   variant="outline"
-                  className="h-11 rounded-md px-3 text-sm font-semibold"
+                  size="touch"
                   disabled={testing}
                   onClick={() => handleTestVoice(selectedPreset.previewUrl)}
                 >
@@ -1421,7 +1411,7 @@ export function VoiceConfigView() {
                 {testing ? (
                   <Button
                     variant="outline"
-                    className="h-11 rounded-md px-3 text-sm font-semibold"
+                    size="touch"
                     onClick={() => {
                       if (audioRef.current) {
                         audioRef.current.pause();

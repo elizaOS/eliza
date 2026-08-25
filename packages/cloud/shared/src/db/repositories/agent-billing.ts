@@ -8,11 +8,17 @@ import {
   type AgentBillingStatus,
   type AgentSandboxStatus,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
 } from "../schemas/agent-sandboxes";
-import { agentBillingRecords } from "../schemas/compute-billing";
+import { agentBillingRecords, agentBillingRunItems } from "../schemas/compute-billing";
 import { creditTransactions } from "../schemas/credit-transactions";
 import { organizations } from "../schemas/organizations";
 import { parseOrgCreditBalance } from "./agent-billing-numeric";
+import {
+  type AgentBillingRunLeaseAuthority,
+  assertAgentBillingRunLeaseInTransaction,
+  recordAgentBillingRunItemInTransaction,
+} from "./agent-billing-runs";
 import { settleComputeRateSegments } from "./compute-billing-segments";
 
 export interface AgentBillingSandbox {
@@ -48,12 +54,32 @@ export interface AgentHourlyBillingInput {
   now: Date;
 }
 
+export interface AgentBillingRunChargeInput
+  extends AgentHourlyBillingInput,
+    AgentBillingRunLeaseAuthority {}
+
 export type AgentHourlyBillingOutcome =
-  | { status: "billed"; newBalance: number; transactionId: string; amount: number }
+  | {
+      status: "billed";
+      newBalance: number;
+      transactionId: string;
+      amount: number;
+      amountDecimal: string;
+    }
   | { status: "already_billed_recently" }
   | { status: "insufficient_credits" };
 
 const BILLABLE_BILLING_STATUSES: AgentBillingStatus[] = ["active", "warning", "shutdown_pending"];
+
+/** Restricts agent-compute billing to live, user-owned container workloads. */
+function agentComputeBillingAuthority() {
+  return [
+    inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+    isNull(agentSandboxes.pool_status),
+    isNull(agentSandboxes.deleted_at),
+    isNull(agentSandboxes.deletion_attempt_id),
+  ];
+}
 
 export class AgentBillingRepository {
   async getOrganizationCreditBalance(organizationId: string): Promise<number | null> {
@@ -109,23 +135,10 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "running"),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            // Defence in depth, aligned with the six sibling predicates here.
-            // The charge itself is already safe: recordHourlyBillingWithOptions
-            // claims the row with this same guard on its SELECT ... FOR UPDATE,
-            // so a deleting sandbox is never debited — and everything gated on
-            // that claim (shutdown-warning mail, the credits.low webhook) is
-            // equally unreachable for it. What IS unguarded is the cron's
-            // shutdown_pending branch, which reads the selected row directly:
-            // it fires the credits.depleted webhook and enqueueAgentSuspendOnce
-            // without consulting the deletion state.
-            //
-            // The window is narrow because both deletion writers set
-            // status='deletion_pending' in the same UPDATE that sets
-            // deletion_attempt_id, which this predicate already excludes. It is
-            // reachable when something writes 'running' back over a row whose
-            // deletion attempt is still set — the pair-check permits that shape.
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
+            // The shutdown-pending cron acts directly on discovery by emitting
+            // a depleted webhook and enqueueing suspend, before the later debit
+            // claim. Discovery therefore needs the full authority guard too.
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             billingDueCondition,
           ),
@@ -136,8 +149,7 @@ export class AgentBillingRepository {
         .where(
           and(
             eq(agentSandboxes.status, "stopped"),
-            sql`${agentSandboxes.execution_tier} <> 'shared'`,
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
             billingDueCondition,
@@ -146,6 +158,28 @@ export class AgentBillingRepository {
     ]);
 
     return { runningSandboxes, stoppedWithBackups };
+  }
+
+  /** Stop failed agents' billing clocks before the hourly due-set is selected. */
+  async suspendFailedSandboxBilling(now: Date): Promise<number> {
+    const suspended = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        billing_status: "suspended" as AgentBillingStatus,
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
+        updated_at: now,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.status, "error"),
+          ...agentComputeBillingAuthority(),
+          inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+
+    return suspended.length;
   }
 
   async listBillingOrganizations(organizationIds: string[]): Promise<AgentBillingOrganization[]> {
@@ -180,9 +214,62 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       );
+  }
+
+  /**
+   * Durably records a delivered shutdown warning. Called only after the
+   * provider accepted delivery: the sandbox stamp, the armed shutdown, and the
+   * `warning_sent` run item commit in one transaction under the run lease, so
+   * a worker crash before this point leaves the sandbox untouched and a retry
+   * redelivers instead of fabricating a skipped-but-armed outcome. Returns
+   * false when the sandbox is no longer eligible (already warned elsewhere).
+   */
+  async commitShutdownWarningForRun(input: {
+    runId: string;
+    leaseToken: string;
+    sandboxId: string;
+    organizationId: string;
+    agentName: string;
+    now: Date;
+    shutdownTime: Date;
+  }): Promise<boolean> {
+    return dbWrite.transaction(async (tx) => {
+      const authority = {
+        runId: input.runId,
+        leaseToken: input.leaseToken,
+      };
+      await assertAgentBillingRunLeaseInTransaction(tx, authority);
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          billing_status: "shutdown_pending" as AgentBillingStatus,
+          shutdown_warning_sent_at: input.now,
+          scheduled_shutdown_at: input.shutdownTime,
+          updated_at: input.now,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, input.sandboxId),
+            eq(agentSandboxes.organization_id, input.organizationId),
+            ...agentComputeBillingAuthority(),
+            inArray(agentSandboxes.billing_status, ["active", "warning"]),
+            isNull(agentSandboxes.shutdown_warning_sent_at),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!updated) return false;
+      await recordAgentBillingRunItemInTransaction(tx, authority, {
+        sandboxId: input.sandboxId,
+        organizationId: input.organizationId,
+        agentName: input.agentName,
+        action: "warning_sent",
+        completedAt: new Date(),
+      });
+      return true;
+    });
   }
 
   async suspendSandboxForInsufficientCredits(
@@ -200,7 +287,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       );
   }
@@ -222,14 +309,16 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           ...(organizationId ? [eq(agentSandboxes.organization_id, organizationId)] : []),
+          ...agentComputeBillingAuthority(),
           ne(agentSandboxes.billing_status, "exempt"),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
       );
   }
 
-  async recordHourlyBilling(input: AgentHourlyBillingInput): Promise<AgentHourlyBillingOutcome> {
-    return this.recordHourlyBillingWithOptions(input);
+  async recordHourlyBilling(input: AgentBillingRunChargeInput): Promise<AgentHourlyBillingOutcome> {
+    return this.recordHourlyBillingWithOptions(input, {
+      runAuthority: { runId: input.runId, leaseToken: input.leaseToken },
+    });
   }
 
   /** Settle all accrued debt before a lifecycle path may create provider compute. */
@@ -272,7 +361,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
-          sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ...agentComputeBillingAuthority(),
         ),
       )
       .limit(1);
@@ -282,7 +371,7 @@ export class AgentBillingRepository {
         sandboxId,
         organizationId,
         userId: sandbox.user_id,
-        agentName: sandbox.agent_name ?? sandboxId.slice(0, 8),
+        agentName: sandbox.agent_name ?? sandboxId,
         hourlyRate: 0,
         billingDescription: `Eliza agent lifecycle debt settlement: ${sandbox.agent_name ?? sandboxId}`,
         lowCreditWarningAmount: 0,
@@ -295,16 +384,35 @@ export class AgentBillingRepository {
 
   private async recordHourlyBillingWithOptions(
     input: AgentHourlyBillingInput,
-    options: { forceLifecycleSettlement?: boolean } = {},
+    options: {
+      forceLifecycleSettlement?: boolean;
+      runAuthority?: AgentBillingRunLeaseAuthority;
+    } = {},
     existingTx?: DbTransaction,
   ): Promise<AgentHourlyBillingOutcome> {
     const settle = async (tx: DbTransaction): Promise<AgentHourlyBillingOutcome> => {
+      if (options.runAuthority) {
+        await assertAgentBillingRunLeaseInTransaction(tx, options.runAuthority);
+        const [existingRunItem] = await tx
+          .select({ id: agentBillingRunItems.id })
+          .from(agentBillingRunItems)
+          .where(
+            and(
+              eq(agentBillingRunItems.run_id, options.runAuthority.runId),
+              eq(agentBillingRunItems.sandbox_id, input.sandboxId),
+            ),
+          )
+          .limit(1);
+        if (existingRunItem) {
+          return { status: "already_billed_recently" as const };
+        }
+      }
       const [claimedSandbox] = await tx
         .select({
           id: agentSandboxes.id,
           status: agentSandboxes.status,
           billing_status: agentSandboxes.billing_status,
-          execution_tier: agentSandboxes.execution_tier,
+          last_backup_at: agentSandboxes.last_backup_at,
           last_billed_at: agentSandboxes.last_billed_at,
           created_at: agentSandboxes.created_at,
         })
@@ -313,7 +421,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
           ),
         )
         .for("update")
@@ -321,17 +429,41 @@ export class AgentBillingRepository {
 
       if (
         !claimedSandbox ||
-        claimedSandbox.execution_tier === "shared" ||
         (!options.forceLifecycleSettlement &&
           (!BILLABLE_BILLING_STATUSES.includes(claimedSandbox.billing_status) ||
-            !(claimedSandbox.status === "running" || claimedSandbox.status === "stopped")))
+            !(
+              claimedSandbox.status === "running" ||
+              (claimedSandbox.status === "stopped" && claimedSandbox.last_backup_at !== null)
+            )))
       ) {
+        if (options.runAuthority) {
+          await recordAgentBillingRunItemInTransaction(tx, options.runAuthority, {
+            sandboxId: input.sandboxId,
+            organizationId: input.organizationId,
+            agentName: input.agentName,
+            action: "skipped",
+            detailCode: "not_billable",
+            detailMessage: "Sandbox was no longer billable",
+            completedAt: new Date(),
+          });
+        }
         return { status: "already_billed_recently" as const };
       }
 
       const periodStart = claimedSandbox.last_billed_at ?? claimedSandbox.created_at;
       const elapsedMs = input.now.getTime() - periodStart.getTime();
       if (elapsedMs <= 0 || (!options.forceLifecycleSettlement && elapsedMs < 55 * 60 * 1000)) {
+        if (options.runAuthority) {
+          await recordAgentBillingRunItemInTransaction(tx, options.runAuthority, {
+            sandboxId: input.sandboxId,
+            organizationId: input.organizationId,
+            agentName: input.agentName,
+            action: "skipped",
+            detailCode: "already_billed_recently",
+            detailMessage: "Sandbox was already billed recently",
+            completedAt: new Date(),
+          });
+        }
         return { status: "already_billed_recently" as const };
       }
       const settled = await settleComputeRateSegments(tx, {
@@ -414,7 +546,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
-            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            ...agentComputeBillingAuthority(),
           ),
         );
 
@@ -434,7 +566,26 @@ export class AgentBillingRepository {
         created_at: input.now,
       });
 
-      return { status: "billed" as const, newBalance, transactionId: creditTx.id, amount: charge };
+      if (options.runAuthority) {
+        await recordAgentBillingRunItemInTransaction(tx, options.runAuthority, {
+          sandboxId: input.sandboxId,
+          organizationId: input.organizationId,
+          agentName: input.agentName,
+          action: "billed",
+          amountDecimal: chargeDecimal.toFixed(6),
+          newBalanceDecimal: updatedOrg.credit_balance,
+          transactionId: creditTx.id,
+          completedAt: new Date(),
+        });
+      }
+
+      return {
+        status: "billed" as const,
+        newBalance,
+        transactionId: creditTx.id,
+        amount: charge,
+        amountDecimal: chargeDecimal.toFixed(6),
+      };
     };
     return existingTx ? settle(existingTx) : await dbWrite.transaction(settle);
   }

@@ -24,6 +24,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -32,7 +33,6 @@ import {
   SESSION_CWD_SERVICE,
 } from "../types.js";
 
-const ENTRY_LIMIT = 1000;
 const LIST_SCOPE = "Scope: one directory level only (not recursive).";
 const FILTER_GUIDANCE =
   "ls does not accept pattern or glob filters; use FILE action=glob with a valid recursive glob pattern";
@@ -55,22 +55,12 @@ function sortEntries(entries: LsEntry[]): LsEntry[] {
   return [...dirEntries, ...fileEntries];
 }
 
-function formatListText(params: {
-  dir: string;
-  entries: LsEntry[];
-  truncated: boolean;
-  totalAfterIgnore: number;
-}): string {
+function formatListText(params: { dir: string; entries: LsEntry[] }): string {
   const lines = [
     LIST_SCOPE,
     `Directory: ${params.dir}`,
     ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
   ];
-  if (params.truncated) {
-    lines.push(
-      `…[truncated, listed ${ENTRY_LIMIT} of ${params.totalAfterIgnore} entries]`,
-    );
-  }
   return lines.join("\n");
 }
 
@@ -100,7 +90,6 @@ async function listWithCapabilityRouter(params: {
   try {
     const result = await router.fs.list({
       path: params.dir,
-      limit: ENTRY_LIMIT,
       includeHidden: true,
       ignore: params.ignore,
     });
@@ -205,8 +194,14 @@ export async function lsHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath =
-    requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+  let targetPath: string;
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd;
+  } else {
+    const input = resolveInputPath(runtime, conversationId, requestedPath);
+    if (!input.ok) return failureToActionResult(input.failure);
+    targetPath = input.value;
+  }
 
   const validation = await sandbox.validatePath(conversationId, targetPath);
   if (validation.ok === false) {
@@ -222,21 +217,26 @@ export async function lsHandler(
 
   const routed = await listWithCapabilityRouter({ runtime, dir, ignore });
   if (routed.ok) {
+    if (routed.payload.truncated) {
+      return failureToActionResult({
+        reason: "io_error",
+        message:
+          "device filesystem returned an incomplete directory listing; retry without a provider-side limit",
+      });
+    }
     const sorted = sortEntries(routed.payload.entries.map(toLsEntry));
     const text = formatListText({
       dir: routed.payload.path,
       entries: sorted,
-      truncated: routed.payload.truncated,
-      totalAfterIgnore: routed.payload.totalAfterIgnore,
     });
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} LS dir=${routed.payload.path} count=${sorted.length} truncated=${routed.payload.truncated}`,
+      `${CODING_TOOLS_LOG_PREFIX} LS dir=${routed.payload.path} count=${sorted.length}`,
     );
 
     return successActionResult(text, {
       entries: sorted,
-      truncated: routed.payload.truncated,
+      truncated: false,
     });
   }
   if (routed.reason === "failed") {
@@ -269,12 +269,8 @@ export async function lsHandler(
     (name) => !ignoreMatchers.some((re) => re.test(name)),
   );
 
-  const totalAfterIgnore = filteredNames.length;
-  const truncated = totalAfterIgnore > ENTRY_LIMIT;
-  const limited = filteredNames.slice(0, ENTRY_LIMIT);
-
   const enriched: LsEntry[] = [];
-  for (const name of limited) {
+  for (const name of filteredNames) {
     const joined = path.join(dir, name);
     let type: EntryType = "file";
     let size: number | undefined;
@@ -300,16 +296,14 @@ export async function lsHandler(
   const text = formatListText({
     dir,
     entries: sorted,
-    truncated,
-    totalAfterIgnore,
   });
 
   coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,
+    `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length}`,
   );
 
   return successActionResult(text, {
     entries: sorted,
-    truncated,
+    truncated: false,
   });
 }

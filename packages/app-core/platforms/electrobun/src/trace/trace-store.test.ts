@@ -10,7 +10,6 @@ function store(): TraceStore {
     now: () => new Date(1_800_000_000_000 + tick++),
     sessionIdFactory: () => `session-${++sessionCount}`,
     eventIdFactory: () => `event-${tick}`,
-    maxEventPayloadBytes: 64,
   });
 }
 
@@ -89,7 +88,7 @@ describe("TraceStore", () => {
     ).toMatchObject([{ kind: "model.completed" }]);
   });
 
-  it("stores an explicit summary when payloads exceed the size limit", () => {
+  it("stores complete large payloads", () => {
     const traces = store();
     const session = traces.createSession({
       title: "Agent run",
@@ -99,14 +98,29 @@ describe("TraceStore", () => {
       sessionId: session.id,
       kind: "log",
       payload: {
-        text: "x".repeat(200),
+        text: "x".repeat(200_000),
       },
     });
 
-    expect(event.payload).toMatchObject({
-      tracePayloadTruncated: true,
-      maxBytes: 64,
+    expect(event.payload).toEqual({ text: "x".repeat(200_000) });
+  });
+
+  it("rejects cyclic payloads instead of storing a partial substitute", () => {
+    const traces = store();
+    const session = traces.createSession({
+      title: "Agent run",
+      source: "agent",
     });
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    expect(() =>
+      traces.recordEvent({
+        sessionId: session.id,
+        kind: "log",
+        payload: cyclic as never,
+      }),
+    ).toThrow("must be JSON-serializable");
   });
 
   it("handles cancellation and errors", () => {
@@ -138,5 +152,31 @@ describe("TraceStore", () => {
     expect(() =>
       traces.recordEvent({ sessionId: "missing", kind: "log" }),
     ).toThrow(TraceError);
+  });
+  it("retains every session beyond the retired rolling window", () => {
+    const traces = new TraceStore();
+    for (let i = 0; i < 250; i++) {
+      traces.createSession({ title: `run ${i}`, source: "agent" });
+    }
+    expect(traces.listSessions()).toHaveLength(250);
+  });
+
+  it("retains every event beyond the retired per-session window", () => {
+    const traces = new TraceStore();
+    const session = traces.createSession({
+      title: "long run",
+      source: "agent",
+    });
+    for (let i = 0; i < 5_250; i++) {
+      traces.recordEvent({
+        sessionId: session.id,
+        kind: "log",
+        text: `event-${i}`,
+      });
+    }
+    const events = traces.tailEvents({ sessionId: session.id }).events;
+    expect(events).toHaveLength(5_250);
+    expect(events[0]?.text).toBe("event-0");
+    expect(events.at(-1)?.text).toBe("event-5249");
   });
 });

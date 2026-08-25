@@ -76,7 +76,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
         <div className="relative z-10 flex flex-col sm:flex-row items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-2 h-2 rounded-full bg-muted" />
+              <div className="size-2 rounded-full bg-muted" />
               <h2 className="text-base md:text-xl font-mono font-semibold text-txt uppercase">
                 {user.organization.name}
               </h2>
@@ -90,9 +90,7 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
               <p className="text-xl md:text-2xl font-mono font-bold text-txt-strong">
                 ${Number(user.organization.credit_balance).toFixed(2)}
               </p>
-              <p className="text-xs font-mono text-muted uppercase tracking-wide">
-                Credits Available
-              </p>
+              <p className="text-xs text-muted">Credits available</p>
             </div>
           </div>
         </div>
@@ -110,21 +108,21 @@ export function OrganizationTab({ user }: OrganizationTabProps) {
             value="members"
             className="flex items-center gap-2 flex-1"
           >
-            <Users className="h-3 md:h-4 w-3 md:w-4" />
+            <Users className="size-3 md:h-4 md:w-4" />
             <span className="text-xs md:text-sm">Members</span>
           </BrandTabsTrigger>
           <BrandTabsTrigger
             value="credentials"
             className="flex items-center gap-2 flex-1"
           >
-            <KeyRound className="h-3 md:h-4 w-3 md:w-4" />
+            <KeyRound className="size-3 md:h-4 md:w-4" />
             <span className="text-xs md:text-sm">Credentials</span>
           </BrandTabsTrigger>
           <BrandTabsTrigger
             value="general"
             className="flex items-center gap-2 flex-1"
           >
-            <Settings className="h-3 md:h-4 w-3 md:w-4" />
+            <Settings className="size-3 md:h-4 md:w-4" />
             <span className="text-xs md:text-sm">General</span>
           </BrandTabsTrigger>
         </BrandTabsList>

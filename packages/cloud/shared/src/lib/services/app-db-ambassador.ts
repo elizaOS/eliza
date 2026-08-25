@@ -51,9 +51,10 @@ export function ambassadorName(appId: string): string {
  * without the appId.
  */
 export function ambassadorNameForContainer(containerName: string): string {
-  const slug = containerName.startsWith("app-")
-    ? containerName.slice("app-".length)
-    : containerName;
+  const withoutGeneration = containerName.replace(/-g[a-f0-9]{8}$/i, "");
+  const slug = withoutGeneration.startsWith("app-")
+    ? withoutGeneration.slice("app-".length)
+    : withoutGeneration;
   return `${APP_DB_AMBASSADOR_NAME_PREFIX}${slug}`;
 }
 

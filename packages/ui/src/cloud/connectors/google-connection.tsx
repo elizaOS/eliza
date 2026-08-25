@@ -18,6 +18,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function GoogleConnection() {
@@ -33,13 +34,13 @@ export function GoogleConnection() {
 
   const getScopeIcon = (scope: string) => {
     if (scope.includes("gmail") || scope.includes("mail")) {
-      return <Mail className="h-4 w-4" />;
+      return <Mail className="size-4" />;
     }
     if (scope.includes("calendar")) {
-      return <Calendar className="h-4 w-4" />;
+      return <Calendar className="size-4" />;
     }
     if (scope.includes("contacts") || scope.includes("people")) {
-      return <Users className="h-4 w-4" />;
+      return <Users className="size-4" />;
     }
     return null;
   };
@@ -109,7 +110,7 @@ export function GoogleConnection() {
             {activeConnections.map((connection) => (
               <ConnectionIdentityPanel
                 key={connection.id}
-                icon={<Mail className="h-6 w-6 text-txt" />}
+                icon={<Mail className="size-6 text-txt" />}
                 iconClassName="bg-muted"
                 title={
                   connection.email || connection.displayName || connection.id
@@ -136,7 +137,7 @@ export function GoogleConnection() {
                 {connection.scopes && connection.scopes.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {connection.scopes.map((scope) => (
-                      <Badge key={scope} variant="outline" className="text-xs">
+                      <Badge key={scope} variant="outline">
                         {getScopeIcon(scope)}
                         <span className="ml-1">{getScopeName(scope)}</span>
                       </Badge>
@@ -155,14 +156,14 @@ export function GoogleConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.google.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <Plus className="h-4 w-4 mr-2" />
+                <Plus className="size-4 mr-2" />
                 {t("cloud.google.addAnother", {
                   defaultValue: "Add another Google account",
                 })}
@@ -174,39 +175,31 @@ export function GoogleConnection() {
       setupContent={
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="h-6 w-6 mx-auto mb-2 text-red-500" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.gmail", { defaultValue: "Gmail" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.gmailDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-txt" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Users className="h-6 w-6 mx-auto mb-2 text-green-500" />
-              <p className="text-sm font-medium">
-                {t("cloud.google.contacts", { defaultValue: "Contacts" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.google.contactsDesc", {
-                  defaultValue: "Access contacts",
-                })}
-              </p>
-            </div>
+            <ConnectionCapabilityTile
+              icon={<Mail className="size-6 text-accent" aria-hidden />}
+              title={t("cloud.google.gmail", { defaultValue: "Gmail" })}
+              description={t("cloud.google.gmailDesc", {
+                defaultValue: "Send & read emails",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Calendar className="size-6 text-txt" aria-hidden />}
+              title={t("cloud.google.calendar", {
+                defaultValue: "Calendar",
+              })}
+              description={t("cloud.google.calendarDesc", {
+                defaultValue: "Manage events",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Users className="size-6 text-accent" aria-hidden />}
+              title={t("cloud.google.contacts", {
+                defaultValue: "Contacts",
+              })}
+              description={t("cloud.google.contactsDesc", {
+                defaultValue: "Access contacts",
+              })}
+            />
           </div>
 
           <ConnectionCallout
@@ -237,14 +230,14 @@ export function GoogleConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.google.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <GoogleIcon className="h-4 w-4 mr-2 text-current" />
+                <GoogleIcon className="size-4 mr-2 text-current" />
                 {t("cloud.google.connectButton", {
                   defaultValue: "Connect with Google",
                 })}
@@ -257,7 +250,7 @@ export function GoogleConnection() {
   );
 }
 
-function GoogleIcon({ className = "h-5 w-5" }: { className?: string }) {
+function GoogleIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-label="Google">
       <path

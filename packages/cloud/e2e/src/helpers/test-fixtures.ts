@@ -20,7 +20,7 @@ import {
 } from "../fixtures/stack";
 import { loginAsSeededUser } from "./wallet-login";
 
-function buildPlaywrightSessionToken(
+export function buildPlaywrightSessionToken(
   userId: string,
   organizationId: string,
 ): string {

@@ -128,6 +128,7 @@ interface TestHarness {
   handleMessage: ReturnType<typeof vi.fn>;
   emitEvent: ReturnType<typeof vi.fn>;
   createMemory: ReturnType<typeof vi.fn>;
+  updateMemory: ReturnType<typeof vi.fn>;
   storedMemories: Memory[];
   deleteManyMemories: ReturnType<typeof vi.fn>;
   deleteRoom: ReturnType<typeof vi.fn>;
@@ -141,7 +142,11 @@ interface TestHarness {
  *  memories are retained and served back through `getMemories`, so the dupe
  *  branches' persisted-first-reply lookup reads the real write path's output. */
 function createHarness(
-  options: { maxPendingPerRoom?: number; scheduling?: boolean } = {},
+  options: {
+    maxPendingPerRoom?: number;
+    scheduling?: boolean;
+    failOutcomeSettlementOnce?: boolean;
+  } = {},
 ): TestHarness {
   const handleMessage = vi.fn(
     async (
@@ -171,7 +176,19 @@ function createHarness(
     storedMemories.push(memory);
     return memory.id ?? stringToUuid("created-memory");
   });
+  let shouldFailOutcomeSettlement = options.failOutcomeSettlementOnce === true;
   const updateMemory = vi.fn(async (memory: Partial<Memory> & { id: UUID }) => {
+    const marker = memory.content?.chatIdempotency;
+    if (
+      shouldFailOutcomeSettlement &&
+      marker &&
+      typeof marker === "object" &&
+      !Array.isArray(marker) &&
+      "outcomeJson" in marker
+    ) {
+      shouldFailOutcomeSettlement = false;
+      throw new Error("simulated outcome marker write failure");
+    }
     const index = storedMemories.findIndex((stored) => stored.id === memory.id);
     if (index < 0) throw new Error("memory not found");
     storedMemories[index] = { ...storedMemories[index], ...memory };
@@ -285,6 +302,7 @@ function createHarness(
     handleMessage,
     emitEvent,
     createMemory,
+    updateMemory,
     storedMemories,
     deleteManyMemories,
     deleteRoom,
@@ -373,15 +391,18 @@ function parseDataFrames(record: MockResponseRecord): Array<{
   type: string;
   fullText?: string;
   messageId?: string;
+  userMessageId?: string;
   agentName?: string;
   transcriptVisibility?: "internal";
   thought?: string;
   usage?: unknown;
   actionResults?: unknown;
   failureKind?: string;
+  terminalFailure?: unknown;
   accountConnect?: unknown;
   localInference?: unknown;
   noResponseReason?: "ignored";
+  interrupted?: boolean;
 }> {
   return record.writes
     .join("")
@@ -393,15 +414,18 @@ function parseDataFrames(record: MockResponseRecord): Array<{
           type: string;
           fullText?: string;
           messageId?: string;
+          userMessageId?: string;
           agentName?: string;
           transcriptVisibility?: "internal";
           thought?: string;
           usage?: unknown;
           actionResults?: unknown;
           failureKind?: string;
+          terminalFailure?: unknown;
           accountConnect?: unknown;
           localInference?: unknown;
           noResponseReason?: "ignored";
+          interrupted?: boolean;
         },
     );
 }
@@ -637,7 +661,13 @@ describe("conversation-route chat idempotency wiring", () => {
         llmCalls: 1,
       },
       actionResults: [{ actionName: "VIEWS", success: true }],
-      failureKind: "no_provider",
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
       accountConnect: { providers: ["openai-codex"] },
       localInference: { status: "ready" },
     });
@@ -656,7 +686,13 @@ describe("conversation-route chat idempotency wiring", () => {
         thought: "private reasoning",
         usage: expect.objectContaining({ totalTokens: 10 }),
         actionResults: [{ actionName: "VIEWS", success: true }],
-        failureKind: "no_provider",
+        failureKind: "coding_tool_failure",
+        terminalFailure: {
+          kind: "coding_tool_failure",
+          message: "Shell execution failed.",
+          transient: true,
+          code: "SHELL_UNAVAILABLE",
+        },
         accountConnect: { providers: ["openai-codex"] },
         localInference: { status: "ready" },
       }),
@@ -672,7 +708,13 @@ describe("conversation-route chat idempotency wiring", () => {
       messageId: stringToUuid("terminal-contract-reply"),
       transcriptVisibility: "internal",
       actionResults: [{ actionName: "VIEWS", success: true }],
-      failureKind: "no_provider",
+      failureKind: "coding_tool_failure",
+      terminalFailure: {
+        kind: "coding_tool_failure",
+        message: "Shell execution failed.",
+        transient: true,
+        code: "SHELL_UNAVAILABLE",
+      },
       accountConnect: { providers: ["openai-codex"] },
       localInference: { status: "ready" },
     });
@@ -858,6 +900,59 @@ describe("conversation-route chat idempotency wiring", () => {
     },
   );
 
+  it("reconciles typed terminal metadata onto an already-persisted message-service row", async () => {
+    const { state, handleMessage, storedMemories, updateMemory } =
+      createHarness();
+    const persistedId = stringToUuid("typed-terminal-existing-assistant");
+    handleMessage.mockImplementationOnce(
+      async (runtime: AgentRuntime, message: Memory) => {
+        const persisted: Memory = {
+          id: persistedId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+          content: {
+            text: "Shell execution failed.",
+            failureKind: "coding_tool_failure",
+            transient: true,
+            inReplyTo: message.id,
+          },
+        };
+        await runtime.createMemory(persisted, "messages");
+        return {
+          didRespond: true,
+          responseContent: persisted.content,
+          responseMessages: [persisted],
+          persistedResponseMessageIds: [persistedId],
+          terminalFailure: {
+            kind: "coding_verification_failed",
+            message: "Typecheck still fails after repair.",
+            transient: false,
+            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+          },
+        };
+      },
+    );
+
+    await runRoute("POST", SEND_PATH, state, {
+      text: "fix the code",
+      clientMessageId: "typed-terminal-existing-row-1",
+    });
+
+    expect(updateMemory).toHaveBeenCalled();
+    expect(
+      storedMemories.find((memory) => memory.id === persistedId)?.content,
+    ).toMatchObject({
+      failureKind: "coding_verification_failed",
+      terminalFailure: {
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+      },
+    });
+  });
+
   it("SSE: a retry joins the active turn and replays its durable outcome", async () => {
     const { state, handleMessage } = createHarness();
     let releaseTurn: (() => void) | undefined;
@@ -942,8 +1037,9 @@ describe("conversation-route chat idempotency wiring", () => {
     }
   });
 
-  it("SSE: a retry after an incomplete aborted turn finalizes without re-running it", async () => {
-    const { state, handleMessage, createMemory } = createHarness();
+  it("SSE: an aborted turn persists a zero-token interrupted receipt and the retry adopts it", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
     const abortError = Object.assign(new Error("client disconnected"), {
       code: "TURN_ABORTED",
     });
@@ -954,27 +1050,202 @@ describe("conversation-route chat idempotency wiring", () => {
 
     const first = await runRoute("POST", STREAM_PATH, state, body);
     expect(handleMessage).toHaveBeenCalledTimes(1);
-    // Aborted turn: no assistant "done" payload with text was delivered.
+    // Zero-token Stop: the turn still settles with an interrupted terminal
+    // receipt — a done frame carrying interrupted:true and no reply text.
     const firstDone = parseDataFrames(first.record).find(
-      (f) => f.type === "done" && f.fullText === "ok",
-    );
-    expect(firstDone).toBeUndefined();
-
-    const second = await runRoute("POST", STREAM_PATH, state, body);
-    expect(handleMessage).toHaveBeenCalledTimes(1);
-    const secondDone = parseDataFrames(second.record).find(
       (f) => f.type === "done",
     );
-    expect(secondDone?.fullText).toBe(INCOMPLETE_RECOVERY_TEXT);
-    expect(createMemory.mock.calls.length).toBeGreaterThan(0);
+    expect(firstDone).toMatchObject({
+      type: "done",
+      fullText: "",
+      interrupted: true,
+      messageId: expect.any(String),
+    });
+    // The receipt is durable: an assistant memory with content.interrupted.
+    const receipt = storedMemories.find(
+      (memory) =>
+        memory.id === firstDone?.messageId &&
+        (memory.content as { interrupted?: boolean }).interrupted === true,
+    );
+    expect(receipt).toBeDefined();
+    expect((receipt?.content as { text?: string } | undefined)?.text).toBe("");
 
-    const persistsAfterRecovery = createMemory.mock.calls.length;
-    const replay = await runRoute("POST", STREAM_PATH, state, body);
+    const persistsAfterAbort = createMemory.mock.calls.length;
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+    // The retried key adopts the interrupted outcome: no second generation,
+    // no second persisted pair, the exact same terminal frame.
     expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(createMemory).toHaveBeenCalledTimes(persistsAfterRecovery);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
     expect(
-      parseDataFrames(replay.record).find((frame) => frame.type === "done"),
-    ).toEqual(secondDone);
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toEqual(firstDone);
+  });
+
+  it("SSE: a mid-stream abort persists the partial text on the interrupted receipt", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    const abortError = Object.assign(new Error("client stopped"), {
+      code: "TURN_ABORTED",
+    });
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await options?.onStreamChunk?.("partial re");
+        throw abortError;
+      },
+    );
+    const body = { text: "hello", clientMessageId: "sse-abort-partial-1" };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const firstDone = parseDataFrames(first.record).find(
+      (f) => f.type === "done",
+    );
+    expect(firstDone).toMatchObject({
+      type: "done",
+      fullText: "partial re",
+      interrupted: true,
+      messageId: expect.any(String),
+    });
+    const receipt = storedMemories.find(
+      (memory) => memory.id === firstDone?.messageId,
+    );
+    expect(receipt?.content).toMatchObject({
+      text: "partial re",
+      interrupted: true,
+    });
+
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toEqual(firstDone);
+  });
+
+  it("SSE: a persisted interrupted receipt survives outcome-marker settlement failure and restart", async () => {
+    const { state, handleMessage, updateMemory, createMemory, storedMemories } =
+      createHarness({ failOutcomeSettlementOnce: true });
+    const abortError = Object.assign(new Error("client stopped"), {
+      code: "TURN_ABORTED",
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      throw abortError;
+    });
+    const body = {
+      text: "hello",
+      clientMessageId: "sse-abort-settlement-failure-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstDone = parseDataFrames(first.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(firstDone).toMatchObject({
+      type: "done",
+      fullText: "",
+      interrupted: true,
+      messageId: expect.any(String),
+    });
+    expect(updateMemory).toHaveBeenCalledTimes(1);
+    const receipt = storedMemories.find(
+      (memory) => memory.id === firstDone?.messageId,
+    );
+    expect(receipt?.content).toMatchObject({ interrupted: true, text: "" });
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    // Simulate a fresh process: the failed outcome marker is absent, so
+    // recovery must reconstruct the exact terminal from the durable receipt.
+    resetChatDedupe();
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toEqual(firstDone);
+    expect(updateMemory.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("SSE: a typed terminal failure survives outcome-marker settlement failure and restart", async () => {
+    const { state, handleMessage, updateMemory, createMemory, storedMemories } =
+      createHarness({ failOutcomeSettlementOnce: true });
+    handleMessage.mockImplementationOnce(
+      async (_runtime: unknown, _message: unknown, callback: unknown) => {
+        await (
+          callback as ((content: { text: string }) => Promise<void>) | undefined
+        )?.({ text: "Done." });
+        return {
+          didRespond: true,
+          responseContent: null,
+          responseMessages: [],
+          terminalFailure: {
+            kind: "coding_verification_failed",
+            message: "Typecheck still fails after repair.",
+            transient: false,
+            code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+          },
+          mode: "actions" as const,
+        };
+      },
+    );
+    const body = {
+      text: "fix the code",
+      clientMessageId: "typed-failure-settlement-restart-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstDone = parseDataFrames(first.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(firstDone).toMatchObject({
+      type: "done",
+      fullText: "Typecheck still fails after repair.",
+      failureKind: "coding_verification_failed",
+      terminalFailure: {
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+      },
+      messageId: expect.any(String),
+    });
+    const receipt = storedMemories.find(
+      (memory) => memory.id === firstDone?.messageId,
+    );
+    expect(receipt?.content).toMatchObject({
+      failureKind: "coding_verification_failed",
+      terminalFailure: {
+        kind: "coding_verification_failed",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+      },
+    });
+    const persistsAfterFailure = createMemory.mock.calls.length;
+
+    resetChatDedupe();
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterFailure);
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      type: "done",
+      fullText: "Typecheck still fails after repair.",
+      failureKind: "coding_verification_failed",
+      terminalFailure: {
+        kind: "coding_verification_failed",
+        message: "Typecheck still fails after repair.",
+        transient: false,
+        code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+      },
+      messageId: firstDone?.messageId,
+      userMessageId: firstDone?.userMessageId,
+    });
+    expect(updateMemory.mock.calls.length).toBeGreaterThan(1);
   });
 
   it("SSE: a completed turn survives transport disconnect and the retry replays it", async () => {

@@ -78,6 +78,8 @@ export async function editFileHandler(
   const oldStr = readStringParam(options, "old_string");
   const newStr = readStringParam(options, "new_string");
   const replaceAll = readBoolParam(options, "replace_all") ?? false;
+  const allowLiteralEscapes =
+    readBoolParam(options, "allow_literal_escapes") ?? false;
   if (!filePath || oldStr === undefined || newStr === undefined) {
     return failureToActionResult({
       reason: "missing_param",
@@ -92,17 +94,24 @@ export async function editFileHandler(
       message: "old_string and new_string are identical; nothing to do",
     });
   }
+  if (
+    !allowLiteralEscapes &&
+    (newStr.includes("\\n") || newStr.includes("\\r"))
+  ) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "new_string contains a literal \\n or \\r sequence. Send an actual newline for a multiline edit, or set allow_literal_escapes=true when the backslash escape is intentionally part of the source.",
+    });
+  }
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
   > | null;
-  const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
-    typeof FileStateService
-  > | null;
-  if (!sandbox || !fileState) {
+  if (!sandbox) {
     return failureToActionResult({
       reason: "internal",
-      message: "coding-tools services unavailable",
+      message: "coding-tools sandbox service unavailable",
     });
   }
 
@@ -114,12 +123,24 @@ export async function editFileHandler(
   }
 
   const resolved = validated.resolved;
+  const failAtPath = (
+    failure: Parameters<typeof failureToActionResult>[0],
+  ): ActionResult => failureToActionResult(failure, { path: resolved });
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
+    typeof FileStateService
+  > | null;
+  if (!fileState) {
+    return failAtPath({
+      reason: "internal",
+      message: "coding-tools file-state service unavailable",
+    });
+  }
 
   const gate = await fileState.assertWritable(conversationId, resolved);
   if (gate.ok === false) {
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";
-    return failureToActionResult({ reason, message: gate.message });
+    return failAtPath({ reason, message: gate.message });
   }
 
   let original: string;
@@ -129,7 +150,7 @@ export async function editFileHandler(
     // error-policy:J1 action boundary; a read failure becomes a success:false
     // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
-    return failureToActionResult({
+    return failAtPath({
       reason: "io_error",
       message: `read failed: ${msg}`,
     });
@@ -137,13 +158,13 @@ export async function editFileHandler(
 
   const occurrences = countOccurrences(original, oldStr);
   if (occurrences === 0) {
-    return failureToActionResult({
+    return failAtPath({
       reason: "no_match",
       message: `old_string not found in ${resolved}`,
     });
   }
   if (!replaceAll && occurrences > 1) {
-    return failureToActionResult({
+    return failAtPath({
       reason: "invalid_param",
       message: `ambiguous: ${occurrences} matches; pass replace_all=true or extend old_string`,
     });
@@ -162,7 +183,7 @@ export async function editFileHandler(
   const secrets = detectSecrets(newStr);
   if (secrets.length > 0) {
     const names = secrets.map((s) => s.name).join(", ");
-    return failureToActionResult({
+    return failAtPath({
       reason: "invalid_param",
       message: `refusing to introduce content matching secret patterns: ${names}`,
     });
@@ -174,7 +195,7 @@ export async function editFileHandler(
     // error-policy:J1 action boundary; a write failure becomes a success:false
     // ActionResult carrying the real message, surfaced to the model.
     const msg = err instanceof Error ? err.message : String(err);
-    return failureToActionResult({
+    return failAtPath({
       reason: "io_error",
       message: `write failed: ${msg}`,
     });

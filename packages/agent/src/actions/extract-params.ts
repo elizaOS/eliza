@@ -91,11 +91,10 @@ export interface ExtractActionParamsArgs<
   requiredFields: ReadonlyArray<keyof T & string>;
   /** Override the model tier (default: TEXT_SMALL). */
   modelType?: (typeof ModelType)[keyof typeof ModelType];
-  /** Override how many recent messages to feed into the prompt (default 8). */
+  /** Deprecated compatibility option; extraction always sees all composed messages. */
   recentMessagesLimit?: number;
 }
 
-const DEFAULT_RECENT_MESSAGES_LIMIT = 8;
 const EXTRACT_ACTION_PARAMS_TEMPLATE = `You are filling in missing parameters for the {{actionName}} action.
 Action description: {{actionDescription}}
 
@@ -134,7 +133,6 @@ export async function extractActionParamsViaLlm<
     existingParams,
     requiredFields,
     modelType = ModelType.TEXT_SMALL,
-    recentMessagesLimit = DEFAULT_RECENT_MESSAGES_LIMIT,
   } = args;
 
   const missing = requiredFields.filter((field) => {
@@ -147,10 +145,7 @@ export async function extractActionParamsViaLlm<
 
   const currentMessageText =
     typeof message.content.text === "string" ? message.content.text.trim() : "";
-  const recentConversation = collectRecentConversation(
-    state,
-    recentMessagesLimit,
-  );
+  const recentConversation = collectRecentConversation(state);
 
   const prompt = buildExtractionPrompt({
     actionName,
@@ -194,12 +189,9 @@ export async function extractActionParamsViaLlm<
   return merged as Partial<T>;
 }
 
-function collectRecentConversation(
-  state: State | undefined,
-  limit: number,
-): string {
+function collectRecentConversation(state: State | undefined): string {
   if (!state) return "";
-  const messages = getRecentMessagesData(state).slice(-limit);
+  const messages = getRecentMessagesData(state);
   if (messages.length === 0) return "";
   return messages
     .map((m) => {

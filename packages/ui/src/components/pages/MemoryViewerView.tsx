@@ -227,16 +227,18 @@ const MemoryCard = memo(function MemoryCard({
 
   return (
     <Button
-      variant="ghost"
+      variant="selection"
+      size="card"
+      align="start"
       aria-expanded={expanded}
-      className={`${MEMORY_FOCUS_CLASS} flex h-auto w-full flex-col items-stretch justify-start whitespace-normal rounded-sm bg-card/40 px-3.5 py-3 text-left font-normal transition-colors hover:bg-card/70`}
+      className={`${MEMORY_FOCUS_CLASS} w-full`}
       onClick={() => onToggle(memory.id)}
       data-testid={`memory-card-${memory.id}`}
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-xs-tight text-muted">
           <span
-            className={`memory-type-dot-${typeKey} inline-block h-2 w-2 rounded-full`}
+            className={`memory-type-dot-${typeKey} inline-block size-2 rounded-full`}
           />
           {typeLabel(memory.type, t)}
         </span>
@@ -621,7 +623,7 @@ function MemoryBrowserPanel({
                 className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs-tight text-muted"
               >
                 <span
-                  className={`memory-type-dot-${type} inline-block h-2 w-2 rounded-full`}
+                  className={`memory-type-dot-${type} inline-block size-2 rounded-full`}
                 />
                 {typeLabel(type, t)}
               </span>
@@ -703,8 +705,6 @@ function MemoryBrowserPanel({
 
 // ── Sidebar controls ─────────────────────────────────────────────────────
 
-const sidebarTriggerClass = `${MEMORY_FOCUS_CLASS} h-11 w-full justify-between gap-2 rounded-sm border border-border bg-card/40 px-3 text-start text-sm font-medium text-txt hover:bg-card/70`;
-
 function TypeFilterMenu({
   types,
   selected,
@@ -734,20 +734,21 @@ function TypeFilterMenu({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
-          className={sidebarTriggerClass}
+          variant="memorySidebar"
+          size="memorySidebar"
+          className={MEMORY_FOCUS_CLASS}
           aria-label={filterLabel}
           data-testid="memory-type-filter-trigger"
         >
           <span className="flex min-w-0 items-center gap-2">
             {singleType ? (
               <span
-                className={`memory-type-dot-${memoryTypeKey(singleType)} inline-block h-2 w-2 shrink-0 rounded-full`}
+                className={`memory-type-dot-${memoryTypeKey(singleType)} inline-block size-2 shrink-0 rounded-full`}
               />
             ) : null}
             <span className="truncate">{triggerLabel}</span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -772,7 +773,7 @@ function TypeFilterMenu({
           >
             <span className="flex min-w-0 flex-1 items-center gap-2">
               <span
-                className={`memory-type-dot-${memoryTypeKey(type.key)} inline-block h-2 w-2 shrink-0 rounded-full`}
+                className={`memory-type-dot-${memoryTypeKey(type.key)} inline-block size-2 shrink-0 rounded-full`}
               />
               <span className="min-w-0 truncate">{type.label}</span>
             </span>
@@ -826,14 +827,15 @@ const PeoplePicker = memo(function PeoplePicker({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="ghost"
-          className={sidebarTriggerClass}
+          variant="memorySidebar"
+          size="memorySidebar"
+          className={MEMORY_FOCUS_CLASS}
           aria-label={personLabel}
           data-testid="memory-person-picker-trigger"
         >
           <span className="flex min-w-0 items-center gap-2">
             {selected ? (
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+              <span className="flex  size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
                 {selected.displayName.charAt(0).toUpperCase()}
               </span>
             ) : null}
@@ -841,7 +843,7 @@ const PeoplePicker = memo(function PeoplePicker({
               {selected ? selected.displayName : everyoneLabel}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <ChevronDown className="size-4 shrink-0 text-muted" aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="min-w-[14rem] space-y-2 p-2">
@@ -854,37 +856,37 @@ const PeoplePicker = memo(function PeoplePicker({
           data-testid="memory-person-search"
         />
         <div className="max-h-56 overflow-auto">
-          <button
+          <Button
             type="button"
-            className={`${MEMORY_FOCUS_CLASS} flex min-h-11 w-full items-center rounded-sm px-2 text-start text-sm ${
-              selectedId === null
-                ? "bg-accent/14 text-txt"
-                : "text-txt hover:bg-bg-hover"
-            }`}
+            variant="selection"
+            size="touch"
+            align="start"
+            data-state={selectedId === null ? "on" : "off"}
+            className={`${MEMORY_FOCUS_CLASS} w-full`}
             onClick={() => {
               onClear();
               setOpen(false);
             }}
           >
             {everyoneLabel}
-          </button>
+          </Button>
           {visible.map((person) => {
             const active = person.primaryEntityId === selectedId;
             return (
-              <button
+              <Button
                 key={person.groupId}
                 type="button"
-                className={`${MEMORY_FOCUS_CLASS} flex min-h-11 w-full items-center gap-2 rounded-sm px-2 text-start text-sm ${
-                  active
-                    ? "bg-accent/14 text-txt"
-                    : "text-txt hover:bg-bg-hover"
-                }`}
+                variant="selection"
+                size="touch"
+                align="start"
+                data-state={active ? "on" : "off"}
+                className={`${MEMORY_FOCUS_CLASS} w-full`}
                 onClick={() => {
                   onSelect(person);
                   setOpen(false);
                 }}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-bg-accent text-2xs font-semibold">
                   {person.displayName.charAt(0).toUpperCase()}
                 </span>
                 <span className="min-w-0 flex-1 truncate">
@@ -895,7 +897,7 @@ const PeoplePicker = memo(function PeoplePicker({
                     {person.factCount}
                   </span>
                 ) : null}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -1113,9 +1115,8 @@ export function MemoryViewerView({
                 </div>
                 <Button
                   type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={`${MEMORY_FOCUS_CLASS} h-auto px-0 text-xs-tight`}
+                  variant="mutedLink"
+                  className={MEMORY_FOCUS_CLASS}
                   onClick={() => setTab("relationships")}
                 >
                   {t("memoryviewer.openRelationships", {
@@ -1154,15 +1155,15 @@ export function MemoryViewerView({
                       })}
                       onClick={handleClearPerson}
                     >
-                      <X className="h-4 w-4" aria-hidden />
+                      <X className="size-4" aria-hidden />
                     </Button>
                   ) : null}
                 </div>
                 <Button
                   type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={`${MEMORY_FOCUS_CLASS} h-auto justify-start px-0 text-xs-tight text-muted hover:text-txt`}
+                  variant="mutedLink"
+                  align="start"
+                  className={MEMORY_FOCUS_CLASS}
                   onClick={() => setTab("relationships")}
                 >
                   {t("memoryviewer.openRelationships", {
@@ -1218,9 +1219,9 @@ export function MemoryViewerView({
                       <MetaPill compact>{selectedPerson.displayName}</MetaPill>
                       <Button
                         type="button"
-                        size="sm"
-                        variant="ghost"
-                        className={`${MEMORY_FOCUS_CLASS} min-h-11 px-3 text-xs-tight`}
+                        size="touch"
+                        variant="ghostMuted"
+                        className={MEMORY_FOCUS_CLASS}
                         onClick={handleClearPerson}
                       >
                         {t("memoryviewer.clear", { defaultValue: "Clear" })}

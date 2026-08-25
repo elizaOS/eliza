@@ -76,13 +76,7 @@ interface AppliedMigration {
 
 interface DatabaseError extends Error {
   code?: string;
-  detail?: string;
-  hint?: string;
   position?: string;
-  schema?: string;
-  table?: string;
-  column?: string;
-  constraint?: string;
 }
 
 interface MigrationClient {
@@ -128,6 +122,14 @@ export async function convergeAgentSandboxSchemaOnMigrationClient(
 // order, and completeness identity are enforced from this entry forward.
 const HASH_IDENTITY_ENFORCEMENT_TAG =
   "0194_job_execution_interruptions_catalog_guard";
+const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
+  "0282_drop_unused_usage_quotas_table",
+  "0282_01_restore_usage_quotas_compatibility",
+] as const;
+
+type MigrationReleaseBarrierDecision =
+  | { action: "continue"; atomicPairStartIndex?: number }
+  | { action: "pause"; stopBeforeJournalIndex: number };
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
@@ -218,25 +220,54 @@ function summarizeStatement(statement: string): string {
   return statement.replace(/\s+/g, " ").slice(0, 500);
 }
 
-function formatDatabaseError(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
+const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
+const POSTGRES_POSITION_PATTERN = /^[1-9][0-9]{0,9}$/;
 
-  const databaseError = error as DatabaseError;
+function allowlistedDatabaseField(
+  value: unknown,
+  pattern: RegExp,
+): string | undefined {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+/**
+ * Format only bounded PostgreSQL metadata that cannot contain row values.
+ *
+ * PostgreSQL's `message`, `detail`, and `hint` fields are deliberately absent:
+ * JSON parse failures copy the offending legacy token into `detail`, while
+ * other error classes may interpolate provider or row data into any of the
+ * three. This formatter is shared by statement, cleanup, and fatal stderr so a
+ * parent process using inherited stdio cannot accidentally re-expose them.
+ */
+function formatDatabaseError(error: unknown): string {
+  let sqlState: string | undefined;
+  let position: string | undefined;
+  try {
+    const databaseError =
+      error instanceof Error ? (error as DatabaseError) : null;
+    sqlState = allowlistedDatabaseField(
+      databaseError?.code,
+      POSTGRES_SQLSTATE_PATTERN,
+    );
+    position = allowlistedDatabaseField(
+      databaseError?.position,
+      POSTGRES_POSITION_PATTERN,
+    );
+  } catch {
+    // error-policy:J3 hostile error accessors yield the static diagnostic.
+  }
   const details = [
-    `message=${databaseError.message}`,
-    databaseError.code ? `code=${databaseError.code}` : null,
-    databaseError.detail ? `detail=${databaseError.detail}` : null,
-    databaseError.hint ? `hint=${databaseError.hint}` : null,
-    databaseError.position ? `position=${databaseError.position}` : null,
-    databaseError.schema ? `schema=${databaseError.schema}` : null,
-    databaseError.table ? `table=${databaseError.table}` : null,
-    databaseError.column ? `column=${databaseError.column}` : null,
-    databaseError.constraint ? `constraint=${databaseError.constraint}` : null,
+    "code=DATABASE_OPERATION_FAILED",
+    sqlState ? `database_code=${sqlState}` : null,
+    position ? `position=${position}` : null,
   ].filter(Boolean);
 
   return details.join(" ");
+}
+
+/** Emits the production fatal boundary without serializing the database error. */
+function reportMigrationFatalFailure(error: unknown): void {
+  console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
 }
 
 function reportMigrationCleanupFailure(failure: CleanupFailure): void {
@@ -269,6 +300,57 @@ async function getAppliedMigrations(
   `);
 
   return result.rows;
+}
+
+/**
+ * Proves that an empty ledger belongs to a database with no application
+ * relations. The migration lock and this query share one session, so a wiped
+ * or truncated ledger cannot impersonate a new database and replay destructive
+ * historical DDL over a live schema.
+ */
+async function assertEmptyLedgerDatabaseIsFresh(
+  client: MigrationClient,
+): Promise<void> {
+  const result = await client.query<{ has_user_relations: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace
+        ON namespace.oid = relation.relnamespace
+      WHERE relation.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+        AND namespace.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND NOT (
+          namespace.nspname = '${MIGRATIONS_SCHEMA}'
+          AND relation.relname IN (
+            '${MIGRATIONS_TABLE}',
+            '${MIGRATIONS_TABLE}_id_seq'
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_depend AS dependency
+          WHERE dependency.classid = 'pg_catalog.pg_class'::regclass
+            AND dependency.objid = relation.oid
+            AND dependency.deptype = 'e'
+        )
+    ) AS has_user_relations
+  `);
+  if (
+    result.rows.length !== 1 ||
+    typeof result.rows[0]?.has_user_relations !== "boolean"
+  ) {
+    throw new Error(
+      "Fresh-database migration proof returned an invalid catalog result",
+    );
+  }
+  if (result.rows[0].has_user_relations) {
+    console.error(
+      "[db:migrate] refusing empty-ledger replay because application relations already exist",
+    );
+    throw new Error(
+      "Migration ledger is empty but the database contains application relations; refusing to replay historical migrations",
+    );
+  }
 }
 
 export function validateAppliedMigrationLedger(
@@ -378,6 +460,97 @@ export function validateAppliedMigrationLedger(
   return { lastAppliedJournalIndex };
 }
 
+/**
+ * Fences the two-step usage-quotas repair while the compatibility Worker is
+ * being rolled out (#23829 Phase A, #23859). What the barrier protects is a
+ * LIVE deployment: a Worker already serving traffic against this database must
+ * never run against the window between 0282 (drop) and 0282_01 (restore). So a
+ * validated ledger that already carries applied migrations may apply its safe
+ * prefix but pauses before the drop, and the deploy continues without exposing
+ * the currently-served Worker to the missing table.
+ *
+ * An empty ledger alone is not evidence of a fresh database: a live database
+ * can have its ledger truncated or lost. The runner separately proves under
+ * the migration lock that no application relations exist before taking the
+ * empty-ledger path. It also applies the drop, restore, and both ledger rows in
+ * one transaction, so no concurrent Worker can observe the missing-table
+ * window even if the freshness assumption is ever weakened accidentally.
+ *
+ * Environments that already recorded 0282 must proceed directly to the
+ * restoring 0282_01 migration. Any other suffix is unsafe and fails closed
+ * before the first pending migration is applied.
+ */
+export function evaluateMigrationReleaseBarrier(
+  migrations: Migration[],
+  lastAppliedJournalIndex: number,
+): MigrationReleaseBarrierDecision {
+  const journalTags = migrations.map((migration) => migration.entry.tag);
+  const barrierIndexes = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.map((tag) =>
+    journalTags.reduce<number[]>((indexes, candidate, index) => {
+      if (candidate === tag) indexes.push(index);
+      return indexes;
+    }, []),
+  );
+  const presentBarrierTags = barrierIndexes.filter(
+    (indexes) => indexes.length > 0,
+  ).length;
+
+  // Older synthetic histories and checkouts pre-dating 0282 have no barrier.
+  if (presentBarrierTags === 0) return { action: "continue" };
+
+  const expectedSuffix = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.join(", ");
+  if (barrierIndexes.some((indexes) => indexes.length !== 1)) {
+    throw new Error(
+      `Migration release barrier requires exactly one of each suffix entry (${expectedSuffix})`,
+    );
+  }
+
+  const dropIndex = barrierIndexes[0]?.[0];
+  const restoreIndex = barrierIndexes[1]?.[0];
+  // Anchor on ADJACENCY, not on the journal tail. Requiring the pair to be the
+  // last two entries means the next migration anyone appends makes this throw
+  // for every target, including fully-migrated ones — a repo-wide stop-the-
+  // world. What the barrier actually needs is that the restore immediately
+  // follows the drop, so no other migration can interleave between them.
+  if (
+    dropIndex === undefined ||
+    restoreIndex === undefined ||
+    restoreIndex !== dropIndex + 1
+  ) {
+    const actualSuffix = journalTags
+      .slice(Math.max(0, Math.min(dropIndex ?? 0, restoreIndex ?? 0)))
+      .join(", ");
+    throw new Error(
+      `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
+    );
+  }
+
+  // runMigrations proves an empty ledger belongs to a relation-free database
+  // before honoring this plan. The explicit index also makes atomic pairing a
+  // required execution contract rather than an adjacency assumption.
+  if (lastAppliedJournalIndex === -1) {
+    return { action: "continue", atomicPairStartIndex: dropIndex };
+  }
+
+  if (lastAppliedJournalIndex < dropIndex) {
+    return { action: "pause", stopBeforeJournalIndex: dropIndex };
+  }
+
+  if (lastAppliedJournalIndex === dropIndex) {
+    // Only the NEXT entry has to be the restore — later migrations are none of
+    // this barrier's business, and demanding it be the only pending one is the
+    // same tail-pinning mistake one layer down.
+    const nextTag = journalTags[lastAppliedJournalIndex + 1];
+    if (nextTag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]) {
+      throw new Error(
+        `Migration release barrier expected ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]} immediately after ledgered 0282; found (${nextTag ?? "empty"})`,
+      );
+    }
+  }
+
+  return { action: "continue" };
+}
+
 async function acquireMigrationLock(
   client: MigrationClient,
   options: LockRetryOptions,
@@ -423,48 +596,55 @@ async function releaseMigrationLock(client: MigrationClient): Promise<void> {
   console.log("[db:migrate] released migration lock");
 }
 
-/** Applies one journal migration atomically and retries only after rollback. */
-export async function applyMigration(
+/** Applies one or more journal entries in one transaction and ledger commit. */
+async function applyMigrationBatch(
   client: MigrationClient,
-  migration: Migration,
+  migrations: readonly Migration[],
   options: LockRetryOptions,
 ): Promise<void> {
-  const { entry, statements, hash } = migration;
+  if (migrations.length === 0) {
+    throw new Error("Migration batch must contain at least one journal entry");
+  }
+  const batchLabel = migrations
+    .map((migration) => migration.entry.tag)
+    .join(" + ");
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
-    console.log(
-      `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
-    );
     await client.query("BEGIN");
 
     try {
       await client.query("SELECT set_config('lock_timeout', $1, true)", [
         `${options.timeoutMs}ms`,
       ]);
-      for (const [index, statement] of statements.entries()) {
-        try {
-          await client.query(statement);
-        } catch (error) {
-          console.error(
-            `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
-          );
-          console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
-          console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
-          throw error;
+      for (const { entry, statements, hash } of migrations) {
+        console.log(
+          `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
+        );
+        for (const [index, statement] of statements.entries()) {
+          try {
+            await client.query(statement);
+          } catch (error) {
+            console.error(
+              `[db:migrate] failed ${entry.tag} statement ${index + 1}/${statements.length}`,
+            );
+            console.error(`[db:migrate] sql: ${summarizeStatement(statement)}`);
+            console.error(`[db:migrate] error: ${formatDatabaseError(error)}`);
+            throw error;
+          }
         }
-      }
 
-      await client.query(
-        `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
-        [hash, entry.when],
-      );
+        await client.query(
+          `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
+          [hash, entry.when],
+        );
+      }
       await client.query("COMMIT");
       return;
     } catch (error) {
       await runCleanupSteps(
         [
           {
-            label: `rollback for ${entry.tag}`,
+            label: `rollback for ${batchLabel}`,
             run: async () => {
               await client.query("ROLLBACK");
             },
@@ -476,17 +656,26 @@ export async function applyMigration(
       if (!isLockTimeout(error)) throw error;
       if (attempt === options.maxAttempts) {
         console.error(
-          `[db:migrate] ${entry.tag} exhausted ${options.maxAttempts} lock-timeout attempts`,
+          `[db:migrate] ${batchLabel} exhausted ${options.maxAttempts} lock-timeout attempts`,
         );
         throw error;
       }
       const delayMs = retryDelayMs(attempt, options);
       console.warn(
-        `[db:migrate] ${entry.tag} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
+        `[db:migrate] ${batchLabel} lock timeout on attempt ${attempt}/${options.maxAttempts}; retrying in ${delayMs}ms`,
       );
       await sleep(delayMs);
     }
   }
+}
+
+/** Applies one journal migration atomically and retries only after rollback. */
+export async function applyMigration(
+  client: MigrationClient,
+  migration: Migration,
+  options: LockRetryOptions,
+): Promise<void> {
+  await applyMigrationBatch(client, [migration], options);
 }
 
 async function createPGliteClient(url: string): Promise<MigrationClient> {
@@ -517,12 +706,15 @@ async function createPGliteClient(url: string): Promise<MigrationClient> {
 }
 
 async function createPgClient(url: string): Promise<MigrationClient> {
+  console.log("[db:migrate] preparing PostgreSQL client");
   const { url: clientUrl, ssl: clientSsl } = enforceTlsForRemote(url);
   const client = new Client({
     connectionString: clientUrl,
     ...(clientSsl ? { ssl: clientSsl } : {}),
   });
+  console.log("[db:migrate] connecting PostgreSQL client");
   await client.connect();
+  console.log("[db:migrate] PostgreSQL client connected");
   return {
     backend: "postgres",
     query: async <T>(text: string, params?: unknown[]) => {
@@ -546,6 +738,7 @@ export async function runMigrations(
   await runWithCleanup(
     async () => {
       if (client.backend === "postgres") {
+        console.log("[db:migrate] acquiring migration lock");
         await acquireMigrationLock(client, retryOptions);
         lockHeld = true;
       } else {
@@ -563,6 +756,9 @@ export async function runMigrations(
       await ensureMigrationsTable(client);
 
       const applied = await getAppliedMigrations(client);
+      if (applied.length === 0) {
+        await assertEmptyLedgerDatabaseIsFresh(client);
+      }
       const validatedLedger = validateAppliedMigrationLedger(
         applied,
         migrations,
@@ -579,16 +775,64 @@ export async function runMigrations(
         }`,
       );
 
+      const releaseBarrier = evaluateMigrationReleaseBarrier(
+        migrations,
+        validatedLedger.lastAppliedJournalIndex,
+      );
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,
+        releaseBarrier.action === "pause"
+          ? releaseBarrier.stopBeforeJournalIndex
+          : undefined,
       );
-      console.log(`[db:migrate] pending migrations: ${pending.length}`);
+      console.log(
+        `[db:migrate] pending migrations: ${migrations.length - validatedLedger.lastAppliedJournalIndex - 1}`,
+      );
+      if (releaseBarrier.action === "pause") {
+        console.log(
+          `[db:migrate] release barrier permits ${pending.length} safe pending migrations before 0282`,
+        );
+      }
 
-      for (const migration of pending) {
+      for (
+        let pendingIndex = 0;
+        pendingIndex < pending.length;
+        pendingIndex++
+      ) {
+        const journalIndex =
+          validatedLedger.lastAppliedJournalIndex + 1 + pendingIndex;
+        if (
+          releaseBarrier.action === "continue" &&
+          releaseBarrier.atomicPairStartIndex === journalIndex
+        ) {
+          const atomicPair = pending.slice(pendingIndex, pendingIndex + 2);
+          if (
+            atomicPair.length !== 2 ||
+            atomicPair[0]?.entry.tag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[0] ||
+            atomicPair[1]?.entry.tag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]
+          ) {
+            throw new Error(
+              "Migration release barrier atomic pair no longer matches the validated journal",
+            );
+          }
+          await applyMigrationBatch(client, atomicPair, retryOptions);
+          pendingIndex += 1;
+          continue;
+        }
+        const migration = pending[pendingIndex];
+        if (!migration)
+          throw new Error("Migration plan contains an empty entry");
         await applyMigration(client, migration, retryOptions);
       }
 
       await postMigrationConvergence?.(client);
+
+      if (releaseBarrier.action === "pause") {
+        console.warn(
+          `[db:migrate] release barrier paused before ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[0]}; deploy the compatibility Worker before advancing the migration ledger`,
+        );
+        return;
+      }
 
       console.log("[db:migrate] migrations complete");
     },
@@ -652,7 +896,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
+    reportMigrationFatalFailure(error);
     process.exit(1);
   });
 }

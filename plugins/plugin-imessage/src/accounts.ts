@@ -43,8 +43,6 @@ export interface IMessageAccountConfig {
   name?: string;
   /** If false, do not start this iMessage account */
   enabled?: boolean;
-  /** Path to the iMessage CLI tool */
-  cliPath?: string;
   /** Path to the iMessage database */
   dbPath?: string;
   /** iMessage service type (iMessage or SMS) */
@@ -75,7 +73,6 @@ export interface IMessageAccountConfig {
 export interface IMessageMultiAccountConfig {
   /** Default/base configuration applied to all accounts */
   enabled?: boolean;
-  cliPath?: string;
   dbPath?: string;
   service?: "iMessage" | "SMS";
   region?: string;
@@ -97,7 +94,6 @@ export interface ResolvedIMessageAccount {
   accountId: string;
   enabled: boolean;
   name?: string;
-  cliPath: string;
   dbPath?: string;
   configured: boolean;
   config: IMessageAccountConfig;
@@ -127,7 +123,6 @@ export function getMultiAccountConfig(runtime: IAgentRuntime): IMessageMultiAcco
 
   return {
     enabled: characterIMessage?.enabled,
-    cliPath: characterIMessage?.cliPath,
     dbPath: characterIMessage?.dbPath,
     service: characterIMessage?.service,
     region: characterIMessage?.region,
@@ -200,13 +195,11 @@ function mergeIMessageAccountConfig(
   const accountConfig = getAccountConfig(runtime, accountId) ?? {};
 
   // Get environment/runtime settings for the base config
-  const envCliPath = runtime.getSetting("IMESSAGE_CLI_PATH") as string | undefined;
   const envDbPath = runtime.getSetting("IMESSAGE_DB_PATH") as string | undefined;
   const envDmPolicy = runtime.getSetting("IMESSAGE_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("IMESSAGE_GROUP_POLICY") as string | undefined;
 
   const envConfig: IMessageAccountConfig = {
-    cliPath: envCliPath || undefined,
     dbPath: envDbPath || undefined,
     dmPolicy: envDmPolicy as IMessageAccountConfig["dmPolicy"] | undefined,
     groupPolicy: envGroupPolicy as IMessageAccountConfig["groupPolicy"] | undefined,
@@ -235,12 +228,9 @@ export function resolveIMessageAccount(
   const accountEnabled = merged.enabled !== false;
   const enabled = baseEnabled && accountEnabled;
 
-  const cliPath = merged.cliPath?.trim() || "imsg";
-
   // Determine if this account is actually configured
   const configured = Boolean(
-    merged.cliPath?.trim() ||
-      merged.dbPath?.trim() ||
+    merged.dbPath?.trim() ||
       merged.service ||
       merged.region?.trim() ||
       (merged.allowFrom && merged.allowFrom.length > 0) ||
@@ -257,7 +247,6 @@ export function resolveIMessageAccount(
     accountId: normalizedAccountId,
     enabled,
     name: merged.name?.trim() || undefined,
-    cliPath,
     dbPath: merged.dbPath?.trim() || undefined,
     configured,
     config: merged,

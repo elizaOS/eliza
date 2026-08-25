@@ -275,11 +275,6 @@ function readFromCredentialStore(): ClaudeCredentials | null {
   const configDirOverride = getEnvVar("CLAUDE_CONFIG_DIR")?.trim();
   const configDir = configDirOverride || join(homedir(), ".claude");
 
-  if (!configDirOverride && process.platform === "darwin") {
-    const fromKeychain = readFromMacKeychain();
-    if (fromKeychain) return fromKeychain;
-  }
-
   const credPath = join(configDir, ".credentials.json");
   const { readFileSync } = require("node:fs") as typeof import("node:fs");
 
@@ -309,35 +304,6 @@ function readFromCredentialStore(): ClaudeCredentials | null {
       code: "CREDENTIALS_CORRUPT",
       cause: error,
       context: { credPath },
-    });
-  }
-}
-
-function readFromMacKeychain(): ClaudeCredentials | null {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
-
-  let raw: string;
-  try {
-    raw = execSync('security find-generic-password -s "Claude Code-credentials" -w', {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    // error-policy:J3 untrusted-input sanitizing — a non-zero `security` exit
-    // means no matching keychain entry (absent → null), the expected "not stored
-    // here" outcome. The file-based reader is the next source tried by the caller.
-    return null;
-  }
-
-  // The entry exists; if its payload does not parse it is corrupt, not absent.
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    // error-policy:J2 context-adding rethrow — typed CREDENTIALS_CORRUPT with cause.
-    throw new ElizaError("Claude keychain credential is corrupt (invalid JSON)", {
-      code: "CREDENTIALS_CORRUPT",
-      cause: error,
-      context: { source: "macos-keychain" },
     });
   }
 }

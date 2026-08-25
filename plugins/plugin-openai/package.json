@@ -109,7 +109,7 @@
       "OPENAI_API_KEY": {
         "type": "string",
         "description": "API key used to authenticate requests to the OpenAI API.",
-        "required": true,
+        "required": false,
         "sensitive": true
       },
       "OPENAI_BASE_URL": {
@@ -208,13 +208,6 @@
         "description": "Identifier of the model used for describing images.",
         "required": false,
         "default": "gpt-5-mini",
-        "sensitive": false
-      },
-      "OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS": {
-        "type": "number",
-        "description": "Maximum number of tokens allowed in the image-description model response.",
-        "required": false,
-        "default": 8192,
         "sensitive": false
       },
       "OPENAI_TTS_MODEL": {

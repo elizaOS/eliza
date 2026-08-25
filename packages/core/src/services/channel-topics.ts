@@ -293,7 +293,7 @@ export class ChannelTopicsService extends Service {
 	 * Cross-channel topic search (#8927): rank rooms whose recent topics match
 	 * the query, most-matching first. Scans the in-memory per-channel LRUs.
 	 */
-	searchTopics(query: string, limit = 20): TopicSearchHit[] {
+	searchTopics(query: string, limit?: number): TopicSearchHit[] {
 		return matchTopicRooms(this.getTopicsForAllRooms(), query, limit);
 	}
 }
@@ -310,12 +310,14 @@ export interface TopicSearchHit {
 /**
  * Pure matcher for {@link ChannelTopicsService.searchTopics}: rank rooms whose
  * topics contain any whitespace-delimited query token (case-insensitive),
- * scored by match count, capped at `limit`. Deterministic; no I/O.
+ * scored by match count. An explicit `limit` bounds an operator/API page;
+ * omitting it returns every match for complete model-facing action results.
+ * Deterministic; no I/O.
  */
 export function matchTopicRooms(
 	topicsByRoom: Record<string, string[]>,
 	query: string,
-	limit = 20,
+	limit?: number,
 ): TopicSearchHit[] {
 	const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
 	if (tokens.length === 0) return [];
@@ -335,5 +337,7 @@ export function matchTopicRooms(
 		}
 	}
 	scored.sort((a, b) => b.score - a.score || a.roomId.localeCompare(b.roomId));
-	return scored.slice(0, Math.max(0, limit)).map(({ score, ...hit }) => hit);
+	const selected =
+		limit === undefined ? scored : scored.slice(0, Math.max(0, limit));
+	return selected.map(({ score, ...hit }) => hit);
 }

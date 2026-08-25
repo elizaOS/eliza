@@ -36,6 +36,9 @@ const entryDecisionInput = {
   forceApexConsole:
     import.meta.env?.DEV === true &&
     import.meta.env?.VITE_FORCE_APEX_CONSOLE === "true",
+  forceMarketingHome:
+    import.meta.env?.DEV === true &&
+    import.meta.env?.VITE_FORCE_MARKETING_HOME === "true",
 };
 
 const useMarketingHomeEntry = shouldUseMarketingHomeEntry(entryDecisionInput);

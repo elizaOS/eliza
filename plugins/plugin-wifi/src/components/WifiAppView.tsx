@@ -17,8 +17,7 @@ import type {
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button, Input } from "@elizaos/ui";
 import {
   CheckCircle2,
   ChevronLeft,
@@ -39,8 +38,6 @@ import {
 interface SignalBarsProps {
   rssi: number;
 }
-
-const VISIBLE_NETWORK_LIMIT = 12;
 
 /**
  * Map dBm to a 0–4 bar count. Standard Android thresholds:
@@ -96,8 +93,8 @@ function ConnectedCard({
     return (
       <div className="px-1 py-2">
         <div className="flex items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center">
-            <WifiOff className="h-5 w-5 text-muted-strong" />
+          <span className="flex size-9 shrink-0 items-center justify-center">
+            <WifiOff className="size-5 text-muted-strong" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-txt">Wi-Fi is off</div>
@@ -108,7 +105,7 @@ function ConnectedCard({
               className="mt-3"
               onClick={onOpenSettings}
             >
-              <Settings className="mr-2 h-4 w-4" />
+              <Settings className="mr-2 size-4" />
               Network settings
             </Button>
           </div>
@@ -120,7 +117,7 @@ function ConnectedCard({
     return (
       <div className="px-1 py-2">
         <div className="flex items-center gap-3">
-          <WifiIcon className="h-5 w-5 text-muted-strong" />
+          <WifiIcon className="size-5 text-muted-strong" />
           <div className="text-sm text-muted">Not connected</div>
         </div>
       </div>
@@ -130,7 +127,7 @@ function ConnectedCard({
     <div className="px-1 py-2">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-ok" />
+          <CheckCircle2 className="size-5 text-ok" />
           <div>
             <div className="text-2xs font-semibold uppercase text-muted/70">
               Connected
@@ -167,17 +164,18 @@ interface NetworkRowProps {
 function NetworkRow({ network, onSelect }: NetworkRowProps) {
   return (
     <Button
-      unstyled
+      variant="selection"
+      align="start"
       type="button"
       onClick={() => onSelect(network)}
-      className="flex w-full items-center justify-between gap-3 px-2 py-2 text-left transition-colors hover:bg-bg-accent/50"
+      className="w-full"
       data-testid={`wifi-network-${network.bssid || network.ssid || "hidden"}`}
     >
       <div className="flex min-w-0 items-center gap-3">
         {network.secured ? (
-          <Lock className="h-4 w-4 shrink-0 text-muted-strong" />
+          <Lock className="size-4 shrink-0 text-muted-strong" />
         ) : (
-          <WifiIcon className="h-4 w-4 shrink-0 text-muted-strong" />
+          <WifiIcon className="size-4 shrink-0 text-muted-strong" />
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-txt">
@@ -188,7 +186,9 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
           </div>
         </div>
       </div>
-      <SignalBars rssi={network.rssi} />
+      <span className="ml-auto">
+        <SignalBars rssi={network.rssi} />
+      </span>
     </Button>
   );
 }
@@ -218,7 +218,7 @@ export function WifiAppView(props: OverlayAppContext) {
     setScanning(true);
     setError(null);
     try {
-      const result = await WiFi.listAvailableNetworks({ limit: 50 });
+      const result = await WiFi.listAvailableNetworks();
       setNetworks(result.networks);
       await refreshState();
     } catch (err) {
@@ -283,7 +283,17 @@ export function WifiAppView(props: OverlayAppContext) {
   }, []);
 
   const sortedNetworks = useMemo(() => {
-    return [...networks].sort((a, b) => b.rssi - a.rssi);
+    return [...networks].sort((a, b) => {
+      const bRssi =
+        typeof b.rssi === "number" && Number.isFinite(b.rssi)
+          ? b.rssi
+          : -Infinity;
+      const aRssi =
+        typeof a.rssi === "number" && Number.isFinite(a.rssi)
+          ? a.rssi
+          : -Infinity;
+      return bRssi - aRssi || a.ssid.localeCompare(b.ssid);
+    });
   }, [networks]);
 
   return (
@@ -299,7 +309,7 @@ export function WifiAppView(props: OverlayAppContext) {
             onClick={exitToApps}
             aria-label="Back to apps"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="size-4" />
           </Button>
           <div className="text-base font-semibold text-txt">WiFi</div>
         </div>
@@ -313,7 +323,7 @@ export function WifiAppView(props: OverlayAppContext) {
           data-testid="wifi-scan"
         >
           <RefreshCw
-            className={`mr-1 h-4 w-4 ${scanning ? "animate-spin" : ""}`}
+            className={`mr-1 size-4 ${scanning ? "animate-spin" : ""}`}
           />
           Scan
         </Button>
@@ -329,25 +339,20 @@ export function WifiAppView(props: OverlayAppContext) {
         />
 
         {error ? (
-          <div className="px-1 py-2 text-sm text-red-400">{error}</div>
+          <div className="px-1 py-2 text-sm text-destructive">{error}</div>
         ) : null}
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-txt">
-              <WifiIcon className="h-4 w-4 text-muted" />
+              <WifiIcon className="size-4 text-muted" />
               Networks
             </div>
-            <span className="text-xs text-muted">
-              {sortedNetworks.length}
-              {sortedNetworks.length > VISIBLE_NETWORK_LIMIT
-                ? ` / ${VISIBLE_NETWORK_LIMIT} shown`
-                : ""}
-            </span>
+            <span className="text-xs text-muted">{sortedNetworks.length}</span>
           </div>
           {sortedNetworks.length === 0 && !scanning ? (
             <div className="px-4 py-8 text-center">
-              <WifiOff className="mx-auto h-9 w-9 text-muted" />
+              <WifiOff className="mx-auto size-9 text-muted" />
               <div className="mt-3 text-sm font-medium text-txt">None</div>
               <div className="sr-only">Check Wi-Fi and location access.</div>
               <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
@@ -359,7 +364,7 @@ export function WifiAppView(props: OverlayAppContext) {
                     void scan();
                   }}
                 >
-                  <RefreshCw className="mr-2 h-4 w-4" />
+                  <RefreshCw className="mr-2 size-4" />
                   Scan again
                 </Button>
                 <Button
@@ -368,14 +373,14 @@ export function WifiAppView(props: OverlayAppContext) {
                   className=""
                   onClick={openNetworkSettings}
                 >
-                  <Settings className="mr-2 h-4 w-4" />
+                  <Settings className="mr-2 size-4" />
                   Network settings
                 </Button>
               </div>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {sortedNetworks.slice(0, VISIBLE_NETWORK_LIMIT).map((network) => (
+              {sortedNetworks.map((network) => (
                 <NetworkRow
                   key={`${network.bssid}-${network.ssid}`}
                   network={network}
@@ -404,7 +409,7 @@ export function WifiAppView(props: OverlayAppContext) {
                   setPassword(event.target.value)
                 }
                 placeholder="Password"
-                className="w-full rounded-md border border-border/30 bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-border/60"
+                variant="form"
               />
             ) : null}
             <div className="flex justify-end gap-2">

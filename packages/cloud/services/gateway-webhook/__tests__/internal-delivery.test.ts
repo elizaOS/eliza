@@ -291,6 +291,42 @@ describe("internal proactive delivery", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test("does not retry Blooio after a provider 5xx leaves acceptance uncertain", async () => {
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "blooio-test-key";
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550001111";
+    const redis = new MemoryRedis();
+    globalThis.fetch = mock(async () =>
+      Response.json({ error: "upstream failure" }, { status: 500 }),
+    ) as typeof fetch;
+    const delivery = request({
+      platform: "blooio",
+      phoneNumber: "+15551234567",
+    });
+
+    const first = await deliverInternalMessage(delivery, dependencies(redis));
+    const replay = await deliverInternalMessage(
+      request({
+        platform: "blooio",
+        phoneNumber: "+15551234567",
+      }),
+      dependencies(redis),
+    );
+
+    expect(first.status).toBe(202);
+    await expect(first.json()).resolves.toMatchObject({
+      acceptance: "unknown",
+      retryable: false,
+      replayed: false,
+    });
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      acceptance: "unknown",
+      retryable: false,
+      replayed: true,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test("never reports a pre-existing indeterminate tombstone as accepted", async () => {
     const redis = new MemoryRedis();
     redis.store.set(

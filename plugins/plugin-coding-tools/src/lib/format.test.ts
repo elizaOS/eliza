@@ -14,7 +14,6 @@ import {
   readPositiveIntSetting,
   readStringParam,
   successActionResult,
-  truncate,
   userFacingSuccessResult,
 } from "./format.js";
 
@@ -91,18 +90,6 @@ describe("readParam family", () => {
   it("readArrayParam returns only arrays", () => {
     expect(readArrayParam({ a: [1, 2] }, "a")).toEqual([1, 2]);
     expect(readArrayParam({ a: "no" }, "a")).toBeUndefined();
-  });
-});
-
-describe("truncate", () => {
-  it("leaves short strings untouched", () => {
-    expect(truncate("hello", 10)).toEqual({ text: "hello", truncated: false });
-  });
-  it("truncates with a remaining-chars suffix", () => {
-    const r = truncate("abcdefghij", 4);
-    expect(r.truncated).toBe(true);
-    expect(r.text.startsWith("abcd")).toBe(true);
-    expect(r.text).toContain("6 more chars");
   });
 });
 

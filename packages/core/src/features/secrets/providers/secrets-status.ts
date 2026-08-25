@@ -21,7 +21,6 @@ import {
 	type SecretsService,
 } from "../services/secrets.ts";
 
-const MAX_SECRET_KEYS = 20;
 /**
  * Secrets Status Provider
  *
@@ -121,7 +120,7 @@ No secrets are currently configured. The agent may need API keys or other creden
 					const requiredSecrets = activatorService.getRequiredSecrets();
 					if (requiredSecrets.size > 0) {
 						lines.push(
-							`Secrets needed for pending plugins: ${Array.from(requiredSecrets).slice(0, MAX_SECRET_KEYS).join(", ")}`,
+							`Secrets needed for pending plugins: ${Array.from(requiredSecrets).join(", ")}`,
 						);
 					}
 				}
@@ -133,9 +132,9 @@ No secrets are currently configured. The agent may need API keys or other creden
 					configuredCount: valid.length,
 					invalidCount: invalid.length,
 					missingCount: missing.length,
-					configuredKeys: valid.slice(0, MAX_SECRET_KEYS),
-					invalidKeys: invalid.slice(0, MAX_SECRET_KEYS),
-					missingKeys: missing.slice(0, MAX_SECRET_KEYS),
+					configuredKeys: valid,
+					invalidKeys: invalid,
+					missingKeys: missing,
 				},
 				values: {
 					configuredSecrets: valid.length,
@@ -217,7 +216,7 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 			}
 
 			for (const [type, keys] of Object.entries(byType)) {
-				lines.push(`${type}: ${keys.slice(0, MAX_SECRET_KEYS).join(", ")}`);
+				lines.push(`${type}: ${keys.join(", ")}`);
 			}
 
 			// Check for common missing secrets that might be relevant
@@ -242,10 +241,7 @@ No secrets configured. User can set secrets by saying things like "Set my OPENAI
 				data: {
 					secretCount,
 					secretTypes: Object.fromEntries(
-						Object.entries(byType).map(([type, keys]) => [
-							type,
-							keys.slice(0, MAX_SECRET_KEYS),
-						]),
+						Object.entries(byType).map(([type, keys]) => [type, keys]),
 					),
 				},
 				values: {

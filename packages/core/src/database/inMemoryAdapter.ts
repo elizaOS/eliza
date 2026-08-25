@@ -13,11 +13,16 @@
  * containment all mirror the SQL adapters. Persistence is process-local and
  * lost on restart.
  */
+
+import { filterMemoryReadByAccessContext } from "../access-control/filter";
 import {
 	compareMemoryIds,
+	compareTasksForQuery,
 	DatabaseAdapter,
 	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
 } from "../database";
+import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -35,18 +40,21 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRangeReadParams,
+	DocumentRangeReadResult,
+	DocumentRevisionReplaceParams,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
 	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
-	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
 	ListConnectorAccountsParams,
 	Log,
@@ -79,14 +87,22 @@ import type {
 import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
+import { createHash } from "../utils/crypto-compat";
 import { isPlainObject } from "../utils/type-guards";
 import {
+	cloneConnectorJsonObject,
+	redactConnectorJsonAudit,
+} from "./connector-json";
+import {
+	canRequesterManageDocumentDirectGrants,
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
+	validateDocumentDirectGrantEntityIds,
+	validateDocumentRevisionReplacement,
 } from "./document-list-query";
 
 function asUuid(id: string): UUID {
@@ -94,11 +110,13 @@ function asUuid(id: string): UUID {
 }
 
 function randomUuid(): UUID {
-	const gen =
-		typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-			? crypto.randomUUID()
-			: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	return asUuid(gen);
+	if (typeof globalThis.crypto?.randomUUID !== "function") {
+		throw new ElizaError(
+			"In-memory record creation requires a cryptographically secure UUID source",
+			{ code: "IN_MEMORY_ADAPTER_CSPRNG_UNAVAILABLE" },
+		);
+	}
+	return asUuid(globalThis.crypto.randomUUID());
 }
 
 function roomTableKey(tableName: string, roomId: UUID): string {
@@ -116,6 +134,37 @@ function memoryMatchesMetadata(
 		if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) return false;
 	}
 	return true;
+}
+
+/**
+ * Cosine similarity for in-process vector recall. Returns null when the vectors
+ * cannot be compared (empty, mixed width, non-finite components, or a zero
+ * vector) so a search can skip them instead of inventing a score. A genuine
+ * negative similarity is a valid score, not a sentinel, which is why the
+ * incomparable case is null rather than -1.
+ */
+function cosineSimilarity(left: number[], right: number[]): number | null {
+	if (left.length !== right.length || left.length === 0) return null;
+	let dot = 0;
+	let leftMagnitude = 0;
+	let rightMagnitude = 0;
+	for (let index = 0; index < left.length; index++) {
+		const leftValue = left[index];
+		const rightValue = right[index];
+		if (
+			typeof leftValue !== "number" ||
+			typeof rightValue !== "number" ||
+			!Number.isFinite(leftValue) ||
+			!Number.isFinite(rightValue)
+		) {
+			return null;
+		}
+		dot += leftValue * rightValue;
+		leftMagnitude += leftValue * leftValue;
+		rightMagnitude += rightValue * rightValue;
+	}
+	if (leftMagnitude === 0 || rightMagnitude === 0) return null;
+	return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
 }
 
 function connectorAccountKey(params: {
@@ -149,48 +198,15 @@ function connectorDateToMillis(
 	return value instanceof Date ? value.getTime() : value;
 }
 
-function cloneConnectorJsonObject(
-	value: ConnectorAccountJsonObject | undefined,
-): ConnectorAccountJsonObject {
-	return value
-		? (JSON.parse(JSON.stringify(value)) as ConnectorAccountJsonObject)
-		: {};
-}
-
-const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
 	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
-
-function redactConnectorAuditValue(value: unknown): JsonValue {
-	if (value === null || value === undefined) return null;
-	if (Array.isArray(value)) return value.map(redactConnectorAuditValue);
-	if (typeof value === "object") {
-		const redacted: ConnectorAccountJsonObject = {};
-		for (const [key, item] of Object.entries(
-			value as Record<string, unknown>,
-		)) {
-			redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
-				? CONNECTOR_AUDIT_REDACTED
-				: redactConnectorAuditValue(item);
-		}
-		return redacted;
-	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value;
-	}
-	return String(value);
-}
 
 function redactConnectorAuditMetadata(
 	metadata: Record<string, unknown> | undefined,
 ): ConnectorAccountJsonObject {
-	return redactConnectorAuditValue(
-		metadata ?? {},
-	) as ConnectorAccountJsonObject;
+	return redactConnectorJsonAudit(metadata, (key) =>
+		CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key),
+	);
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -287,7 +303,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
+	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
+	private readonly adapterAgentId: UUID;
+
+	constructor(agentId: UUID = DEFAULT_UUID) {
+		super();
+		this.adapterAgentId = agentId;
+	}
 
 	private ready = false;
 
@@ -305,6 +328,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	private memoriesById = new Map<string, Memory>();
 	private memoriesByRoom = new Map<string, Memory[]>();
 	private cache = new Map<string, string>();
+	/** Width last passed to {@link ensureEmbeddingDimension}; used to reclaim stale vectors. */
+	private embeddingDimension: number | undefined;
 
 	private participantsByRoom = new Map<string, Set<string>>();
 	private roomsByParticipant = new Map<string, Set<string>>();
@@ -507,14 +532,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return Array.from(this.agents.values());
 	}
 
-	async ensureEmbeddingDimension(_dimension: number): Promise<void> {
-		// In-memory vectors are not schema-bound, so there is no dimension migration to apply.
+	async ensureEmbeddingDimension(dimension: number): Promise<void> {
+		this.embeddingDimension = dimension;
 	}
 
 	async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
-		// In-memory vectors are not schema-bound to a fixed-width column, so there
-		// is no stale-dimension row to reclaim.
-		return [];
+		if (
+			this.embeddingDimension === undefined ||
+			!Number.isFinite(this.embeddingDimension) ||
+			this.embeddingDimension <= 0
+		) {
+			return [];
+		}
+		const active = this.embeddingDimension;
+		const reclaimed: UUID[] = [];
+		for (const memory of this.memoriesById.values()) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			if (memory.embedding.length === active) {
+				continue;
+			}
+			if (!memory.id) {
+				continue;
+			}
+			delete memory.embedding;
+			reclaimed.push(memory.id);
+		}
+		return reclaimed;
 	}
 
 	async transaction<T>(
@@ -777,7 +822,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
 		for (const entityId of entityIds) {
-			this.entities.delete(String(entityId));
+			const entityKey = String(entityId);
+			for (const [componentId, component] of this.components.entries()) {
+				if (
+					String(component.entityId) === entityKey ||
+					String(component.sourceEntityId) === entityKey
+				) {
+					this.removeComponentIndexes(component);
+					this.components.delete(componentId);
+				}
+			}
+
+			const roomIds = this.roomsByParticipant.get(entityKey);
+			if (roomIds) {
+				for (const roomId of roomIds) {
+					const participants = this.participantsByRoom.get(roomId);
+					participants?.delete(entityKey);
+					if (participants?.size === 0) {
+						this.participantsByRoom.delete(roomId);
+					}
+					this.participantUserState.delete(`${roomId}:${entityKey}`);
+				}
+				this.roomsByParticipant.delete(entityKey);
+			}
+
+			this.entities.delete(entityKey);
 		}
 	}
 
@@ -871,13 +940,80 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return memory;
 	}
 
+	async readDocumentRange(
+		params: DocumentRangeReadParams,
+	): Promise<DocumentRangeReadResult | null> {
+		const memory = await this.getDocument(params);
+		if (!memory) return null;
+		const source = memory.content.text ?? "";
+		const lines = source.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/gu) ?? [];
+		const units =
+			params.unit === "line"
+				? lines
+				: lines
+						.reduce<string[]>((fragments, line) => {
+							const last = fragments.length - 1;
+							if (last < 0) fragments.push(line);
+							else fragments[last] += line;
+							if (line.replace(/[\r\n]/gu, "").trim().length === 0) {
+								fragments.push("");
+							}
+							return fragments;
+						}, [])
+						.filter((fragment) => fragment.length > 0);
+		const selected =
+			params.limit === undefined
+				? units.slice(params.offset)
+				: units.slice(params.offset, params.offset + params.limit);
+		const text = selected.join("");
+		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+		return {
+			text,
+			start: params.offset,
+			end:
+				params.limit === undefined
+					? units.length
+					: Math.min(params.offset + params.limit, units.length),
+			total: units.length,
+			documentRevision:
+				typeof metadata.documentRevision === "number"
+					? metadata.documentRevision
+					: 0,
+			...(typeof metadata.revisionAttemptId === "string"
+				? { revisionAttemptId: metadata.revisionAttemptId }
+				: {}),
+			sourceFingerprint: `md5:${createHash("md5").update(source).digest("hex")}`,
+		};
+	}
+
 	async queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]> {
-		return queryDocumentFragmentsInMemory(
+		const fragments = queryDocumentFragmentsInMemory(
 			Array.from(this.memoriesById.values()),
 			params,
 		);
+		return fragments.map((fragment) => {
+			const documentId = (
+				fragment.metadata as { documentId?: unknown } | undefined
+			)?.documentId;
+			const parent =
+				typeof documentId === "string"
+					? this.memoriesById.get(documentId)
+					: undefined;
+			const source = parent?.content.text;
+			return typeof source === "string"
+				? {
+						...fragment,
+						metadata: {
+							...(fragment.metadata ?? {}),
+							sourceFingerprint: `md5:${createHash("md5")
+								.update(source)
+								.digest("hex")}`,
+						} as Memory["metadata"],
+					}
+				: fragment;
+		});
 	}
 
 	async compareAndSwapDocument(
@@ -900,6 +1036,111 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		return updated
 			? { status: "updated", document: updated }
 			: { status: "conflict" };
+	}
+
+	async updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
+	): Promise<DocumentMutationResult> {
+		const directGrantEntityIds = validateDocumentDirectGrantEntityIds(
+			params.directGrantEntityIds,
+		);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+			return { status: "forbidden" };
+		}
+		for (const entityId of directGrantEntityIds) {
+			const entity = this.entities.get(String(entityId));
+			if (!entity || entity.agentId !== params.agentId) {
+				return { status: "not_found" };
+			}
+		}
+		const metadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+		if (directGrantEntityIds.length > 0) {
+			metadata.directGrantEntityIds = directGrantEntityIds;
+		} else {
+			delete metadata.directGrantEntityIds;
+		}
+		await this.updateMemories([
+			{
+				...existing,
+				id: params.documentId,
+				metadata: metadata as Memory["metadata"],
+			},
+		]);
+		const updated = this.memoriesById.get(String(params.documentId));
+		return updated
+			? { status: "updated", document: updated }
+			: { status: "conflict" };
+	}
+
+	async replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
+	): Promise<DocumentMutationResult> {
+		validateDocumentRevisionReplacement(params);
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		const oldFragmentIds = new Set(
+			Array.from(this.memoriesById.values())
+				.filter(
+					(memory) =>
+						memory.agentId === params.agentId &&
+						memory.metadata?.type === MemoryType.FRAGMENT &&
+						memory.metadata.documentId === params.documentId,
+				)
+				.map((memory) => String(memory.id)),
+		);
+		for (const fragment of params.fragments) {
+			if (this.memoriesById.has(String(fragment.id))) {
+				throw new ElizaError("Atomic document fragment id already exists", {
+					code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+					context: { documentId: params.documentId, fragmentId: fragment.id },
+				});
+			}
+		}
+		for (const id of oldFragmentIds) this.memoriesById.delete(id);
+		for (const [key, list] of this.memoriesByRoom) {
+			this.memoriesByRoom.set(
+				key,
+				list.filter((memory) => !oldFragmentIds.has(String(memory.id))),
+			);
+		}
+		const replacement = { ...params.replacement, id: params.documentId };
+		this.memoriesById.set(String(params.documentId), replacement);
+		for (const [key, list] of this.memoriesByRoom) {
+			const index = list.findIndex((memory) => memory.id === params.documentId);
+			// Copy-on-write so a concurrent reader holding the old array still sees a
+			// coherent generation. Built by hand rather than with Array#with: core is
+			// consumed by packages that target ES2022, where that method's lib
+			// declaration is absent and the workspace typecheck fails.
+			if (index >= 0) {
+				const next = list.slice();
+				next[index] = replacement;
+				this.memoriesByRoom.set(key, next);
+			}
+		}
+		for (const fragment of params.fragments) {
+			this.memoriesById.set(String(fragment.id), fragment);
+			const key = roomTableKey("document_fragments", fragment.roomId);
+			this.memoriesByRoom.set(key, [
+				...(this.memoriesByRoom.get(key) ?? []),
+				fragment,
+			]);
+		}
+		return { status: "updated", document: replacement };
 	}
 
 	async deleteDocumentWithSnapshot(
@@ -967,9 +1208,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.agentId) {
 			all = all.filter((memory) => memory.agentId === params.agentId);
 		}
-		if (params.entityId) {
-			all = all.filter((memory) => memory.entityId === params.entityId);
-		}
+		// `entityId` selects the SQL/RLS isolation context; it is not a memory-row
+		// predicate. Process-local storage has no RLS session to establish, so the
+		// agent boundary above is the matching isolation behavior.
 		if (params.unique) {
 			all = all.filter((memory) => memory.unique);
 		}
@@ -995,6 +1236,18 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (params.metadata) {
 			const filterMeta = params.metadata as Record<string, unknown>;
 			all = all.filter((memory) => memoryMatchesMetadata(memory, filterMeta));
+		}
+
+		if (params.accessContext) {
+			all = filterMemoryReadByAccessContext(
+				all,
+				params.accessContext,
+				this.adapterAgentId,
+				params.tableName === "messages" &&
+					params.accessContext.authorizedRoomIds !== undefined
+					? "room"
+					: "private",
+			);
 		}
 
 		// Keyword filter — same case-insensitive `includes` semantics the SQL
@@ -1085,16 +1338,34 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
+		if (params.accessContext) {
+			all = filterMemoryReadByAccessContext(
+				all,
+				params.accessContext,
+				this.adapterAgentId,
+				params.tableName === "messages" &&
+					params.accessContext.authorizedRoomIds !== undefined
+					? "room"
+					: "private",
+			);
+		}
+
 		// Match plugin-sql ordering: newest first so LIMIT/OFFSET window the
 		// freshest matches.
 		all = all.slice().sort((a, b) => {
 			const ta = typeof a.createdAt === "number" ? a.createdAt : 0;
 			const tb = typeof b.createdAt === "number" ? b.createdAt : 0;
-			return tb - ta;
+			if (ta !== tb) return tb - ta;
+			const aId = typeof a.id === "string" ? a.id : "";
+			const bId = typeof b.id === "string" ? b.id : "";
+			return compareMemoryIds(bId, aId);
 		});
 
 		const offset = typeof params.offset === "number" ? params.offset : 0;
-		const limit = params.limit ?? 20;
+		// Match plugin-sql: omitting `limit` means the complete authorized result,
+		// not an implicit preview page. Model-facing continuity providers rely on
+		// that parity so ALLOW_NO_DATABASE cannot silently lose older history.
+		const limit = params.limit ?? Infinity;
 		return all.slice(offset, offset + limit);
 	}
 
@@ -1117,13 +1388,21 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		// The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
 		// adapters' created_at range conditions.
-		const windowed = candidates.filter((memory) =>
+		let windowed = candidates.filter((memory) =>
 			withinCreatedAtWindow(
 				typeof memory.createdAt === "number" ? memory.createdAt : undefined,
 				params.since,
 				params.until,
 			),
 		);
+		if (params.accessContext) {
+			windowed = filterMemoryReadByAccessContext(
+				windowed,
+				params.accessContext,
+				this.adapterAgentId,
+				"room",
+			);
+		}
 		const ranked = rankMessageSearch(windowed, params.query);
 		const offset = typeof params.offset === "number" ? params.offset : 0;
 		const limit = params.limit ?? 20;
@@ -1192,12 +1471,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}>,
 	): Promise<void> {
 		for (const param of params) {
-			const id =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+			const id = randomUuid();
 			this.logs.push({
-				id: asUuid(id),
+				id,
 				createdAt: new Date(),
 				entityId: param.entityId,
 				roomId: param.roomId,
@@ -1223,12 +1499,13 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.logs = this.logs.filter((l) => !idSet.has(String(l.id)));
 	}
 
-	async searchMemories(_params: {
+	async searchMemories(params: {
 		tableName: string;
 		embedding: number[];
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		query?: string;
 		roomId?: UUID;
@@ -1236,7 +1513,45 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		entityId?: UUID;
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
-		return [];
+		// Scope eligibility first, then the top-K cut — the plugin-sql contract.
+		// A global top-K followed by a post-hoc room/world/entity filter silently
+		// drops eligible matches whenever closer out-of-scope vectors outnumber
+		// the candidate pool. `entityId` is a row predicate here (as in the SQL
+		// vector search), unlike getMemories where it only names the RLS context.
+		const candidates = (
+			await this.getMemories({
+				tableName: params.tableName,
+				roomId: params.roomId,
+				worldId: params.worldId,
+				unique: params.unique,
+				accessContext: params.accessContext,
+			})
+		).filter(
+			(memory) => !params.entityId || memory.entityId === params.entityId,
+		);
+		const limit = params.count ?? params.limit ?? Infinity;
+		// Same truthiness contract as plugin-sql: an absent or zero threshold
+		// applies no similarity floor.
+		const threshold = params.match_threshold;
+		const scored: Memory[] = [];
+		for (const memory of candidates) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0) {
+				continue;
+			}
+			const similarity = cosineSimilarity(memory.embedding, params.embedding);
+			if (similarity === null) {
+				continue;
+			}
+			if (threshold && similarity < threshold) {
+				continue;
+			}
+			scored.push({ ...memory, similarity });
+		}
+		scored.sort(
+			(left, right) => (right.similarity ?? -1) - (left.similarity ?? -1),
+		);
+		const offset = params.offset ?? 0;
+		return scored.slice(offset, offset + limit);
 	}
 
 	// Batch memory methods
@@ -1245,11 +1560,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const { memory, tableName, unique } of memories) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = memory.id ? String(memory.id) : gen;
+			const id = memory.id ? String(memory.id) : randomUuid();
 			const stored: Memory = {
 				...memory,
 				id: asUuid(id),
@@ -1776,16 +2087,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];
 		limit?: number;
 		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		if (params.agentIds.length === 0) return [];
 		const all = Array.from(this.tasks.values());
 		let filtered = all.filter((t) => {
 			if (params.roomId && t.roomId !== params.roomId) return false;
+			if (params.worldId && t.worldId !== params.worldId) return false;
 			if (params.entityId && t.entityId !== params.entityId) return false;
 			if (t.agentId == null || !params.agentIds.includes(t.agentId))
 				return false;
@@ -1796,6 +2110,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			}
 			return true;
 		});
+
+		filtered.sort(compareTasksForQuery);
 
 		// Paginate to bound result size.
 		const offset = params.offset ?? 0;
@@ -1815,11 +2131,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const task of tasks) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = task.id ? String(task.id) : gen;
+			const id = task.id ? String(task.id) : randomUuid();
 			const taskId = asUuid(id);
 			const stored: Task = { ...task, id: taskId };
 			this.tasks.set(id, stored);
@@ -1835,6 +2147,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (task) tasks.push(task);
 		}
 		return tasks;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const existing = this.tasks.get(String(id));
+		if (
+			!existing?.tags?.includes("queue") ||
+			(existing.metadata?.status != null &&
+				existing.metadata.status !== "pending")
+		) {
+			return false;
+		}
+		this.tasks.set(String(id), { ...existing, ...task, id });
+		return true;
 	}
 
 	async updateTasks(
@@ -1938,17 +2263,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (!isPaged && query.order === undefined) {
 				// Keep the legacy complete-array contract: chronological ordering with
 				// stable insertion order for records sharing a timestamp.
-				requests.sort(
-					(a, b) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-				);
+				requests.sort((a, b) => {
+					const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+						? new Date(a.createdAt).getTime()
+						: 0;
+					const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+						? new Date(b.createdAt).getTime()
+						: 0;
+					return aTime - bTime;
+				});
 				result.push({ channel, agentId, requests });
 				continue;
 			}
 
 			requests.sort((a, b) => {
-				const timeDifference =
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+					? new Date(a.createdAt).getTime()
+					: 0;
+				const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+					? new Date(b.createdAt).getTime()
+					: 0;
+				const timeDifference = aTime - bTime;
 				if (timeDifference !== 0) return timeDifference * direction;
 				const aId = String(a.id);
 				const bId = String(b.id);
@@ -1981,11 +2316,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const request of requests) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = request.id ? String(request.id) : gen;
+			const id = request.id ? String(request.id) : randomUuid();
 			const stored: PairingRequest = { ...request, id: asUuid(id) };
 			this.pairingRequests.set(id, stored);
 			ids.push(asUuid(id));
@@ -2028,17 +2359,27 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			if (!isPaged && query.order === undefined) {
 				// Keep the legacy complete-array contract: chronological ordering with
 				// stable insertion order for records sharing a timestamp.
-				entries.sort(
-					(a, b) =>
-						new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-				);
+				entries.sort((a, b) => {
+					const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+						? new Date(a.createdAt).getTime()
+						: 0;
+					const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+						? new Date(b.createdAt).getTime()
+						: 0;
+					return aTime - bTime;
+				});
 				result.push({ channel, agentId, entries });
 				continue;
 			}
 
 			entries.sort((a, b) => {
-				const timeDifference =
-					new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+				const aTime = Number.isFinite(new Date(a.createdAt).getTime())
+					? new Date(a.createdAt).getTime()
+					: 0;
+				const bTime = Number.isFinite(new Date(b.createdAt).getTime())
+					? new Date(b.createdAt).getTime()
+					: 0;
+				const timeDifference = aTime - bTime;
 				if (timeDifference !== 0) return timeDifference * direction;
 				const aId = String(a.id);
 				const bId = String(b.id);
@@ -2073,11 +2414,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const entry of entries) {
-			const gen =
-				typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-					? crypto.randomUUID()
-					: `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-			const id = entry.id ? String(entry.id) : gen;
+			const id = entry.id ? String(entry.id) : randomUuid();
 			const stored: PairingAllowlistEntry = { ...entry, id: asUuid(id) };
 			this.pairingAllowlist.set(id, stored);
 			ids.push(asUuid(id));
@@ -2109,24 +2446,35 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<ConnectorAccountRecord[]> {
 		const agentId = params.agentId ?? DEFAULT_UUID;
 		const offset = params.offset ?? 0;
-		const limit = params.limit ?? 100;
-		return Array.from(this.connectorAccountsById.values())
+		const accounts = Array.from(this.connectorAccountsById.values())
 			.filter((account) => account.agentId === agentId)
 			.filter((account) => account.deletedAt == null)
 			.filter(
 				(account) => !params.provider || account.provider === params.provider,
 			)
 			.filter((account) => !params.status || account.status === params.status)
-			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
-			.slice(offset, offset + limit)
-			.map((account) => ({
-				...account,
-				scopes: [...account.scopes],
-				purpose: [...account.purpose],
-				capabilities: [...account.capabilities],
-				profile: cloneConnectorJsonObject(account.profile),
-				metadata: cloneConnectorJsonObject(account.metadata),
-			}));
+			.sort((a, b) => {
+				const bTime =
+					typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+						? b.updatedAt
+						: 0;
+				const aTime =
+					typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+						? a.updatedAt
+						: 0;
+				return bTime - aTime || a.id.localeCompare(b.id);
+			})
+			.slice(offset);
+		const selected =
+			params.limit === undefined ? accounts : accounts.slice(0, params.limit);
+		return selected.map((account) => ({
+			...account,
+			scopes: [...account.scopes],
+			purpose: [...account.purpose],
+			capabilities: [...account.capabilities],
+			profile: cloneConnectorJsonObject(account.profile),
+			metadata: cloneConnectorJsonObject(account.metadata),
+		}));
 	}
 
 	async getConnectorAccount(
@@ -2179,6 +2527,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			: undefined;
 		const now = Date.now();
 		const id = params.id ?? existing?.id ?? randomUuid();
+		const profile = cloneConnectorJsonObject(
+			params.profile !== undefined ? params.profile : existing?.profile,
+		);
+		const metadata = cloneConnectorJsonObject(
+			params.metadata !== undefined ? params.metadata : existing?.metadata,
+		);
 		if (existing) {
 			this.connectorAccountIdsByKey.delete(
 				connectorAccountKey({
@@ -2228,14 +2582,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			capabilities: params.capabilities
 				? [...params.capabilities]
 				: [...(existing?.capabilities ?? [])],
-			profile:
-				params.profile !== undefined
-					? cloneConnectorJsonObject(params.profile)
-					: cloneConnectorJsonObject(existing?.profile),
-			metadata:
-				params.metadata !== undefined
-					? cloneConnectorJsonObject(params.metadata)
-					: cloneConnectorJsonObject(existing?.metadata),
+			profile,
+			metadata,
 			connectedAt: connectedAt ?? existing?.connectedAt ?? now,
 			lastSyncAt: lastSyncAt !== undefined ? lastSyncAt : existing?.lastSyncAt,
 			deletedAt: deletedAt === undefined ? null : deletedAt,
@@ -2330,7 +2678,17 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		if (!account) return [];
 		return Array.from(this.connectorCredentialRefs.values())
 			.filter((credential) => credential.accountId === params.accountId)
-			.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id))
+			.sort((a, b) => {
+				const bTime =
+					typeof b.updatedAt === "number" && Number.isFinite(b.updatedAt)
+						? b.updatedAt
+						: 0;
+				const aTime =
+					typeof a.updatedAt === "number" && Number.isFinite(a.updatedAt)
+						? a.updatedAt
+						: 0;
+				return bTime - aTime || a.id.localeCompare(b.id);
+			})
 			.map((credential) => ({
 				...credential,
 				metadata: cloneConnectorJsonObject(credential.metadata),
@@ -2370,7 +2728,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.connectorAuditEvents.push(record);
 		return {
 			...record,
-			metadata: cloneConnectorJsonObject(record.metadata),
+			metadata: redactConnectorJsonAudit(record.metadata, () => false),
 		};
 	}
 

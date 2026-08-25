@@ -1,22 +1,23 @@
 # @elizaos/plugin-coding-tools
 
-Native Claude-Code-style coding tools for elizaOS agents. Adds filesystem operations (read, write, edit, search, glob, ls), shell command execution, and git worktree management to any Eliza agent running in a code or terminal context.
+Native coding tools for elizaOS agents. Adds focused read/write/edit actions, filesystem search and listing, shell command execution, and git worktree management to any Eliza agent running in a code or terminal context.
 
 ## What it does
 
-The plugin registers three umbrella actions and a set of supporting services:
+The plugin registers three focused file actions, three umbrella actions, and a set of supporting services:
 
 | Action | Operations | Description |
 |---|---|---|
-| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
-| **SHELL** | `run`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
+| **READ / WRITE / EDIT** | one operation each | Pi-shaped strict schemas for direct coding loops. They reuse FILE's sandbox, stale-file, secret, and size guards. |
+| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit file paths and grep/glob/ls search paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
+| **SHELL** | `run`, `read_output_artifact`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Accepted foreground results return complete redacted stdout/stderr; results above the explicit one-million-character capture ceiling fail without partial output. `read_output_artifact` remains for scoped artifacts retained by earlier runtimes. Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
 Supporting services (automatically started):
 
-- **SandboxService** — path policy engine. Blocks user-private and OS-system paths by default; optionally constrains access to configured workspace roots.
+- **SandboxService** — path policy engine for FILE, WORKTREE, and the SHELL working directory. Blocks user-private and OS-system paths by default; optionally constrains those validated paths to configured workspace roots. It does not confine paths referenced by a shell command.
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
-- **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
+- **SessionCwdService** — per-conversation working directory used by relative file and search operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
 - **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
 - **ShellService / ExecApprovalService** (`src/shell/`) — core shell executor with session tracking, plus command-approval gating via a file-backed allowlist; formerly the standalone `@elizaos/plugin-shell`, folded in here along with the `SHELL_HISTORY` provider.
 - **RipgrepService** — wraps the `@vscode/ripgrep` binary for fast regex search.
@@ -46,7 +47,7 @@ All settings are optional. Configure via environment variables or agent settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. Files outside these roots are rejected. |
+| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. This does not restrict paths that a SHELL command reads or writes. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in) | Comma-separated absolute paths to block — replaces the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Paths to add to the default blocklist. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
@@ -54,8 +55,25 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Selected-content byte cap. Larger files require an explicit line `limit` (and optional `offset`) and are scanned with bounded memory. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
+
+### SHELL trust boundary
+
+SHELL is an owner-only trusted command executor, not an OS filesystem sandbox.
+`CODING_TOOLS_WORKSPACE_ROOTS` validates where a command starts, but an
+arbitrary shell command can still address paths outside those roots. Deploy the
+plugin only where the OWNER role and host/container boundary are trusted for
+that access. Static command analysis and the command denylist are safety checks,
+not filesystem confinement.
+
+Foreground SHELL results accepted by the one-million-character complete-capture
+boundary are returned in full after redaction. Larger results fail explicitly
+without exposing a partial prefix, and model-facing tool results are never
+replaced by a preview or optional artifact handle. For compatibility,
+`action=read_output_artifact` can still page an unexpired opaque artifact issued
+by an earlier runtime when its agent and conversation scope match the requesting
+turn; state-root paths remain private.
 
 The folded `ShellService` retains these compatibility settings for external
 callers of `runtime.getService("shell").exec()` / `executeCommand()`; the
@@ -79,7 +97,14 @@ The following paths are blocked by default (plus platform-specific system direct
 - `~/pvt`, `~/Library`
 - `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`
 
-Override with `CODING_TOOLS_BLOCKED_PATHS` (replace) or `CODING_TOOLS_BLOCKED_PATHS_ADD` (extend).
+`/dev/{zero,random,urandom,stdin,stdout,stderr}`, `/dev/fd/*`, and the Linux
+per-process descriptor entries `/proc/<pid>/{fd,root,cwd,exe,map_files}` — in
+their numeric-pid, `self`, `thread-self`, and `/proc/<pid>/task/<tid>` forms —
+are unconditional pseudo-path exclusions, including symlink aliases. Other
+`/proc` entries such as `fdinfo`, `status`, and `cpuinfo` are not excluded.
+`CODING_TOOLS_BLOCKED_PATHS` replaces the configurable default list; it does
+not disable those exclusions. Use `CODING_TOOLS_BLOCKED_PATHS_ADD` to extend
+the configurable list.
 
 ## Requirements
 

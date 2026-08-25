@@ -26,11 +26,6 @@
  * runs first there, so apex behavior can never be affected by this module.
  */
 
-import type {
-  AgentExecutionTier,
-  AgentSandboxStatus,
-  IsoDateString,
-} from "@elizaos/cloud-shared/lib/types/cloud-api";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -73,13 +68,21 @@ function readAppModeDevFlag(): boolean {
 /**
  * Pure hostname decision, exposed for the test matrix. `devFlag` defaults to
  * the Vite env escape hatch; tests inject it explicitly.
+ *
+ * Normalizes here rather than at the call sites: a browser may report the
+ * hostname with a fully-qualified trailing dot or mixed case, and both are the
+ * same host. Callers pass `window.location.hostname` (or a URL hostname)
+ * straight through — this module owns the comparison so no caller has to
+ * remember the normalization.
  */
 export function isAppModeHostname(
   hostname: string,
   devFlag: boolean = readAppModeDevFlag(),
 ): boolean {
   if (devFlag) return true;
-  return APP_MODE_HOSTNAMES.has(hostname.toLowerCase());
+  return APP_MODE_HOSTNAMES.has(
+    hostname.trim().toLowerCase().replace(/\.$/, ""),
+  );
 }
 
 /** True when the current document is served in app-mode. No-DOM (SSR /
@@ -96,10 +99,10 @@ export function isAppModeHost(): boolean {
 export interface AppModeAgent {
   id: string;
   agentName: string | null;
-  status: AgentSandboxStatus;
-  executionTier: AgentExecutionTier;
-  lastHeartbeatAt: IsoDateString | null;
-  updatedAt: IsoDateString;
+  status: string;
+  executionTier: string;
+  lastHeartbeatAt: string | null;
+  updatedAt: string;
 }
 
 /** The deploy-first-agent flow: `/join` select-or-provisions a Cloud agent and

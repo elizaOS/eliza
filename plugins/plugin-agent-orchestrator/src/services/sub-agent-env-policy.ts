@@ -3,6 +3,8 @@
  * consumes this as the single host-env projection before adding per-session
  * model gateway, credential bridge, and adapter-specific overrides.
  */
+import { isHostExecutionToolchainEnvKey } from "@elizaos/shared/host-execution-env";
+
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -36,7 +38,10 @@ const DENY_ENV_PATTERNS = [
  * vault passphrase) the deny-list exists to keep out of sub-agents.
  */
 export function isDeniedSubAgentEnvKey(key: string): boolean {
-  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+  return (
+    isHostExecutionToolchainEnvKey(key) ||
+    DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))
+  );
 }
 
 /**
@@ -107,13 +112,15 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   "ANTHROPIC_SMALL_MODEL",
   "ANTHROPIC_MEDIUM_MODEL",
   "ANTHROPIC_LARGE_MODEL",
-  "OPENCODE_MODEL",
   // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
   // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
   "CLAUDE_CODE_EFFORT_LEVEL",
-  "OPENCODE_DISABLE_AUTOUPDATE",
-  "OPENCODE_DISABLE_TERMINAL_TITLE",
   "CODEX_HOME",
+  // Subscription CLI homes carry provider-managed OAuth state. They are
+  // forwarded as locations, while the subscription adapter strips direct API
+  // credentials that could silently switch the child to pay-as-you-go billing.
+  "KIMI_CODE_HOME",
+  "GROK_HOME",
   // Container-registry PUSH credential for app-image builds (docker login
   // ghcr.io before the deploy contract's docker push). Narrow by design:
   // these are the dedicated registry-scoped names (a packages:write PAT),

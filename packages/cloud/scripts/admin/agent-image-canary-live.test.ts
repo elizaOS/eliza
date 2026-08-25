@@ -74,6 +74,7 @@ interface RecordedCall {
   xApiKey: string | null;
   authorization: string | null;
   body: unknown;
+  signal?: AbortSignal | null;
 }
 
 function clone<T>(value: T): T {
@@ -308,6 +309,7 @@ function createFixture(options: FixtureOptions = {}) {
       xApiKey: headers.get("x-api-key"),
       authorization: headers.get("authorization"),
       body: requestBody,
+      signal: init.signal,
     });
 
     if (url.origin === AGENT_IMAGE_CANARY_PRODUCTION_ORIGIN) {
@@ -1394,6 +1396,15 @@ describe("privacy-safe evidence boundary", () => {
       );
       expect(result.canonical).toBeNull();
       expect(result.errors).toContain("unexpected_top_level_keys");
+    }
+  });
+
+  test("composes request signals with deadline without replacing them", async () => {
+    const { calls } = await runFixture();
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.signal).toBeDefined();
+      expect(call.signal?.aborted).toBe(false);
     }
   });
 });

@@ -42,15 +42,12 @@ import {
 	shouldSurfaceContextCapabilities,
 } from "../../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../../utils/deterministic";
-import { compressPromptDescription } from "../../../utils/prompt-compression.ts";
 import { looksLikeRelationshipFollowUpReminder } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
 const GENERAL_CONTEXT = "general";
-const MAX_GROUPED_CAPABILITY_ACTIONS = 8;
-const MAX_GROUPED_CAPABILITY_PROVIDERS = 4;
 
 export function isFollowUpCapableAction(action: Pick<Action, "tags">): boolean {
 	return action.tags?.includes(FOLLOW_UP_CAPABLE_ACTION_TAG) ?? false;
@@ -128,21 +125,18 @@ function collapseGroupedActionsForMainChat(
 	});
 }
 
-function renderCompressedDescription(item: {
+function renderCompleteDescription(item: {
 	description?: string;
 	descriptionCompressed?: string;
 }): string {
-	return (
-		item.descriptionCompressed ??
-		(item.description ? compressPromptDescription(item.description) : "")
-	);
+	return item.description ?? "";
 }
 
 function actionCapabilityItem(action: Action): ContextCapabilityItem {
 	return {
 		name: action.name,
 		description:
-			renderCompressedDescription(action) || "No description available",
+			renderCompleteDescription(action) || "No description available",
 		contexts: normalizeContextList(resolveActionContexts(action)),
 	};
 }
@@ -151,7 +145,7 @@ function providerCapabilityItem(provider: Provider): ContextCapabilityItem {
 	return {
 		name: provider.name,
 		description:
-			renderCompressedDescription(provider) || "No description available",
+			renderCompleteDescription(provider) || "No description available",
 		contexts: normalizeContextList(resolveProviderContexts(provider)),
 		dynamic: provider.dynamic === true,
 	};
@@ -160,39 +154,23 @@ function providerCapabilityItem(provider: Provider): ContextCapabilityItem {
 function formatCapabilityItems(
 	label: string,
 	items: ContextCapabilityItem[],
-	limit: number,
 ): string | null {
 	if (items.length === 0) {
 		return null;
 	}
-
-	const visibleItems = items.slice(0, limit);
-	const suffix =
-		items.length > visibleItems.length
-			? `; +${items.length - visibleItems.length} more`
-			: "";
-	return `${label}[${items.length}]: ${visibleItems
+	return `${label}[${items.length}]: ${items
 		.map((item) => `${item.name} - ${item.description}`)
-		.join("; ")}${suffix}`;
+		.join("; ")}`;
 }
 
 function expandActionDescription(
 	action: Action,
 	group: ContextCapabilityGroup,
 ): string {
-	const base =
-		renderCompressedDescription(action) || "No description available";
+	const base = renderCompleteDescription(action) || "No description available";
 	const sections = [
-		formatCapabilityItems(
-			"subactions",
-			group.actions,
-			MAX_GROUPED_CAPABILITY_ACTIONS,
-		),
-		formatCapabilityItems(
-			"providers",
-			group.providers,
-			MAX_GROUPED_CAPABILITY_PROVIDERS,
-		),
+		formatCapabilityItems("subactions", group.actions),
+		formatCapabilityItems("providers", group.providers),
 	].filter((section): section is string => Boolean(section));
 
 	return sections.length > 0 ? `${base} ${sections.join(" ")}` : base;
@@ -311,19 +289,11 @@ function formatContextCapabilities(
 
 	for (const group of metadata.groups) {
 		lines.push(`- ${group.action}: contexts=${group.contexts.join("|")}`);
-		const subactions = formatCapabilityItems(
-			"subactions",
-			group.actions,
-			MAX_GROUPED_CAPABILITY_ACTIONS,
-		);
+		const subactions = formatCapabilityItems("subactions", group.actions);
 		if (subactions) {
 			lines.push(`  ${subactions}`);
 		}
-		const providers = formatCapabilityItems(
-			"providers",
-			group.providers,
-			MAX_GROUPED_CAPABILITY_PROVIDERS,
-		);
+		const providers = formatCapabilityItems("providers", group.providers);
 		if (providers) {
 			lines.push(`  ${providers}`);
 		}

@@ -14,6 +14,11 @@ import { relationshipEdgePersisted } from "./_helpers/kg-live-capture.ts";
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "h2-audit-trail-survives-restart",
   title: "H2 captured relationship carries stable source evidence",
   domain: "lifeops.kg",

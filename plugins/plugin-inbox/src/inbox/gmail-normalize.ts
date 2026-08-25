@@ -39,6 +39,7 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "@elizaos/shared";
+import { extractLooseEmailAddress } from "./email-address.ts";
 
 export type SyncedGoogleGmailMessageSummary = Omit<
   LifeOpsGmailMessageSummary,
@@ -192,17 +193,7 @@ export function extractNormalizedEmailAddress(value: string): string | null {
   if (!trimmed) {
     return null;
   }
-  const angleMatch = trimmed.match(/<\s*([^<>\s@]+@[^<>\s@]+)\s*>/u);
-  const rawCandidate =
-    angleMatch?.[1] ??
-    trimmed.match(/([^\s<>()"';,]+@[^\s<>()"';,]+)/u)?.[1] ??
-    trimmed;
-  const normalized = rawCandidate
-    .trim()
-    .replace(/^["']+|["']+$/g, "")
-    .replace(/[>;,\s]+$/g, "")
-    .toLowerCase();
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(normalized) ? normalized : null;
+  return extractLooseEmailAddress(trimmed);
 }
 
 export function normalizeOptionalMessageIdArray(
@@ -504,7 +495,12 @@ export function compareGmailMessagePriority(
   if (left.isUnread !== right.isUnread) {
     return right.isUnread ? 1 : -1;
   }
-  return Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+  const leftTime = Date.parse(left.receivedAt);
+  const rightTime = Date.parse(right.receivedAt);
+  const leftSafe = Number.isFinite(leftTime) ? leftTime : 0;
+  const rightSafe = Number.isFinite(rightTime) ? rightTime : 0;
+  if (rightSafe !== leftSafe) return rightSafe - leftSafe;
+  return left.id.localeCompare(right.id);
 }
 
 export function normalizeGmailDraftTone(
@@ -634,8 +630,17 @@ export function findLinkedMailForCalendarEvent(
       return messageTokens.some((token) => subjectTokens.has(token));
     })
     .sort((left, right) => {
-      const receivedDelta =
-        Date.parse(right.receivedAt) - Date.parse(left.receivedAt);
+      const rightTime =
+        typeof right.receivedAt === "string" &&
+        Number.isFinite(Date.parse(right.receivedAt))
+          ? Date.parse(right.receivedAt)
+          : 0;
+      const leftTime =
+        typeof left.receivedAt === "string" &&
+        Number.isFinite(Date.parse(left.receivedAt))
+          ? Date.parse(left.receivedAt)
+          : 0;
+      const receivedDelta = rightTime - leftTime;
       if (receivedDelta !== 0) {
         return receivedDelta;
       }
@@ -1046,7 +1051,7 @@ function buildRecommendation(args: {
     destructive,
     requiresConfirmation: true,
     confidence: args.confidence,
-    sampleMessages: args.messages.slice(0, 5).map(recommendationMessage),
+    sampleMessages: args.messages.map(recommendationMessage),
     policy: {
       grouping: args.grouping,
       signals: uniqueStrings(
@@ -1165,7 +1170,7 @@ export function buildGmailRecommendations(
     }),
   );
 
-  const spamMessages = messages.filter(isGmailSpamReviewCandidate).slice(0, 25);
+  const spamMessages = messages.filter(isGmailSpamReviewCandidate);
   recommendations.push(
     buildRecommendation({
       id: "gmail-review-spam",
@@ -1262,7 +1267,19 @@ export function buildFallbackGmailReplyDraftBody(args: {
 export function normalizeGeneratedGmailReplyDraftBody(
   value: string,
 ): string | null {
-  const withoutThink = value.replace(/<think>[\s\S]*?<\/think>/gi, " ").trim();
+  const lowerValue = value.toLowerCase();
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const opener = lowerValue.indexOf("<think>", cursor);
+    if (opener < 0) break;
+    const closer = lowerValue.indexOf("</think>", opener + 7);
+    if (closer < 0) break;
+    fragments.push(value.slice(cursor, opener), " ");
+    cursor = closer + 8;
+  }
+  fragments.push(value.slice(cursor));
+  const withoutThink = fragments.join("").trim();
   if (!withoutThink) {
     return null;
   }

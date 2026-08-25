@@ -23,6 +23,7 @@ const androidBoot = vi.hoisted(() => ({
   installAec: vi.fn(),
   initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
+  initializeKeyboard: vi.fn(async () => undefined),
   initializeNetworkListener: vi.fn(async () => undefined),
   startCameraBridgeResponder: vi.fn(() => vi.fn()),
   registerWebsiteBlocker: vi.fn(),
@@ -100,6 +101,7 @@ vi.mock("./mobile-lifecycle", () => ({
   createMobileLifecycle: vi.fn(() => ({
     initializeDeepLinks: androidBoot.initializeDeepLinks,
     initializeAppLifecycle: androidBoot.initializeAppLifecycle,
+    initializeKeyboard: androidBoot.initializeKeyboard,
     initializeNetworkListener: androidBoot.initializeNetworkListener,
   })),
 }));
@@ -153,6 +155,7 @@ describe("renderer Android local composition", () => {
     await vi.waitFor(() =>
       expect(androidBoot.startDeviceBridge).toHaveBeenCalledOnce(),
     );
+    expect(androidBoot.initializeKeyboard).toHaveBeenCalledOnce();
     await vi.waitFor(() =>
       expect(androidBoot.startCameraBridgeResponder).toHaveBeenCalledOnce(),
     );

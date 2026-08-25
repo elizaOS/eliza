@@ -332,6 +332,8 @@ export interface MediaGenerationRequest {
 	seed?: number;
 	duration?: number;
 	aspectRatio?: string;
+	resolution?: string;
+	audio?: boolean;
 	imageUrl?: string;
 	instrumental?: boolean;
 	genre?: string;
@@ -528,6 +530,9 @@ export abstract class IFileStorageService extends Service {
 
 	/** True when a stored file with this filename exists. */
 	abstract exists(fileName: string): Promise<boolean>;
+
+	/** Read exact stored bytes by content-addressed filename, or null when absent. */
+	abstract read(fileName: string): Promise<Buffer | null>;
 
 	/** List all stored files (for the Files surface). */
 	abstract list(): Promise<StoredFileListItem[]>;

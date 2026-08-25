@@ -83,6 +83,10 @@ import {
 } from "../../types/primitives.ts";
 import { ServiceType } from "../../types/service.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
+import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseJSONObjectFromText,
@@ -134,6 +138,7 @@ import { readAttachmentAction } from "../working-memory/readAttachmentAction.ts"
 // Direct leaf imports — see comment in
 // ../advanced-capabilities/index.ts for the Bun.build mis-rewrite that
 // requires bypassing barrels here too.
+import { calculateAction } from "./actions/calculate.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { choiceAction } from "./actions/choice.ts";
 import { ignoreAction } from "./actions/ignore.ts";
@@ -143,7 +148,9 @@ import { CHANNEL_TOPICS_ROUTES } from "./channel-topics-routes.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
+import { anxietyProvider } from "./providers/anxiety.ts";
 import { attachmentsProvider } from "./providers/attachments.ts";
+import { botAwarenessProvider } from "./providers/botAwareness.ts";
 import { channelTopicsProvider } from "./providers/channelTopics.ts";
 import { characterProvider } from "./providers/character.ts";
 import { choiceProvider } from "./providers/choice.ts";
@@ -156,6 +163,9 @@ import {
 } from "./providers/platformContext.ts";
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
+
+export { recentMessagesProvider } from "./providers/recentMessages.ts";
+
 import { replyContextProvider } from "./providers/replyContext.ts";
 import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
@@ -243,7 +253,7 @@ function textContainsAgentName(
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = toWellFormedUnicode(text);
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -263,7 +273,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = toWellFormedUnicode(text);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
@@ -357,7 +367,11 @@ export async function processAttachments(
 			let imageUrl = url;
 
 			if (!isRemote) {
-				const res = await fetch(url);
+				// Local media-server hops can hang without a bound — use the same
+				// fail-closed timeout as the remote attachment path so a stalled
+				// local server rejects instead of leaving the
+				// attachment-processing turn pending forever.
+				const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 				if (!res.ok) {
 					throw new Error(`Failed to fetch image: ${res.statusText}`);
 				}
@@ -388,8 +402,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						descriptionPreview:
-							described.description.substring(0, 100) || undefined,
+						descriptionPreview: described.description
+							? truncateWellFormed(
+									toWellFormedUnicode(described.description),
+									100,
+								)
+							: undefined,
 					},
 					"Generated description",
 				);
@@ -403,7 +421,9 @@ export async function processAttachments(
 			attachment.contentType === ContentType.DOCUMENT &&
 			!attachment.text
 		) {
-			const res = await fetch(url);
+			// Same fail-closed bound as the image branch: a stalled local
+			// media-server hop must not hang the attachment-processing turn.
+			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 			if (!res.ok) {
 				throw new Error(`Failed to fetch document: ${res.statusText}`);
 			}
@@ -438,8 +458,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						textPreview:
-							processedAttachment.text.substring(0, 100) || undefined,
+						textPreview: processedAttachment.text
+							? truncateWellFormed(
+									toWellFormedUnicode(processedAttachment.text),
+									100,
+								)
+							: undefined,
 					},
 					"Extracted text content",
 				);
@@ -464,7 +488,9 @@ export async function processAttachments(
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						textLength: textContent.length,
-						textPreview: textContent.substring(0, 100) || undefined,
+						textPreview: textContent
+							? truncateWellFormed(toWellFormedUnicode(textContent), 100)
+							: undefined,
 					},
 					"Extracted PDF text content",
 				);
@@ -1079,7 +1105,9 @@ const events: PluginEvents = {
 					new Error(
 						"outbound message contains external-content envelope markers",
 					),
-					{ preview: sentText.slice(0, 120) },
+					{
+						preview: truncateWellFormed(toWellFormedUnicode(sentText), 120),
+					},
 				);
 			}
 		},
@@ -1395,7 +1423,9 @@ const events: PluginEvents = {
 export const basicProviders = [
 	actionsProvider,
 	actionStateProvider,
+	anxietyProvider,
 	attachmentsProvider,
+	botAwarenessProvider,
 	channelTopicsProvider,
 	characterProvider,
 	choiceProvider,
@@ -1425,6 +1455,7 @@ export const basicActions = [
 	withCanonicalActionDocs(ignoreAction),
 	withCanonicalActionDocs(noneAction),
 	withCanonicalActionDocs(channelTopicSearchAction),
+	withCanonicalActionDocs(calculateAction),
 ];
 
 /**

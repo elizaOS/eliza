@@ -6,13 +6,7 @@
  * real embedding server is reachable.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  toWellFormedUnicode,
-  truncateWellFormed,
-  VECTOR_DIMS,
-} from "@elizaos/core";
+import { logger, ModelType, toWellFormedUnicode, VECTOR_DIMS } from "@elizaos/core";
 
 import type { OpenAIEmbeddingResponse } from "../types";
 import {
@@ -135,16 +129,6 @@ export async function handleTextEmbedding(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  // Truncate to stay within embedding model token limits.
-  // OpenAI embedding models support up to 8191 tokens per input;
-  // 8000 tokens provides a safe buffer (~4 chars per token).
-  const maxChars = 8_000 * 4;
-  if (trimmedText.length > maxChars) {
-    logger.warn(
-      `[OpenAI] Embedding input too long (~${Math.ceil(trimmedText.length / 4)} tokens), truncating to ~8000 tokens`
-    );
-    trimmedText = truncateWellFormed(trimmedText, maxChars);
-  }
   // Wire-boundary guarantee: lone surrogates in the JSON body 400 on strict
   // provider parsers (#18025).
   trimmedText = toWellFormedUnicode(trimmedText);

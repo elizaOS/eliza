@@ -144,6 +144,48 @@ describe("jobs route", () => {
     });
   });
 
+  test("a stored stack never reaches the owner's response (#23117)", async () => {
+    // The stored value is the operator diagnostic — full frames. The API must
+    // hand back the failure summary only: frames disclose absolute server
+    // paths and internal module layout to a non-admin org member.
+    const storedDiagnostic = [
+      "Error: agent_delete failed",
+      "    at deleteAgent (/srv/eliza/packages/cloud/shared/src/lib/services/eliza-sandbox.ts:2703:11)",
+      "    at processTicksAndRejections (node:internal/process/task_queues:95:5)",
+      "caused by: Error: ENOENT: no such file",
+    ].join("\n");
+    getJobForOrg.mockResolvedValue({
+      id: "job-1",
+      type: "agent_delete",
+      status: "failed",
+      result: null,
+      error: storedDiagnostic,
+      attempts: 2,
+      max_attempts: 2,
+      estimated_completion_at: null,
+      scheduled_for: null,
+      started_at: null,
+      completed_at: null,
+      created_at: new Date("2026-01-01T00:00:00Z"),
+      updated_at: new Date("2026-01-01T00:00:01Z"),
+    });
+
+    validateServiceKey.mockResolvedValueOnce(null);
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/api/v1/jobs/job-1", {
+        method: "GET",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { data: { error: string | null } };
+    expect(body.data.error).toBe("Error: agent_delete failed");
+    expect(body.data.error).not.toContain(" at ");
+    expect(body.data.error).not.toContain("/srv/eliza");
+    expect(body.data.error).not.toContain(".ts:");
+  });
+
   test("service-key polling can read owner-org jobs by id", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/api/v1/jobs/job-1", {

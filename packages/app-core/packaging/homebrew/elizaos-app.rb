@@ -11,11 +11,11 @@
 
 class ElizaosApp < Formula
   desc "Personal AI assistant — cute agents for the acceleration"
-  homepage "https://github.com/elizaos/elizaos-app"
+  homepage "https://github.com/elizaOS/eliza"
   url "https://registry.npmjs.org/elizaos/-/elizaos-2.0.0-alpha.76.tgz"
   sha256 "3f3749c0e591547eac1992ae90eb20ccdc10b899dd3b9edce9801ac416e3a60a"
   license "MIT"
-  head "https://github.com/elizaos/elizaos-app.git", branch: "develop"
+  head "https://github.com/elizaOS/eliza.git", branch: "develop"
 
   livecheck do
     url "https://registry.npmjs.org/elizaos"

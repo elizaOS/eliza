@@ -41,6 +41,7 @@ import {
   elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
 import {
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   PROVISIONING_RECONCILIATION_BATCH_SIZE,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
@@ -68,6 +69,7 @@ import {
   type AgentSandboxStatus,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
@@ -150,6 +152,32 @@ export type WarmPoolRuntimeGeneration = Pick<
   | "image_digest"
   | "pool_ready_at"
 >;
+
+/**
+ * Exact row authority captured before a stopped restore prepares its backup.
+ * Provisioning may begin only if every captured lifecycle discriminator still
+ * matches the tenant row when the admission UPDATE executes.
+ */
+export type ProvisioningAdmissionCapture = Pick<
+  AgentSandbox,
+  | "id"
+  | "organization_id"
+  | "status"
+  | "lifecycle_job_id"
+  | "lifecycle_execution_generation"
+  | "execution_tier"
+  | "pool_status"
+  | "deleted_at"
+  | "deletion_attempt_id"
+  | "lifecycle_revision"
+>;
+
+const RESTORE_PROVISIONING_ADMISSIBLE_STATUSES = [
+  "stopped",
+  "sleeping",
+  "disconnected",
+  "error",
+] as const satisfies readonly AgentSandboxStatus[];
 
 export interface WarmPoolReconciliationCandidate {
   sandbox: AgentSandbox;
@@ -299,6 +327,24 @@ function warmPoolGenerationConditions(expected: WarmPoolRuntimeGeneration): SQL[
     sql`${agentSandboxes.image_digest} IS NOT DISTINCT FROM ${expected.image_digest}`,
     sql`${agentSandboxes.pool_ready_at} IS NOT DISTINCT FROM ${expected.pool_ready_at}`,
   ];
+}
+
+/** Keep generic and restore-fenced provisioning transitions byte-equivalent. */
+function provisioningAdmissionUpdatePayload() {
+  const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
+  return {
+    status: "provisioning" as const,
+    updated_at: new Date(),
+    error_message: null,
+    sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+    bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+    health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+    node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+    container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+    bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+    web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+    headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
+  };
 }
 
 export interface ReconciliationBatchResult<T> {
@@ -499,6 +545,11 @@ export class AgentSandboxesRepository {
    * (node_id / container_name are NULL by design), so there is nothing to
    * dial over the Headscale tunnel — heartbeating them only ever fails and
    * spams the logs. Only dedicated/custom tiers have a real container.
+   *
+   * Soft-deleted rows and unclaimed warm-pool rows are excluded like the
+   * sibling predicates in this file: neither belongs to a tenant-serving
+   * agent, so dialing them wastes cycles and pollutes heartbeat telemetry
+   * (#22548).
    */
   async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
     return dbRead
@@ -508,8 +559,55 @@ export class AgentSandboxesRepository {
       })
       .from(agentSandboxes)
       .where(
-        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+        and(
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
       );
+  }
+
+  /**
+   * Tier x status census of the container-backed tenant fleet, for the
+   * fleet-liveness monitor (#22548). Grouping by BOTH keys is the point: the
+   * monitor cannot decide whether a row "should be reachable right now" from
+   * its status alone, because the tiers carry different serving contracts —
+   * `dedicated-lazy` is allowed to sleep, `dedicated-always`/`custom` are not.
+   * The caller applies that contract with `isFleetRowExpectedReachable`.
+   *
+   * The tier filter is an explicit allowlist rather than `<> 'shared'` so a
+   * tier added later cannot silently join the paging census: shared rows are
+   * container-free by design, and any new tier must state its own serving
+   * contract before it can raise a fleet alarm. Soft-deleted rows and
+   * unclaimed warm-pool rows are excluded because neither belongs to a
+   * tenant-serving agent.
+   *
+   * Status is deliberately NOT filtered here: the monitor needs the off-state
+   * counts (`sleeping`, `stopped`, ...) to report the whole fleet picture
+   * alongside the alarm, and a fleet whose every row sits in `error` — the
+   * exact shape the heartbeat sweep cannot see, since it iterates only
+   * `running` rows — must still appear in the census.
+   */
+  async summarizeDedicatedFleet(): Promise<
+    Array<{ execution_tier: string; status: string; count: number }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbRead
+      .select({
+        execution_tier: agentSandboxes.execution_tier,
+        status: agentSandboxes.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
+      )
+      .groupBy(agentSandboxes.execution_tier, agentSandboxes.status);
   }
 
   /**
@@ -1272,25 +1370,13 @@ export class AgentSandboxesRepository {
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
     const [r] = await dbWrite
       .update(agentSandboxes)
-      .set({
-        status: "provisioning",
-        updated_at: new Date(),
-        error_message: null,
-        sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
-        bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
-        health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
-        node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
-        container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
-        bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
-        web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
-        headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
-      })
+      .set(provisioningAdmissionUpdatePayload())
       .where(
         and(
           eq(agentSandboxes.id, id),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           sql`(
             ${agentSandboxes.status} IN ('pending', 'provisioning', 'stopped', 'sleeping', 'disconnected', 'error')
@@ -1304,6 +1390,84 @@ export class AgentSandboxesRepository {
       )
       .returning();
     return r;
+  }
+
+  /**
+   * Atomically admit a non-running restore into provisioning only while the
+   * exact tenant lifecycle authority captured by restore selection is current.
+   *
+   * Unlike `trySetProvisioning`, this path never admits a retry already in
+   * `provisioning`, a create-path `pending` row, a never-containerized
+   * `running` row, or a row that needs cleanup before another container
+   * generation can start. `pending` is deliberately excluded because failed
+   * create-to-enqueue compensation may remove that generation. A lost CAS is
+   * a hard admission failure: the caller must not report the selected backup
+   * as restored by another provisioning winner.
+   *
+   * The advisory lock orders this admission after any concurrent lifecycle
+   * enqueue. The UPDATE then takes a fresh READ COMMITTED snapshot and rejects
+   * a committed exclusive job before changing the row.
+   */
+  async trySetProvisioningFromRestoreCapture(
+    capture: ProvisioningAdmissionCapture,
+  ): Promise<AgentSandbox | undefined> {
+    const isAdmissibleStatus = (
+      RESTORE_PROVISIONING_ADMISSIBLE_STATUSES as readonly AgentSandboxStatus[]
+    ).includes(capture.status);
+    const isCanonicalContainerTier = (
+      CONTAINER_BACKED_EXECUTION_TIERS as readonly string[]
+    ).includes(capture.execution_tier);
+    if (
+      !isAdmissibleStatus ||
+      !isCanonicalContainerTier ||
+      capture.lifecycle_job_id !== null ||
+      capture.lifecycle_execution_generation !== null ||
+      capture.pool_status !== null ||
+      capture.deleted_at !== null ||
+      capture.deletion_attempt_id !== null
+    ) {
+      return undefined;
+    }
+
+    await ensureAgentSandboxSchema();
+    return dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaProvisionAdvisoryLockSql(capture.organization_id, capture.id));
+      const [r] = await tx
+        .update(agentSandboxes)
+        .set(provisioningAdmissionUpdatePayload())
+        .where(
+          and(
+            eq(agentSandboxes.id, capture.id),
+            eq(agentSandboxes.organization_id, capture.organization_id),
+            eq(agentSandboxes.status, capture.status),
+            inArray(agentSandboxes.status, [...RESTORE_PROVISIONING_ADMISSIBLE_STATUSES]),
+            eq(agentSandboxes.execution_tier, capture.execution_tier),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            eq(agentSandboxes.lifecycle_revision, capture.lifecycle_revision),
+            isNull(agentSandboxes.lifecycle_job_id),
+            isNull(agentSandboxes.lifecycle_execution_generation),
+            hasNoProvisioningOwnerJob([...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.deletion_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+            isNull(agentSandboxes.replacement_cleanup_node_id),
+            isNull(agentSandboxes.replacement_cleanup_container_name),
+            isNull(agentSandboxes.replacement_cleanup_attempt_id),
+            isNull(agentSandboxes.replacement_cleanup_container_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_node_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_node_name),
+            isNull(agentSandboxes.replacement_cleanup_preserved_vpn_node_id),
+            isNull(agentSandboxes.replacement_cleanup_vpn_registration_started_at),
+            isNull(agentSandboxes.replacement_cleanup_allocation_counted),
+            isNull(agentSandboxes.replacement_cleanup_created_at),
+            sql`${agentSandboxes.warm_claim_credential_state} IS DISTINCT FROM 'failed'`,
+          ),
+        )
+        .returning();
+      return r;
+    });
   }
 
   /**
@@ -1807,11 +1971,17 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
           ),
         )
         .for("update")
         .limit(1);
       if (!userRow) return null;
+      if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === userRow.execution_tier)) {
+        return null;
+      }
 
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
@@ -1889,6 +2059,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
             ...(params.expectedLifecycleRevision === undefined
               ? []
               : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
@@ -1911,7 +2084,18 @@ export class AgentSandboxesRepository {
 
   /** Insert a pool entry pre-bound to the sentinel pool org. */
   async createPoolEntry(
-    data: Omit<NewAgentSandbox, "organization_id" | "user_id" | "pool_status">,
+    data: Omit<
+      NewAgentSandbox,
+      | "organization_id"
+      | "user_id"
+      | "pool_status"
+      | "execution_tier"
+      | "billing_status"
+      | "last_billed_at"
+      | "hourly_rate"
+      | "shutdown_warning_sent_at"
+      | "scheduled_shutdown_at"
+    >,
   ): Promise<AgentSandbox> {
     await ensureAgentSandboxSchema();
     const [row] = await dbWrite
@@ -1921,6 +2105,17 @@ export class AgentSandboxesRepository {
         organization_id: WARM_POOL_ORG_ID,
         user_id: WARM_POOL_USER_ID,
         pool_status: "unclaimed",
+        // Pool placeholders own a real prewarmed container. Never inherit the
+        // schema's container-free Shared default at this creation seam.
+        execution_tier: "dedicated-always",
+        // The sentinel org owns capacity, not a customer subscription. Keep
+        // pool generations outside elapsed charging until a claim transfers
+        // infrastructure onto an already-container-backed user row.
+        billing_status: "exempt",
+        last_billed_at: null,
+        hourly_rate: "0.0000",
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
       })
       .returning();
     if (!row) throw new Error("Failed to create warm pool entry");
@@ -2722,6 +2917,21 @@ export class AgentSandboxesRepository {
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
     );
+    // The reaper has proved this workload absent on the named node. A retained
+    // bridge/health locator would make the recovery delete try to capture from
+    // that dead generation again, permanently stranding the tombstone. Clear
+    // only the network locators, fenced to the same node and terminal delete
+    // states; the remaining container/node identity stays available for audit.
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ bridge_url: null, health_url: null, updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, agentId),
+          eq(agentSandboxes.node_id, nodeId),
+          inArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
+        ),
+      );
     return result.outcome;
   }
 }

@@ -3,7 +3,7 @@
  * Provider metadata is a lookup hint; the attempt row and canonical organization row are authority.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type Stripe from "stripe";
 import { writeTransaction } from "../../db/helpers";
@@ -19,6 +19,10 @@ const PROVIDER_REUSE_WINDOW_MS = 23 * 60 * 60 * 1000;
 const DEFAULT_LEASE_MS = 30_000;
 const DEFAULT_WAIT_MS = 5_000;
 const WAIT_STEP_MS = 25;
+
+function boundedAmbiguousReason(reason: string): string {
+  return toWellFormedUnicode(truncateWellFormed(reason, 500));
+}
 
 export type StripeCustomerCallerIntent =
   | "payment_method"
@@ -373,7 +377,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "provider_ambiguous",
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -396,7 +400,7 @@ export class StripeCustomerAuthorityService {
       await tx
         .update(stripeCustomerAttempts)
         .set({
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),
@@ -416,7 +420,7 @@ export class StripeCustomerAuthorityService {
         .update(stripeCustomerAttempts)
         .set({
           status: "quarantined",
-          ambiguous_reason: reason.slice(0, 500),
+          ambiguous_reason: boundedAmbiguousReason(reason),
           lease_token: null,
           lease_expires_at: null,
           updated_at: this.now(),

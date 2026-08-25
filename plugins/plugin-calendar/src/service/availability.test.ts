@@ -402,6 +402,27 @@ describe("evaluateCalendarAvailability", () => {
     expect(repeatedHour.conflicts).toHaveLength(0);
   });
 
+  it("accepts RFC 3339 lowercase time separators and offsets", () => {
+    const evaluation = evaluateCalendarAvailability({
+      range: UTC_DAY,
+      timeZone: "UTC",
+      sources: [
+        source([
+          event("lower-z", "2026-05-11t09:00:00z", "2026-05-11t10:00:00z"),
+          event(
+            "lower-offset",
+            "2026-05-11t14:30:00+05:30",
+            "2026-05-11t15:30:00+05:30",
+          ),
+        ]),
+      ],
+    });
+    // Both events resolve to 09:00-10:00 UTC, so parsing both yields one
+    // overlap conflict instead of an "explicit offset" rejection.
+    expect(evaluation.checkedEvents).toBe(2);
+    expect(evaluation.conflicts).toHaveLength(1);
+  });
+
   it("rejects an offset-less local timestamp instead of guessing through a DST fold", () => {
     expect(() =>
       evaluateCalendarAvailability({

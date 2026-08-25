@@ -3,7 +3,7 @@
 /**
  * eliza-code ACP server — lets eliza-code run AS a coding sub-agent that the
  * elizaOS orchestrator (plugin-agent-orchestrator) can spawn over the Agent
- * Client Protocol, exactly like the opencode / codex / claude ACP agents.
+ * Client Protocol, exactly like the codex / claude ACP agents.
  *
  * The orchestrator resolves the `elizaos` agent type to the command in
  * `ELIZA_ELIZAOS_ACP_COMMAND` and spawns it as a long-lived ACP JSON-RPC server
@@ -33,22 +33,33 @@
 import { consumeWarmClaimToken } from "./acp-bootstrap.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ActionEventPayload,
+  type AgentRuntime,
+  EventType,
+} from "@elizaos/core";
 import {
   SandboxService,
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import { terminalFailureFromAgentClientError } from "./acp-terminal-failure.js";
+import { AcpActivePromptRegistry } from "./acp-active-prompts.js";
+import {
+  type AcpToolCallUpdate,
+  toolCallUpdateFromAction,
+} from "./acp-tool-ledger.js";
+import { buildAcpCodingPreamble } from "./acp-preamble.js";
 import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
-import { getAgentClient } from "./lib/agent-client.js";
+import { getAgentClient, sendPiCodingTurn } from "./lib/agent-client.js";
 import {
   ensureSessionIdentity,
   getMainRoomElizaId,
   type SessionIdentity,
 } from "./lib/identity.js";
-import { applyOpencodeProviderEnv } from "./lib/model-provider.js";
+import { applyElizaCodeProviderEnv } from "./lib/model-provider.js";
 import type { ChatRoom } from "./types.js";
 
 /** A `console.error` logger (stdout is the ACP JSON-RPC channel — never log there). */
@@ -65,6 +76,10 @@ function log(message: string, extra?: unknown): void {
 // Lazily-initialized shared runtime (one per ACP server process).
 let runtimePromise: Promise<AgentRuntime> | null = null;
 let identity: SessionIdentity | null = null;
+// The prompt whose turn is running. Every ACP session shares one inner room,
+// so completed actions are attributed by the prompt window, not the room —
+// the orchestrator drives one prompt per process at a time (busy-claim).
+const activePrompts = new AcpActivePromptRegistry<AcpToolCallUpdate>();
 const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
@@ -87,12 +102,11 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       process.env.CODING_TOOLS_WORKSPACE_ROOTS ??= roots;
       process.env.SHELL_ALLOWED_DIRECTORY ??= roots;
     }
-    // Drop-in for the opencode coding sub-agent: when the host configured
-    // opencode (ELIZA_OPENCODE_* — e.g. a Cerebras key/url/models) but no
-    // explicit OPENAI_*, inherit that provider config so eliza-code runs on the
-    // same backend with zero extra setup. The orchestrator forwards the parent
-    // env to this spawned process.
-    applyOpencodeProviderEnv(process.env);
+    // When the host configured a coding provider (ELIZA_CODE_* — e.g. a
+    // Cerebras key/url/models) but no explicit OPENAI_*, inherit that provider
+    // config so eliza-code runs on the configured backend with zero extra
+    // setup. The orchestrator forwards the parent env to this spawned process.
+    applyElizaCodeProviderEnv(process.env);
     // Isolated, ephemeral database for this coding sub-agent. PGlite is
     // single-process: the parent bot (and any other concurrently-spawned
     // eliza-code sub-agent) holds the PGlite dir under ELIZA_STATE_DIR, so a
@@ -107,18 +121,13 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
     process.env.POSTGRES_URL = "";
     runtimePromise = (async () => {
       // Resolve the session identity FIRST and mark its user as the runtime OWNER
-      // — the coding tools are role-gated (FILE=ADMIN, SHELL=OWNER), so without
+      // — the coding tools are role-gated (file actions=ADMIN, SHELL=OWNER), so without
       // this the sub-agent runs as GUEST and every tool is denied ("I don't have
       // permission… role (GUEST)"). A spawned coding sub-agent IS the operator in
       // its sandbox, so it gets full rights. Must be set before initializeAgent so
       // the role resolver sees the owner at boot.
       identity = ensureSessionIdentity();
       process.env.ELIZA_ADMIN_ENTITY_ID ??= identity.userId;
-      // A coding sub-agent has a small, all-relevant tool set (FILE/SHELL/READ/
-      // EDIT/…); expose them ALL as native tools (full surface, no chat-style
-      // tiering) so the model can actually CALL them instead of only seeing them
-      // described in the prompt and narrating.
-      process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
       // Headless coding sub-agent: only sql + provider + shell + coding-tools.
       // codingOnly drops mcp/goals AND the orchestrator (recursion guard).
       const runtime = await initializeAgent({
@@ -127,12 +136,37 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       });
       // Mark the session user as OWNER via the RUNTIME SETTING the role resolver
       // actually reads (getConfiguredOwnerEntityIds → runtime.getSetting), not just
-      // process.env — otherwise the sender stays GUEST and FILE/SHELL are gated off.
+      // process.env — otherwise the sender stays GUEST and coding tools are gated off.
       const rt = runtime as unknown as {
         setSetting?: (k: string, v: unknown) => void;
       };
       rt.setSetting?.("ELIZA_ADMIN_ENTITY_ID", identity.userId);
       getAgentClient().setRuntime(runtime);
+      // Tool ledger: mirror each completed coding mutation or shell call onto ACP
+      // so the orchestrator's write ledger and verifier see what actually ran
+      // (see acp-tool-ledger.ts).
+      runtime.registerEvent(
+        EventType.ACTION_COMPLETED,
+        async (payload: ActionEventPayload) => {
+          const target = activePrompts.current();
+          if (!target) return;
+          const update = toolCallUpdateFromAction(
+            target.sessionId,
+            payload.content,
+            randomUUID(),
+          );
+          if (!update) return;
+          try {
+            await target.publish(update);
+          } catch (error) {
+            // error-policy:J7 ledger mirroring is diagnostics for the parent;
+            // a transport hiccup must not fail the tool call it describes.
+            log("tool_call update failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        },
+      );
       log("runtime initialized", { owner: identity.userId });
       return runtime;
     })();
@@ -169,7 +203,7 @@ const sessions = new Map<string, AcpSession>();
 /**
  * Read the operating manual the orchestrator scaffolds into a spawned sub-agent's
  * workspace (`AGENTS.md` / `CLAUDE.md` — "what Eliza is, you are a non-interactive
- * coding sub-agent, the relay contract"). claude/codex/opencode auto-read these
+ * coding sub-agent, the relay contract"). claude/codex auto-read these
  * from their cwd; eliza-code runs from the monorepo for dep resolution, so it must
  * read them explicitly from the build workspace and inject them so the sub-agent
  * gets the same orientation as the other backends.
@@ -259,7 +293,7 @@ const _connection = new AgentSideConnection(
       // SessionCwdService otherwise defaults the conversation cwd to
       // process.cwd() — the monorepo — making `pwd`, relative-path resolution,
       // and the sandbox roots all point at the wrong directory. Set it
-      // explicitly to the build workspace so FILE/SHELL/LS operate there.
+      // explicitly to the build workspace so coding tools operate there.
       // conversationId == message.roomId == room.elizaRoomId (see agent-client).
       if (params.cwd) {
         const conversationId = String(room.elizaRoomId);
@@ -285,39 +319,15 @@ const _connection = new AgentSideConnection(
       if (!text) return { stopReason: "end_turn" };
       // Inject the orchestrator's scaffolded operating manual on the first prompt
       // of the session so eliza-code gets the same "you are a non-interactive Eliza
-      // coding sub-agent + relay contract" orientation as claude/codex/opencode.
+      // coding sub-agent + relay contract" orientation as claude/codex.
       if (!session.manualInjected) {
         session.manualInjected = true;
         const preamble: string[] = [];
         const manual = await readWorkspaceManual(session.cwd);
         if (manual) preamble.push(manual);
-        // Execution contract: weaker coding models (e.g. Cerebras glm-4.7) tend
-        // to NARRATE a plan ("I'll create the app...") and end the turn instead
-        // of emitting the FILE/SHELL action, especially on larger tasks — which
-        // leaves nothing on disk. Make the act-don't-describe requirement
-        // explicit so a build actually happens before the agent reports done.
-        preamble.push(
-          "Execution contract: DO the work by calling tools — use the FILE " +
-            "action to actually write/edit each file and the SHELL action to run " +
-            "commands. Do NOT reply with a description of what you are about to " +
-            'do; a turn that only says "I\'ll create..." or "Creating the app ' +
-            'now" without an accompanying FILE/SHELL tool call is a failure. For ' +
-            "a multi-file or large build, write the full content of each file " +
-            "with a FILE action first, then verify, and only then report what you " +
-            "did. Never claim a file exists unless you wrote it this session.",
-        );
-        if (session.cwd) {
-          // The coding tools (FILE/EDIT) require ABSOLUTE paths. Tell the agent
-          // its workspace root up front so it writes absolute paths directly
-          // instead of emitting a relative path, having it rejected, and
-          // round-tripping through `pwd` to rediscover the directory.
-          preamble.push(
-            `Your workspace directory is: ${session.cwd}\n` +
-              `All file paths MUST be absolute — create and edit files under ` +
-              `this directory (e.g. ${session.cwd}/<filename>) and run shell ` +
-              `commands from here.`,
-          );
-        }
+        // Make the act-don't-describe requirement explicit using only tools
+        // exposed by the selected Pi profile.
+        preamble.push(...buildAcpCodingPreamble(session.cwd));
         if (preamble.length > 0) {
           text = `${preamble.join("\n\n---\n\n")}\n\n---\n\nTask:\n${text}`;
           log("injected workspace preamble", {
@@ -335,21 +345,54 @@ const _connection = new AgentSideConnection(
       // is how a Discord user ends up seeing ```json {"response":...} instead
       // of the answer. The parsed user-facing reply only exists once the turn
       // completes, so emit exactly one authoritative chunk with it.
-      const response = await getAgentClient().sendMessage({
-        room,
-        text,
-        identity,
-        source: "acp",
-      });
-      await publishParsedReply(params.sessionId, response, (update) =>
-        conn.sessionUpdate(update),
-      );
-      log("prompt done", { response: response.length });
-      return { stopReason: "end_turn" };
+      if (!identity) {
+        // initialize() resolves the session identity before any prompt; a
+        // prompt on an uninitialized connection has no owner to act as.
+        throw new Error("ACP prompt before session identity was initialized");
+      }
+      const sessionIdentity = identity;
+      const promptContext = {
+        sessionId: params.sessionId,
+        publish: (update: Parameters<typeof conn.sessionUpdate>[0]) =>
+          conn.sessionUpdate(update),
+      };
+      try {
+        const response = await activePrompts.run(promptContext, (abortSignal) =>
+          sendPiCodingTurn(getAgentClient(), {
+            room,
+            text,
+            identity: sessionIdentity,
+            source: "acp",
+            abortSignal,
+          }),
+        );
+        await publishParsedReply(params.sessionId, response, (update) =>
+          conn.sessionUpdate(update),
+        );
+        log("prompt done", { response: response.length });
+        return { stopReason: "end_turn" };
+      } catch (error) {
+        // error-policy:J1 The ACP request boundary converts only the runtime's
+        // authoritative failed-turn receipt. Transport and programming faults
+        // still reject the JSON-RPC request normally.
+        const terminalFailure = terminalFailureFromAgentClientError(error);
+        if (!terminalFailure) throw error;
+        log("prompt terminal failure", {
+          kind: terminalFailure.kind,
+          transient: terminalFailure.transient,
+        });
+        return {
+          // ACP's standard StopReason union has no `error` member. The typed
+          // receipt is authoritative and the orchestrator maps it to its
+          // internal error stop reason without emitting an invalid ACP value.
+          stopReason: "end_turn",
+          _meta: { terminalFailure },
+        };
+      }
     },
-    async cancel() {
-      // Best-effort: the runtime turn isn't externally cancellable here; the next
-      // prompt simply starts a new turn. (Hook into runtime abort when available.)
+    async cancel(params: { sessionId?: string }) {
+      const sessionId = params?.sessionId;
+      if (sessionId) activePrompts.cancel(sessionId);
     },
     // The elizaOS orchestrator's native ACP transport sends `session/close` on
     // teardown. It IS a standard ACP method (schema.AGENT_METHODS.session_close),

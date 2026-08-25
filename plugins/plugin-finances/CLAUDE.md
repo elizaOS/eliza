@@ -40,6 +40,13 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
   OWNER_FINANCES dispatch + parameter schema. PA imports these; the registered
   `OWNER_FINANCES` umbrella action stays in PA because it also routes
   `subscription_*` to PA's Gmail/browser-orchestrating subscription back-end.
+- Normalized capability layer (`src/finance-capabilities.ts`) — provider-neutral
+  pure calculations behind the `balances`, `budget_status`, `subscriptions`, and
+  `anomalies` subactions. Every capability response carries
+  `FinanceCapabilityMeta` (freshness + calculation method), and the internal
+  writes (`add_source`, `remove_source`, `import_csv`) return a
+  `FinanceWriteReceipt`. Read/derive only — nothing here initiates payments,
+  transfers, or trading, and receipts never carry credentials.
 
 **Views**
 - `finances` — `FinancesView` component, path `/finances`, bundle
@@ -49,8 +56,11 @@ and on `@elizaos/plugin-elizacloud` for the managed Plaid / PayPal clients.
 
 **Schema** (`financesSchema` = `pgSchema("app_finances")`, registered via the
 plugin `schema` field; the SQL plugin owns the migration runner)
-- `lifePaymentSources`, `lifePaymentTransactions`, `lifeSubscriptionAudits`,
-  `lifeSubscriptionCandidates`, `lifeSubscriptionCancellations`. Table NAMES are
+- `lifePaymentSources`, `lifePaymentSourceIdentities`,
+  `lifePaymentTransactions`, `lifeSubscriptionAudits`,
+  `lifeSubscriptionCandidates`, `lifeSubscriptionCancellations`.
+  `lifePaymentSourceIdentities` is the normalized, unique provider-connection
+  claim used to serialize concurrent Link completion. The five legacy table NAMES are
   preserved verbatim from the original LifeOps tables (`life_payment_*`,
   `life_subscription_*`) so the non-destructive copy migration
   (`FinancesMigrationService`) can move existing `app_lifeops` rows across.
@@ -65,6 +75,7 @@ src/
   types.ts                        View DTOs (FinancesViewProps etc.)
   finances-service.ts             FinancesService (payments back-end)
   finance-normalize.ts            FinancesServiceError + input normalizers
+  finance-capabilities.ts         Normalized capability calcs + metadata/receipts
   payment-types.ts                Payment / dashboard / spending types
   payment-recurrence.ts           Recurring-charge detection + merchant normalize
   payment-csv-import.ts           CSV parser → ParsedCsvTransaction
@@ -74,7 +85,7 @@ src/
   actions/
     finances.ts                   runPaymentsHandler + OWNER_FINANCES param schema
   db/
-    schema.ts                     pgSchema("app_finances") + 5 finance tables
+    schema.ts                     pgSchema("app_finances") + finance tables
     sql.ts                        Self-contained raw-SQL helpers (runtime DB)
     finances-repository.ts        FinancesRepository (raw SQL over app_finances)
     index.ts                      re-exports schema.ts
@@ -118,7 +129,7 @@ bun run --cwd plugins/plugin-finances clean        # rm -rf dist
 
 | Variable | Required | Description |
 |---|---|---|
-| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting Plaid / PayPal tokens at rest. Falls back to a lazily-generated `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
+| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting PayPal tokens at rest. Plaid Item tokens remain in organization-bound Cloud credentials; the local source stores only an opaque connection id. Falls back to a lazily-generated `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for the managed Plaid / PayPal bridges. |
 | `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override for the managed bridges. |
 

@@ -82,7 +82,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 
 | Var | Required | Default | Purpose |
 |---|---|---|---|
-| `OPENAI_API_KEY` | one-of | — | Auth for all OpenAI endpoints |
+| `OPENAI_API_KEY` | no | — | Direct auth for OpenAI endpoints; unnecessary for authenticated proxy mode or another compatible-provider key |
 | `CEREBRAS_API_KEY` | one-of | — | Auth when using Cerebras endpoint |
 | `EVOLINK_API_KEY` | one-of | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
@@ -100,7 +100,6 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_IMAGE_DESCRIPTION_MODEL` | no | `gpt-5-mini` | Vision model |
 | `OPENAI_IMAGE_DESCRIPTION_BASE_URL` | no | `OPENAI_BASE_URL` | Override vision endpoint |
 | `OPENAI_IMAGE_DESCRIPTION_API_KEY` | no | `OPENAI_API_KEY` | Separate vision auth |
-| `OPENAI_IMAGE_DESCRIPTION_MAX_TOKENS` | no | `8192` | Max tokens for vision output |
 | `OPENAI_IMAGE_MODEL` | no | `dall-e-3` | Image generation model |
 | `OPENAI_TTS_MODEL` | no | `gpt-5-mini-tts` | Text-to-speech model |
 | `OPENAI_TTS_VOICE` | no | `nova` | TTS voice (alloy/echo/fable/onyx/nova/shimmer) |
@@ -121,7 +120,7 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `EVOLINK_BASE_URL` | no | `https://direct.evolink.ai/v1` | EvoLink API base |
 | `EVOLINK_MODEL` | no | `gpt-5.2` | Override model name in EvoLink mode |
 
-*Either `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is required; the plugin will not auto-enable without one.
+*The plugin auto-enables when `OPENAI_API_KEY`, `CEREBRAS_API_KEY`, or `EVOLINK_API_KEY` is present. A manually enabled authenticated proxy can operate without any local provider key; direct provider calls still fail explicitly when their required credential is unavailable.
 
 ## How to extend
 

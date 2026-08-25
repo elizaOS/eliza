@@ -17,7 +17,6 @@ export const ORCHESTRATOR_TOOL_NAMES = [
   "acpx",
   "codex",
   "claude",
-  "opencode",
 ] as const;
 
 export type OrchestratorToolName = (typeof ORCHESTRATOR_TOOL_NAMES)[number];

@@ -23,6 +23,8 @@ exits.
   returns `{ url, port, store, stop, tick, processDbBackedJobs, cleanupStuck }`.
   Also exports `buildControlPlaneApp`, `ControlPlaneStore`, and the
   `Job`/`JobStatus`/`JobType`/`Sandbox`/`SandboxStatus` types.
+- `src/steward/` (export `./steward`) — stateful loopback mock for authenticated
+  Steward platform-user deactivation and deletion calls used by account lifecycle E2E.
 - `src/fetch-server.ts` — shared `startFetchServer(fetch, opts)`; uses
   `Bun.serve` when running under Bun, falls back to a `node:http` adapter
   otherwise.
@@ -34,7 +36,7 @@ exits.
   accounts, tenant grants, and API credentials are provider-owned seeds;
   callers cannot select a tenant or mint a receipt after an effect.
 - `fixtures/provider-contract/` — synthetic, commit-safe fixture convention.
-- `provider-contract-inventory.json` — promoted managed-integration ratchet;
+- `provider-contract-inventory.json` — promoted managed-integration guard;
   audited by `bun run audit:provider-contracts` and the cloud CI workflow.
 - `provider-contract-protected-integrations.json` — append-only integration ID
   ledger; it must exactly match the inventory and may never remove an ID that

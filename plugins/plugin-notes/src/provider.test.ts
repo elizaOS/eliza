@@ -20,6 +20,7 @@ import {
   type Provider,
   type State,
   stringToUuid,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -29,6 +30,13 @@ import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import type { StickyNote } from "./types.js";
 import { parseNoteContent } from "./validation.js";
+
+/**
+ * `String.prototype.isWellFormed` is ES2024 and the workspace compiles against
+ * the ES2023 lib, so assert well-formedness through the core helper instead.
+ */
+const isWellFormedText = (value: string): boolean =>
+  toWellFormedUnicode(value) === value;
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -228,7 +236,7 @@ describe("SAVED_NOTES provider", () => {
     expect(reported).toHaveLength(1);
   });
 
-  it("declares the notes it withheld so a truncated list never reads as complete", () => {
+  it("renders every saved note", () => {
     const notes: StickyNote[] = Array.from({ length: 23 }, (_, index) => ({
       id: `note-${index}`,
       title: `note ${index}`,
@@ -242,16 +250,18 @@ describe("SAVED_NOTES provider", () => {
 
     expect(text).toContain("- note 0");
     expect(text).toContain("- note 19");
-    expect(text).not.toContain("- note 20");
-    expect(text).toContain("3 older note(s) not shown");
+    expect(text).toContain("- note 20");
+    expect(text).toContain("- note 22");
+    expect(text).not.toContain("not shown");
   });
 
-  it("truncates an oversized note body without dropping the note", () => {
+  it("renders a complete oversized note body", () => {
+    const body = "x".repeat(5_000);
     const text = renderSavedNotesText([
       {
         id: "note-long",
         title: "launch checklist",
-        body: "x".repeat(5_000),
+        body,
         color: "slate",
         createdAt: "2026-08-14T12:00:00.000Z",
         updatedAt: "2026-08-14T12:00:00.000Z",
@@ -259,7 +269,64 @@ describe("SAVED_NOTES provider", () => {
     ]);
 
     expect(text).toContain("launch checklist");
-    expect(text).toContain("(truncated)");
-    expect(text.length).toBeLessThan(1_000);
+    expect(text).toContain(body);
+    expect(text).not.toContain("(truncated)");
+  });
+
+  it("keeps UTF-16 surrogate pairs intact in a long note", () => {
+    const body = `${"a".repeat(382)}🦊${"b".repeat(100)}`;
+    const text = renderSavedNotesText([
+      {
+        id: "note-emoji-boundary",
+        title: "x",
+        body,
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    const noteLine = text.split("\n").find((line) => line.startsWith("- x"));
+    expect(noteLine).toBeDefined();
+    if (noteLine) {
+      expect(isWellFormedText(noteLine)).toBe(true);
+      expect(noteLine).toContain(body);
+    }
+    expect(noteLine).toContain("🦊");
+  });
+
+  it("sanitizes lone surrogates in a note", () => {
+    const text = renderSavedNotesText([
+      {
+        id: "note-lone",
+        title: "a\ud800bc",
+        body: "",
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    expect(text).toContain("a\ufffdbc");
+    expect(isWellFormedText(text)).toBe(true);
+  });
+
+  it("preserves an emoji that fits entirely under the 400 cap", () => {
+    const body = `${"a".repeat(10)}🦊`;
+    const text = renderSavedNotesText([
+      {
+        id: "note-fitting",
+        title: "t",
+        body,
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    expect(text).toContain("🦊");
+    expect(isWellFormedText(text)).toBe(true);
+    const noteLine = text.split("\n").find((line) => line.startsWith("- t"));
+    expect(noteLine).toBeDefined();
+    if (noteLine) {
+      expect(isWellFormedText(noteLine)).toBe(true);
+    }
   });
 });

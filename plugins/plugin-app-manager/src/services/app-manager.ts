@@ -76,7 +76,6 @@ const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
 const SAFE_APP_URL_PROTOCOLS = new Set(["http:", "https:"]);
 const SAFE_APP_TEMPLATE_ENV_KEYS = new Set<string>();
 const RUN_REFRESH_MIN_INTERVAL_MS = 5_000;
-const MAX_RUN_EVENTS = 20;
 /**
  * How long a run can go without a heartbeat (UI ping or session refresh)
  * before the sweeper considers it abandoned and stops it. Tuned to comfortably
@@ -1152,9 +1151,7 @@ function buildRunEvent(input: {
 }
 
 function normalizeRunEvents(events: AppRunEvent[]): AppRunEvent[] {
-  return [...events]
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, MAX_RUN_EVENTS);
+  return [...events].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function deriveChatAvailability(
@@ -1248,7 +1245,7 @@ function deriveRunHealthDetails(
 }
 
 function deriveAwaySummary(run: AppRunSummary): AppRunAwaySummary {
-  const recent = run.recentEvents.slice(0, 3).map((event) => event.message);
+  const recent = run.recentEvents.map((event) => event.message);
   return {
     generatedAt: run.updatedAt,
     message:

@@ -5,203 +5,51 @@
  * and handles sending responses back through the correct channel.
  */
 
-import { createHash, randomUUID } from "crypto";
-import { and, eq, sql } from "drizzle-orm";
-import { z } from "zod";
+import { ElizaError, isElizaError } from "@elizaos/core";
+import { createHash } from "crypto";
+import { and, eq } from "drizzle-orm";
 import { dbWrite } from "../../../db/client";
-import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
+import { phoneMessageLogsRepository } from "../../../db/repositories/phone-message-logs";
 import {
-  agentPhoneNumbers,
-  type NewPhoneMessageLog,
-  phoneMessageLog,
-} from "../../../db/schemas/agent-phone-numbers";
-import { ObjectNamespaces } from "../../storage/object-namespace";
-import { offloadTextField } from "../../storage/object-store";
+  agentPhoneNumberLosslessSelection,
+  hydrateAgentPhoneNumber,
+} from "../../../db/repositories/phone-metadata-readers";
+import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
+import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import { logger } from "../../utils/logger";
+
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
+import {
+  isPhoneMessagePersistenceFailure,
+  isPhoneMessageRoutingUnavailable,
+  isPostgresUndefinedTableError,
+  PHONE_MESSAGE_PERSISTENCE_FAILED_CODE,
+  PHONE_MESSAGE_ROUTING_UNAVAILABLE_CODE,
+  phoneErrorDiagnostic,
+} from "../phone-error-diagnostics";
+
+export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
+const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
 
 /**
- * Schema for message metadata - allows simple key-value pairs only.
- * Prevents deeply nested or malicious objects from being stored.
+ * Bounds the router's Twilio REST hop through the shared provider transport so
+ * a hung or unbounded Twilio response cannot pin an outbound send.
  */
-const messageMetadataSchema = z
-  .record(
-    z.string(),
-    z.union([
-      z.string(),
-      z.number(),
-      z.boolean(),
-      z.null(),
-      z.array(z.union([z.string(), z.number(), z.boolean()])),
-    ]),
-  )
-  .optional();
+export function messageRouterTwilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedProviderFetch(input, init, {
+    provider: "twilio",
+    timeoutMs,
+    maxResponseBytes: MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES,
+  });
+}
 
 function isUndefinedTableError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
-    return true;
-  }
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && cause !== error) return isUndefinedTableError(cause);
-  const message = (error as { message?: unknown }).message;
-  return (
-    typeof message === "string" &&
-    message.includes('relation "agent_phone_contacts" does not exist')
-  );
-}
-
-// Maximum metadata size to prevent DoS via large payloads (10KB)
-const MAX_METADATA_SIZE = 10 * 1024;
-
-let ensureAgentPhoneContactsTablePromise: Promise<void> | null = null;
-
-async function ensureAgentPhoneContactsTable(): Promise<void> {
-  ensureAgentPhoneContactsTablePromise ??= (async () => {
-    await dbWrite.execute(sql`
-      CREATE TABLE IF NOT EXISTS "agent_phone_contacts" (
-        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-        "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE cascade,
-        "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
-        "agent_id" uuid NOT NULL REFERENCES "agent_sandboxes"("id") ON DELETE cascade,
-        "provider" text NOT NULL,
-        "contact_identifier" text NOT NULL,
-        "contact_display_name" text,
-        "first_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
-        "last_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
-        "last_inbound_at" timestamp with time zone,
-        "last_outbound_at" timestamp with time zone,
-        "is_active" boolean DEFAULT true NOT NULL,
-        "metadata" text DEFAULT '{}' NOT NULL,
-        "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
-      )
-    `);
-    await dbWrite.execute(sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS "agent_phone_contacts_agent_contact_idx"
-      ON "agent_phone_contacts" ("provider", "contact_identifier", "agent_id")
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_lookup_idx"
-      ON "agent_phone_contacts" ("provider", "contact_identifier", "is_active", "last_contacted_at")
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_agent_idx"
-      ON "agent_phone_contacts" ("agent_id")
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_organization_idx"
-      ON "agent_phone_contacts" ("organization_id")
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_user_idx"
-      ON "agent_phone_contacts" ("user_id")
-    `);
-  })().catch((error) => {
-    ensureAgentPhoneContactsTablePromise = null;
-    throw error;
-  });
-
-  return ensureAgentPhoneContactsTablePromise;
-}
-
-async function preparePhoneMessagePayload(
-  data: NewPhoneMessageLog,
-  organizationId: string,
-): Promise<NewPhoneMessageLog> {
-  if (
-    data.message_body_storage === "r2" ||
-    data.media_urls_storage === "r2" ||
-    data.agent_response_storage === "r2" ||
-    data.metadata_storage === "r2"
-  ) {
-    return data;
-  }
-
-  const id = data.id ?? randomUUID();
-  const createdAt = data.created_at ?? new Date();
-  const [messageBody, mediaUrls, agentResponse, metadata] = await Promise.all([
-    offloadTextField({
-      namespace: ObjectNamespaces.PhoneMessagePayloads,
-      organizationId,
-      objectId: id,
-      field: "message_body",
-      createdAt,
-      value: data.message_body,
-    }),
-    offloadTextField({
-      namespace: ObjectNamespaces.PhoneMessagePayloads,
-      organizationId,
-      objectId: id,
-      field: "media_urls",
-      createdAt,
-      value: data.media_urls,
-      inlineValueWhenOffloaded: "[]",
-    }),
-    offloadTextField({
-      namespace: ObjectNamespaces.PhoneMessagePayloads,
-      organizationId,
-      objectId: id,
-      field: "agent_response",
-      createdAt,
-      value: data.agent_response,
-    }),
-    offloadTextField({
-      namespace: ObjectNamespaces.PhoneMessagePayloads,
-      organizationId,
-      objectId: id,
-      field: "metadata",
-      createdAt,
-      value: data.metadata,
-      inlineValueWhenOffloaded: "{}",
-    }),
-  ]);
-
-  return {
-    ...data,
-    id,
-    created_at: createdAt,
-    message_body: messageBody.value,
-    message_body_storage: messageBody.storage,
-    message_body_key: messageBody.key,
-    media_urls: mediaUrls.value,
-    media_urls_storage: mediaUrls.storage,
-    media_urls_key: mediaUrls.key,
-    agent_response: agentResponse.value,
-    agent_response_storage: agentResponse.storage,
-    agent_response_key: agentResponse.key,
-    metadata: metadata.value,
-    metadata_storage: metadata.storage,
-    metadata_key: metadata.key,
-  };
-}
-
-/**
- * Helper to validate and sanitize metadata before storage
- */
-function validateMetadata(metadata: unknown): Record<string, unknown> | undefined {
-  if (!metadata) return undefined;
-
-  try {
-    const parsed = messageMetadataSchema.parse(metadata);
-
-    // Check size to prevent DoS
-    const serialized = JSON.stringify(parsed);
-    if (serialized.length > MAX_METADATA_SIZE) {
-      logger.warn("[MessageRouter] Metadata too large, truncating", {
-        size: serialized.length,
-        maxSize: MAX_METADATA_SIZE,
-      });
-      return {};
-    }
-
-    return parsed;
-  } catch (error) {
-    logger.warn("[MessageRouter] Invalid metadata format, using empty object", {
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
-    return {};
-  }
+  return isPostgresUndefinedTableError(error);
 }
 
 export interface IncomingMessage {
@@ -242,6 +90,84 @@ export interface SendMessageParams {
   contactDisplayName?: string;
 }
 
+export type MessageDeliveryOutcome =
+  | {
+      status: "delivered";
+      provider: SendMessageParams["provider"];
+      providerMessageIds: string[];
+    }
+  | {
+      status: "failed" | "uncertain";
+      provider: SendMessageParams["provider"] | "unknown";
+      code: string;
+      retryable: boolean;
+      providerStatus?: number;
+    };
+
+function deliveryFailed(
+  provider: MessageDeliveryOutcome["provider"],
+  code: string,
+  retryable: boolean,
+  providerStatus?: number,
+): MessageDeliveryOutcome {
+  return {
+    status: "failed",
+    provider,
+    code,
+    retryable,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
+}
+
+function deliveryUncertain(
+  provider: SendMessageParams["provider"],
+  code: string,
+  providerStatus?: number,
+): MessageDeliveryOutcome {
+  return {
+    status: "uncertain",
+    provider,
+    code,
+    retryable: false,
+    ...(providerStatus === undefined ? {} : { providerStatus }),
+  };
+}
+
+function classifyProviderException(
+  provider: SendMessageParams["provider"],
+  error: unknown,
+): MessageDeliveryOutcome {
+  if (isElizaError(error) && error.code === "PROVIDER_REQUEST_REJECTED") {
+    const providerStatus =
+      typeof error.context?.status === "number" ? error.context.status : undefined;
+    if (providerStatus !== undefined && providerStatus >= 500) {
+      return deliveryUncertain(provider, "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN", providerStatus);
+    }
+    const retryable = error.context?.retryable === true;
+    return deliveryFailed(provider, "DELIVERY_PROVIDER_REJECTED", retryable, providerStatus);
+  }
+  if (isElizaError(error) && error.code === "PROVIDER_RECEIPT_INVALID") {
+    return deliveryUncertain(provider, "DELIVERY_RECEIPT_INVALID");
+  }
+  if (
+    isElizaError(error) &&
+    (error.code === "PROVIDER_RESPONSE_TOO_LARGE" || error.code === "CLOUD_REST_RESPONSE_TOO_LARGE")
+  ) {
+    return deliveryUncertain(provider, "DELIVERY_RESPONSE_TOO_LARGE");
+  }
+  if (error instanceof DOMException && error.name === "TimeoutError") {
+    return deliveryUncertain(provider, "DELIVERY_TIMEOUT");
+  }
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return deliveryUncertain(provider, "DELIVERY_CANCELLED_AFTER_DISPATCH");
+  }
+  return deliveryUncertain(provider, "DELIVERY_TRANSPORT_UNCERTAIN");
+}
+
+function providerDiagnostic(value: unknown): string {
+  return value === "twilio" || value === "blooio" || value === "whatsapp" ? value : "unknown";
+}
+
 class MessageRouterService {
   /**
    * Find the agent and phone number mapping for an incoming message
@@ -249,30 +175,45 @@ class MessageRouterService {
   async routeIncomingMessage(message: IncomingMessage): Promise<MessageRouteResult> {
     try {
       logger.info("[MessageRouter] Routing incoming message", {
-        from: message.from,
-        to: message.to,
-        provider: message.provider,
+        provider: providerDiagnostic(message.provider),
       });
 
       // Find the phone number mapping by the "to" number (our number)
-      const phoneMapping = await dbWrite
-        .select()
-        .from(agentPhoneNumbers)
-        .where(
-          and(
-            eq(agentPhoneNumbers.phone_number, normalizePhoneNumber(message.to)),
-            eq(agentPhoneNumbers.is_active, true),
-          ),
-        )
-        .limit(1);
+      const normalizedTo = normalizePhoneNumber(message.to);
+      let phoneMapping: Array<{
+        agent_id: string;
+        id: string;
+        organization_id: string;
+      }>;
+      try {
+        phoneMapping = await dbWrite
+          .select({
+            agent_id: agentPhoneNumbers.agent_id,
+            id: agentPhoneNumbers.id,
+            organization_id: agentPhoneNumbers.organization_id,
+          })
+          .from(agentPhoneNumbers)
+          .where(
+            and(
+              eq(agentPhoneNumbers.phone_number, normalizedTo),
+              eq(agentPhoneNumbers.is_active, true),
+            ),
+          )
+          .limit(1);
+      } catch (cause) {
+        throw new ElizaError("Phone message routing lookup is unavailable", {
+          code: PHONE_MESSAGE_ROUTING_UNAVAILABLE_CODE,
+          cause,
+        });
+      }
 
       if (phoneMapping.length === 0) {
         logger.debug("[MessageRouter] No phone number mapping found", {
-          to: message.to,
+          provider: providerDiagnostic(message.provider),
         });
         return {
           success: false,
-          error: `No agent configured for phone number: ${message.to}`,
+          error: "No active phone routing configuration",
         };
       }
 
@@ -293,10 +234,19 @@ class MessageRouterService {
       });
 
       // Update last_message_at
-      await dbWrite
-        .update(agentPhoneNumbers)
-        .set({ last_message_at: new Date(), updated_at: new Date() })
-        .where(eq(agentPhoneNumbers.id, mapping.id));
+      try {
+        await dbWrite
+          .update(agentPhoneNumbers)
+          .set({ last_message_at: new Date(), updated_at: new Date() })
+          .where(eq(agentPhoneNumbers.id, mapping.id));
+      } catch (error) {
+        // error-policy:J6 the canonical message is already committed; this
+        // denormalized timestamp must not trigger duplicate provider retries.
+        logger.warn(
+          "[MessageRouter] Last-message timestamp update failed after persistence",
+          phoneErrorDiagnostic(error),
+        );
+      }
 
       logger.info("[MessageRouter] Message routed to agent", {
         agentId: mapping.agent_id,
@@ -311,10 +261,19 @@ class MessageRouterService {
         organizationId: mapping.organization_id,
       };
     } catch (error) {
-      logger.error("[MessageRouter] Error routing message", { error });
+      logger.error("[MessageRouter] Error routing message", {
+        provider: providerDiagnostic(message.provider),
+        ...phoneErrorDiagnostic(error),
+      });
+      // error-policy:J2 a webhook must retry when its canonical message write did
+      // not commit or when the authoritative lookup could not be completed.
+      if (isPhoneMessagePersistenceFailure(error) || isPhoneMessageRoutingUnavailable(error)) {
+        throw error;
+      }
+      // error-policy:J4 non-persistence routing failures are returned to the webhook boundary.
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: "Message routing failed",
       };
     }
   }
@@ -331,7 +290,8 @@ class MessageRouterService {
     try {
       logger.info("[MessageRouter] Processing message with agent", {
         agentId,
-        message: message.body.substring(0, 100),
+        organizationId,
+        provider: providerDiagnostic(message.provider),
       });
 
       // Import services dynamically to avoid circular deps
@@ -349,8 +309,8 @@ class MessageRouterService {
         logger.info("[MessageRouter] Creating new room for phone conversation", {
           roomId,
           agentId,
-          from: message.from,
-          to: message.to,
+          organizationId,
+          provider: providerDiagnostic(message.provider),
         });
 
         await roomsService.createRoom({
@@ -411,9 +371,10 @@ class MessageRouterService {
         text: "Thanks for your message! I'm processing it but couldn't generate a response. Please try again.",
       };
     } catch (error) {
+      // error-policy:J4 agent processing failures degrade to a bounded user-facing response.
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error("[MessageRouter] Error processing with agent", {
-        error: errorMessage,
+        ...phoneErrorDiagnostic(error),
         agentId,
         organizationId,
       });
@@ -487,6 +448,7 @@ class MessageRouterService {
       const room = await roomsRepository.findById(roomId);
       return room !== null;
     } catch {
+      // error-policy:J4 a missing room is equivalent to a cache miss; creation follows.
       return false;
     }
   }
@@ -494,41 +456,55 @@ class MessageRouterService {
   /**
    * Send a message through the appropriate provider
    */
-  async sendMessage(params: SendMessageParams): Promise<boolean> {
-    try {
-      logger.info("[MessageRouter] Sending message", {
-        to: params.to,
-        from: params.from,
-        provider: params.provider,
+  async sendMessage(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    if (!(["twilio", "blooio", "whatsapp"] as const).includes(params.provider)) {
+      logger.error("[MessageRouter] Unsupported message provider", {
+        organizationId: params.organizationId,
       });
-
-      if (params.provider === "twilio") {
-        const sent = await this.sendViaTwilio(params);
-        if (sent) await this.recordAgentPhoneContact(params);
-        return sent;
-      } else if (params.provider === "blooio") {
-        const sent = await this.sendViaBlooio(params);
-        if (sent) await this.recordAgentPhoneContact(params);
-        return sent;
-      } else if (params.provider === "whatsapp") {
-        const sent = await this.sendViaWhatsApp(params);
-        if (sent) await this.recordAgentPhoneContact(params);
-        return sent;
-      }
-
-      logger.error("[MessageRouter] Unknown provider", {
-        provider: params.provider,
-      });
-      return false;
-    } catch (error) {
-      logger.error("[MessageRouter] Error sending message", { error });
-      return false;
+      return deliveryFailed("unknown", "DELIVERY_PROVIDER_UNSUPPORTED", false);
     }
+    logger.info("[MessageRouter] Sending message", {
+      provider: providerDiagnostic(params.provider),
+      organizationId: params.organizationId,
+    });
+
+    const contactRequired = this.contactWriteRequired(params);
+
+    const delivery =
+      params.provider === "twilio"
+        ? await this.sendViaTwilio(params)
+        : params.provider === "blooio"
+          ? await this.sendViaBlooio(params)
+          : await this.sendViaWhatsApp(params);
+    if (delivery.status !== "delivered") return delivery;
+    if (!contactRequired) return delivery;
+
+    try {
+      await this.recordAgentPhoneContact(params);
+    } catch (error) {
+      // error-policy:J4 provider delivery is authoritative; a failed audit write
+      // cannot turn a completed send into a retry that duplicates the message.
+      logger.error("[MessageRouter] Contact record failed after delivery", {
+        provider: providerDiagnostic(params.provider),
+        organizationId: params.organizationId,
+        ...phoneErrorDiagnostic(error),
+      });
+    }
+    return delivery;
   }
 
   private normalizeContactIdentifier(value: string): string {
     const trimmed = value.trim();
     return trimmed.includes("@") ? trimmed.toLowerCase() : normalizePhoneNumber(trimmed);
+  }
+
+  private contactWriteRequired(params: SendMessageParams): boolean {
+    return Boolean(
+      params.agentId &&
+        params.agentOrganizationId &&
+        params.agentUserId &&
+        this.normalizeContactIdentifier(params.to),
+    );
   }
 
   private async recordAgentPhoneContact(params: SendMessageParams): Promise<void> {
@@ -582,17 +558,15 @@ class MessageRouterService {
     try {
       await upsert();
     } catch (error) {
+      // error-policy:J2 preserve the database failure and classify missing schema.
       if (isUndefinedTableError(error)) {
-        try {
-          await ensureAgentPhoneContactsTable();
-          await upsert();
-          return;
-        } catch (ensureError) {
-          logger.warn("[MessageRouter] agent_phone_contacts table is not migrated yet", {
-            error: ensureError instanceof Error ? ensureError.message : String(ensureError),
-          });
-          return;
-        }
+        // error-policy:J2 missing schema is a deployment failure, never a signal
+        // to recreate a legacy table from request-serving code.
+        throw new ElizaError("Phone contact schema migration is required", {
+          code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+          context: { table: "agent_phone_contacts" },
+          cause: error,
+        });
       }
       throw error;
     }
@@ -601,23 +575,26 @@ class MessageRouterService {
   /**
    * Send message via Twilio
    */
-  private async sendViaTwilio(params: SendMessageParams): Promise<boolean> {
+  private async sendViaTwilio(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { secretsService } = await import("../secrets");
+    const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = await import("../../constants/secrets");
+    let accountSid: string | null | undefined;
+    let authToken: string | null | undefined;
     try {
-      const { secretsService } = await import("../secrets");
+      accountSid = await secretsService.get(params.organizationId, TWILIO_ACCOUNT_SID);
+      authToken = await secretsService.get(params.organizationId, TWILIO_AUTH_TOKEN);
+    } catch (error) {
+      logger.error("[MessageRouter] Twilio credential lookup failed", phoneErrorDiagnostic(error));
+      return deliveryFailed("twilio", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
+    if (!accountSid || !authToken) {
+      logger.error("[MessageRouter] Missing Twilio credentials");
+      return deliveryFailed("twilio", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
 
-      // Use secretsService.get() which looks up by (organizationId, secretName)
-      // Note: getDecryptedValue() takes (secretId, organizationId) - different signature
-      const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = await import("../../constants/secrets");
-      const accountSid = await secretsService.get(params.organizationId, TWILIO_ACCOUNT_SID);
-      const authToken = await secretsService.get(params.organizationId, TWILIO_AUTH_TOKEN);
-
-      if (!accountSid || !authToken) {
-        logger.error("[MessageRouter] Missing Twilio credentials");
-        return false;
-      }
-
+    try {
       // Twilio REST API
-      const response = await fetch(
+      const response = await messageRouterTwilioFetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
         {
           method: "POST",
@@ -634,38 +611,71 @@ class MessageRouterService {
       );
 
       if (!response.ok) {
-        const error = await response.text();
-        logger.error("[MessageRouter] Twilio API error", { error });
-        return false;
+        logger.error("[MessageRouter] Twilio API error", { status: response.status });
+        if (response.status >= 500) {
+          return deliveryUncertain(
+            "twilio",
+            "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+            response.status,
+          );
+        }
+        return deliveryFailed(
+          "twilio",
+          "DELIVERY_PROVIDER_REJECTED",
+          response.status === 429 || response.status >= 500,
+          response.status,
+        );
       }
 
+      let receipt: unknown;
+      try {
+        receipt = await response.json();
+      } catch {
+        return deliveryUncertain("twilio", "DELIVERY_RECEIPT_INVALID");
+      }
+      const sid =
+        receipt &&
+        typeof receipt === "object" &&
+        typeof (receipt as { sid?: unknown }).sid === "string"
+          ? (receipt as { sid: string }).sid.trim()
+          : "";
+      if (!sid) return deliveryUncertain("twilio", "DELIVERY_RECEIPT_INVALID");
+
       logger.info("[MessageRouter] Twilio message sent successfully");
-      return true;
+      return { status: "delivered", provider: "twilio", providerMessageIds: [sid] };
     } catch (error) {
-      logger.error("[MessageRouter] Twilio send error", { error });
-      return false;
+      // error-policy:J4 the caller receives a typed outcome that preserves ambiguity.
+      logger.error("[MessageRouter] Twilio send error", phoneErrorDiagnostic(error));
+      return classifyProviderException("twilio", error);
     }
   }
 
   /**
    * Send message via Blooio (iMessage)
    */
-  private async sendViaBlooio(params: SendMessageParams): Promise<boolean> {
+  private async sendViaBlooio(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { secretsService } = await import("../secrets");
+    const { BLOOIO_API_KEY } = await import("../../constants/secrets");
+    let apiKey: string | null | undefined;
     try {
-      const { secretsService } = await import("../secrets");
+      apiKey = await secretsService.get(params.organizationId, BLOOIO_API_KEY);
+    } catch (error) {
+      logger.error("[MessageRouter] Blooio credential lookup failed", phoneErrorDiagnostic(error));
+      return deliveryFailed("blooio", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
+    if (!apiKey) {
+      logger.error("[MessageRouter] Missing Blooio API key");
+      return deliveryFailed("blooio", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
+
+    try {
       const { blooioApiRequest } = await import("../../utils/blooio-api");
-
-      // Use secretsService.get() which looks up by (organizationId, secretName)
-      const { BLOOIO_API_KEY } = await import("../../constants/secrets");
-      const apiKey = await secretsService.get(params.organizationId, BLOOIO_API_KEY);
-
-      if (!apiKey) {
-        logger.error("[MessageRouter] Missing Blooio API key");
-        return false;
-      }
-
       // Use the blooioApiRequest helper which uses the correct API base URL
-      await blooioApiRequest(
+      const receipt = await blooioApiRequest<{
+        id?: string;
+        message_id?: string;
+        message_ids?: string[];
+      }>(
         apiKey,
         "POST",
         `/chats/${encodeURIComponent(params.to)}/messages`,
@@ -678,11 +688,26 @@ class MessageRouterService {
         },
       );
 
+      const providerMessageIds = [
+        ...(Array.isArray(receipt.message_ids) ? receipt.message_ids : []),
+        receipt.message_id,
+        receipt.id,
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+      const uniqueProviderMessageIds = [...new Set(providerMessageIds.map((id) => id.trim()))];
+      if (uniqueProviderMessageIds.length === 0) {
+        return deliveryUncertain("blooio", "DELIVERY_RECEIPT_INVALID");
+      }
+
       logger.info("[MessageRouter] Blooio message sent successfully");
-      return true;
+      return {
+        status: "delivered",
+        provider: "blooio",
+        providerMessageIds: uniqueProviderMessageIds,
+      };
     } catch (error) {
-      logger.error("[MessageRouter] Blooio send error", { error });
-      return false;
+      // error-policy:J4 the caller receives a typed outcome that preserves ambiguity.
+      logger.error("[MessageRouter] Blooio send error", phoneErrorDiagnostic(error));
+      return classifyProviderException("blooio", error);
     }
   }
 
@@ -691,17 +716,18 @@ class MessageRouterService {
    * Tries org-specific credentials from secrets service first,
    * falls back to global elizaAppConfig for the public bot.
    */
-  private async sendViaWhatsApp(params: SendMessageParams): Promise<boolean> {
+  private async sendViaWhatsApp(params: SendMessageParams): Promise<MessageDeliveryOutcome> {
+    const { sendWhatsAppMessage } = await import("../../utils/whatsapp-api");
+    const { secretsService } = await import("../secrets");
+    const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = await import(
+      "../../constants/secrets"
+    );
+    let accessToken: string | null | undefined;
+    let phoneNumberId: string | null | undefined;
     try {
-      const { sendWhatsAppMessage } = await import("../../utils/whatsapp-api");
-      const { secretsService } = await import("../secrets");
-      const { WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID } = await import(
-        "../../constants/secrets"
-      );
-
       // Try org-specific credentials first (from secrets service)
-      let accessToken = await secretsService.get(params.organizationId, WHATSAPP_ACCESS_TOKEN);
-      let phoneNumberId = await secretsService.get(params.organizationId, WHATSAPP_PHONE_NUMBER_ID);
+      accessToken = await secretsService.get(params.organizationId, WHATSAPP_ACCESS_TOKEN);
+      phoneNumberId = await secretsService.get(params.organizationId, WHATSAPP_PHONE_NUMBER_ID);
 
       // Fall back to global config (for eliza-app public bot)
       if (!accessToken || !phoneNumberId) {
@@ -709,26 +735,41 @@ class MessageRouterService {
         accessToken = accessToken || elizaAppConfig.whatsapp.accessToken;
         phoneNumberId = phoneNumberId || elizaAppConfig.whatsapp.phoneNumberId;
       }
+    } catch (error) {
+      logger.error("[MessageRouter] WhatsApp credential lookup failed", {
+        organizationId: params.organizationId,
+        ...phoneErrorDiagnostic(error),
+      });
+      return deliveryFailed("whatsapp", "DELIVERY_CREDENTIAL_LOOKUP_FAILED", true);
+    }
 
-      if (!accessToken || !phoneNumberId) {
-        logger.error("[MessageRouter] Missing WhatsApp credentials", {
-          organizationId: params.organizationId,
-        });
-        return false;
+    if (!accessToken || !phoneNumberId) {
+      logger.error("[MessageRouter] Missing WhatsApp credentials", {
+        organizationId: params.organizationId,
+      });
+      return deliveryFailed("whatsapp", "DELIVERY_CREDENTIALS_MISSING", false);
+    }
+
+    try {
+      const receipt = await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
+      const providerMessageIds = receipt.messages
+        .map((message) => message.id.trim())
+        .filter(Boolean);
+      if (providerMessageIds.length === 0) {
+        return deliveryUncertain("whatsapp", "DELIVERY_RECEIPT_INVALID");
       }
-
-      await sendWhatsAppMessage(accessToken, phoneNumberId, params.to, params.body);
 
       logger.info("[MessageRouter] WhatsApp message sent successfully", {
         organizationId: params.organizationId,
       });
-      return true;
+      return { status: "delivered", provider: "whatsapp", providerMessageIds };
     } catch (error) {
+      // error-policy:J4 provider errors become a typed delivery outcome at the caller.
       logger.error("[MessageRouter] WhatsApp send error", {
         organizationId: params.organizationId,
-        error,
+        ...phoneErrorDiagnostic(error),
       });
-      return false;
+      return classifyProviderException("whatsapp", error);
     }
   }
 
@@ -750,97 +791,73 @@ class MessageRouterService {
     agentResponse?: string;
     responseTimeMs?: number;
   }): Promise<string> {
-    // Validate metadata to prevent malicious nested objects
-    const validatedMetadata = validateMetadata(params.metadata);
-
     // Normalize phone numbers to prevent SQL injection via malformed data
     // This ensures only valid E.164 formatted numbers are stored
     const normalizedFrom = normalizePhoneNumber(params.from);
     const normalizedTo = normalizePhoneNumber(params.to);
 
-    const insertData = await preparePhoneMessagePayload(
-      {
-        phone_number_id: params.phoneNumberId,
-        direction: params.direction,
-        from_number: normalizedFrom,
-        to_number: normalizedTo,
-        message_body: params.body,
-        message_type: params.messageType,
-        provider_message_id: params.providerMessageId,
-        media_urls: params.mediaUrls ? JSON.stringify(params.mediaUrls) : null,
-        metadata: validatedMetadata ? JSON.stringify(validatedMetadata) : "{}",
-        status: params.status || "received",
-        agent_response: params.agentResponse,
-        response_time_ms: params.responseTimeMs?.toString(),
-      },
-      params.organizationId,
-    );
-
-    const [log] = await dbWrite
-      .insert(phoneMessageLog)
-      .values(insertData)
-      .returning({ id: phoneMessageLog.id });
-
-    return log.id;
+    try {
+      return await phoneMessageLogsRepository.create(
+        {
+          phone_number_id: params.phoneNumberId,
+          direction: params.direction,
+          from_number: normalizedFrom,
+          to_number: normalizedTo,
+          message_body: params.body,
+          message_type: params.messageType,
+          provider_message_id: params.providerMessageId,
+          media_urls: params.mediaUrls,
+          metadata: params.metadata,
+          status: params.status || "received",
+          agent_response: params.agentResponse,
+          response_time_ms: params.responseTimeMs?.toString(),
+        },
+        params.organizationId,
+      );
+    } catch (cause) {
+      // error-policy:J2 preserve the storage/validation/database cause while
+      // exposing one stable retry signal to every webhook boundary.
+      throw new ElizaError("Canonical phone message persistence failed", {
+        code: PHONE_MESSAGE_PERSISTENCE_FAILED_CODE,
+        cause,
+      });
+    }
   }
 
   /**
    * Update message log with agent response
    */
   async updateMessageLog(
+    organizationId: string,
     messageLogId: string,
     response: AgentResponse,
     responseTimeMs: number,
   ): Promise<void> {
-    const [context] = await dbWrite
-      .select({
-        organizationId: agentPhoneNumbers.organization_id,
-        createdAt: phoneMessageLog.created_at,
-      })
-      .from(phoneMessageLog)
-      .innerJoin(agentPhoneNumbers, eq(phoneMessageLog.phone_number_id, agentPhoneNumbers.id))
-      .where(eq(phoneMessageLog.id, messageLogId))
-      .limit(1);
-
-    const agentResponse = context
-      ? await offloadTextField({
-          namespace: ObjectNamespaces.PhoneMessagePayloads,
-          organizationId: context.organizationId,
-          objectId: messageLogId,
-          field: "agent_response",
-          createdAt: context.createdAt,
-          value: response.text,
-        })
-      : null;
-
-    await dbWrite
-      .update(phoneMessageLog)
-      .set({
-        status: "responded",
-        agent_response: agentResponse?.value ?? response.text,
-        ...(agentResponse
-          ? {
-              agent_response_storage: agentResponse.storage,
-              agent_response_key: agentResponse.key,
-            }
-          : {}),
-        response_time_ms: responseTimeMs.toString(),
-        responded_at: new Date(),
-      })
-      .where(eq(phoneMessageLog.id, messageLogId));
+    await phoneMessageLogsRepository.updateAgentResponse(
+      organizationId,
+      messageLogId,
+      response.text,
+      responseTimeMs,
+    );
   }
 
   /**
    * Mark message as failed
    */
-  async markMessageFailed(messageLogId: string, error: string): Promise<void> {
-    await dbWrite
-      .update(phoneMessageLog)
-      .set({
-        status: "failed",
-        error_message: error,
-      })
-      .where(eq(phoneMessageLog.id, messageLogId));
+  async markMessageFailed(
+    organizationId: string,
+    messageLogId: string,
+    error: string,
+  ): Promise<void> {
+    await phoneMessageLogsRepository.markFailed(organizationId, messageLogId, error);
+  }
+
+  /** Read one message only after tenant-scoped strict pointer hydration. */
+  async getMessageLog(
+    organizationId: string,
+    messageLogId: string,
+  ): Promise<PhoneMessageLog | null> {
+    return phoneMessageLogsRepository.findHydratedById(organizationId, messageLogId);
   }
 
   /**
@@ -884,9 +901,9 @@ class MessageRouterService {
 
     logger.info("[MessageRouter] Phone number registered", {
       id: record.id,
-      phoneNumber: params.phoneNumber,
       agentId: params.agentId,
-      webhookUrl,
+      organizationId: params.organizationId,
+      provider: providerDiagnostic(params.provider),
     });
 
     return { id: record.id, webhookUrl };
@@ -896,10 +913,11 @@ class MessageRouterService {
    * Get all phone numbers for an organization
    */
   async getPhoneNumbers(organizationId: string) {
-    return dbWrite
-      .select()
+    const records = await dbWrite
+      .select(agentPhoneNumberLosslessSelection)
       .from(agentPhoneNumbers)
       .where(eq(agentPhoneNumbers.organization_id, organizationId));
+    return records.map(hydrateAgentPhoneNumber);
   }
 
   /**
@@ -907,12 +925,12 @@ class MessageRouterService {
    */
   async getPhoneNumberById(id: string) {
     const [record] = await dbWrite
-      .select()
+      .select(agentPhoneNumberLosslessSelection)
       .from(agentPhoneNumbers)
       .where(eq(agentPhoneNumbers.id, id))
       .limit(1);
 
-    return record || null;
+    return record ? hydrateAgentPhoneNumber(record) : null;
   }
 
   /**

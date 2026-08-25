@@ -1,21 +1,24 @@
 /** Storybook stories for AppPageSidebar: default/collapsible/header+action/mobile variants over a stub nav list. */
 
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../ui/button";
 import { AppPageSidebar } from "./AppPageSidebar";
 
 const navItems = ["Overview", "Activity", "Members", "Settings"];
 
 function NavList() {
   return (
-    <nav className="flex flex-col gap-1 px-2 py-2 text-sm">
+    <nav className="flex flex-col gap-1 p-2 text-sm">
       {navItems.map((label) => (
-        <button
+        <Button
           key={label}
           type="button"
-          className="rounded-sm px-2 py-1.5 text-left text-muted transition-colors hover:bg-card hover:text-txt"
+          variant="ghostMuted"
+          size="compact"
+          align="start"
         >
           {label}
-        </button>
+        </Button>
       ))}
     </nav>
   );
@@ -62,17 +65,14 @@ export const WithHeaderAndAction: Story = {
   args: {
     collapsible: true,
     header: (
-      <div className="px-2 py-2 text-xs font-medium uppercase tracking-wide text-muted">
+      <div className="p-2 text-xs font-medium uppercase tracking-wide text-muted">
         Workspace
       </div>
     ),
     bottomAction: (
-      <button
-        type="button"
-        className="rounded-sm px-2 py-1 text-xs text-muted hover:text-txt"
-      >
+      <Button type="button" variant="ghostMuted" size="tiny">
         New
-      </button>
+      </Button>
     ),
   },
 };

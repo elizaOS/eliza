@@ -16,6 +16,7 @@ function makeHarness(currentKind: "task" | "habit" | "routine" = "task") {
   const repository = {
     createDefinition: vi.fn(async () => undefined),
     updateDefinition: vi.fn(async () => undefined),
+    deleteDefinition: vi.fn(async () => undefined),
     listOccurrencesForDefinition: vi.fn(async () => []),
   };
   const ctx = {
@@ -34,9 +35,14 @@ function makeHarness(currentKind: "task" | "habit" | "routine" = "task") {
     getDefinitionRecord: vi.fn(async () => ({
       definition: {
         cadence: { kind: "daily", windows: ["morning"] },
+        domain: "user_lifeops",
         id: "definition-existing",
         kind: currentKind,
+        subjectId: "00000000-0000-0000-0000-000000000002",
+        subjectType: "owner",
+        title: "Existing definition",
         timezone: "UTC",
+        updatedAt: "2026-08-19T00:00:00.000Z",
       },
     })),
     ensureGoalExists: vi.fn(async () => null),
@@ -148,4 +154,28 @@ describe("DefinitionsDomain unscheduled cadence boundary", () => {
       expect(repository.updateDefinition).not.toHaveBeenCalled();
     },
   );
+
+  it("does not delete the native reminder when the database delete conflicts", async () => {
+    const { deps, domain, repository } = makeHarness();
+    repository.deleteDefinition.mockRejectedValueOnce(
+      new Error("injected stale revision"),
+    );
+
+    await expect(
+      domain.deleteDefinition("definition-existing"),
+    ).rejects.toThrow("injected stale revision");
+    expect(deps.syncNativeAppleReminderForDefinition).not.toHaveBeenCalled();
+    expect(repository.deleteDefinition).toHaveBeenCalledWith(
+      "00000000-0000-0000-0000-000000000001",
+      "definition-existing",
+      {
+        scope: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: "00000000-0000-0000-0000-000000000002",
+        },
+        expectedUpdatedAt: "2026-08-19T00:00:00.000Z",
+      },
+    );
+  });
 });

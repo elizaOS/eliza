@@ -186,15 +186,12 @@ function SubscriptionTab({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="compact"
+      data-state={active ? "on" : "off"}
       onClick={onSelect}
       aria-label={label}
-      className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
-        active
-          ? "border-accent text-txt"
-          : "border-transparent text-muted hover:text-txt"
-      }`}
+      className="-mb-px"
       {...agentProps}
     >
       {label}
@@ -206,9 +203,9 @@ function StatusIcon({ connected }: { connected: boolean }) {
   return (
     <span className={connected ? "text-ok" : "text-warn"}>
       {connected ? (
-        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+        <CheckCircle2 className="size-3.5" aria-hidden />
       ) : (
-        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+        <AlertTriangle className="size-3.5" aria-hidden />
       )}
     </span>
   );
@@ -273,16 +270,16 @@ function SubscriptionProviderPanel({
             agentLabel={t("common.disconnect")}
             variant="outline"
             size="icon"
-            className="!mt-0 h-8 w-8 rounded-sm"
+            className="!mt-0 size-8 rounded-sm"
             onClick={onDisconnect}
             disabled={disconnecting}
             aria-label={t("common.disconnect")}
             title={t("common.disconnect")}
           >
             {disconnecting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
             ) : (
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
+              <LogOut className="size-3.5" aria-hidden />
             )}
           </SettingsActionButton>
         )}
@@ -328,7 +325,8 @@ function SubscriptionProviderPanel({
             <Input
               ref={oauthCodeRef}
               type={oauthInputType}
-              className="h-9 rounded-sm bg-card text-xs"
+              variant="config"
+              density="compact"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
@@ -686,6 +684,8 @@ export function SubscriptionStatus({
         ref={setupTokenRef}
         id="subscription-setup-token-input"
         type="password"
+        variant="config"
+        density="compact"
         placeholder={t("subscriptionstatus.skAntOat01")}
         value={setupTokenValue}
         onChange={(e) => {
@@ -693,7 +693,6 @@ export function SubscriptionStatus({
           setSetupTokenSuccess(false);
           setAnthropicError("");
         }}
-        className="h-9 rounded-sm bg-card font-mono text-xs"
         aria-label={t("settings.subscription.setupToken")}
         {...setupTokenAgentProps}
       />

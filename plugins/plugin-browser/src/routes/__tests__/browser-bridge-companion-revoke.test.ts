@@ -76,6 +76,116 @@ function createContext(args: {
 }
 
 describe("Browser Bridge companion revoke route", () => {
+  it("binds action-begin requests to authenticated companion credentials", async () => {
+    const beginBrowserSessionActionFromCompanion = vi.fn(async () => ({
+      id: "session-1",
+      currentActionIndex: 0,
+    }));
+    const ctx = createContext({
+      method: "POST",
+      pathname:
+        "/api/browser-bridge/companions/sessions/session-1/actions/begin",
+      headers: {
+        authorization: "Bearer pairing-token-1",
+        "x-browser-bridge-companion-id": "companion-1",
+      },
+      body: {
+        currentActionIndex: 0,
+        actionId: "action-1",
+        attemptId: "attempt-1",
+      },
+      service: { beginBrowserSessionActionFromCompanion },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(beginBrowserSessionActionFromCompanion).toHaveBeenCalledWith(
+      "companion-1",
+      "pairing-token-1",
+      "session-1",
+      {
+        currentActionIndex: 0,
+        actionId: "action-1",
+        attemptId: "attempt-1",
+      },
+      "owner-1",
+    );
+    expect(ctx.res.statusCode).toBe(200);
+  });
+
+  it("rejects action-begin requests without companion authentication", async () => {
+    const beginBrowserSessionActionFromCompanion = vi.fn();
+    const ctx = createContext({
+      method: "POST",
+      pathname:
+        "/api/browser-bridge/companions/sessions/session-1/actions/begin",
+      body: {
+        currentActionIndex: 0,
+        actionId: "action-1",
+        attemptId: "attempt-1",
+      },
+      service: { beginBrowserSessionActionFromCompanion },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(beginBrowserSessionActionFromCompanion).not.toHaveBeenCalled();
+    expect(ctx.res.statusCode).toBe(401);
+  });
+
+  it("fails closed instead of minting credentials for a loopback extension", async () => {
+    const request = {
+      browser: "chrome" as const,
+      profileId: "default",
+    };
+    const getService = vi.fn();
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/auto-pair",
+      headers: { origin: "chrome-extension://installed-extension" },
+      body: request,
+      runtime: {
+        agentId: "agent-1",
+        getService,
+      } as AgentRuntime,
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(getService).not.toHaveBeenCalled();
+    expect(ctx.res.statusCode).toBe(410);
+    expect(ctx.res.body).toEqual({
+      error:
+        "This endpoint is retired. The extension enrolls automatically through the authenticated Eliza desktop app; after revocation, reset the browser in Eliza and reconnect.",
+    });
+  });
+
+  it("fails closed before parsing attacker-controlled auto-pair payloads", async () => {
+    const readJsonBody = vi.fn(async () => ({ browser: "chrome" }));
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/auto-pair",
+      headers: { origin: "chrome-extension://installed-extension" },
+      body: { browser: "chrome" },
+      remoteAddress: "192.0.2.10",
+      service: {},
+    });
+    ctx.readJsonBody = readJsonBody;
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(readJsonBody).not.toHaveBeenCalled();
+    expect(ctx.res.statusCode).toBe(410);
+  });
+
   it("revokes a companion token by companion id", async () => {
     const revokedAt = "2026-05-08T12:00:00.000Z";
     const service = {
@@ -130,6 +240,88 @@ describe("Browser Bridge companion revoke route", () => {
         pairingTokenRevokedAt: revokedAt,
       },
     });
+  });
+
+  it("resets revocation only through the owner-authenticated route", async () => {
+    const resetAt = "2026-05-08T12:05:00.000Z";
+    const resetBrowserCompanionRevocation = vi.fn(async () => ({
+      companion: { id: "companion-1", pairingTokenRevokedAt: null },
+      resetAt,
+    }));
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/companion-1/reset-revocation",
+      service: { resetBrowserCompanionRevocation },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(resetBrowserCompanionRevocation).toHaveBeenCalledWith(
+      "companion-1",
+      "owner-1",
+    );
+    expect(ctx.res.statusCode).toBe(200);
+    expect(ctx.res.body).toMatchObject({ resetAt });
+  });
+
+  it("returns the canonical revoked code from pairing failures", async () => {
+    const createBrowserCompanionPairing = vi.fn(async () => {
+      throw Object.assign(
+        new Error("Browser companion enrollment was revoked"),
+        {
+          status: 409,
+          code: "revoked",
+        },
+      );
+    });
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/pair",
+      body: {
+        browser: "chrome",
+        profileId: "profile-1",
+        pairingKind: "native_enrollment",
+      },
+      service: { createBrowserCompanionPairing },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    await handleBrowserBridgeRoutes(ctx);
+
+    expect(ctx.res.statusCode).toBe(409);
+    expect(ctx.res.body).toEqual({
+      code: "revoked",
+      error: "Browser companion enrollment was revoked",
+    });
+  });
+
+  it("forwards native enrollment intent to the pairing service", async () => {
+    const pairingTokenExpiresAt = "2026-05-08T12:05:00.000Z";
+    const createBrowserCompanionPairing = vi.fn(async () => ({
+      companion: { id: "companion-1" },
+      pairingToken: "short-lived-token",
+      pairingTokenExpiresAt,
+    }));
+    const body = {
+      browser: "firefox" as const,
+      profileId: "profile-native",
+      pairingKind: "native_enrollment" as const,
+    };
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/pair",
+      body,
+      service: { createBrowserCompanionPairing },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    await handleBrowserBridgeRoutes(ctx);
+
+    expect(createBrowserCompanionPairing).toHaveBeenCalledWith(body, "owner-1");
+    expect(ctx.res.statusCode).toBe(201);
+    expect(ctx.res.body).toMatchObject({ pairingTokenExpiresAt });
   });
 
   it("returns 503 when the route service is unavailable", async () => {
@@ -187,6 +379,42 @@ describe("Browser Bridge companion revoke route", () => {
     });
     expect(syncBrowserCompanion).not.toHaveBeenCalled();
     expect(readJsonBody).not.toHaveBeenCalled();
+  });
+
+  it("authenticates preflight before reading its body and returns no browser data", async () => {
+    const readJsonBody = vi.fn(async () => ({ companion: {} }));
+    const unauthenticated = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/preflight",
+      service: { preflightBrowserCompanion: vi.fn() },
+    });
+    unauthenticated.readJsonBody = readJsonBody;
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+    await handleBrowserBridgeRoutes(unauthenticated);
+    expect(unauthenticated.res.statusCode).toBe(401);
+    expect(readJsonBody).not.toHaveBeenCalled();
+
+    const response = {
+      companion: { id: "companion-1" },
+      settings: { enabled: false },
+      settingsVersion: "bbsv1_hash",
+    };
+    const preflightBrowserCompanion = vi.fn(async () => response as never);
+    const authenticated = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/preflight",
+      headers: {
+        "x-browser-bridge-companion-id": "companion-1",
+        authorization: "Bearer token",
+      },
+      body: { companion: { browser: "chrome", profileId: "profile-1" } },
+      service: { preflightBrowserCompanion },
+    });
+    await handleBrowserBridgeRoutes(authenticated);
+    expect(authenticated.res.body).toEqual(response);
+    expect(authenticated.res.body).not.toHaveProperty("session");
+    expect(authenticated.res.body).not.toHaveProperty("tabs");
+    expect(authenticated.res.body).not.toHaveProperty("currentPage");
   });
 
   it("rejects malformed JSON bodies before service mutation", async () => {

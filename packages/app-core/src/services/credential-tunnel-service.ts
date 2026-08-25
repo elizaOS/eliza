@@ -216,6 +216,28 @@ export function createCredentialTunnelService(options?: {
     return false;
   }
 
+  /**
+   * Drop every past-TTL scope. Returns how many were dropped.
+   *
+   * Eviction is otherwise entirely lazy: a scope leaves the maps only when the
+   * same scope is touched again after its TTL, or when every declared key has
+   * been redeemed. A child session that is killed, times out, or whose owner
+   * never fulfils the request does neither, so its entry — an AES key plus any
+   * ciphertext already tunneled into it — stays resident for the life of the
+   * parent runtime. Growth is driven by sub-agent request volume, and a catch
+   * cannot un-allocate a map entry, so the sweep has to actually run.
+   */
+  function sweepExpiredScopes(currentTime: number): number {
+    let swept = 0;
+    for (const entry of [...byTokenHash.values()]) {
+      if (entry.expiresAt <= currentTime) {
+        dropScope(entry);
+        swept += 1;
+      }
+    }
+    return swept;
+  }
+
   return {
     declareScope({ childSessionId, credentialKeys }) {
       if (
@@ -243,6 +265,13 @@ export function createCredentialTunnelService(options?: {
         }
         normalized.add(raw.trim());
       }
+
+      // Declaring is the only operation that grows the maps, so it is also the
+      // point at which abandoned scopes must be reclaimed. Nothing else runs a
+      // proactive sweep: `expireScopes` is public but no caller schedules it,
+      // so without this a parent runtime accumulates one dead entry per
+      // sub-agent that never redeems every key it declared.
+      sweepExpiredScopes(now());
 
       const tokenBytes = randomBytes(TOKEN_BYTES);
       const scopedToken = tokenBytes.toString("hex");
@@ -389,14 +418,7 @@ export function createCredentialTunnelService(options?: {
     },
 
     expireScopes(currentTime = now()) {
-      let swept = 0;
-      for (const entry of [...byTokenHash.values()]) {
-        if (entry.expiresAt <= currentTime) {
-          dropScope(entry);
-          swept += 1;
-        }
-      }
-      return swept;
+      return sweepExpiredScopes(currentTime);
     },
 
     hasCiphertext(credentialScopeId, key) {

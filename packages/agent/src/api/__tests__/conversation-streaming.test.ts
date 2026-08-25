@@ -1116,7 +1116,6 @@ describe("generateChatResponse token streaming", () => {
       expect.anything(),
       expect.objectContaining({
         stream: true,
-        maxTokens: 128,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
         stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
@@ -1131,6 +1130,7 @@ describe("generateChatResponse token streaming", () => {
         onStreamChunk: expect.any(Function),
       }),
     );
+    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
     expect(chunks).toEqual(["Yes", ", locally."]);
     expect(chunks.join("")).toBe("Yes, locally.");
     expect(snapshots).toEqual(["Yes", "Yes, locally."]);
@@ -1203,7 +1203,7 @@ describe("generateChatResponse token streaming", () => {
     expect(result.localInference?.provider).toBe("mobile-local-direct-reply");
   });
 
-  it("includes only six bounded recent messages and preserves multi-sentence replies", async () => {
+  it("includes complete recent-message history and preserves multi-sentence replies", async () => {
     const roomId = stringToUuid("room");
     const memories = Array.from({ length: 8 }, (_, index) => {
       const memory = createMessageMemory({
@@ -1250,14 +1250,10 @@ describe("generateChatResponse token streaming", () => {
     expect(runtime.getMemories).toHaveBeenCalledWith({
       roomId,
       tableName: "messages",
-      limit: 7,
       includeEmbedding: false,
     });
-    expect(params.prompt).not.toContain("0:");
-    expect(params.prompt).not.toContain("1:");
-    for (let index = 2; index < 8; index += 1) {
-      expect(params.prompt).toContain(`${index}:${"x".repeat(698)}`);
-      expect(params.prompt).not.toContain(`${index}:${"x".repeat(699)}`);
+    for (let index = 0; index < 8; index += 1) {
+      expect(params.prompt).toContain(`${index}:${"x".repeat(750)}`);
     }
     expect(params.prompt).toContain("Recent conversation (oldest to newest):");
     expect(params.prompt).toContain(
@@ -1940,13 +1936,13 @@ describe("generateConversationTitle", () => {
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        maxTokens: 20,
         temperature: 0.7,
         prompt: expect.stringContaining(
           "Can you answer from the local voice backend?",
         ),
       }),
     );
+    expect(useModel.mock.calls[0]?.[1]).not.toHaveProperty("maxTokens");
   });
 
   it("passes caller cancellation into the title model request", async () => {

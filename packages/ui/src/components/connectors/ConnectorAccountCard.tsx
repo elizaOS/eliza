@@ -3,10 +3,14 @@
  * status/role/privacy, an editable label, and the per-account actions (set
  * default, sync, privacy/purpose edit, delete-with-confirmation). Edits are
  * sent as `ConnectorAccountUpdateInput` through the parent's callbacks; delete
- * goes through a confirmation dialog.
+ * goes through a confirmation dialog. When the provider declares an OAuth
+ * capability catalog the card also renders the unified capability chip strip
+ * (granted / missing-with-Grant / access-not-reported) and a Reconnect
+ * affordance for reauth-required accounts (#19884).
  */
 
-import { RefreshCw, Star, Trash2 } from "lucide-react";
+import type { ConnectorOAuthCapabilityDeclaration } from "@elizaos/shared/connector-account-catalog";
+import { KeyRound, RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
   ConnectorAccountRecord,
@@ -20,6 +24,12 @@ import {
   useTranslation,
 } from "../../state/TranslationContext.hooks";
 import { EditableAccountLabel } from "../accounts/EditableAccountLabel";
+import { ConnectedCapabilityChips } from "../capabilities/ConnectedCapabilityChips";
+import {
+  presentConnectorAccountStatus,
+  presentConnectorCapabilityChips,
+  readConnectorAccountCapabilityAccess,
+} from "../capabilities/connected-capability-presentation";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -49,11 +59,24 @@ export interface ConnectorAccountCardProps {
   onRefresh: () => Promise<void>;
   onDelete: () => Promise<void>;
   onMakeDefault: () => Promise<void>;
+  /**
+   * Provider-declared least-privilege capability catalog. When present the
+   * card renders the unified capability chip strip (#19884); when absent the
+   * provider has no declared capability model and the strip is omitted.
+   */
+  declaredCapabilities?: readonly ConnectorOAuthCapabilityDeclaration[];
+  /** Starts an incremental-scope OAuth restart for one missing capability. */
+  onGrantCapability?: (capabilityId: string) => void;
+  grantBusyCapabilityId?: string | null;
+  /** Re-runs OAuth for this account when it needs reauthentication. */
+  onReconnect?: () => void;
+  reconnectBusy?: boolean;
 }
 
+/** Status label only — the tone comes from the shared capability vocabulary
+ * (`presentConnectorAccountStatus`) so Connections and Permissions agree. */
 interface StatusInfo {
   label: string;
-  tone: "success" | "warning" | "danger" | "muted";
 }
 
 type TranslateFn = TranslationContextValue["t"];
@@ -95,40 +118,34 @@ function deriveStatus(
         label: t("connectoraccount.status.connected", {
           defaultValue: "Connected",
         }),
-        tone: "success",
       };
     case "pending":
       return {
         label: t("connectoraccount.status.pending", {
           defaultValue: "Pending",
         }),
-        tone: "warning",
       };
     case "needs-reauth":
       return {
         label: t("connectoraccount.status.needsReauth", {
           defaultValue: "Needs reauth",
         }),
-        tone: "danger",
       };
     case "error":
       return {
         label: t("connectoraccount.status.error", { defaultValue: "Error" }),
-        tone: "danger",
       };
     case "disconnected":
       return {
         label: t("connectoraccount.status.disconnected", {
           defaultValue: "Disconnected",
         }),
-        tone: "muted",
       };
     default:
       return {
         label: t("connectoraccount.status.unknown", {
           defaultValue: "Unknown",
         }),
-        tone: "muted",
       };
   }
 }
@@ -156,6 +173,11 @@ export function ConnectorAccountCard({
   onRefresh,
   onDelete,
   onMakeDefault,
+  declaredCapabilities,
+  onGrantCapability,
+  grantBusyCapabilityId = null,
+  onReconnect,
+  reconnectBusy = false,
 }: ConnectorAccountCardProps) {
   const { t } = useTranslation();
   const deleteModal = useModalState();
@@ -163,6 +185,14 @@ export function ConnectorAccountCard({
   const confirmingDelete = deleteModal.state.status !== "closed";
   const [defaultBusy, setDefaultBusy] = useState(false);
   const status = deriveStatus(account.status, t);
+  const statusPresentation = presentConnectorAccountStatus(account.status);
+  const capabilityAccess = readConnectorAccountCapabilityAccess(account);
+  const capabilityChips =
+    declaredCapabilities && declaredCapabilities.length > 0
+      ? presentConnectorCapabilityChips(capabilityAccess, declaredCapabilities)
+      : undefined;
+  const showReconnect =
+    statusPresentation.needsReconnect && Boolean(onReconnect);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
 
@@ -182,17 +212,19 @@ export function ConnectorAccountCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 px-3 py-3 transition-opacity",
+        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 p-3 transition-opacity",
         !enabled && "bg-bg-muted/40",
         selected && "border-accent/70 bg-accent/5",
       )}
     >
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
+        <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
           {account.avatarUrl ? (
             <img
               src={account.avatarUrl}
               alt=""
+              width={36}
+              height={36}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -202,7 +234,11 @@ export function ConnectorAccountCard({
 
         <div className="min-w-[180px] flex-1 space-y-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <StatusBadge label={status.label} tone={status.tone} withDot />
+            <StatusBadge
+              label={status.label}
+              tone={statusPresentation.tone}
+              withDot
+            />
             <EditableAccountLabel
               value={account.label}
               disabled={saving}
@@ -212,12 +248,12 @@ export function ConnectorAccountCard({
               })}
             />
             {isDefault ? (
-              <Badge variant="outline" className="shrink-0 text-[10px]">
+              <Badge variant="outline" size="compact" className="shrink-0">
                 {t("connectoraccount.default", { defaultValue: "Default" })}
               </Badge>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
             {displayHandle ? (
               <span className="max-w-[220px] truncate">{displayHandle}</span>
             ) : null}
@@ -238,17 +274,37 @@ export function ConnectorAccountCard({
               size="sm"
               disabled={saving || selected}
               onClick={onSelect}
-              className="h-7 px-2 text-xs"
             >
               {selected
                 ? t("connectoraccount.selected", { defaultValue: "Selected" })
                 : t("connectoraccount.use", { defaultValue: "Use" })}
             </Button>
           ) : null}
+          {showReconnect ? (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={saving || reconnectBusy}
+              onClick={() => onReconnect?.()}
+              aria-label={t("connectoraccount.reconnect", {
+                defaultValue: "Reconnect account",
+              })}
+            >
+              {reconnectBusy ? (
+                <Spinner className="size-3" />
+              ) : (
+                <KeyRound className="size-3.5" aria-hidden />
+              )}
+              {t("connectoraccount.reconnectLabel", {
+                defaultValue: "Reconnect",
+              })}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={saving || isDefault || defaultBusy}
             onClick={() => void handleMakeDefault()}
             aria-label={t("connectoraccount.makeDefault", {
@@ -257,12 +313,11 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.makeDefault", {
               defaultValue: "Make default account",
             })}
-            className="h-7 w-7 p-0"
           >
             {defaultBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <Star className="h-3.5 w-3.5" aria-hidden />
+              <Star className="size-3.5" aria-hidden />
             )}
           </Button>
           <Button
@@ -274,10 +329,9 @@ export function ConnectorAccountCard({
             aria-label={t("connectoraccount.test", {
               defaultValue: "Test connector account",
             })}
-            className="h-7 px-2 text-xs"
           >
             {testBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
               t("connectoraccount.test", { defaultValue: "Test" })
             )}
@@ -285,7 +339,7 @@ export function ConnectorAccountCard({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="icon-sm"
             disabled={saving || refreshBusy}
             onClick={() => void onRefresh()}
             aria-label={t("connectoraccount.refresh", {
@@ -294,18 +348,17 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.refresh", {
               defaultValue: "Refresh connector account",
             })}
-            className="h-7 w-7 p-0"
           >
             {refreshBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              <RefreshCw className="size-3.5" aria-hidden />
             )}
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="icon-sm"
             disabled={saving}
             onClick={deleteModal.open}
             aria-label={t("connectoraccount.delete", {
@@ -314,12 +367,19 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.delete", {
               defaultValue: "Delete connector account",
             })}
-            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
           </Button>
         </div>
       </div>
+
+      {capabilityChips !== undefined ? (
+        <ConnectedCapabilityChips
+          chips={capabilityChips}
+          grantBusyCapabilityId={grantBusyCapabilityId}
+          onGrantCapability={onGrantCapability}
+        />
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorAccountPurposeSelector
@@ -393,7 +453,7 @@ export function ConnectorAccountCard({
               onClick={handleDelete}
             >
               {deleteBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("connectoraccount.removeDialog.confirm", {
                   defaultValue: "Remove account",

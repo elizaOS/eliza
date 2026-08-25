@@ -74,6 +74,11 @@ describe("isSafeExecutableValue", () => {
     expect(isSafeExecutableValue([])).toBe(false);
   });
 
+  it("rejects an executable argument after an adversarial whitespace run", () => {
+    const value = `/usr/local/bin/bun${"\t".repeat(100_000)}--version`;
+    expect(isSafeExecutableValue(value)).toBe(false);
+  });
+
   it("fuzzes every ASCII-dash-leading value as unsafe", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 100 }), (suffix) => {

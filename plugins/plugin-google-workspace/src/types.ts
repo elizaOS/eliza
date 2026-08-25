@@ -413,6 +413,58 @@ export interface GoogleDriveFileList {
   nextPageToken: string | null;
 }
 
+export interface GooglePersonEmailAddress {
+  value: string;
+  type?: string;
+  primary?: boolean;
+}
+
+export interface GooglePersonPhoneNumber {
+  value: string;
+  type?: string;
+  primary?: boolean;
+}
+
+export interface GooglePersonOrganization {
+  name?: string;
+  title?: string;
+}
+
+export interface GooglePersonContact {
+  /** People API resource name, e.g. `people/c123`. Stable per-account handle. */
+  resourceName: string;
+  displayName: string;
+  givenName?: string;
+  familyName?: string;
+  emailAddresses: GooglePersonEmailAddress[];
+  phoneNumbers: GooglePersonPhoneNumber[];
+  organizations: GooglePersonOrganization[];
+  photoUrl?: string;
+  /** "contact" for saved contacts, "otherContact" for interaction-derived entries. */
+  source: "contact" | "otherContact";
+}
+
+export interface GooglePeopleContactPage {
+  contacts: GooglePersonContact[];
+  nextPageToken: string | null;
+}
+
+export interface GooglePeopleListContactsInput extends GoogleAccountRef {
+  maxResults?: number;
+  pageToken?: string;
+}
+
+export interface GooglePeopleSearchContactsInput extends GoogleAccountRef {
+  query: string;
+  maxResults?: number;
+  /** Include interaction-derived "Other Contacts" in the search (default true). */
+  includeOtherContacts?: boolean;
+}
+
+export interface GooglePeopleGetContactInput extends GoogleAccountRef {
+  resourceName: string;
+}
+
 export interface GoogleDocContent {
   title: string;
   plainText: string;
@@ -860,6 +912,12 @@ export interface IGoogleDriveService extends Service {
   ): Promise<GoogleSheetUpdateResult>;
 }
 
+export interface IGooglePeopleService extends Service {
+  listContacts(params: GooglePeopleListContactsInput): Promise<GooglePeopleContactPage>;
+  searchContacts(params: GooglePeopleSearchContactsInput): Promise<GooglePersonContact[]>;
+  getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact>;
+}
+
 export interface IGoogleMeetService extends Service {
   createMeeting(params: GoogleMeetCreateMeetingInput): Promise<GoogleMeetMeeting>;
   getMeeting(params: GoogleMeetGetMeetingInput): Promise<GoogleMeetMeeting>;
@@ -885,7 +943,8 @@ export interface IGoogleWorkspaceService
   extends IGoogleGmailService,
     IGoogleCalendarService,
     IGoogleDriveService,
-    IGoogleMeetService {
+    IGoogleMeetService,
+    IGooglePeopleService {
   getOAuthProviderConfig(capabilities: readonly GoogleCapability[]): GoogleOAuthProviderConfig;
   getOAuthProviderMetadata(): GoogleOAuthProviderMetadata;
 }

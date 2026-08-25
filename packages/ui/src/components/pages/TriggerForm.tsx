@@ -368,8 +368,7 @@ export function TriggerForm({
               <Button
                 ref={runNowButton.ref}
                 variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs"
+                size="compact"
                 disabled={triggersSaving}
                 onClick={() => void onRunSelectedTrigger(editingId)}
                 {...runNowButton.agentProps}
@@ -379,8 +378,7 @@ export function TriggerForm({
               <Button
                 ref={toggleEnabledButton.ref}
                 variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs"
+                size="compact"
                 onClick={() =>
                   void onToggleTriggerEnabled(editingId, editorEnabled)
                 }
@@ -390,9 +388,8 @@ export function TriggerForm({
               </Button>
               <Button
                 ref={deleteButton.ref}
-                variant="outline"
-                size="sm"
-                className="h-9 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10 hover:text-danger"
+                variant="dangerOutline"
+                size="compact"
                 onClick={() => void onDelete()}
                 {...deleteButton.agentProps}
               >
@@ -676,9 +673,9 @@ export function TriggerForm({
           {form.displayName.trim() && (
             <Button
               ref={saveTemplateButton.ref}
-              variant="ghost"
-              size="sm"
-              className="h-auto px-0 py-0 text-xs font-medium text-muted underline-offset-2 transition-colors hover:bg-transparent hover:text-accent hover:underline"
+              variant="mutedLink"
+              size="content"
+              className="transition-colors"
               onClick={saveFormAsTemplate}
               {...saveTemplateButton.agentProps}
             >
@@ -692,8 +689,7 @@ export function TriggerForm({
             <Button
               ref={submitButton.ref}
               variant="default"
-              size="sm"
-              className="h-10 px-6 text-sm text-white hover:text-white"
+              size="wide"
               disabled={
                 triggersSaving ||
                 (form.kind === "workflow" && !form.workflowId) ||
@@ -712,8 +708,7 @@ export function TriggerForm({
             <Button
               ref={cancelButton.ref}
               variant="outline"
-              size="sm"
-              className="h-10 px-6 text-sm"
+              size="wide"
               onClick={() => {
                 if (editingId && selectedTriggerId === editingId) {
                   const trigger = triggers.find(
@@ -842,13 +837,9 @@ function TriggerKindSection({
           ref={promptKindButton.ref}
           aria-pressed={form.kind === "text"}
           onClick={() => setField("kind", "text")}
-          variant="ghost"
-          size="sm"
-          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
-            form.kind === "text"
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border/40 text-muted hover:border-border hover:text-txt"
-          }`}
+          variant="choice"
+          size="compact"
+          data-state={form.kind === "text" ? "on" : "off"}
           {...promptKindButton.agentProps}
         >
           {t("triggerform.prompt", { defaultValue: "Prompt" })}
@@ -857,13 +848,9 @@ function TriggerKindSection({
           ref={workflowKindButton.ref}
           aria-pressed={form.kind === "workflow"}
           onClick={() => setField("kind", "workflow")}
-          variant="ghost"
-          size="sm"
-          className={`rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors ${
-            form.kind === "workflow"
-              ? "border-accent bg-accent/10 text-accent"
-              : "border-border/40 text-muted hover:border-border hover:text-txt"
-          }`}
+          variant="choice"
+          size="compact"
+          data-state={form.kind === "workflow" ? "on" : "off"}
           {...workflowKindButton.agentProps}
         >
           {t("triggerform.workflow", { defaultValue: "Workflow" })}
@@ -895,9 +882,9 @@ function TriggerKindSection({
               <p>{t("triggers.workflowUnavailable")}</p>
               <Button
                 ref={goToWorkflowsButton.ref}
-                variant="ghost"
-                size="sm"
-                className="mt-2 h-auto px-0 py-0 text-xs font-medium text-accent underline-offset-2 hover:bg-transparent hover:underline"
+                variant="externalLink"
+                size="content"
+                className="mt-2"
                 onClick={onGoToWorkflows}
                 {...goToWorkflowsButton.agentProps}
               >
@@ -983,8 +970,8 @@ function CronExampleButton({
     <Button
       ref={ref}
       variant="outline"
-      size="sm"
-      className="h-6 px-2 py-0 text-xs font-mono"
+      size="micro"
+      className="font-mono"
       onClick={() => setField("cronExpression", expr)}
       {...agentProps}
     >
@@ -1346,7 +1333,7 @@ function TriggerRunHistory({
   return (
     <div className="mt-10 grid gap-8 pt-8">
       <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.maxRuns")}
           </dt>
@@ -1361,7 +1348,7 @@ function TriggerRunHistory({
             })()}
           </dd>
         </PagePanel.SummaryCard>
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.LastRun")}
           </dt>
@@ -1376,7 +1363,7 @@ function TriggerRunHistory({
             })()}
           </dd>
         </PagePanel.SummaryCard>
-        <PagePanel.SummaryCard className="px-4 py-4">
+        <PagePanel.SummaryCard className="p-4">
           <dt className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted">
             {t("triggersview.nextRun")}
           </dt>
@@ -1401,8 +1388,7 @@ function TriggerRunHistory({
           <Button
             ref={refreshRunsButton.ref}
             variant="outline"
-            size="sm"
-            className="h-7 px-3 text-xs-tight"
+            size="tinyWide"
             onClick={() => void loadTriggerRuns(editingId)}
             {...refreshRunsButton.agentProps}
           >
@@ -1417,7 +1403,7 @@ function TriggerRunHistory({
           if (!hasLoadedRuns) {
             return (
               <div className="py-6 text-sm text-muted flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
+                <div className="size-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
                 {t("appsview.Loading")}
               </div>
             );
@@ -1440,7 +1426,7 @@ function TriggerRunHistory({
                     <div className="flex items-start gap-3">
                       <StatusDot
                         status={run.status}
-                        className="mt-1 flex-shrink-0"
+                        className="mt-1 shrink-0"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-1">

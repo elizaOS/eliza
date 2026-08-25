@@ -156,6 +156,17 @@ function sampleState(marker: string): AgentBackupStateData {
   };
 }
 
+/**
+ * Legal JSON nested `depth` objects deep — valid for `JSON.parse`/`stringify`
+ * and for the legacy unbounded canonical walk, but past the bounded walk's
+ * `maxDepth: 64` (#23817), so hashing it throws `CANONICAL_JSON_UNBOUNDED`.
+ */
+function nestObject(depth: number): Record<string, unknown> {
+  let value: Record<string, unknown> = { leaf: true };
+  for (let i = 0; i < depth; i += 1) value = { child: value };
+  return value;
+}
+
 async function seedFullBackup(
   sandboxRecordId: string,
   state: AgentBackupStateData,
@@ -577,6 +588,87 @@ describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
     expect(row.verification_error).toStartWith("hash-mismatch:");
     expect(row.verification_error).toContain("media/avatar.png");
     expect(alerts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("over-depth payload (#23836): failed invalid-payload, not thrown, not errored", async () => {
+    expect(pgliteReady).toBe(true);
+    const sandboxId = await seedSandbox();
+    const state: AgentBackupStateData = {
+      ...sampleState("deep"),
+      config: { deep: nestObject(80) },
+    };
+    // Historical-compatibility receipt: this content_hash is minted with the
+    // test's legacy unbounded sorted-key scheme — the hash the pre-#23817
+    // verifier computed for this exact state. The bounded walk now rejects the
+    // state at maxDepth 64, so the chosen behavior for such a backup is a
+    // deterministic `failed: invalid-payload` stamp (it can no longer hash on
+    // the producer, differ, or restore path either), never infra `errored`.
+    const backupId = await seedFullBackup(sandboxId, state, {
+      contentHash: fixtureSha256Json(state),
+    });
+
+    const result = await verifyBackupRestorability(await readBackupRow(backupId));
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { kind: "invalid-payload" },
+      checks: { decrypted: true, contentHashChecked: false, manifestChecked: false },
+    });
+    expect(result.failure?.message).toStartWith("content_hash:");
+    expect(result.failure?.message).toContain('"max":64');
+    // Metadata-only: the stamped message never carries backup content.
+    expect(result.failure?.message).not.toContain("deep");
+  });
+
+  test("over-depth manifest character (#23836): failed invalid-payload from the manifest site", async () => {
+    expect(pgliteReady).toBe(true);
+    const sandboxId = await seedSandbox();
+    const manifest = fixtureManifest(sandboxId);
+    const runtimeCharacter = { name: "Deep", bio: nestObject(80) };
+    manifest.components.character = {
+      runtimeCharacter,
+      sha256: fixtureSha256Json({ runtimeCharacter, configFile: undefined }),
+    };
+    manifest.integrity.componentHashes.character = manifest.components.character.sha256;
+    const state: AgentBackupStateData = { ...sampleState("deep-manifest"), manifest };
+    const backupId = await seedFullBackup(sandboxId, state, { contentHash: null });
+
+    const result = await verifyBackupRestorability(await readBackupRow(backupId));
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { kind: "invalid-payload" },
+      checks: { decrypted: true, contentHashChecked: false, manifestChecked: false },
+    });
+    expect(result.failure?.message).toStartWith("manifest:");
+  });
+
+  test("two-row cycle (#23836): first row invalid-payload, second still verified, errored 0", async () => {
+    expect(pgliteReady).toBe(true);
+    const sandboxA = await seedSandbox();
+    const deepState: AgentBackupStateData = {
+      ...sampleState("cycle-deep"),
+      config: { deep: nestObject(80) },
+    };
+    const backupA = await seedFullBackup(sandboxA, deepState, {
+      contentHash: fixtureSha256Json(deepState),
+    });
+    const sandboxB = await seedSandbox();
+    const backupB = await seedFullBackup(sandboxB, sampleState("cycle-healthy"));
+
+    const { alerts, alert } = makeAlertSpy();
+    const summary = await runBackupVerificationCycle({ config: CONFIG, alert });
+
+    expect(summary).toMatchObject({ sampled: 2, verified: 1, failed: 1, errored: 0 });
+    expect(summary.failures).toHaveLength(1);
+    expect(summary.failures[0]).toMatchObject({ backupId: backupA, kind: "invalid-payload" });
+    const rowA = await readBackupRow(backupA);
+    expect(rowA.verification_status).toBe("failed");
+    expect(rowA.verification_error).toStartWith("invalid-payload: content_hash:");
+    const rowB = await readBackupRow(backupB);
+    expect(rowB.verification_status).toBe("verified");
+    expect(rowB.verification_error).toBeNull();
+    expect(alerts.map((a) => a.dedupKey)).toEqual(["agent-backup-verification-failure"]);
   });
 
   test("corrupted ciphertext: AEAD failure is stamped decrypt-failed and alerts fire", async () => {

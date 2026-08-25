@@ -49,7 +49,7 @@ function summarizePage(page: BrowserBridgePageContext): string {
     page.mainText?.trim() ||
     page.title.trim() ||
     page.url;
-  return text.length > 500 ? `${text.slice(0, 497)}...` : text;
+  return text;
 }
 
 function pageToMessageRef(page: BrowserBridgePageContext): MessageRef {
@@ -127,9 +127,7 @@ export class BrowserBridgeAdapter extends BaseMessageAdapter {
     if (!page) return [];
     const message = pageToMessageRef(page);
     if (!matchesListOptions(message, opts)) return [];
-    return opts.limit && opts.limit > 0
-      ? [message].slice(0, opts.limit)
-      : [message];
+    return opts.limit === 0 ? [] : [message];
   }
 
   protected override async getMessageImpl(

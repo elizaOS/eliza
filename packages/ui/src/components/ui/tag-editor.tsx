@@ -80,13 +80,13 @@ export function TagEditor({
             <span>{item}</span>
             <Button
               type="button"
-              size="icon"
-              variant="ghost"
-              className="h-4 w-4 rounded-sm text-muted hover:text-txt"
+              size="content"
+              variant="ghostMuted"
+              className="size-4 rounded-sm p-0"
               aria-label={`${removeLabel} ${item}`}
               onClick={() => removeItem(item)}
             >
-              <X className="h-3 w-3" />
+              <X className="size-3" />
             </Button>
           </span>
         ))}

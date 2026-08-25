@@ -40,7 +40,6 @@ import {
   setupFooterClass,
   setupHeaderBlockClass,
   setupHelperTextClassName,
-  setupInputClassName,
   setupPrimaryActionClass,
   setupPrimaryActionTextShadowStyle,
   setupReadableTextFaintClassName,
@@ -188,7 +187,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         // sessionStorage unavailable (e.g. private browsing on some browsers).
         // Session is still in memory for this page load; startup can advance.
       }
-      persistActiveServerCredential(result.sessionId);
+      await persistActiveServerCredential(result.sessionId);
       client.setToken(result.sessionId);
 
       setSubmitState({ phase: "success" });
@@ -263,6 +262,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         >
           {({ describedBy, invalid }) => (
             <Input
+              variant="form"
+              density="relaxed"
+              hasError={invalid}
               ref={inputRef}
               id={fieldId}
               type="password"
@@ -281,10 +283,6 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
               disabled={isSubmitting}
               aria-invalid={invalid}
               aria-describedby={describedBy}
-              className={cn(
-                setupInputClassName,
-                invalid && "border-[var(--danger)] ",
-              )}
             />
           )}
         </SetupField>
@@ -294,7 +292,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
       <div
         className={cn(
           "rounded-sm px-4 py-3",
-          "border border-[rgba(240,185,11,0.18)] bg-[rgba(240,185,11,0.07)]",
+          "border border-accent/20 bg-accent/10",
         )}
       >
         <p
@@ -333,9 +331,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
             over on a local agent instead of being trapped. */}
         <Button
           type="button"
-          variant="ghost"
+          variant="mutedLink"
+          size="content"
           onClick={() => startFreshFirstRunReload()}
-          className="h-auto bg-transparent p-0 text-sm text-[var(--first-run-text-muted)] underline underline-offset-2 transition-opacity hover:bg-transparent hover:opacity-80"
         >
           {t("bootstrapstep.startOver", { defaultValue: "Start over" })}
         </Button>

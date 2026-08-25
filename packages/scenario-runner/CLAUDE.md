@@ -83,9 +83,14 @@ import type { ScenarioDefinition, ScenarioTurn, CapturedAction }
 eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>]
                             [--report <jsonPath>] [--report-dir <dir>]
                             [--runId <id>] [--scenario id1,id2]
-                            [--lane pr-deterministic|live-only] [fileGlob ...]
+                            [--lane pr-deterministic|live-only]
+                            [--provider groq|openai|anthropic|google|openrouter|cli]
+                            [fileGlob ...]
 eliza-scenarios list <dir> [--lane pr-deterministic|live-only] [fileGlob ...]
 ```
+
+`--provider` pins a `run` invocation to one configured live provider instead of
+using provider precedence. Invalid or unavailable selections fail loudly.
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
 

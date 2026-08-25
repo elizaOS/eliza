@@ -136,11 +136,15 @@ describe("deterministic canaries", () => {
 });
 
 describe("deterministic security check outcomes", () => {
-  it("requires only a real successful gitleaks outcome", () => {
+  it("requires only a real successful PR Static Smoke outcome", () => {
     assert.equal(evaluate([]).passed, false);
     assert.deepEqual(
       evaluate([
-        { name: "gitleaks", conclusion: "success", status: "completed" },
+        {
+          name: "All Tests Passed",
+          conclusion: "success",
+          status: "completed",
+        },
         { name: "claude-review", conclusion: "failure", status: "completed" },
         { name: "security", conclusion: "failure", status: "completed" },
       ]),
@@ -148,7 +152,7 @@ describe("deterministic security check outcomes", () => {
     );
   });
 
-  it("fails every non-success terminal conclusion for gitleaks only", () => {
+  it("fails every non-success terminal conclusion for PR Static Smoke only", () => {
     for (const conclusion of [
       "failure",
       "cancelled",
@@ -159,33 +163,35 @@ describe("deterministic security check outcomes", () => {
       "stale",
     ]) {
       const state = evaluate([
-        { name: "gitleaks", conclusion, status: "completed" },
+        { name: "All Tests Passed", conclusion, status: "completed" },
       ]);
-      assert.deepEqual(state.failed, ["gitleaks"], conclusion);
+      assert.deepEqual(state.failed, ["All Tests Passed"], conclusion);
       assert.equal(state.passed, false);
     }
   });
 
   it("waits for missing and nonterminal checks", () => {
-    assert.deepEqual(evaluate([]).waiting, ["gitleaks"]);
+    assert.deepEqual(evaluate([]).waiting, ["All Tests Passed"]);
     assert.deepEqual(
-      evaluate([{ name: "gitleaks", conclusion: null, status: "in_progress" }])
-        .waiting,
-      ["gitleaks"],
+      evaluate([
+        { name: "All Tests Passed", conclusion: null, status: "in_progress" },
+      ]).waiting,
+      ["All Tests Passed"],
     );
     assert.deepEqual(
-      evaluate([{ name: "gitleaks", conclusion: null, status: "in_progress" }])
-        .active,
-      ["gitleaks"],
+      evaluate([
+        { name: "All Tests Passed", conclusion: null, status: "in_progress" },
+      ]).active,
+      ["All Tests Passed"],
     );
   });
 
   it("uses the newest check run for a repeated context", () => {
     const state = evaluate([
-      { name: "gitleaks", conclusion: null, status: "in_progress" },
-      { name: "gitleaks", conclusion: "success", status: "completed" },
+      { name: "All Tests Passed", conclusion: null, status: "in_progress" },
+      { name: "All Tests Passed", conclusion: "success", status: "completed" },
     ]);
-    assert.deepEqual(state.waiting, ["gitleaks"]);
+    assert.deepEqual(state.waiting, ["All Tests Passed"]);
     assert.equal(state.passed, false);
   });
 });
@@ -210,13 +216,13 @@ describe("delayed fork-workflow approval", () => {
     };
   }
 
-  it("allows a bounded completion grace when gitleaks starts by the deadline", async () => {
+  it("allows a bounded completion grace when PR Static Smoke starts by the deadline", async () => {
     const clock = fakeClock();
     const states = [
       [],
       [
         {
-          name: "gitleaks",
+          name: "All Tests Passed",
           conclusion: null,
           status: "in_progress",
           started_at: timestamp(5),
@@ -224,7 +230,7 @@ describe("delayed fork-workflow approval", () => {
       ],
       [
         {
-          name: "gitleaks",
+          name: "All Tests Passed",
           conclusion: "success",
           status: "completed",
           started_at: timestamp(5),
@@ -254,7 +260,9 @@ describe("delayed fork-workflow approval", () => {
           checkLoads += 1;
           return [];
         },
-        loadActionRequiredPaths: async () => [".github/workflows/ci.yml"],
+        loadActionRequiredPaths: async () => [
+          ".github/workflows/pr-static-smoke.yml",
+        ],
         timeoutMs: 1_200_000,
         completionGraceMs: 240_000,
         intervalMs: 30_000,
@@ -263,7 +271,7 @@ describe("delayed fork-workflow approval", () => {
           sleeps += 1;
         },
       }),
-      /required workflows awaiting maintainer approval: \.github\/workflows\/ci\.yml; approve the listed workflows, then rerun this gate/,
+      /required workflows awaiting maintainer approval: \.github\/workflows\/pr-static-smoke\.yml; approve the listed workflows, then rerun this gate/,
     );
 
     assert.equal(checkLoads, 0);
@@ -291,7 +299,7 @@ describe("delayed fork-workflow approval", () => {
       waitForRequiredChecks({
         loadChecks: async () => [
           {
-            name: "gitleaks",
+            name: "All Tests Passed",
             conclusion: null,
             status: "in_progress",
             started_at: timestamp(0),
@@ -318,7 +326,7 @@ describe("delayed fork-workflow approval", () => {
           clock.advance(1);
           return [
             {
-              name: "gitleaks",
+              name: "All Tests Passed",
               conclusion: null,
               status: "in_progress",
               started_at: timestamp(11),
@@ -341,7 +349,7 @@ describe("delayed fork-workflow approval", () => {
       [],
       [
         {
-          name: "gitleaks",
+          name: "All Tests Passed",
           conclusion: null,
           status: "in_progress",
           started_at: timestamp(5),
@@ -349,7 +357,7 @@ describe("delayed fork-workflow approval", () => {
       ],
       [
         {
-          name: "gitleaks",
+          name: "All Tests Passed",
           conclusion: "success",
           status: "completed",
           started_at: timestamp(5),
@@ -386,7 +394,7 @@ describe("delayed fork-workflow approval", () => {
         if (loadCount === 2) {
           return [
             {
-              name: "gitleaks",
+              name: "All Tests Passed",
               conclusion: null,
               status: "in_progress",
               started_at: timestamp(5),
@@ -396,7 +404,7 @@ describe("delayed fork-workflow approval", () => {
         clock.advance(5);
         return [
           {
-            name: "gitleaks",
+            name: "All Tests Passed",
             conclusion: "success",
             status: "completed",
             started_at: timestamp(5),

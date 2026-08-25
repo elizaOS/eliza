@@ -849,7 +849,14 @@ describe("orchestrator routes — room, telemetry, agents", () => {
       { framework: "codex" },
     );
     expect(added.status).toBe(201);
-    expect((added.json.sessions as unknown[]).length).toBe(1);
+    const sessions = added.json.sessions as Array<Record<string, unknown>>;
+    expect(sessions).toHaveLength(1);
+    // Task-control routes must never mint the user-attendance capability;
+    // it is minted only while handling a concrete user-authored message
+    // (see subscriptionAuthorizationForMessage in actions/tasks.ts).
+    expect(sessions[0]?.metadata ?? {}).not.toHaveProperty(
+      "subscriptionExecutionAuthorization",
+    );
 
     const stopped = await call(
       service,

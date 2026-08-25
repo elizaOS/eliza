@@ -3,14 +3,24 @@
  * restarted, and replaced Baileys sockets.
  */
 import { EventEmitter } from "node:events";
-import fs from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sockets: FakeSocket[] = [];
 const credentialSaves: ReturnType<typeof vi.fn>[] = [];
+const authRemovals: string[] = [];
+
+vi.mock("../baileys/auth", () => ({
+  validateWhatsAppAccountId: (accountId: string) => accountId,
+  whatsappDurableAuthExists: vi.fn(async () => true),
+  loadDurableBaileysAuthState: vi.fn(async () => {
+    const saveCreds = vi.fn(async () => undefined);
+    credentialSaves.push(saveCreds);
+    return { state: {}, saveCreds, authDir: "/owned/auth" };
+  }),
+  removeDurableBaileysAuthState: vi.fn(async (accountId: string) => {
+    authRemovals.push(accountId);
+  }),
+}));
 
 class FakeSocket {
   readonly ev = new EventEmitter();
@@ -24,11 +34,6 @@ vi.mock("@whiskeysockets/baileys", () => ({
     const socket = new FakeSocket();
     sockets.push(socket);
     return socket;
-  }),
-  useMultiFileAuthState: vi.fn(async () => {
-    const saveCreds = vi.fn(async () => undefined);
-    credentialSaves.push(saveCreds);
-    return { state: {}, saveCreds };
   }),
   fetchLatestBaileysVersion: vi.fn(async () => ({ version: [2, 3000, 0] })),
   DisconnectReason: {
@@ -60,6 +65,11 @@ vi.mock("pino", () => ({
 
 import makeWASocket, { fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import QRCode from "qrcode";
+import {
+  loadDurableBaileysAuthState,
+  removeDurableBaileysAuthState,
+  whatsappDurableAuthExists,
+} from "../baileys/auth";
 import { WhatsAppPairingSession, whatsappLogout } from "./whatsapp-pairing";
 
 afterEach(() => {
@@ -67,6 +77,7 @@ afterEach(() => {
   vi.clearAllMocks();
   sockets.length = 0;
   credentialSaves.length = 0;
+  authRemovals.length = 0;
 });
 
 describe("WhatsAppPairingSession stop/restart race", () => {
@@ -465,11 +476,20 @@ describe("WhatsAppPairingSession stop/restart race", () => {
 });
 
 describe("whatsappLogout teardown ordering", () => {
+  it("continues to separately validated local removal when snapshot loading is corrupt", async () => {
+    vi.mocked(whatsappDurableAuthExists).mockRejectedValueOnce(
+      Object.assign(new Error("corrupt snapshot"), {
+        code: "WHATSAPP_AUTH_SNAPSHOT_CORRUPT",
+      })
+    );
+
+    await expect(whatsappLogout("acct-corrupt")).resolves.toBeUndefined();
+    expect(loadDurableBaileysAuthState).not.toHaveBeenCalled();
+    expect(removeDurableBaileysAuthState).toHaveBeenCalledWith("acct-corrupt");
+    expect(authRemovals).toEqual(["acct-corrupt"]);
+  });
+
   it("settles the logout socket before deleting its authentication directory", async () => {
-    const workspaceDir = await mkdtemp(path.join(tmpdir(), "whatsapp-logout-test-"));
-    const authDir = path.join(workspaceDir, "whatsapp-auth", "acct-1");
-    await mkdir(authDir, { recursive: true });
-    await writeFile(path.join(authDir, "creds.json"), "{}");
     let releaseEnd: (() => void) | undefined;
     const endGate = new Promise<void>((resolve) => {
       releaseEnd = resolve;
@@ -477,7 +497,7 @@ describe("whatsappLogout teardown ordering", () => {
 
     try {
       let finished = false;
-      const loggingOut = whatsappLogout(workspaceDir, "acct-1").then(() => {
+      const loggingOut = whatsappLogout("acct-1").then(() => {
         finished = true;
       });
       await vi.waitFor(() => expect(sockets).toHaveLength(1));
@@ -489,14 +509,13 @@ describe("whatsappLogout teardown ordering", () => {
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       expect(finished).toBe(false);
-      expect(fs.existsSync(authDir)).toBe(true);
+      expect(authRemovals).toEqual([]);
 
       releaseEnd?.();
       await loggingOut;
-      expect(fs.existsSync(authDir)).toBe(false);
+      expect(authRemovals).toEqual(["acct-1"]);
     } finally {
       releaseEnd?.();
-      await rm(workspaceDir, { recursive: true, force: true });
     }
   });
 });

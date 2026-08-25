@@ -6,6 +6,8 @@
  * entry's stable nonce with `enforceNonce`, making provider retries idempotent.
  */
 
+import { chunkDiscordText, discordChunkNonce } from "./discord-text-chunks";
+
 export interface PendingGreeting {
   sessionId?: string;
   platformUserId?: string;
@@ -34,9 +36,6 @@ function parsePendingGreetings(body: unknown): PendingGreeting[] {
       Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
   );
 }
-
-/** Discord hard cap on message content length. */
-const MAX_DM_LENGTH = 2000;
 
 /**
  * True only when Discord definitively rejected a DM in a way retrying this
@@ -140,7 +139,7 @@ export async function drainAndDeliverGreetings(options: {
 
   for (const greeting of greetings) {
     const userId = greeting.platformUserId;
-    const content = greeting.message?.trim().slice(0, MAX_DM_LENGTH);
+    const content = greeting.message?.trim();
     const sessionId = greeting.sessionId;
     const leaseId = greeting.leaseId;
     const deliveryNonce = greeting.deliveryNonce;
@@ -154,7 +153,16 @@ export async function drainAndDeliverGreetings(options: {
       continue;
     }
     try {
-      await options.sendDirectMessage(userId, content, deliveryNonce);
+      const chunks = chunkDiscordText(content);
+      for (let index = 0; index < chunks.length; index += 1) {
+        await options.sendDirectMessage(
+          userId,
+          chunks[index] ?? "",
+          chunks.length === 1
+            ? deliveryNonce
+            : discordChunkNonce(deliveryNonce, index),
+        );
+      }
       report.delivered += 1;
       acknowledgements.push({ sessionId, leaseId });
       options.onEvent?.({

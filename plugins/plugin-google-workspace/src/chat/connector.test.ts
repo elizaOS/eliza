@@ -3,7 +3,7 @@
  * routes outbound sends correctly, against a mocked runtime — no Google API
  * calls.
  */
-import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
+import type { Content, IAgentRuntime, Memory, TargetInfo, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { GoogleChatService } from "./service.js";
 import {
@@ -101,12 +101,40 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("does not let a named account inherit owner application-default credentials", async () => {
+    const previous = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/owner/application-default.json";
+    try {
+      const runtimeInstance = runtime({
+        getSetting: vi.fn((key: string) =>
+          key === "GOOGLE_CHAT_ACCOUNTS"
+            ? JSON.stringify({
+                workspace: {
+                  enabled: true,
+                  audience: "https://example.com/googlechat",
+                },
+              })
+            : null
+        ),
+        reportError: vi.fn(),
+      });
+
+      await expect(GoogleChatService.start(runtimeInstance)).rejects.toBeInstanceOf(
+        GoogleChatConfigurationError
+      );
+    } finally {
+      if (previous === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    }
+  });
+
   it("registers connector metadata and routes space sends", async () => {
     const runtimeInstance = runtime();
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
     (service as { settings: { accountId: string } }).settings = {
       accountId: "workspace",
     };
+    (service as { auth: object }).auth = {};
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, space: "spaces/AAA" });
@@ -142,6 +170,52 @@ describe("Google Chat message connector", () => {
         text: "hello",
         thread: "spaces/AAA/threads/T1",
       })
+    );
+  });
+
+  it("preserves every matching and recent Google Chat space", async () => {
+    const runtimeInstance = runtime();
+    const service = serviceWithState();
+    const spaces = Array.from({ length: 12 }, (_, index) => ({
+      name: `spaces/${index}`,
+      displayName: `Project room ${index}`,
+      type: "ROOM" as const,
+    }));
+    vi.spyOn(service, "getSpaces").mockResolvedValue(spaces);
+
+    GoogleChatService.registerSendHandlers(runtimeInstance, service, "workspace");
+    const registration = vi.mocked(runtimeInstance.registerMessageConnector).mock.calls[0][0];
+    const matches = await registration.resolveTargets?.("project", {
+      runtime: runtimeInstance,
+    });
+    const recent = await registration.listRecentTargets?.({ runtime: runtimeInstance });
+
+    expect(matches?.filter((target) => target.kind === "room")).toHaveLength(12);
+    expect(recent).toHaveLength(12);
+  });
+
+  it("returns complete stored history when no limit was requested", async () => {
+    const roomId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const memories = Array.from({ length: 501 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      roomId,
+      content: { text: `message ${index}` },
+      createdAt: index,
+    })) as Memory[];
+    const getMemories = vi.fn(async () => memories);
+    const runtimeInstance = runtime({ getMemories });
+    const service = serviceWithState();
+
+    GoogleChatService.registerSendHandlers(runtimeInstance, service, "workspace");
+    const registration = vi.mocked(runtimeInstance.registerMessageConnector).mock.calls[0][0];
+    const result = await registration.fetchMessages?.(
+      { runtime: runtimeInstance, target: { source: "google-chat", roomId } as TargetInfo },
+      {}
+    );
+
+    expect(result).toHaveLength(501);
+    expect(getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() })
     );
   });
 

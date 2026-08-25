@@ -28,9 +28,6 @@ import type { InboundMessage } from "./types.js";
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
-const MAX_ROOMS_SCANNED = 200;
-const THREAD_CONTEXT_LIMIT = 5;
-const SNIPPET_MAX_LENGTH = 200;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
 
 const PHONE_BACKED_SOURCES = new Set([
@@ -308,7 +305,7 @@ export async function fetchChatMessages(
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
   if (allRoomIds.length === 0) return [];
 
-  const roomIds = allRoomIds.slice(0, MAX_ROOMS_SCANNED) as UUID[];
+  const roomIds = allRoomIds as UUID[];
   const rooms = await Promise.all(roomIds.map((id) => runtime.getRoom(id)));
   const sourceRooms: Room[] = [];
   for (const room of rooms) {
@@ -419,10 +416,9 @@ export async function fetchChatMessages(
           parseRequiredTimestamp(m.createdAt, "chat memory createdAt") <=
             createdAt,
       )
-      .slice(0, THREAD_CONTEXT_LIMIT)
       .map((m) => {
         const name = extractSenderName(m) ?? "Unknown";
-        return `${name}: ${extractText(m).slice(0, 100)}`;
+        return `${name}: ${extractText(m)}`;
       });
 
     results.push({
@@ -434,7 +430,7 @@ export async function fetchChatMessages(
       channelName,
       channelType,
       text,
-      snippet: text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: text,
       timestamp: createdAt,
       deepLink: deepLink ?? undefined,
       threadMessages: threadMessages.length > 0 ? threadMessages : undefined,
@@ -549,7 +545,7 @@ export async function fetchGmailMessages(
     return { messages: [], status: sourceStatus };
   }
 
-  const limit = opts.limit ?? 50;
+  const limit = opts.limit;
 
   // When no grantId is supplied, the service-side getGmailTriage already
   // aggregates across every Google grant and tags each summary with grantId
@@ -557,12 +553,10 @@ export async function fetchGmailMessages(
   // mixin can group by account and render account chips.
   let triageFeed: LifeOpsGmailTriageFeed;
   try {
-    triageFeed = await source.getGmailTriage(
-      INTERNAL_URL,
-      opts.grantId
-        ? { grantId: opts.grantId, maxResults: limit }
-        : { maxResults: limit },
-    );
+    triageFeed = await source.getGmailTriage(INTERNAL_URL, {
+      ...(opts.grantId ? { grantId: opts.grantId } : {}),
+      ...(limit === undefined ? {} : { maxResults: limit }),
+    });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] gmail triage fetch failed: ${errorMessage(error)}`,
@@ -573,7 +567,11 @@ export async function fetchGmailMessages(
   const sinceMs = parseOptionalTimestamp(opts.sinceIso, "sinceIso");
 
   const results: InboundMessage[] = [];
-  for (const msg of triageFeed.messages.slice(0, limit)) {
+  const messages =
+    limit === undefined
+      ? triageFeed.messages
+      : triageFeed.messages.slice(0, limit);
+  for (const msg of messages) {
     const messageId = requireNonEmptyString(msg.id, "Gmail message id");
     const externalId = requireNonEmptyString(
       msg.externalId,
@@ -599,7 +597,7 @@ export async function fetchGmailMessages(
       channelName: `Email from ${from}`,
       channelType: "dm",
       text: msg.snippet || msg.subject || "",
-      snippet: (msg.snippet || msg.subject || "").slice(0, SNIPPET_MAX_LENGTH),
+      snippet: msg.snippet || msg.subject || "",
       timestamp: receivedMs,
       deepLink: gmailLink,
       gmailMessageId: externalId,
@@ -636,11 +634,12 @@ export async function fetchXDmMessages(
     return { messages: [], status: sourceStatus };
   }
 
-  const limit = opts.limit ?? 50;
+  const limit = opts.limit;
   let dms: LifeOpsXDm[];
   try {
-    await source.syncXDms({ limit });
-    dms = await source.getXDms({ limit });
+    const page = limit === undefined ? undefined : { limit };
+    await source.syncXDms(page);
+    dms = await source.getXDms(page);
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] x_dm sync/read failed: ${errorMessage(error)}`,
@@ -680,7 +679,7 @@ export async function fetchXDmMessages(
       channelName: isGroup ? "X group DM" : `X DM from ${sender || "unknown"}`,
       channelType: isGroup ? "group" : "dm",
       text: dm.text,
-      snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: dm.text,
       timestamp: receivedMs,
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",
@@ -728,16 +727,16 @@ export async function fetchAllMessages(
   const gmailResultPromise =
     includeGmail && opts.gmailSource
       ? fetchGmailMessages(opts.gmailSource, {
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
-          grantId: opts.gmailGrantId,
+          ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+          ...(opts.limit === undefined ? {} : { limit: opts.limit }),
+          ...(opts.gmailGrantId ? { grantId: opts.gmailGrantId } : {}),
         })
       : Promise.resolve<InboxSourceFetchResult | null>(null);
   const xDmResultPromise = includeXDm
     ? opts.xDmSource
       ? fetchXDmMessages(opts.xDmSource, {
-          sinceIso: opts.sinceIso,
-          limit: opts.limit,
+          ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+          ...(opts.limit === undefined ? {} : { limit: opts.limit }),
         })
       : Promise.resolve<InboxSourceFetchResult>({
           messages: [],
@@ -751,9 +750,9 @@ export async function fetchAllMessages(
   const includeChat = !chatSources || chatSources.length > 0;
   const chatResultPromise: Promise<InboxSourceFetchResult | null> = includeChat
     ? fetchChatMessages(runtime, {
-        sources: chatSources,
-        sinceIso: opts.sinceIso,
-        limit: opts.limit,
+        ...(chatSources === undefined ? {} : { sources: chatSources }),
+        ...(opts.sinceIso ? { sinceIso: opts.sinceIso } : {}),
+        ...(opts.limit === undefined ? {} : { limit: opts.limit }),
       }).then(
         (messages): InboxSourceFetchResult => ({
           messages,
@@ -778,7 +777,17 @@ export async function fetchAllMessages(
     (result): result is InboxSourceFetchResult => result !== null,
   );
   const combined = results.flatMap((result) => result.messages);
-  combined.sort((a, b) => b.timestamp - a.timestamp);
+  combined.sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime;
+  });
   return {
     messages: opts.limit ? combined.slice(0, opts.limit) : combined,
     sources: results.map((result) => result.status),

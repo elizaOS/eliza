@@ -2,10 +2,16 @@
  * POST /api/v1/eliza/agents/:id/resume `sync` is resume-wait identity,
  * not leftover tax on agent-create autoProvision or container-delete
  * purgeVolume. Stock develop treated any non-exact `true` token as
- * async, so `sync=TRUE` still enqueued a 202 job instead of blocking.
+ * async, so `sync=TRUE` still enqueued a 202 job instead of blocking. The
+ * blocking compatibility path is also fenced to canonical, user-owned, live
+ * container capacity.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import {
+  type AgentSandboxPoolStatus,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "@/db/schemas/agent-sandboxes";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 mock.module("@/lib/utils/logger", () => ({
@@ -20,14 +26,36 @@ const ORG_A = "11111111-1111-4111-8111-111111111111";
 const AGENT_ID = "agent-resume-1";
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
-const getAgentForWrite = mock(async () => ({
-  id: AGENT_ID,
-  organization_id: ORG_A,
-  execution_tier: "dedicated-always",
-  status: "suspended",
-  bridge_url: null,
-  health_url: null,
-}));
+type ResumeAgent = {
+  id: string;
+  organization_id: string;
+  execution_tier: string;
+  status: string;
+  bridge_url: string | null;
+  health_url: string | null;
+  pool_status: AgentSandboxPoolStatus | null;
+  deleted_at: Date | null;
+  deletion_attempt_id: string | null;
+};
+
+function resumeAgent(overrides: Partial<ResumeAgent> = {}): ResumeAgent {
+  return {
+    id: AGENT_ID,
+    organization_id: ORG_A,
+    execution_tier: "dedicated-always",
+    status: "suspended",
+    bridge_url: null,
+    health_url: null,
+    pool_status: null,
+    deleted_at: null,
+    deletion_attempt_id: null,
+    ...overrides,
+  };
+}
+
+const getAgentForWrite = mock(
+  async (): Promise<ResumeAgent | null> => resumeAgent(),
+);
 const provision = mock(async () => ({
   success: true,
   bridgeUrl: "https://bridge.example.test",
@@ -97,6 +125,32 @@ function post(query = "") {
   );
 }
 
+function expectNoResumeEffects() {
+  expect(checkAgentCreditGate).not.toHaveBeenCalled();
+  expect(provision).not.toHaveBeenCalled();
+  expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+  expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+  expect(triggerImmediate).not.toHaveBeenCalled();
+}
+
+async function expectSyncConflict(agent: ResumeAgent, expectedError: string) {
+  getAgentForWrite.mockImplementationOnce(async () => agent);
+
+  const response = await post("?sync=true");
+
+  expect(response.status).toBe(409);
+  const body = (await response.json()) as {
+    success: boolean;
+    error: string;
+  };
+  expect(body).toEqual({
+    success: false,
+    error: expectedError,
+  });
+  expect(getAgentForWrite).toHaveBeenCalledTimes(1);
+  expectNoResumeEffects();
+}
+
 describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
   beforeEach(() => {
     getAgentForWrite.mockClear();
@@ -117,12 +171,140 @@ describe("POST /api/v1/eliza/agents/:id/resume sync identity", () => {
     },
   );
 
-  test("accepts sync=true as blocking resume", async () => {
-    const response = await post("?sync=true");
+  test("keeps an async Shared request on the existing shared-runtime fast path", async () => {
+    getAgentForWrite.mockImplementationOnce(async () =>
+      resumeAgent({
+        execution_tier: "shared",
+        status: "stopped",
+        pool_status: "unclaimed",
+        deleted_at: new Date("2026-08-22T00:00:00.000Z"),
+        deletion_attempt_id: "22222222-2222-4222-8222-222222222222",
+      }),
+    );
+
+    const response = await post();
+
     expect(response.status).toBe(200);
-    expect(provision).toHaveBeenCalledTimes(1);
-    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({
+      success: true,
+      source: "shared_runtime",
+    });
+    expect(getAgentForWrite).toHaveBeenCalledTimes(1);
+    expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
+    expectNoResumeEffects();
   });
+
+  test("returns 404 for a missing agent before sync effects", async () => {
+    getAgentForWrite.mockImplementationOnce(async () => null);
+
+    const response = await post("?sync=true");
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as {
+      success: boolean;
+      error: string;
+    };
+    expect(body).toEqual({
+      success: false,
+      error: "Agent not found",
+    });
+    expect(getAgentForWrite).toHaveBeenCalledTimes(1);
+    expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
+    expectNoResumeEffects();
+  });
+
+  test("rejects a stopped Shared agent before sync resume effects", async () => {
+    await expectSyncConflict(
+      resumeAgent({ execution_tier: "shared", status: "stopped" }),
+      "Agent resume requires a container-backed execution tier",
+    );
+  });
+
+  test("gives tier rejection precedence for an unknown running agent", async () => {
+    await expectSyncConflict(
+      resumeAgent({
+        execution_tier: "future-container",
+        status: "running",
+        bridge_url: "https://bridge.example.test",
+        health_url: "https://health.example.test",
+        pool_status: "unclaimed",
+        deleted_at: new Date("2026-08-22T00:00:00.000Z"),
+        deletion_attempt_id: "22222222-2222-4222-8222-222222222222",
+      }),
+      "Agent resume requires a container-backed execution tier",
+    );
+  });
+
+  test("gives pool ownership precedence over deletion state", async () => {
+    await expectSyncConflict(
+      resumeAgent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://bridge.example.test",
+        health_url: "https://health.example.test",
+        pool_status: "unclaimed",
+        deleted_at: new Date("2026-08-22T00:00:00.000Z"),
+        deletion_attempt_id: "22222222-2222-4222-8222-222222222222",
+      }),
+      "Agent resume cannot target pool-owned capacity",
+    );
+  });
+
+  test("gives deletion precedence over a deletion attempt", async () => {
+    await expectSyncConflict(
+      resumeAgent({
+        execution_tier: "dedicated-always",
+        status: "running",
+        bridge_url: "https://bridge.example.test",
+        health_url: "https://health.example.test",
+        deleted_at: new Date("2026-08-22T00:00:00.000Z"),
+        deletion_attempt_id: "22222222-2222-4222-8222-222222222222",
+      }),
+      "Agent resume cannot target deleted capacity",
+    );
+  });
+
+  test("rejects capacity with deletion in progress", async () => {
+    await expectSyncConflict(
+      resumeAgent({
+        execution_tier: "custom",
+        status: "running",
+        bridge_url: "https://bridge.example.test",
+        health_url: "https://health.example.test",
+        deletion_attempt_id: "22222222-2222-4222-8222-222222222222",
+      }),
+      "Agent resume cannot target capacity with deletion in progress",
+    );
+  });
+
+  test.each([...CONTAINER_BACKED_EXECUTION_TIERS])(
+    "accepts canonical %s capacity on the blocking resume path",
+    async (executionTier) => {
+      getAgentForWrite.mockImplementationOnce(async () =>
+        resumeAgent({
+          execution_tier: executionTier,
+          status: "stopped",
+          bridge_url: null,
+          health_url: null,
+          pool_status: null,
+          deleted_at: null,
+          deletion_attempt_id: null,
+        }),
+      );
+
+      const response = await post("?sync=true");
+
+      expect(response.status).toBe(200);
+      expect(getAgentForWrite).toHaveBeenCalledTimes(1);
+      expect(getAgentForWrite).toHaveBeenCalledWith(AGENT_ID, ORG_A);
+      expect(checkAgentCreditGate).toHaveBeenCalledTimes(1);
+      expect(provision).toHaveBeenCalledTimes(1);
+      expect(provision).toHaveBeenCalledWith(AGENT_ID, ORG_A);
+      expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+      expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+      expect(triggerImmediate).not.toHaveBeenCalled();
+    },
+  );
 
   test.each(["FALSE", "TRUE", "0", "1", "no", "yes", "foo"])(
     "rejects sync=%s before credit gate, provision, and enqueue",

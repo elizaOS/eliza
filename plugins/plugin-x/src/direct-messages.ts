@@ -27,6 +27,7 @@ import {
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
+import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
@@ -56,9 +57,6 @@ interface DirectMessagePage {
   fetchNext?: (maxResults?: number) => Promise<unknown>;
 }
 
-/** Fail closed before an anomalous paginator can monopolize the polling loop. */
-const MAX_DM_PAGES_PER_POLL = 1_000;
-
 function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string" || !value.trim()) return fallback;
@@ -66,13 +64,15 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function parsePollIntervalMs(value: unknown): number {
-  const seconds =
+  const seconds = parseTwitterInterval(
     typeof value === "number"
-      ? value
+      ? String(value)
       : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  return Math.max(15, Number.isFinite(seconds) ? seconds : 60) * 1_000;
+        ? value
+        : undefined,
+    60,
+  );
+  return Math.max(15, seconds) * 1_000;
 }
 
 function compareEventIds(left: string, right: string): number {
@@ -268,7 +268,6 @@ export class TwitterDirectMessageClient {
     // needs the newest event, so it never paginates.
     if (cursor) {
       let previousEventCount = -1;
-      let fetchedPages = 1;
       while (page.done === false && typeof page.fetchNext === "function") {
         const fetched = collectEvents();
         const oldest = fetched[fetched.length - 1];
@@ -279,13 +278,7 @@ export class TwitterDirectMessageClient {
           );
         }
         previousEventCount = fetched.length;
-        if (fetchedPages >= MAX_DM_PAGES_PER_POLL) {
-          throw new Error(
-            `X DM catch-up exceeded ${MAX_DM_PAGES_PER_POLL} pages before reaching the durable cursor.`,
-          );
-        }
         await page.fetchNext(50);
-        fetchedPages += 1;
       }
     }
 

@@ -59,9 +59,9 @@ function ReadinessBanner({
       data-ready={ready ? "true" : "false"}
     >
       {ready ? (
-        <CircleCheck className="mt-px h-3.5 w-3.5 shrink-0" />
+        <CircleCheck className="mt-px size-3.5 shrink-0" />
       ) : (
-        <CircleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+        <CircleAlert className="mt-px size-3.5 shrink-0" />
       )}
       <div className="space-y-0.5">
         <div className="font-medium">

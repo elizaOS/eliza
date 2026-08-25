@@ -141,6 +141,10 @@ async function resetSharedRateLimits(): Promise<string | undefined> {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Direct API turns exercise runtime contracts without model calls.",
+  },
   id: "reminder.escalation.intensity-up",
   title: "Ignored reminder escalates intensity on next check",
   domain: "reminders",

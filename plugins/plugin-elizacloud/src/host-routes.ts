@@ -8,10 +8,19 @@
  * agent types against the exports here, changing a handler's signature (or its
  * state type) is a compile error in `@elizaos/agent`.
  */
-export { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
-export { handleCloudCompatRoute } from "./routes/cloud-compat-routes";
-export { handleCloudRelayRoute } from "./routes/cloud-relay-routes";
-export { handleCloudRoute } from "./routes/cloud-routes";
+// Keep these as local bindings before exporting them. Bun's multi-entry build
+// can otherwise emit this re-export-only entrypoint with dangling export names,
+// making the published `host-routes` subpath fail as soon as the agent imports
+// it under default package conditions.
+import { handleCloudBillingRoute as handleCloudBillingRouteImpl } from "./routes/cloud-billing-routes";
+import { handleCloudCompatRoute as handleCloudCompatRouteImpl } from "./routes/cloud-compat-routes";
+import { handleCloudRelayRoute as handleCloudRelayRouteImpl } from "./routes/cloud-relay-routes";
+import { handleCloudRoute as handleCloudRouteImpl } from "./routes/cloud-routes";
+
+export const handleCloudBillingRoute = handleCloudBillingRouteImpl;
+export const handleCloudCompatRoute = handleCloudCompatRouteImpl;
+export const handleCloudRelayRoute = handleCloudRelayRouteImpl;
+export const handleCloudRoute = handleCloudRouteImpl;
 
 export type { CloudBillingRouteState } from "./routes/cloud-billing-routes";
 export type { CloudCompatRouteState } from "./routes/cloud-compat-routes";

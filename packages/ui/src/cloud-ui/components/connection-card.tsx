@@ -82,7 +82,7 @@ function ConnectionLoadingCard({ className }: { className?: string }) {
       )}
     >
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     </div>
   );
@@ -96,8 +96,8 @@ function ConnectionConnectedBadge({
   className?: string;
 }) {
   return (
-    <Badge variant="default" className={cn("bg-green-500", className)}>
-      <CheckCircle className="h-3 w-3 mr-1" />
+    <Badge variant="outline" tone="success" className={className}>
+      <CheckCircle className="size-3 mr-1" />
       {label}
     </Badge>
   );
@@ -131,7 +131,7 @@ function ConnectionIdentityPanel({
     >
       <div
         className={cn(
-          "h-12 w-12 rounded-full flex items-center justify-center shrink-0",
+          "size-12 rounded-full flex items-center justify-center shrink-0",
           iconClassName,
         )}
       >
@@ -164,11 +164,9 @@ const calloutToneClassName: Record<
   // Brand rule: blue is banned. Existing `tone="blue"` call sites now
   // render as a neutral informational callout instead.
   blue: "bg-white/5 border-white/15 text-foreground dark:text-white/80",
-  green:
-    "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400",
-  red: "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400",
-  yellow:
-    "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400",
+  green: "bg-status-success-bg border-status-success/30 text-status-success",
+  red: "bg-destructive-subtle border-destructive/30 text-destructive",
+  yellow: "bg-status-warning-bg border-status-warning/30 text-status-warning",
   muted: "bg-bg-muted border-transparent text-foreground",
 };
 
@@ -220,16 +218,10 @@ function ConnectionInstructions({
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-between p-4 h-auto bg-bg-muted",
-            triggerClassName,
-          )}
-        >
+        <Button variant="sectionToggle" className={triggerClassName}>
           <span className="font-medium">{title}</span>
           <ChevronDown
-            className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+            className={cn("size-4 transition-transform", open && "rotate-180")}
           />
         </Button>
       </CollapsibleTrigger>
@@ -275,7 +267,7 @@ function ConnectionCopyRow({
             onCopied?.(value);
           }}
         >
-          <Copy className="h-4 w-4 mr-1" />
+          <Copy className="size-4 mr-1" />
           {copyLabel}
         </Button>
       </div>
@@ -305,16 +297,11 @@ function ConnectionDisconnectAction({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-red-500 hover:text-red-400"
-          disabled={isDisconnecting}
-        >
+        <Button variant="dangerOutline" size="sm" disabled={isDisconnecting}>
           {isDisconnecting ? (
-            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            <Loader2 className="size-4 animate-spin mr-1" />
           ) : (
-            (triggerIcon ?? <XCircle className="h-4 w-4 mr-1" />)
+            (triggerIcon ?? <XCircle className="size-4 mr-1" />)
           )}
           {buttonLabel}
         </Button>
@@ -328,7 +315,7 @@ function ConnectionDisconnectAction({
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={onDisconnect}
-            className="bg-red-600 hover:bg-red-700"
+            className="bg-destructive text-destructive-fg hover:bg-destructive/85"
           >
             {confirmLabel}
           </AlertDialogAction>
@@ -387,7 +374,7 @@ function ConnectionCard({
       )}
     >
       {/* Header */}
-      <div className="flex min-w-0 flex-col space-y-1.5 p-4 sm:p-6">
+      <div className="flex min-w-0 flex-col gap-1.5 p-4 sm:p-6">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <h3 className="flex min-w-0 items-center gap-2 text-xl font-semibold leading-tight tracking-tight sm:text-2xl">
@@ -423,7 +410,7 @@ function ConnectionCard({
             className="flex flex-col gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-sm"
           >
             <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
+              <AlertTriangle className="size-4 mt-0.5 shrink-0 text-destructive" />
               <p className="text-sm text-destructive">{errorMessage}</p>
             </div>
             {onRetry && (

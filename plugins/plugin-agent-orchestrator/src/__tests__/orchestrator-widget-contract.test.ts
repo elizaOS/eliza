@@ -3,7 +3,6 @@
 import { describe, expect, it } from "vitest";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { buildOrchestratorWidgetSnapshot } from "../services/orchestrator-widget-contract.js";
-import { CODING_AGENT_ROUTE_PATHS } from "../setup-routes.js";
 
 function task(overrides: Partial<TaskThreadDto>): TaskThreadDto {
   return {
@@ -130,13 +129,4 @@ describe("orchestrator widget lineage", () => {
     expect(snapshot.totalTaskCount).toBe(3);
     expect(snapshot.tasks[0]?.childTaskIds).toEqual(["child-a", "child-z"]);
   });
-});
-
-it("registers snapshot and stream routes with the plugin dispatcher", () => {
-  expect(CODING_AGENT_ROUTE_PATHS).toEqual(
-    expect.arrayContaining([
-      { type: "GET", path: "/api/orchestrator/widgets" },
-      { type: "GET", path: "/api/orchestrator/widgets/stream" },
-    ]),
-  );
 });

@@ -292,7 +292,7 @@ function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
       data-testid={testId}
       className="inline-flex items-center gap-1 text-xs font-medium text-accent"
     >
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
       LIVE
     </span>
   );
@@ -330,14 +330,13 @@ function TranscriptRow({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
+      variant="selection"
+      size="row"
+      align="start"
+      data-state={active ? "on" : "off"}
       data-testid={`transcript-row-${summary.id}`}
       data-active={active ? "true" : undefined}
       onClick={() => onSelect(summary.id)}
-      className={cn(
-        "h-auto w-full justify-start rounded-sm px-3 py-2 text-left font-normal text-txt transition-colors",
-        active ? "bg-bg-muted/30" : "hover:bg-bg-muted/20",
-      )}
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate font-medium">{summary.title}</span>
@@ -565,7 +564,7 @@ export function TranscriptsView({
           <div data-testid="transcripts-empty" className="flex flex-1">
             <PagePanel.Empty
               className="flex-1"
-              icon={<AudioLines className="h-6 w-6" aria-hidden />}
+              icon={<AudioLines className="size-6" aria-hidden />}
               title="No transcripts yet."
             />
           </div>

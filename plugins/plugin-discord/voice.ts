@@ -365,12 +365,44 @@ export class VoiceManager extends EventEmitter {
 	) => boolean;
 	private streams: Map<string, Readable> = new Map();
 	private connections: Map<string, VoiceConnection> = new Map();
+	/**
+	 * Connections this manager has already wired lifecycle listeners onto.
+	 * `joinVoiceChannel()` returns the connection it is *already* tracking for the
+	 * same (group, guildId) instead of creating a new one, so two overlapping
+	 * joins would otherwise stack a second copy of the `stateChange`/`error`/
+	 * `speaking` listeners onto a single connection and run teardown twice /
+	 * subscribe the same member twice.
+	 */
+	private wiredConnections = new WeakSet<VoiceConnection>();
+	/** Latest Discord channel associated with each reusable voice connection. */
+	private connectionChannels = new WeakMap<
+		VoiceConnection,
+		BaseGuildVoiceChannel
+	>();
 	private audioLanes = new Map<string, DiscordAudioLaneConfig>();
 	private lanePlayers = new Map<string, LanePlayerState>();
 	private activeMonitors: Map<
 		string,
 		{ channel: BaseGuildVoiceChannel; monitor: AudioMonitor }
 	> = new Map();
+
+	private getConnectionChannel(
+		connection: VoiceConnection,
+		event: string,
+	): BaseGuildVoiceChannel | undefined {
+		const channel = this.connectionChannels.get(connection);
+		if (!channel) {
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord:service:voice",
+					agentId: this.runtime.agentId,
+					event,
+				},
+				"Voice connection event has no channel binding",
+			);
+		}
+		return channel;
+	}
 	private ready: boolean;
 	/** channelId → live voice-channel transcription session. */
 	private meetingSessions: Map<string, DiscordVoiceMeetingSession> = new Map();
@@ -632,6 +664,7 @@ export class VoiceManager extends EventEmitter {
 			selfMute: false,
 			group: this.client?.user?.id ?? "default-group",
 		});
+		this.connectionChannels.set(connection, channel);
 
 		try {
 			// Wait for either Ready or Signalling state
@@ -639,6 +672,17 @@ export class VoiceManager extends EventEmitter {
 				entersState(connection, VoiceConnectionStatus.Ready, 20_000),
 				entersState(connection, VoiceConnectionStatus.Signalling, 20_000),
 			]);
+			if (this.connectionChannels.get(connection) !== channel) {
+				this.runtime.logger.debug(
+					{
+						src: "plugin:discord:service:voice",
+						agentId: this.runtime.agentId,
+						channelId: channel.id,
+					},
+					"Voice join was superseded by a newer channel",
+				);
+				return;
+			}
 
 			// Log connection success
 			this.runtime.logger.info(
@@ -650,94 +694,201 @@ export class VoiceManager extends EventEmitter {
 				"Voice connection established",
 			);
 
-			// Set up ongoing state change monitoring
-			connection.on("stateChange", async (oldState, newState) => {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:discord:service:voice",
-						agentId: this.runtime.agentId,
-						oldState: oldState.status,
-						newState: newState.status,
-					},
-					"Voice connection state changed",
-				);
+			// Set up ongoing state change monitoring. Wire each connection at most
+			// once: `joinVoiceChannel()` returns an already-tracked connection for
+			// this (group, guildId) rather than a fresh one, so overlapping joins
+			// would otherwise attach a second copy of these listeners to one
+			// connection and run the teardown below twice against it.
+			if (!this.wiredConnections.has(connection)) {
+				this.wiredConnections.add(connection);
+				connection.on("stateChange", async (oldState, newState) => {
+					this.runtime.logger.debug(
+						{
+							src: "plugin:discord:service:voice",
+							agentId: this.runtime.agentId,
+							oldState: oldState.status,
+							newState: newState.status,
+						},
+						"Voice connection state changed",
+					);
 
-				if (newState.status === VoiceConnectionStatus.Disconnected) {
+					if (newState.status === VoiceConnectionStatus.Disconnected) {
+						this.runtime.logger.debug(
+							{
+								src: "plugin:discord:service:voice",
+								agentId: this.runtime.agentId,
+							},
+							"Handling disconnection",
+						);
+
+						try {
+							// Try to reconnect if disconnected
+							await Promise.race([
+								entersState(
+									connection,
+									VoiceConnectionStatus.Signalling,
+									5_000,
+								),
+								entersState(
+									connection,
+									VoiceConnectionStatus.Connecting,
+									5_000,
+								),
+							]);
+							// Seems to be reconnecting to a new channel
+							this.runtime.logger.debug(
+								{
+									src: "plugin:discord:service:voice",
+									agentId: this.runtime.agentId,
+								},
+								"Reconnecting to channel",
+							);
+						} catch (e) {
+							// Seems to be a real disconnect, destroy and cleanup.
+							// This probe resolves up to 5s after the disconnect, by which
+							// time a `/voice leave`, a rejoin or `stop()` may already have
+							// torn this connection down and registered a replacement, so
+							// re-check ownership before destroying or evicting anything.
+							this.runtime.logger.debug(
+								{
+									src: "plugin:discord:service:voice",
+									agentId: this.runtime.agentId,
+									error: e instanceof Error ? e.message : String(e),
+								},
+								"Disconnection confirmed - cleaning up",
+							);
+							const activeChannel = this.getConnectionChannel(
+								connection,
+								"stateChange:disconnected",
+							);
+							if (!activeChannel) {
+								return;
+							}
+							const isCurrent =
+								this.connections.get(activeChannel.id) === connection;
+							if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+								connection.destroy();
+							}
+							if (isCurrent) {
+								this.connections.delete(activeChannel.id);
+								this.unregisterVoiceTarget?.(
+									this.accountId,
+									activeChannel.guild.id,
+									activeChannel.id,
+								);
+							}
+						}
+					} else if (newState.status === VoiceConnectionStatus.Destroyed) {
+						const activeChannel = this.getConnectionChannel(
+							connection,
+							"stateChange:destroyed",
+						);
+						if (!activeChannel) {
+							return;
+						}
+						// Only the connection that currently owns this channel entry may
+						// clear it; a superseded connection cleans up itself and nothing
+						// else.
+						if (this.connections.get(activeChannel.id) === connection) {
+							this.connections.delete(activeChannel.id);
+							this.unregisterVoiceTarget?.(
+								this.accountId,
+								activeChannel.guild.id,
+								activeChannel.id,
+							);
+							void this.stopVoiceTranscription(
+								activeChannel.id,
+								"normal_completion",
+							);
+						}
+					} else if (
+						newState.status === VoiceConnectionStatus.Ready ||
+						newState.status === VoiceConnectionStatus.Signalling
+					) {
+						const activeChannel = this.getConnectionChannel(
+							connection,
+							"stateChange:ready",
+						);
+						if (activeChannel && !this.connections.has(activeChannel.id)) {
+							this.connections.set(activeChannel.id, connection);
+						}
+					}
+				});
+
+				connection.on("error", (error) => {
+					this.runtime.logger.error(
+						{
+							src: "plugin:discord:service:voice",
+							agentId: this.runtime.agentId,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Voice connection error",
+					);
+					// Don't immediately destroy - let the state change handler deal with it
 					this.runtime.logger.debug(
 						{
 							src: "plugin:discord:service:voice",
 							agentId: this.runtime.agentId,
 						},
-						"Handling disconnection",
+						"Will attempt to recover",
 					);
+				});
 
-					try {
-						// Try to reconnect if disconnected
-						await Promise.race([
-							entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-							entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-						]);
-						// Seems to be reconnecting to a new channel
-						this.runtime.logger.debug(
-							{
-								src: "plugin:discord:service:voice",
-								agentId: this.runtime.agentId,
-							},
-							"Reconnecting to channel",
-						);
-					} catch (e) {
-						// Seems to be a real disconnect, destroy and cleanup
-						this.runtime.logger.debug(
-							{
-								src: "plugin:discord:service:voice",
-								agentId: this.runtime.agentId,
-								error: e instanceof Error ? e.message : String(e),
-							},
-							"Disconnection confirmed - cleaning up",
-						);
-						connection.destroy();
-						this.connections.delete(channel.id);
-						this.unregisterVoiceTarget?.(
-							this.accountId,
-							channel.guild.id,
-							channel.id,
-						);
+				connection.receiver.speaking.on("start", async (entityId: string) => {
+					const activeChannel = this.getConnectionChannel(
+						connection,
+						"speaking:start",
+					);
+					if (!activeChannel) {
+						return;
 					}
-				} else if (newState.status === VoiceConnectionStatus.Destroyed) {
-					this.connections.delete(channel.id);
-					this.unregisterVoiceTarget?.(
-						this.accountId,
-						channel.guild.id,
-						channel.id,
-					);
-					void this.stopVoiceTranscription(channel.id, "normal_completion");
-				} else if (
-					!this.connections.has(channel.id) &&
-					(newState.status === VoiceConnectionStatus.Ready ||
-						newState.status === VoiceConnectionStatus.Signalling)
-				) {
-					this.connections.set(channel.id, connection);
-				}
-			});
+					let user = activeChannel.members.get(entityId);
+					if (!user) {
+						try {
+							user = await activeChannel.guild.members.fetch(entityId);
+						} catch (error) {
+							this.runtime.logger.error(
+								{
+									src: "plugin:discord:service:voice",
+									agentId: this.runtime.agentId,
+									entityId,
+									error: error instanceof Error ? error.message : String(error),
+								},
+								"Failed to fetch user",
+							);
+						}
+					}
 
-			connection.on("error", (error) => {
-				this.runtime.logger.error(
-					{
-						src: "plugin:discord:service:voice",
-						agentId: this.runtime.agentId,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Voice connection error",
-				);
-				// Don't immediately destroy - let the state change handler deal with it
-				this.runtime.logger.debug(
-					{
-						src: "plugin:discord:service:voice",
-						agentId: this.runtime.agentId,
-					},
-					"Will attempt to recover",
-				);
-			});
+					const userUser = user?.user;
+					if (user && userUser && !userUser.bot) {
+						await this.monitorMember(user as GuildMember, activeChannel);
+						const entityStream = this.streams.get(entityId);
+						if (entityStream) {
+							entityStream.emit("speakingStarted");
+						}
+					}
+				});
+
+				connection.receiver.speaking.on("end", async (entityId: string) => {
+					const activeChannel = this.getConnectionChannel(
+						connection,
+						"speaking:end",
+					);
+					if (!activeChannel) {
+						return;
+					}
+					const user = activeChannel.members.get(entityId);
+					const userUser = user?.user;
+					if (user && userUser && !userUser.bot) {
+						const entityStream = this.streams.get(entityId);
+						if (entityStream) {
+							entityStream.emit("speakingStopped");
+						}
+						// Speaking end = utterance boundary for the meeting pipeline.
+						this.meetingSessions.get(activeChannel.id)?.flushSpeaker(entityId);
+					}
+				});
+			}
 
 			// Store the connection
 			this.connections.set(channel.id, connection);
@@ -797,47 +948,6 @@ export class VoiceManager extends EventEmitter {
 					// Continue even if this fails
 				}
 			}
-
-			connection.receiver.speaking.on("start", async (entityId: string) => {
-				let user = channel.members.get(entityId);
-				if (!user) {
-					try {
-						user = await channel.guild.members.fetch(entityId);
-					} catch (error) {
-						this.runtime.logger.error(
-							{
-								src: "plugin:discord:service:voice",
-								agentId: this.runtime.agentId,
-								entityId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Failed to fetch user",
-						);
-					}
-				}
-
-				const userUser = user?.user;
-				if (user && userUser && !userUser.bot) {
-					this.monitorMember(user as GuildMember, channel);
-					const entityStream = this.streams.get(entityId);
-					if (entityStream) {
-						entityStream.emit("speakingStarted");
-					}
-				}
-			});
-
-			connection.receiver.speaking.on("end", async (entityId: string) => {
-				const user = channel.members.get(entityId);
-				const userUser = user?.user;
-				if (user && userUser && !userUser.bot) {
-					const entityStream = this.streams.get(entityId);
-					if (entityStream) {
-						entityStream.emit("speakingStopped");
-					}
-					// Speaking end = utterance boundary for the meeting pipeline.
-					this.meetingSessions.get(channel.id)?.flushSpeaker(entityId);
-				}
-			});
 		} catch (error) {
 			this.runtime.logger.error(
 				{
@@ -848,8 +958,12 @@ export class VoiceManager extends EventEmitter {
 				},
 				"Failed to establish voice connection",
 			);
-			connection.destroy();
-			this.connections.delete(channel.id);
+			if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+				connection.destroy();
+			}
+			if (this.connections.get(channel.id) === connection) {
+				this.connections.delete(channel.id);
+			}
 			throw error;
 		}
 	}
@@ -971,6 +1085,9 @@ export class VoiceManager extends EventEmitter {
 		const name = memberUser?.displayName;
 		const memberGuild = member?.guild;
 		const memberGuildId = memberGuild?.id;
+		if (entityId && this.streams.has(entityId)) {
+			return;
+		}
 		const connection = this.getVoiceConnection(memberGuildId);
 
 		const connectionReceiver = connection?.receiver;
@@ -1467,6 +1584,7 @@ export class VoiceManager extends EventEmitter {
 				name,
 				source: "discord",
 				channelId,
+				serverId: channel.guild.id,
 				// Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
 				messageServerId: stringToUuid(channel.guild.id),
 				type,

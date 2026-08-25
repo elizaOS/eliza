@@ -148,16 +148,24 @@ function buildConversationRows(
 ): ConversationsSidebarRow[] {
   return conversations
     .filter(isMainChatConversation)
-    .map((conversation) => ({
-      id: conversation.id,
-      kind: "conversation" as const,
-      sortKey: new Date(conversation.updatedAt).getTime(),
-      sourceKey: ELIZA_SOURCE_SCOPE,
-      title: getLocalizedConversationTitle(conversation.title, t),
-      updatedAtLabel: formatRelativeTime(conversation.updatedAt, t),
-      worldKey: null,
-    }))
-    .sort((left, right) => right.sortKey - left.sortKey);
+    .map((conversation) => {
+      const parsedTime = new Date(conversation.updatedAt).getTime();
+      const sortKey = Number.isFinite(parsedTime) ? parsedTime : 0;
+      return {
+        id: conversation.id,
+        kind: "conversation" as const,
+        sortKey,
+        sourceKey: ELIZA_SOURCE_SCOPE,
+        title: getLocalizedConversationTitle(conversation.title, t),
+        updatedAtLabel: formatRelativeTime(conversation.updatedAt, t),
+        worldKey: null,
+      };
+    })
+    .sort(
+      (left, right) =>
+        (Number.isFinite(right.sortKey) ? right.sortKey : 0) -
+        (Number.isFinite(left.sortKey) ? left.sortKey : 0),
+    );
 }
 
 function buildInboxRows(
@@ -166,9 +174,11 @@ function buildInboxRows(
 ): ConversationsSidebarRow[] {
   return inboxChats
     .map((chat) => {
-      const sortKey = Number.isFinite(chat.lastMessageAt)
-        ? chat.lastMessageAt
-        : Date.now();
+      const sortKey =
+        typeof chat.lastMessageAt === "number" &&
+        Number.isFinite(chat.lastMessageAt)
+          ? chat.lastMessageAt
+          : Date.now();
       const isoDate = new Date(sortKey).toISOString();
       const normalizedSource = normalizeConnectorSource(chat.source);
       const normalizedWorldLabel = normalizeWorldLabel(chat, t);
@@ -190,7 +200,11 @@ function buildInboxRows(
         worldLabel: normalizedWorldLabel,
       };
     })
-    .sort((left, right) => right.sortKey - left.sortKey);
+    .sort(
+      (left, right) =>
+        (Number.isFinite(right.sortKey) ? right.sortKey : 0) -
+        (Number.isFinite(left.sortKey) ? left.sortKey : 0),
+    );
 }
 
 function buildSourceOptions(
@@ -465,10 +479,16 @@ function buildSections(
       label: section.label,
       rank: section.rank,
       rows: [...section.rows].sort(
-        (left, right) => right.sortKey - left.sortKey,
+        (left, right) =>
+          (Number.isFinite(right.sortKey) ? right.sortKey : 0) -
+          (Number.isFinite(left.sortKey) ? left.sortKey : 0),
       ),
     }))
-    .sort((left, right) => right.rank - left.rank)
+    .sort(
+      (left, right) =>
+        (Number.isFinite(right.rank) ? right.rank : 0) -
+        (Number.isFinite(left.rank) ? left.rank : 0),
+    )
     .map(({ rank: _rank, ...section }) => section);
 }
 

@@ -697,6 +697,7 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
           organizationId: ORG_RACE_CREATE,
           userId: USER_A,
           agentName: "ordinary-create",
+          executionTier: "shared",
           maxNonTerminalAgents: 1,
         }),
       ]);

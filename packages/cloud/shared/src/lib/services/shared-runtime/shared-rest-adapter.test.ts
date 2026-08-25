@@ -14,8 +14,9 @@
  * from this adapter would be a production database-path regression.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { logger } from "../../utils/logger";
 
 class InsufficientCreditsError extends Error {}
 
@@ -39,6 +40,7 @@ mock.module("./shared-runtime-chat", () => ({
 const {
   sharedRestAgentStart,
   sharedRestAuthMe,
+  sharedRestAuthStatus,
   sharedRestCharacter,
   sharedRestConfig,
   sharedRestConversationCreate,
@@ -52,7 +54,9 @@ const {
   sharedRestMessagesGet,
   sharedRestStatus,
   sharedRestViews,
+  sharedTurnServerTiming,
 } = await import("./shared-rest-adapter");
+const { MAX_SHARED_PROVIDER_TIMING_MS } = await import("./shared-runtime-timing");
 
 // Restore the real module so this file's process-global mock doesn't strand
 // later test files that use the full elizaSandboxService surface.
@@ -200,6 +204,14 @@ describe("shared-rest-adapter — startup shell surface", () => {
 
   test("auth/me falls back to a display name when the agent has none", () => {
     expect(sharedRestAuthMe(AGENT, "").identity.displayName).toBe("Eliza");
+    expect(sharedRestAuthStatus()).toEqual({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+      localAccess: false,
+      passwordConfigured: false,
+    });
   });
 });
 
@@ -239,7 +251,24 @@ describe("shared-rest-adapter — messages", () => {
     const before = Date.now();
     coordinateSharedHistory.mockResolvedValue([
       { id: "user-message-1", role: "user", content: "hi", createdAt: 1_783_382_400_000 },
-      { id: "assistant-message-1", role: "assistant", content: "Hello!", interrupted: true },
+      {
+        id: "assistant-message-1",
+        role: "assistant",
+        content: "Hello!",
+        interrupted: true,
+        grounding: {
+          kind: "web_search",
+          query: "current greeting",
+          provider: "parallel",
+          observedAt: 1_783_382_400_000,
+          sourceUrls: ["https://source.example/result"],
+          sources: [
+            { url: "https://source.example/result", text: "PRIVATE_SOURCE_EXCERPT_MARKER" },
+          ],
+          text: "PRIVATE_PROVIDER_BODY_MARKER",
+          truncated: false,
+        },
+      },
     ]);
     const { messages } = await sharedRestMessagesGet(AGENT, AGENT, NAMESPACE);
     expect(messages[0]).toEqual({
@@ -256,6 +285,9 @@ describe("shared-rest-adapter — messages", () => {
     });
     expect(typeof messages[1]?.timestamp).toBe("number");
     expect(messages[1]?.timestamp).toBeLessThan(before - 60_000);
+    expect(JSON.stringify(messages)).not.toContain("PRIVATE_PROVIDER_BODY_MARKER");
+    expect(JSON.stringify(messages)).not.toContain("PRIVATE_SOURCE_EXCERPT_MARKER");
+    expect(JSON.stringify(messages)).not.toContain("grounding");
     expect(coordinateSharedHistory).toHaveBeenCalledWith(AGENT, AGENT, {
       namespace: NAMESPACE,
     });
@@ -305,6 +337,249 @@ describe("shared-rest-adapter — messages", () => {
       namespace: NAMESPACE,
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
     });
+  });
+
+  test("POST preserves generated media URLs as structured connector output", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "media",
+      result: {
+        text: "here's your video.\nhttps://media.example.com/dog.mp4",
+        actionResults: [
+          {
+            success: true,
+            data: {
+              actionName: "GENERATE_MEDIA",
+              mediaUrl: "https://media.example.com/dog.mp4",
+            },
+          },
+        ],
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "animate this dog",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+
+    expect(out.mediaUrls).toEqual(["https://media.example.com/dog.mp4"]);
+  });
+
+  test("POST preserves a consistent provider receipt and formats Server-Timing", async () => {
+    const timing = {
+      replayed: false,
+      durationMs: 8.1,
+      clamped: false,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed" as const,
+      callsTruncated: false,
+      calls: [
+        {
+          provider: "cerebras" as const,
+          durationMs: 3,
+          fallback: false,
+          privateProviderMetadata: "must-not-cross-the-bridge",
+        },
+        { provider: "openrouter" as const, durationMs: 5.1, fallback: true },
+      ],
+      privateTrace: "must-not-cross-the-bridge",
+    };
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed",
+      result: { text: "four", timing },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out.timing).toEqual({
+      replayed: false,
+      durationMs: 8.1,
+      clamped: false,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: false,
+      calls: [
+        { provider: "cerebras", durationMs: 3, fallback: false },
+        { provider: "openrouter", durationMs: 5.1, fallback: true },
+      ],
+    });
+    expect(sharedTurnServerTiming(out.timing)).toBe(
+      'shared_model;dur=8.1;desc="provider=mixed calls=2 fallbacks=1 replayed=0 clamped=0"',
+    );
+  });
+
+  test("POST rejects impossible provider timing from the untrusted bridge", async () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+    const impossibleReceipts = [
+      {
+        replayed: false,
+        durationMs: 1,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      {
+        replayed: false,
+        durationMs: 1,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 1,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: true }],
+      },
+      {
+        replayed: false,
+        durationMs: 2,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      {
+        replayed: false,
+        durationMs: 0,
+        clamped: false,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "openrouter",
+        callsTruncated: false,
+        calls: [],
+      },
+      // A receipt with no `clamped` field cannot be told apart from a clamped
+      // one, so the boundary rejects it rather than guessing.
+      {
+        replayed: false,
+        durationMs: 1,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+      },
+      // `unobserved` describes a call, never the provider that served the turn.
+      {
+        replayed: false,
+        durationMs: 1,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "unobserved",
+        callsTruncated: false,
+        calls: [{ provider: "unobserved", durationMs: 1, fallback: false }],
+      },
+    ];
+    for (const timing of impossibleReceipts) {
+      coordinateSharedBridge.mockResolvedValueOnce({
+        jsonrpc: "2.0",
+        id: "timed",
+        result: { text: "four", timing },
+      });
+      expect(
+        await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE),
+      ).toEqual({ text: "four", agentName: "Eliza" });
+    }
+    expect(warn).toHaveBeenCalledTimes(impossibleReceipts.length);
+    expect(warn).toHaveBeenLastCalledWith(
+      "[shared-runtime REST] message.send returned an invalid timing receipt",
+      { agentId: AGENT, conversationId: AGENT },
+    );
+    warn.mockRestore();
+  });
+
+  test("POST accepts a complete long provider-call receipt", async () => {
+    const calls = Array.from({ length: 17 }, (_, index) => ({
+      provider: index === 16 ? ("openrouter" as const) : ("cerebras" as const),
+      durationMs: 1,
+      fallback: index === 16,
+    }));
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed-complete",
+      result: {
+        text: "four",
+        timing: {
+          replayed: false,
+          durationMs: 17,
+          clamped: false,
+          callCount: 17,
+          fallbackCount: 1,
+          selectedProvider: "mixed",
+          callsTruncated: false,
+          calls,
+        },
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    expect(out.timing).toMatchObject({
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: false,
+      calls,
+    });
+  });
+
+  test("POST keeps a clamped over-bound receipt instead of discarding it", async () => {
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "timed-clamped",
+      result: {
+        text: "four",
+        timing: {
+          replayed: false,
+          durationMs: MAX_SHARED_PROVIDER_TIMING_MS,
+          clamped: true,
+          callCount: 2,
+          fallbackCount: 0,
+          selectedProvider: "cerebras",
+          callsTruncated: false,
+          calls: [
+            { provider: "cerebras", durationMs: MAX_SHARED_PROVIDER_TIMING_MS, fallback: false },
+            { provider: "cerebras", durationMs: 12, fallback: false },
+          ],
+        },
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+    // The summed call durations exceed the bound; the old exact-sum rule would
+    // have dropped the whole receipt for the very turn it exists to diagnose.
+    expect(out.timing).toMatchObject({ clamped: true, durationMs: MAX_SHARED_PROVIDER_TIMING_MS });
+    expect(sharedTurnServerTiming(out.timing)).toContain("clamped=1");
   });
 
   test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {

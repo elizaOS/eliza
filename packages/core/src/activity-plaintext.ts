@@ -19,6 +19,7 @@ import type {
 	TrajectoryStepRecord,
 	TrajectorySummaryRecord,
 } from "./services/trajectory-types";
+import { toWellFormedUnicode, truncateWellFormed } from "./utils/well-formed";
 
 export interface ActivityPlaintextSummary {
 	eventType: string;
@@ -102,10 +103,9 @@ function readBoolean(value: unknown): boolean | undefined {
 }
 
 function normalizePlaintext(value: string, maxLength: number): string {
-	const normalized = value.replace(/\s+/g, " ").trim();
-	return normalized.length > maxLength
-		? normalized.slice(0, Math.max(0, maxLength)).trimEnd()
-		: normalized;
+	const normalized = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
+	if (normalized.length <= maxLength) return normalized;
+	return truncateWellFormed(normalized, Math.max(0, maxLength)).trimEnd();
 }
 
 function firstString(
@@ -723,7 +723,7 @@ function summarizePtyEvent(
 			break;
 		}
 		case "plan": {
-			// opencode/todowrite plan snapshot: show progress (done/total) rather
+			// plan/todowrite snapshot: show progress (done/total) rather
 			// than the raw entry list, which the inline checklist renders in full.
 			const entries = Array.isArray(data?.entries) ? data.entries : [];
 			if (entries.length === 0) return null;

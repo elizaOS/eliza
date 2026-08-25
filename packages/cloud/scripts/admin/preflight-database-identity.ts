@@ -6,9 +6,25 @@
 
 import { createHash } from "node:crypto";
 import { appendFile } from "node:fs/promises";
-import pg, { type ClientConfig } from "pg";
+import { createRequire } from "node:module";
 
-const { Client } = pg;
+interface ClientConfig {
+  application_name?: string;
+  connectionString: string;
+  connectionTimeoutMillis?: number;
+  query_timeout?: number;
+  ssl?: boolean | { rejectUnauthorized?: boolean };
+  statement_timeout?: number;
+}
+
+interface RuntimePgClient extends IdentityQueryClient {
+  connect(): Promise<void>;
+  end(): Promise<void>;
+}
+
+const { Client } = createRequire(import.meta.url)("pg") as {
+  Client: new (config: ClientConfig) => RuntimePgClient;
+};
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const IDENTITY_QUERY = `
 SELECT
@@ -341,7 +357,7 @@ async function main(): Promise<void> {
       "DATABASE_URL is required when database identity enforcement is active",
     );
   }
-  let client: InstanceType<typeof Client> | undefined;
+  let client: RuntimePgClient | undefined;
   try {
     client = new Client(await clientConfig(databaseUrl));
     await client.connect();

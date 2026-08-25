@@ -14,7 +14,6 @@
 import type {
 	LongTermMemory,
 	LongTermMemoryCategory,
-	SessionSummary,
 } from "../features/advanced-memory/types.ts";
 import type { UUID } from "./primitives.ts";
 
@@ -44,33 +43,4 @@ export interface MemoryStorageProvider {
 	): Promise<void>;
 
 	deleteLongTermMemory(id: UUID, agentId: UUID, entityId: UUID): Promise<void>;
-
-	// ── Session summaries ───────────────────────────────────────────────
-
-	storeSessionSummary(
-		summary: Omit<SessionSummary, "id" | "createdAt" | "updatedAt">,
-	): Promise<SessionSummary>;
-
-	getCurrentSessionSummary(
-		agentId: UUID,
-		roomId: UUID,
-	): Promise<SessionSummary | null>;
-
-	updateSessionSummary(
-		id: UUID,
-		agentId: UUID,
-		roomId: UUID,
-		updates: Partial<
-			Omit<
-				SessionSummary,
-				"id" | "agentId" | "roomId" | "createdAt" | "updatedAt"
-			>
-		>,
-	): Promise<void>;
-
-	getSessionSummaries(
-		agentId: UUID,
-		roomId: UUID,
-		limit?: number,
-	): Promise<SessionSummary[]>;
 }

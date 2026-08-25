@@ -1,11 +1,15 @@
 /**
  * Boots the renderer through the ordinary interactive iOS path, then drives
- * the native lifecycle callbacks that the composition root owns: keyboard,
- * runtime-mode changes, and representative OS deep links.
+ * the native lifecycle callbacks that the composition root owns: runtime-mode
+ * changes and representative OS deep links. Keyboard behavior is delegated to
+ * and covered by the mobile-lifecycle contract suite.
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core/desktop-shell";
-import { listenForConnectRequests } from "@elizaos/ui/events";
+import {
+  listenForConnectRequests,
+  OPEN_NOTIFICATION_CENTER_EVENT,
+} from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const iosBoot = vi.hoisted(() => ({
@@ -17,12 +21,12 @@ const iosBoot = vi.hoisted(() => ({
   createRoot: vi.fn(),
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
-  keyboardListeners: new Map<string, (value?: unknown) => void>(),
   lifecycleDependencies: undefined as
     | { handleDeepLink: (url: string) => void }
     | undefined,
   initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
+  initializeKeyboard: vi.fn(async () => undefined),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
 }));
@@ -61,10 +65,7 @@ vi.mock("@capacitor/keyboard", () => ({
     setResizeMode: vi.fn(async () => undefined),
     setScroll: vi.fn(async () => undefined),
     setAccessoryBarVisible: vi.fn(async () => undefined),
-    addListener: vi.fn((name: string, listener: (value?: unknown) => void) => {
-      iosBoot.keyboardListeners.set(name, listener);
-      return Promise.resolve({ remove: vi.fn(async () => undefined) });
-    }),
+    addListener: vi.fn(async () => ({ remove: vi.fn(async () => undefined) })),
   },
 }));
 vi.mock("@capacitor/status-bar", () => ({
@@ -85,6 +86,7 @@ vi.mock("./mobile-lifecycle", () => ({
       return {
         initializeDeepLinks: iosBoot.initializeDeepLinks,
         initializeAppLifecycle: iosBoot.initializeAppLifecycle,
+        initializeKeyboard: iosBoot.initializeKeyboard,
         initializeNetworkListener: iosBoot.initializeNetworkListener,
       };
     },
@@ -144,20 +146,12 @@ describe("renderer interactive iOS composition", () => {
     await vi.waitFor(() =>
       expect(iosBoot.initializeAppLifecycle).toHaveBeenCalledOnce(),
     );
+    expect(iosBoot.initializeKeyboard).toHaveBeenCalledOnce();
 
     expect(main.isIOS).toBe(true);
     expect(main.isNative).toBe(true);
     expect(iosBoot.installNativeRequest).toHaveBeenCalledTimes(2);
     expect(iosBoot.installFetch).toHaveBeenCalledTimes(2);
-
-    iosBoot.keyboardListeners.get("keyboardWillShow")?.({
-      keyboardHeight: 321,
-    });
-    expect(document.body.style.getPropertyValue("--keyboard-height")).toBe(
-      "321px",
-    );
-    iosBoot.keyboardListeners.get("keyboardWillHide")?.();
-    expect(document.body.classList).not.toContain("keyboard-open");
 
     document.dispatchEvent(new Event("eliza:mobile-runtime-mode-changed"));
 
@@ -165,6 +159,11 @@ describe("renderer interactive iOS composition", () => {
     expect(handleDeepLink).toBeTypeOf("function");
     const connectRequest = vi.fn();
     const removeConnectListener = listenForConnectRequests(connectRequest);
+    const notificationCenterRequest = vi.fn();
+    window.addEventListener(
+      OPEN_NOTIFICATION_CENTER_EVENT,
+      notificationCenterRequest,
+    );
     window.localStorage.setItem(
       "eliza:auth-callback-smoke:request",
       JSON.stringify({ state: "smoke", code: "synthetic" }),
@@ -175,6 +174,9 @@ describe("renderer interactive iOS composition", () => {
       "elizaos://phone/call?contact=alice",
       "elizaos://messages/compose?to=bob",
       "elizaos://contacts",
+      "https://evil.example/notifications",
+      "javascript:notifications",
+      "elizaos://notifications",
       "elizaos://aec-loop?duration=1",
       "elizaos://keyboard-dictation",
       "elizaos://connect?url=http%3A%2F%2Flocalhost%3A2138",
@@ -203,6 +205,11 @@ describe("renderer interactive iOS composition", () => {
       }),
     );
     removeConnectListener();
+    window.removeEventListener(
+      OPEN_NOTIFICATION_CENTER_EVENT,
+      notificationCenterRequest,
+    );
+    expect(notificationCenterRequest).toHaveBeenCalledOnce();
     expect(window.__ELIZA_APP_SHARE_QUEUE__).toEqual([
       expect.objectContaining({
         source: "deep-link",

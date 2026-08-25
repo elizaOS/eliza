@@ -23,6 +23,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   openSettingsSection,
@@ -126,6 +127,10 @@ async function bootCloudSettings(
   });
   await installDefaultAppRoutes(page);
   await installCloudLoginRoutes(page);
+  // The chat overlay boots open at the half detent and its message scroller
+  // sits over the settings hub rows on the mobile viewport, swallowing the
+  // Overview click (the established ui-smoke pattern for non-chat surfaces).
+  await hideChatOverlay(page);
   await openAppPath(page, "/settings");
   // The Cloud overview section is the "Overview" entry under the Cloud
   // heading in the settings hub; it hosts the connect CTA.

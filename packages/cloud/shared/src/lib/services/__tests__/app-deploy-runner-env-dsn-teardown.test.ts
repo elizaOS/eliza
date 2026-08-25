@@ -58,12 +58,24 @@ const ORG_ID = "org-env-dsn";
 const USER_ID = "user-env-dsn";
 const CLUSTER_HOST = "tenant-cluster.internal";
 const ADMIN_DSN = `postgresql://admin:pw@${CLUSTER_HOST}/postgres`;
+const GENERATION = "11111111-1111-4111-8111-111111111111";
 
 // The deploy runner loads the app via appsService.getById (twice: once to
 // resolve the image, once in linkContainerToApp). databaseMode "isolated" is
 // what makes the orchestrator call ensureTenantDb.
 mock.module("../apps", () => ({
   appsService: {
+    updateDeploymentGeneration: async (id: string, generation: string) =>
+      id === APP_ID && generation === GENERATION
+        ? {
+            id: APP_ID,
+            name: "my-app",
+            organization_id: ORG_ID,
+            created_by_user_id: USER_ID,
+            github_repo: null,
+            metadata: { databaseMode: "isolated", deploymentGeneration: GENERATION },
+          }
+        : undefined,
     getById: async (id: string) =>
       id === APP_ID
         ? {
@@ -181,7 +193,7 @@ describe("env-DSN deploy mode — per-tenant DB teardown (#8342)", () => {
       jobsWriter,
       resolveImage: () => "ghcr.io/elizaos/app:test",
     });
-    await runner.run(APP_ID);
+    await runner.run(APP_ID, GENERATION);
 
     // The per-tenant DB is live and a cluster slot is claimed.
     expect(live.size).toBe(1);
@@ -240,7 +252,9 @@ describe("env-DSN deploy mode — per-tenant DB teardown (#8342)", () => {
     persistControl.failUpdateState = true;
     try {
       // The deploy fails (the persist throws) and the error surfaces.
-      await expect(runner.run(APP_ID)).rejects.toThrow("app_databases updateState failed");
+      await expect(runner.run(APP_ID, GENERATION)).rejects.toThrow(
+        "app_databases updateState failed",
+      );
     } finally {
       persistControl.failUpdateState = false;
     }

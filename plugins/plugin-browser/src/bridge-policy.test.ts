@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   browserBridgeDomainFromUrl,
   DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
+  MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
   resolveBrowserBridgeCompanionPairingTokenExpiresAt,
   resolveBrowserBridgeCompanionPairingTokenTtlMs,
 } from "./bridge-policy.js";
@@ -40,6 +41,21 @@ describe("browser bridge policy", () => {
         { BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS: "60000" },
       ),
     ).toBe("2026-06-02T12:01:00.000Z");
+  });
+
+  it("caps native enrollment credentials at five minutes", () => {
+    const nowMs = Date.parse("2026-06-02T12:00:00.000Z");
+    expect(
+      resolveBrowserBridgeCompanionPairingTokenExpiresAt(
+        nowMs,
+        { BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS: "2592000000" },
+        "native_enrollment",
+      ),
+    ).toBe(
+      new Date(
+        nowMs + MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
+      ).toISOString(),
+    );
   });
 
   it("normalizes browser domains from web urls only", () => {

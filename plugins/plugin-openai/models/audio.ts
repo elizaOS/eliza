@@ -25,7 +25,12 @@ import type {
   TTSOutputFormat,
   TTSVoice,
 } from "../types";
-import { detectAudioMimeType, getFilenameForMimeType } from "../utils/audio";
+import type { AudioMimeType } from "../utils/audio";
+import {
+  detectAudioMimeType,
+  getFilenameForMimeType,
+  normalizeAudioMimeType,
+} from "../utils/audio";
 import {
   getAuthHeader,
   getBaseURL,
@@ -66,6 +71,26 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
     "audioUrl" in value &&
     typeof (value as CoreTranscriptionParams).audioUrl === "string"
   );
+}
+
+/** Enough leading bytes for every `detectAudioMimeType` magic-byte probe. */
+const AUDIO_SNIFF_BYTES = 64;
+
+/**
+ * Choose the canonical audio type used to label the multipart upload. The
+ * container bytes are authoritative — a valid MP3 served with a non-canonical
+ * `Content-Type: audio/mp3` still uploads as `recording.mp3` — and only when
+ * sniffing is inconclusive do we fall back to normalizing the declared type.
+ * This keeps the derived extension inside the recognized set OpenAI's
+ * /audio/transcriptions accepts instead of emitting `recording.undefined`.
+ */
+async function resolveUploadMimeType(blob: Blob, declaredType: string): Promise<AudioMimeType> {
+  const header = new Uint8Array(await blob.slice(0, AUDIO_SNIFF_BYTES).arrayBuffer());
+  const sniffed = detectAudioMimeType(header);
+  if (sniffed !== "application/octet-stream") {
+    return sniffed;
+  }
+  return normalizeAudioMimeType(declaredType);
 }
 
 const AUDIO_TRANSCRIPTION_TIMEOUT_MS = 120_000;
@@ -128,13 +153,9 @@ export async function handleTranscription(
   logger.debug(`[OpenAI] Using TRANSCRIPTION model: ${modelName}`);
 
   const mimeType = (blob as File).type || "audio/webm";
+  const providedName = (blob as File).name;
   const filename =
-    (blob as File).name ||
-    getFilenameForMimeType(
-      mimeType.startsWith("audio/")
-        ? (mimeType as ReturnType<typeof detectAudioMimeType>)
-        : "audio/webm"
-    );
+    providedName || getFilenameForMimeType(await resolveUploadMimeType(blob, mimeType));
 
   const formData = new FormData();
   formData.append("file", blob, filename);

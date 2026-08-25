@@ -6,6 +6,7 @@
  * Durable Object state machine and the route's mutation ordering run for real.
  */
 import { describe, expect, mock, test } from "bun:test";
+import * as provisioningObservation from "../../shared/src/lib/services/eliza-app/provisioning-observation";
 
 const noProvisioning = {
   status: "none" as const,
@@ -22,7 +23,7 @@ mock.module("../../shared/src/lib/cache/client", () => ({
 }));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
+  ...provisioningObservation,
   getElizaAppProvisioningStatus: mock(async () => noProvisioning),
 }));
 

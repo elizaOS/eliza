@@ -228,7 +228,7 @@ describe("Cloud active server persistence", () => {
       accessToken: "paired-agent-token",
     });
     savePersistedActiveServer(server);
-    writeStoredStewardToken("steward-control-plane-token");
+    await writeStoredStewardToken("steward-control-plane-token");
 
     expect(
       canRestoreActiveServer({

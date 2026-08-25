@@ -62,6 +62,10 @@ loaders can import `@elizaos/ui` without evaluating CSS. Import
   plugin-config UI-spec engine.
 - **Registries** — `registerAppShellPage` for runtime nav tabs, the widget and
   overlay-app registries, and `registerProviderLogo`.
+- **Devices & Runtimes** — Settings management for local, Cloud, E2EE relay,
+  and fingerprint-pinned SSH runtimes. Renderer state stores only public trust
+  metadata and native credential references, never controller private keys or
+  durable runtime bearer values.
 
 ## Development
 
@@ -71,6 +75,13 @@ bun run --cwd packages/ui typecheck
 bun run --cwd packages/ui test
 bun run --cwd packages/ui lint
 bun run --cwd packages/ui stories:dev # component stories
+bun run --cwd packages/ui audit:story-coverage # report current story coverage
+bun run --cwd packages/ui audit:stories:build  # build and gate every story
 ```
 
 This is a library; there is no standalone dev server — run it through a host app.
+
+The ownership, adapter, variant, and exception rules for shared UI live in
+[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md). Run
+`bun run --cwd packages/ui audit:design-system` before submitting changes to
+tokens, controls, or reusable UI patterns.

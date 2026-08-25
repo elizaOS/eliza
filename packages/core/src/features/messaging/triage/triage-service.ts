@@ -19,7 +19,11 @@ import {
 	getDefaultMessageRefStore,
 	type MessageRefStore,
 } from "./message-ref-store.ts";
-import { rankScored, scoreMessages } from "./triage-engine.ts";
+import {
+	compareMessageRefsByRecency,
+	rankScored,
+	scoreMessages,
+} from "./triage-engine.ts";
 import type {
 	DraftRecord,
 	DraftRequest,
@@ -28,6 +32,8 @@ import type {
 	MessageAdapter,
 	MessageRef,
 	MessageSource,
+	ReadMessageRequest,
+	ReadMessageResult,
 	SearchMessagesFilters,
 } from "./types.ts";
 
@@ -93,12 +99,6 @@ export class TriageService {
 		return this.store;
 	}
 
-	// adapterByMessageId grows one entry per message routed through triage(). Cap
-	// it (FIFO eviction by Map insertion order) so a long-running agent doesn't
-	// retain a routing entry for every message it has ever seen. Evicted entries
-	// fall back to the store-based lookup in getAdapterForMessage().
-	private static readonly MAX_ADAPTER_ROUTES = 5000;
-
 	private trackAdapterForMessage(
 		source: MessageSource,
 		messageId: string,
@@ -106,11 +106,6 @@ export class TriageService {
 		const adapter = this.adapters.get(source);
 		if (!adapter) return;
 		this.adapterByMessageId.set(`${source}:${messageId}`, adapter);
-		while (this.adapterByMessageId.size > TriageService.MAX_ADAPTER_ROUTES) {
-			const oldest = this.adapterByMessageId.keys().next().value;
-			if (oldest === undefined) break;
-			this.adapterByMessageId.delete(oldest);
-		}
 	}
 
 	getAdapterForMessage(messageId: string): MessageAdapter | undefined {
@@ -122,6 +117,52 @@ export class TriageService {
 		const ref = this.store.getMessage(messageId);
 		if (!ref) return undefined;
 		return this.adapters.get(ref.source);
+	}
+
+	/**
+	 * Resolve and execute a provider-native body read. Availability is checked on
+	 * every page; adapters must also resolve current authorization while fetching.
+	 */
+	async readMessage(
+		runtime: IAgentRuntime,
+		source: MessageSource,
+		request: ReadMessageRequest,
+	): Promise<ReadMessageResult> {
+		const adapter = this.adapters.get(source);
+		if (!adapter) {
+			throw new ElizaError(`No message adapter registered for ${source}`, {
+				code: "MESSAGE_READ_ADAPTER_NOT_FOUND",
+				context: { source },
+			});
+		}
+		if (!adapter.isAvailable(runtime)) {
+			throw new ElizaError(`Message adapter ${source} is unavailable`, {
+				code: "MESSAGE_READ_ADAPTER_UNAVAILABLE",
+				context: { source },
+			});
+		}
+		if (!adapter.readMessage) {
+			throw new ElizaError(
+				`Message adapter ${source} cannot read message bodies`,
+				{
+					code: "MESSAGE_READ_NOT_SUPPORTED",
+					context: { source },
+				},
+			);
+		}
+		const stored = request.messageId
+			? this.store.getMessage(request.messageId)
+			: null;
+		if (stored && stored.source !== source) {
+			throw new ElizaError("Message source does not match the stored message", {
+				code: "MESSAGE_READ_SOURCE_MISMATCH",
+				context: { source, storedSource: stored.source },
+			});
+		}
+		return adapter.readMessage(runtime, {
+			...request,
+			worldId: request.worldId ?? stored?.worldId,
+		});
 	}
 
 	/**
@@ -263,7 +304,7 @@ export class TriageService {
 			throw failures[0].error;
 		}
 		this.store.saveMessages(merged);
-		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
+		merged.sort(compareMessageRefsByRecency);
 		const hasMore =
 			requestedLimit === null ? null : merged.length > requestedLimit;
 		return {

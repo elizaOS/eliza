@@ -95,6 +95,7 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
     data_storage: "inline",
@@ -132,6 +133,15 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
  */
 function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unknown> = {}) {
   const job = makeJob(type, extraData);
+  // These handler-policy cases model a target disappearing only after a
+  // successful common preflight. Missing-target rejection itself is exercised
+  // against real PGlite state in provisioning-jobs-container-tier-guard.
+  const preflightSpy = spyOn(
+    provisioningJobService as unknown as {
+      assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
+    },
+    "assertNoConflictingLifecycleExecution",
+  ).mockResolvedValue(undefined);
   const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === type ? [job] : []),
   );
@@ -156,6 +166,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     incrementSpy,
     retryLaterSpy,
     restore() {
+      preflightSpy.mockRestore();
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
       assertLeaseSpy.mockRestore();

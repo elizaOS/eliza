@@ -4,6 +4,8 @@
  * and strip leaked tool-call markup / punctuation-only replies. Used wherever
  * the runtime must salvage structure from a weak model's not-quite-valid JSON.
  */
+
+import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
 import { formatError } from "../utils/format-error.ts";
 
 export function parseJsonObject<T extends object>(raw: string): T | null {
@@ -12,8 +14,7 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 		return null;
 	}
 
-	const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	const candidate = fenced?.[1] ?? trimmed;
+	const candidate = unwrapWholeCodeFence(trimmed, ["json"]) ?? trimmed;
 
 	const parsedCandidate =
 		parseObjectCandidate<T>(candidate) ??

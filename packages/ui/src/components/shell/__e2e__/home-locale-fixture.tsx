@@ -11,7 +11,7 @@ import { createRoot } from "react-dom/client";
 import { DefaultHomeWidgets } from "../DefaultHomeWidgets";
 
 createRoot(document.getElementById("root") as HTMLElement).render(
-  <div style={{ background: "#e8590c", minHeight: "100vh", padding: 28 }}>
+  <div style={{ background: "#e8590c", minHeight: "100dvh", padding: 28 }}>
     <div style={{ maxWidth: 520 }}>
       <DefaultHomeWidgets />
     </div>

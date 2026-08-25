@@ -366,7 +366,10 @@ export interface PromptJsonOptions {
 	/** Include location paths */
 	includeLocation?: boolean;
 
-	/** Maximum number of skills to include */
+	/**
+	 * @deprecated Ignored. Prompt metadata always includes every loaded skill;
+	 * callers must not turn this into a silent prefix.
+	 */
 	maxSkills?: number;
 }
 
@@ -589,6 +592,7 @@ export interface InstallDependencyResult {
  */
 export type SkillSource =
 	| "workspace" // 5 - highest precedence
+	| "marketplace" // 4.5 - workspace-local repository installs
 	| "managed" // 4
 	| "bundled" // 3
 	| "plugin" // 2
@@ -599,6 +603,7 @@ export type SkillSource =
  */
 export const SKILL_SOURCE_PRECEDENCE: Record<SkillSource, number> = {
 	workspace: 5,
+	marketplace: 4.5,
 	managed: 4,
 	bundled: 3,
 	plugin: 2,

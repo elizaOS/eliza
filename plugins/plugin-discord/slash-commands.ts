@@ -12,6 +12,7 @@ import {
 	hasRoleAccess,
 	type IAgentRuntime,
 	type Memory,
+	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
 import type {
@@ -50,6 +51,7 @@ export interface SlashCommand {
 	execute: (
 		interaction: ChatInputCommandInteraction,
 		runtime: IAgentRuntime,
+		context?: SlashCommandContext,
 	) => Promise<void>;
 	autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }
@@ -58,6 +60,7 @@ export interface SlashCommand {
 export interface SlashCommandContext {
 	entityId: string;
 	roomId: string;
+	accountId?: string;
 }
 
 async function replyEphemeral(
@@ -190,16 +193,22 @@ const searchCommand: SlashCommand = {
 
 			const results = filteredMemories.slice(0, limit).map((memory, index) => {
 				const text = memory.content?.text || "(no text)";
-				const truncated = text.length > 120 ? `${text.slice(0, 120)}...` : text;
 				const date = memory.createdAt
 					? new Date(memory.createdAt).toLocaleDateString()
 					: "unknown date";
-				return `**${index + 1}.** ${truncated}\n_${date}_`;
+				return `**${index + 1}.** ${text}\n_${date}_`;
 			});
 
-			await interaction.editReply({
-				content: `**Search results for "${query}"**\n\n${results.join("\n\n")}`,
-			});
+			const response = `**Search results for "${query}"**\n\n${results.join("\n\n")}`;
+			const chunks = chunkDiscordText(response);
+			const firstChunk = chunks[0];
+			if (!firstChunk) {
+				throw new Error("Discord search chunking produced no content.");
+			}
+			await interaction.editReply({ content: firstChunk });
+			for (const chunk of chunks.slice(1)) {
+				await interaction.followUp({ content: chunk, ephemeral: true });
+			}
 		} catch (error) {
 			await interaction.editReply({
 				content: `Search failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -693,7 +702,7 @@ const askCommand: SlashCommand = {
 			required: true,
 		},
 	],
-	async execute(interaction, runtime) {
+	async execute(interaction, runtime, context) {
 		const text = interaction.options.getString("message", true).trim();
 		if (!text) {
 			await interaction.reply({
@@ -751,6 +760,8 @@ const askCommand: SlashCommand = {
 			name: interaction.user.displayName ?? interaction.user.username,
 			source: "discord",
 			channelId,
+			serverId: interaction.guildId ?? channelId,
+			messageServerId: stringToUuid(interaction.guildId ?? channelId),
 			type: channelType,
 			worldId: createUniqueUuid(runtime, interaction.guildId ?? channelId),
 			worldName: interaction.guild?.name,
@@ -758,6 +769,11 @@ const askCommand: SlashCommand = {
 			// allowlist checks (see the "Discord ID Handling" note in service.ts and
 			// the matching cast in messages.ts's ensureConnection call).
 			userId: interaction.user.id as UUID,
+			...(context?.accountId
+				? {
+						metadata: { accountId: context.accountId },
+					}
+				: {}),
 		});
 
 		const message: Memory = {
@@ -816,9 +832,15 @@ const askCommand: SlashCommand = {
 		// deferred reply, the rest follow up in the same thread. Buttons ride
 		// the LAST message so they sit directly under the end of the answer.
 		const chunks = chunkDiscordText(cleanedAnswer);
+		const firstChunk = chunks[0];
+		if (!firstChunk) {
+			throw new Error(
+				"Discord reply chunking produced no content for a non-empty answer.",
+			);
+		}
 		const lastIndex = Math.max(0, chunks.length - 1);
 		await interaction.editReply({
-			content: chunks[0] ?? cleanedAnswer.slice(0, 2000),
+			content: firstChunk,
 			...(components && lastIndex === 0 ? { components } : {}),
 		});
 		for (let i = 1; i < chunks.length; i++) {
@@ -993,7 +1015,7 @@ export async function handleSlashCommand(
 	}
 
 	try {
-		await command.execute(interaction, runtime);
+		await command.execute(interaction, runtime, context);
 	} catch (error) {
 		const content = `An error occurred while running \`/${command.name}\`: ${error instanceof Error ? error.message : String(error)}`;
 		runtime.logger.error(

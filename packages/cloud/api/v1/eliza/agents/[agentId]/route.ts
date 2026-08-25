@@ -48,22 +48,40 @@ const editAgentSchema = z
 
 const conditionalDeleteSchema = z
   .object({
-    expectedAgentName: z.string().min(1).max(100),
-    expectedCreatedAt: z.string().datetime({ offset: true }),
-    expectedExecutionTier: z.enum([
-      "shared",
-      "dedicated-lazy",
-      "dedicated-always",
-      "custom",
-    ]),
+    expectedAgentName: z.string().min(1).max(100).optional(),
+    expectedCreatedAt: z.string().datetime({ offset: true }).optional(),
+    expectedExecutionTier: z
+      .enum(["shared", "dedicated-lazy", "dedicated-always", "custom"])
+      .optional(),
     // Cleanup canaries bind deletion to the serving deployment. Older route
     // versions keep this request fail-closed because their schema is strict.
     expectedDeployCommit: z
       .string()
       .regex(/^[a-f0-9]{40}$/)
       .optional(),
+    /** Explicit recovery from a capture refusal; never inferred from absence. */
+    stateLossAcknowledged: z.boolean().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const identityFields = [
+      value.expectedAgentName,
+      value.expectedCreatedAt,
+      value.expectedExecutionTier,
+    ];
+    const supplied = identityFields.filter(
+      (field) => field !== undefined,
+    ).length;
+    if (
+      (supplied !== 0 && supplied !== identityFields.length) ||
+      (value.expectedDeployCommit !== undefined && supplied === 0)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Conditional delete identity fields must be supplied together",
+      });
+    }
+  });
 
 type Agent = NonNullable<
   Awaited<ReturnType<typeof elizaSandboxService.getAgent>>
@@ -191,6 +209,11 @@ app.get("/", async (c) => {
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
     const webUiUrl = resolvePublicWebUiUrl(agent);
+    const activeLifecycleJob = (
+      await provisioningJobService.getActiveAgentLifecycleJobsForOrg(
+        user.organization_id,
+      )
+    ).find((job) => job.agent_id === agent.id);
 
     const adminDetails = isAdmin
       ? toAdminDetailsDto(agent, isDockerAgent, webUiUrl)
@@ -215,6 +238,22 @@ app.get("/", async (c) => {
       dockerImage: agent.docker_image,
       executionTier: agent.execution_tier,
       webUiUrl,
+      activeJob: activeLifecycleJob
+        ? {
+            id: activeLifecycleJob.id,
+            type: activeLifecycleJob.type,
+            status: activeLifecycleJob.status as "pending" | "in_progress",
+            attempts: activeLifecycleJob.attempts,
+            maxAttempts: activeLifecycleJob.max_attempts,
+            estimatedCompletionAt: toIsoStringOrNull(
+              activeLifecycleJob.estimated_completion_at,
+            ),
+            scheduledFor: toIsoString(activeLifecycleJob.scheduled_for),
+            startedAt: toIsoStringOrNull(activeLifecycleJob.started_at),
+            createdAt: toIsoString(activeLifecycleJob.created_at),
+            updatedAt: toIsoString(activeLifecycleJob.updated_at),
+          }
+        : null,
       walletAddress,
       walletProvider,
       walletStatus,
@@ -428,6 +467,7 @@ app.delete("/", async (c) => {
             | "custom";
         }
       | undefined;
+    let stateLossAcknowledged = false;
     if (c.req.raw.body !== null) {
       const rawBody = await c.req.text();
       if (rawBody.trim() !== "") {
@@ -457,11 +497,18 @@ app.delete("/", async (c) => {
             409,
           );
         }
-        expectedIdentity = {
-          agentName: parsed.data.expectedAgentName,
-          createdAt: parsed.data.expectedCreatedAt,
-          executionTier: parsed.data.expectedExecutionTier,
-        };
+        stateLossAcknowledged = parsed.data.stateLossAcknowledged === true;
+        if (
+          parsed.data.expectedAgentName !== undefined &&
+          parsed.data.expectedCreatedAt !== undefined &&
+          parsed.data.expectedExecutionTier !== undefined
+        ) {
+          expectedIdentity = {
+            agentName: parsed.data.expectedAgentName,
+            createdAt: parsed.data.expectedCreatedAt,
+            executionTier: parsed.data.expectedExecutionTier,
+          };
+        }
       }
     }
 
@@ -494,7 +541,10 @@ app.delete("/", async (c) => {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
-        { authorization: "user_request" },
+        {
+          authorization: "user_request",
+          ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+        },
       );
       if (!result.success) {
         const status =
@@ -552,8 +602,38 @@ app.delete("/", async (c) => {
       organizationId: user.organization_id,
       userId: user.id,
       authorization: "user_request",
+      ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
       expectedIdentity,
     });
+    const durableStateLossAcknowledged =
+      enqueueResult.job.data?.stateLossAcknowledged === true;
+    const durableAcknowledgingUserId =
+      typeof enqueueResult.job.data?.stateLossAcknowledgedByUserId === "string"
+        ? enqueueResult.job.data.stateLossAcknowledgedByUserId
+        : undefined;
+    const durableAcknowledgedAt =
+      typeof enqueueResult.job.data?.stateLossAcknowledgedAt === "string"
+        ? enqueueResult.job.data.stateLossAcknowledgedAt
+        : undefined;
+    const durableAcknowledgedTimestamp =
+      durableAcknowledgedAt === undefined
+        ? Number.NaN
+        : Date.parse(durableAcknowledgedAt);
+    const durableProvenanceComplete =
+      durableAcknowledgingUserId !== undefined &&
+      durableAcknowledgingUserId.length > 0 &&
+      durableAcknowledgedAt !== undefined &&
+      Number.isFinite(durableAcknowledgedTimestamp) &&
+      new Date(durableAcknowledgedTimestamp).toISOString() ===
+        durableAcknowledgedAt;
+    if (durableStateLossAcknowledged && !durableProvenanceComplete) {
+      throw new Error(
+        "Delete state-loss acknowledgement provenance is incomplete",
+      );
+    }
+    if (stateLossAcknowledged && !durableStateLossAcknowledged) {
+      throw new Error("Delete state-loss acknowledgement was not persisted");
+    }
 
     // Best-effort wake of the worker so the user does not wait for the
     // next cron tick. Same pattern as the provision path.
@@ -580,6 +660,9 @@ app.delete("/", async (c) => {
           jobId: enqueueResult.job.id,
           agentId,
           status: enqueueResult.job.status,
+          stateLossAcknowledged: durableStateLossAcknowledged || undefined,
+          stateLossAcknowledgedByUserId: durableAcknowledgingUserId,
+          stateLossAcknowledgedAt: durableAcknowledgedAt,
         },
         polling: {
           endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,

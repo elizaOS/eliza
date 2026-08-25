@@ -1474,7 +1474,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       );
     }
     return (
-      <div ref={containerRef} className="contents">
+      <div
+        ref={containerRef}
+        className="contents"
+        data-agent-surface-kind="dynamic"
+        data-agent-surface-view-id={viewId}
+      >
         <SandboxedViewFrame
           viewId={viewId}
           surface={surface}
@@ -1530,7 +1535,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   };
 
   return (
-    <div ref={containerRef} className="contents">
+    <div
+      ref={containerRef}
+      className="contents"
+      data-agent-surface-kind="dynamic"
+      data-agent-surface-view-id={viewId}
+    >
       <AgentSurfaceProvider viewId={viewId} viewType={viewType}>
         {/* Keyed by bundleUrl+reloadKey so a successful reload (refresh
             capability / dev HMR / Retry) remounts the boundary with cleared

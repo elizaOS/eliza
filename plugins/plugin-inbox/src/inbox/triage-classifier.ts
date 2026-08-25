@@ -39,11 +39,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function formatPromptScalar(value: unknown, maxLength = 600): string {
+function formatPromptScalar(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
   }
-  return String(value).replace(/\s+/g, " ").trim().slice(0, maxLength);
+  return String(value).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -176,11 +176,11 @@ export function buildTriagePrompt(
   // Few-shot examples
   if (opts.examples && opts.examples.length > 0) {
     sections.push("", "Examples from past triage decisions:");
-    for (const [index, ex] of opts.examples.slice(0, 5).entries()) {
+    for (const [index, ex] of opts.examples.entries()) {
       sections.push(
         `examples[${index}]:`,
-        `  source: ${formatPromptScalar(ex.source, 120)}`,
-        `  snippet: ${formatPromptScalar(ex.snippet, 160)}`,
+        `  source: ${formatPromptScalar(ex.source)}`,
+        `  snippet: ${formatPromptScalar(ex.snippet)}`,
         `  classification: ${ex.classification}`,
         `  ownerClassification: ${ex.ownerClassification ?? ""}`,
       );
@@ -197,21 +197,19 @@ export function buildTriagePrompt(
 
     sections.push(
       `messages[${index}]:`,
-      `  source: ${formatPromptScalar(msg.source, 120)}`,
-      `  channelName: ${formatPromptScalar(msg.channelName, 160)}`,
+      `  source: ${formatPromptScalar(msg.source)}`,
+      `  channelName: ${formatPromptScalar(msg.channelName)}`,
       `  channelType: ${msg.channelType}`,
-      `  senderName: ${formatPromptScalar(msg.senderName, 160)}`,
+      `  senderName: ${formatPromptScalar(msg.senderName)}`,
     );
     for (const [hintIndex, hint] of gmailHints.entries()) {
       sections.push(`  hints[${hintIndex}]: ${hint}`);
     }
-    sections.push(`  text: ${formatPromptScalar(msg.text, 500)}`);
+    sections.push(`  text: ${formatPromptScalar(msg.text)}`);
     if (msg.threadMessages && msg.threadMessages.length > 0) {
-      for (const [threadIndex, threadMessage] of msg.threadMessages
-        .slice(-5)
-        .entries()) {
+      for (const [threadIndex, threadMessage] of msg.threadMessages.entries()) {
         sections.push(
-          `  threadMessages[${threadIndex}]: ${formatPromptScalar(threadMessage, 240)}`,
+          `  threadMessages[${threadIndex}]: ${formatPromptScalar(threadMessage)}`,
         );
       }
     }

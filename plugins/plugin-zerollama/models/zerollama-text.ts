@@ -13,6 +13,7 @@ import type {
   TextStreamResult,
 } from "@elizaos/core";
 import {
+  assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
   logger,
@@ -56,7 +57,7 @@ export async function handleZerollamaText(args: {
   const { runtime, modelType, model, baseURL, fetchImpl, params } = args;
   const extended = params as GenerateTextParamsWithNativeOptions;
   const { prompt, temperature = 0.7, frequencyPenalty, presencePenalty } = params;
-  const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? 8192);
+  const maxTokens = params.omitMaxTokens ? undefined : params.maxTokens;
 
   const tools = normalizeNativeTools(extended.tools);
   const system = resolveEffectiveSystemPrompt({
@@ -147,11 +148,25 @@ export async function handleZerollamaText(args: {
       if (resolved) emitModelUsed(runtime, modelType, model, resolved);
       return resolved;
     });
+    const finishReasonPromise = Promise.resolve(streamResult.finishReason).then((finishReason) => {
+      assertModelOutputComplete({
+        finishReason,
+        provider: "zerollama",
+        model,
+      });
+      return finishReason;
+    });
+    void finishReasonPromise.catch(() => undefined);
+    const textPromise = Promise.all([Promise.resolve(streamResult.text), finishReasonPromise]).then(
+      ([text]) => text
+    );
+    void textPromise.catch(() => undefined);
 
     async function* textStreamWithUsage(): AsyncIterable<string> {
       for await (const chunk of streamResult.textStream) {
         yield chunk;
       }
+      await finishReasonPromise;
       // error-policy:J7 usage emission must not turn a completed stream into a
       // failed model response, but diagnostics remain observable.
       await usagePromise.catch((error) => {
@@ -165,9 +180,9 @@ export async function handleZerollamaText(args: {
 
     return {
       textStream: textStreamWithUsage(),
-      text: streamResult.text,
+      text: textPromise,
       usage: usagePromise,
-      finishReason: streamResult.finishReason,
+      finishReason: finishReasonPromise,
       ...(streamResult.toolCalls ? { toolCalls: streamResult.toolCalls } : {}),
     };
   }
@@ -179,6 +194,12 @@ export async function handleZerollamaText(args: {
     promptForEstimate,
     modelName: model,
     signal: params.signal,
+  });
+
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: "zerollama",
+    model,
   });
 
   const usage = normalizeTokenUsage(result.usage) ?? estimateUsage(promptForEstimate, result.text);

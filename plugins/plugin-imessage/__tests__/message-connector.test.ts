@@ -6,6 +6,7 @@
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import imessagePlugin from "../src/index.js";
 import { IMessageService } from "../src/service.js";
 import type { IMessageServiceStatus } from "../src/types.js";
 
@@ -39,6 +40,23 @@ function makeRuntime(registrations: MessageConnectorRegistration[]): IAgentRunti
 }
 
 describe("iMessage message connector registration", () => {
+  it("does not claim the Android Messages plugin's canonical sms source", () => {
+    expect(imessagePlugin.connectorSources).toEqual([
+      expect.objectContaining({
+        source: "imessage",
+        aliases: ["imessage", "messages"],
+      }),
+    ]);
+
+    const registrations: MessageConnectorRegistration[] = [];
+    IMessageService.registerSendHandlers(makeRuntime(registrations), {
+      getStatus: vi.fn(makeStatus),
+    } as IMessageService);
+    expect(registrations[0].metadata).toEqual(
+      expect.objectContaining({ aliases: ["imessage", "messages"] })
+    );
+  });
+
   it("registers unified connector metadata, contact resolution, and normalized sends", async () => {
     const registrations: MessageConnectorRegistration[] = [];
     const runtime = makeRuntime(registrations);

@@ -7,6 +7,7 @@ const ENV_KEYS = [
   "SQL_HEAVY_PAYLOAD_STORAGE",
   "SQL_HEAVY_PAYLOAD_MIN_BYTES",
   "SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES",
+  "SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES",
 ] as const;
 
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -73,5 +74,28 @@ describe("prepareJobInsertData", () => {
       appId: "app-123",
       buildContext: expect.any(String),
     });
+  });
+
+  test("a failure dump can no longer be written whole into the error column", async () => {
+    setRuntimeR2Bucket(null);
+    process.env.SQL_HEAVY_PAYLOAD_STORAGE = "inline";
+    process.env.SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES = "4096";
+
+    const dump = "PGLITE-DUMP".repeat(5000);
+    const prepared = await prepareJobInsertData({
+      id: "44444444-4444-4444-8444-444444444444",
+      type: "agent_snapshot",
+      organization_id: "22222222-2222-4222-8222-222222222222",
+      user_id: "33333333-3333-4333-8333-333333333333",
+      data: { appId: "app-123" },
+      error: dump,
+    });
+
+    expect(prepared.error_storage).toBe("inline");
+    expect(prepared.error_key).toBeNull();
+    const stored = prepared.error ?? "";
+    expect(new TextEncoder().encode(stored).byteLength).toBeLessThanOrEqual(4096);
+    expect(stored).toContain("truncated:");
+    expect(stored.startsWith("PGLITE-DUMP")).toBe(true);
   });
 });

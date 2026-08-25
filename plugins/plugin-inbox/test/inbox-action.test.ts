@@ -313,7 +313,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
 
       setInboxFetchers({
         gmail: async ({ limit }) =>
-          Array.from({ length: limit }, (_, index) =>
+          Array.from({ length: limit ?? 0 }, (_, index) =>
             makeItem({ id: `overflow-${index}`, platform: "gmail" }),
           ),
       });
@@ -324,6 +324,25 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       });
       expect(overflow.text).toContain("sample, not a total");
       expect(overflow.data).toMatchObject({ capped: ["gmail"] });
+    });
+
+    it("does not impose a hidden limit when pagination was not requested", async () => {
+      const gmailFetcher = vi.fn(async () =>
+        Array.from({ length: 501 }, (_, index) =>
+          makeItem({ id: `all-${index}`, platform: "gmail" }),
+        ),
+      );
+      setInboxFetchers({ gmail: gmailFetcher });
+
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+      });
+
+      expect(gmailFetcher.mock.calls[0]?.[0]).not.toHaveProperty("limit");
+      expect((result.data as { items: InboxItem[] }).items).toHaveLength(501);
+      expect(result.text).not.toContain("up to 50");
+      expect(result.data).toMatchObject({ capped: [] });
     });
 
     it("canonicalizes a valid since window and rejects an invalid one", async () => {
@@ -398,7 +417,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "slack",
         "discord",
         "telegram",
-        "signal",
         "imessage",
         "whatsapp",
       ]);
@@ -1001,7 +1019,7 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(parseInteractionBlocks(texts[0] ?? "").blocks).toHaveLength(0);
     });
 
-    it("appends per-thread reply/snooze/archive chips to the triage queue, capped at five threads, with entry ids in the values", async () => {
+    it("appends per-thread reply/snooze/archive chips to the triage queue for every returned thread, with entry ids in the values", async () => {
       const rows = ["e1", "e2", "e3", "e4", "e5", "e6"].map((id, index) =>
         makeTriageRow({
           id,
@@ -1027,7 +1045,11 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(result.success).toBe(true);
       const text = texts[0] ?? "";
       const { blocks } = parseInteractionBlocks(text);
-      expect(blocks).toHaveLength(5);
+      // Every returned entry stays actionable: appendInboxTriageChoiceMarkers
+      // must not cap the count (plugins/plugin-inbox/CLAUDE.md, "Complete
+      // planner choices"). A capped reply silently strands the trailing
+      // threads with no control the owner can tap.
+      expect(blocks).toHaveLength(rows.length);
       blocks.forEach((block, index) => {
         const id = `e${index + 1}`;
         expect(block).toMatchObject({
@@ -1046,7 +1068,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         // The reply chip names the sender so each block reads attributably.
         expect(block.options[0]?.label).toBe(`Reply to Sender ${index + 1}`);
       });
-      expect(text).not.toContain("e6");
     });
 
     it("an archive chip value round-trips into a successful archive of that entry", async () => {

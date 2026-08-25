@@ -16,10 +16,13 @@ import {
   createCharacter,
   logger,
   ModelType,
+  NotificationService,
   trajectoriesPlugin,
 } from "@elizaos/core";
 import {
   createDeterministicModelPlugin,
+  type DeterministicModelDiagnostics,
+  type DeterministicModelFixtureRegistry,
   type LiveProviderConfig,
   type LiveProviderName,
   selectLiveProvider,
@@ -28,6 +31,7 @@ import {
   DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import type { ScenarioModelFixtureMode } from "./model-fixtures.ts";
 import {
   assertProviderQualifiedPluginPackages,
   pluginPackageIsRegistered,
@@ -54,13 +58,13 @@ async function loadTestMocks() {
     "../../../plugins/plugin-personal-assistant/test/support/helpers/seed-grants.ts",
     import.meta.url,
   ).href;
-  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
-    await Promise.all([
-      import(mockRuntimeSpecifier),
-      import(lifeopsSimulatorSpecifier),
-      import(benchmarkFixturesSpecifier),
-      import(grantsSpecifier),
-    ]);
+  // These helpers share a large module graph. Load them in sequence so test
+  // runners transform that graph once instead of contending across four
+  // concurrent dynamic imports.
+  const mockRuntime = await import(mockRuntimeSpecifier);
+  const lifeopsSimulator = await import(lifeopsSimulatorSpecifier);
+  const benchmarkFixtures = await import(benchmarkFixturesSpecifier);
+  const grants = await import(grantsSpecifier);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
     seedLifeOpsSimulatorRuntime: lifeopsSimulator.seedLifeOpsSimulatorRuntime,
@@ -77,6 +81,8 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_MODEL_PROVIDER_NAME =
   "deterministic-model-provider" as const;
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+  "ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
@@ -85,32 +91,39 @@ const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
   "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
+// `EvaluatorService` (packages/core/src/services/evaluator.ts) runs every active
+// post-turn evaluator in one merged TEXT_SMALL call after EVERY turn. It is
+// runtime-wide background work, not scenario-specific: the prompt header below
+// is emitted verbatim by `renderSharedContext`.
+const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
-  const agentPackageName: string = "@elizaos/agent";
-  const agentModule = (await import(agentPackageName)) as Record<
-    string,
-    unknown
-  >;
-  const KnowledgeGraphService = agentModule.KnowledgeGraphService;
-  const knowledgeGraphSchema = agentModule.knowledgeGraphSchema;
+  const [knowledgeGraphModule, approvalModule] = await Promise.all([
+    import("@elizaos/agent/services/knowledge-graph"),
+    import("@elizaos/agent/services/approval/index"),
+  ]);
+  const { KnowledgeGraphService, knowledgeGraphSchema } = knowledgeGraphModule;
+  const { ApprovalService } = approvalModule;
   if (
     typeof KnowledgeGraphService !== "function" ||
+    typeof ApprovalService !== "function" ||
     knowledgeGraphSchema === null ||
     typeof knowledgeGraphSchema !== "object"
   ) {
     throw new Error(
-      "[scenario-runner] @elizaos/agent did not expose KnowledgeGraphService and knowledgeGraphSchema",
+      "[scenario-runner] @elizaos/agent did not expose production host services and knowledgeGraphSchema",
     );
   }
 
   return {
     name: "scenario-runner-knowledge-graph",
     description:
-      "Scenario-runner runtime knowledge graph service and schema bootstrap.",
+      "Scenario-runner production knowledge graph, notification, and durable approval services.",
     schema: knowledgeGraphSchema as Plugin["schema"],
     services: [
       KnowledgeGraphService as NonNullable<Plugin["services"]>[number],
+      NotificationService as NonNullable<Plugin["services"]>[number],
+      ApprovalService as NonNullable<Plugin["services"]>[number],
     ],
   };
 }
@@ -120,6 +133,13 @@ export interface RuntimeFactoryResult {
   pgliteDir: string;
   executionProfile: ScenarioExecutionProfile;
   registeredPluginPackages: readonly string[];
+  /**
+   * Action names this runtime carries *only* because some scenario declared the
+   * contributing package. Actions the runtime registers regardless are absent,
+   * so per-scenario scoping can hide a batch peer's plugin without ever hiding
+   * a baseline capability an undeclaring scenario legitimately uses.
+   */
+  scenarioDeclaredActionNames: readonly string[];
   providerName: LiveProviderName | typeof DETERMINISTIC_MODEL_PROVIDER_NAME;
   providerConfig:
     | LiveProviderConfig
@@ -142,6 +162,16 @@ function applyRuntimeSettings(
       /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
     );
   }
+}
+
+export function disableScenarioEmbeddingCapability(
+  runtime: Pick<AgentRuntime, "setSetting">,
+): void {
+  // Core recall paths read this canonical host declaration before attempting
+  // TEXT_EMBEDDING. Omitting the provider alone is insufficient: a speculative
+  // recall call would be reported as a runtime error and quarantine the shared
+  // scenario process even though keyword-only recall is intentional here.
+  runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, false, false);
 }
 
 function isPlugin(value: unknown): value is Plugin {
@@ -186,6 +216,13 @@ async function runCleanupStep(
   }
 }
 
+export async function disposeScenarioProviderPlugin(
+  plugin: Pick<Plugin, "dispose"> | null,
+  runtime: AgentRuntime,
+): Promise<void> {
+  await plugin?.dispose?.(runtime);
+}
+
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
@@ -206,6 +243,7 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 }
 
 export interface CreateScenarioRuntimeOptions {
+  character?: Parameters<typeof createCharacter>[0];
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
@@ -363,12 +401,131 @@ export function shouldUseDeterministicModel(
   );
 }
 
+const EXACT_LIVE_PROVIDER_CREDENTIALS: Partial<
+  Record<LiveProviderName, readonly string[]>
+> = {
+  groq: ["GROQ_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  anthropic: ["ANTHROPIC_API_KEY"],
+  google: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
+  openrouter: ["OPENROUTER_API_KEY"],
+};
+
+function configuredEnvValue(
+  env: NodeJS.ProcessEnv,
+  names: readonly string[],
+): boolean {
+  return names.some((name) => Boolean(env[name]?.trim()));
+}
+
+function resolvedLiveProviderIdentity(
+  providerConfig: LiveProviderConfig,
+): string {
+  if (providerConfig.name !== "openai") return providerConfig.name;
+  try {
+    const hostname = new URL(providerConfig.baseUrl).hostname.toLowerCase();
+    if (hostname === "cerebras.ai" || hostname.endsWith(".cerebras.ai")) {
+      return "cerebras";
+    }
+  } catch {
+    // Provider configuration validates the URL at its own transport boundary.
+  }
+  return providerConfig.env.ELIZA_PROVIDER?.trim().toLowerCase() || "openai";
+}
+
+/**
+ * Rejects credential aliasing and self-judging before a live runtime starts.
+ * An explicit provider is an identity claim: its own credential must exist,
+ * even when the shared core selector supports protocol-compatible fallbacks.
+ */
+export function scenarioLiveProviderPreflightProblems(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig?: LiveProviderConfig | null,
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const problems = new Set<string>();
+  const exactCredentials = preferredProvider
+    ? EXACT_LIVE_PROVIDER_CREDENTIALS[preferredProvider]
+    : undefined;
+  if (exactCredentials && !configuredEnvValue(env, exactCredentials)) {
+    problems.add(
+      `--provider ${preferredProvider} requires ${exactCredentials.join(" or ")}; compatible provider credentials cannot satisfy an explicit provider selection`,
+    );
+  }
+
+  const strictJudge = envFlag(env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT);
+  const judgeProvider =
+    env.EVAL_MODEL_PROVIDER?.trim().toLowerCase() ||
+    env.EVAL_PROVIDER?.trim().toLowerCase() ||
+    "cerebras";
+  if (strictJudge) {
+    if (judgeProvider !== "cerebras") {
+      problems.add(
+        `SCENARIO_JUDGE_REQUIRE_INDEPENDENT requires the supported independent judge provider cerebras; resolved ${judgeProvider}`,
+      );
+    } else if (
+      !configuredEnvValue(env, ["EVAL_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"])
+    ) {
+      problems.add(
+        "SCENARIO_JUDGE_REQUIRE_INDEPENDENT requires EVAL_CEREBRAS_API_KEY or CEREBRAS_API_KEY",
+      );
+    }
+  }
+
+  if (providerConfig) {
+    const actingProvider = resolvedLiveProviderIdentity(providerConfig);
+    if (preferredProvider && actingProvider !== preferredProvider) {
+      problems.add(
+        `requested acting provider ${preferredProvider} resolved to ${actingProvider}`,
+      );
+    }
+    if (strictJudge && actingProvider === judgeProvider) {
+      problems.add(
+        `acting provider ${actingProvider} cannot also be the independent judge provider`,
+      );
+    }
+  }
+  return [...problems].sort();
+}
+
+export function assertScenarioLiveProviderPreflight(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig?: LiveProviderConfig | null,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const problems = scenarioLiveProviderPreflightProblems(
+    preferredProvider,
+    providerConfig,
+    env,
+  );
+  if (problems.length > 0) {
+    throw new Error(
+      `[scenario-runner] live provider preflight failed: ${problems.join("; ")}`,
+    );
+  }
+}
+
 function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfig"] {
   return {
     name: DETERMINISTIC_MODEL_PROVIDER_NAME,
     env: {},
     pluginPackage: null,
   };
+}
+
+// The merged post-turn evaluator call fires after every turn on the SAME
+// runtime the scenario drives, so it reaches the strict registry in scenarios
+// that never declared a model manifest. Left unanswered it is recorded as an
+// unexpected call and fails the whole scenario at `assertConsumed()`, even
+// though nothing in the scenario asserts evaluator output. Matched on the
+// header `renderSharedContext` emits plus the `## Active Evaluators` section
+// `renderPrompt` appends, so ordinary conversation text quoting the header
+// alone is never answered by this branch.
+export function isPostTurnEvaluationPrompt(prompt: string): boolean {
+  return (
+    prompt.startsWith(POST_TURN_EVALUATION_PROMPT_PREFIX) &&
+    prompt.includes("\n## Active Evaluators\n")
+  );
 }
 
 export function isScheduledDispatchRenderPrompt(prompt: string): boolean {
@@ -469,6 +626,9 @@ type ScenarioDeterministicModelCall = {
   params?: {
     prompt?: unknown;
     messages?: unknown;
+    responseFormat?: unknown;
+    responseSchema?: unknown;
+    temperature?: unknown;
   };
 };
 
@@ -509,6 +669,50 @@ function deterministicCallTextCandidates(
   return candidates;
 }
 
+function isPostTurnEvaluationCall(
+  call: ScenarioDeterministicModelCall,
+): boolean {
+  if (call.modelType !== ModelType.TEXT_SMALL) return false;
+  const params = call.params;
+  if (!params || params.prompt !== undefined || params.temperature !== 0) {
+    return false;
+  }
+  if (!Array.isArray(params.messages) || params.messages.length !== 1) {
+    return false;
+  }
+  const message = params.messages[0];
+  if (
+    !isRecordLike(message) ||
+    message.role !== "user" ||
+    typeof message.content !== "string" ||
+    !isPostTurnEvaluationPrompt(message.content)
+  ) {
+    return false;
+  }
+  const responseFormat = params.responseFormat;
+  if (!isRecordLike(responseFormat) || responseFormat.type !== "json_object") {
+    return false;
+  }
+  const schema = params.responseSchema;
+  if (
+    !isRecordLike(schema) ||
+    schema.type !== "object" ||
+    !isRecordLike(schema.properties) ||
+    schema.additionalProperties !== false ||
+    !Array.isArray(schema.required)
+  ) {
+    return false;
+  }
+  const propertyKeys = Object.keys(schema.properties);
+  return (
+    propertyKeys.length > 0 &&
+    schema.required.length === propertyKeys.length &&
+    schema.required.every(
+      (requiredKey, index) => requiredKey === propertyKeys[index],
+    )
+  );
+}
+
 export function resolveScenarioDeterministicModelCall(
   call: ScenarioDeterministicModelCall,
 ): string | null {
@@ -522,6 +726,19 @@ export function resolveScenarioDeterministicModelCall(
     return null;
   }
   const candidates = deterministicCallTextCandidates(call);
+  // Checked first: the evaluator prompt embeds the turn's provider context, so
+  // a dispatch prompt delivered during the turn can appear INSIDE it. The
+  // post-turn header plus the evaluator's schema-bearing call shape are the
+  // more specific signal. Prompt text alone is untrusted scenario input and
+  // must not turn an ordinary model call into a fabricated empty evaluation.
+  if (isPostTurnEvaluationCall(call)) {
+    // "Nothing to record" is the empty shape the evaluator prompt itself
+    // prescribes. Every section is absent, so `processPreparedEntries` skips
+    // each evaluator without an error. Scenarios that need real evaluator
+    // output declare `modelFixtures: { mode: "fixtures" }`, which bypasses this
+    // resolver entirely and stays fail-closed.
+    return "{}";
+  }
   const bodyPrompt = candidates.find(isScheduledDispatchRenderPrompt);
   if (bodyPrompt) {
     return deterministicScheduledDispatchRenderText(bodyPrompt);
@@ -541,9 +758,26 @@ export function resolveScenarioProviderConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): RuntimeFactoryResult["providerConfig"] | null {
   if (shouldUseDeterministicModel(options, env)) {
+    if (options.preferredProvider) {
+      throw new Error(
+        `[scenario-runner] preferred live provider ${options.preferredProvider} cannot be combined with the deterministic model provider`,
+      );
+    }
     return deterministicModelProviderConfig();
   }
   return selectLiveProvider(options.preferredProvider);
+}
+
+/** Force explicit CLI scenario runs onto the CLI plugin's supported text planner. */
+export function configureExplicitCliScenarioPlanner(
+  preferredProvider: LiveProviderName | undefined,
+  providerConfig: RuntimeFactoryResult["providerConfig"],
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (preferredProvider !== "cli" || providerConfig.name !== "cli") return;
+
+  env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+  providerConfig.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
 }
 
 /**
@@ -607,6 +841,16 @@ export async function createScenarioRuntime(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_DETERMINISTIC_MODEL=1.",
     );
   }
+  configureExplicitCliScenarioPlanner(
+    options?.preferredProvider,
+    providerConfig,
+  );
+  if (providerConfig.name !== DETERMINISTIC_MODEL_PROVIDER_NAME) {
+    assertScenarioLiveProviderPreflight(
+      options?.preferredProvider,
+      providerConfig,
+    );
+  }
   if (
     executionProfile === "provider-qualified" &&
     providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME
@@ -615,6 +859,7 @@ export async function createScenarioRuntime(
       "[scenario-runner] provider-qualified execution requires a live model provider",
     );
   }
+  let selectedProviderPlugin: Plugin | null = null;
   const preparedEnvironment =
     await prepareScenarioExecutionEnvironment(executionProfile);
   const { testMocks, mockedEnvironment } = preparedEnvironment;
@@ -684,9 +929,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "ScenarioAgent",
-  });
+  const character = createCharacter(
+    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
+  );
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
@@ -752,20 +997,30 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
+  if (skipEmbeddingPlugin) {
+    disableScenarioEmbeddingCapability(runtime);
+  }
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
       throw new Error(
         "[scenario-runner] deterministic model provider requested without the simulated test environment",
       );
     }
+    // Undeclared scenarios retain the pre-manifest resolver during the staged
+    // corpus migration. Any explicit declaration is strict and fail-closed.
+    let modelFixtureMode: ScenarioModelFixtureMode = "legacy-fallback";
     const deterministicModelPlugin = createDeterministicModelPlugin({
-      resolve: resolveScenarioDeterministicModelCall,
+      resolve: (call) =>
+        modelFixtureMode === "legacy-fallback"
+          ? resolveScenarioDeterministicModelCall(call)
+          : null,
     });
     await runtime.registerPlugin(deterministicModelPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
-      scenarioModelFixtures?: unknown;
+      scenarioModelFixtures?: DeterministicModelFixtureRegistry;
       assertScenarioModelFixturesConsumed?: () => void;
-      getScenarioModelFixtureDiagnostics?: () => unknown;
+      getScenarioModelFixtureDiagnostics?: () => DeterministicModelDiagnostics;
+      setScenarioModelFixtureMode?: (mode: ScenarioModelFixtureMode) => void;
     };
     runtimeWithScenarioFixtures.scenarioModelFixtures =
       deterministicModelPlugin.fixtures;
@@ -773,6 +1028,9 @@ export async function createScenarioRuntime(
       deterministicModelPlugin.assertFixturesConsumed;
     runtimeWithScenarioFixtures.getScenarioModelFixtureDiagnostics =
       deterministicModelPlugin.getFixtureDiagnostics;
+    runtimeWithScenarioFixtures.setScenarioModelFixtureMode = (mode) => {
+      modelFixtureMode = mode;
+    };
     logger.info(
       "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
     );
@@ -789,6 +1047,7 @@ export async function createScenarioRuntime(
         `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
       );
     }
+    selectedProviderPlugin = providerPlugin;
     await runtime.registerPlugin(providerPlugin);
 
     if (providerConfig.name === "cli") {
@@ -885,11 +1144,20 @@ export async function createScenarioRuntime(
     }
   }
 
+  // Anything already on the runtime at this point is baseline capability that
+  // exists no matter which scenarios are batched; only the delta below belongs
+  // to a scenario's own `requires.plugins` declaration.
+  const baselineActionNames = new Set(
+    runtime.actions.map((action) => action.name),
+  );
   const requiredPluginPackages = await registerScenarioRequiredPlugins(
     runtime,
     options?.requiredPlugins ?? [],
     executionProfile,
   );
+  const scenarioDeclaredActionNames = runtime.actions
+    .map((action) => action.name)
+    .filter((name) => !baselineActionNames.has(name));
   for (const packageName of requiredPluginPackages) {
     registeredPluginPackages.add(packageName);
   }
@@ -945,6 +1213,14 @@ export async function createScenarioRuntime(
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
+    await runCleanupStep("provider plugin dispose", async () => {
+      try {
+        await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
+      } catch (err) {
+        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
+        logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
+      }
+    });
     await runCleanupStep("runtime.stop()", async () => {
       try {
         await runtime.stop();
@@ -1042,6 +1318,9 @@ export async function createScenarioRuntime(
     pgliteDir,
     executionProfile,
     registeredPluginPackages: [...registeredPluginPackages].sort(),
+    scenarioDeclaredActionNames: [
+      ...new Set(scenarioDeclaredActionNames),
+    ].sort(),
     providerName: providerConfig.name,
     providerConfig,
     cleanup,

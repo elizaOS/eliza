@@ -14,6 +14,7 @@ import type {
 	InteractionOption,
 } from "../../types/interactions";
 import type { Content } from "../../types/primitives";
+import { trimEndCharacters } from "../../utils/string-boundaries";
 import { encodeReplyCallback } from "./callback";
 import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 import { parseInteractionBlocks } from "./parse";
@@ -176,13 +177,17 @@ export function toNeutralLayout(
 			return { rows: chunk(buttons, perRow).map((b) => ({ buttons: b })) };
 		}
 		case "task": {
+			// Without a resolvable link the card is dashboard-only; its bare
+			// title rendered as a dangling duplicate line under the ack on chat
+			// connectors ("On it — building that now.\n\nWater Tracker Page",
+			// 2026-08-19). With a URL the title labels the button as before.
 			const url = resolveUrl?.(block);
 			return {
-				text: block.title,
+				text: url ? block.title : "",
 				rows: url
 					? [{ buttons: [{ label: "Open task", url, style: "primary" }] }]
 					: [],
-				needsFallback: !url,
+				needsFallback: false,
 			};
 		}
 		case "form": {
@@ -266,8 +271,12 @@ export function toPlainTextFallback(
 				: undefined;
 		}
 		case "task": {
+			// Title-only renders duplicated the ack prose as a dangling bare line
+			// on chat transports ("Created task agent.\n\nDaily Quote Page" —
+			// owner report 2026-08-19). Without a link the widget adds nothing a
+			// text transport can use.
 			const url = opts.resolveUrl?.(block);
-			return [block.title, url].filter(Boolean).join("\n");
+			return url ? [block.title, url].join("\n") : undefined;
 		}
 		case "form": {
 			const prose = [block.title, block.description]
@@ -369,7 +378,7 @@ export function buildInteractionUrlResolver(
 	appBaseUrl: string | undefined | null,
 ): Pick<LayoutOptions, "resolveUrl" | "resolveNavigateUrl"> {
 	if (!appBaseUrl) return {};
-	const base = appBaseUrl.replace(/\/+$/, "");
+	const base = trimEndCharacters(appBaseUrl, "/");
 	return {
 		resolveUrl: (block) => {
 			switch (block.kind) {

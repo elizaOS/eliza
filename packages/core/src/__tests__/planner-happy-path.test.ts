@@ -16,6 +16,7 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
+import { PI_CODING_ACTION_PROFILE } from "../types/coding";
 import type {
 	Action,
 	ActionResult,
@@ -107,6 +108,7 @@ function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
+	owner?: boolean;
 	contextRegistry?: ContextRegistry;
 	responseHandlerEvaluators?: import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator[];
 }): IAgentRuntime {
@@ -138,7 +140,9 @@ function makeRuntime(opts: {
 			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
-		getSetting: vi.fn(() => undefined),
+		getSetting: vi.fn((key: string) =>
+			opts.owner && key === "ELIZA_ADMIN_ENTITY_ID" ? SENDER_ID : undefined,
+		),
 		useModel: vi.fn(
 			async (modelType: unknown, params: unknown, provider: unknown) => {
 				calls.push({ modelType, params, provider });
@@ -266,6 +270,660 @@ function readRecordedTrajectories(agentId: string): unknown[] {
 }
 
 describe("v5 happy path — message handler → planner → executor → evaluator", () => {
+	it("enters the coding planner directly without a HANDLE_RESPONSE model call", async () => {
+		const fileHandler = vi.fn(async () => ({
+			success: true,
+			text: "wrote index.ts",
+			data: { actionName: "FILE" },
+		}));
+		const fileAction = makeMockAction({
+			name: "READ",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: fileHandler,
+		});
+		const mediaAction = makeMockAction({
+			name: "GENERATE_MEDIA",
+			contexts: ["files"],
+			handler: async () => ({ success: true }),
+		});
+		const buildGraphAction = makeMockAction({
+			name: "INSPECT_BUILD_GRAPH",
+			contexts: ["code"],
+			handler: async () => ({ success: true }),
+		});
+		const runtime = makeRuntime({
+			actions: [fileAction, mediaAction, buildGraphAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						completed: true,
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "READ",
+								args: { path: "index.ts" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: "Created index.ts." },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create index.ts"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent?.text).toBe("Created index.ts.");
+		expect(fileHandler).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.ACTION_PLANNER,
+		]);
+		const actionModes = (
+			runtime.runActionsByMode as ReturnType<typeof vi.fn>
+		).mock.calls.map(([mode]) => mode);
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_BEFORE");
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_DURING");
+		expect(actionModes).not.toContain("RESPONSE_HANDLER_AFTER");
+		const plannerTools = getCalls(runtime).flatMap((call) =>
+			((call.params as { tools?: Array<{ name?: string }> }).tools ?? []).map(
+				(tool) => tool.name,
+			),
+		);
+		expect(plannerTools).toContain("READ");
+		// The action passes the ordinary coding-context/role gates, so a fixed
+		// legacy name allowlist must not silently remove it from the model surface.
+		expect(plannerTools).toContain("GENERATE_MEDIA");
+		expect(plannerTools).toContain("INSPECT_BUILD_GRAPH");
+		const firstPlannerMessages = (
+			getCalls(runtime)[0]?.params as
+				| {
+						messages?: Array<{ content?: string }>;
+				  }
+				| undefined
+		)?.messages;
+		expect(firstPlannerMessages?.[0]?.content).toContain(
+			"Complete the current coding request",
+		);
+		expect(firstPlannerMessages?.[0]?.content).not.toContain(
+			"Owner life-management side effects",
+		);
+	});
+
+	it("applies the Pi coding profile while retaining planner protocol terminals", async () => {
+		const actions = [
+			"FILE",
+			"READ",
+			"WRITE",
+			"EDIT",
+			"SHELL",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		].map((name) =>
+			makeMockAction({
+				name,
+				contexts: ["code", "files", "terminal"],
+				handler: async () => ({ success: true, text: `${name} complete` }),
+			}),
+		);
+		const runtime = makeRuntime({
+			actions,
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						completed: true,
+						toolCalls: [{ id: "read-1", name: "READ", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "reply-1", name: "REPLY", args: { text: "Done." } },
+						],
+					},
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("read the repository"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			codingActionProfile: PI_CODING_ACTION_PROFILE,
+		});
+
+		const plannerTools = new Set(
+			getCalls(runtime).flatMap((call) =>
+				(
+					(call.params as { tools?: Array<{ name?: string }> }).tools ?? []
+				).flatMap((tool) => (tool.name ? [tool.name] : [])),
+			),
+		);
+		for (const name of ["READ", "SHELL", "EDIT", "WRITE"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of ["REPLY", "IGNORE", "STOP"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of [
+			"FILE",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		]) {
+			expect(plannerTools).not.toContain(name);
+		}
+		const nonterminalTools = [...plannerTools]
+			.filter((name) => !["REPLY", "IGNORE", "STOP"].includes(name))
+			.sort();
+		expect(nonterminalTools).toEqual(["EDIT", "READ", "SHELL", "WRITE"]);
+		expect(runtime.actions).toHaveLength(actions.length);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				actionSurface: expect.objectContaining({
+					tierAParents: ["EDIT", "READ", "SHELL", "WRITE"],
+					codingActionProfile: {
+						kind: "pi",
+						includeWorktree: false,
+					},
+				}),
+			}),
+			"Built v5 planner action surface",
+		);
+		const recordedTrajectory = readRecordedTrajectories(String(AGENT_ID))[0] as
+			| { codingActionProfile?: { kind: string; includeWorktree: boolean } }
+			| undefined;
+		expect(recordedTrajectory?.codingActionProfile).toEqual({
+			kind: "pi",
+			includeWorktree: false,
+		});
+	});
+
+	it("does not leak coding mode into the next ordinary turn", async () => {
+		const replyAction = makeMockAction({
+			name: "REPLY",
+			handler: async () => ({ success: true }),
+		});
+		const runtime = makeRuntime({
+			actions: [replyAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "reply-1", name: "REPLY", args: { text: "coded" } },
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["simple"], replyText: "hello" }),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("answer from the coding loop"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+		});
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("say hello"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.ACTION_PLANNER,
+			ModelType.RESPONSE_HANDLER,
+		]);
+	});
+
+	it("propagates a coding-loop failure instead of rescuing partial tool work", async () => {
+		const readAction = makeMockAction({
+			name: "READ",
+			contexts: ["code", "files"],
+			handler: async () => ({
+				success: true,
+				text: "partial source",
+				userFacingText: "partial source",
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [readAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "read-1", name: "READ", args: { path: "index.ts" } },
+						],
+					},
+				},
+			],
+		});
+
+		await expect(
+			runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage("fix index.ts"),
+				state: makeState(),
+				responseId: RESPONSE_ID,
+				codingMode: true,
+			}),
+		).rejects.toThrow("queue empty");
+	});
+
+	it("marks an unverified coding mutation as a machine-readable turn failure", async () => {
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({ success: true, text: "wrote config.go" }),
+		});
+		const runtime = makeRuntime({
+			actions: [writeAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: "Implemented the change." },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 0 },
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent).toMatchObject({
+			text: expect.stringContaining("coding task is incomplete"),
+			failureKind: "coding_mutation_unverified",
+			elizaSyntheticFailure: true,
+			transient: false,
+		});
+		expect(result.result.terminalFailure).toMatchObject({
+			kind: "coding_mutation_unverified",
+			transient: false,
+			message: expect.stringContaining("coding task is incomplete"),
+		});
+		expect(getCalls(runtime)).toHaveLength(2);
+	});
+
+	it("carries an exhausted verification repair through production Content", async () => {
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({ success: true, text: "wrote config.go" }),
+		});
+		const shellAction = makeMockAction({
+			name: "SHELL",
+			contexts: ["code", "terminal"],
+			parameters: [
+				{
+					name: "command",
+					description: "Command to execute",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({
+				success: false,
+				text: "command_failed: command exited with code 1",
+				data: {
+					command: "bun run typecheck",
+					exit_code: 1,
+					output: "src/config.ts:41:7 TS2322",
+					signal: null,
+				},
+			}),
+		});
+		const terminalReply = {
+			expectModelType: ModelType.ACTION_PLANNER,
+			body: {
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-unverified",
+						name: "REPLY",
+						args: { text: "Implemented the change." },
+					},
+				],
+			},
+		};
+		const runtime = makeRuntime({
+			actions: [writeAction, shellAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "typecheck-1",
+								name: "SHELL",
+								args: { command: "bun run typecheck" },
+							},
+						],
+					},
+				},
+				terminalReply,
+				terminalReply,
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 1 },
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		const terminalFailure = {
+			kind: "coding_verification_failed",
+			code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+			transient: false,
+			message: expect.stringContaining("coding task is incomplete"),
+		};
+		expect(result.result.responseContent).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+			elizaSyntheticFailure: true,
+			transient: false,
+		});
+		expect(result.result.responseMessages.at(-1)?.content).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+		});
+		expect(result.result.terminalFailure).toMatchObject(terminalFailure);
+		expect(getCalls(runtime)).toHaveLength(4);
+	});
+
+	it("preserves an unverified-mutation failure when callback delivery suppresses response content", async () => {
+		const failureMessage =
+			"I changed files but could not complete the required command verification. The coding task is incomplete.";
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({
+					text: failureMessage,
+					source: "action",
+					action: "WRITE",
+				});
+				return { success: true, text: "wrote config.go" };
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [writeAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: "Implemented the change." },
+							},
+						],
+					},
+				},
+			],
+		});
+		const deliveredVisibleTexts = new Set<string>();
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 0 },
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) deliveredVisibleTexts.add(content.text.toLowerCase());
+				return [];
+			},
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent).toBeNull();
+		expect(result.result.terminalFailure).toEqual({
+			kind: "coding_mutation_unverified",
+			transient: false,
+			message: failureMessage,
+		});
+	});
+
+	it("preserves a typed coding-tool failure when callback delivery suppresses response content", async () => {
+		const failureMessage =
+			"The build failed because the source did not compile.";
+		const buildAction = makeMockAction({
+			name: "BROKEN_BUILD",
+			contexts: ["code"],
+			parameters: [],
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: failureMessage }, "BROKEN_BUILD");
+				return {
+					success: false,
+					text: failureMessage,
+					userFacingText: failureMessage,
+					verifiedUserFacing: true,
+					failureProvenance: {
+						kind: "handler_error",
+						boundary: "handler",
+						code: "BUILD_FAILED",
+						retryable: false,
+					},
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [buildAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [{ id: "build-1", name: "BROKEN_BUILD", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								args: { text: failureMessage },
+							},
+						],
+					},
+				},
+			],
+		});
+		const deliveredVisibleTexts = new Set<string>();
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("build the project"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			deliveredVisibleTexts,
+			callback: async (content) => {
+				if (content.text) deliveredVisibleTexts.add(content.text.toLowerCase());
+				return [];
+			},
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		expect(result.result.responseContent).toBeNull();
+		expect(result.result.terminalFailure).toEqual({
+			kind: "handler_error",
+			code: "BUILD_FAILED",
+			transient: false,
+			message: failureMessage,
+		});
+	});
+
 	it("runs the full pipeline and records every stage to disk", async () => {
 		let webSearchCalls = 0;
 		const webSearch = makeMockAction({
@@ -386,7 +1044,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -397,7 +1055,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					promptSegments?: unknown[];
 					responseSchema?: unknown;
 					providerOptions?: {
-						eliza?: { segmentHashes?: unknown[] };
+						eliza?: { segmentHashes?: unknown[]; conversationId?: string };
 						cerebras?: { prompt_cache_key?: string; promptCacheKey?: string };
 					};
 			  }
@@ -473,6 +1131,15 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		);
 		expect(evaluatorParams?.providerOptions?.cerebras?.prompt_cache_key).toBe(
 			plannerParams?.providerOptions?.cerebras?.prompt_cache_key,
+		);
+		// Local/model-runner affinity is stable across turns but stage-scoped so
+		// planner and evaluator KV state cannot collide. The shared provider
+		// prefix hash above intentionally remains identical across both stages.
+		expect(plannerParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:planner`,
+		);
+		expect(evaluatorParams?.providerOptions?.eliza?.conversationId).toBe(
+			`${ROOM_ID}:evaluator`,
 		);
 
 		// Trajectory recording wrote a JSON file
@@ -1429,6 +2096,109 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				(stage) => stage.kind === "tool" && stage.tool?.name === "VIEWS",
 			),
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
+	});
+
+	it("lets the model write the final reply after a deterministic tool completes", async () => {
+		let appCalls = 0;
+		const modelReply =
+			"Done — I opened [Nubs Color Pebble](/api/apps/local/nubs-color-pebble/) for you.";
+		const app = makeMockAction({
+			name: "APP",
+			suppressEarlyReply: true,
+			parameters: [
+				{
+					name: "action",
+					description: "App operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "app",
+					description: "Installed app name",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => {
+				appCalls++;
+				return {
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+					modelReplyRequired: true,
+					promptData: {
+						operation: "launch_app",
+						outcome: "success",
+						displayName: "Nubs Color Pebble",
+						link: {
+							label: "Open Nubs Color Pebble",
+							href: "/api/apps/local/nubs-color-pebble/",
+						},
+					},
+				};
+			},
+		});
+		const evaluator = {
+			name: "test.force_deterministic_app_launch",
+			priority: 10,
+			deterministicActions: ["APP"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: {
+					name: "APP",
+					params: { action: "launch", app: "nubs-color-pebble" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [app],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "Opening that now.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: modelReply, toolCalls: [] },
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("open Nubs Color Pebble"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(appCalls).toBe(1);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		expect(
+			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
+		).toBeUndefined();
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"already settled and complete",
+		);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(modelReply);
+			expect(result.result.actionResults).toMatchObject([
+				{
+					success: true,
+					text: '{"effect":"app_launch","status":"completed"}',
+					transcriptVisibility: "internal",
+				},
+			]);
+		}
 	});
 
 	it("executes an owner-only deterministic call through the canonical gates without planning", async () => {

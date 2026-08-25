@@ -169,7 +169,6 @@ async function runInteractive(): Promise<void> {
   // a fresh TUI two user IDs and grant OWNER to the one that sends no turns.
   const ownerUserId = await resolveTuiOwnerUserId();
   process.env.ELIZA_ADMIN_ENTITY_ID ??= ownerUserId;
-  process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE ??= "1";
 
   // Initialize the agent
   runtime = await initializeAgent({ codingOnly: shouldRunCodingOnly() });

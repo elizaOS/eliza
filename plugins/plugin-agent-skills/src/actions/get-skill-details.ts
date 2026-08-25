@@ -12,7 +12,7 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import { toWellFormedUnicode, unwrapUserMessageText } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
@@ -24,12 +24,8 @@ type GetSkillDetailsOptions = {
 	slug?: unknown;
 };
 
-const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
-
-function truncateSkillDetailsText(text: string): string {
-	return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS
-		? text
-		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
+function normalizeSkillDetailsText(text: string): string {
+	return toWellFormedUnicode(text);
 }
 
 export const getSkillDetailsAction = {
@@ -110,17 +106,17 @@ ${details.skill.summary}
 ${details.owner ? `**Author:** ${details.owner.displayName} (@${details.owner.handle})` : ""}
 
 ${details.latestVersion.changelog ? `**Changelog:** ${details.latestVersion.changelog}` : ""}`;
-			const boundedText = truncateSkillDetailsText(text);
+			const completeText = normalizeSkillDetailsText(text);
 
-			if (callback) await callback({ text: boundedText });
+			if (callback) await callback({ text: completeText });
 
 			return {
 				success: true,
-				text: boundedText,
+				text: completeText,
 				data: {
 					details,
 					isInstalled,
-					outputTruncated: boundedText !== text,
+					outputTruncated: false,
 				},
 			};
 		} catch (error) {

@@ -89,3 +89,31 @@ describe("InMemoryDatabaseAdapter.countMemories metadata filter", () => {
 		expect(count).toBe(got.length);
 	});
 });
+
+describe("InMemoryDatabaseAdapter.getMemoriesByRoomIds completeness", () => {
+	it("returns the complete room set when no explicit page limit is supplied", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init?.();
+		await adapter.createMemories(
+			Array.from({ length: 25 }, (_, index) => ({
+				memory: {
+					entityId: stringToUuid(`room-history-entity-${index}`) as UUID,
+					roomId: ROOM,
+					createdAt: index,
+					content: { text: `history-${index}` },
+				} satisfies Memory,
+				tableName: TABLE,
+			})),
+		);
+
+		const memories = await adapter.getMemoriesByRoomIds({
+			tableName: TABLE,
+			roomIds: [ROOM],
+		});
+
+		expect(memories).toHaveLength(25);
+		expect(memories.map((memory) => memory.content.text)).toContain(
+			"history-0",
+		);
+	});
+});

@@ -212,6 +212,7 @@ describe("Shared reminder relative-delay runtime authority", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        roomKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
         reminders: {
           runner: reminderRunner,
           delivery: {

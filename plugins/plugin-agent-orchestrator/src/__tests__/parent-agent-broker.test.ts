@@ -1,6 +1,7 @@
 /**
  * Verifies runParentAgentBroker.
- * Deterministic unit test with a stubbed runtime; no live model.
+ * Deterministic unit test with a stubbed runtime; no live model. Includes typed
+ * parent terminal failures and hung Cloud-command HTTP fail-closed behavior.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -91,8 +92,9 @@ describe("runParentAgentBroker", () => {
 
   it("routes ask mode through the parent message service", async () => {
     const createMemory = vi.fn().mockResolvedValue(undefined);
-    const handleMessage = vi.fn(async (_runtime, memory, callback) => {
+    const handleMessage = vi.fn(async (_runtime, memory, callback, options) => {
       expect(memory.content.text).toContain("Use my calendar");
+      expect(options).toEqual({ continueAfterActions: true });
       await callback({ text: "Calendar says tomorrow at 2pm works." });
       return { responseContent: { text: "" } };
     });
@@ -121,6 +123,113 @@ describe("runParentAgentBroker", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(result.success).toBe(true);
     expect(result.text).toContain("Calendar says tomorrow at 2pm works.");
+  });
+
+  it("opts into coding mode only for an explicit executionMode coding request", async () => {
+    const observedOptions: unknown[] = [];
+    const handleMessage = vi.fn(
+      async (_runtime, _memory, _callback, options) => {
+        observedOptions.push(options);
+        return {
+          didRespond: true,
+          responseContent: { text: "Parent turn complete." },
+          responseMessages: [],
+        };
+      },
+    );
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    for (const args of [
+      { request: "Use the normal parent pipeline." },
+      { request: "Remain normal.", executionMode: "normal" },
+      { request: "Reject unknown profiles.", executionMode: "privileged" },
+      { request: "Use the coding planner.", executionMode: "coding" },
+    ]) {
+      await runParentAgentBroker({
+        runtime,
+        sessionId: `session-${observedOptions.length}`,
+        args,
+      });
+    }
+
+    expect(observedOptions).toEqual([
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true },
+      { continueAfterActions: true, codingMode: true },
+    ]);
+  });
+
+  it("returns callback-delivered null-content terminal failures as typed failures", async () => {
+    const terminalFailure = {
+      kind: "coding_tool_failure",
+      code: "SHELL_UNAVAILABLE",
+      transient: true,
+      message: "Shell execution failed.",
+    };
+    const handleMessage = vi.fn(async (_runtime, _memory, callback) => {
+      await callback({ text: "Done." });
+      return {
+        didRespond: true,
+        responseContent: null,
+        responseMessages: [],
+        terminalFailure,
+      };
+    });
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "session-1",
+      args: { request: "Run the required coding task." },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "Parent Eliza agent failed:\n\nShell execution failed.",
+      terminalFailure,
+    });
+    expect(result.text).not.toContain("Done.");
+  });
+
+  it("does not let result or callback prose override a terminal failure", async () => {
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      transient: false,
+      message: "Coding changes were not verified.",
+    };
+    const handleMessage = vi.fn(async (_runtime, _memory, callback) => {
+      await callback({ text: "Callback says everything passed." });
+      return {
+        didRespond: true,
+        responseContent: { text: "Result says everything passed." },
+        responseMessages: [],
+        terminalFailure,
+      };
+    });
+    const runtime = createRuntime({
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      messageService: { handleMessage },
+    } as Partial<IAgentRuntime>);
+
+    const result = await runParentAgentBroker({
+      runtime,
+      sessionId: "session-1",
+      args: { request: "Edit and verify the parser." },
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      terminalFailure,
+    });
+    expect(result.text).toContain("Coding changes were not verified.");
+    expect(result.text).not.toContain("everything passed");
   });
 
   it("lists deterministic Eliza Cloud commands", async () => {
@@ -179,6 +288,47 @@ describe("runParentAgentBroker", () => {
     expect((init.headers as Record<string, string>).Authorization).toMatch(
       /^Bearer /,
     );
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("fails closed on a hung Cloud command hop instead of waiting forever", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: string | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            const signal = init?.signal;
+            if (!signal) return;
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            signal.addEventListener("abort", () => reject(signal.reason));
+          }),
+      ),
+    );
+    const started = Date.now();
+    const result = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: { mode: "cloud-command", command: "apps.list" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("apps.list failed");
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it("forwards Cloud command query parameters", async () => {

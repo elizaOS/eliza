@@ -6,6 +6,25 @@
  */
 
 export const DISCORD_API_BASE = "https://discord.com/api/v10";
+export const DISCORD_REQUEST_TIMEOUT_MS = 25_000;
+
+/**
+ * Bound every Discord REST hop while preserving caller cancellation.
+ *
+ * A caller signal is composed with the owned deadline rather than replacing
+ * it, so a never-aborted caller signal cannot disable the operation bound.
+ */
+export function discordFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 /**
  * Create Discord Bot authorization header
@@ -57,7 +76,7 @@ export async function discordBotApiRequest<T>(
   botToken: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${DISCORD_API_BASE}${endpoint}`, {
+  const response = await discordFetch(`${DISCORD_API_BASE}${endpoint}`, {
     ...options,
     headers: {
       ...discordBotHeaders(botToken),
@@ -83,7 +102,7 @@ export async function discordBearerApiRequest<T>(
   accessToken: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${DISCORD_API_BASE}${endpoint}`, {
+  const response = await discordFetch(`${DISCORD_API_BASE}${endpoint}`, {
     ...options,
     headers: {
       ...discordBearerHeaders(accessToken),

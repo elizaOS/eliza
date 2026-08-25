@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./access-control/provenance-envelope";
 // Export all core modules
@@ -26,6 +28,7 @@ export * from "./app-route-plugin-registry";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";
+export * from "./capability-selection";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -97,6 +100,7 @@ export {
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -139,6 +143,9 @@ export type {
 	MessageAdapterCapabilities,
 	MessageRef,
 	MessageSource,
+	ReadMessageControl,
+	ReadMessageRequest,
+	ReadMessageResult,
 	ScoreContext,
 	SearchMessagesFilters,
 	SendPolicy,
@@ -200,6 +207,8 @@ export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./identity-clusters";
 export * from "./inference-timing";
+// Export the managed-provider adapter SDK (connection, transport, health)
+export * from "./integrations/managed-provider";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities
@@ -208,6 +217,7 @@ export * from "./markdown";
 export * from "./media";
 export * from "./memory";
 export * from "./messaging/interactions";
+export * from "./messaging/manage-server-authorization";
 export * from "./mobile-device-bridge-service";
 export * from "./model-gateway";
 export * from "./name-tokens";
@@ -250,9 +260,10 @@ export {
 	registerCandidateActionBackstopRule,
 } from "./runtime/candidate-action-backstop";
 export * from "./runtime/cleanup-scope";
+export * from "./runtime/content-access-manifest";
+export * from "./runtime/content-projection-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
-export * from "./runtime/conversation-compaction-hook";
 export {
 	__resetDirectActionRoutingRulesForTests,
 	type DirectActionRoutingRule,
@@ -285,6 +296,7 @@ export {
 // layers (message service, orchestrator completion relays) can recognize it
 // by identity and drop it as redundant next to an authoritative outcome.
 export { FAILED_TOOL_FALLBACK_MESSAGE } from "./runtime/planner-loop";
+export { renderActionResultsForModel } from "./runtime/planner-rendering";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -332,6 +344,10 @@ export * from "./search/keyless-web-search";
 // Export security utilities
 export * from "./security";
 export * from "./security/basic-email";
+// Envelope unwrap for orchestration surfaces that forward a user message
+// onward (deterministic follow-up sends must never embed the security banner
+// in a child task — live 2026-08-21).
+export { extractWrappedExternalContent } from "./security/external-content";
 export {
 	isSensitiveKeyName,
 	redactLogArgs,
@@ -378,7 +394,11 @@ export * from "./services/setup-state";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
 // class identity against the built package and always fail that check.
-export { TaskService } from "./services/task";
+export {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./services/task";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
@@ -475,8 +495,13 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
+export {
+	assertModelOutputComplete,
+	isModelOutputLimitFinishReason,
+} from "./utils/model-errors";
 // Export Node-specific utilities
 export * from "./utils/project-memory-scope";
 export * from "./utils/project-registry";

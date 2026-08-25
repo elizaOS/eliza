@@ -27,6 +27,7 @@ export const RESERVED_PLATFORM_ENV_KEYS = [
   // Direct pairing is restricted to loopback-bound local Docker. Remote
   // managed containers must not let caller env reopen the container relay.
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
+  "ELIZA_CLOUD_PAIR_ALLOWED_PEER_CIDRS",
   "ELIZA_CLOUD_AGENT_ID",
   "PUBLIC_BASE_URL",
   "STEWARD_API_URL",

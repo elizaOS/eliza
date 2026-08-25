@@ -13,8 +13,8 @@ import type {
   CodingAgentSelectorBridge,
   IAgentRuntime,
 } from "@elizaos/core";
-import { setCodingAgentSelectorBridge } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ElizaError, setCodingAgentSelectorBridge } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import type { CodingAccountMeta } from "../services/coding-account-selection.js";
 import { InMemorySessionStore } from "../services/session-store.js";
@@ -107,6 +107,24 @@ type CredentialResolver = {
   ): Promise<Record<string, string> | undefined>;
 };
 
+type CliBoundaryHarness = {
+  started: boolean;
+  runAcpx: ReturnType<typeof vi.fn>;
+};
+
+type NativeBoundaryHarness = {
+  started: boolean;
+  modelLeases: Map<
+    string,
+    { token: string; expiresAt: number; leaseId: string }
+  >;
+  mintModelLease: ReturnType<typeof vi.fn>;
+  attachNativeClientWithManagedCodexFallback: ReturnType<typeof vi.fn>;
+  accountCredentialsForSession(
+    session: SessionInfo,
+  ): Promise<Record<string, string> | undefined>;
+};
+
 describe("follow-up prompt account pinning (cli transport)", () => {
   let store: InMemorySessionStore;
   let service: AcpService;
@@ -180,6 +198,76 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     });
   });
 
+  it("blocks failover credentials until async account consumers durably accept the re-key", async () => {
+    const { bridge } = makeBridge({ healthyIds: ["acct-b"] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: { account: { ...ACCOUNT_A }, transportMode: "cli" },
+    };
+    await store.create(session);
+    service.onSessionEvent(async (_sessionId, event) => {
+      if (event === "account_switched") {
+        throw new Error("task account re-key failed");
+      }
+    });
+    const harness = service as unknown as CliBoundaryHarness;
+    harness.started = true;
+    harness.runAcpx = vi.fn();
+
+    await expect(service.sendPrompt(session.id, "continue")).rejects.toThrow(
+      "task account re-key failed",
+    );
+
+    expect(harness.runAcpx).not.toHaveBeenCalled();
+    expect(session.metadata?.account).toMatchObject({ accountId: "acct-a" });
+    expect(await store.get(session.id)).toMatchObject({
+      metadata: { account: { accountId: "acct-a" } },
+    });
+  });
+
+  it("reports rejected asynchronous session event subscribers", async () => {
+    const reportError = vi.fn();
+    const reportingService = new AcpService(
+      { ...makeRuntime(), reportError } as IAgentRuntime,
+      { store },
+    );
+    reportingService.onSessionEvent(async () => {
+      throw new Error("async subscriber failed");
+    });
+
+    reportingService.emitSessionEvent("sess-report-1", "message", {});
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reportError).toHaveBeenCalledWith(
+      "AcpService.emitSessionEvent",
+      expect.objectContaining({ message: "async subscriber failed" }),
+      { sessionId: "sess-report-1", event: "message" },
+    );
+  });
+
+  it("does not expose failover credentials when the session re-stamp cannot persist", async () => {
+    const { bridge } = makeBridge({ healthyIds: ["acct-b"] });
+    setCodingAgentSelectorBridge(bridge);
+    const session = makeSession();
+    await store.create(session);
+    vi.spyOn(store, "update").mockRejectedValue(
+      new Error("session account re-key unavailable"),
+    );
+
+    await expect(
+      (service as unknown as CredentialResolver).accountCredentialsForSession(
+        session,
+      ),
+    ).rejects.toThrow("session account re-key unavailable");
+
+    expect(session.metadata?.account).toMatchObject({ accountId: "acct-a" });
+    expect(await store.get(session.id)).toMatchObject({
+      metadata: { account: { accountId: "acct-a" } },
+    });
+  });
+
   it("returns undefined without selecting when the session has no linked account", async () => {
     const { bridge, calls } = makeBridge({ healthyIds: ["acct-a", "acct-b"] });
     setCodingAgentSelectorBridge(bridge);
@@ -194,21 +282,202 @@ describe("follow-up prompt account pinning (cli transport)", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("returns undefined when neither the pinned account nor a failover is available", async () => {
+  it("fails closed instead of using ambient credentials when the pinned pool is exhausted", async () => {
     const { bridge } = makeBridge({ healthyIds: [] });
     setCodingAgentSelectorBridge(bridge);
     const session = makeSession();
     await store.create(session);
+    const previousApiKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "ambient-payg-must-not-be-used";
+    try {
+      await expect(
+        (service as unknown as CredentialResolver).accountCredentialsForSession(
+          session,
+        ),
+      ).rejects.toMatchObject({
+        code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+        context: {
+          accountId: "acct-a",
+          agentType: "claude",
+          providerId: "anthropic-subscription",
+          sessionId: session.id,
+        },
+      });
 
-    const env = await (
-      service as unknown as CredentialResolver
-    ).accountCredentialsForSession(session);
+      // No failover happened, so the session stays keyed to A and cannot be
+      // re-stamped to the unrelated ambient PAYG credential.
+      const sessionAccount = session.metadata?.account;
+      expect(sessionAccount).toBeDefined();
+      if (!sessionAccount) throw new Error("Expected the session account pin");
+      expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-a");
+    } finally {
+      if (previousApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousApiKey;
+    }
+  });
 
-    expect(env).toBeUndefined();
-    // No failover happened, so the session must stay keyed to A.
-    const sessionAccount = session.metadata?.account;
-    expect(sessionAccount).toBeDefined();
-    if (!sessionAccount) throw new Error("Expected the session account pin");
-    expect((sessionAccount as CodingAccountMeta).accountId).toBe("acct-a");
+  it("does not spawn a cli follow-up with ambient credentials when the pinned pool is exhausted", async () => {
+    const { bridge } = makeBridge({ healthyIds: [] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: {
+        account: { ...ACCOUNT_A },
+        transportMode: "cli",
+      },
+    };
+    await store.create(session);
+    const harness = service as unknown as CliBoundaryHarness;
+    harness.started = true;
+    harness.runAcpx = vi.fn();
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((sessionId, event, data) => {
+      if (sessionId === session.id) events.push({ event, data });
+    });
+    const previousApiKey = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "ambient-payg-must-not-be-used";
+    try {
+      await expect(
+        service.sendPrompt(session.id, "continue"),
+      ).rejects.toMatchObject({
+        code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+        context: { accountId: "acct-a", sessionId: session.id },
+      });
+
+      expect(harness.runAcpx).not.toHaveBeenCalled();
+      expect(await store.get(session.id)).toMatchObject({
+        status: "errored",
+        metadata: { account: { accountId: "acct-a" } },
+      });
+      expect(events.find(({ event }) => event === "error")?.data).toMatchObject(
+        {
+          code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+          failureKind: "account_exhausted",
+        },
+      );
+    } finally {
+      if (previousApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = previousApiKey;
+    }
+  });
+
+  it("preserves the typed exhaustion error when errored-status persistence fails", async () => {
+    const { bridge } = makeBridge({ healthyIds: [] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: { account: { ...ACCOUNT_A }, transportMode: "cli" },
+    };
+    await store.create(session);
+    const originalUpdateStatus = store.updateStatus.bind(store);
+    vi.spyOn(store, "updateStatus").mockImplementation(
+      async (sessionId, status, error) => {
+        if (status === "errored") throw new Error("session store unavailable");
+        return originalUpdateStatus(sessionId, status, error);
+      },
+    );
+    const harness = service as unknown as CliBoundaryHarness;
+    harness.started = true;
+    harness.runAcpx = vi.fn();
+
+    await expect(
+      service.sendPrompt(session.id, "continue"),
+    ).rejects.toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+    });
+    expect(harness.runAcpx).not.toHaveBeenCalled();
+  });
+
+  it("blocks native reconnect before attach and revokes its freshly minted lease", async () => {
+    const { bridge } = makeBridge({ healthyIds: [] });
+    setCodingAgentSelectorBridge(bridge);
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: {
+        account: { ...ACCOUNT_A },
+        transportMode: "native",
+      },
+    };
+    await store.create(session);
+    const harness = service as unknown as NativeBoundaryHarness;
+    harness.started = true;
+    harness.mintModelLease = vi.fn(async () => {
+      const lease = {
+        token: "must-be-forgotten",
+        expiresAt: Date.now() + 60_000,
+        leaseId: "lease-native-reconnect",
+      };
+      harness.modelLeases.set(session.id, lease);
+      return lease;
+    });
+    harness.attachNativeClientWithManagedCodexFallback = vi.fn();
+    const events: Array<{ event: string; data: unknown }> = [];
+    service.onSessionEvent((sessionId, event, data) => {
+      if (sessionId === session.id) events.push({ event, data });
+    });
+
+    await expect(
+      service.sendPrompt(session.id, "continue"),
+    ).rejects.toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+      context: { accountId: "acct-a", sessionId: session.id },
+    });
+
+    expect(harness.mintModelLease).toHaveBeenCalledOnce();
+    expect(
+      harness.attachNativeClientWithManagedCodexFallback,
+    ).not.toHaveBeenCalled();
+    expect(harness.modelLeases.has(session.id)).toBe(false);
+    expect(await store.get(session.id)).toMatchObject({
+      status: "errored",
+      metadata: { account: { accountId: "acct-a" } },
+    });
+    expect(events.find(({ event }) => event === "error")?.data).toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+      failureKind: "account_exhausted",
+    });
+  });
+
+  it("never revokes a newer native reconnect lease while handling stale exhaustion", async () => {
+    const session: SessionInfo = {
+      ...makeSession(),
+      metadata: { account: { ...ACCOUNT_A }, transportMode: "native" },
+    };
+    await store.create(session);
+    const harness = service as unknown as NativeBoundaryHarness;
+    harness.started = true;
+    const staleLease = {
+      token: "stale-token",
+      expiresAt: Date.now() + 60_000,
+      leaseId: "stale-lease",
+    };
+    const newerLease = {
+      token: "newer-token",
+      expiresAt: Date.now() + 120_000,
+      leaseId: "newer-lease",
+    };
+    harness.mintModelLease = vi.fn(async () => {
+      harness.modelLeases.set(session.id, staleLease);
+      return staleLease;
+    });
+    harness.accountCredentialsForSession = vi.fn(async () => {
+      harness.modelLeases.set(session.id, newerLease);
+      throw new ElizaError("Pinned account exhausted", {
+        code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+        context: { sessionId: session.id },
+      });
+    });
+    harness.attachNativeClientWithManagedCodexFallback = vi.fn();
+
+    await expect(
+      service.sendPrompt(session.id, "continue"),
+    ).rejects.toMatchObject({
+      code: "CODING_ACCOUNT_SESSION_EXHAUSTED",
+    });
+
+    expect(
+      harness.attachNativeClientWithManagedCodexFallback,
+    ).not.toHaveBeenCalled();
+    expect(harness.modelLeases.get(session.id)).toEqual(newerLease);
   });
 });

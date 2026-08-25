@@ -211,7 +211,7 @@ export function ViewIcon({
   icon,
   label,
   id,
-  className = "h-5 w-5",
+  className = "size-5",
 }: {
   icon?: string | null;
   label?: string;

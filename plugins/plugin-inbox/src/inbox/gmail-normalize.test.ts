@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractNormalizedEmailAddress,
   filterGmailMessagesBySearch,
+  findLinkedMailForCalendarEvent,
   normalizeGmailSearchQueryMatches,
   normalizeOptionalGmailLabelIdArray,
   normalizeOptionalMessageIdArray,
@@ -266,5 +267,49 @@ describe("normalizeGmailSearchQueryMatches — standalone OR", () => {
     });
     expect(result).toHaveLength(2);
     expect(result.map((m) => m.id).sort()).toEqual(["m1", "m2"]);
+  });
+
+  it("sorts linked mail safely when receivedAt contains invalid date strings", () => {
+    const event = {
+      id: "ev1",
+      title: "Team Sync Meeting",
+      start: "2026-08-20T10:00:00Z",
+      end: "2026-08-20T11:00:00Z",
+      attendees: [{ email: "alice@example.com" }],
+    };
+    const msg1 = {
+      id: "m1",
+      threadId: "t1",
+      subject: "Team Sync agenda",
+      snippet: "",
+      from: "alice@example.com",
+      fromEmail: "alice@example.com",
+      to: [],
+      cc: [],
+      receivedAt: "invalid-date-string",
+      labels: [],
+      hasAttachments: false,
+    };
+    const msg2 = {
+      id: "m2",
+      threadId: "t2",
+      subject: "Team Sync notes",
+      snippet: "",
+      from: "alice@example.com",
+      fromEmail: "alice@example.com",
+      to: [],
+      cc: [],
+      receivedAt: "2026-08-20T12:00:00Z",
+      labels: [],
+      hasAttachments: false,
+    };
+
+    const linked = findLinkedMailForCalendarEvent(event as never, [
+      msg1 as never,
+      msg2 as never,
+    ]);
+    expect(linked).toHaveLength(2);
+    expect(linked[0]?.id).toBe("m2"); // newest first
+    expect(linked[1]?.id).toBe("m1"); // invalid fallback to 0
   });
 });

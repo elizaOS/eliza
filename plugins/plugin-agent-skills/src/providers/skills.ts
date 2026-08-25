@@ -7,20 +7,16 @@
  * - Level 3 (Resources): As needed (unlimited, executed without loading)
  */
 
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	ProviderResult,
-	State,
+import {
+	type IAgentRuntime,
+	type Memory,
+	type Provider,
+	type ProviderResult,
+	type State,
+	toWellFormedUnicode,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import type { Skill, SkillCatalogEntry } from "../types";
-
-const MAX_SUMMARY_SKILLS = 50;
-const MAX_SCAN_NOTICES = 10;
-const MAX_CATALOG_CATEGORIES = 8;
-const MAX_CATALOG_SKILLS_PER_CATEGORY = 3;
 
 // ============================================================
 // LEVEL 1: SUMMARY PROVIDER
@@ -66,14 +62,13 @@ export const skillsSummaryProvider: Provider = {
 				};
 			}
 
-			const listedSkills = skills.slice(0, MAX_SUMMARY_SKILLS);
 			const skillsJson = service.generateSkillsPromptJson({
 				includeLocation: true,
 			});
 
 			// Build scan status annotations for skills that have been scanned
 			const scanAnnotations: string[] = [];
-			for (const skill of listedSkills) {
+			for (const skill of skills) {
 				const scanStatus = service.getSkillScanStatus(skill.slug);
 				if (scanStatus && scanStatus !== "clean") {
 					scanAnnotations.push(
@@ -84,9 +79,7 @@ export const skillsSummaryProvider: Provider = {
 
 			const scanSection =
 				scanAnnotations.length > 0
-					? `\n\n### Security Notices\n${scanAnnotations
-							.slice(0, MAX_SCAN_NOTICES)
-							.join("\n")}`
+					? `\n\n### Security Notices\n${scanAnnotations.join("\n")}`
 					: "";
 
 			const text = `## Installed Skills (${skills.length})
@@ -99,17 +92,16 @@ ${skillsJson}${scanSection}
 				text,
 				values: {
 					skillCount: skills.length,
-					installedSkills: listedSkills.map((s) => s.slug).join(", "),
+					installedSkills: skills.map((s) => s.slug).join(", "),
 				},
 				data: {
-					skills: listedSkills.map((s: Skill) => ({
+					skills: skills.map((s: Skill) => ({
 						slug: s.slug,
 						name: s.name,
 						description: s.description,
 						version: s.version,
 						scanStatus: service.getSkillScanStatus(s.slug),
 					})),
-					truncated: skills.length > listedSkills.length,
 				},
 			};
 		} catch {
@@ -167,7 +159,11 @@ export const skillInstructionsProvider: Provider = {
 				score: calculateSkillRelevance(skill, fullContext),
 			}))
 			.filter((s) => s.score > 0)
-			.sort((a, b) => b.score - a.score);
+			.sort((a, b) => {
+				const aScore = Number.isFinite(a.score) ? a.score : 0;
+				const bScore = Number.isFinite(b.score) ? b.score : 0;
+				return bScore - aScore;
+			});
 
 		// Require minimum relevance score
 		if (scoredSkills.length === 0 || scoredSkills[0].score < 3) {
@@ -179,16 +175,11 @@ export const skillInstructionsProvider: Provider = {
 
 		if (!instructions) return { text: "" };
 
-		// Truncate if too long (respect ~5k token guideline)
-		const maxChars = 4000;
-		const truncatedBody =
-			instructions.body.length > maxChars
-				? `${instructions.body.substring(0, maxChars)}\n\n...[truncated]`
-				: instructions.body;
+		const skillBody = toWellFormedUnicode(instructions.body);
 
 		const text = `## Active Skill: ${topSkill.skill.name}
 
-${truncatedBody}`;
+${skillBody}`;
 
 			return {
 				text,
@@ -204,7 +195,7 @@ ${truncatedBody}`;
 						name: topSkill.skill.name,
 						score: topSkill.score,
 					},
-					otherMatches: scoredSkills.slice(1, 3).map((s) => ({
+					otherMatches: scoredSkills.slice(1).map((s) => ({
 						slug: s.skill.slug,
 						score: s.score,
 					})),
@@ -257,19 +248,9 @@ export const catalogAwarenessProvider: Provider = {
 			const categories = groupByCategory(catalog);
 
 			let categoryText = "";
-			for (const [category, skills] of Object.entries(categories).slice(
-				0,
-				MAX_CATALOG_CATEGORIES,
-			)) {
-				const skillNames = skills
-					.slice(0, MAX_CATALOG_SKILLS_PER_CATEGORY)
-					.map((s) => s.name)
-					.join(", ");
-				const more =
-					skills.length > MAX_CATALOG_SKILLS_PER_CATEGORY
-						? ` +${skills.length - MAX_CATALOG_SKILLS_PER_CATEGORY} more`
-						: "";
-				categoryText += `- **${category}**: ${skillNames}${more}\n`;
+			for (const [category, skills] of Object.entries(categories)) {
+				const skillNames = skills.map((s) => s.name).join(", ");
+				categoryText += `- **${category}**: ${skillNames}\n`;
 			}
 
 			return {
@@ -293,7 +274,6 @@ function getRecentContext(state: State): string {
 	const recentMessages = state.recentMessages || state.recentMessagesData || [];
 	if (Array.isArray(recentMessages)) {
 		return recentMessages
-			.slice(-5)
 			.map(
 				(m: Memory | { content?: { text?: string } }) => m.content?.text || "",
 			)

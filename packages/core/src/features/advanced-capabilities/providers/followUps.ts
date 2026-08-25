@@ -18,8 +18,6 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("FOLLOW_UPS");
-const MAX_FOLLOW_UPS = 20;
-const MAX_FOLLOW_UP_SUGGESTIONS = 3;
 
 export const followUpsProvider: Provider = {
 	name: spec.name,
@@ -47,9 +45,10 @@ export const followUpsProvider: Provider = {
 			}
 
 			// Get upcoming follow-ups for the next 7 days
-			const upcomingFollowUps = (
-				await followUpService.getUpcomingFollowUps(7, true)
-			).slice(0, MAX_FOLLOW_UPS);
+			const upcomingFollowUps = await followUpService.getUpcomingFollowUps(
+				7,
+				true,
+			);
 
 			if (upcomingFollowUps.length === 0) {
 				return {
@@ -142,9 +141,7 @@ export const followUpsProvider: Provider = {
 			}
 
 			// Get follow-up suggestions
-			const suggestions = (
-				await followUpService.getFollowUpSuggestions()
-			).slice(0, MAX_FOLLOW_UP_SUGGESTIONS);
+			const suggestions = await followUpService.getFollowUpSuggestions();
 
 			if (suggestions.length > 0) {
 				textSummary += `\nSuggested follow-ups:\n`;

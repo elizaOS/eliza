@@ -1,4 +1,6 @@
-// Coordinates cloud service content safety behavior behind route handlers.
+/** Coordinates cloud service content safety behavior behind route handlers. */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ApiError } from "../api/cloud-worker-errors";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
@@ -6,8 +8,6 @@ import { logger } from "../utils/logger";
 
 const OPENAI_MODERATIONS_URL = "https://api.openai.com/v1/moderations";
 const DEFAULT_MODERATION_MODEL = "omni-moderation-latest";
-const MAX_TEXT_CHARS = 24_000;
-const MAX_IMAGE_INPUTS = 8;
 
 export const OPENAI_MODERATION_CATEGORIES = [
   "sexual",
@@ -98,7 +98,10 @@ function redactProviderErrorDetail(detail: string): string {
 
 async function readModerationErrorDetail(response: Response): Promise<string> {
   try {
-    return redactProviderErrorDetail(await response.text()).slice(0, 300);
+    return truncateWellFormed(
+      toWellFormedUnicode(redactProviderErrorDetail(await response.text())),
+      300,
+    );
   } catch (error) {
     // error-policy:J7 diagnostics-must-not-kill-the-loop — the moderation
     // response is already failed; keep that boundary decision intact while
@@ -112,13 +115,9 @@ async function readModerationErrorDetail(response: Response): Promise<string> {
   }
 }
 
-function compactText(input: ContentSafetyInput["text"]): string {
+function normalizeTextInputs(input: ContentSafetyInput["text"]): string[] {
   const values = Array.isArray(input) ? input : [input];
-  return values
-    .map((value) => (typeof value === "string" ? value.trim() : ""))
-    .filter(Boolean)
-    .join("\n\n")
-    .slice(0, MAX_TEXT_CHARS);
+  return values.filter((value): value is string => typeof value === "string" && value.length > 0);
 }
 
 function categoryRecord<T>(
@@ -150,7 +149,7 @@ async function normalizeImageUrls(input: ContentSafetyInput): Promise<{
 }> {
   const urls: string[] = [];
   const issues: string[] = [];
-  const rawUrls = (input.imageUrls ?? []).filter(Boolean).slice(0, MAX_IMAGE_INPUTS);
+  const rawUrls = (input.imageUrls ?? []).filter(Boolean);
 
   for (const rawUrl of rawUrls) {
     if (rawUrl.startsWith("data:image/")) {
@@ -177,19 +176,13 @@ async function normalizeImageUrls(input: ContentSafetyInput): Promise<{
     }
   }
 
-  if ((input.imageUrls?.length ?? 0) > MAX_IMAGE_INPUTS) {
-    issues.push("too_many_images_truncated");
-  }
-
   return { urls, issues };
 }
 
-function buildModerationInput(text: string, imageUrls: string[]): ModerationRequestInput | null {
-  if (!text && imageUrls.length === 0) return null;
-  if (text && imageUrls.length === 0) return text;
-
+function buildModerationInput(texts: string[], imageUrls: string[]): ModerationRequestInput | null {
+  if (texts.length === 0 && imageUrls.length === 0) return null;
   const parts: Exclude<ModerationRequestInput, string> = [];
-  if (text) {
+  for (const text of texts) {
     parts.push({ type: "text", text });
   }
   for (const url of imageUrls) {
@@ -260,13 +253,13 @@ export class ContentSafetyService {
       return emptyReview(input, mode);
     }
 
-    const text = compactText(input.text);
+    const texts = normalizeTextInputs(input.text);
     const { urls: imageUrls, issues } = await normalizeImageUrls(input);
     if (issues.includes("unsafe_image_url") || issues.includes("data_image_not_allowed")) {
       return toBlockedReview(input, mode, issues);
     }
 
-    const moderationInput = buildModerationInput(text, imageUrls);
+    const moderationInput = buildModerationInput(texts, imageUrls);
     if (!moderationInput) {
       const review = emptyReview(input, mode);
       review.issues.push("no_content");

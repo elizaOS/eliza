@@ -908,7 +908,8 @@ export class KaminoLiquidityService extends Service {
         if (trades.length > 0) {
           const recentTradeTimes = trades
             .slice(0, 10) // Look at last 10 trades
-            .map((t) => new Date(t.updatedOn).getTime())
+            .map((t) => (t.updatedOn ? new Date(t.updatedOn).getTime() : 0))
+            .filter((time) => Number.isFinite(time) && time > 0)
             .sort((a, b) => b - a); // Sort descending
 
           if (recentTradeTimes.length > 1) {

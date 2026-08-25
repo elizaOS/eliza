@@ -4,6 +4,7 @@
  * app balances, redeemable earnings).
  */
 
+import { ORGANIZATION_CREDIT_PRICING } from "@elizaos/cloud-shared/billing";
 import { count, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/client";
@@ -169,7 +170,7 @@ app.get("/", async (c) => {
         createdAt: t.created_at.toISOString(),
       })),
       pricing: {
-        creditsPerDollar: 100,
+        ...ORGANIZATION_CREDIT_PRICING,
         minimumTopUp: 5.0,
         x402Enabled: true,
       },

@@ -32,9 +32,9 @@
 
 import {
   canonicalCloudPathForLegacyDashboard,
-  LANDING_AB_HOSTNAMES,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
+  LANDING_AB_HOSTNAMES,
 } from "@elizaos/shared/elizacloud/domain-contract";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
@@ -158,6 +158,46 @@ const serveAsset = async (context: MiddlewareContext): Promise<Response> => {
     : response;
 };
 
+// robots.txt and sitemap.xml ship as ordinary files in `public/`, so the Pages
+// static layer already serves their bytes through next(). The middleware only
+// has to keep them out of the fail-closed .txt/.xml 404 below and pin the
+// content type, because a crawler that receives the SPA's text/html for
+// robots.txt treats the whole site as uncrawlable. Reading the file off disk
+// here is not an option: Pages Functions run in workerd with no filesystem and
+// no nodejs_compat flag on this project, so a `node:fs` import fails to
+// resolve at deploy time.
+const CRAWL_ASSET_CONTENT_TYPES = new Map([
+  ["/robots.txt", "text/plain; charset=utf-8"],
+  ["/sitemap.xml", "application/xml; charset=utf-8"],
+]);
+
+const serveCrawlAsset = async (
+  context: MiddlewareContext,
+  contentType: string,
+): Promise<Response> => {
+  const response = await context.next();
+
+  // A static miss falls through to index.html. Serving that as robots.txt
+  // would advertise an HTML document as the crawl policy, so it fails closed
+  // and is loud enough to notice in Cloudflare's status metrics.
+  if (isSpaFallback(response) || !response.ok) {
+    return new Response("Not Found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set("Content-Type", contentType);
+  headers.set("Cache-Control", "no-cache");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(response.body, { status: response.status, headers });
+};
+
 // The hosted-web SPA is embedded inside the Discord Activities and Telegram
 // Mini App iframes. The global `public/_headers` rule pins every response to
 // `X-Frame-Options: SAMEORIGIN` + CSP `frame-ancestors 'self'`, which denies
@@ -230,6 +270,28 @@ export const onRequest = async (
 
   if (url.pathname.startsWith(ASSETS_PREFIX)) {
     return serveAsset(context);
+  }
+
+  // A single lookup decides both that this is a crawl asset and what type it
+  // must be served as, so the two can never drift apart.
+  const crawlAssetContentType = CRAWL_ASSET_CONTENT_TYPES.get(url.pathname);
+  if (crawlAssetContentType !== undefined) {
+    return serveCrawlAsset(context, crawlAssetContentType);
+  }
+
+  if (
+    !isProtocolPath(url.pathname) &&
+    !url.pathname.startsWith(ASSETS_PREFIX) &&
+    (url.pathname.endsWith(".xml") || url.pathname.endsWith(".txt"))
+  ) {
+    return new Response("Not Found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   }
 
   const response = await context.next();

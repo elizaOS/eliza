@@ -57,7 +57,7 @@ function logEntryKey(entry: LogEntry, index: number): string {
 const LogRow = memo(function LogRow({ entry }: { entry: LogEntry }) {
   return (
     <div
-      className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
+      className="flex flex-col gap-1 p-3 text-sm md:flex-row md:items-start md:gap-3"
       data-testid="log-entry"
     >
       {/* Timestamp */}
@@ -403,11 +403,7 @@ function LogsViewBody() {
                 message: logLoadError,
               })}
             </span>
-            <Button
-              size="sm"
-              className="text-black hover:text-black"
-              onClick={() => void loadLogs()}
-            >
+            <Button size="sm" onClick={() => void loadLogs()}>
               {t("common.retry", { defaultValue: "Retry" })}
             </Button>
           </div>
@@ -430,7 +426,7 @@ function LogsViewBody() {
         ) : filteredLogs.length === 0 ? (
           <PagePanel.Empty
             className="flex-1"
-            icon={<ScrollText className="h-6 w-6" aria-hidden />}
+            icon={<ScrollText className="size-6" aria-hidden />}
             title={
               hasActiveFilters
                 ? t("logsview.NoLogEntriesMatchingFiltersDescription")

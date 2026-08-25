@@ -60,6 +60,14 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
     rateLimitConfigs.push(config);
     return async (_context: unknown, next: () => Promise<void>) => next();
   },
+  moneyRateLimit: (config: Record<string, unknown>) => {
+    rateLimitConfigs.push({
+      ...config,
+      failClosed: true,
+      localLease: false,
+    });
+    return async (_context: unknown, next: () => Promise<void>) => next();
+  },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
@@ -93,10 +101,10 @@ beforeEach(() => {
 });
 
 describe("billing settings cutover safety", () => {
-  test("keeps GET standard and makes PUT standard fail-closed", () => {
+  test("keeps GET standard and makes PUT the shared MONEY fail-closed policy", () => {
     expect(rateLimitConfigs).toEqual([
       STANDARD_RATE_LIMIT,
-      { ...STANDARD_RATE_LIMIT, failClosed: true },
+      { ...STANDARD_RATE_LIMIT, failClosed: true, localLease: false },
     ]);
   });
 

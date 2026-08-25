@@ -1,16 +1,11 @@
 /**
- * TERMINAL_SHELL action — runs one explicit shell command on the server.
- *
- * When triggered the action:
- *   1. Extracts the command from parameters or MCP-style JSON
- *   2. POSTs to the local API server to execute it
- *   3. The API broadcasts output via WebSocket for real-time display
- *   4. Captures the output for planner follow-up
- *   5. Stores the full output as a document attachment for follow-up actions
- *
- * @module actions/terminal
+ * Executes one explicit shell command through the local terminal API and
+ * converts its bounded output into planner-visible data and an attachment.
+ * Every dispatch carries a fresh run identity; transport ambiguity preserves
+ * that identity so callers can reconcile the effect instead of retrying it.
  */
 
+import { createHash, randomUUID } from "node:crypto";
 import type {
   Action,
   ActionExample,
@@ -22,6 +17,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  buildReadView,
   buildStoreVariantBlockedMessage,
   ContentType,
   ElizaError,
@@ -29,13 +25,18 @@ import {
   logger,
   redactSensitiveText,
   stringToUuid,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
+import { capturedTerminalOutputIsSafe } from "../api/terminal-output-contract.ts";
+import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
-const MAX_TERMINAL_DATA_CHARS = 16000;
+const TERMINAL_TRANSPORT_GRACE_MS = 10_000;
+// Four MiB of control-heavy output can expand to six JSON bytes per source
+// byte. Bound the envelope before parsing while preserving the route's exact
+// complete-output contract.
+const MAX_TERMINAL_RESPONSE_BYTES = 25 * 1024 * 1024;
 // Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
 // message. Small single-line results (a SHA, a count, a path) are useful to
 // echo for "run X and tell me the value" turns; anything larger — or with
@@ -59,7 +60,7 @@ type CapturedTerminalRun = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  truncated: boolean;
+  truncated: false;
   maxDurationMs?: number;
 };
 
@@ -68,12 +69,165 @@ type TerminalOutputAttachment = {
   memoryId?: string;
 };
 
+type AbortAwareHandlerOptions = HandlerOptions & {
+  abortSignal?: AbortSignal;
+};
+
+function callerAbortSignal(
+  options: HandlerOptions | undefined,
+): AbortSignal | undefined {
+  const signal = (options as AbortAwareHandlerOptions | undefined)?.abortSignal;
+  return signal instanceof AbortSignal ? signal : undefined;
+}
+
+/** @internal Exported for deterministic transport-boundary tests. */
+export function resolveTerminalTransportTimeoutMs(): number {
+  return resolveTerminalRunLimits().maxDurationMs + TERMINAL_TRANSPORT_GRACE_MS;
+}
+
+async function cancelResponseBody(
+  body: ReadableStream<Uint8Array> | null,
+  reason: unknown,
+): Promise<void> {
+  if (!body) return;
+  try {
+    await body.cancel(reason);
+  } catch (error) {
+    // error-policy:J6 response cancellation is teardown-only; the original
+    // bounded-read failure remains authoritative.
+    logger.warn({ error }, "[terminal] Failed to cancel response body");
+  }
+}
+
+async function readTerminalResponseJson(
+  response: Response,
+  signal: AbortSignal,
+): Promise<JsonValue> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    if (!/^\d+$/u.test(declaredLength)) {
+      await cancelResponseBody(
+        response.body,
+        "Terminal response had an invalid Content-Length",
+      );
+      throw new ElizaError("Terminal response had an invalid Content-Length", {
+        code: "TERMINAL_RESPONSE_INVALID",
+        severity: "fatal",
+      });
+    }
+    if (Number(declaredLength) > MAX_TERMINAL_RESPONSE_BYTES) {
+      await cancelResponseBody(
+        response.body,
+        "Terminal response exceeded the byte limit",
+      );
+      throw new ElizaError("Terminal response exceeded the byte limit", {
+        code: "TERMINAL_RESPONSE_INVALID",
+        severity: "fatal",
+      });
+    }
+  }
+
+  if (!response.body) {
+    throw new ElizaError("Terminal response omitted its body", {
+      code: "TERMINAL_RESPONSE_INVALID",
+      severity: "fatal",
+    });
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => {
+      reject(
+        signal.reason ??
+          new DOMException("Terminal request aborted", "AbortError"),
+      );
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+
+  try {
+    signal.throwIfAborted();
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_TERMINAL_RESPONSE_BYTES) {
+        await reader.cancel("Terminal response exceeded the byte limit");
+        throw new ElizaError("Terminal response exceeded the byte limit", {
+          code: "TERMINAL_RESPONSE_INVALID",
+          severity: "fatal",
+        });
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (signal.aborted) {
+      try {
+        await reader.cancel(signal.reason);
+      } catch (cancelError) {
+        // error-policy:J6 response cancellation is teardown-only; preserve the
+        // caller or transport abort reason.
+        logger.warn(
+          { error: cancelError },
+          "[terminal] Failed to cancel aborted response body",
+        );
+      }
+      throw signal.reason ?? error;
+    }
+    throw error;
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    reader.releaseLock();
+  }
+
+  let text: string;
+  try {
+    const bytes = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    // error-policy:J2 malformed transport bytes become a typed boundary error.
+    throw new ElizaError("Terminal response was not valid UTF-8", {
+      code: "TERMINAL_RESPONSE_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+
+  try {
+    return JSON.parse(text) as JsonValue;
+  } catch (error) {
+    // error-policy:J2 the terminal boundary requires a structured response;
+    // preserve the parser error for the runtime's action failure channel.
+    throw new ElizaError("Terminal execution response was not valid JSON", {
+      code: "TERMINAL_RESPONSE_INVALID",
+      cause: error,
+      severity: "fatal",
+    });
+  }
+}
+
 function readStringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasNestedExecutionEnvelope(value: Record<string, JsonValue>): boolean {
+  for (const key of ["data", "result", "output"] as const) {
+    if (isJsonRecord(value[key])) return true;
+  }
+  return false;
 }
 
 function parseJsonArguments(
@@ -130,6 +284,7 @@ function resolveTerminalInput(options?: HandlerOptions): TerminalActionInput {
 function normalizeCapturedRun(
   command: string,
   value: JsonValue,
+  expectedRunId?: string,
 ): CapturedTerminalRun {
   if (!isJsonRecord(value)) {
     throw new ElizaError("Terminal response was not an object", {
@@ -141,23 +296,55 @@ function normalizeCapturedRun(
   if (
     value.ok !== true ||
     !runId ||
+    (expectedRunId !== undefined && runId !== expectedRunId) ||
     typeof value.exitCode !== "number" ||
-    !Number.isInteger(value.exitCode) ||
+    !Number.isSafeInteger(value.exitCode) ||
     typeof value.stdout !== "string" ||
     typeof value.stderr !== "string" ||
     typeof value.timedOut !== "boolean" ||
-    typeof value.truncated !== "boolean"
+    typeof value.truncated !== "boolean" ||
+    "error" in value ||
+    !capturedTerminalOutputIsSafe(value.stdout, value.stderr) ||
+    (value.maxDurationMs !== undefined &&
+      (typeof value.maxDurationMs !== "number" ||
+        !Number.isSafeInteger(value.maxDurationMs) ||
+        value.maxDurationMs < 1))
   ) {
     throw new ElizaError("Terminal response omitted required execution proof", {
       code: "TERMINAL_RESPONSE_INVALID",
       context: {
         hasRunId: Boolean(runId),
+        ...(expectedRunId !== undefined
+          ? { expectedRunId, receivedRunId: runId }
+          : {}),
         hasExitCode:
           typeof value.exitCode === "number" &&
           Number.isInteger(value.exitCode),
       },
       severity: "fatal",
     });
+  }
+
+  if (value.truncated !== false || hasNestedExecutionEnvelope(value)) {
+    throw new ElizaError(
+      "Terminal response contained incomplete stdout or stderr",
+      {
+        code: "TERMINAL_OUTPUT_INCOMPLETE",
+        context: { acceptance: "accepted", runId },
+        severity: "fatal",
+      },
+    );
+  }
+
+  if (value.timedOut) {
+    throw new ElizaError(
+      "Terminal response timed out before complete output was proven",
+      {
+        code: "TERMINAL_OUTPUT_INCOMPLETE",
+        context: { acceptance: "accepted", runId },
+        severity: "fatal",
+      },
+    );
   }
 
   return {
@@ -167,7 +354,7 @@ function normalizeCapturedRun(
     stdout: value.stdout,
     stderr: value.stderr,
     timedOut: value.timedOut,
-    truncated: value.truncated,
+    truncated: false,
     maxDurationMs:
       typeof value.maxDurationMs === "number" &&
       Number.isFinite(value.maxDurationMs)
@@ -187,7 +374,6 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     result.timedOut
       ? `Timed out: yes${typeof result.maxDurationMs === "number" ? ` (${result.maxDurationMs} ms limit)` : ""}`
       : "Timed out: no",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     "",
     "STDOUT:",
     formatOutputBlock(result.stdout),
@@ -199,38 +385,44 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     .join("\n");
 }
 
-/** @internal Exported for deterministic boundary tests. */
-export function buildOutputPreview(content: string, maxLength = 3_000): string {
-  if (maxLength <= 0) return "";
-  const trimmed = content.trimEnd();
-  if (trimmed.length <= maxLength) {
-    return truncateWellFormed(formatOutputBlock(trimmed), maxLength);
-  }
-
-  const suffixFor = (omittedChars: number) =>
-    `\n\n[... ${omittedChars} chars omitted; use the attachment for full output ...]`;
-  const retainedBudget = Math.max(
-    0,
-    maxLength - suffixFor(trimmed.length).length,
-  );
-  const prefix = truncateWellFormed(trimmed, retainedBudget).trimEnd();
-  const suffix = suffixFor(trimmed.length - prefix.length);
-
-  return prefix.length + suffix.length <= maxLength
-    ? `${prefix}${suffix}`
-    : truncateWellFormed(trimmed, maxLength);
+function terminalAttachmentReadView(
+  outputAttachment: TerminalOutputAttachment | undefined,
+) {
+  if (!outputAttachment?.memoryId) return undefined;
+  const content = outputAttachment.attachment.text ?? "";
+  const byteLength = Buffer.byteLength(content);
+  const digest = createHash("sha256").update(content).digest("hex");
+  return buildReadView({
+    reference: {
+      kind: "attachment",
+      ref: outputAttachment.attachment.id,
+      revision: outputAttachment.memoryId,
+    },
+    slice: {
+      range: {
+        unit: "byte",
+        start: 0,
+        end: byteLength,
+        total: byteLength,
+      },
+      hasPrevious: false,
+      hasMore: false,
+      revision: outputAttachment.memoryId,
+      completeness: "complete",
+      sliceSha256: digest,
+      sourceSha256: digest,
+    },
+  });
 }
 
 /** @internal Exported for deterministic boundary tests. */
-export function truncateForData(
-  text: string,
-  max = MAX_TERMINAL_DATA_CHARS,
-): string {
-  if (max <= 0) return "";
-  if (text.length <= max) return text;
-  const suffix = "\n…[truncated]";
-  if (max <= suffix.length) return truncateWellFormed(text, max);
-  return `${truncateWellFormed(text, max - suffix.length)}${suffix}`;
+export function completeOutputBlock(content: string): string {
+  return formatOutputBlock(content.trimEnd());
+}
+
+/** @internal Exported for deterministic boundary tests. */
+export function normalizeTerminalOutput(text: string): string {
+  return text;
 }
 
 async function createCommandOutputAttachment(
@@ -251,7 +443,7 @@ async function createCommandOutputAttachment(
     url: `memory://terminal-output/${attachmentId}`,
     title,
     source: TERMINAL_ACTION_NAME,
-    description: `Full stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
+    description: `Complete captured stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
     text: buildCommandArtifactContent(result),
     contentType: ContentType.DOCUMENT,
   };
@@ -304,7 +496,7 @@ function terminalEffectReceipt(
           },
         ]
       : [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key: result.runId, replayed: false },
     observedAt,
   } as const;
   if (result.exitCode === 0 && !result.timedOut) {
@@ -379,7 +571,6 @@ function buildCapturedResponseText(
     result.timedOut
       ? `Timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}.`
       : "",
-    result.truncated ? "Captured output truncated to 128 KB." : "",
     outputAttachment
       ? `Full output attachment: ${outputAttachment.attachment.id} (${outputAttachment.attachment.title})`
       : "",
@@ -390,7 +581,7 @@ function buildCapturedResponseText(
         : "No attachment was stored for this output.",
     "",
     "Output preview:",
-    buildOutputPreview(outputContent),
+    completeOutputBlock(outputContent),
     "",
     "Next-step contract for the planner:",
     "- Decide whether to reply to the user, stay silent, or continue with another action.",
@@ -463,22 +654,55 @@ export const terminalAction: Action = {
     if (terminalToken) {
       headers["X-Eliza-Terminal-Token"] = terminalToken;
     }
-
-    const response = await fetch(
-      `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          command,
-          clientId: "runtime-terminal-action",
-          captureOutput: true,
-          ...(terminalToken ? { terminalToken } : {}),
-        }),
-      },
+    const runId = `run-${randomUUID()}`;
+    headers["X-Eliza-Terminal-Run-Id"] = runId;
+    const callerSignal = callerAbortSignal(
+      options as HandlerOptions | undefined,
     );
+    callerSignal?.throwIfAborted();
+    const transportTimeoutMs = resolveTerminalTransportTimeoutMs();
+    const transportSignal = AbortSignal.timeout(transportTimeoutMs);
+    const requestSignal = callerSignal
+      ? AbortSignal.any([callerSignal, transportSignal])
+      : transportSignal;
+
+    let response: Response;
+    try {
+      response = await fetch(
+        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            command,
+            clientId: "runtime-terminal-action",
+            captureOutput: true,
+            ...(terminalToken ? { terminalToken } : {}),
+          }),
+          signal: requestSignal,
+        },
+      );
+    } catch (error) {
+      // error-policy:J2 once dispatch begins, a transport failure cannot prove
+      // whether the server accepted the command. Preserve the client-selected
+      // run identity so the caller can reconcile the operation before retrying.
+      throw new ElizaError("Terminal execution outcome is unknown", {
+        code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+        context: {
+          acceptance: "unknown",
+          runId,
+          transportTimeoutMs,
+        },
+        cause: error,
+        severity: "fatal",
+      });
+    }
 
     if (!response.ok) {
+      await cancelResponseBody(
+        response.body,
+        `Terminal request rejected with HTTP ${response.status}`,
+      );
       throw new ElizaError("Terminal execution request was rejected", {
         code: "TERMINAL_REQUEST_FAILED",
         context: { status: response.status },
@@ -488,17 +712,45 @@ export const terminalAction: Action = {
 
     let responseBody: JsonValue;
     try {
-      responseBody = (await response.json()) as JsonValue;
+      responseBody = await readTerminalResponseJson(response, requestSignal);
     } catch (error) {
-      // error-policy:J2 the terminal boundary requires a structured response;
-      // preserve the parser error for the runtime's action failure channel.
-      throw new ElizaError("Terminal execution response was not valid JSON", {
-        code: "TERMINAL_RESPONSE_INVALID",
+      // error-policy:J2 an accepted request with an unreadable, cancelled, or
+      // malformed result may already have executed. Bind every such ambiguity
+      // to the dispatched run identity instead of presenting a safe retry.
+      throw new ElizaError("Terminal execution outcome is unknown", {
+        code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+        context: {
+          acceptance: "unknown",
+          runId,
+          transportTimeoutMs,
+        },
         cause: error,
         severity: "fatal",
       });
     }
-    const rawRun = normalizeCapturedRun(command, responseBody);
+    let rawRun: CapturedTerminalRun;
+    try {
+      rawRun = normalizeCapturedRun(command, responseBody, runId);
+    } catch (error) {
+      if (
+        error instanceof ElizaError &&
+        error.code === "TERMINAL_OUTPUT_INCOMPLETE"
+      ) {
+        throw error;
+      }
+      // error-policy:J2 a 2xx body that cannot prove the bound run's terminal
+      // result is still an ambiguous effect, not a safely retryable parse error.
+      throw new ElizaError("Terminal execution outcome is unknown", {
+        code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+        context: {
+          acceptance: "unknown",
+          runId,
+          transportTimeoutMs,
+        },
+        cause: error,
+        severity: "fatal",
+      });
+    }
     // Sanitize once before constructing model text, bounded action data, the
     // user-facing relay, attachments, or persisted attachment memory.
     const capturedRun: CapturedTerminalRun = {
@@ -507,21 +759,21 @@ export const terminalAction: Action = {
       stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
       stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
     };
-    const boundedRun = {
+    const completeRun = {
       ...capturedRun,
-      stdout: truncateForData(capturedRun.stdout),
-      stderr: truncateForData(capturedRun.stderr),
+      stdout: normalizeTerminalOutput(capturedRun.stdout),
+      stderr: normalizeTerminalOutput(capturedRun.stderr),
     };
     const outputAttachment = await createCommandOutputAttachment(
       runtime,
       message,
       capturedRun,
     );
+    const readView = terminalAttachmentReadView(outputAttachment);
 
     const cleanStdout =
       capturedRun.exitCode === 0 &&
       !capturedRun.timedOut &&
-      !capturedRun.truncated &&
       capturedRun.stderr.trim().length === 0
         ? capturedRun.stdout.trim()
         : "";
@@ -536,7 +788,12 @@ export const terminalAction: Action = {
       effectReceipt.outcome === "applied" && capturedRun.exitCode === 0;
 
     return {
-      text: buildCapturedResponseText(capturedRun, outputAttachment),
+      // A ReadView always describes the exact canonical page in `text`. When
+      // persistence failed there is no restart-safe view, so retain the legacy
+      // self-contained report as the explicit non-recoverable fallback.
+      text: readView
+        ? (outputAttachment?.attachment.text ?? "")
+        : buildCapturedResponseText(capturedRun, outputAttachment),
       success: succeeded,
       userFacingText,
       // Raw stdout stays available as the deterministic fallback relay for
@@ -557,10 +814,20 @@ export const terminalAction: Action = {
           }),
       data: {
         actionName: TERMINAL_ACTION_NAME,
-        ...boundedRun,
+        ...completeRun,
         outputAttachment: outputAttachment?.attachment,
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,
+      },
+      promptData: {
+        ...(readView ? { readView } : {}),
+        terminal: {
+          runId: capturedRun.runId,
+          exitCode: capturedRun.exitCode,
+          timedOut: capturedRun.timedOut,
+          truncated: capturedRun.truncated,
+          outputReferenceAvailable: Boolean(readView),
+        },
       },
     };
   },

@@ -136,7 +136,8 @@ function makeNodeSsh(): AppContainerSsh {
 function makeBuilderSsh(host: string): AppContainerSsh {
   const keyB64 = containersEnv.sshKey();
   const privateKey = keyB64 ? Buffer.from(keyB64, "base64") : undefined;
-  // DockerSSHClient.exec(command, timeoutMs?) IS the AppContainerSsh shape.
+  // Keep both command paths on the pooled client: arbitrary container env is
+  // delivered only through execStdin, never interpolated into exec argv.
   const client = privateKey
     ? new DockerSSHClient({ hostname: host, username: containersEnv.sshUser(), privateKey })
     : new DockerSSHClient({
@@ -144,7 +145,10 @@ function makeBuilderSsh(host: string): AppContainerSsh {
         username: containersEnv.sshUser(),
         privateKeyPath: containersEnv.sshKeyPath(),
       });
-  return { exec: (command, timeoutMs) => client.exec(command, timeoutMs) };
+  return {
+    exec: (command, timeoutMs) => client.exec(command, timeoutMs),
+    execStdin: (command, input, timeoutMs) => client.execStdin(command, input, timeoutMs),
+  };
 }
 
 /** Parse the docker node id from the first `CONTAINERS_DOCKER_NODES` seed entry. */
@@ -244,15 +248,22 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
       listVerifiedAppOrigins(appId).then((origins) =>
         origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
       ),
-    markAppDeployed: async (appId, productionUrl) => {
+    isAppDeploymentCurrent: (appId, deploymentGeneration) =>
+      appsService.isDeploymentGenerationCurrent(appId, deploymentGeneration),
+    markAppDeployed: async (appId, deploymentGeneration, productionUrl) => {
       // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
       // which is not an app) is skipped so this never mis-updates or UUID-casts.
       if (!isValidUUID(appId)) return;
-      await appsService.update(appId, {
-        deployment_status: "deployed",
-        production_url: productionUrl,
-        last_deployed_at: new Date(),
-      });
+      await appsService.updateDeploymentGeneration(
+        appId,
+        deploymentGeneration,
+        {
+          deployment_status: "deployed",
+          production_url: productionUrl,
+          last_deployed_at: new Date(),
+        },
+        ["deploying"],
+      );
     },
     ...ingress,
   };

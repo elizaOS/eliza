@@ -578,3 +578,301 @@ describe("container billing gate + row-lock guard", () => {
 test("pglite schema applied — never a silent skip", () => {
   expect(pgliteReady).toBe(true);
 });
+
+/**
+ * Earnings-first settlement order (#22951).
+ *
+ * `computeContainerBillingPlan` (the policy every doc, schema comment, and UI
+ * string quotes) says: toggle on → earnings absorb the daily charge FIRST,
+ * credits cover the remainder. The settlement transaction must honor that
+ * order under its locks — a credits-first split drains purchased credits
+ * before redeemable earnings, breaking the documented "survival economics"
+ * loop (an earning agent should keep its purchased credits).
+ *
+ * Rate segment 0.027917/hr over exactly 24h settles to 0.670008 (6dp), so
+ * these cases also pin the 4dp-earnings / 6dp-debt conversion boundary.
+ */
+describe("earnings-first settlement order (#22951)", () => {
+  const RATE_PER_HOUR = "0.027917"; // × 24h = 0.670008 exactly
+  const PERIOD_START = "2026-08-18T05:00:00Z";
+  const NOW = new Date("2026-08-19T05:00:00Z");
+  const CHARGE = 0.670008;
+
+  async function seedEarnFirstCase(credits: string, earnings: string): Promise<void> {
+    await dbWrite.execute(`DELETE FROM container_billing_records;`);
+    await dbWrite.execute(`DELETE FROM compute_billing_rate_segments;`);
+    await dbWrite.execute(`DELETE FROM credit_transactions;`);
+    await dbWrite.execute(`DELETE FROM redeemable_earnings_ledger;`);
+    await dbWrite.execute(`DELETE FROM redeemable_earnings;`);
+    await dbWrite.execute(`DELETE FROM containers;`);
+    await dbWrite.execute(`DELETE FROM users;`);
+    await dbWrite.execute(`DELETE FROM organizations;`);
+    await dbWrite.execute(
+      `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '${credits}');`,
+    );
+    await dbWrite.execute(
+      `INSERT INTO users (id, organization_id) VALUES ('${USER_ID}', '${ORG_ID}');`,
+    );
+    await dbWrite.execute(
+      `INSERT INTO redeemable_earnings
+        (user_id, total_earned, available_balance, earned_from_creator_shares)
+       VALUES ('${USER_ID}', '${earnings}', '${earnings}', '${earnings}');`,
+    );
+    await dbWrite.execute(
+      `INSERT INTO containers
+        (id, name, project_name, organization_id, user_id, status, billing_status, total_billed, created_at)
+       VALUES ('${CONTAINER_ID}', 'web', 'proj', '${ORG_ID}', '${USER_ID}', 'running', 'active', '0', '${PERIOD_START}');`,
+    );
+    await dbWrite.execute(
+      `INSERT INTO compute_billing_rate_segments
+        (organization_id, workload_kind, workload_id, lifecycle_revision, billing_state, rate_per_hour, effective_at)
+       VALUES ('${ORG_ID}', 'container', '${CONTAINER_ID}', 0, 'running', '${RATE_PER_HOUR}', '${PERIOD_START}');`,
+    );
+  }
+
+  function earnFirstInput(payAsYouGo: boolean) {
+    return {
+      containerId: CONTAINER_ID,
+      organizationId: ORG_ID,
+      userId: USER_ID,
+      containerName: "web",
+      dailyRate: 0.67,
+      earningsSourceUserId: USER_ID,
+      payAsYouGoFromEarnings: payAsYouGo,
+      newBalance: 0,
+      now: NOW,
+    };
+  }
+
+  test(
+    "toggle on, mixed pools: earnings absorb first, credits only cover the remainder",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("50", "0.3");
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+
+      expect(result.insufficient).toBe(false);
+      expect(result.fromEarnings).toBeCloseTo(0.3, 6);
+
+      // Earnings drained to zero; purchased credits only paid the remainder.
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(0, 4);
+
+      const org = await dbWrite.execute(
+        `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect(Number((org.rows[0] as { credit_balance: string }).credit_balance)).toBeCloseTo(
+        50 + 0.3 - CHARGE,
+        6,
+      );
+
+      const txs = await dbWrite.execute(
+        `SELECT amount, type, metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' ORDER BY created_at;`,
+      );
+      expect(txs.rows).toHaveLength(2);
+      const debit = txs.rows.find((r) => (r as { type: string }).type === "debit") as {
+        amount: string;
+        metadata: {
+          paid_from_earnings: string;
+          paid_from_credits: string;
+          earnings_converted: string;
+        };
+      };
+      expect(Number(debit.amount)).toBeCloseTo(-CHARGE, 6);
+      expect(Number(debit.metadata.paid_from_earnings)).toBeCloseTo(0.3, 6);
+      expect(Number(debit.metadata.paid_from_credits)).toBeCloseTo(CHARGE - 0.3, 6);
+      expect(Number(debit.metadata.earnings_converted)).toBeCloseTo(0.3, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "toggle on, earnings-rich: the whole charge converts from earnings, purchased credits untouched",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("50", "1");
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+
+      expect(result.insufficient).toBe(false);
+      expect(result.fromEarnings).toBeCloseTo(CHARGE, 6);
+
+      // 4dp ROUND_UP conversion: 0.670008 debt converts 0.6701 earnings.
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance, total_converted_to_credits FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      const e = earnings.rows[0] as {
+        available_balance: string;
+        total_converted_to_credits: string;
+      };
+      expect(Number(e.available_balance)).toBeCloseTo(1 - 0.6701, 4);
+      expect(Number(e.total_converted_to_credits)).toBeCloseTo(0.6701, 4);
+
+      // Credits keep the sub-0.0001 conversion change instead of being drained.
+      const org = await dbWrite.execute(
+        `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect(Number((org.rows[0] as { credit_balance: string }).credit_balance)).toBeCloseTo(
+        50 + 0.6701 - CHARGE,
+        6,
+      );
+
+      const debit = await dbWrite.execute(
+        `SELECT metadata FROM credit_transactions WHERE organization_id = '${ORG_ID}' AND type = 'debit';`,
+      );
+      const meta = (debit.rows[0] as { metadata: { paid_from_credits: string } }).metadata;
+      expect(Number(meta.paid_from_credits)).toBeCloseTo(0, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "toggle off: credits only — earnings never locked, converted, or ledgered",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("50", "1");
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(false),
+      );
+
+      expect(result.insufficient).toBe(false);
+      expect(result.fromEarnings ?? 0).toBeCloseTo(0, 6);
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(1, 4);
+
+      const ledger = await dbWrite.execute(
+        `SELECT count(*)::int AS n FROM redeemable_earnings_ledger;`,
+      );
+      expect((ledger.rows[0] as { n: number }).n).toBe(0);
+
+      const org = await dbWrite.execute(
+        `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect(Number((org.rows[0] as { credit_balance: string }).credit_balance)).toBeCloseTo(
+        50 - CHARGE,
+        6,
+      );
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "insufficient combined pools: fails closed with no writes to any ledger",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("0.2", "0.1");
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+
+      expect(result.insufficient).toBe(true);
+      expect(result.transactionId).toBeNull();
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(0.1, 4);
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM credit_transactions;`)).rows[0],
+      ).toMatchObject({ n: 0 });
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM container_billing_records;`))
+          .rows[0],
+      ).toMatchObject({ n: 0 });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "rounding boundary: 4dp earnings exactly covering the applied portion leave an 8e-6 credit remainder",
+    async () => {
+      if (!pgliteReady) return;
+      // earnings 0.6700 (4dp max) vs 0.670008 debt: earningsApplied = 0.67,
+      // conversion = 0.67 (no round-up needed), credits absorb 0.000008.
+      await seedEarnFirstCase("50", "0.67");
+
+      const result = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+
+      expect(result.insufficient).toBe(false);
+      expect(result.fromEarnings).toBeCloseTo(0.67, 6);
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(0, 4);
+
+      const org = await dbWrite.execute(
+        `SELECT credit_balance FROM organizations WHERE id = '${ORG_ID}';`,
+      );
+      expect(Number((org.rows[0] as { credit_balance: string }).credit_balance)).toBeCloseTo(
+        50 + 0.67 - CHARGE,
+        6,
+      );
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "concurrent replay of the mixed case: already-billed fence, no second conversion or debit",
+    async () => {
+      if (!pgliteReady) return;
+      await seedEarnFirstCase("50", "0.3");
+
+      const first = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+      expect(first.alreadyBilled).toBe(false);
+
+      const replay = await containerBillingRepository.recordSuccessfulDailyBilling(
+        earnFirstInput(true),
+      );
+      expect(replay.alreadyBilled).toBe(true);
+      expect(replay.transactionId).toBeNull();
+
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM redeemable_earnings_ledger;`))
+          .rows[0],
+      ).toMatchObject({ n: 1 });
+      expect(
+        (await dbWrite.execute(`SELECT count(*)::int AS n FROM credit_transactions;`)).rows[0],
+      ).toMatchObject({ n: 2 });
+      expect(
+        (
+          await dbWrite.execute(
+            `SELECT count(*)::int AS n FROM container_billing_records WHERE status = 'success';`,
+          )
+        ).rows[0],
+      ).toMatchObject({ n: 1 });
+
+      const earnings = await dbWrite.execute(
+        `SELECT available_balance FROM redeemable_earnings WHERE user_id = '${USER_ID}';`,
+      );
+      expect(
+        Number((earnings.rows[0] as { available_balance: string }).available_balance),
+      ).toBeCloseTo(0, 4);
+    },
+    PGLITE_TIMEOUT,
+  );
+});

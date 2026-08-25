@@ -164,6 +164,13 @@ function rotateHourlyWindow(ledger: ReadyLedger, now: number): void {
   }
 }
 
+function hourlyRetryAfterSeconds(
+  hourlyResetAtMs: number,
+  nowMs: number,
+): number {
+  return Math.max(1, Math.ceil((hourlyResetAtMs + HOUR_MS - nowMs) / 1_000));
+}
+
 function snapshot(ledger: CounterSnapshot): CounterSnapshot {
   return {
     sessionId: ledger.sessionId,
@@ -370,14 +377,22 @@ export class AnonymousChatGate {
       );
     }
     if (ledger.hourlyMessageCount >= ledger.hourlyLimit) {
+      if (ledger.hourlyResetAtMs === null) {
+        return jsonError("Anonymous chat hourly window is unavailable", 503);
+      }
+      const retryAfter = hourlyRetryAfterSeconds(ledger.hourlyResetAtMs, now);
       return Response.json(
         {
           admitted: false,
           reason: "hourly_limit",
           remaining: 0,
           limit: ledger.hourlyLimit,
+          retryAfter,
         },
-        { status: 429 },
+        {
+          status: 429,
+          headers: { "Retry-After": String(retryAfter) },
+        },
       );
     }
 

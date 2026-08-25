@@ -52,6 +52,26 @@ export interface ArtifactShareGrant {
 	grantedAtMs?: number;
 }
 
+/**
+ * What a sensitive span/surface requires of each viewer when a component's
+ * {@link DisclosureGate} runs the min-over-members audience-admission policy.
+ *
+ * The pure policy core (`resolveAudienceAdmission` in
+ * `access-control/audience-disclosure`) maps this onto the artifact-disclosure
+ * record via `disclosureSubjectRecord` so per-member evaluation inherits the
+ * exact `resolveArtifactDisclosure` tier order. It lives in the types layer (not
+ * access-control) so the {@link DisclosureGate} contract can reference it
+ * without the types barrel importing access-control (which would be a cycle).
+ */
+export interface DisclosureSubject {
+	/** Stored visibility scope; `owner-private` is the fail-closed default. */
+	scope: MemoryScope;
+	/** Entity the subject is scoped to (owner/speaker), for entity-scoped tiers. */
+	scopedEntityId?: UUID;
+	/** Explicit per-entity grants; a grant beats the ladder in both directions. */
+	grants?: readonly ArtifactShareGrant[];
+}
+
 /** Participant set captured at share time for room-scoped grants. */
 export interface ArtifactRoomSnapshot {
 	roomId: UUID;
@@ -87,12 +107,16 @@ export interface BaseMetadata {
 export interface DocumentMetadata {
 	base?: BaseMetadata;
 	type?: "document";
+	/** Read-only entity grants that remain valid independently of room membership. */
+	directGrantEntityIds?: UUID[];
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaUrl?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaHash?: string;
 	/** Served original-bytes file (content-addressed) linked to this document. */
 	mediaFileName?: string;
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 export interface FragmentMetadata {
@@ -100,6 +124,8 @@ export interface FragmentMetadata {
 	documentId: UUID;
 	position: number;
 	type?: "fragment";
+	/** Adapter-derived parent source fingerprint used only to build opaque revisions. */
+	sourceFingerprint?: string;
 }
 
 /**

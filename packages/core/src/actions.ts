@@ -1,7 +1,7 @@
 /**
  * Formats the agent's registered actions into prompt text and parses the action
  * calls the model returns back into validated parameters. On the render side it
- * composes deterministic (seeded-RNG) action examples, compressed
+ * composes deterministic (seeded-RNG) complete action examples,
  * name/description/parameter listings, and canonical JSON call examples, so a
  * given action set always yields the same prompt. On the parse side it turns the
  * model's `{ actions, params }` payload into a per-action
@@ -36,7 +36,10 @@ import {
 	deterministicShuffle,
 	getDeterministicNames,
 } from "./utils/deterministic";
-import { compressPromptDescription } from "./utils/prompt-compression";
+import {
+	deepToWellFormedUnicode,
+	toWellFormedUnicode,
+} from "./utils/well-formed.ts";
 
 export {
 	type ExtractorPipelineResult,
@@ -236,7 +239,7 @@ function getExampleActionHints(example: ActionExample[]): string[] {
 function formatPromptScalar(value: unknown): string {
 	if (value == null) return "null";
 	if (typeof value === "string") {
-		return value.replace(/\s+/g, " ").trim();
+		return value;
 	}
 	if (typeof value === "number" || typeof value === "boolean") {
 		return String(value);
@@ -261,24 +264,25 @@ function formatActionExampleSummary(action: Action): string | null {
 		return null;
 	}
 
+	const rendered: string[] = [];
 	for (const example of examples) {
 		if (!Array.isArray(example) || example.length === 0) {
 			continue;
 		}
 
-		const userMessage = example[0]?.content?.text?.trim();
+		const userMessage = example[0]?.content?.text;
 		const actionHints = getExampleActionHints(example);
 		if (!userMessage) {
 			continue;
 		}
-		if (actionHints.length === 0) {
-			return `User: ${formatPromptScalar(userMessage)} -> actions: ${action.name}`;
-		}
-
-		return `User: ${formatPromptScalar(userMessage)} -> actions: ${actionHints.join(", ")}`;
+		rendered.push(
+			actionHints.length === 0
+				? `User: ${formatPromptScalar(userMessage)} -> actions: ${action.name}`
+				: `User: ${formatPromptScalar(userMessage)} -> actions: ${actionHints.join(", ")}`,
+		);
 	}
 
-	return null;
+	return rendered.length > 0 ? rendered.join("\n") : null;
 }
 
 function shuffleActions<T>(items: T[], seed = "actions"): T[] {
@@ -305,16 +309,12 @@ function collectActionTags(action: Action): string[] {
 	].filter((tag) => tag.length > 0 && tag !== "always-include");
 }
 
-function renderCompressedDescription(item: {
+function renderCompleteDescription(item: {
 	description?: string;
 	descriptionCompressed?: string;
 	compressedDescription?: string;
 }): string {
-	return (
-		item.descriptionCompressed ??
-		item.compressedDescription ??
-		(item.description ? compressPromptDescription(item.description) : "")
-	);
+	return item.description ?? "";
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
@@ -334,7 +334,7 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 	).map((action) => ({
 		name: action.name,
 		description:
-			renderCompressedDescription(action) || "No description available",
+			renderCompleteDescription(action) || "No description available",
 		params:
 			action.parameters && action.parameters.length > 0
 				? formatActionParameters(action.parameters)
@@ -370,7 +370,7 @@ export function formatActionParameters(parameters: ActionParameter[]): string {
 			}
 
 			const suffix = modifiers.length > 0 ? ` [${modifiers.join("; ")}]` : "";
-			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${renderCompressedDescription(param)}`;
+			return `${param.name}${param.required ? "" : "?"}:${typeStr}${suffix} - ${renderCompleteDescription(param)}`;
 		})
 		.join("; ");
 }
@@ -487,7 +487,7 @@ function coerceActionParamValue(
 			// delimited-string form; malformed JSON remains untrusted string input.
 		}
 		if (Array.isArray(parsed)) {
-			return toActionParameterValue(parsed);
+			return toActionParameterValue(deepToWellFormedUnicode(parsed));
 		}
 	}
 
@@ -495,12 +495,7 @@ function coerceActionParamValue(
 		return value;
 	}
 
-	const SAFE_SPLIT_LIMIT = 10_000;
-	const safeTrimmed =
-		trimmed.length > SAFE_SPLIT_LIMIT
-			? trimmed.slice(0, SAFE_SPLIT_LIMIT)
-			: trimmed;
-	const splitValues = safeTrimmed
+	const splitValues = toWellFormedUnicode(trimmed)
 		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);

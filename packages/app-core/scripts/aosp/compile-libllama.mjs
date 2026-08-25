@@ -1443,6 +1443,39 @@ export function ensureZigDrivers({
 }
 
 /**
+ * Discard a CMake build tree whose cached archiver predates the Zig wrappers.
+ * CMake does not repair generated link commands when an old cache recorded the
+ * host macOS ar/ranlib; those tools emit successful but empty archives for ELF
+ * objects. A clean configure is required to make the toolchain change real.
+ */
+export function resetIncompatibleCmakeArchiverCache({
+  buildDir,
+  arPath,
+  ranlibPath,
+  log = () => {},
+}) {
+  const cachePath = path.join(buildDir, "CMakeCache.txt");
+  if (!fs.existsSync(cachePath)) return false;
+
+  const cache = fs.readFileSync(cachePath, "utf8");
+  const expectedAr = `CMAKE_AR:FILEPATH=${arPath}`;
+  const expectedRanlib = `CMAKE_RANLIB:FILEPATH=${ranlibPath}`;
+  if (
+    cache.split(/\r?\n/).includes(expectedAr) &&
+    cache.split(/\r?\n/).includes(expectedRanlib)
+  ) {
+    return false;
+  }
+
+  fs.rmSync(buildDir, { recursive: true, force: true });
+  log(
+    `[compile-libllama] Reset stale CMake build tree at ${buildDir}: ` +
+      "cached archiver was not the Zig ELF archiver.",
+  );
+  return true;
+}
+
+/**
  * Configure + build libllama.so + libggml.so for one ABI. Produces:
  *   <srcDir>/build-<abi>/src/libllama.so
  *   <srcDir>/build-<abi>/ggml/src/libggml.so
@@ -1482,7 +1515,6 @@ export function buildLibllamaForAbi({
     throw new Error(`[compile-libllama] Unknown ABI: ${abi}`);
   }
   const buildDir = path.join(srcDir, `build-${abi}`);
-  fs.mkdirSync(buildDir, { recursive: true });
 
   // riscv64: gate the RVV-on path on the detected Zig version. The vendored
   // llama.cpp defaults GGML_RVV / GGML_RV_ZFH / GGML_RV_ZVFH / GGML_RV_ZICBOP
@@ -1565,6 +1597,13 @@ export function buildLibllamaForAbi({
     zigBin,
     riscv64MarchPassthrough: riscv64Plan.rvv,
   });
+  resetIncompatibleCmakeArchiverCache({
+    buildDir,
+    arPath,
+    ranlibPath,
+    log,
+  });
+  fs.mkdirSync(buildDir, { recursive: true });
 
   log(
     `[compile-libllama] Configuring llama.cpp for ${abi} (${target.zigTarget}) in ${buildDir}`,

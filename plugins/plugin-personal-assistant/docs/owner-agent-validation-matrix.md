@@ -60,7 +60,7 @@ gate applies to every action carrying `roleGate: { minRole: "OWNER" }`:
 
 | Action | File | Notes |
 |---|---|---|
-| `CONNECTOR` | `src/actions/connector.ts` | Connect/disconnect/verify/status/list across Google, X, Telegram, Signal, Discord, iMessage, WhatsApp, health, browser. |
+| `CONNECTOR` | `src/actions/connector.ts` | Connect/disconnect/verify/status/list across Google, X, Telegram, Discord, iMessage, WhatsApp, health, browser. |
 | `CREDENTIALS` | `src/actions/credentials.ts` | Credential lookup + autofill. |
 | `PERSONAL_ASSISTANT` | `src/actions/owner-surfaces.ts` | Cross-domain assistant orchestration. |
 | `VOICE_CALL` | `src/actions/voice-call.ts` | Outbound Twilio voice. |
@@ -85,7 +85,6 @@ live-LLM journeys, set `ELIZA_LIVE_TEST=1` plus a provider key.
 | Gmail / inbox | OWNER Gmail | AGENT Gmail | `google.gmail.triage` / `.send` / `.manage` | as above |
 | Telegram | OWNER Telegram | AGENT Telegram | `@elizaos/plugin-telegram` configured | as above |
 | Discord | OWNER Discord | AGENT Discord | `DISCORD_BOT_TOKEN` (`@elizaos/plugin-discord`) | as above |
-| Signal | OWNER paired number | AGENT paired number | `@elizaos/plugin-signal` paired | as above |
 | WhatsApp | OWNER WhatsApp | AGENT WhatsApp | `ELIZA_WHATSAPP_ACCESS_TOKEN`, `ELIZA_WHATSAPP_PHONE_NUMBER_ID` | as above |
 | X | OWNER X | AGENT X | `@elizaos/plugin-x` configured | as above |
 | iMessage | OWNER macOS bridge | n/a | macOS host; `ELIZA_IMESSAGE_BACKEND` | native (not CI) |
@@ -145,7 +144,7 @@ the PR/issue** per [`CONTRIBUTING.md`](../../../CONTRIBUTING.md).
 |---|---|---|---|
 | Google Calendar | _attach_ | _attach_ | pending live accounts |
 | Gmail / inbox | _attach_ | _attach_ | pending live accounts |
-| Telegram / Discord / Signal / WhatsApp / X | _attach_ | _attach_ | pending live accounts |
+| Telegram / Discord / WhatsApp / X | _attach_ | _attach_ | pending live accounts |
 | Phone / voice / SMS | _attach_ | n/a | pending Twilio env |
 | Health | _attach_ | n/a | pending native device |
 | Blocker / focus | _attach_ | n/a | pending native device |

@@ -105,3 +105,42 @@ describe("Discord staleness guard", () => {
 		expect(content.text).toBe("(catching up:) hello");
 	});
 });
+
+describe("staleness config parsing", () => {
+	function settings(values: Record<string, string>) {
+		return (key: string) => values[key];
+	}
+
+	it("ignores a trailing-garbage threshold instead of parsing its prefix", () => {
+		// parseInt("4junk") is 4, so a malformed setting silently changed the
+		// staleness threshold instead of falling back to the default.
+		const config = getDiscordStalenessConfig(
+			settings({ DISCORD_STALENESS_THRESHOLD: "4junk" }),
+		);
+		expect(config.threshold).toBe(2);
+	});
+
+	it("keeps a signed threshold and rejects one past the safe range", () => {
+		// `Number.parseInt` accepted "+4"; rejecting it would be a regression.
+		expect(
+			getDiscordStalenessConfig(settings({ DISCORD_STALENESS_THRESHOLD: "+4" }))
+				.threshold,
+		).toBe(4);
+		expect(
+			getDiscordStalenessConfig(
+				settings({ DISCORD_STALENESS_THRESHOLD: "9007199254740993" }),
+			).threshold,
+		).toBe(2);
+	});
+
+	it("still honours a clean threshold, including zero", () => {
+		expect(
+			getDiscordStalenessConfig(settings({ DISCORD_STALENESS_THRESHOLD: "4" }))
+				.threshold,
+		).toBe(4);
+		expect(
+			getDiscordStalenessConfig(settings({ DISCORD_STALENESS_THRESHOLD: "0" }))
+				.threshold,
+		).toBe(0);
+	});
+});

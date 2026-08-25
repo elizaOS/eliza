@@ -13,6 +13,8 @@
  * there), keeping this orchestration testable and free of native coupling.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 export interface ModelGrindDeps {
 	callIosHost: (
 		method: string,
@@ -258,7 +260,7 @@ export async function runModelGrind(
 			};
 			r.detail = {
 				outputTokens: outTokens,
-				sample: text.slice(0, 120),
+				sample: truncateWellFormed(toWellFormedUnicode(text), 120),
 				mtp: res.specAccepted ?? res.mtpAccepted ?? null,
 			};
 			r.ok = outTokens > 0 && text.trim().length > 0;

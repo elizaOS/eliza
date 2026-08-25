@@ -202,7 +202,6 @@ describe("LS", () => {
     expect(calls).toEqual([
       {
         path: tmpRoot,
-        limit: 1000,
         includeHidden: true,
         ignore: ["*.log"],
       },

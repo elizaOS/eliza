@@ -36,10 +36,7 @@ function ProviderPanelHeader({
   return (
     <header className="flex min-h-[3rem] flex-wrap items-center justify-between gap-2 py-2.5">
       <div className="flex min-w-0 items-center gap-3">
-        <Icon
-          className="h-[18px] w-[18px] shrink-0 text-muted/80"
-          aria-hidden
-        />
+        <Icon className="size-[18px] shrink-0 text-muted/80" aria-hidden />
         <h3 className="truncate text-sm font-medium leading-5 text-txt-strong">
           {title}
         </h3>
@@ -88,11 +85,11 @@ export function LocalProviderPanel({
           }
           onClick={onSelectLocalOnly}
         >
-          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <ShieldCheck className="size-4" aria-hidden />
           {t("providerpanels.localOnly", { defaultValue: "Local only" })}
         </SettingsActionButton>
       </ProviderPanelHeader>
-      <div className="px-3 py-3 sm:px-4">
+      <div className="p-3 sm:px-4">
         {servingFallback ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localFallbackBecauseCloudUnsigned", {
@@ -182,9 +179,9 @@ export function CloudPanel({
           onClick={needsSignIn ? onSignIn : onSelectCloud}
         >
           {needsSignIn ? (
-            <LogIn className="h-4 w-4" aria-hidden />
+            <LogIn className="size-4" aria-hidden />
           ) : (
-            <Cloud className="h-4 w-4" aria-hidden />
+            <Cloud className="size-4" aria-hidden />
           )}
           {needsSignIn
             ? t("providerpanels.signIn", { defaultValue: "Sign in" })
@@ -192,7 +189,7 @@ export function CloudPanel({
         </SettingsActionButton>
       </ProviderPanelHeader>
       {needsSignIn ? (
-        <div className="px-3 py-3 sm:px-4">
+        <div className="p-3 sm:px-4">
           <div className="rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.cloudUnsignedUsingLocal", {
               defaultValue:
@@ -258,7 +255,7 @@ export function SubscriptionPanel({
           </SettingsActionButton>
         ) : null}
       </ProviderPanelHeader>
-      <div className="px-3 py-3 sm:px-4">
+      <div className="p-3 sm:px-4">
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlySubscriptionPaused", {
@@ -322,7 +319,7 @@ export function ApiKeyPanel({
           </SettingsActionButton>
         ) : null}
       </ProviderPanelHeader>
-      <div className="px-3 py-3 sm:px-4">
+      <div className="p-3 sm:px-4">
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlyApiPaused", {

@@ -107,6 +107,11 @@ function normalizedBroadcasts() {
 export default scenario({
   id: "deterministic-background-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic BACKGROUND action catalog",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "background"],

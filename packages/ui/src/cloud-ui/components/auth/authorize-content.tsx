@@ -8,6 +8,7 @@ import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
 import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
@@ -281,7 +282,10 @@ function AuthorizeFlow({
     const token = getToken();
     if (!token) {
       // Edge case: useAuth says authenticated but token isn't readable.
-      // Force re-sign-in rather than silently failing.
+      // Force re-sign-in rather than silently failing. This component consumes
+      // the raw SDK context (not LocalStewardAuthContext), so retire any
+      // explicit-sync proof here before the SDK begins fallible sign-out work.
+      invalidateStewardServerCookieSyncMarker();
       signOut();
       setError("Your session expired. Please sign in again.");
       setStatus("ready");
@@ -365,9 +369,9 @@ function AuthorizeFlow({
   if (status === "validating" || authLoading) {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-muted" />
+        <Loader2 className="size-12 animate-spin text-muted" />
         <h3 className="text-lg font-semibold text-white">
-          Verifying application...
+          Verifying application…
         </h3>
       </Frame>
     );
@@ -386,8 +390,8 @@ function AuthorizeFlow({
   if (status === "authorizing") {
     return (
       <Frame>
-        <Loader2 className="h-12 w-12 animate-spin text-muted" />
-        <h3 className="text-lg font-semibold text-white">Authorizing...</h3>
+        <Loader2 className="size-12 animate-spin text-muted" />
+        <h3 className="text-lg font-semibold text-white">Authorizing…</h3>
         <p className="text-sm text-white/60">
           Redirecting you back to {appInfo.name}
         </p>
@@ -404,7 +408,7 @@ function AuthorizeFlow({
       </p>
 
       {error && (
-        <div className="rounded-sm border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="rounded-sm border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -439,8 +443,8 @@ function AuthorizationErrorFrame({
 }) {
   return (
     <Frame>
-      <div className="p-4 rounded-full bg-red-500/20">
-        <AlertTriangle className="h-8 w-8 text-red-400" />
+      <div className="p-4 rounded-full bg-destructive-subtle">
+        <AlertTriangle className="size-8 text-destructive" />
       </div>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
@@ -458,8 +462,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   // Consent screens are also better off header-less (Google/GitHub do the
   // same): single-purpose, not a navigable location.
   return (
-    <div className="relative flex min-h-screen w-full flex-col overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-black via-zinc-900 to-black" />
+    <div className="relative flex min-h-dvh w-full flex-col overflow-hidden">
+      <div className="absolute inset-0 bg-linear-to-br from-black via-zinc-900 to-black" />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
         <BrandCard className="w-full max-w-md bg-black/85">
           <CornerBrackets size="md" className="opacity-50" />
@@ -481,11 +485,11 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
           alt={appInfo.name}
           width={64}
           height={64}
-          className="h-16 w-16 rounded-sm object-cover"
+          className="size-16 rounded-sm object-cover"
           unoptimized
         />
       ) : (
-        <div className="h-16 w-16 rounded-sm bg-muted flex items-center justify-center">
+        <div className="size-16 rounded-sm bg-muted flex items-center justify-center">
           <span className="text-2xl font-bold text-txt-strong">
             {appInfo.name.charAt(0)}
           </span>
@@ -624,8 +628,8 @@ function SignedOutActions({
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-6">
-          <Loader2 className="h-6 w-6 animate-spin text-muted" />
-          <p className="text-sm text-white/60">Loading sign-in options...</p>
+          <Loader2 className="size-6 animate-spin text-muted" />
+          <p className="text-sm text-white/60">Loading sign-in options…</p>
         </div>
       )}
       <InlineCancelButton onCancel={onCancel} />
@@ -635,12 +639,7 @@ function SignedOutActions({
 
 function InlineCancelButton({ onCancel }: { onCancel: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={onCancel}
-      className="min-h-10 cursor-pointer rounded-sm px-3 text-sm text-white/50 transition-colors hover:text-white"
-    >
+    <Button variant="ghostMuted" size="touch" type="button" onClick={onCancel}>
       Cancel
     </Button>
   );

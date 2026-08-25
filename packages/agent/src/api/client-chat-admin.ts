@@ -1,11 +1,15 @@
 /**
  * Resolves the admin/owner entity id for the local client-chat surface. Prefers
  * the runtime's canonical owner id, then a previously resolved id, then the
- * configured `agents.defaults.adminEntityId`, falling back to a deterministic
- * UUID derived from the agent name; the resolved id is written back onto state
- * as both `adminEntityId` and `chatUserId`.
+ * configured `agents.defaults.adminEntityId`, falling back to core's
+ * `deterministicOwnerEntityId` (agent-ID seed) — the same fallback LifeOps
+ * reads, the scheduler, and the pendant/PA routes use — so chat-written owner
+ * rows stay visible to every reader. The agent NAME seed survives only for the
+ * degenerate no-runtime case. The resolved id is written back onto state as
+ * both `adminEntityId` and `chatUserId`.
  */
 import {
+  deterministicOwnerEntityId,
   type IAgentRuntime,
   logger,
   resolveCanonicalOwnerId,
@@ -16,7 +20,10 @@ import {
 import { isUuidLike } from "./server-helpers.ts";
 
 type ClientChatAdminState = {
-  runtime?: IAgentRuntime | { getSetting?: (key: string) => unknown } | null;
+  runtime?:
+    | IAgentRuntime
+    | { agentId?: UUID; getSetting?: (key: string) => unknown }
+    | null;
   adminEntityId?: UUID | null;
   chatUserId?: UUID | null;
   config?: {
@@ -34,7 +41,9 @@ export function resolveClientChatAdminEntityId<
 >(state: TState): UUID {
   const canonicalOwnerId =
     state.runtime && typeof state.runtime.getSetting === "function"
-      ? resolveCanonicalOwnerId(state.runtime as IAgentRuntime)
+      ? resolveCanonicalOwnerId(
+          state.runtime as Pick<IAgentRuntime, "getSetting">,
+        )
       : null;
   if (canonicalOwnerId && isUuidLike(canonicalOwnerId)) {
     state.adminEntityId = canonicalOwnerId as UUID;
@@ -50,10 +59,20 @@ export function resolveClientChatAdminEntityId<
   const configuredValue = state.config?.agents?.defaults?.adminEntityId;
   const configured =
     typeof configuredValue === "string" ? configuredValue.trim() : undefined;
+  // The deterministic fallback is core's agent-ID seed, shared with LifeOps
+  // reads and the scheduler. Seeding by agent NAME here forked the owner
+  // `subject_id` between the chat write path and every read path; the name
+  // seed remains only for the degenerate no-runtime case.
+  const runtimeAgentId =
+    state.runtime && typeof state.runtime.agentId === "string"
+      ? state.runtime.agentId
+      : null;
   const nextAdminEntityId =
     configured && isUuidLike(configured)
       ? (configured as UUID)
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
+      : runtimeAgentId
+        ? deterministicOwnerEntityId(runtimeAgentId)
+        : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
   if (configured && !isUuidLike(configured)) {
     logger.warn(
       `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,

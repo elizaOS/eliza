@@ -19,20 +19,31 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import logging
 import os
 import random
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 import torch
 
+SCRIPTS_DIR = Path(__file__).resolve().parents[1]
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from lib.generation_integrity import (
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+    require_complete_generation,
+)
+
 # Import only the specific modules we need, bypassing the heavy __init__.py
-import sys
-import importlib.util
 
 def _import_module(name: str, filepath: str):
     spec = importlib.util.spec_from_file_location(name, filepath)
@@ -43,6 +54,10 @@ def _import_module(name: str, filepath: str):
 
 # Try multiple paths for the training source
 _script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_script_dir.parent))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 for _candidate in [
     _script_dir.parent / "src",                    # local: scripts/../src
     _script_dir / "src",                            # if script is next to src/
@@ -131,7 +146,10 @@ async def call_defender(
                 await asyncio.sleep(wait)
                 continue
             resp.raise_for_status()
-            msg = resp.json().get("choices", [{}])[0].get("message", {})
+            choice = require_complete_generation(
+                resp.json().get("choices", [{}])[0], source="adversarial_crl.defender"
+            )
+            msg = choice.get("message", {})
             return {"content": msg.get("content", "") or "", "tool_calls": msg.get("tool_calls", [])}
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
@@ -208,13 +226,20 @@ async def run_episode(
         ]
         prompt = agent.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-        # Generate with the CRL agent (uses TurboQuant cache)
-        response_text, input_ids, output_ids = agent.generate_action(
-            type("Scenario", (), {"to_prompt_context": lambda self: atk_user_content})()
+        enc = tokenize_with_explicit_limit(
+            agent.tokenizer,
+            prompt,
+            max_tokens=model_context_tokens(
+                agent.model, agent.tokenizer, source="adversarial_crl.attacker"
+            ),
+            return_tensors="pt",
+        ).to(agent.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            agent.model,
+            agent.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="adversarial_crl.attacker",
         )
-
-        # Override the prompt building — use our custom messages
-        enc = agent.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=14000).to(agent.config.device)
 
         from training.turboquant import build_generation_cache
         past_kv = None
@@ -224,7 +249,7 @@ async def run_episode(
         agent.model.eval()
         gen_out = agent.model.generate(
             enc["input_ids"],
-            max_new_tokens=agent.config.max_new_tokens,
+            max_new_tokens=max_new_tokens,
             temperature=0.8,
             top_p=0.9,
             do_sample=True,
@@ -235,6 +260,12 @@ async def run_episode(
 
         prompt_len = enc["input_ids"].shape[1]
         response_ids = gen_out[0, prompt_len:]
+        require_complete_generated_tokens(
+            response_ids,
+            max_new_tokens=max_new_tokens,
+            source="adversarial_crl.attacker",
+            terminal_token_ids=agent.tokenizer.eos_token_id,
+        )
         raw_text = agent.tokenizer.decode(response_ids, skip_special_tokens=True)
         atk_text = THINK_RE.sub("", raw_text).strip()
         if atk_text.startswith('"') and atk_text.endswith('"'):
@@ -328,7 +359,6 @@ async def main():
         turboquant_key_bits=args.turboquant_bits,
         turboquant_value_bits=args.turboquant_bits,
         turboquant_residual_length=128,
-        max_new_tokens=512,
         temperature=0.8,
         checkpoint_dir=str(output_dir / "checkpoints"),
         checkpoint_every=args.checkpoint_every,

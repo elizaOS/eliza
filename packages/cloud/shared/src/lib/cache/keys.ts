@@ -29,6 +29,8 @@ export const CacheKeys = {
   },
   apiKey: {
     validation: (keyHash: string) => `apikey:validation:${keyHash}:v1`,
+    mobileValidationMiss: (fullKeyHash: string) =>
+      `apikey:mobile-validation-miss:${fullKeyHash}:v1`,
     /** Cache app lookup by API key ID */
     appMapping: (apiKeyId: string) => `apikey:app:${apiKeyId}:v1`,
     pattern: () => `apikey:*`,

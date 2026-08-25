@@ -419,6 +419,20 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     lane: "scenario",
     roots: [{ label: "repo", dir: "reports/scenarios" }],
   },
+  {
+    silo: "group-chat-timing",
+    source: "group-chat-timing",
+    producedBy: "packages/scenario-runner eval:when2speak",
+    lane: "evaluation",
+    roots: [{ label: "repo", dir: "reports/group-chat-timing" }],
+  },
+  {
+    silo: "content-context",
+    source: "content-context",
+    producedBy: "progressive content corpus, scenario, and benchmark lanes",
+    lane: "content-context",
+    roots: [{ label: "repo", dir: "reports/content-context" }],
+  },
 ];
 
 function physicalPath(filePath: string): string {

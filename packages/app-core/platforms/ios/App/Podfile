@@ -38,6 +38,7 @@ def capacitor_pods
   pod 'ElizaosCapacitorCanvas', :path => node_package_path('@elizaos/capacitor-canvas')
   pod 'ElizaosCapacitorGateway', :path => node_package_path('@elizaos/capacitor-gateway')
   pod 'ElizaosCapacitorLocation', :path => node_package_path('@elizaos/capacitor-location')
+  pod 'ElizaosCapacitorSecureStore', :path => node_package_path('@elizaos/capacitor-secure-store')
   pod 'ElizaosCapacitorMobileAgentBridge', :path => node_package_path('@elizaos/capacitor-mobile-agent-bridge')
   pod 'ElizaosCapacitorMobileSignals', :path => node_package_path('@elizaos/capacitor-mobile-signals')
   pod 'ElizaosCapacitorScreencapture', :path => node_package_path('@elizaos/capacitor-screencapture')

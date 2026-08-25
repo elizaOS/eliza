@@ -16,8 +16,12 @@
  */
 import type { JsonObject, JsonValue } from "../types/primitives";
 import type { SurfaceCapability } from "../types/surface-manifest";
+import {
+	normalizeWorkspaceDeltaReceipt,
+	type WorkspaceDeltaReceipt,
+} from "../types/workspace-delta";
 
-export * from "./sandbox-factory";
+export * from "./remote-runner";
 
 export const CAPABILITY_ROUTER_SERVICE_TYPE = "capability-router" as const;
 
@@ -83,7 +87,7 @@ export class CapabilityError extends Error {
 
 export type FileReadTextParams = CapabilityEndpointSelection & {
 	path: string;
-	/** Positive safe-integer byte cap; omitted uses the router's default cap. */
+	/** Positive safe-integer acceptance ceiling; over-limit files are rejected. */
 	maxBytes?: number;
 	traceSessionId?: string;
 };
@@ -92,7 +96,8 @@ export type FileReadTextResult = {
 	path: string;
 	text: string;
 	size: number;
-	truncated: boolean;
+	/** Compatibility field. Successful reads always return complete text. */
+	truncated: false;
 };
 
 export type FileEntryKind = "file" | "directory" | "symlink" | "other";
@@ -149,6 +154,12 @@ export type TerminalRunResult = {
 	output: string;
 	exitCode: number | null;
 	timedOut: boolean;
+	workspaceExecution?: {
+		root: string;
+		rootId: string;
+		executionDomainId: string;
+	};
+	workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
 };
 
 export type GitStatusParams = CapabilityEndpointSelection & {
@@ -1334,11 +1345,19 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				: { endpointId: params.endpointId }),
 		});
 		const object = requireObject(result, "fs.readText");
+		if (requireBoolean(object, "truncated", "fs.readText")) {
+			throw new CapabilityError({
+				code: "CAPABILITY_REQUEST_FAILED",
+				capability: "fs",
+				method: "fs.readText",
+				message: "fs.readText endpoint returned partial content.",
+			});
+		}
 		return {
 			path: requireString(object, "path", "fs.readText"),
 			text: requireString(object, "text", "fs.readText"),
 			size: requireNumber(object, "size", "fs.readText"),
-			truncated: requireBoolean(object, "truncated", "fs.readText"),
+			truncated: false,
 		};
 	}
 
@@ -1387,10 +1406,85 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				: { endpointId: params.endpointId }),
 		});
 		const object = requireObject(result, "pty.command.run");
+		const workspaceExecution = optionalJsonObject(
+			object,
+			"workspaceExecution",
+			"pty.command.run",
+		);
+		let normalizedWorkspaceExecution: TerminalRunResult["workspaceExecution"];
+		if (workspaceExecution) {
+			const unexpectedWorkspaceKeys = Object.keys(workspaceExecution).filter(
+				(key) => !["root", "rootId", "executionDomainId"].includes(key),
+			);
+			if (unexpectedWorkspaceKeys.length > 0) {
+				throw decodeError(
+					"pty.command.run",
+					`workspaceExecution has unexpected fields: ${unexpectedWorkspaceKeys.join(", ")}.`,
+				);
+			}
+			const root = requireNonEmptyString(
+				workspaceExecution,
+				"root",
+				"pty.command.run.workspaceExecution",
+			);
+			const rootId = requireString(
+				workspaceExecution,
+				"rootId",
+				"pty.command.run.workspaceExecution",
+			);
+			const executionDomainId = requireString(
+				workspaceExecution,
+				"executionDomainId",
+				"pty.command.run.workspaceExecution",
+			);
+			if (
+				root.trim() !== root ||
+				/[\0\r\n]/.test(root) ||
+				!/^[a-f0-9]{64}$/.test(rootId) ||
+				!/^[a-f0-9]{64}$/.test(executionDomainId)
+			) {
+				throw decodeError(
+					"pty.command.run",
+					"workspaceExecution must contain a safe root and canonical opaque identities.",
+				);
+			}
+			normalizedWorkspaceExecution = { root, rootId, executionDomainId };
+		}
+		let workspaceDeltaReceipt: WorkspaceDeltaReceipt | undefined;
+		if (object.workspaceDeltaReceipt !== undefined) {
+			try {
+				workspaceDeltaReceipt = normalizeWorkspaceDeltaReceipt(
+					object.workspaceDeltaReceipt,
+				);
+			} catch (error) {
+				throw decodeError(
+					"pty.command.run",
+					`workspaceDeltaReceipt is invalid: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			if (
+				!normalizedWorkspaceExecution ||
+				workspaceDeltaReceipt.scope.root !==
+					normalizedWorkspaceExecution.root ||
+				workspaceDeltaReceipt.scope.rootId !==
+					normalizedWorkspaceExecution.rootId ||
+				workspaceDeltaReceipt.scope.executionDomainId !==
+					normalizedWorkspaceExecution.executionDomainId
+			) {
+				throw decodeError(
+					"pty.command.run",
+					"workspaceDeltaReceipt must bind exactly to the attested workspaceExecution scope.",
+				);
+			}
+		}
 		return {
 			output: requireString(object, "output", "pty.command.run"),
 			exitCode: nullableNumber(object, "exitCode", "pty.command.run"),
 			timedOut: requireBoolean(object, "timedOut", "pty.command.run"),
+			...(normalizedWorkspaceExecution
+				? { workspaceExecution: normalizedWorkspaceExecution }
+				: {}),
+			...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
 		};
 	}
 

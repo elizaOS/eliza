@@ -3,10 +3,37 @@
  * These tests keep model-shaped SQL inputs on the same linear sanitizer path as
  * the dashboard API guard without importing the full action runtime graph.
  */
-import { describe, expect, it } from "vitest";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
+import { databaseAction } from "./database.ts";
 
 describe("DATABASE action read-only guard", () => {
+  it("rejects the context-ordering regression before adapter execution", async () => {
+    const execute = vi.fn();
+    const runtime = {
+      adapter: { db: { execute } },
+    } as unknown as IAgentRuntime;
+    const result = await databaseAction.handler(
+      runtime,
+      {} as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "query",
+          sql: "SELECT 'value--'; DELETE FROM memories",
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      values: { error: "DATABASE_QUERY_FAILED", reason: "MUTATION_BLOCKED" },
+    });
+    expect(result?.text).toContain("DELETE");
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it("collapses block-comment-split mutation keywords", () => {
     expect(checkReadOnly("DE/* */LETE FROM memories")).toMatchObject({
       ok: false,
@@ -43,7 +70,7 @@ describe("DATABASE action read-only guard", () => {
     const result = checkReadOnly(sql);
     const elapsed = performance.now() - start;
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toMatchObject({ ok: false });
     expect(elapsed).toBeLessThan(1000);
   });
 
@@ -53,7 +80,7 @@ describe("DATABASE action read-only guard", () => {
     const result = checkReadOnly(sql);
     const elapsed = performance.now() - start;
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toMatchObject({ ok: false });
     expect(elapsed).toBeLessThan(1000);
   });
 });

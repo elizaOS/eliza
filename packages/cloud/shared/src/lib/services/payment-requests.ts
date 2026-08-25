@@ -1,9 +1,10 @@
-/** Coordinates payment-request state, provider intents, and public checkout projection. */
+/** Coordinates payment-request state, provider intents, and transport projections. */
 import type {
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
 import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "../../db/schemas/payment-requests";
+import type { PaymentRequestDto } from "../types/cloud-api";
 
 export { IgnoredWebhookEvent } from "./payment-webhook-errors";
 
@@ -465,6 +466,25 @@ export function createPaymentRequestsService(
   deps: PaymentRequestsServiceDeps,
 ): PaymentRequestsService {
   return new PaymentRequestsServiceImpl(deps);
+}
+
+/** Constructs the allowlisted creator-facing representation of an internal row. */
+export function toPaymentRequestDto(row: PaymentRequestRow): PaymentRequestDto {
+  return {
+    id: row.id,
+    agentId: row.agentId,
+    appId: row.appId,
+    provider: row.provider,
+    amountCents: row.amountCents,
+    currency: row.currency,
+    reason: row.reason,
+    status: row.status,
+    hostedUrl: row.hostedUrl,
+    settledAt: row.settledAt?.toISOString() ?? null,
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }
 
 export function toPublicPaymentRequest(

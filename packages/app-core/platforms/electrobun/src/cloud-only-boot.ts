@@ -7,9 +7,10 @@
  * clean env, so at boot the flag must be re-raised as the env vars every
  * existing decision point already reads: `ELIZA_DESKTOP_CLOUD_ONLY` (the
  * cloud-only renderer branding signal in `resolveDesktopRuntimeModeSignal`)
- * and `ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT` (the runtime-mode resolver's
- * `disabled` state — there is no runtime dist in the bundle to spawn). Env
- * values an operator set explicitly always win; this only fills gaps.
+ * `ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT` (there is no runtime dist to spawn), and
+ * the baked Cloud API base. That base makes the no-runtime shell external on a
+ * clean install instead of leaving its renderer pointed at dead loopback.
+ * Values an operator set explicitly always win; this only fills gaps.
  */
 
 export interface CloudOnlyEnvHydration {
@@ -18,12 +19,13 @@ export interface CloudOnlyEnvHydration {
 }
 
 /**
- * Raise the cloud-only env flags from the packaged brand config. Idempotent
- * and non-destructive: keys already present in the env (even set to an
- * explicit falsy opt-out) are left untouched.
+ * Raise the cloud-only env contract from packaged brand config. Idempotent and
+ * non-destructive: keys already present in the env (even set to an explicit
+ * falsy opt-out or invalid API base for diagnostics) are left untouched.
  */
 export function hydrateCloudOnlyEnv(
   brandCloudOnly: boolean,
+  cloudApiBase: string | null,
   env: Record<string, string | undefined> = process.env as Record<
     string,
     string | undefined
@@ -40,6 +42,16 @@ export function hydrateCloudOnlyEnv(
   if (env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT === undefined) {
     env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT = "1";
     applied.push("ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT");
+  }
+  const hasExplicitApiBase = [
+    "ELIZA_DESKTOP_TEST_API_BASE",
+    "ELIZA_DESKTOP_API_BASE",
+    "ELIZA_API_BASE_URL",
+    "ELIZA_API_BASE",
+  ].some((key) => env[key] !== undefined);
+  if (!hasExplicitApiBase && cloudApiBase) {
+    env.ELIZA_DESKTOP_API_BASE = cloudApiBase;
+    applied.push("ELIZA_DESKTOP_API_BASE");
   }
   return { applied };
 }

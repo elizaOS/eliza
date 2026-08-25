@@ -16,6 +16,6 @@ export function buildAppsSectionVisibilityCandidate(): WidgetVisibilityCandidate
     id: APPS_SECTION_PARTS[1] ?? "apps.section",
     defaultEnabled: true,
     label: "Apps",
-    icon: <LayoutGrid className="h-3.5 w-3.5" />,
+    icon: <LayoutGrid className="size-3.5" />,
   };
 }

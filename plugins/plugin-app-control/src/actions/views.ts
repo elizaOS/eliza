@@ -37,6 +37,7 @@ import {
 	userRequestMessageText,
 } from "../params.js";
 import { matchViewCommand } from "./view-command-matcher.js";
+import { readViewInteractionClientId } from "./view-delivery.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
@@ -113,7 +114,6 @@ const VIEWLESS_TEXT_CONNECTOR_SOURCES = new Set([
 	"telegram",
 	"matrix",
 	"slack",
-	"signal",
 	"whatsapp",
 	"twitter",
 	"x",
@@ -150,15 +150,6 @@ const DESKTOP_ONLY_VIEW_MODES = new Set<ViewsMode>([
 // app-control must not import orchestrator internals, so this constant is kept
 // local and points at the orchestrator's owning constant.
 const SUB_AGENT_RELAY_SOURCE = "sub_agent";
-const SAFE_VIEW_CLIENT_ID = /^[A-Za-z0-9._-]{1,128}$/;
-
-function readViewInteractionClientId(message: Memory): string | undefined {
-	const clientId = readContentMetadata(message).viewClientId;
-	return typeof clientId === "string" && SAFE_VIEW_CLIENT_ID.test(clientId)
-		? clientId
-		: undefined;
-}
-
 function lowerSource(source: unknown): string {
 	return typeof source === "string" ? source.toLowerCase() : "";
 }
@@ -928,7 +919,9 @@ function capabilityCandidates(
 	return views
 		.filter((view) => !viewType || !view.viewType || view.viewType === viewType)
 		.flatMap((view) =>
-			(view.capabilities ?? []).map((capability) => ({ view, capability })),
+			(view.capabilities ?? [])
+				.filter((capability) => capability.authority !== "human")
+				.map((capability) => ({ view, capability })),
 		);
 }
 
@@ -1230,7 +1223,9 @@ function correctCapabilityOperationFamily(
 	}
 
 	const familyMatches = (view.capabilities ?? []).filter(
-		(candidate) => operationFamilyForCapability(candidate) === requestedFamily,
+		(candidate) =>
+			candidate.authority !== "human" &&
+			operationFamilyForCapability(candidate) === requestedFamily,
 	);
 	if (familyMatches.length === 1 && familyMatches[0])
 		return { kind: "capability", capability: familyMatches[0] };
@@ -1536,12 +1531,48 @@ function deriveParamsFromIntent(
 }
 
 function extractIntentTitle(intent: string): string | null {
-	const titled =
-		/\btitled?\s+["']?(.+?)(?:["']?\s+\b(?:with|on|at|for)\b|["']?$)/i.exec(
-			intent,
-		);
-	if (titled?.[1]?.trim()) {
-		return titled[1].trim();
+	const lower = intent.toLowerCase();
+	let markerEnd = -1;
+	for (const marker of ["titled", "title"]) {
+		let cursor = 0;
+		while (cursor < lower.length) {
+			const start = lower.indexOf(marker, cursor);
+			if (start < 0) break;
+			const before = lower[start - 1] ?? " ";
+			const after = lower[start + marker.length] ?? " ";
+			if (!/[a-z0-9_]/.test(before) && after.trim() === "") {
+				markerEnd = start + marker.length;
+				break;
+			}
+			cursor = start + 1;
+		}
+		if (markerEnd >= 0) break;
+	}
+	if (markerEnd >= 0) {
+		let titleStart = markerEnd;
+		while (titleStart < intent.length && intent[titleStart]?.trim() === "")
+			titleStart += 1;
+		if (intent[titleStart] === '"' || intent[titleStart] === "'")
+			titleStart += 1;
+		let titleEnd = intent.length;
+		for (const delimiter of ["with", "on", "at", "for"]) {
+			let cursor = titleStart;
+			while (cursor < lower.length) {
+				const start = lower.indexOf(delimiter, cursor);
+				if (start < 0) break;
+				const before = intent[start - 1] ?? "";
+				const after = intent[start + delimiter.length] ?? " ";
+				if (before.trim() === "" && !/[a-z0-9_]/.test(after)) {
+					titleEnd = Math.min(titleEnd, start);
+					break;
+				}
+				cursor = start + 1;
+			}
+		}
+		let title = intent.slice(titleStart, titleEnd).trim();
+		if (title.endsWith('"') || title.endsWith("'"))
+			title = title.slice(0, -1).trimEnd();
+		if (title) return title;
 	}
 	const quoted = /["']([^"']{1,160})["']/.exec(intent);
 	return quoted?.[1]?.trim() ?? null;
@@ -3181,10 +3212,26 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							normalizeCapabilityKey(capability),
 						);
 						if (!resolvedCapability && resolvedView) {
+							const humanOnlyCapability = (
+								resolvedView.capabilities ?? []
+							).find(
+								(candidate) =>
+									candidate.authority === "human" &&
+									normalizeCapabilityKey(candidate.id) ===
+										normalizeCapabilityKey(capability),
+							);
+							if (humanOnlyCapability) {
+								return {
+									success: false,
+									text: `Capability "${humanOnlyCapability.id}" on view "${resolvedView.id}" requires direct human interaction.`,
+									transcriptVisibility: "internal",
+								};
+							}
 							const matches = (resolvedView.capabilities ?? []).filter(
 								(candidate) =>
+									candidate.authority !== "human" &&
 									normalizeCapabilityKey(candidate.id) ===
-									normalizeCapabilityKey(capability),
+										normalizeCapabilityKey(capability),
 							);
 							if (matches.length === 1 && matches[0]) {
 								resolvedCapability = {

@@ -27,19 +27,21 @@ describe("content-pack manifest deadline", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => ({
-        ok: true,
-        json: () => {
-          bodyStarted = true;
-          return new Promise((_resolve, reject) => {
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = new ReadableStream({
+          start(controller) {
             init?.signal?.addEventListener(
               "abort",
-              () => reject(init.signal?.reason),
+              () => controller.error(init.signal?.reason),
               { once: true },
             );
-          });
-        },
-      })) as unknown as typeof fetch,
+          },
+          pull() {
+            bodyStarted = true;
+          },
+        });
+        return new Response(body);
+      }) as typeof fetch,
     );
 
     const pending = loadContentPackFromUrl(BASE_URL);

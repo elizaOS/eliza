@@ -97,7 +97,7 @@ function TileFrame({
   return (
     <span
       className={cn(
-        "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col justify-end overflow-hidden rounded-2xl text-left transition-transform duration-200 ease-out",
+        "group/tile relative flex aspect-[3/4] w-full min-h-touch flex-col items-center justify-center overflow-hidden rounded-2xl text-center transition-transform duration-200 ease-out",
         "border border-border/50 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
         selected &&
           "border-2 border-accent shadow-[0_8px_28px_-14px_var(--color-scrim)]",
@@ -107,16 +107,9 @@ function TileFrame({
     >
       {/* A low legibility gradient so the label reads over any wallpaper, tinted
           toward the field rather than a flat black bar. */}
-      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-scrim/80 to-transparent" />
-      {selected ? (
-        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-accent-fg shadow-[0_2px_8px_-2px_var(--color-scrim)]">
-          <span className="text-2xs font-semibold uppercase tracking-wide">
-            on
-          </span>
-        </span>
-      ) : null}
-      <span className="relative flex flex-col gap-0.5 px-2.5 pb-2.5">
-        <span className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
+      <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-scrim/80 to-transparent" />
+      <span className="relative flex flex-col items-center gap-0.5 px-1.5">
+        <span className="whitespace-nowrap text-xs leading-tight font-semibold text-white drop-shadow-[0_1px_2px_var(--color-scrim)]">
           {label}
         </span>
         {meta ? (
@@ -149,14 +142,15 @@ function CatalogTile({
     onActivate: () => onSelect(entry),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       onClick={() => onSelect(entry)}
       aria-label={`Set background to ${entry.label}`}
       aria-pressed={selected}
       title={`${entry.label}. ${entry.description}`}
-      className="group/btn block w-full rounded-2xl outline-none"
+      variant="launcherTile"
+      className="group/btn w-full"
       {...agentProps}
     >
       <TileFrame
@@ -165,7 +159,7 @@ function CatalogTile({
         selected={selected}
         style={catalogPreviewStyle(entry)}
       />
-    </button>
+    </Button>
   );
 }
 
@@ -324,12 +318,13 @@ export function BackgroundSettingsControls({
         ref={uploadButton.ref}
         type="button"
         variant="secondary"
+        size="touch"
+        shape="circle"
         onClick={onUploadClick}
         aria-label="Upload a background image"
-        className="h-11 gap-2 rounded-full px-4 text-sm"
         {...uploadButton.agentProps}
       >
-        <ImagePlus className="h-4 w-4" aria-hidden />
+        <ImagePlus className="size-4" aria-hidden />
         Upload
       </Button>
       {/* aria-hidden: this sr-only input is pure upload machinery — the
@@ -339,9 +334,9 @@ export function BackgroundSettingsControls({
       <Input
         ref={fileInputRef}
         type="file"
+        variant="nativeFileHidden"
         accept="image/*"
         onChange={onFileChange}
-        className="sr-only border-0 bg-transparent p-0"
         aria-hidden="true"
         tabIndex={-1}
       />
@@ -357,13 +352,14 @@ export function BackgroundSettingsControls({
           ref={undoButton.ref}
           type="button"
           variant="ghost"
+          size="touch"
+          shape="circle"
           onClick={() => undoBackgroundConfig()}
           disabled={!canUndoBackground}
           aria-label="Undo background change"
-          className="h-11 gap-1.5 rounded-full px-3 text-sm text-muted hover:text-txt disabled:opacity-40"
           {...undoButton.agentProps}
         >
-          <RotateCcw className="h-4 w-4" aria-hidden />
+          <RotateCcw className="size-4" aria-hidden />
           Revert
         </Button>
         <Button
@@ -371,13 +367,13 @@ export function BackgroundSettingsControls({
           type="button"
           variant="ghost"
           size="icon-lg"
+          shape="circle"
           onClick={() => redoBackgroundConfig()}
           disabled={!canRedoBackground}
           aria-label="Redo background change"
-          className="h-11 w-11 rounded-full text-muted hover:text-txt disabled:opacity-40"
           {...redoButton.agentProps}
         >
-          <RotateCw className="h-4 w-4" aria-hidden />
+          <RotateCw className="size-4" aria-hidden />
         </Button>
       </div>
     ) : null;
@@ -442,7 +438,7 @@ export function BackgroundSettingsControls({
 
       <div
         data-testid="background-catalog-gallery"
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
       >
         {CURATED_IMAGE_CATALOG.map((entry) => (
           <CatalogTile
@@ -462,7 +458,7 @@ export function BackgroundSettingsControls({
             </h3>
             <span className="h-px flex-1 bg-border/40" />
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {userCatalog.map((entry) => (
               <CatalogTile
                 key={entry.id}

@@ -180,7 +180,8 @@ export function parseBrokerReportRequest(
     if (value === undefined) continue;
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
-    if (trimmed) out[key] = trimmed.slice(0, 128);
+    if (trimmed.length > 128) return null;
+    if (trimmed) out[key] = trimmed;
   }
   return out;
 }

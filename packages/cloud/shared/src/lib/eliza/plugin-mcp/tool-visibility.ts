@@ -146,3 +146,8 @@ export function getCrucialToolsForServer(serverName: string): string[] {
 export function getAllCrucialTools(): Record<string, string[]> {
   return { ...CRUCIAL_TOOLS };
 }
+
+/** Raw DoorDash tools stay callable by its facade but are never agent actions. */
+export function shouldRegisterRawMcpTools(serverName: string): boolean {
+  return serverName.trim().toLowerCase() !== "doordash";
+}

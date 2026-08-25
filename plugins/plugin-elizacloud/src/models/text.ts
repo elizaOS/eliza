@@ -12,6 +12,7 @@ import type {
   TokenUsage,
 } from "@elizaos/core";
 import {
+	assertModelOutputComplete,
   buildCanonicalSystemPrompt,
   DEFAULT_CEREBRAS_TEXT_MODEL,
   ElizaError,
@@ -23,6 +24,10 @@ import {
   Semaphore,
   timeInferenceSpan,
 } from "@elizaos/core";
+import {
+  recordGatewayResponseTelemetry,
+  withInferenceTraceHeader,
+} from "../utils/trace-correlation";
 import {
   getActionPlannerModel,
   getLargeModel,
@@ -92,8 +97,12 @@ export function resolveTextTimeoutMs(): number | undefined {
   const raw =
     typeof process !== "undefined" ? process.env[TEXT_TIMEOUT_ENV] : undefined;
   if (raw === undefined || raw.trim() === "") return DEFAULT_TEXT_TIMEOUT_MS;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
+  // `Number.parseInt` stops at the first non-digit, so "500junk" parsed to 500
+  // and became a 500ms client timeout instead of the documented fallback. The
+  // sign is accepted here on purpose: this setting documents `0`/negative as
+  // the opt-out, so the `<= 0` check below stays the range authority.
+  const parsed = /^[+-]?\d+$/.test(raw.trim()) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(parsed)) return DEFAULT_TEXT_TIMEOUT_MS;
   return parsed <= 0 ? undefined : parsed;
 }
 
@@ -137,8 +146,14 @@ let nativeChatLimiter: Semaphore | null = null;
 function resolveNativeConcurrency(): number {
   const raw =
     typeof process !== "undefined" ? process.env[NATIVE_CONCURRENCY_ENV] : undefined;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_NATIVE_CONCURRENCY;
+  // Same prefix-parse hole as the timeout above: "2junk" parsed to 2 and
+  // silently tightened the semaphore from 8. The `> 0` check stays the range
+  // authority, so a signed value is still parsed and then judged by it.
+  const parsed =
+    raw && /^[+-]?\d+$/.test(raw.trim()) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_NATIVE_CONCURRENCY;
 }
 
 function getNativeChatLimiter(): Semaphore {
@@ -198,6 +213,8 @@ type ResponsesApiResponse = Record<string, unknown> & {
     output_tokens?: number;
     total_tokens?: number;
   } & Record<string, unknown>;
+	status?: string;
+	incomplete_details?: { reason?: string } & Record<string, unknown>;
 };
 
 /**
@@ -555,6 +572,10 @@ export async function requestNativeWithWarmingRetry(
   for (;;) {
     const response = await withNativeChatLimit(doRequest, label);
     const bodyText = await response.text();
+    // Recorded before the status check so the give-up 503 keeps its gateway
+    // decomposition too — a turn that burned the whole warming ladder is
+    // exactly the turn whose pre-forward attribution matters.
+    recordGatewayResponseTelemetry(response, label);
     if (response.status !== 503) return { response, bodyText };
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
     if (delayMs === undefined) return { response, bodyText };
@@ -957,11 +978,11 @@ function buildNativeRequestBody(
     model: modelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
   };
-  // Omit the cap entirely when the caller opted out (direct-channel Stage-1):
-  // a hardcoded max_tokens 400s on a model whose real limit differs. Every other
-  // caller keeps the 8192 default so it stays bounded.
-  if (!params.omitMaxTokens) {
-    requestBody.max_tokens = params.maxTokens ?? 8192;
+  // An omitted output budget remains omitted. The selected provider owns its
+  // real model boundary; core defaults would silently turn a complete request
+  // into a partial completion. Explicit values are forwarded unchanged.
+  if (!params.omitMaxTokens && params.maxTokens !== undefined) {
+    requestBody.max_tokens = params.maxTokens;
   }
 
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
@@ -1272,17 +1293,17 @@ async function generateTextWithModel(
     model: modelName,
     input,
   };
-  if (!params.omitMaxTokens) {
-    requestBody.max_output_tokens = params.maxTokens ?? 8192;
+  if (!params.omitMaxTokens && params.maxTokens !== undefined) {
+    requestBody.max_output_tokens = params.maxTokens;
   }
   if (!reasoning && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
 
-  const responsesHeaders: Record<string, string> = {
+  const responsesHeaders: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   if (isSpanSamplerHonoringModel(modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
@@ -1332,6 +1353,20 @@ async function generateTextWithModel(
     throw requestError;
   }
 
+	if (data.status === "incomplete") {
+		throw new ElizaError(
+			"elizaOS Cloud returned an incomplete Responses API output.",
+			{
+				code: "MODEL_OUTPUT_INCOMPLETE",
+				context: {
+					provider: "elizacloud",
+					model: modelName,
+					reason: data.incomplete_details?.reason,
+				},
+			},
+		);
+	}
+
   if (data.usage) {
     emitModelUsageEvent(
       runtime,
@@ -1379,10 +1414,10 @@ export async function generateNativeChatCompletion(
     context.systemPrompt,
     runtime
   );
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   // Per-span sampler overrides only ride along when the resolved model is a
   // fork-built eliza-1 deployment that knows how to honor the header. Other
   // upstreams (OpenAI / Anthropic / generic OpenRouter) strip unknown headers
@@ -1453,6 +1488,11 @@ export async function generateNativeChatCompletion(
 
   const text = extractChatCompletionText(data);
   const toolCalls = extractNativeToolCalls(data);
+	assertModelOutputComplete({
+		finishReason: data.choices?.[0]?.finish_reason,
+		provider: "elizacloud",
+		model: context.modelName,
+	});
   if (!text.trim() && toolCalls.length === 0) {
     throw new Error("elizaOS Cloud returned no text or tool calls");
   }
@@ -1802,10 +1842,10 @@ export async function streamNativeChatCompletion(
   // can meter the streamed call accurately.
   requestBody.stream_options = { include_usage: true };
 
-  const headers: Record<string, string> = {
+  const headers: Record<string, string> = withInferenceTraceHeader({
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
-  };
+  });
   if (isSpanSamplerHonoringModel(context.modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
@@ -1870,6 +1910,9 @@ export async function streamNativeChatCompletion(
     );
     await sleepMs(delayMs);
   }
+  // Recorded before the ok-check so a failed forward still keeps its gateway
+  // decomposition on the turn — errors are where attribution matters most.
+  recordGatewayResponseTelemetry(response, "chat/completions:stream");
 
   if (!response.ok) {
     let errorBody: { message?: string } | undefined;
@@ -1919,6 +1962,11 @@ export async function streamNativeChatCompletion(
     const text = extractChatCompletionText(data);
     const toolCalls = extractNativeToolCalls(data);
     const usage = convertNativeUsage(data.usage);
+		assertModelOutputComplete({
+			finishReason: data.choices?.[0]?.finish_reason,
+			provider: "elizacloud",
+			model: context.modelName,
+		});
     if (usage) {
       emitModelUsageEvent(runtime, modelType, context.prompt, usage, {
         modelName: context.modelName,
@@ -2087,6 +2135,11 @@ export async function streamNativeChatCompletion(
       if (!finishReason) {
         throw invalidNativeStream("stream ended without a terminal finish frame");
       }
+			assertModelOutputComplete({
+				finishReason,
+				provider: "elizacloud",
+				model: context.modelName,
+			});
       const toolCalls = finalizeStreamedToolCalls(toolAcc);
       if (!accumulated.trim() && toolCalls.length === 0) {
         throw invalidNativeStream("stream completed without text or tool calls");

@@ -30,6 +30,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
+
 # Load .env
 from dotenv import load_dotenv
 
@@ -70,20 +77,38 @@ def make_local_generator(model, tokenizer, device, system_prompt: str = ""):
             tokenize=False,
             add_generation_prompt=True,
         )
-        enc = tokenizer(text, return_tensors="pt", truncation=True, max_length=2048).to(device)
+        enc = tokenize_with_explicit_limit(
+            tokenizer,
+            text,
+            max_tokens=model_context_tokens(
+                model, tokenizer, source="run_red_team_gym.local"
+            ),
+            return_tensors="pt",
+        ).to(device)
+        max_new_tokens = remaining_model_context_tokens(
+            model,
+            tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="run_red_team_gym.local",
+        )
         model.eval()
         with torch.no_grad():
             out = model.generate(
                 enc["input_ids"],
-                max_new_tokens=300,
+                max_new_tokens=max_new_tokens,
                 temperature=0.8,
                 top_p=0.9,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
             )
-        resp = tokenizer.decode(
-            out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True
-        ).strip()
+        generated_ids = out[0, enc["input_ids"].shape[1] :]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=max_new_tokens,
+            source="run_red_team_gym.local",
+            terminal_token_ids=tokenizer.eos_token_id,
+        )
+        resp = tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         if "</think>" in resp:
             resp = resp.split("</think>")[-1].strip()
         return resp

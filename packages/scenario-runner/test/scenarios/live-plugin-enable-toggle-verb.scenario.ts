@@ -231,7 +231,7 @@ export default scenario({
   tags: ["live", "app-control", "plugins", "views", "plugin-toggle"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [SCENARIO_PLUGIN_NAME],
+    fixturePlugins: [SCENARIO_PLUGIN_NAME],
   },
   seed: [
     {

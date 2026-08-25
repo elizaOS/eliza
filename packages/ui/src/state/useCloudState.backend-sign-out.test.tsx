@@ -23,6 +23,7 @@ const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
 const clearStaleStewardSessionMock = vi.hoisted(() => vi.fn());
 const clearCloudPairApiTokenMock = vi.hoisted(() => vi.fn());
+const clearStoredStewardTokenMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({
   client: {
@@ -36,6 +37,13 @@ vi.mock("../api", () => ({
 
 vi.mock("../cloud/shell/StewardProviderShared", () => ({
   clearStaleStewardSession: clearStaleStewardSessionMock,
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
+  clearStoredStewardToken: clearStoredStewardTokenMock,
 }));
 
 vi.mock("./cloud-pair-token", () => ({
@@ -72,6 +80,7 @@ describe("useCloudState — backend-backed (unlocked) Cloud account sign-out", (
     });
     cloudDisconnectMock.mockResolvedValue(undefined);
     clearStaleStewardSessionMock.mockClear();
+    clearStoredStewardTokenMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -108,5 +117,37 @@ describe("useCloudState — backend-backed (unlocked) Cloud account sign-out", (
     expect(result.current.elizaCloudEnabled).toBe(false);
     expect(result.current.elizaCloudUserId).toBeNull();
     expect(result.current.elizaCloudDisconnecting).toBe(false);
+  });
+
+  it("keeps connected logical state when protected token deletion fails", async () => {
+    const deletionFailure = new Error("native secure deletion denied");
+    clearStoredStewardTokenMock.mockRejectedValueOnce(deletionFailure);
+    getCloudStatusMock.mockResolvedValue({
+      connected: true,
+      enabled: true,
+      userId: "user-before-failed-sign-out",
+    });
+    const params = makeParams();
+    const { result } = renderHook(() => useCloudState(params));
+
+    act(() => {
+      result.current.setElizaCloudEnabled(true);
+      result.current.setElizaCloudConnected(true);
+      result.current.setElizaCloudUserId("user-before-failed-sign-out");
+    });
+
+    await act(async () => {
+      await result.current.handleCloudSignOut();
+    });
+
+    expect(clearStoredStewardTokenMock).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudEnabled).toBe(true);
+    expect(result.current.elizaCloudUserId).toBe("user-before-failed-sign-out");
+    expect(clearCloudPairApiTokenMock).not.toHaveBeenCalled();
+    expect(params.setActionNotice).toHaveBeenCalledWith(
+      "Failed to disconnect: native secure deletion denied",
+      "error",
+    );
   });
 });

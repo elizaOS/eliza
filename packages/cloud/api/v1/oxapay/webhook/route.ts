@@ -17,8 +17,8 @@
 
 import { Hono } from "hono";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { OxaPayApiError } from "@/lib/services/oxapay";
 import { createOxaPayPaymentAdapter } from "@/lib/services/payment-adapters/oxapay";
@@ -71,7 +71,7 @@ export function createOxaPayWebhookApp(
 ): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
-  app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
+  app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
     const ip = getClientIp(c);
     const allowedIps = getWebhookAllowedIps(c.env);
     if (allowedIps.length > 0 && !allowedIps.includes(ip)) {

@@ -17,8 +17,12 @@ import {
   type UseConnectorAccountsResult,
   useConnectorAccounts,
 } from "../../hooks/useConnectorAccounts";
-import { cn } from "../../lib/utils";
 import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import { AccountListShell } from "../accounts/AccountListShell";
+import {
+  incrementalScopeRequest,
+  readConnectorAccountCapabilityAccess,
+} from "../capabilities/connected-capability-presentation";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { ConnectorAccountCard } from "./ConnectorAccountCard";
@@ -148,14 +152,17 @@ export function ConnectorAccountList({
   const connectorAccounts = externalAccounts ?? internalAccounts;
   const setConnectorSelectedAccountId = connectorAccounts.setSelectedAccountId;
   const effectiveTitle = title ?? defaultTitleForRole(accountRole);
-  const oauthCapabilities =
-    (
-      getConnectorPluginManagedAccountOption(connectorId) ??
-      getConnectorPluginManagedAccountOption(provider)
-    )?.oauthCapabilities ?? [];
+  const managedOption =
+    getConnectorPluginManagedAccountOption(connectorId) ??
+    getConnectorPluginManagedAccountOption(provider);
+  const supportsOAuth = managedOption?.supportsOAuth === true;
+  const oauthCapabilities = managedOption?.oauthCapabilities ?? [];
   const [selectedOAuthCapabilities, setSelectedOAuthCapabilities] = useState(
     () => new Set<string>(),
   );
+  // "<accountId>:<capabilityId>" while an incremental-scope grant is pending,
+  // or "<accountId>:reconnect" while an account reauth restart is pending.
+  const [scopeFlowBusyKey, setScopeFlowBusyKey] = useState<string | null>(null);
   // Rejection of a wire-supplied OAuth URL surfaces here — the hook-level
   // `error` only covers fetch/mutation failures.
   const [authUrlError, setAuthUrlError] = useState<string | null>(null);
@@ -222,6 +229,60 @@ export function ConnectorAccountList({
     }
   };
 
+  /**
+   * Restarts OAuth for an existing account with an explicit scope set — the
+   * shared path behind per-account Reconnect and incremental-scope Grant.
+   * Returning from the provider lands on the normal OAuth completion route;
+   * the account list poll then reflects the refreshed grants.
+   */
+  const startAccountScopeFlow = async (
+    account: ConnectorAccountRecord,
+    scopes: string[],
+    busyKey: string,
+  ) => {
+    setAuthUrlError(null);
+    setScopeFlowBusyKey(busyKey);
+    try {
+      const result = await connectorAccounts.startOAuth({
+        accountId: account.id,
+        scopes,
+        metadata: {
+          requestedCapabilities: scopes,
+          requestedRole: account.role ?? "OWNER",
+          privacy: account.privacy ?? "owner_only",
+        },
+      });
+      if (result.authUrl && !openConnectorAuthUrl(result.authUrl)) {
+        setAuthUrlError(
+          "The sign-in link returned by the server is not a valid URL.",
+        );
+      }
+    } finally {
+      setScopeFlowBusyKey(null);
+    }
+  };
+
+  const handleGrantCapability = (
+    account: ConnectorAccountRecord,
+    capabilityId: string,
+  ) =>
+    startAccountScopeFlow(
+      account,
+      incrementalScopeRequest(
+        readConnectorAccountCapabilityAccess(account),
+        capabilityId,
+      ),
+      `${account.id}:${capabilityId}`,
+    );
+
+  const handleReconnect = (account: ConnectorAccountRecord) => {
+    const access = readConnectorAccountCapabilityAccess(account);
+    const scopes = access.reported
+      ? [...access.granted].sort()
+      : oauthCapabilities.map((capability) => capability.id);
+    return startAccountScopeFlow(account, scopes, `${account.id}:reconnect`);
+  };
+
   const addBusy =
     connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ||
     connectorAccounts.saving.has(`oauth:${provider}:${connectorId}:new`);
@@ -238,105 +299,117 @@ export function ConnectorAccountList({
     });
   };
 
+  const listState =
+    connectorAccounts.loading && !connectorAccounts.data
+      ? { kind: "loading" as const, label: "Loading connector accounts…" }
+      : sortedAccounts.length === 0
+        ? { kind: "empty" as const, message: "No connector accounts yet." }
+        : {
+            kind: "ready" as const,
+            children: sortedAccounts.map((account) => {
+              const isDefault =
+                account.id === connectorAccounts.defaultAccountId ||
+                (connectorAccounts.defaultAccountId === null &&
+                  account.isDefault === true &&
+                  account.enabled !== false &&
+                  account.status === "connected");
+              return (
+                <ConnectorAccountCard
+                  key={account.id}
+                  account={account}
+                  isDefault={isDefault}
+                  selected={
+                    account.id === connectorAccounts.effectiveAccountId ||
+                    account.id === selectedAccountId
+                  }
+                  saving={connectorAccounts.saving.has(account.id)}
+                  testBusy={connectorAccounts.saving.has(`test:${account.id}`)}
+                  refreshBusy={connectorAccounts.saving.has(
+                    `refresh:${account.id}`,
+                  )}
+                  onSelect={() => handleSelect(account.id)}
+                  onUpdate={async (body) => {
+                    await connectorAccounts.update(account.id, body);
+                  }}
+                  onTest={async () => {
+                    await connectorAccounts.test(account.id);
+                  }}
+                  onRefresh={async () => {
+                    await connectorAccounts.refreshAccount(account.id);
+                  }}
+                  onDelete={async () => {
+                    await connectorAccounts.remove(account.id);
+                  }}
+                  onMakeDefault={async () => {
+                    await connectorAccounts.makeDefault(account.id);
+                  }}
+                  declaredCapabilities={
+                    supportsOAuth ? oauthCapabilities : undefined
+                  }
+                  onGrantCapability={
+                    supportsOAuth
+                      ? (capabilityId) =>
+                          void handleGrantCapability(account, capabilityId)
+                      : undefined
+                  }
+                  grantBusyCapabilityId={
+                    scopeFlowBusyKey?.startsWith(`${account.id}:`)
+                      ? scopeFlowBusyKey.slice(account.id.length + 1)
+                      : null
+                  }
+                  onReconnect={
+                    supportsOAuth
+                      ? () => void handleReconnect(account)
+                      : undefined
+                  }
+                  reconnectBusy={scopeFlowBusyKey === `${account.id}:reconnect`}
+                />
+              );
+            }),
+          };
+
   return (
-    <div
-      className={cn(
-        "mt-3 flex flex-col gap-2 rounded-sm border border-border/40 bg-bg-accent/40 p-3",
-        className,
-      )}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-          {effectiveTitle} ({sortedAccounts.length})
-        </h3>
-        {canAddAccount ? (
+    <AccountListShell
+      heading={`${effectiveTitle} (${sortedAccounts.length})`}
+      className={className}
+      action={
+        canAddAccount ? (
           <Button
             type="button"
             variant="default"
             size="sm"
             disabled={addDisabled}
             onClick={() => void handleAdd()}
-            className="h-8 gap-1 px-2.5 text-xs"
           >
             {addBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <Plus className="h-3.5 w-3.5" aria-hidden />
+              <Plus className="size-3.5" aria-hidden />
             )}
             Add account
           </Button>
-        ) : null}
-      </div>
-
-      {canAddAccount && oauthCapabilities.length > 0 ? (
-        <ConnectorOAuthCapabilityPicker
-          capabilities={oauthCapabilities}
-          selected={selectedOAuthCapabilities}
-          onChange={updateOAuthCapability}
-        />
-      ) : null}
-
-      {connectorAccounts.loading && !connectorAccounts.data ? (
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <Spinner className="h-3 w-3" />
-          Loading connector accounts...
-        </div>
-      ) : null}
-
-      {connectorAccounts.error || authUrlError ? (
-        <div className="rounded-sm border border-border/45 bg-card/30 px-3 py-2 text-xs text-muted">
-          {connectorAccounts.error ?? authUrlError}
-        </div>
-      ) : null}
-
-      {sortedAccounts.length === 0 && !connectorAccounts.loading ? (
-        <div className="rounded-sm border border-dashed border-border/50 px-3 py-6 text-center text-xs text-muted">
-          No connector accounts yet.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {sortedAccounts.map((account) => {
-            const isDefault =
-              account.id === connectorAccounts.defaultAccountId ||
-              (connectorAccounts.defaultAccountId === null &&
-                account.isDefault === true &&
-                account.enabled !== false &&
-                account.status === "connected");
-            return (
-              <ConnectorAccountCard
-                key={account.id}
-                account={account}
-                isDefault={isDefault}
-                selected={
-                  account.id === connectorAccounts.effectiveAccountId ||
-                  account.id === selectedAccountId
-                }
-                saving={connectorAccounts.saving.has(account.id)}
-                testBusy={connectorAccounts.saving.has(`test:${account.id}`)}
-                refreshBusy={connectorAccounts.saving.has(
-                  `refresh:${account.id}`,
-                )}
-                onSelect={() => handleSelect(account.id)}
-                onUpdate={async (body) => {
-                  await connectorAccounts.update(account.id, body);
-                }}
-                onTest={async () => {
-                  await connectorAccounts.test(account.id);
-                }}
-                onRefresh={async () => {
-                  await connectorAccounts.refreshAccount(account.id);
-                }}
-                onDelete={async () => {
-                  await connectorAccounts.remove(account.id);
-                }}
-                onMakeDefault={async () => {
-                  await connectorAccounts.makeDefault(account.id);
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
-    </div>
+        ) : undefined
+      }
+      controls={
+        canAddAccount && oauthCapabilities.length > 0 ? (
+          <ConnectorOAuthCapabilityPicker
+            capabilities={oauthCapabilities}
+            selected={selectedOAuthCapabilities}
+            onChange={updateOAuthCapability}
+          />
+        ) : undefined
+      }
+      notice={
+        connectorAccounts.error || authUrlError
+          ? {
+              message:
+                connectorAccounts.error ??
+                authUrlError ??
+                "Connector accounts unavailable",
+            }
+          : undefined
+      }
+      state={listState}
+    />
   );
 }

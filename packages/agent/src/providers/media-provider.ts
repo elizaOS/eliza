@@ -13,7 +13,9 @@
  */
 
 import {
+  ElizaError,
   fetchRemoteMedia,
+  isElizaError,
   logger,
   nodeLookupFn,
   nodePinnedFetch,
@@ -53,10 +55,18 @@ async function withProviderErrorBoundary<T>(
   try {
     return await run();
   } catch (err) {
+    // error-policy:J1 provider boundary returns an explicit failed result.
     const message = err instanceof Error ? err.message : String(err);
+    const structuredError = isElizaError(err) ? err : undefined;
     return {
       success: false,
-      error: `[${providerName}] Network error: ${message}`,
+      error: `[${providerName}] ${structuredError ? message : `Network error: ${message}`}`,
+      ...(structuredError
+        ? {
+            errorCode: structuredError.code,
+            errorContext: structuredError.context,
+          }
+        : {}),
     };
   }
 }
@@ -153,6 +163,8 @@ export interface MediaProviderResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+  errorCode?: string;
+  errorContext?: Record<string, unknown>;
 }
 
 export interface ImageGenerationResult {
@@ -595,7 +607,7 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
   name = "openai";
   private apiKey: string;
   private model: string;
-  private maxTokens: number;
+  private maxTokens?: number;
 
   constructor(config: NonNullable<VisionConfig["openai"]>) {
     if (!config.apiKey) {
@@ -604,7 +616,7 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
     this.apiKey = config.apiKey;
     // Mirrors plugin-openai's IMAGE_DESCRIPTION default (utils/config.ts).
     this.model = config.model ?? "gpt-5-mini";
-    this.maxTokens = config.maxTokens ?? 1024;
+    this.maxTokens = config.maxTokens;
   }
 
   async analyze(
@@ -634,7 +646,9 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
           },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: options.maxTokens ?? this.maxTokens,
+            ...((options.maxTokens ?? this.maxTokens) !== undefined
+              ? { max_tokens: options.maxTokens ?? this.maxTokens }
+              : {}),
             messages: [
               {
                 role: "user",
@@ -657,8 +671,18 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
       }
 
       const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{
+          finish_reason?: string;
+          message?: { content?: string };
+        }>;
       };
+      if (data.choices?.[0]?.finish_reason === "length") {
+        return {
+          success: false,
+          error:
+            "OpenAI returned an incomplete vision description after reaching an output limit",
+        };
+      }
       const description = data.choices?.[0]?.message?.content;
       if (!description) {
         return {
@@ -1026,7 +1050,9 @@ export class XAIVisionProvider implements VisionAnalysisProvider {
           },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: options.maxTokens ?? 1024,
+            ...(options.maxTokens !== undefined
+              ? { max_tokens: options.maxTokens }
+              : {}),
             messages: [
               {
                 role: "user",
@@ -1049,8 +1075,18 @@ export class XAIVisionProvider implements VisionAnalysisProvider {
       }
 
       const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{
+          finish_reason?: string;
+          message?: { content?: string };
+        }>;
       };
+      if (data.choices?.[0]?.finish_reason === "length") {
+        return {
+          success: false,
+          error:
+            "xAI returned an incomplete vision description after reaching an output limit",
+        };
+      }
       const description = data.choices?.[0]?.message?.content;
       if (!description) {
         return { success: false, error: "No description returned from xAI" };
@@ -1076,14 +1112,14 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
   name = "ollama";
   private baseUrl: string;
   private model: string;
-  private maxTokens: number;
+  private maxTokens?: number;
   private autoDownload: boolean;
   private modelChecked = false;
 
   constructor(config: NonNullable<VisionConfig["ollama"]>) {
     this.baseUrl = config.baseUrl ?? "http://localhost:11434";
     this.model = config.model ?? "llava";
-    this.maxTokens = config.maxTokens ?? 1024;
+    this.maxTokens = config.maxTokens;
     this.autoDownload = config.autoDownload ?? true;
   }
 
@@ -1215,7 +1251,7 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
             ],
             stream: false,
             options: {
-              num_predict: this.maxTokens,
+              num_predict: options.maxTokens ?? this.maxTokens ?? -1,
             },
           }),
         },
@@ -1228,8 +1264,16 @@ class OllamaVisionProvider implements VisionAnalysisProvider {
       }
 
       const data = (await response.json()) as {
+        done_reason?: string;
         message?: { content?: string };
       };
+      if (data.done_reason === "length") {
+        return {
+          success: false,
+          error:
+            "Ollama returned an incomplete vision description after reaching an output limit",
+        };
+      }
       const description = data.message?.content;
       if (!description) {
         return { success: false, error: "No description returned from Ollama" };
@@ -1251,6 +1295,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
   name = "anthropic";
   private apiKey: string;
   private model: string;
+  private modelMaxOutputTokens?: number;
 
   constructor(config: NonNullable<VisionConfig["anthropic"]>) {
     if (!config.apiKey) {
@@ -1258,6 +1303,40 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
     }
     this.apiKey = config.apiKey;
     this.model = config.model ?? "claude-opus-4-7";
+  }
+
+  private async resolveModelMaxOutputTokens(): Promise<number> {
+    if (this.modelMaxOutputTokens !== undefined) {
+      return this.modelMaxOutputTokens;
+    }
+    const response = await fetchWithTimeout(
+      `https://api.anthropic.com/v1/models/${encodeURIComponent(this.model)}`,
+      {
+        method: "GET",
+        headers: {
+          "x-api-key": this.apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+      },
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Anthropic model metadata error: ${response.status} ${text}`,
+      );
+    }
+    const data = (await response.json()) as { max_tokens?: unknown };
+    if (
+      typeof data.max_tokens !== "number" ||
+      !Number.isSafeInteger(data.max_tokens) ||
+      data.max_tokens <= 0
+    ) {
+      throw new Error(
+        `Anthropic model metadata omitted max_tokens for ${this.model}`,
+      );
+    }
+    this.modelMaxOutputTokens = data.max_tokens;
+    return data.max_tokens;
   }
 
   async analyze(
@@ -1275,6 +1354,38 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
         : { type: "url" as const, url: imageInput.value };
 
     return withProviderErrorBoundary(this.name, async () => {
+      if (
+        options.maxTokens !== undefined &&
+        (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0)
+      ) {
+        throw new ElizaError(
+          `Requested Anthropic output tokens must be a positive safe integer; received ${options.maxTokens}`,
+          {
+            code: "VISION_OUTPUT_BUDGET_INVALID",
+            context: {
+              model: this.model,
+              requestedMaxTokens: options.maxTokens,
+            },
+          },
+        );
+      }
+      const modelMaxOutputTokens = await this.resolveModelMaxOutputTokens();
+      if (
+        options.maxTokens !== undefined &&
+        options.maxTokens > modelMaxOutputTokens
+      ) {
+        throw new ElizaError(
+          `Requested ${options.maxTokens} output tokens for Anthropic model ${this.model}, which supports at most ${modelMaxOutputTokens}`,
+          {
+            code: "VISION_OUTPUT_BUDGET_UNSUPPORTED",
+            context: {
+              model: this.model,
+              requestedMaxTokens: options.maxTokens,
+              supportedMaxTokens: modelMaxOutputTokens,
+            },
+          },
+        );
+      }
       const response = await fetchWithTimeout(
         "https://api.anthropic.com/v1/messages",
         {
@@ -1286,7 +1397,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
           },
           body: JSON.stringify({
             model: this.model,
-            max_tokens: options.maxTokens ?? 1024,
+            max_tokens: options.maxTokens ?? modelMaxOutputTokens,
             messages: [
               {
                 role: "user",
@@ -1310,7 +1421,15 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
 
       const data = (await response.json()) as {
         content?: Array<{ type: string; text?: string }>;
+        stop_reason?: string;
       };
+      if (data.stop_reason === "max_tokens") {
+        return {
+          success: false,
+          error:
+            "Anthropic returned an incomplete vision description after reaching max_tokens",
+        };
+      }
       const textBlock = data.content?.find((c) => c.type === "text");
       if (!textBlock?.text) {
         return {

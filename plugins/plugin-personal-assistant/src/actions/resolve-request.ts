@@ -32,6 +32,8 @@ import {
   runWithTrajectoryPurpose,
   type SubactionsMap,
   stableStringify,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
@@ -275,9 +277,13 @@ function formatPending(requests: ReadonlyArray<ApprovalRequest>): string {
 }
 
 /** Chip labels stay glanceable; the full reason lives in the queue row. */
-function truncateReason(reason: string, max = 48): string {
-  const trimmed = reason.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+export function truncateReason(reason: string, max = 48): string {
+  const trimmed = toWellFormedUnicode(reason.trim());
+  if (trimmed.length <= max) {
+    return trimmed;
+  }
+  const budget = Math.max(0, max - 1);
+  return `${truncateWellFormed(trimmed, budget)}…`;
 }
 
 /**
@@ -294,7 +300,7 @@ export function buildResolveRequestChoice(
     kind: "choice",
     id: `approval-resolve-${Date.now().toString(36)}`,
     scope: "approval-resolve",
-    options: pending.slice(0, 5).map((request) => ({
+    options: pending.map((request) => ({
       value: `${intent} ${request.id}`,
       label: truncateReason(request.reason),
     })),
@@ -2113,7 +2119,7 @@ async function resolveApprovalRequest(
     subjectUserId,
     state: "pending",
     action: null,
-    limit: 20,
+    limit: null,
   });
   const selfPending =
     subjectUserId === SELF_ENTITY_ID
@@ -2123,7 +2129,7 @@ async function resolveApprovalRequest(
             subjectUserId: SELF_ENTITY_ID,
             state: "pending",
             action: "execute_workflow",
-            limit: 20,
+            limit: null,
           })
         ).filter((request) => {
           const household = readHouseholdProposalApprovalTarget(request);

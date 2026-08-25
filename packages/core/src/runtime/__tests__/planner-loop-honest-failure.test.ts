@@ -95,8 +95,8 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(result.finalMessage).not.toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 
-		// The silent-failed-finish retry instruction names the failed tool AND
-		// its human-readable cause, with internal detail scrubbed.
+		// The complete model input retains the append-only raw trajectory while
+		// adding a scrubbed retry instruction that names the failed tool and cause.
 		const retryInstruction = loopComposedInstructionText(
 			useModel,
 			1,
@@ -106,10 +106,10 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(retryInstruction).toContain("failed_tool_cause:");
 		expect(retryInstruction).toContain("does not have any commits yet");
 		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain("/home/milady");
+		expect(retryInstruction).toContain("/home/milady");
 
-		// The failure synthesis prompt receives the failed step and cause the
-		// same way — scrubbed, human-shaped, no absolute paths.
+		// The failure synthesis prompt preserves the append-only trajectory while
+		// adding a scrubbed, human-shaped instruction for the model's next turn.
 		const synthesisInstruction = loopComposedInstructionText(
 			useModel,
 			2,
@@ -118,7 +118,7 @@ describe("honest failed-turn replies (#17948)", () => {
 		expect(synthesisInstruction).toContain("The SHELL step failed");
 		expect(synthesisInstruction).toContain("does not have any commits yet");
 		expect(synthesisInstruction).toContain("<path>");
-		expect(synthesisInstruction).not.toContain("/home/milady");
+		expect(synthesisInstruction).toContain("/home/milady");
 	});
 
 	it("thrown timeout: the evaluator's success:false diagnosis ships directly with no extra model call", async () => {
@@ -433,11 +433,9 @@ describe("honest failed-turn replies (#17948)", () => {
 		);
 		expect(retryInstruction).toContain("<id>");
 		expect(retryInstruction).toContain("<path>");
-		expect(retryInstruction).not.toContain(
-			"3f2504e0-4f89-11d3-9a0c-0305e82c3301",
-		);
-		expect(retryInstruction).not.toContain("/var/lib");
-		expect(retryInstruction).not.toContain("deadbeef");
+		expect(retryInstruction).toContain("3f2504e0-4f89-11d3-9a0c-0305e82c3301");
+		expect(retryInstruction).toContain("/var/lib");
+		expect(retryInstruction).toContain("deadbeef");
 		expect(result.finalMessage).toBe(
 			"I couldn't fetch that — the workspace reference it needs is missing.",
 		);
@@ -632,7 +630,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
 	});
 
-	it("rescues archived successes: mid-turn compaction must not blind the rescue to completed work", async () => {
+	it("rescues complete prior successes without discarding their evidence", async () => {
 		const runtimeSecret = "SYNTH-RESCUE-RUNTIME-SECRET-1111";
 		const flagCanary = "SYNTH-RESCUE-FLAG-CANARY-2222";
 		const searchResultA =
@@ -643,7 +641,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			"padding ".repeat(400);
 		const useModel = vi
 			.fn()
-			// 1-2: two research steps succeed; the tiny compaction budget below
+			// 1-2: two research steps succeed; both remain in the planner trajectory
 			// moves both into archivedSteps before the turn ends.
 			.mockResolvedValueOnce({
 				text: "",
@@ -686,7 +684,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			})
 			// 5: failure-aware synthesis returns blank.
 			.mockResolvedValueOnce({ text: "", toolCalls: [] })
-			// 6: the TEXT_LARGE rescue composes from the ARCHIVED successes.
+			// 6: the TEXT_LARGE rescue composes from the complete successes.
 			.mockResolvedValueOnce(
 				"The fleet release shipped with twelve plugins and the shipwright tail closed out, though the PR listing step failed.",
 			);
@@ -729,30 +727,19 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			],
 			executeToolCall,
 			evaluate,
-			// Deliberately tiny input budget: compaction fires before every model
-			// call (threshold = 1200 - 1000 = 200 estimated tokens) and
-			// keepSteps: 1 archives each success as soon as a newer step lands —
-			// the live long-turn shape where every completed search has left
-			// `trajectory.steps` by the time the rescue runs.
-			config: {
-				contextWindowTokens: 1200,
-				compactionReserveTokens: 1000,
-				compactionKeepSteps: 1,
-			},
 		});
 
-		// The successes really were compacted out of the live window.
+		// Both successes remain available verbatim to the rescue.
 		expect(
-			result.trajectory.archivedSteps.filter(
-				(step) => step.result?.success === true,
-			).length,
+			result.trajectory.steps.filter((step) => step.result?.success === true)
+				.length,
 		).toBeGreaterThanOrEqual(2);
 		expect(
 			result.trajectory.steps.some(
 				(step) =>
 					step.toolCall?.name === "WEB_SEARCH" && step.result?.success === true,
 			),
-		).toBe(false);
+		).toBe(true);
 		// The rescue still surfaced them instead of no-opping into the canned
 		// failure sentence.
 		expect(result.finalMessage).toBe(
@@ -939,7 +926,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		).toBe(true);
 	});
 
-	it("prefers the most recent successful results when more than six are available", async () => {
+	it("preserves every successful result when more than six are available", async () => {
 		const searchCount = 7;
 		const plannerResponses: Array<unknown> = [
 			...Array.from({ length: searchCount }, (_, index) => ({
@@ -1020,8 +1007,7 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 		expect(result.finalMessage).toBe(
 			"The latest refinements settled it: the final numbers are in, though the last step failed.",
 		);
-		// The excerpt budget keeps the NEWEST six results — the refined,
-		// answer-bearing ones — dropping the oldest, not the newest.
+		// Every successful result remains available to the rescue model.
 		const rescueParams = useModel.mock.calls[10]?.[1] as
 			| MockedMessages
 			| undefined;
@@ -1032,6 +1018,6 @@ describe("rescue synthesis from successful tool results (2026-08-11 sub-agent re
 			.join("\n");
 		expect(rescueText).toContain("unique-fact-q07");
 		expect(rescueText).toContain("unique-fact-q02");
-		expect(rescueText).not.toContain("unique-fact-q01");
+		expect(rescueText).toContain("unique-fact-q01");
 	});
 });

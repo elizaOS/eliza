@@ -207,6 +207,30 @@ describe("MANAGE_PLUGINS subaction routing", () => {
 		expect(replies).toHaveLength(0);
 		expect(String(result?.data?.action)).toBe("clarify");
 	});
+
+	it.each([
+		["a valid numeric string", "0.8", true],
+		["a whitespace-padded decimal string", " 0.8 ", true],
+		["a malformed numeric string", "0.8oops", false],
+		["a hexadecimal string", "0x10", false],
+		["a blank string", "   ", false],
+	])("handles $0", async (_label, confidence, succeeds) => {
+		const calls: StubServiceCalls = { installed: [] };
+		const useModel = vi.fn(async () =>
+			JSON.stringify({ action: "list", params: {}, missing: [], confidence }),
+		);
+		const runtime = createRuntime({ calls, useModel });
+		const result = await action.handler?.(
+			runtime,
+			createMessage("show installed plugins"),
+			undefined,
+			undefined,
+			async () => [],
+		);
+
+		expect(result?.success).toBe(succeeds);
+		expect(calls.installed).toHaveLength(0);
+	});
 });
 
 describe("MANAGE_PLUGINS search on hardened messages (envelope echo regression)", () => {

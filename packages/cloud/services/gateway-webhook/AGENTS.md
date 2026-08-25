@@ -116,9 +116,21 @@ The workflow validates the existing Railway variable names and canonical
 non-secret values without printing or rewriting sensitive values. Keep runtime
 secrets in Railway; do not copy their values into workflow YAML or logs. The
 names-only inventory requires `ELIZA_APP_WEBHOOK_GATEWAY_SECRET`, which keeps
-the cloud BFF forwarding trust gate enabled. Staging is branch/configuration
-gated but currently has no required reviewer; production retains reviewer
-approval.
+the cloud BFF forwarding trust gate enabled. Staging additionally requires the
+complete `ELIZA_APP_BLOOIO_API_KEY`, `ELIZA_APP_BLOOIO_PHONE_NUMBER`, and
+`ELIZA_APP_BLOOIO_WEBHOOK_SECRET` set before a deployment can start; production
+keeps its existing contract. Provision staging values out of band through
+`railway variable set --stdin --skip-deploys` so an incomplete update cannot
+trigger a release, then use the protected dispatcher once all three names are
+present. Restore or remove only those staged names before dispatch if setup
+fails. All three staging values must match the Worker protected-environment
+source, so the gateway workflow compares each Railway value against the
+matching GitHub Environment secret through a per-run salted HMAC digest. Only
+the digests are compared and neither side's value is printed, logged, or
+written; a divergent-but-present pair now fails the deploy instead of passing a
+names-only check and then rejecting every live webhook with 401. Staging is
+branch/configuration gated but currently has no required reviewer; production
+retains reviewer approval.
 
 `__tests__/dockerfile-workspace-context.test.ts` guards the workspace build
 context. The repository-level

@@ -234,3 +234,77 @@ describe("resolveSlackAccount role wiring", () => {
     expect(account.role).toBe("OWNER");
   });
 });
+
+describe("resolveSlackAccount ghost accountId fail-closed", () => {
+  it("does not inherit owner settings tokens for an explicit ghost accountId", () => {
+    const runtime = createRuntime({
+      botToken: "xoxb-owner",
+      appToken: "xapp-owner",
+      userToken: "xoxp-owner",
+      signingSecret: "sign-owner",
+    });
+
+    const ghost = resolveSlackAccount(runtime, "ghost-account");
+    expect(ghost.accountId).toBe("ghost-account");
+    expect(ghost.botToken).toBeUndefined();
+    expect(ghost.appToken).toBeUndefined();
+    expect(ghost.userToken).toBeUndefined();
+    expect(ghost.signingSecret).toBeUndefined();
+  });
+
+  it("still binds omitted accountId to the default owner tokens", () => {
+    const runtime = createRuntime({
+      botToken: "xoxb-owner",
+      appToken: "xapp-owner",
+      userToken: "xoxp-owner",
+      signingSecret: "sign-owner",
+    });
+
+    const omitted = resolveSlackAccount(runtime);
+    expect(omitted.accountId).toBe("default");
+    expect(omitted.botToken).toBe("xoxb-owner");
+    expect(omitted.appToken).toBe("xapp-owner");
+    expect(omitted.userToken).toBe("xoxp-owner");
+    expect(omitted.signingSecret).toBe("sign-owner");
+  });
+
+  it("does not inherit env signing secret for a ghost accountId", () => {
+    const runtime = createRuntime(undefined, {
+      SLACK_BOT_TOKEN: "xoxb-env",
+      SLACK_APP_TOKEN: "xapp-env",
+      SLACK_USER_TOKEN: "xoxp-env",
+      SLACK_SIGNING_SECRET: "sign-env",
+    });
+
+    const ghost = resolveSlackAccount(runtime, "ghost-account");
+    expect(ghost.botToken).toBeUndefined();
+    expect(ghost.appToken).toBeUndefined();
+    expect(ghost.userToken).toBeUndefined();
+    expect(ghost.signingSecret).toBeUndefined();
+
+    const def = resolveSlackAccount(runtime);
+    expect(def.accountId).toBe("default");
+    expect(def.botToken).toBe("xoxb-env");
+    expect(def.signingSecret).toBe("sign-env");
+  });
+
+  it("does not inherit base vault tokens for a ghost accountId", () => {
+    const runtime = createRuntime(undefined, undefined, {
+      botToken: "xoxb-vault",
+      appToken: "xapp-vault",
+      userToken: "xoxp-vault",
+      signingSecret: "sign-vault",
+    });
+
+    const ghost = resolveSlackAccount(runtime, "ghost-account");
+    expect(ghost.botToken).toBeUndefined();
+    expect(ghost.appToken).toBeUndefined();
+    expect(ghost.userToken).toBeUndefined();
+    expect(ghost.signingSecret).toBeUndefined();
+
+    const def = resolveSlackAccount(runtime);
+    expect(def.accountId).toBe("default");
+    expect(def.botToken).toBe("xoxb-vault");
+    expect(def.appToken).toBe("xapp-vault");
+  });
+});

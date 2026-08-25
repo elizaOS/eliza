@@ -112,6 +112,7 @@ const JournalSchema = z
     operationId: z.string().regex(UUID_PATTERN),
     requestSha256: z.string().regex(SHA256_PATTERN),
     authoritySha256: z.string().regex(SHA256_PATTERN),
+    runtimePrincipalSha256: z.string().regex(SHA256_PATTERN),
     phase: z.enum(["initialized", "capturing", "sealed", "publishing", "published"]),
     operationKeyBundle: OperationKeyBundleSchema.optional(),
     chunks: z.array(ChunkSchema).max(AGENT_BACKUP_MANIFEST_V2_LIMITS.maxChunks),
@@ -359,6 +360,11 @@ export interface OpenAgentBackupCaptureV3SpoolInput {
   executionToken: string;
   requestSha256: string;
   authoritySha256: string;
+  /**
+   * Canonical wire-principal digest. Required for capture/replay; publication
+   * may omit it only after the spool is sealed and can no longer append bytes.
+   */
+  runtimePrincipalSha256?: string;
 }
 
 export interface AgentBackupCaptureV3OperationKeyBundleMetadata {
@@ -394,6 +400,7 @@ export interface AgentBackupCaptureV3DurableOperationAuthority {
   operationId: string;
   requestSha256: string;
   authoritySha256: string;
+  runtimePrincipalSha256: string;
   phase: SpoolJournal["phase"];
   recordCaptured: boolean;
 }
@@ -1033,6 +1040,7 @@ export class AgentBackupCaptureV3Spool {
           operationId: journal.operationId,
           requestSha256: journal.requestSha256,
           authoritySha256: journal.authoritySha256,
+          runtimePrincipalSha256: journal.runtimePrincipalSha256,
           phase: journal.phase,
           recordCaptured: journal.recordCaptured === "confirmed",
         }),
@@ -1065,10 +1073,15 @@ export class AgentBackupCaptureV3Spool {
     if (!UUID_PATTERN.test(input.executionToken)) {
       spoolError("AGENT_BACKUP_V2_SPOOL_IDENTITY_INVALID", "executionToken must be canonical UUID");
     }
-    if (!SHA256_PATTERN.test(input.requestSha256) || !SHA256_PATTERN.test(input.authoritySha256)) {
+    if (
+      !SHA256_PATTERN.test(input.requestSha256) ||
+      !SHA256_PATTERN.test(input.authoritySha256) ||
+      (input.runtimePrincipalSha256 !== undefined &&
+        !SHA256_PATTERN.test(input.runtimePrincipalSha256))
+    ) {
       spoolError(
         "AGENT_BACKUP_V2_SPOOL_IDENTITY_INVALID",
-        "Spool request and authority digests must be SHA-256 hex",
+        "Spool request, authority, and runtime-principal digests must be SHA-256 hex",
       );
     }
 
@@ -1173,13 +1186,38 @@ export class AgentBackupCaptureV3Spool {
             "Backup operation spool belongs to different immutable authority",
           );
         }
+        if (
+          input.runtimePrincipalSha256 !== undefined &&
+          journal.runtimePrincipalSha256 !== input.runtimePrincipalSha256
+        ) {
+          spoolError(
+            "AGENT_BACKUP_V3_RUNTIME_PRINCIPAL_REPLAY_CONFLICT",
+            "Backup operation spool belongs to a different runtime wire principal",
+          );
+        }
+        if (
+          input.runtimePrincipalSha256 === undefined &&
+          (journal.phase === "initialized" || journal.phase === "capturing")
+        ) {
+          spoolError(
+            "AGENT_BACKUP_V3_RUNTIME_PRINCIPAL_REQUIRED",
+            "Append-capable backup spool replay requires its exact runtime wire principal",
+          );
+        }
       } else {
+        if (input.runtimePrincipalSha256 === undefined) {
+          spoolError(
+            "AGENT_BACKUP_V3_RUNTIME_PRINCIPAL_REQUIRED",
+            "Fresh backup spool capture requires an exact runtime wire principal",
+          );
+        }
         journal = {
           format: SPOOL_FORMAT,
           version: SPOOL_VERSION,
           operationId: input.operationId,
           requestSha256: input.requestSha256,
           authoritySha256: input.authoritySha256,
+          runtimePrincipalSha256: input.runtimePrincipalSha256,
           phase: "initialized",
           chunks: [],
           recordCaptured: "pending",

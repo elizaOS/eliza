@@ -9,7 +9,7 @@
  * agent only ever sees one decision per prompt.
  */
 
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import { memo, useCallback, useState } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
@@ -65,25 +65,36 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   allowCustom = false,
 }: ChoiceWidgetProps) {
   const [selected, setSelected] = useState<ChoiceOption | null>(null);
+  const [dismissed, setDismissed] = useState(false);
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
+  const locked = selected !== null || dismissed;
 
   const handleChoose = useCallback(
     (option: ChoiceOption) => {
-      if (selected) return;
+      if (locked) return;
       setSelected(option);
       onChoose(option.value);
     },
-    [onChoose, selected],
+    [onChoose, locked],
   );
+
+  // Local-only dismissal (the ✕ in the header): collapses the prompt without
+  // sending anything — declining to decide is not an answer the agent should
+  // receive. First-run prompts are not dismissable; the composer is frozen
+  // behind them, so a dismiss would dead-end onboarding.
+  const handleDismiss = useCallback(() => {
+    if (locked) return;
+    setDismissed(true);
+  }, [locked]);
 
   const submitCustom = useCallback(() => {
     const value = customText.trim();
-    if (!value || selected) return;
+    if (!value || locked) return;
     const option = { value, label: value };
     setSelected(option);
     onChoose(value);
-  }, [customText, onChoose, selected]);
+  }, [customText, onChoose, locked]);
 
   if (options.length === 0 && !allowCustom) return null;
 
@@ -109,19 +120,19 @@ export const ChoiceWidget = memo(function ChoiceWidget({
         <Button
           type="button"
           variant="surface"
-          size="default"
+          size="touch"
+          align="center"
           disabled={selected !== null}
           aria-label={soleOption.label}
           aria-pressed={isSelected}
           data-testid={`choice-${soleOption.value}`}
           // The locked (selected) state stays at full opacity: it is the
           // confirmation the user just acted on, not a faded leftover.
-          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-[14px] font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
           <span className="flex w-full min-w-0 items-center justify-center gap-2">
             {isSelected ? (
-              <Check className="h-4 w-4 shrink-0" aria-hidden />
+              <Check className="size-4 shrink-0" aria-hidden />
             ) : null}
             <span className="min-w-0 flex-1 text-center [overflow-wrap:anywhere]">
               {soleOption.label}
@@ -136,19 +147,39 @@ export const ChoiceWidget = memo(function ChoiceWidget({
     <ChatWidgetShell
       title={firstRun ? "Choose next step" : "Choose"}
       status={
-        // Plain muted text, no pill chrome: the theme text token stays
-        // readable on every surface (chat-native de-slop, supersedes the
-        // #15144 pill-background fix by removing the pill).
-        <span className="text-[11px] font-medium text-muted">
-          {selected ? "Selected" : `${options.length} options`}
-        </span>
+        <>
+          {/* Plain muted text, no pill chrome: the theme text token stays
+              readable on every surface (chat-native de-slop, supersedes the
+              #15144 pill-background fix by removing the pill). */}
+          <span className="text-xs-tight font-medium text-muted">
+            {selected
+              ? "Selected"
+              : dismissed
+                ? "Dismissed"
+                : `${options.length} options`}
+          </span>
+          {!firstRun && !locked && (
+            <Button
+              type="button"
+              variant="ghostMuted"
+              size="icon-sm"
+              aria-label="Dismiss"
+              data-testid={`choice-dismiss-${id}`}
+              onClick={handleDismiss}
+            >
+              <X className="size-3.5" aria-hidden />
+            </Button>
+          )}
+        </>
       }
       summary={
         selected ? (
           <span role="status">Selected: {selected.label}</span>
+        ) : dismissed ? (
+          <span role="status">Dismissed</span>
         ) : undefined
       }
-      complete={selected !== null}
+      complete={locked}
       testId={`choice-shell-${id}`}
     >
       <fieldset
@@ -177,26 +208,22 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             const recommended = isRecommended(option.label);
             const highlighted =
               isSelected || (recommended && selected === null);
-            const variant = highlighted ? "default" : "surface";
-            const choiceClass = highlighted
-              ? "h-auto min-h-11 w-full justify-between whitespace-normal px-4 py-2 text-sm font-medium disabled:opacity-100 aria-disabled:opacity-100"
-              : "h-auto min-h-11 w-full justify-between whitespace-normal border border-border-strong bg-card px-4 py-2 text-sm font-medium text-txt-strong hover:bg-surface disabled:opacity-40 aria-disabled:opacity-40";
             return (
               <Button
                 key={option.value}
                 type="button"
-                variant={variant}
-                size="default"
-                disabled={selected !== null}
+                variant="choice"
+                size="row"
+                data-state={highlighted ? "on" : "off"}
+                disabled={locked}
                 aria-label={option.label}
                 aria-pressed={isSelected}
                 data-testid={`choice-${option.value}`}
-                className={choiceClass}
                 onClick={() => handleChoose(option)}
               >
                 <span className="inline-flex min-w-0 items-center gap-2 text-left">
                   {isSelected ? (
-                    <Check className="h-4 w-4 shrink-0" aria-hidden />
+                    <Check className="size-4 shrink-0" aria-hidden />
                   ) : null}
                   <span className="min-w-0 [overflow-wrap:anywhere]">
                     {option.label}
@@ -204,34 +231,29 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 </span>
                 {!isSelected ? (
                   <ChevronRight
-                    className="h-4 w-4 shrink-0 opacity-70"
+                    className="size-4 shrink-0 opacity-70"
                     aria-hidden
                   />
                 ) : null}
               </Button>
             );
           }
-          const variant = cancel ? "ghost" : "outline";
+          const variant = cancel ? "ghostMuted" : "outline";
           return (
             <Button
               key={option.value}
               type="button"
               variant={variant}
-              size="sm"
-              disabled={selected !== null}
+              size="tiny"
+              disabled={locked}
               aria-label={option.label}
               aria-pressed={isSelected}
               data-testid={`choice-${option.value}`}
-              className={
-                cancel
-                  ? "h-7 px-3 text-xs text-muted hover:text-txt disabled:opacity-40"
-                  : "h-7 px-3 text-xs disabled:opacity-40"
-              }
               onClick={() => handleChoose(option)}
             >
               {isSelected ? (
                 <span className="inline-flex items-center gap-1">
-                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  <Check className="size-3.5" aria-hidden />
                   <span>{option.label}</span>
                 </span>
               ) : (
@@ -240,7 +262,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             </Button>
           );
         })}
-        {allowCustom && !selected ? (
+        {allowCustom && !locked ? (
           customMode ? (
             <span className="inline-flex items-center gap-1">
               <Input
@@ -249,7 +271,9 @@ export const ChoiceWidget = memo(function ChoiceWidget({
                 data-testid="choice-custom-input"
                 value={customText}
                 placeholder="Type your answer…"
-                className="h-7 min-w-40 rounded-md border-border bg-transparent px-2 text-xs"
+                variant="form"
+                density="compact"
+                className="min-w-40"
                 onChange={(e) => setCustomText(e.currentTarget.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -261,11 +285,10 @@ export const ChoiceWidget = memo(function ChoiceWidget({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="tinyWide"
                 data-testid="choice-custom-send"
                 aria-label="Send your answer"
                 disabled={customText.trim().length === 0}
-                className="h-7 px-3 text-xs disabled:opacity-40"
                 onClick={submitCustom}
               >
                 Send
@@ -275,10 +298,9 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="tinyWide"
               data-testid="choice-custom-open"
               aria-label="Other"
-              className="h-7 px-3 text-xs"
               onClick={() => setCustomMode(true)}
             >
               Other…

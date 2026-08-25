@@ -22,6 +22,7 @@
  * We don't take a hard dependency on the trajectory-logger plugin from here.
  */
 
+import { createHash } from "node:crypto";
 import {
   type Action,
   type ActionResult,
@@ -32,6 +33,7 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   type AgentMiddleware,
@@ -67,6 +69,10 @@ import {
 import { listDisplays } from "../platform/displays.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import {
+  assertComputerUseTrajectoryText,
+  buildComputerUseAgentStepTrajectoryPayload,
+} from "../trajectory-text.js";
 import { resolveActionParams } from "./helpers.js";
 import {
   buildStepProgressContent,
@@ -92,6 +98,8 @@ export interface ComputerUseAgentParams {
    * screenshots in the bounded history. Off (unbounded) when unset.
    */
   imageRetentionLast?: number;
+  /** Host-owned cancellation signal; never accepted from serialized model input. */
+  signal?: AbortSignal;
 }
 
 /** One per-step progress event, surfaced when `streamProgress` is set. */
@@ -141,7 +149,13 @@ export interface ComputerUseAgentReport {
     result: { success: boolean; error?: string };
   }>;
   finished: boolean;
-  reason: "finish" | "max_steps" | "error" | "budget";
+  reason:
+    | "finish"
+    | "max_steps"
+    | "error"
+    | "budget"
+    | "cancelled"
+    | "repeated_action";
   error?: string;
   /** Per-step transcript recorded by the trajectory middleware (#9170 M11). */
   trajectory?: TrajectoryEntry[];
@@ -149,13 +163,29 @@ export interface ComputerUseAgentReport {
   modelStats?: AgentLoopStats;
 }
 
+function captureDigest(captures: Map<number, DisplayCapture>): string {
+  const hash = createHash("sha256");
+  for (const [displayId, capture] of [...captures.entries()].sort(
+    ([left], [right]) => left - right,
+  )) {
+    hash.update(String(displayId));
+    hash.update("\0");
+    hash.update(capture.frame);
+  }
+  return hash.digest("hex");
+}
+
+function proposedActionDigest(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
 export function formatComputerUseAgentProgress(
   progress: ComputerUseAgentStepProgress,
 ): string {
-  const rationale = truncateForStatus(progress.rationale || "no rationale");
+  const rationale = normalizeForStatus(progress.rationale || "no rationale");
   const failure = progress.result.success
     ? ""
-    : ` (failed: ${truncateForStatus(progress.result.error ?? "unknown")})`;
+    : ` (failed: ${normalizeForStatus(progress.result.error ?? "unknown")})`;
   return `Step ${progress.step}/${progress.maxSteps}: ${progress.actionKind} - ${rationale}${failure}`;
 }
 
@@ -191,6 +221,7 @@ export async function runComputerUseAgentLoop(
     Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20),
   );
   const goal = params.goal;
+  assertComputerUseTrajectoryText("goal", goal);
   // Agent-loop registry (#9170 M10): a model string selects the loop. Defaults
   // to the local OCR/AX grounder (Brain → Cascade); provider plugins can
   // register Anthropic / OpenAI computer-use loops keyed by model family.
@@ -209,6 +240,8 @@ export async function runComputerUseAgentLoop(
   const captureAll = deps.captureAll ?? captureAllDisplays;
   const now = deps.now ?? Date.now;
   const runStart = now();
+  let previousActionDigest: string | null = null;
+  let previousCaptureDigest: string | null = null;
 
   // Callback middleware pipeline (#9170 M11). Default = operator-normalizer
   // (clean the planned action) + trajectory (in-memory transcript), plus
@@ -272,6 +305,11 @@ export async function runComputerUseAgentLoop(
   await runOnRunStart(middlewares, { goal, maxSteps });
 
   for (let step = 1; step <= maxSteps; step += 1) {
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
     const stepCtx = { step, maxSteps, goal, elapsedMs: now() - runStart };
     const decision = await runBeforeStep(middlewares, stepCtx);
     if (decision.abort) {
@@ -297,6 +335,11 @@ export async function runComputerUseAgentLoop(
       return finalize();
     }
     await runOnCaptures(middlewares, captures, stepCtx);
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
     let proposed: Awaited<ReturnType<typeof loop.predictStep>>;
     try {
       proposed = await loop.predictStep({ scene, goal, captures });
@@ -311,12 +354,42 @@ export async function runComputerUseAgentLoop(
     // Operator-normalizer + any other transform middleware clean the planned
     // action before it is dispatched.
     proposed = await runTransformProposed(middlewares, proposed, stepCtx);
+    assertComputerUseTrajectoryText("rationale", proposed.proposed.rationale);
     // Persist the Brain's understanding onto the scene (#9105 M3) so the next
     // turn's `scene` provider carries `vlm_scene` instead of re-describing.
     service.setSceneVlmAnnotations(proposed.scene_summary, null);
+    if (params.signal?.aborted) {
+      report.reason = "cancelled";
+      report.error = "computer-use run cancelled by its owner";
+      return finalize();
+    }
+    const currentActionDigest = proposedActionDigest(proposed.proposed);
+    const currentCaptureDigest = captureDigest(captures);
+    if (
+      proposed.proposed.kind !== "wait" &&
+      proposed.proposed.kind !== "finish" &&
+      currentActionDigest === previousActionDigest &&
+      currentCaptureDigest === previousCaptureDigest
+    ) {
+      report.reason = "repeated_action";
+      report.error =
+        "repeated action on an unchanged screen was blocked; fresh owner intent is required";
+      return finalize();
+    }
     const dispatchResult = await dispatch(proposed.proposed, {
       interface: computer,
       listDisplays: () => service.getDisplays(),
+    });
+    const trajectoryPayload = buildComputerUseAgentStepTrajectoryPayload({
+      step,
+      goal,
+      actionKind: proposed.proposed.kind,
+      displayId: proposed.proposed.displayId,
+      rois: proposed.rois.length,
+      success: dispatchResult.success,
+      error: dispatchResult.error?.message,
+      errorCode: dispatchResult.error?.code,
+      rationale: proposed.proposed.rationale,
     });
     await runAfterStep(middlewares, {
       step,
@@ -328,14 +401,7 @@ export async function runComputerUseAgentLoop(
     logger.info(
       {
         evt: "computeruse.agent.step",
-        step,
-        goal,
-        actionKind: proposed.proposed.kind,
-        displayId: proposed.proposed.displayId,
-        rois: proposed.rois.length,
-        success: dispatchResult.success,
-        error: dispatchResult.error?.code,
-        rationale: proposed.proposed.rationale,
+        ...trajectoryPayload,
       },
       `[computeruse/agent] step ${step}: ${proposed.proposed.kind}`,
     );
@@ -369,6 +435,8 @@ export async function runComputerUseAgentLoop(
       report.error = dispatchResult.error?.message;
       return finalize();
     }
+    previousActionDigest = currentActionDigest;
+    previousCaptureDigest = currentCaptureDigest;
     if (proposed.proposed.kind === "finish") {
       report.finished = true;
       report.reason = "finish";
@@ -477,12 +545,8 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function truncateForStatus(value: string, maxLength = 180): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-  return `${compact.slice(0, maxLength - 3)}...`;
+function normalizeForStatus(value: string): string {
+  return toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
 }
 
 export const computerUseAgentAction: Action = {

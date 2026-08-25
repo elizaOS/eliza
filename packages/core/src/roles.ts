@@ -4,8 +4,8 @@
  * and the resolution that turns a sender + world into an effective role. A role
  * is merged here from four sources — an explicit grant stored on world metadata
  * (`roles`/`roleSources`), the configured or world-recorded canonical owner, a
- * connector-admin whitelist match on a stable platform id, and confirmed
- * identity links that let a linked entity inherit the owner/grant. `canModifyRole`
+ * connector-admin whitelist match on a stable platform id, and identity
+ * evidence selected by the active authority cutover state. `canModifyRole`
  * is the privilege-escalation gate (OWNER may change anyone; ADMIN only
  * strictly-lower ranks and never grants OWNER); `hasRoleAccess` is the read-time
  * gate callers use to admit or deny an action.
@@ -30,15 +30,17 @@ import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
+import type { PrincipalService } from "./types/identity";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
 	MESSAGE_SOURCE_CLIENT_CHAT,
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_SUB_AGENT,
 } from "./types/message-source";
+import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
-import { validateUuid } from "./utils.ts";
+import { stringToUuid, validateUuid } from "./utils.ts";
 
 export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
 
@@ -169,7 +171,7 @@ function normalizeRoleGrantSource(
 }
 
 function getRuntimeSettingString(
-	runtime: IAgentRuntime,
+	runtime: Pick<IAgentRuntime, "getSetting">,
 	key: string,
 ): string | undefined {
 	if (typeof runtime.getSetting !== "function") {
@@ -387,7 +389,9 @@ export async function findWorldsForOwner(
 	return ownerWorlds.length ? ownerWorlds : null;
 }
 
-export function getConfiguredOwnerEntityIds(runtime: IAgentRuntime): string[] {
+export function getConfiguredOwnerEntityIds(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+): string[] {
 	const configuredAdminEntityId = getRuntimeSettingString(
 		runtime,
 		CANONICAL_OWNER_SETTING_KEY,
@@ -415,7 +419,7 @@ export function hasConfiguredCanonicalOwner(runtime: IAgentRuntime): boolean {
 }
 
 export function resolveCanonicalOwnerId(
-	runtime: IAgentRuntime,
+	runtime: Pick<IAgentRuntime, "getSetting">,
 	metadata?: RolesWorldMetadata,
 ): string | null {
 	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
@@ -427,6 +431,35 @@ export function resolveCanonicalOwnerId(
 	// sometimes persisted numeric provider IDs here; reject them before any role
 	// path can pass the value into UUID-backed entity/relationship queries.
 	return validateUuid(metadata?.ownership?.ownerId);
+}
+
+/**
+ * Deterministic owner-entity id for an agent that has no configured canonical
+ * owner. Seeded from the agent ID — never the character name, which is
+ * user-editable and differs between surfaces that read it (`character.name`,
+ * `agents.defaults.name`, a hard-coded "Eliza") — so every owner-scoped surface
+ * lands on one `subject_id`. Prefer {@link resolveOwnerEntityIdOrDefault}
+ * whenever a runtime is available; call this directly only when the caller has
+ * already established that no canonical owner is configured.
+ */
+export function deterministicOwnerEntityId(agentId: string): UUID {
+	return stringToUuid(`${agentId}-admin-entity`);
+}
+
+/**
+ * The single owner-entity derivation shared by the client-chat write path, the
+ * pendant and personal-assistant routes, LifeOps reads and the scheduler, the
+ * outbound owner target, and connector ownership metadata: the configured
+ * canonical owner (`ELIZA_ADMIN_ENTITY_ID` / owner contacts) when it is a
+ * UUID, otherwise {@link deterministicOwnerEntityId}. Surfaces that derive the
+ * owner any other way fork the owner `subject_id`, making rows written on one
+ * surface invisible to the others.
+ */
+export function resolveOwnerEntityIdOrDefault(
+	runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
+): UUID {
+	const configuredOwnerId = validateUuid(resolveCanonicalOwnerId(runtime));
+	return configuredOwnerId ?? deterministicOwnerEntityId(runtime.agentId);
 }
 
 function resolveOwnershipCandidateIds(
@@ -454,7 +487,6 @@ function connectorIdentityMatches(
 		if (!leftConnector || !rightConnector) {
 			continue;
 		}
-
 		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
 			const leftValue = leftConnector[field];
 			const rightValue = rightConnector[field];
@@ -471,59 +503,88 @@ function connectorIdentityMatches(
 	return false;
 }
 
-async function hasConfirmedIdentityLink(
-	runtime: IAgentRuntime,
-	entityId: string,
-	ownerId: string,
-): Promise<boolean> {
-	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
-	return linkedIds.includes(ownerId);
-}
-
 async function getConfirmedLinkedEntityIds(
 	runtime: IAgentRuntime,
 	entityId: string,
 ): Promise<string[]> {
-	if (typeof runtime.getRelationships !== "function") {
-		return [];
-	}
+	if (typeof runtime.getRelationships !== "function") return [];
 
 	try {
 		const relationships = await runtime.getRelationships({
 			entityIds: [entityId as UUID],
 			tags: ["identity_link"],
 		});
-
 		const linkedIds = new Set<string>();
 		for (const relationship of relationships) {
 			const metadata = asRecord(relationship.metadata);
-			if (metadata?.status !== "confirmed") {
-				continue;
-			}
-
-			if (
-				relationship.sourceEntityId === entityId &&
-				typeof relationship.targetEntityId === "string"
-			) {
+			if (metadata?.status !== "confirmed") continue;
+			if (relationship.sourceEntityId === entityId) {
 				linkedIds.add(relationship.targetEntityId);
 			}
-			if (
-				relationship.targetEntityId === entityId &&
-				typeof relationship.sourceEntityId === "string"
-			) {
+			if (relationship.targetEntityId === entityId) {
 				linkedIds.add(relationship.sourceEntityId);
 			}
 		}
-
 		return [...linkedIds];
 	} catch (error) {
-		// error-policy:J2 identity links participate in authorization; preserve
-		// lookup context instead of treating a failed read as no links.
+		// error-policy:J2 identity links participate in the pre-cutover
+		// authorization path, so a failed read must not become an empty result.
 		throw new ElizaError("Failed to load confirmed identity links", {
 			code: "IDENTITY_LINK_QUERY_FAILED",
 			cause: error,
 			context: { entityId },
 		});
+	}
+}
+
+async function resolveIdentityOwnerBinding(
+	runtime: IAgentRuntime,
+	entityId: UUID,
+	ownerIds: readonly UUID[],
+): Promise<boolean | null> {
+	if (typeof runtime.getService !== "function") return null;
+	const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
+	if (!service) return null;
+
+	try {
+		const canonical = await service.resolveCanonicalPrincipal(
+			runtime.agentId,
+			entityId,
+		);
+		// The canonical read must echo exactly the request it resolved; a
+		// misrouted response for another agent or actor must not authorize.
+		if (
+			canonical.agentId !== runtime.agentId ||
+			canonical.requestedPrincipalId !== entityId ||
+			!Number.isSafeInteger(canonical.generation) ||
+			canonical.generation < 0
+		) {
+			return false;
+		}
+		const evaluation = await service.evaluateOwnerBinding({
+			agentId: runtime.agentId,
+			actorPrincipalId: entityId,
+			candidateOwnerPrincipalIds: ownerIds,
+			purpose: "role_resolution",
+		});
+		// Both reads must observe the same identity-graph generation; a merge
+		// or split between the two awaits invalidates the binding decision.
+		return (
+			evaluation.decision === "bound" &&
+			evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId &&
+			ownerIds.includes(evaluation.ownerPrincipalId) &&
+			validateUuid(evaluation.actorCanonicalPrincipalId) !== null &&
+			validateUuid(evaluation.claimId) !== null &&
+			typeof evaluation.ownerBindingId === "string" &&
+			evaluation.ownerBindingId.length > 0 &&
+			Number.isSafeInteger(evaluation.generation) &&
+			evaluation.generation === canonical.generation
+		);
+	} catch (error) {
+		// error-policy:J4 authority read failure is reported and degrades to a
+		// fail-closed non-owner decision instead of falling back to weaker paths.
+		runtime.reportError("Roles.evaluateOwnerBinding", error, { entityId });
+		return false;
 	}
 }
 
@@ -547,11 +608,19 @@ async function resolveOwnershipRole(
 		if (ownerId === entityId) {
 			return "OWNER";
 		}
+	}
 
-		if (await hasConfirmedIdentityLink(runtime, entityId, ownerId)) {
-			return "OWNER";
-		}
+	const verifiedBinding = await resolveIdentityOwnerBinding(
+		runtime,
+		entityId as UUID,
+		ownerIds as UUID[],
+	);
+	if (verifiedBinding !== null) return verifiedBinding ? "OWNER" : null;
 
+	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
+	if (ownerIds.some((ownerId) => linkedIds.includes(ownerId))) return "OWNER";
+
+	for (const ownerId of ownerIds) {
 		const ownerMetadata = await getEntityMetadata(runtime, ownerId);
 		if (!ownerMetadata) {
 			continue;
@@ -736,27 +805,26 @@ async function resolveExplicitGrantedRole(
 		return { role: directRole, source: "manual" };
 	}
 
+	const principalService =
+		typeof runtime.getService === "function"
+			? runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
+			: null;
+	if (principalService) return null;
+
 	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
 	let bestRole: RoleName | null = null;
-
 	for (const linkedEntityId of linkedIds) {
 		const linkedRole = getEntityRole(metadata, linkedEntityId);
-		if (linkedRole === "GUEST") {
-			continue;
-		}
+		if (linkedRole === "GUEST") continue;
 		const linkedSource = await resolveStoredRoleSource(
 			runtime,
 			metadata,
 			linkedEntityId,
 		);
-		if (linkedSource !== "manual") {
-			continue;
-		}
-		if (!bestRole || ROLE_RANK[linkedRole] > ROLE_RANK[bestRole]) {
+		if (linkedSource !== "manual") continue;
+		if (!bestRole || ROLE_RANK[linkedRole] > ROLE_RANK[bestRole])
 			bestRole = linkedRole;
-		}
 	}
-
 	return bestRole ? { role: bestRole, source: "linked_manual" } : null;
 }
 
@@ -962,13 +1030,68 @@ export async function resolveCanonicalOwnerIdForMessage(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<string | null> {
-	const configuredOwnerId = resolveCanonicalOwnerId(runtime);
-	if (configuredOwnerId) {
-		return configuredOwnerId;
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		// A connector-specific owner principal is the canonical owner for its
+		// current destination when it was configured directly or the principal
+		// authority verifies its owner binding. Keeping the live principal here
+		// lets the delivery-audience census prove the actual two-party DM rather
+		// than comparing a Discord principal to a Telegram-shaped owner UUID.
+		if (configuredOwnerIds.includes(message.entityId)) {
+			return message.entityId;
+		}
+		const verifiedBinding = await resolveIdentityOwnerBinding(
+			runtime,
+			message.entityId,
+			configuredOwnerIds as UUID[],
+		);
+		if (verifiedBinding === true) {
+			return message.entityId;
+		}
+		return configuredOwnerIds[0] ?? null;
 	}
 
 	const resolved = await resolveWorldForMessage(runtime, message);
-	return resolveCanonicalOwnerId(runtime, resolved?.metadata);
+	const recordedOwnerId = resolveCanonicalOwnerId(runtime, resolved?.metadata);
+
+	// The owner-exclusive disclosure gate compares this id to the message actor
+	// with strict equality. A connector can persist the owner under a DIFFERENT
+	// canonical UUID than the one it stamps on the owner's own messages: e.g.
+	// plugin-discord records `ownership.ownerId` as the synthetic
+	// `deterministicOwnerEntityId(agentId)` fallback while the owner's inbound
+	// message carries `createUniqueUuid(runtime, <snowflake>)`. Both denote the
+	// same human, but a naive equality check reads them as different principals
+	// and denies every owner-private surface with `owner_mismatch`, even in a
+	// 2-person owner DM/guild whose census is exactly {owner, agent}.
+	//
+	// The role system already reconciles these via connector-stable-identity and
+	// confirmed identity links (resolveOwnershipRole). Reuse that verdict: when
+	// the message actor IS the owner but under a different entity UUID than the
+	// world recorded, return the ACTOR's id so the strict-equality gate matches
+	// the genuine owner. Non-owners never satisfy resolveOwnershipRole, so they
+	// stay denied. Idempotent and connector-agnostic — no Discord-only branch.
+	const actorEntityId = message.entityId;
+	if (
+		actorEntityId &&
+		recordedOwnerId &&
+		recordedOwnerId !== actorEntityId &&
+		resolved?.world
+	) {
+		const actorOwnershipRole = await resolveOwnershipRole(
+			runtime,
+			resolved.metadata,
+			actorEntityId,
+			{
+				liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+				liveEntityId: actorEntityId,
+			},
+		);
+		if (actorOwnershipRole === "OWNER") {
+			return actorEntityId;
+		}
+	}
+
+	return recordedOwnerId;
 }
 
 export async function checkSenderRole(

@@ -171,7 +171,7 @@
       "responses": [
         {
           "uuid": "0000000a-0000-4000-8000-lifeopspresact",
-          "body": "{\"resolutionId\":\"contact-{{faker 'string.uuid'}}\",\"query\":\"{{body 'query'}}\",\"candidates\":[{\"id\":\"contact-alice-nguyen-work\",\"confidence\":0.86,\"evidence\":[\"email mentions Atlas\",\"iMessage mentions launch checklist\"],\"safeToSend\":true},{\"id\":\"contact-alice-n-family\",\"confidence\":0.41,\"evidence\":[\"same first name only\"],\"safeToSend\":false}],\"decision\":\"ask_if_message_contains_private_content\",\"preferredChannel\":{\"provider\":\"signal\",\"confidence\":0.74,\"source\":\"recent explicit mention\"}}",
+          "body": "{\"resolutionId\":\"contact-{{faker 'string.uuid'}}\",\"query\":\"{{body 'query'}}\",\"candidates\":[{\"id\":\"contact-alice-nguyen-work\",\"confidence\":0.86,\"evidence\":[\"email mentions Atlas\",\"iMessage mentions launch checklist\"],\"safeToSend\":true},{\"id\":\"contact-alice-n-family\",\"confidence\":0.41,\"evidence\":[\"same first name only\"],\"safeToSend\":false}],\"decision\":\"ask_if_message_contains_private_content\",\"preferredChannel\":{\"provider\":\"imessage\",\"confidence\":0.74,\"source\":\"recent explicit mention\"}}",
           "latency": 0,
           "statusCode": 200,
           "label": "OK",

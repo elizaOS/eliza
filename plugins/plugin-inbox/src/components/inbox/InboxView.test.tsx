@@ -75,7 +75,6 @@ const ALL_COUNTS = {
   gmail: { total: 0, unread: 0 },
   discord: { total: 0, unread: 0 },
   telegram: { total: 0, unread: 0 },
-  signal: { total: 0, unread: 0 },
   imessage: { total: 0, unread: 0 },
   whatsapp: { total: 0, unread: 0 },
   sms: { total: 0, unread: 0 },
@@ -315,7 +314,7 @@ describe("InboxView — audit settle signal (#15912)", () => {
     // settled list shows only the connected two, so the loading frame is denser.
     // A host readiness/aesthetic-audit gate that samples before the fetch
     // resolves must be able to tell "still loading" apart from "settled" — else
-    // it measures the denser placeholder and flips the divider-density ratchet
+    // it measures the denser placeholder and flips the divider-density guard
     // between identical-code runs (#15912). The shared `data-view-status`
     // settle marker is that signal.
     let resolveFetch!: (value: ReturnType<typeof populatedInbox>) => void;
@@ -324,7 +323,7 @@ describe("InboxView — audit settle signal (#15912)", () => {
     });
     render(<InboxView fetchers={makeFetchers({ fetchInbox: () => gate })} />);
 
-    // Loading: the settle marker is present and the placeholder lists all 8
+    // Loading: the settle marker is present and the placeholder lists all 7
     // channel chips (the denser frame a racing capture would otherwise measure).
     const loadingMarker = document.querySelector(
       '[data-view-status="loading"]',
@@ -332,7 +331,7 @@ describe("InboxView — audit settle signal (#15912)", () => {
     expect(loadingMarker).not.toBeNull();
     expect(
       document.querySelectorAll('[data-agent-id^="inbox-channel-"]'),
-    ).toHaveLength(8);
+    ).toHaveLength(7);
 
     resolveFetch(populatedInbox());
     await screen.findByText("Invoice 42 overdue");

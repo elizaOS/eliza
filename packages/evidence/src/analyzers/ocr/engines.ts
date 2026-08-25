@@ -28,6 +28,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { EvidenceError } from "../../errors.ts";
 
 const execFileAsync = promisify(execFile);
@@ -343,7 +344,7 @@ async function runAppleVision(
           // output; the bare SyntaxError says nothing about which helper broke.
           reject(
             new EvidenceError(
-              `apple-vision helper emitted unparseable output: ${line.slice(0, 160)}`,
+              `apple-vision helper emitted unparseable output: ${truncateWellFormed(toWellFormedUnicode(line), 160)}`,
               {
                 code: "APPLE_VISION_OCR_FAILED",
                 cause,
@@ -357,7 +358,7 @@ async function runAppleVision(
         if (!record) {
           reject(
             new EvidenceError(
-              `apple-vision helper record missing ok/text fields: ${line.slice(0, 160)}`,
+              `apple-vision helper record missing ok/text fields: ${truncateWellFormed(toWellFormedUnicode(line), 160)}`,
               { code: "APPLE_VISION_OCR_FAILED", context: { imagePath } },
             ),
           );
@@ -381,9 +382,30 @@ async function runAppleVision(
 export const UNLIMITED_OCR_PROMPT =
   "Convert this document image to markdown. Transcribe every visible character exactly, preserving reading order. Output only the transcribed text with no commentary.";
 
-// A grounding decoration is a line whose tail is a pixel bbox: `title [x1,y1,x2,y2]`.
-const GROUNDING_LINE =
-  /^(.*?)\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]$/;
+function parseGroundingLine(
+  line: string,
+): { text: string; box: [number, number, number, number] } | null {
+  const value = line.trim();
+  if (!value.endsWith("]")) return null;
+  const open = value.lastIndexOf("[");
+  if (open < 0) return null;
+  const parts = value.slice(open + 1, -1).split(",");
+  if (parts.length !== 4) return null;
+  const coordinates: number[] = [];
+  for (const part of parts) {
+    const token = part.trim();
+    if (!token) return null;
+    for (let index = 0; index < token.length; index += 1) {
+      const code = token.charCodeAt(index);
+      if (code < 48 || code > 57) return null;
+    }
+    coordinates.push(Number(token));
+  }
+  return {
+    text: value.slice(0, open).trimEnd(),
+    box: coordinates as [number, number, number, number],
+  };
+}
 
 /**
  * Split grounding decorations (`title [x1,y1,x2,y2]` lines the DeepSeek-OCR
@@ -401,17 +423,12 @@ export function parseGroundingDecorations(raw: string): {
   const regions: OcrGroundedRegion[] = [];
   const lines: string[] = [];
   for (const line of raw.split("\n")) {
-    const match = line.trim().match(GROUNDING_LINE);
-    if (match) {
-      const box: [number, number, number, number] = [
-        Number(match[2]),
-        Number(match[3]),
-        Number(match[4]),
-        Number(match[5]),
-      ];
+    const grounding = parseGroundingLine(line);
+    if (grounding) {
+      const { text, box } = grounding;
       if (validGroundingBox(box)) {
-        regions.push({ text: match[1], box });
-        if (match[1] !== "") lines.push(match[1]);
+        regions.push({ text, box });
+        if (text !== "") lines.push(text);
         continue;
       }
     }
@@ -676,5 +693,8 @@ function isEnoent(error: unknown): boolean {
 }
 
 function errMessage(error: unknown): string {
-  return String(error instanceof Error ? error.message : error).slice(0, 160);
+  return truncateWellFormed(
+    toWellFormedUnicode(String(error instanceof Error ? error.message : error)),
+    160,
+  );
 }

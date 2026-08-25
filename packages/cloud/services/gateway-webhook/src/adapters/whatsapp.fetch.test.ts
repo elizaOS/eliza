@@ -1,0 +1,119 @@
+/**
+ * Pins the bounded WhatsApp adapter contract: every Cloud API hop fails closed
+ * at the hop timeout and composes a caller signal with that deadline. The
+ * harness stubs globalThis.fetch with a hung or immediate responder and
+ * restores the real implementation after each test so the stub cannot leak
+ * into other files sharing the worker.
+ */
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+describe("whatsappFetch — bounded WhatsApp hops fail closed and compose caller signals", () => {
+  test("aborts a hung WhatsApp hop at the configured timeout", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const { whatsappFetch } = await import("./whatsapp");
+    const start = Date.now();
+    await expect(
+      whatsappFetch(
+        "https://graph.facebook.com/v21.0/me/messages",
+        undefined,
+        100,
+      ),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("times out a hung hop even when a non-aborted caller signal is present", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const { whatsappFetch } = await import("./whatsapp");
+    const controller = new AbortController();
+    const start = Date.now();
+    await expect(
+      whatsappFetch(
+        "https://graph.facebook.com/v21.0/me/messages",
+        {
+          signal: controller.signal,
+        },
+        100,
+      ),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  test("preserves caller cancellation (composed)", async () => {
+    let seen: AbortSignal | null | undefined;
+    globalThis.fetch = vi
+      .fn()
+      .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason);
+          });
+        });
+      }) as unknown as typeof fetch;
+
+    const { whatsappFetch } = await import("./whatsapp");
+    const controller = new AbortController();
+    const request = whatsappFetch(
+      "https://graph.facebook.com/v21.0/me/messages",
+      {
+        signal: controller.signal,
+      },
+    );
+    expect(seen?.aborted).toBe(false);
+    controller.abort(new DOMException("caller cancelled", "AbortError"));
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  test("requires provider message IDs before reporting an accepted reply delivered", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ messages: [] }),
+    ) as unknown as typeof fetch;
+    const { whatsappAdapter } = await import("./whatsapp");
+    const config = { accessToken: "token", phoneNumberId: "phone-id" };
+    const event = {
+      platform: "whatsapp" as const,
+      messageId: "incoming-id",
+      chatId: "15551234567",
+      senderId: "15551234567",
+      text: "hello",
+      rawPayload: {},
+    };
+
+    await expect(
+      whatsappAdapter.sendReplyWithReceipt?.(config, event, "hello from Eliza"),
+    ).rejects.toMatchObject({
+      deliveryStatus: "uncertain",
+      code: "DELIVERY_RECEIPT_INVALID",
+      retryable: false,
+    });
+  });
+});

@@ -89,7 +89,23 @@ class HandlerRegistry {
 		// registration per (type, provider) pair — last write wins.
 		const filtered = existing.filter((r) => r.provider !== reg.provider);
 		filtered.push(reg);
-		filtered.sort((a, b) => b.priority - a.priority);
+		filtered.sort((a, b) => {
+			const aP = Number.isFinite(a.priority)
+				? a.priority
+				: a.priority === Infinity
+					? Number.MAX_SAFE_INTEGER
+					: a.priority === -Infinity
+						? Number.MIN_SAFE_INTEGER
+						: 0;
+			const bP = Number.isFinite(b.priority)
+				? b.priority
+				: b.priority === Infinity
+					? Number.MAX_SAFE_INTEGER
+					: b.priority === -Infinity
+						? Number.MIN_SAFE_INTEGER
+						: 0;
+			return bP - aP;
+		});
 		this.registrations.set(reg.modelType, filtered);
 		this.emit();
 	}

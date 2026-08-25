@@ -3,17 +3,9 @@
  * boundary with deterministic adapter responses.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-	DOCUMENT_LIST_MAX_LIMIT,
-	DOCUMENT_LIST_MAX_PINNED_PAGES,
-} from "../../database/document-list-query";
-import { logger } from "../../logger";
+import { DOCUMENT_LIST_MAX_LIMIT } from "../../database/document-list-query";
 import { type Memory, MemoryType, type UUID } from "../../types";
-import {
-	documentsProvider,
-	PINNED_DOCUMENT_TRUNCATION_MARKER,
-	renderPinnedDocuments,
-} from "./provider";
+import { documentsProvider, renderPinnedDocuments } from "./provider";
 import { DocumentService } from "./service";
 
 const id = (value: string) => value.padEnd(36, "0") as UUID;
@@ -41,11 +33,13 @@ function runtimeWithDocumentQuery(
 	return {
 		agentId,
 		adapter: {
-			documentListQueryCapability: 2,
+			documentListQueryCapability: 4,
 			queryDocuments,
 			queryDocumentFragments: vi.fn(async () => []),
 			getDocument: vi.fn(async () => null),
 			compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+			updateDocumentDirectGrants: vi.fn(async () => ({ status: "ok" })),
+			replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 			deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 		},
 		getMemories: vi.fn(async () => []),
@@ -61,13 +55,13 @@ function runtimeWithDocumentQuery(
 	};
 }
 
-function listPinnedDocuments(
+function listAllProviderDocuments(
 	service: DocumentService,
 	agentId = "00000000-0000-0000-0000-0000000000a1" as UUID,
 ): Promise<Memory[]> {
 	return (
 		service as unknown as {
-			listPinnedDocumentsWithRequester(
+			listAllDocumentsWithRequester(
 				resolveRequester: () => Promise<{
 					entityId: UUID;
 					roomIds: UUID[];
@@ -75,7 +69,7 @@ function listPinnedDocuments(
 				}>,
 			): Promise<Memory[]>;
 		}
-	).listPinnedDocumentsWithRequester(async () => ({
+	).listAllDocumentsWithRequester(async () => ({
 		entityId: agentId,
 		roomIds: [],
 		role: "RUNTIME",
@@ -108,9 +102,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const after = await documentsProvider.get(runtime as never, message);
 		expect(after.text).toContain("ALWAYS TELL THE TRUTH");
 		expect(after.data?.pinnedDocumentIds).toEqual([irrelevant.id]);
-		expect(service.composeProviderDocuments).toHaveBeenLastCalledWith(message, {
-			limit: 25,
-		});
+		expect(service.composeProviderDocuments).toHaveBeenLastCalledWith(message);
 	});
 
 	it("preserves ordinary retrieval snippets for unpinned documents", async () => {
@@ -149,7 +141,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		expect(rendered.truncated).toBe(false);
 	});
 
-	it("injects an authorized pin even when it is outside the recent-document page", async () => {
+	it("injects an authorized pin while retaining the complete document inventory", async () => {
 		const recent = Array.from({ length: 25 }, (_, index) =>
 			document(`Recent ${index}`, `recent ${index}`),
 		);
@@ -158,7 +150,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			getService: vi.fn(() => ({
 				composeProviderDocuments: vi.fn(async () => ({
 					relevantFragments: [],
-					documents: recent,
+					documents: [...recent, olderPinned],
 					pinnedDocuments: [olderPinned],
 				})),
 			})),
@@ -168,11 +160,11 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			document("query", "unrelated query"),
 		);
 		expect(result.text).toContain("NEVER FABRICATE");
-		expect(result.data?.documents).toHaveLength(25);
+		expect(result.data?.documents).toHaveLength(26);
 		expect(result.data?.pinnedDocumentIds).toEqual([olderPinned.id]);
 	});
 
-	it("marks overflow explicitly and emits a warning from the provider", async () => {
+	it("preserves oversized pinned content completely", async () => {
 		const oversized = document("Ground truth", "X".repeat(40_000), true);
 		const runtime = {
 			getService: vi.fn(() => ({
@@ -183,20 +175,35 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 				})),
 			})),
 		};
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
 		const result = await documentsProvider.get(
 			runtime as never,
 			document("query", "unrelated query"),
 		);
-		expect(result.text).toContain(PINNED_DOCUMENT_TRUNCATION_MARKER);
-		expect(result.text).not.toContain("X".repeat(100));
-		expect(result.data?.pinnedDocumentsTruncated).toBe(true);
-		expect(result.data?.pinnedDocumentIds).toEqual([]);
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({ tokenBudget: 8_000 }),
-			expect.stringContaining("explicitly truncated"),
+		expect(result.text).toContain("X".repeat(40_000));
+		expect(result.text).toContain(`reference document:${oversized.id}`);
+		expect(result.data?.pinnedDocumentsTruncated).toBe(false);
+		expect(result.data?.pinnedDocumentIds).toEqual([oversized.id]);
+	});
+
+	it("preserves every pinned source and wrapper without a shared budget", () => {
+		const documents = Array.from({ length: 25 }, (_, index) =>
+			document(`${index}-${"title".repeat(80)}`, "X".repeat(40_000), true),
 		);
-		warn.mockRestore();
+		const rendered = renderPinnedDocuments(documents);
+		expect(rendered.truncated).toBe(false);
+		expect(rendered.includedIds).toHaveLength(25);
+		for (const item of documents) {
+			expect(rendered.text).toContain(`reference document:${item.id}`);
+			expect(rendered.text).toContain(item.content.text);
+		}
+	});
+
+	it("preserves complete pinned titles regardless of length", () => {
+		const longTitle = `critical-${"owner-authored-title-".repeat(20)}`;
+		const rendered = renderPinnedDocuments([
+			document(longTitle, "complete source", true),
+		]);
+		expect(rendered.text).toContain(longTitle);
 	});
 
 	it("rejects repeating pagination cursors when listing pinned documents", async () => {
@@ -218,11 +225,13 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const runtime = {
 			agentId,
 			adapter: {
-				documentListQueryCapability: 2,
+				documentListQueryCapability: 4,
 				queryDocuments: queryDocumentsMock,
 				queryDocumentFragments: vi.fn(async () => []),
 				getDocument: vi.fn(async () => null),
 				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				updateDocumentDirectGrants: vi.fn(async () => ({ status: "ok" })),
+				replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 			},
 			getMemories: vi.fn(async () => []),
@@ -243,67 +252,10 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		};
 
 		await expect(
-			service.composeProviderDocuments(message, { limit: 10 }),
+			service.composeProviderDocuments(message),
 		).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_CURSOR_LOOP",
 		});
-	});
-
-	it("rejects pagination exceeding the maximum page limit when listing pinned documents", async () => {
-		const agentId = "00000000-0000-0000-0000-0000000000a1" as UUID;
-		let callCount = 0;
-		const queryDocumentsMock = vi.fn(async () => {
-			callCount += 1;
-			return {
-				status: "ok",
-				totalVisible: 0,
-				totalAvailable: 0,
-				totalMatched: 0,
-				documents: [],
-				availableDocuments: [],
-				availableHasMore: false,
-				hasMore: true,
-				nextCursor: {
-					createdAt: 1000 + callCount,
-					id: `00000000-0000-0000-0000-${callCount.toString(16).padStart(12, "0")}` as UUID,
-				},
-			};
-		});
-		const runtime = {
-			agentId,
-			adapter: {
-				documentListQueryCapability: 2,
-				queryDocuments: queryDocumentsMock,
-				queryDocumentFragments: vi.fn(async () => []),
-				getDocument: vi.fn(async () => null),
-				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
-				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
-			},
-			getMemories: vi.fn(async () => []),
-			searchMemories: vi.fn(async () => []),
-			getModel: vi.fn(() => null),
-			reportError: vi.fn(),
-			logger: {
-				info: vi.fn(),
-				warn: vi.fn(),
-				error: vi.fn(),
-				debug: vi.fn(),
-			},
-		};
-		const service = new DocumentService(runtime as never);
-		const message = {
-			...document("query", "test query"),
-			entityId: agentId,
-		};
-
-		await expect(
-			service.composeProviderDocuments(message, { limit: 10 }),
-		).rejects.toMatchObject({
-			code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
-		});
-		expect(queryDocumentsMock).toHaveBeenCalledTimes(
-			1 + DOCUMENT_LIST_MAX_PINNED_PAGES,
-		);
 	});
 
 	it("rejects an oversized adapter page before filtering or retaining rows", async () => {
@@ -324,7 +276,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_INVALID_RESULT",
 		});
 		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
@@ -345,7 +297,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_INVALID_RESULT",
 		});
 		expect(queryDocumentsMock).toHaveBeenCalledTimes(1);
@@ -394,7 +346,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		await expect(listPinnedDocuments(service)).rejects.toMatchObject({
+		await expect(listAllProviderDocuments(service)).rejects.toMatchObject({
 			code: "DOCUMENT_LIST_CURSOR_LOOP",
 		});
 		expect(pinnedCalls).toBe(2);
@@ -404,7 +356,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		);
 	});
 
-	it("accepts a pinned document returned on the final legal page", async () => {
+	it("accepts a pinned document beyond the former fixed page ceiling", async () => {
 		let pinnedCalls = 0;
 		const finalPinned = document("Final rule", "ALWAYS VERIFY", true);
 		const queryDocumentsMock = vi.fn(async ({ limit }: { limit: number }) => {
@@ -421,7 +373,7 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 				};
 			}
 			pinnedCalls += 1;
-			const isFinal = pinnedCalls === DOCUMENT_LIST_MAX_PINNED_PAGES;
+			const isFinal = pinnedCalls === 102;
 			return {
 				status: "ok",
 				totalVisible: 1,
@@ -447,9 +399,9 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 			runtimeWithDocumentQuery(queryDocumentsMock) as never,
 		);
 
-		const result = await listPinnedDocuments(service);
+		const result = await listAllProviderDocuments(service);
 
-		expect(pinnedCalls).toBe(DOCUMENT_LIST_MAX_PINNED_PAGES);
+		expect(pinnedCalls).toBe(102);
 		expect(result).toEqual([finalPinned]);
 	});
 });

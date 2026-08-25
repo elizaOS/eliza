@@ -90,7 +90,7 @@ function TranscriptRow({ item }: { item: TranscriptItem }): ReactNode {
       return (
         <div
           className={cn(
-            "native-transcript-row mr-auto max-w-[85%] px-1 py-1 text-sm leading-relaxed text-txt",
+            "native-transcript-row mr-auto max-w-[85%] p-1 text-sm leading-relaxed text-txt",
             item.status === "streaming" && "text-muted",
             item.status === "cancelled" && "opacity-60 line-through",
           )}

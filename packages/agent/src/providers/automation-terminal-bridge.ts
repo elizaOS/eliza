@@ -13,7 +13,7 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
+import { logger, stringToUuid, toWellFormedUnicode } from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -24,7 +24,17 @@ import {
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
 
-const MAX_TERMINAL_MESSAGES = 8;
+/**
+ * Normalizes a memory timestamp for ordering. A missing or non-finite
+ * `createdAt` (NaN reaches this provider when a storage row carries an
+ * unparseable timestamp) would otherwise make every comparison return NaN,
+ * which the sort treats as "equal" and leaves the transcript in whatever order
+ * storage returned it. Collapsing those to 0 keeps the ordering total so the
+ * oldest-first transcript stays deterministic.
+ */
+export function safeCreatedAt(createdAt: number | undefined): number {
+  return Number.isFinite(createdAt) ? (createdAt as number) : 0;
+}
 
 export const automationTerminalBridgeProvider: Provider = {
   name: "automation-terminal-bridge",
@@ -67,12 +77,13 @@ export const automationTerminalBridgeProvider: Provider = {
       const memories = await runtime.getMemories({
         roomId: sourceRoomId,
         tableName: "messages",
-        limit: MAX_TERMINAL_MESSAGES,
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
-        .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
-        .slice(-MAX_TERMINAL_MESSAGES);
+        .sort(
+          (left, right) =>
+            safeCreatedAt(left.createdAt) - safeCreatedAt(right.createdAt),
+        );
 
       if (visibleMessages.length === 0) {
         return { text: "", values: {}, data: {} };
@@ -82,7 +93,7 @@ export const automationTerminalBridgeProvider: Provider = {
       for (const mem of visibleMessages) {
         const speaker = formatSpeakerLabel(runtime, mem);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const text = (mem.content.text ?? "").slice(0, 300);
+        const text = toWellFormedUnicode(mem.content.text ?? "");
         lines.push(`${age}${speaker}: ${text}`);
       }
 

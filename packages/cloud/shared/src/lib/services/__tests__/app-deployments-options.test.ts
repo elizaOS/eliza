@@ -12,7 +12,7 @@ type AppRow = {
   created_by_user_id: string;
   github_repo: string | null;
   metadata: Record<string, unknown>;
-  deployment_status: "draft" | "building" | "deployed" | "failed";
+  deployment_status: "draft" | "building" | "deploying" | "deployed" | "failed";
   production_url: string | null;
   last_deployed_at: Date | null;
 };
@@ -36,6 +36,27 @@ mock.module("../apps", () => ({
     getById: async (id: string) => (id === APP_ID ? appRow : undefined),
     update: async (id: string, data: Partial<AppRow>) => {
       if (id !== APP_ID) return undefined;
+      appRow = { ...appRow, ...data };
+      return appRow;
+    },
+    claimDeploymentStart: async (id: string, generation: string, data: Partial<AppRow>) => {
+      if (
+        id !== APP_ID ||
+        appRow.deployment_status === "building" ||
+        appRow.deployment_status === "deploying"
+      ) {
+        return undefined;
+      }
+      appRow = {
+        ...appRow,
+        ...data,
+        metadata: { ...(data.metadata ?? {}), deploymentGeneration: generation },
+        deployment_status: "building",
+      };
+      return appRow;
+    },
+    updateDeploymentGeneration: async (id: string, generation: string, data: Partial<AppRow>) => {
+      if (id !== APP_ID || appRow.metadata.deploymentGeneration !== generation) return undefined;
       appRow = { ...appRow, ...data };
       return appRow;
     },
@@ -67,6 +88,7 @@ describe("AppDeploymentsService deploy options", () => {
     expect(enqueued).toEqual([
       {
         appId: APP_ID,
+        deploymentGeneration: expect.any(String),
         organizationId: ORG_ID,
         userId: USER_ID,
         options: {
@@ -83,7 +105,7 @@ describe("AppDeploymentsService deploy options", () => {
     const service = new AppDeploymentsService();
     const calls: unknown[] = [];
     service.setDeployRunner({
-      run: async (appId, options) => void calls.push([appId, options]),
+      run: async (appId, generation, options) => void calls.push([appId, generation, options]),
     });
 
     await service.createDeployment({
@@ -98,6 +120,7 @@ describe("AppDeploymentsService deploy options", () => {
     expect(calls).toEqual([
       [
         APP_ID,
+        expect.any(String),
         {
           repoUrl: "https://github.com/elizaOS/eliza.git",
           ref: "develop",

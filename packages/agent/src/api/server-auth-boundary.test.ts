@@ -36,6 +36,8 @@ import {
   WS_AUTH_GRACE_TIMEOUT_MS,
 } from "./server-helpers-auth.ts";
 
+type WsClient = InstanceType<typeof WebSocket>;
+
 // The gate contract under test lives in server.ts. The cloud plugin's own
 // handler is NOT exercised here: under the source-alias test environment the
 // real `@elizaos/plugin-elizacloud` module graph fails to evaluate (ENOTDIR
@@ -117,11 +119,15 @@ async function bootServer(
   configureServer?: NonNullable<
     Parameters<typeof startApiServer>[0]
   >["configureServer"],
+  authorizeWebSocket?: NonNullable<
+    Parameters<typeof startApiServer>[0]
+  >["authorizeWebSocket"],
 ): Promise<string> {
   api = await startApiServer({
     port: 0,
     skipDeferredStartupWork: true,
     configureServer,
+    authorizeWebSocket,
   });
   process.env.ELIZA_PORT = String(api.port);
   process.env.ELIZA_API_PORT = String(api.port);
@@ -374,7 +380,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     __resetPendingWebSocketsForTests();
   });
 
-  function openUnauthenticatedWs(port: number): Promise<WebSocket> {
+  function openUnauthenticatedWs(port: number): Promise<WsClient> {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
       ws.once("open", () => resolve(ws));
@@ -382,7 +388,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
     });
   }
 
-  function waitForClose(ws: WebSocket, timeoutMs: number): Promise<number> {
+  function waitForClose(ws: WsClient, timeoutMs: number): Promise<number> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("timed out waiting for the server close")),
@@ -396,7 +402,7 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
   }
 
   /** Waits for a specific frame type, ignoring the interleaved status/replay. */
-  function waitForFrame(ws: WebSocket, type: string): Promise<void> {
+  function waitForFrame(ws: WsClient, type: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`timed out waiting for ${type}`)),
@@ -411,6 +417,26 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
       });
     });
   }
+
+  it("admits a credential recognized by the host authorizer", async () => {
+    const hostToken = "revocable-host-machine-session";
+    const baseUrl = await bootServer(undefined, (_request, url) => {
+      return url.searchParams.get("token") === hostToken;
+    });
+    const port = Number(new URL(baseUrl).port);
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(hostToken)}`,
+    );
+
+    await waitForFrame(ws, "status");
+    const pong = waitForFrame(ws, "pong");
+    ws.send(JSON.stringify({ type: "ping" }));
+    await pong;
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+    ws.close();
+  });
 
   it("closes a socket that never authenticates after the grace period", async () => {
     const baseUrl = await bootServer();

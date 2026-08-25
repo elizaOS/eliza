@@ -23,7 +23,12 @@ const GITLEAKS_VERSION = "8.30.1";
 const GITLEAKS_LINUX_X64_SHA256 =
   "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb";
 
-const CONSUMING_WORKFLOWS = ["ci.yml", "gitleaks.yml", "test.yml"] as const;
+const CONSUMING_WORKFLOWS = [
+  "ci.yml",
+  "gitleaks.yml",
+  "pr-static-smoke.yml",
+  "test.yml",
+] as const;
 
 function workflowSource(name: string): string {
   return fs.readFileSync(

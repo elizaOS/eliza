@@ -6,7 +6,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ResolvedSlackAccount, SlackAccountConfig } from "./accounts";
 import {
-  MAX_SLACK_DIRECTORY_PAGES,
   SlackAccountPolicyResolver,
   type SlackInboundEventContext,
   SlackPolicyConfigurationError,
@@ -577,69 +576,13 @@ describe("SlackAccountPolicyResolver event policy", () => {
     ).rejects.toThrowError(SlackPolicyConfigurationError);
   });
 
-  it("rejects channel directory pagination exceeding the maximum page limit", async () => {
+  it("accepts a channel beyond the former fixed directory-page ceiling", async () => {
     let callCount = 0;
     const client = {
       conversations: {
         list: vi.fn().mockImplementation(async () => {
           callCount += 1;
-          return {
-            channels: [],
-            response_metadata: { next_cursor: `cursor-${callCount}` },
-          };
-        }),
-        info: vi.fn(),
-      },
-      users: {
-        list: vi.fn().mockResolvedValue({ members: [] }),
-      },
-    } as unknown as SlackPolicyDirectoryClient;
-
-    await expect(
-      resolver(
-        { groupPolicy: "allowlist", channels: { ops: true } },
-        { client, accountId: "test-acc" },
-      ),
-    ).rejects.toThrowError(
-      /channel directory exceeds the 250-page safety limit/,
-    );
-    expect(callCount).toBe(MAX_SLACK_DIRECTORY_PAGES);
-  });
-
-  it("rejects user directory pagination exceeding the maximum page limit", async () => {
-    let callCount = 0;
-    const client = {
-      conversations: {
-        list: vi.fn().mockResolvedValue({ channels: [] }),
-        info: vi.fn(),
-      },
-      users: {
-        list: vi.fn().mockImplementation(async () => {
-          callCount += 1;
-          return {
-            members: [],
-            response_metadata: { next_cursor: `cursor-${callCount}` },
-          };
-        }),
-      },
-    } as unknown as SlackPolicyDirectoryClient;
-
-    await expect(
-      resolver(
-        { dm: { policy: "allowlist", allowFrom: ["alice"] } },
-        { client, accountId: "test-acc" },
-      ),
-    ).rejects.toThrowError(/user directory exceeds the 250-page safety limit/);
-    expect(callCount).toBe(MAX_SLACK_DIRECTORY_PAGES);
-  });
-
-  it("accepts a channel found on the final legal directory page", async () => {
-    let callCount = 0;
-    const client = {
-      conversations: {
-        list: vi.fn().mockImplementation(async () => {
-          callCount += 1;
-          const isFinal = callCount === MAX_SLACK_DIRECTORY_PAGES;
+          const isFinal = callCount === 251;
           return {
             channels: isFinal ? [{ id: CHANNEL, name: "ops" }] : [],
             response_metadata: {
@@ -657,13 +600,13 @@ describe("SlackAccountPolicyResolver event policy", () => {
       { client, accountId: "test-acc" },
     );
 
-    expect(callCount).toBe(MAX_SLACK_DIRECTORY_PAGES);
+    expect(callCount).toBe(251);
     await expect(
       compiled.authorize(event({ channelId: CHANNEL, userId: ALICE })),
     ).resolves.toMatchObject({ allowed: true });
   });
 
-  it("accepts a user found on the final legal directory page", async () => {
+  it("accepts a user beyond the former fixed directory-page ceiling", async () => {
     let callCount = 0;
     const client = {
       conversations: {
@@ -673,7 +616,7 @@ describe("SlackAccountPolicyResolver event policy", () => {
       users: {
         list: vi.fn().mockImplementation(async () => {
           callCount += 1;
-          const isFinal = callCount === MAX_SLACK_DIRECTORY_PAGES;
+          const isFinal = callCount === 251;
           return {
             members: isFinal ? [{ id: ALICE, name: "alice" }] : [],
             response_metadata: {
@@ -689,7 +632,7 @@ describe("SlackAccountPolicyResolver event policy", () => {
       { client, accountId: "test-acc" },
     );
 
-    expect(callCount).toBe(MAX_SLACK_DIRECTORY_PAGES);
+    expect(callCount).toBe(251);
     await expect(
       compiled.authorize(
         event({ channelId: DM, userId: ALICE, channelType: "im" }),

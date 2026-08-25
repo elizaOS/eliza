@@ -258,13 +258,18 @@ function residualsScenarioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-completion-residuals",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Orchestrator blocks dirty-workspace completions until the work is committed and pushed",
   domain: "agent-orchestrator",
   tags: ["orchestrator", "residuals", "completion", "pr", "deterministic"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [PLUGIN_NAME],
+    fixturePlugins: [PLUGIN_NAME],
   },
   seed: [
     {

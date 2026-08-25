@@ -13,7 +13,7 @@
  *     "image_data": [
  *       { "data": "<base64 png/jpeg>", "id": 12 }
  *     ],
- *     "n_predict": 256,
+ *     "n_predict": -1,
  *     "temperature": 0.2,
  *     "stream": false }
  *
@@ -49,6 +49,7 @@
  *   `__tests__/vision-describe.test.ts` notes for the GPU smoke check.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { resolveImageBytes } from "./hash";
 import type {
 	VisionDescribeBackend,
@@ -70,9 +71,8 @@ export interface LlamaServerVisionBackendOptions {
 	 */
 	fetch?: typeof fetch;
 	/**
-	 * Default `n_predict` budget when the caller doesn't specify
-	 * `maxTokens`. 256 matches the description-length budget the
-	 * Florence-2 / VisionManager path uses today.
+	 * Optional caller-selected `n_predict` boundary. When omitted, llama.cpp's
+	 * `-1` contract generates until its terminal token or context boundary.
 	 */
 	defaultMaxTokens?: number;
 }
@@ -81,7 +81,7 @@ export function createLlamaServerVisionBackend(
 	opts: LlamaServerVisionBackendOptions,
 ): VisionDescribeBackend {
 	const fetchImpl = opts.fetch ?? globalThis.fetch;
-	const defaultMaxTokens = opts.defaultMaxTokens ?? 256;
+	const defaultMaxTokens = opts.defaultMaxTokens ?? -1;
 	let baseUrl = opts.baseUrl.replace(/\/$/, "");
 
 	if (!baseUrl) {
@@ -124,7 +124,7 @@ export function createLlamaServerVisionBackend(
 			if (!res.ok) {
 				const text = await res.text().catch(() => "<unreadable>");
 				throw new Error(
-					`[vision/llama-server] /completion returned ${res.status}: ${text.slice(0, 200)}`,
+					`[vision/llama-server] /completion returned ${res.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
 				);
 			}
 			const payload = (await res.json()) as {

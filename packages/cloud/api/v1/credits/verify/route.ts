@@ -8,8 +8,8 @@ import type Stripe from "stripe";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   StripeCheckoutAuthorityError,
@@ -21,7 +21,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {

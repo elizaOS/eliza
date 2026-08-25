@@ -48,21 +48,6 @@
       "similes": ["/backend"]
     },
     {
-      "name": "COMPACT_COMMAND",
-      "description": "Compact conversation history",
-      "parameters": [
-        {
-          "name": "instructions",
-          "description": "Optional compaction instructions",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "similes": ["/compact"]
-    },
-    {
       "name": "CONTEXT_COMMAND",
       "description": "Show current context information",
       "parameters": [

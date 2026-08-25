@@ -30,6 +30,12 @@ let onTurnDispatch: (() => void) | null = null;
 const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
+const tokenEstimateInputs: Array<Array<{ content: string }>> = [];
+const streamTurnInputs: Array<Record<string, unknown>> = [];
+const estimateInputTokens = mock((messages: Array<{ content: string }>) => {
+  tokenEstimateInputs.push(messages);
+  return 12;
+});
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
 const traceRows: Array<Record<string, unknown>> = [];
@@ -66,6 +72,15 @@ function timingReceipt(
       responseHandlerFieldsDurationMs: 9,
       providerTotalDurationMs: 10,
       slowestProviderDurationMs: 10,
+    },
+    model: {
+      replayed: false,
+      durationMs: 0,
+      callCount: 0,
+      fallbackCount: 0,
+      selectedProvider: "none" as const,
+      callsTruncated: false,
+      calls: [],
     },
     routing: { decision: "respond" as const, contextIds: ["room"] },
   };
@@ -144,6 +159,7 @@ mock.module("../inference-admission-snapshot", () => ({
 const admitOrganizationInference = mock(
   async (params: {
     context?: { metadata?: Record<string, unknown> };
+    estimatedInputTokens?: number;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   }) => {
     if (admissionError) throw admissionError;
@@ -166,7 +182,7 @@ mock.module("../organization-inference-admission", () => ({
   admitOrganizationInference,
 }));
 mock.module("../ai-billing", () => ({
-  estimateInputTokens: () => 12,
+  estimateInputTokens,
   reserveCredits: async () => {
     throw new Error("synchronous reserve must not run");
   },
@@ -202,9 +218,12 @@ mock.module("../../../db/repositories/characters", () => ({
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: {
+    memory?: { recordTurnPair(pair: TestMemoryPair): Promise<void> };
+    message?: string;
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
     onRuntimeTiming?: (receipt: ReturnType<typeof timingReceipt>) => void;
+    execution?: { channel?: { type: ChannelType; source: string } };
     [key: string]: unknown;
   }) => {
     turnCalls++;
@@ -225,6 +244,15 @@ mock.module("./run-shared-agent-turn", () => ({
                 : message,
         )
       : turn.history;
+    if (input.memory && !turn.degraded) {
+      await input.memory.recordTurnPair({
+        userMessage: input.message?.trim() ?? "",
+        assistantReply: typeof turn.reply === "string" ? turn.reply : "",
+        ...(input.messageIds ? { messageIds: input.messageIds } : {}),
+        ...(input.messageRole ? { messageRole: input.messageRole } : {}),
+        ...(input.execution?.channel ? { channel: input.execution.channel } : {}),
+      });
+    }
     return { ...turn, history };
   },
   runSharedAgentTurnStream: async (input: {
@@ -233,6 +261,7 @@ mock.module("./run-shared-agent-turn", () => ({
   }) => {
     streamTurnCalls++;
     lastStreamTurnInput = input;
+    streamTurnInputs.push(input);
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -250,7 +279,7 @@ const expectedTodoExecution = {
 };
 const expectedTodoActionResult = {
   success: true,
-  text: "Created: [ ] Buy milk",
+  text: 'Added "Buy milk" to your list.',
   verifiedUserFacing: true,
   effectReceipts: [
     {
@@ -275,14 +304,17 @@ type TestMemoryPair = {
   messageIds?: { user: string; assistant: string };
   messageRole?: "system" | "user";
   interrupted?: boolean;
+  channel?: { type: ChannelType; source: string };
 };
 const memoryPairs: TestMemoryPair[] = [];
+const memoryScopes: Array<{ agentKey: string; roomKey: string }> = [];
 const recordTurnPair = mock(async (pair: TestMemoryPair) => {
   memoryPairs.push(pair);
 });
-const createSharedMemoryStore = mock(() =>
-  process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null,
-);
+const createSharedMemoryStore = mock((scope: { agentKey: string; roomKey: string }) => {
+  memoryScopes.push(scope);
+  return process.env.SHARED_MEMORY_TABLES_ENABLED === "true" ? { recordTurnPair } : null;
+});
 mock.module("./shared-memory-store", () => ({
   createSharedMemoryStore,
 }));
@@ -362,7 +394,7 @@ mock.module("../../cache/client", () => ({
 const { InsufficientCreditsError } = await import("../ai-billing");
 const { InferenceAdmissionDispatchMarkError } = await import("../inference-admission-gate");
 const { personalSharedAgentId } = await import("./personal-shared-agent");
-const { SharedRuntimeChatService } = await import("./shared-runtime-chat");
+const { SharedRuntimeChatService, sharedRuntimeChannelId } = await import("./shared-runtime-chat");
 
 const organizationId = "00000000-0000-4000-8000-000000000002";
 const userId = "00000000-0000-4000-8000-000000000003";
@@ -394,10 +426,27 @@ type TestMessage = {
   content: string;
   createdAt?: number;
   interrupted?: boolean;
+  grounding?:
+    | {
+        kind: "web_search";
+        query: string;
+        provider: "parallel" | "exa";
+        text: string;
+        observedAt: number;
+        sourceUrls?: string[];
+        sources?: Array<{ url: string; text: string }>;
+        truncated: boolean;
+      }
+    | {
+        kind: "web_search_unavailable";
+        query: string;
+        observedAt: number;
+      };
 };
 
-function harness() {
-  let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+function harness(initialHistory?: TestMessage[]) {
+  let history: TestMessage[] = initialHistory ?? [{ role: "assistant", content: "prior" }];
+  let staged: TestMessage[] = [];
   const background: Promise<unknown>[] = [];
   const merge = (messages: TestMessage[]): TestMessage[] => {
     const byId = new Map<string, TestMessage>();
@@ -416,6 +465,9 @@ function harness() {
     background,
     historyStore: {
       load: async () => history,
+      stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+        staged = messages;
+      },
       save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
         history = next;
       },
@@ -426,6 +478,7 @@ function harness() {
       waitUntil: (promise: Promise<unknown>) => background.push(promise),
     },
     history: () => history,
+    staged: () => staged,
   };
 }
 
@@ -433,6 +486,9 @@ beforeEach(() => {
   settleCalls.length = 0;
   settleUnknownCalls = 0;
   billCalls.length = 0;
+  tokenEstimateInputs.length = 0;
+  streamTurnInputs.length = 0;
+  estimateInputTokens.mockClear();
   admissionError = null;
   billError = null;
   turnError = null;
@@ -462,6 +518,7 @@ beforeEach(() => {
   sharedTodoStorageScope.mockClear();
   delete process.env.SHARED_MEMORY_TABLES_ENABLED;
   memoryPairs.length = 0;
+  memoryScopes.length = 0;
   recordTurnPair.mockClear();
   createSharedMemoryStore.mockClear();
   turn = {
@@ -648,6 +705,152 @@ describe("SharedRuntimeChatService", () => {
     }
   });
 
+  test("retains complete content-free history provenance for a voice turn at zero sample", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    const priorContent = "private prior sentence that must never enter diagnostics";
+    const h = harness([
+      {
+        id: "prior-user-id",
+        role: "user",
+        content: priorContent,
+        createdAt: 1_787_860_800_000,
+      },
+      {
+        id: "prior-assistant-id",
+        role: "assistant",
+        content: "private partial reply",
+        createdAt: 1_787_860_800_500,
+        interrupted: true,
+      },
+    ]);
+    await new SharedRuntimeChatService().bridge(agent, rpc, {
+      ...h,
+      channel: {
+        type: ChannelType.VOICE_DM,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+      },
+    });
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    const row = traceRows[0] as {
+      channel_id: string;
+      stages: {
+        historyProvenance?: {
+          channelId: string;
+          channelType: string;
+          channelSource: string;
+          messages: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    expect(row.stages.historyProvenance).toEqual({
+      channelId: row.channel_id,
+      channelType: String(ChannelType.VOICE_DM),
+      channelSource: String(MESSAGE_SOURCE_CLIENT_CHAT),
+      messages: [
+        {
+          id: "prior-user-id",
+          role: "user",
+          createdAt: 1_787_860_800_000,
+          interrupted: false,
+        },
+        {
+          id: "prior-assistant-id",
+          role: "assistant",
+          createdAt: 1_787_860_800_500,
+          interrupted: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(row)).not.toContain(priorContent);
+    expect(JSON.stringify(row)).not.toContain("private partial reply");
+  });
+
+  test("retains a voice failure that occurs before the runtime emits terminal timing", async () => {
+    process.env.SHARED_TURN_TRACES_ENABLED = "true";
+    process.env.SHARED_TURN_TRACES_SAMPLE = "0";
+    turnTimingOutcome = null;
+    turnError = new Error("provider failed before timing receipt");
+    const h = harness([
+      {
+        id: "failed-turn-user-id",
+        role: "user",
+        content: "private failed turn",
+        createdAt: 1_787_860_900_000,
+      },
+    ]);
+
+    await expect(
+      new SharedRuntimeChatService().bridge(agent, rpc, {
+        ...h,
+        traceId: "voice-failure-trace",
+        channel: {
+          type: ChannelType.VOICE_DM,
+          source: MESSAGE_SOURCE_CLIENT_CHAT,
+        },
+      }),
+    ).rejects.toThrow("provider failed before timing receipt");
+    await Promise.all(h.background);
+
+    expect(traceRows).toHaveLength(1);
+    expect(traceRows[0]).toMatchObject({
+      trace_id: "voice-failure-trace",
+      stages: {
+        finishReason: "error",
+        historyProvenance: {
+          messages: [
+            {
+              id: "failed-turn-user-id",
+              role: "user",
+              interrupted: false,
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(traceRows[0])).not.toContain("private failed turn");
+    expect(JSON.stringify(traceRows[0])).not.toContain("provider failed before timing receipt");
+  });
+
+  test("prices the exact projected grounding replay before admission", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness([
+      { role: "user", content: "Search for Tessera architecture." },
+      {
+        role: "assistant",
+        content: "Tessera is an ARC resource proxy.",
+        grounding: {
+          kind: "web_search",
+          query: "Tessera architecture",
+          provider: "parallel",
+          text: "Tessera validates ARC resources through an origin guard.",
+          observedAt: Date.now(),
+          sourceUrls: ["https://example.com/tessera"],
+          sources: [
+            {
+              url: "https://example.com/tessera",
+              text: "Tessera validates ARC resources through an origin guard.",
+            },
+          ],
+          truncated: false,
+        },
+      },
+    ]);
+
+    await service.bridge(
+      agent,
+      { ...rpc, params: { ...rpc.params, text: "How does Tessera architecture work?" } },
+      h,
+    );
+
+    const estimatedMessages = estimateInputTokens.mock.calls[0]?.[0];
+    expect(JSON.stringify(estimatedMessages)).toContain("untrusted_public_web_search_result");
+    expect(JSON.stringify(estimatedMessages)).toContain("origin guard");
+    expect(admitOrganizationInference.mock.calls[0]?.[0].estimatedInputTokens).toBe(12);
+  });
+
   test("platform-funded personal Shared rate-limits without touching account credits", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -716,6 +919,7 @@ describe("SharedRuntimeChatService", () => {
 
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -750,6 +954,7 @@ describe("SharedRuntimeChatService", () => {
 
     expect(lastTurnInput?.execution).toEqual({
       agentKey: forgedAgent.id,
+      roomKey: sharedRuntimeChannelId(forgedAgent.id, "room-1"),
       channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
@@ -759,10 +964,10 @@ describe("SharedRuntimeChatService", () => {
     streamTurn = {
       degraded: false,
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk",
+          text: 'Added "Buy milk" to your list.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -778,6 +983,7 @@ describe("SharedRuntimeChatService", () => {
     );
     expect(lastStreamTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -793,16 +999,16 @@ describe("SharedRuntimeChatService", () => {
     const blockedCommunication = {
       capability: "communications",
       label: "Calls and messages",
-      reply: "I can't initiate a separate email.",
+      constraint: "This session cannot initiate a separate email.",
     };
     streamTurn = {
       degraded: false,
       blockedSecondaryCapabilities: [blockedCommunication],
       parts: (async function* () {
-        yield { type: "text-delta", text: "Created: [ ] Buy milk" };
+        yield { type: "text-delta", text: 'Added "Buy milk" to your list.' };
         yield {
           type: "finish",
-          text: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+          text: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
           actionResults: [expectedTodoActionResult],
         };
       })(),
@@ -816,9 +1022,12 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(JSON.stringify(expectedTodoActionResult));
     expect(body).toContain('"actionName":"DEDICATED_CAPABILITY_REQUIRED"');
     expect(body).toContain('"capability":"communications"');
+    expect(body).toContain('"kind":"capability_handoff"');
+    expect(body).toContain('"originalIntent":"hello"');
+    expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
-        assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",
+        assistantReply: 'Added "Buy milk" to your list.\n\nI can\'t initiate a separate email.',
         interrupted: false,
       }),
     ]);
@@ -844,6 +1053,7 @@ describe("SharedRuntimeChatService", () => {
     });
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       authenticatedPersonalSharedUser: true,
       todos: expectedTodoExecution,
@@ -863,6 +1073,7 @@ describe("SharedRuntimeChatService", () => {
     });
     expect(lastTurnInput?.execution).toEqual({
       agentKey: agent.id,
+      roomKey: sharedRuntimeChannelId(agent.id, "room-1"),
       channel: { type: ChannelType.DM, source: "shared-runtime" },
       todos: expectedTodoExecution,
     });
@@ -1024,11 +1235,65 @@ describe("SharedRuntimeChatService", () => {
     process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
     const service = new SharedRuntimeChatService();
     const h = harness();
+    streamTurn = {
+      degraded: false,
+      internalGrounding: {
+        kind: "web_search",
+        query: "NubsCarson Tessera GitHub",
+        provider: "parallel",
+        text: "Tessera validates ARC resources through an origin guard.",
+        observedAt: Date.now(),
+        sourceUrls: ["https://example.com/tessera"],
+        sources: [
+          {
+            url: "https://example.com/tessera",
+            text: "Tessera validates ARC resources through an origin guard.",
+          },
+        ],
+        truncated: false,
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hello " };
+        yield {
+          type: "finish",
+          text: "hello back",
+          usage: { inputTokens: 12, outputTokens: 4 },
+          actionResults: [
+            {
+              success: true,
+              text: "hello back",
+              data: {
+                actionName: "WEB_SEARCH",
+                query: "NubsCarson Tessera GitHub",
+                provider: "parallel",
+                sourceUrls: ["https://example.com/tessera"],
+                groundingStatus: "verified",
+              },
+            },
+          ],
+        };
+      })(),
+    };
     const response = await service.stream(agent, rpc, h);
     const body = await response.text();
     expect(body).toContain("event: chunk");
     expect(body).toContain("event: done");
     expect(h.history()).toHaveLength(3);
+    expect(h.history().at(-1)?.grounding).toEqual({
+      kind: "web_search",
+      query: "NubsCarson Tessera GitHub",
+      provider: "parallel",
+      text: "Tessera validates ARC resources through an origin guard.",
+      observedAt: expect.any(Number),
+      sourceUrls: ["https://example.com/tessera"],
+      sources: [
+        {
+          url: "https://example.com/tessera",
+          text: "Tessera validates ARC resources through an origin guard.",
+        },
+      ],
+      truncated: false,
+    });
     expect(memoryPairs).toEqual([
       expect.objectContaining({
         userMessage: "hello",
@@ -1036,8 +1301,98 @@ describe("SharedRuntimeChatService", () => {
         interrupted: false,
       }),
     ]);
+    expect(memoryScopes).toHaveLength(1);
+    expect(memoryScopes[0]?.roomKey).toBe(sharedRuntimeChannelId(agent.id, "room-1"));
+    expect((lastStreamTurnInput?.execution as { roomKey?: string } | undefined)?.roomKey).toBe(
+      sharedRuntimeChannelId(agent.id, "room-1"),
+    );
+    expect(memoryScopes[0]?.roomKey).not.toBe(agent.id);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("terminal done frame is not held open by a stalled long-term-memory mirror (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    // The mirror never settles: a stalled Hyperdrive/embeddings-sidecar write.
+    // Under the old inline await the body below would never complete.
+    let releaseMirror: (() => void) | undefined;
+    recordTurnPair.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseMirror = resolve;
+        }),
+    );
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: chunk");
+    expect(body).toContain("event: done");
+    // The landed turn stays durable on the merged history boundary.
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    releaseMirror?.();
+    await Promise.all(h.background);
+  });
+
+  test("flushes transport readiness before the first provider text delta", async () => {
+    let releaseProvider = () => {};
+    const providerGate = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      parts: (async function* () {
+        await providerGate;
+        yield { type: "text-delta", text: "hello " };
+        yield { type: "finish", text: "hello back" };
+      })(),
+    };
+
+    const response = await new SharedRuntimeChatService().stream(agent, rpc, harness());
+    const reader = response.body?.getReader();
+    const first = await reader?.read();
+    expect(new TextDecoder().decode(first?.value)).toBe(": ready\n\n");
+
+    releaseProvider();
+    await reader?.cancel();
+  });
+
+  test("a failed long-term-memory mirror is reported without failing the landed turn (#25689)", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    recordTurnPair.mockImplementationOnce(async () => {
+      throw new Error("hyperdrive write stalled");
+    });
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const response = await service.stream(agent, rpc, h);
+    const body = await response.text();
+    expect(body).toContain("event: done");
+    expect(h.history().at(-1)).toMatchObject({ role: "assistant", content: "hello back" });
+    // The deferred mirror task must settle cleanly (failure reported, not thrown).
+    await Promise.all(h.background);
+  });
+
+  test("keeps a trusted transient prompt out of history and long-term memory", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.stream(agent, rpc, {
+      ...h,
+      trustedMessageRole: "system",
+      transientInput: true,
+    });
+    expect(await response.text()).toContain("event: done");
+
+    expect(lastStreamTurnInput).toMatchObject({
+      message: "hello",
+      messageRole: "system",
+    });
+    expect(h.history()).toEqual([
+      { role: "assistant", content: "prior" },
+      expect.objectContaining({ role: "assistant", content: "hello back" }),
+    ]);
+    expect(memoryPairs).toEqual([]);
   });
 
   test("no-model degradation remains a complete canonical SSE turn", async () => {
@@ -1049,7 +1404,7 @@ describe("SharedRuntimeChatService", () => {
     const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
     const frames = body
       .split("\n\n")
-      .filter(Boolean)
+      .filter((frame) => Boolean(frame) && !frame.startsWith(":"))
       .map((frame) => {
         const lines = frame.split("\n");
         return {
@@ -1073,7 +1428,7 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, harness());
     const frames = (await response.text())
       .split("\n\n")
-      .filter((frame) => frame.trim().length > 0)
+      .filter((frame) => frame.trim().length > 0 && !frame.startsWith(":"))
       .map((frame) => {
         const lines = frame.split("\n");
         const event = lines.find((line) => line.startsWith("event: "))?.slice("event: ".length);
@@ -1177,9 +1532,15 @@ describe("SharedRuntimeChatService", () => {
 
     const response = await service.stream(agent, keyedCancellationRpc, { ...h, turnClaims });
     const reader = response.body!.getReader();
+    const ready = await reader.read();
+    expect(new TextDecoder().decode(ready.value)).toBe(": ready\n\n");
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
     const cancellation = reader.cancel("barge-in");
+    expect(h.staged()).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     let guardTimer: ReturnType<typeof setTimeout> | undefined;
     const cancellationOutcome = await Promise.race([
       cancellation.then(() => "persisted" as const),
@@ -1354,10 +1715,15 @@ describe("SharedRuntimeChatService", () => {
     const service = new SharedRuntimeChatService();
     let attempts = 0;
     let history: TestMessage[] = [{ role: "assistant", content: "prior" }];
+    let staged: TestMessage[] = [];
+    const backgroundFailures: unknown[] = [];
     const h = {
       background: [] as Promise<unknown>[],
       historyStore: {
         load: async () => history,
+        stagePending: (_agentId: string, _channelId: string, messages: TestMessage[]) => {
+          staged = messages;
+        },
         save: async (_agentId: string, _channelId: string, next: TestMessage[]) => {
           history = next;
         },
@@ -1369,7 +1735,12 @@ describe("SharedRuntimeChatService", () => {
         },
       },
       executionCtx: {
-        waitUntil: (promise: Promise<unknown>) => h.background.push(promise),
+        waitUntil: (promise: Promise<unknown>) =>
+          h.background.push(
+            promise.catch((error: unknown) => {
+              backgroundFailures.push(error);
+            }),
+          ),
       },
     };
     let releaseProvider = () => {};
@@ -1388,13 +1759,20 @@ describe("SharedRuntimeChatService", () => {
     const response = await service.stream(agent, rpc, h);
     const reader = response.body!.getReader();
     await reader.read();
-    await expect(reader.cancel("first cancel")).rejects.toThrow("durable put failed");
+    await expect(reader.cancel("first cancel")).resolves.toBeUndefined();
+    expect(staged).toMatchObject([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "partial", interrupted: true },
+    ]);
     expect(history).toHaveLength(1);
 
     releaseProvider();
     await new Promise((resolve) => setTimeout(resolve, 0));
     await Promise.all(h.background);
 
+    expect(backgroundFailures).toContainEqual(
+      expect.objectContaining({ message: "durable put failed" }),
+    );
     expect(attempts).toBe(2);
     expect(history.at(-2)).toMatchObject({ role: "user", content: "hello" });
     expect(history.at(-1)).toMatchObject({
@@ -1477,9 +1855,86 @@ describe("SharedRuntimeChatService", () => {
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
     expect(settleCalls).toEqual([0.004]);
-    expect(second.result).toEqual(first.result);
+    expect(second.result).toEqual({
+      ...first.result,
+      timing: {
+        replayed: true,
+        durationMs: 0,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "none",
+        callsTruncated: false,
+        // A replay never ran a provider call, so nothing was clamped. The
+        // field is required on the receipt, so asserting it here keeps a
+        // replayed receipt structurally identical to a live one.
+        clamped: false,
+        calls: [],
+      },
+    });
     expect(second.id).toBe("client-key-1");
     expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("isolates concurrent rooms sharing a clientMessageId and replays within one room", async () => {
+    process.env.SHARED_MEMORY_TABLES_ENABLED = "true";
+    const service = new SharedRuntimeChatService();
+    const privateHarness = harness();
+    const voiceHarness = harness();
+    const privateClaims = memoryTurnClaims();
+    const voiceClaims = memoryTurnClaims();
+    const privateRpc = {
+      ...keyedRpc,
+      params: { ...keyedRpc.params, roomId: "  private-room  " },
+    };
+    const voiceRpc = {
+      ...keyedRpc,
+      params: { ...keyedRpc.params, roomId: "voice-room" },
+    };
+    const privateOptions = {
+      ...privateHarness,
+      turnClaims: privateClaims.store,
+      channel: { type: ChannelType.DM, source: "client_chat" },
+    };
+    const voiceOptions = {
+      ...voiceHarness,
+      turnClaims: voiceClaims.store,
+      channel: { type: ChannelType.VOICE_GROUP, source: "discord" },
+    };
+
+    await Promise.all([
+      service.bridge(agent, privateRpc, privateOptions),
+      service.bridge(agent, voiceRpc, voiceOptions),
+    ]);
+    await Promise.all([...privateHarness.background, ...voiceHarness.background]);
+
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+    expect(billCalls).toHaveLength(2);
+    expect(settleCalls).toHaveLength(2);
+    expect(memoryPairs).toHaveLength(2);
+    const expectedRoomKeys = new Set([
+      sharedRuntimeChannelId(agent.id, "private-room"),
+      sharedRuntimeChannelId(agent.id, "voice-room"),
+    ]);
+    expect(new Set(memoryScopes.map((scope) => scope.roomKey))).toEqual(expectedRoomKeys);
+    expect(
+      new Set(turnInputs.map((input) => (input.execution as { roomKey: string }).roomKey)),
+    ).toEqual(expectedRoomKeys);
+    const identities = turnInputs.map((input) => input.messageIds);
+    expect(identities[0]).not.toEqual(identities[1]);
+    expect(memoryPairs.map((pair) => pair.channel)).toEqual([
+      { type: ChannelType.DM, source: "client_chat" },
+      { type: ChannelType.VOICE_GROUP, source: "discord" },
+    ]);
+
+    const memoryCount = memoryPairs.length;
+    await service.bridge(agent, privateRpc, privateOptions);
+    await Promise.all(privateHarness.background);
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+    expect(billCalls).toHaveLength(2);
+    expect(settleCalls).toHaveLength(2);
+    expect(memoryPairs).toHaveLength(memoryCount);
   });
 
   test("a reused clientMessageId with different text is rejected before admission", async () => {
@@ -1532,6 +1987,90 @@ describe("SharedRuntimeChatService", () => {
     );
   });
 
+  test("a lifecycle cutoff freezes admission and model history across a pending retry", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const cutoff = 1_000;
+    const lifecycleRpc = {
+      ...keyedRpc,
+      params: {
+        ...keyedRpc.params,
+        text: "generate a call greeting",
+        clientMessageId: "twilio-call:CA1:opening",
+      },
+    };
+    await h.historyStore.merge(agent.id, "room-1", [
+      { id: "pre", role: "user", content: "pre-call private fact", createdAt: cutoff - 1 },
+      { id: "at", role: "assistant", content: "at-cutoff event", createdAt: cutoff },
+      { id: "post", role: "user", content: "post-cutoff secret", createdAt: cutoff + 1 },
+    ]);
+    const options = {
+      ...h,
+      turnClaims: store,
+      trustedMessageRole: "system" as const,
+      trustedHistoryCutoffAt: cutoff,
+    };
+
+    streamTurnError = new Error("provider connection lost");
+    await expect(service.stream(agent, lifecycleRpc, options)).rejects.toThrow(
+      "provider connection lost",
+    );
+    await h.historyStore.merge(agent.id, "room-1", [
+      {
+        id: "later-post",
+        role: "assistant",
+        content: "newer retry-visible secret",
+        createdAt: cutoff + 2,
+      },
+    ]);
+
+    streamTurnError = null;
+    const retried = await service.stream(agent, lifecycleRpc, options);
+    expect(await retried.text()).toContain("hello back");
+    await Promise.all(h.background);
+
+    expect(streamTurnInputs).toHaveLength(2);
+    for (const input of streamTurnInputs) {
+      expect(input.history).toEqual([
+        {
+          id: "pre",
+          role: "user",
+          content: "pre-call private fact",
+          createdAt: cutoff - 1,
+        },
+      ]);
+    }
+    const admissionPrompts = tokenEstimateInputs.filter((entries) =>
+      entries.some((entry) => entry.content === "generate a call greeting"),
+    );
+    expect(admissionPrompts).toHaveLength(2);
+    for (const prompt of admissionPrompts) {
+      expect(prompt.map((entry) => entry.content)).toEqual([
+        "Be useful.",
+        "pre-call private fact",
+        "generate a call greeting",
+      ]);
+    }
+  });
+
+  test("rejects a history cutoff without the trusted lifecycle role", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await expect(
+      service.bridge(agent, rpc, {
+        ...h,
+        trustedHistoryCutoffAt: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "INVALID_TRUSTED_HISTORY_CUTOFF",
+    });
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(turnCalls).toBe(0);
+  });
+
   test("a completed keyed stream turn replays its terminal frames without re-dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -1561,6 +2100,64 @@ describe("SharedRuntimeChatService", () => {
     expect(secondDone.fullText).toBe("hello back");
     expect(secondDone.messageId).toBe(firstDone.messageId);
     expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
+  });
+
+  test("never serializes internal grounding evidence into terminal or replay action results", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const observedAt = Date.now();
+    streamTurn = {
+      degraded: false,
+      internalGrounding: {
+        kind: "web_search",
+        query: "current BTC price",
+        provider: "parallel",
+        text: "RAW_PROVIDER_BODY_SHOULD_NOT_ESCAPE",
+        observedAt,
+        sourceUrls: ["https://example.com/btc"],
+        sources: [
+          {
+            url: "https://example.com/btc",
+            text: "RAW_SOURCE_EXCERPT_SHOULD_NOT_ESCAPE",
+          },
+        ],
+        truncated: false,
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "BTC is 70,000 USD. " };
+        yield {
+          type: "finish",
+          text: "BTC is 70,000 USD. Source: example.com — https://example.com/btc",
+          actionResults: [
+            {
+              success: true,
+              text: "BTC is 70,000 USD. Source: example.com — https://example.com/btc",
+              data: {
+                actionName: "WEB_SEARCH",
+                query: "current BTC price",
+                provider: "parallel",
+                observedAt,
+                sourceUrls: ["https://example.com/btc"],
+                groundingStatus: "verified",
+              },
+            },
+          ],
+        };
+      })(),
+    };
+
+    const options = { ...h, turnClaims: store };
+    const firstBody = await (await service.stream(agent, keyedRpc, options)).text();
+    const replayBody = await (await service.stream(agent, keyedRpc, options)).text();
+
+    for (const body of [firstBody, replayBody]) {
+      expect(body).toContain("https://example.com/btc");
+      expect(body).not.toContain("RAW_PROVIDER_BODY_SHOULD_NOT_ESCAPE");
+      expect(body).not.toContain("RAW_SOURCE_EXCERPT_SHOULD_NOT_ESCAPE");
+      expect(body).not.toContain("originalModelReply");
+      expect(body).not.toContain('"sources"');
+    }
   });
 
   test("claim completion failure retries to one canonical history, memory, and replay result", async () => {

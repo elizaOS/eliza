@@ -12,6 +12,37 @@ import {
   searchCatalogSkills,
 } from "./skill-catalog-client";
 
+function makeSkill(
+  slug: string,
+  stats: Partial<{
+    comments: number;
+    downloads: number;
+    installsAllTime: number;
+    installsCurrent: number;
+    stars: number;
+    versions: number;
+  }> = {},
+) {
+  return {
+    slug,
+    displayName: slug,
+    summary: null,
+    tags: {},
+    stats: {
+      comments: 0,
+      downloads: 0,
+      installsAllTime: 0,
+      installsCurrent: 0,
+      stars: 0,
+      versions: 1,
+      ...stats,
+    },
+    createdAt: 0,
+    updatedAt: 0,
+    latestVersion: null,
+  };
+}
+
 describe("searchCatalogSkills", () => {
   let catalogDir: string;
   let previousCatalogPath: string | undefined;
@@ -50,6 +81,13 @@ describe("searchCatalogSkills", () => {
     await refreshCatalog();
   });
 
+  async function writeCatalog(data: unknown[]): Promise<void> {
+    const catalogPath = process.env.ELIZA_SKILLS_CATALOG;
+    if (!catalogPath) throw new Error("catalog path not configured");
+    await fs.writeFile(catalogPath, JSON.stringify({ data }));
+    await refreshCatalog();
+  }
+
   afterEach(async () => {
     _resetCatalogCache();
     if (previousCatalogPath === undefined) {
@@ -79,5 +117,29 @@ describe("searchCatalogSkills", () => {
       "getTrendingSkills limit must be a non-negative safe integer",
     );
     await expect(getTrendingSkills(1)).resolves.toHaveLength(1);
+  });
+
+  it("breaks score/download ties by slug instead of leaving catalog order", async () => {
+    await writeCatalog([
+      makeSkill("zeta-tool", { downloads: 7 }),
+      makeSkill("alpha-tool", { downloads: 7 }),
+    ]);
+
+    const results = await searchCatalogSkills("tool", 10);
+
+    expect(results.map((r) => r.slug)).toEqual(["alpha-tool", "zeta-tool"]);
+  });
+
+  it("orders non-numeric download counts below real ones without NaN comparisons", async () => {
+    await writeCatalog([
+      makeSkill("broken-tool", {
+        downloads: "many" as unknown as number,
+      }),
+      makeSkill("good-tool", { downloads: 7 }),
+    ]);
+
+    const results = await searchCatalogSkills("tool", 10);
+
+    expect(results.map((r) => r.slug)).toEqual(["good-tool", "broken-tool"]);
   });
 });

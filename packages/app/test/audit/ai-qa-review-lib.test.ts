@@ -85,7 +85,7 @@ describe("aggregateVerdicts", () => {
   });
 });
 
-describe("gateFailures (debt ratchet + strict mode)", () => {
+describe("gateFailures (direct verdicts + strict mode)", () => {
   const results = [
     { key: "chat-desktop-light", verdict: "good", reasons: [] },
     {
@@ -113,12 +113,6 @@ describe("gateFailures (debt ratchet + strict mode)", () => {
       "files-mobile-light",
       "wallet-mobile-dark",
     ]);
-  });
-  it("the debt allowlist suppresses a known-broken capture (burn-down, not green-wash)", () => {
-    const f = gateFailures(results, {
-      debt: { "apps-desktop-light": "tracked" },
-    }).map((x) => x.key);
-    expect(f).toEqual(["files-mobile-light"]);
   });
   it("error failures carry their message as the reason", () => {
     const f = gateFailures([{ key: "x", error: "HTTP 529" }]);

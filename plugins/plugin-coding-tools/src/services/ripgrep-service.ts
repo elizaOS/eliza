@@ -167,7 +167,13 @@ function runRipgrep(
           signal?: NodeJS.Signals | null;
         };
         if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-          resolve({ mode, output, exitCode: 0, truncated: true });
+          resolve({
+            mode,
+            output:
+              "ripgrep output exceeded the 5 MB execution safety ceiling; narrow the query",
+            exitCode: -1,
+            truncated: false,
+          });
           return;
         }
         if (typeof err.code === "number") {

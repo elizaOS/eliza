@@ -22,6 +22,8 @@ const invalidatedSessionBatches: string[][] = [];
 const userDeleteCalls: string[] = [];
 const orgDeleteCalls: string[] = [];
 const lifecycleEvents: string[] = [];
+const repositoryReads: string[] = [];
+const deletedCacheKeys: string[] = [];
 
 let userApiKeys: Array<{ key_hash: string }> = [];
 let orgApiKeys: Array<{ key_hash: string }> = [];
@@ -29,6 +31,7 @@ let userRecord: Record<string, unknown> | undefined;
 let readUserRecordOverride: Record<string, unknown> | undefined;
 let useReadUserRecordOverride = false;
 let failNextBindingActivation = false;
+let failProjectionFenceKey: string | null = null;
 let listByOrganizationUsers: unknown[] = [];
 let listByUserError: Error | null = null;
 
@@ -38,6 +41,14 @@ mock.module("./inference-auth-cache", () => ({
   },
   invalidateInferenceSessionAuthContexts: async (ids: readonly string[]) => {
     invalidatedSessionBatches.push([...ids]);
+  },
+}));
+
+mock.module("./api-keys", () => ({
+  apiKeysService: {
+    deactivateByUserAndOrganization: async (userId: string, orgId: string) => {
+      lifecycleEvents.push(`api-keys-deactivate:${userId}:${orgId}`);
+    },
   },
 }));
 
@@ -70,6 +81,36 @@ mock.module("./inference-credential-revocation", () => ({
   },
 }));
 
+mock.module("./eliza-app/personal-delivery-projection-contract", () => ({
+  runWithBoundPersonalDeliveryProjectionFences: async <T>(
+    identities: Array<{ platform: string; platformUserId: string }>,
+    operation: () => Promise<T>,
+  ) => {
+    const keys = [
+      ...new Set(identities.map(({ platform, platformUserId }) => `${platform}:${platformUserId}`)),
+    ].sort();
+    const acquired: string[] = [];
+    try {
+      for (const key of keys) {
+        if (key === failProjectionFenceKey) {
+          lifecycleEvents.push(`projection-fence-failed:${key}`);
+          throw new Error("projection fence unavailable");
+        }
+        lifecycleEvents.push(`projection-fence:${key}`);
+        acquired.push(key);
+      }
+    } catch (error) {
+      for (const key of acquired) lifecycleEvents.push(`projection-release:${key}`);
+      throw error;
+    }
+    try {
+      return await operation();
+    } finally {
+      for (const key of acquired) lifecycleEvents.push(`projection-release:${key}`);
+    }
+  },
+}));
+
 mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
     listByUser: async (_userId: string) => {
@@ -84,9 +125,32 @@ mock.module("../../db/repositories", () => ({
   usersRepository: {
     findById: async (_id: string) =>
       useReadUserRecordOverride ? readUserRecordOverride : userRecord,
-    findByIdForWrite: async (_id: string) => userRecord,
-    findIdentityByUserIdForWrite: async () =>
-      userRecord?.steward_user_id ? { steward_user_id: userRecord.steward_user_id } : undefined,
+    findByIdForWrite: async (_id: string) => {
+      repositoryReads.push("user-for-write");
+      return userRecord;
+    },
+    findIdentityByUserIdForWrite: async () => {
+      repositoryReads.push("identity-for-write");
+      return userRecord?.steward_user_id
+        ? {
+            steward_user_id: userRecord.steward_user_id,
+            telegram_id: userRecord.telegram_id ?? null,
+            discord_id: userRecord.discord_id ?? null,
+            phone_number: userRecord.phone_number ?? null,
+          }
+        : undefined;
+    },
+    create: async (data: Record<string, unknown>) => {
+      userRecord = {
+        id: "u-fresh",
+        email: null,
+        wallet_address: null,
+        is_active: true,
+        ...data,
+      };
+      lifecycleEvents.push("user-create:u-fresh");
+      return userRecord;
+    },
     upsertStewardIdentity: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
       if (userRecord) userRecord.steward_user_id = stewardUserId;
@@ -104,6 +168,7 @@ mock.module("../../db/repositories", () => ({
     },
     delete: async (id: string) => {
       userDeleteCalls.push(id);
+      lifecycleEvents.push(`user-delete:${id}`);
       // Simulate the row (and its keys) being gone after delete so a test can
       // prove the key hashes were resolved BEFORE this call.
       userApiKeys = [];
@@ -128,7 +193,9 @@ mock.module("../cache/client", () => ({
   cache: {
     get: async () => null,
     set: async () => {},
-    del: async () => {},
+    del: async (key: string) => {
+      deletedCacheKeys.push(key);
+    },
   },
 }));
 
@@ -147,9 +214,12 @@ beforeEach(() => {
   readUserRecordOverride = undefined;
   useReadUserRecordOverride = false;
   failNextBindingActivation = false;
+  failProjectionFenceKey = null;
   listByOrganizationUsers = [];
   listByUserError = null;
   lifecycleEvents.length = 0;
+  repositoryReads.length = 0;
+  deletedCacheKeys.length = 0;
 });
 
 describe("UsersService — IAC invalidation on lifecycle", () => {
@@ -159,6 +229,9 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       organization_id: "o1",
       email: null,
       steward_user_id: "steward-u1",
+      telegram_id: "123456",
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
     userApiKeys = [{ key_hash: "uh1" }, { key_hash: "uh2" }];
 
@@ -167,6 +240,16 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 
     expect(invalidatedHashBatches).toEqual([["uh1", "uh2"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
+    expect(lifecycleEvents.slice(0, 3)).toEqual([
+      "projection-fence:discord:987654",
+      "projection-fence:phone:+15551234567",
+      "projection-fence:telegram:123456",
+    ]);
+    expect(lifecycleEvents.slice(-3)).toEqual([
+      "projection-release:discord:987654",
+      "projection-release:phone:+15551234567",
+      "projection-release:telegram:123456",
+    ]);
   });
 
   test("update without an is_active=false transition does NOT invalidate", async () => {
@@ -193,12 +276,18 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       role: "member",
       steward_user_id: "steward-u1",
       is_active: true,
+      telegram_id: "123456",
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
 
     const { usersService } = await import("./users");
     await usersService.update("u1", { organization_id: "o2" });
 
     expect(lifecycleEvents).toEqual([
+      "projection-fence:discord:987654",
+      "projection-fence:phone:+15551234567",
+      "projection-fence:telegram:123456",
       "subject:o1:u1:false:membership",
       "subject:o2:u1:false:membership",
       "session:o2:u1",
@@ -206,7 +295,160 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       "user-update:u1",
       "subject:o2:u1:true:account",
       "subject:o2:u1:true:membership",
+      "projection-release:discord:987654",
+      "projection-release:phone:+15551234567",
+      "projection-release:telegram:123456",
     ]);
+  });
+
+  test("identity update evicts both the old and new sender projections", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+      phone_number: "+15551234567",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { phone_number: "+15557654321" });
+
+    expect(lifecycleEvents).toEqual([
+      "projection-fence:phone:+15551234567",
+      "projection-fence:phone:+15557654321",
+      "user-update:u1",
+      "projection-release:phone:+15551234567",
+      "projection-release:phone:+15557654321",
+    ]);
+  });
+
+  test("projection fence failure aborts the lifecycle write before commit", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+      phone_number: "+15551234567",
+      is_active: true,
+    };
+    failProjectionFenceKey = "phone:+15551234567";
+
+    const { usersService } = await import("./users");
+    await expect(usersService.update("u1", { is_active: false })).rejects.toThrow(
+      "projection fence unavailable",
+    );
+
+    expect(userRecord.is_active).toBe(true);
+    expect(lifecycleEvents).toEqual(["projection-fence-failed:phone:+15551234567"]);
+  });
+
+  test("fresh Steward signup initializes only its projection and active binding", async () => {
+    const { usersService } = await import("./users");
+    const user = await usersService.createFreshStewardSignupUser({
+      email: "fresh@example.com",
+      organization_id: "o1",
+      steward_user_id: "steward-new",
+    });
+
+    await usersService.initializeFreshStewardIdentity({
+      user,
+      stewardUserId: "steward-new",
+    });
+
+    expect(lifecycleEvents).toEqual([
+      "user-create:u-fresh",
+      "identity-upsert:u-fresh:steward-new",
+      "session-binding:o1:u-fresh:steward-new:true",
+    ]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects active-binding failure", async () => {
+    const { usersService } = await import("./users");
+    const user = await usersService.createFreshStewardSignupUser({
+      email: "fresh@example.com",
+      organization_id: "o1",
+      steward_user_id: "steward-new",
+    });
+    failNextBindingActivation = true;
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user,
+        stewardUserId: "steward-new",
+      }),
+    ).rejects.toThrow("binding activation unavailable");
+
+    expect(lifecycleEvents).toEqual([
+      "user-create:u-fresh",
+      "identity-upsert:u-fresh:steward-new",
+      "session-binding:o1:u-fresh:steward-new:true",
+    ]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects a missing organization", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: null,
+          steward_user_id: "steward-new",
+        },
+        stewardUserId: "steward-new",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects an empty canonical subject", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: "o1",
+          steward_user_id: "",
+        },
+        stewardUserId: "",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
+  });
+
+  test("fresh Steward identity initialization rejects a canonical subject mismatch", async () => {
+    const { usersService } = await import("./users");
+
+    await expect(
+      usersService.initializeFreshStewardIdentity({
+        user: {
+          id: "u-fresh",
+          organization_id: "o1",
+          steward_user_id: "steward-canonical",
+        },
+        stewardUserId: "steward-other",
+      }),
+    ).rejects.toMatchObject({ code: "FRESH_STEWARD_IDENTITY_INPUT_INVALID" });
+
+    expect(lifecycleEvents).toEqual([]);
+    expect(repositoryReads).toEqual([]);
+    expect(deletedCacheKeys).toEqual([]);
+    expect(invalidatedSessionBatches).toEqual([]);
   });
 
   test("Steward identity upsert fences the prior session generation before relinking", async () => {
@@ -386,6 +628,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       organization_id: null,
       email: null,
       steward_user_id: "steward-u1",
+      telegram_id: "123456",
+      phone_number: "+15551234567",
     };
     userApiKeys = [{ key_hash: "uh1" }];
 
@@ -396,6 +640,13 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     // The row is wiped on delete; a non-empty batch proves resolution happened first.
     expect(invalidatedHashBatches).toEqual([["uh1"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
+    expect(lifecycleEvents).toEqual([
+      "projection-fence:phone:+15551234567",
+      "projection-fence:telegram:123456",
+      "user-delete:u1",
+      "projection-release:phone:+15551234567",
+      "projection-release:telegram:123456",
+    ]);
   });
 
   test("delete fences the primary organization when the read replica lags", async () => {
@@ -425,6 +676,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       role: "member",
       steward_user_id: "steward-u1",
       is_active: true,
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
     useReadUserRecordOverride = true;
     readUserRecordOverride = undefined;
@@ -435,9 +688,13 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     expect(detached.organization_id).toBe("o2");
     expect(detached.role).toBe("owner");
     expect(lifecycleEvents).toEqual([
+      "projection-fence:discord:987654",
+      "projection-fence:phone:+15551234567",
       "subject:o1:u1:false:membership",
       "user-update:u1",
       "api-keys-deactivate:u1:o1",
+      "projection-release:discord:987654",
+      "projection-release:phone:+15551234567",
     ]);
   });
 

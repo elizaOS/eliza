@@ -31,12 +31,13 @@ export const VIEW_CASES: ViewCase[] = (
     // Shipped plugin views are GUI-only. The shared viewType contract still
     // accepts future modalities, but this smoke matrix tracks what the app can
     // render today.
-    ["cloud", "gui", "/cloud"],
+    // The cloud control plane is agentless until a managed agent is selected,
+    // so it deliberately has no assistant pill/composer at its root.
+    ["cloud", "gui", "/cloud", { shellPill: "suppressed" }],
     ["contacts", "gui", "/contacts"],
     ["focus", "gui", "/focus", { minVisibleTextLength: 4 }],
     ["calendar", "gui", "/calendar"],
     ["computer-use-sessions", "gui", "/computer-use-sessions"],
-    ["documents", "gui", "/documents"],
     ["finances", "gui", "/finances"],
     ["goals", "gui", "/goals"],
     ["lifeops-live-test", "gui", "/lifeops-live-test"],
@@ -45,6 +46,7 @@ export const VIEW_CASES: ViewCase[] = (
     ["relationships", "gui", "/relationships"],
     ["todos", "gui", "/todos"],
     ["messages", "gui", "/messages"],
+    ["maps", "gui", "/maps"],
     ["phone", "gui", "/phone"],
     ["wallet", "gui", "/wallet"],
     ["views-manager", "gui", "/views"],

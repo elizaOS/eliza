@@ -46,7 +46,6 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
-import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { App } from "../lib/apps";
@@ -313,7 +312,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       {showKey && displayApiKey && (
         <div className="p-4 rounded-sm bg-card border border-border">
           <div className="flex items-start gap-3">
-            <Key className="h-5 w-5 text-muted mt-0.5 shrink-0" />
+            <Key className="size-5 text-muted mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-txt mb-2">
                 {t("cloud.apps.overview.apiKeyOnce", {
@@ -357,7 +356,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   defaultValue: "Inactive",
                 })
           }
-          icon={<Activity className="h-5 w-5" />}
+          icon={<Activity className="size-5" />}
           accent={app.is_active ? "emerald" : "red"}
         />
         <DashboardStatCard
@@ -368,7 +367,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             (app.deployment_status || "draft").charAt(0).toUpperCase() +
             (app.deployment_status || "draft").slice(1)
           }
-          icon={<Rocket className="h-5 w-5" />}
+          icon={<Rocket className="size-5" />}
           accent="white"
         />
         <DashboardStatCard
@@ -376,7 +375,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             defaultValue: "Total Users",
           })}
           value={app.total_users?.toLocaleString("en-US") || "0"}
-          icon={<Shield className="h-5 w-5" />}
+          icon={<Shield className="size-5" />}
           accent="violet"
         />
         <DashboardStatCard
@@ -384,7 +383,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             defaultValue: "Total Requests",
           })}
           value={app.total_requests?.toLocaleString("en-US") || "0"}
-          icon={<TrendingUp className="h-5 w-5" />}
+          icon={<TrendingUp className="size-5" />}
           accent="orange"
         />
       </div>
@@ -393,7 +392,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       <div className="bg-card rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-            <Rocket className="h-4 w-4 text-muted" />
+            <Rocket className="size-4 text-muted" />
             {t("cloud.apps.overview.deployment", {
               defaultValue: "Deployment",
             })}
@@ -419,7 +418,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           onSubmit={handleDeploy}
         >
           <label className="space-y-1.5" htmlFor={deployRepoInputId}>
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+            <span className="text-xs font-medium uppercase tracking-normal text-neutral-500">
               {t("cloud.apps.overview.deployRepoUrl", {
                 defaultValue: "Repository URL",
               })}
@@ -431,11 +430,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="https://github.com/org/app.git"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
             />
           </label>
           <label className="space-y-1.5" htmlFor={deployRefInputId}>
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+            <span className="text-xs font-medium uppercase tracking-normal text-neutral-500">
               {t("cloud.apps.overview.deployCommitSha", {
                 defaultValue: "Commit SHA",
               })}
@@ -447,20 +446,21 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="40-character SHA"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="font-mono border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
+              className="font-mono"
             />
           </label>
           <div className="flex items-end">
             <Button
-              variant="ghost"
+              variant="surface"
               type="submit"
               disabled={deploymentButtonDisabled}
-              className="h-9 w-full min-w-28 text-xs text-neutral-200 bg-surface hover:bg-bg-hover flex items-center justify-center gap-1 transition-colors disabled:opacity-50"
+              size="sm"
             >
               {isDeploying || isPollingDeployment || deploymentInProgress ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="size-3 animate-spin" />
               ) : (
-                <Rocket className="h-3 w-3" />
+                <Rocket className="size-3" />
               )}
               {deploymentInProgress || isPollingDeployment
                 ? t("cloud.apps.overview.deploying", {
@@ -479,7 +479,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             className="space-y-1.5 md:col-span-2"
             htmlFor={deployDockerfileInputId}
           >
-            <span className="text-[11px] font-medium uppercase tracking-normal text-neutral-500">
+            <span className="text-xs font-medium uppercase tracking-normal text-neutral-500">
               {t("cloud.apps.overview.deployDockerfile", {
                 defaultValue: "Dockerfile path",
               })}
@@ -491,12 +491,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               placeholder="Dockerfile"
               density="compact"
               hasError={Boolean(deployInputError)}
-              className="border-border bg-surface text-txt placeholder:text-neutral-600"
+              variant="form"
             />
           </label>
         </form>
         {deployInputError && (
-          <p className="text-xs text-red-300" role="alert">
+          <p className="text-xs text-destructive" role="alert">
             {deployInputError}
           </p>
         )}
@@ -507,21 +507,16 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-card rounded-sm p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-              <Key className="h-4 w-4 text-muted" />
+              <Key className="size-4 text-muted" />
               {t("cloud.apps.overview.apiKey", { defaultValue: "API Key" })}
             </h3>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  disabled={isRegenerating}
-                  className="text-xs text-neutral-400 hover:text-txt flex items-center gap-1 transition-colors"
-                >
+                <Button variant="ghost" type="button" disabled={isRegenerating}>
                   {isRegenerating ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin" />
                   ) : (
-                    <RefreshCw className="h-3 w-3" />
+                    <RefreshCw className="size-3" />
                   )}
                   {t("cloud.apps.overview.regenerate", {
                     defaultValue: "Regenerate",
@@ -570,14 +565,14 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <>
                   <Button
                     variant="ghost"
+                    size="icon-sm"
                     type="button"
                     onClick={() => setShowKey(!showKey)}
-                    className="p-1.5 hover:bg-bg-hover rounded-sm transition-colors"
                   >
                     {showKey ? (
-                      <EyeOff className="h-3.5 w-3.5 text-muted" />
+                      <EyeOff className="size-3.5 text-muted" />
                     ) : (
-                      <Eye className="h-3.5 w-3.5 text-muted" />
+                      <Eye className="size-3.5 text-muted" />
                     )}
                   </Button>
                   <CopyButton
@@ -600,7 +595,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         {/* Basic Info Card */}
         <div className="bg-card rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-            <Globe className="h-4 w-4 text-muted" />
+            <Globe className="size-4 text-muted" />
             {t("cloud.apps.overview.appInformation", {
               defaultValue: "App Information",
             })}
@@ -634,7 +629,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 label="Contact"
                 value={app.contact_email}
                 href={`mailto:${app.contact_email}`}
-                icon={<Mail className="h-3 w-3" />}
+                icon={<Mail className="size-3" />}
               />
             )}
             {app.last_deployed_at && (
@@ -662,7 +657,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-sm bg-surface">
-                <Coins className="h-5 w-5 text-muted" />
+                <Coins className="size-5 text-muted" />
               </div>
               <div>
                 <h3 className="text-sm font-medium text-txt">Monetization</h3>
@@ -676,24 +671,18 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Badge
-                className={cn(
-                  monetizationEnabled
-                    ? "bg-green-500/20 text-green-400 border-green-500/30"
-                    : "bg-surface text-muted border-border",
-                )}
-              >
+              <Badge variant={monetizationEnabled ? "default" : "outline"}>
                 {monetizationEnabled ? "Enabled" : "Disabled"}
               </Badge>
               <Button
                 variant="ghost"
+                size="icon-sm"
                 type="button"
                 onClick={() =>
                   navigate(`/cloud/apps/${app.id}?tab=monetization`)
                 }
-                className="p-2 hover:bg-bg-hover rounded-sm transition-colors"
               >
-                <ChevronRight className="h-4 w-4 text-neutral-400" />
+                <ChevronRight className="size-4 text-neutral-400" />
               </Button>
             </div>
           </div>
@@ -704,14 +693,13 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       <div className="bg-card rounded-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
-            <Shield className="h-4 w-4 text-muted" />
+            <Shield className="size-4 text-muted" />
             Allowed Origins
           </h3>
           <Button
             variant="ghost"
             type="button"
             onClick={() => navigate(`/cloud/apps/${app.id}?tab=settings`)}
-            className="text-xs text-neutral-400 hover:text-txt transition-colors"
           >
             Edit
           </Button>
@@ -722,10 +710,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="flex flex-wrap gap-2">
           {allowedOrigins.length > 0 ? (
             allowedOrigins.map((origin) => (
-              <Badge
-                key={origin}
-                className="bg-surface text-muted border-border"
-              >
+              <Badge key={origin} variant="outline">
                 {origin}
               </Badge>
             ))
@@ -769,7 +754,7 @@ function InfoRow({
           {icon}
           <span className="truncate">{value}</span>
           {!href.startsWith("mailto:") && (
-            <ExternalLink className="h-3 w-3 shrink-0" />
+            <ExternalLink className="size-3 shrink-0" />
           )}
         </a>
       ) : (

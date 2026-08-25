@@ -1,5 +1,5 @@
 /** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
-import { and, eq, exists, gt, isNull, lt, or } from "drizzle-orm";
+import { and, eq, exists, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys } from "../schemas/api-keys";
 import {
@@ -192,11 +192,57 @@ export class CliAuthSessionsRepository {
   }
 
   /**
-   * Deletes all expired CLI auth sessions.
+   * Reaps every expired CLI auth session and revokes the orphan credentials
+   * they minted, in one primary transaction.
+   *
+   * An abandoned sign-in ends `authenticated` with `consumed_at = NULL`: the
+   * key row exists and is active, but its plaintext was never revealed to any
+   * caller (`getAndClearApiKey` is the only reveal path and it stamps
+   * `consumed_at`). Deleting such a session without touching its key would
+   * strand a live credential nobody holds — the #22551 orphan population — so
+   * the key is deactivated in the same transaction that removes the session.
+   * Consumed sessions leave their keys alone: that credential was handed to a
+   * real CLI and lives out its own `expires_at`.
+   *
+   * Returns the revoked keys' hashes so the caller can invalidate auth caches
+   * AFTER commit (write-then-invalidate; a pre-commit invalidation could be
+   * repopulated from the not-yet-revoked row).
    */
-  async deleteExpiredSessions(): Promise<void> {
-    const now = new Date();
-    await dbWrite.delete(cliAuthSessions).where(lt(cliAuthSessions.expires_at, now));
+  async reapExpiredSessions(now: Date = new Date()): Promise<{
+    deletedSessions: number;
+    revokedOrphanKeys: { id: string; key_hash: string }[];
+  }> {
+    return await dbWrite.transaction(async (tx) => {
+      const orphanKeyIds = tx
+        .select({ id: cliAuthSessions.api_key_id })
+        .from(cliAuthSessions)
+        .where(
+          and(
+            lt(cliAuthSessions.expires_at, now),
+            isNull(cliAuthSessions.consumed_at),
+            isNotNull(cliAuthSessions.api_key_id),
+          ),
+        );
+
+      const revokedOrphanKeys = await tx
+        .update(apiKeys)
+        .set({ is_active: false, updated_at: now })
+        .where(
+          and(
+            inArray(apiKeys.id, orphanKeyIds),
+            eq(apiKeys.is_active, true),
+            isNull(apiKeys.deleted_at),
+          ),
+        )
+        .returning({ id: apiKeys.id, key_hash: apiKeys.key_hash });
+
+      const deleted = await tx
+        .delete(cliAuthSessions)
+        .where(lt(cliAuthSessions.expires_at, now))
+        .returning({ id: cliAuthSessions.id });
+
+      return { deletedSessions: deleted.length, revokedOrphanKeys };
+    });
   }
 }
 

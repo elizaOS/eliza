@@ -97,3 +97,43 @@ describe("sanitizeSpeechText", () => {
 		);
 	});
 });
+
+describe("sanitizeSpeechText additional coverage", () => {
+	it("strips markdown links to text", () => {
+		expect(sanitizeSpeechText("Check [Eliza](https://elizaos.ai) docs")).toBe(
+			"Check Eliza docs",
+		);
+	});
+
+	it("strips code fences and inline code to inner text", () => {
+		expect(sanitizeSpeechText("Use ```js\nconsole.log(1)\n``` now")).toBe(
+			"Use now",
+		);
+		expect(sanitizeSpeechText("Run `npm test` please")).toBe(
+			"Run npm test please",
+		);
+	});
+
+	it("strips raw HTML tags", () => {
+		expect(sanitizeSpeechText("Hello <b>bold</b> world")).toBe(
+			"Hello bold world",
+		);
+		expect(sanitizeSpeechText('Text <span class="x">span</span> end')).toBe(
+			"Text span end",
+		);
+	});
+
+	it("strips URLs", () => {
+		expect(sanitizeSpeechText("Visit https://example.com/path?q=1 now")).toBe(
+			"Visit now",
+		);
+		expect(sanitizeSpeechText("See http://test.com and https://a.com/b")).toBe(
+			"See and",
+		);
+	});
+
+	it("normalizes punctuation and whitespace", () => {
+		expect(sanitizeSpeechText("Hello,,  world!!")).toBe("Hello, world!");
+		expect(sanitizeSpeechText("Wait   \n\n  what???")).toBe("Wait what?");
+	});
+});

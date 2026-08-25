@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  createPassthroughStreamMeter,
   type PassthroughStreamMilestones,
   readPassthroughStreamTail,
 } from "../inference-passthrough";
@@ -133,15 +134,27 @@ describe("readPassthroughStreamTail — milestones (#16079)", () => {
     expect(tail.milestones.firstEventMs).toBe(4);
   });
 
-  test("malformed frames never produce milestones", async () => {
+  test("a malformed data event still marks firstEvent at receipt (#20032)", async () => {
     const clock = scriptedClock(0, 2);
     const tail = await readWithClock(
       [`data: not-json\n\n`, `: comment line\n\n`, `data: [DONE]\n\n`],
       0,
       clock,
     );
-    expect(tail.milestones.firstEventMs).toBeNull();
+    // The upstream verifiably emitted an event at tick 2 even though its
+    // payload never parsed; only content/reasoning/usage stay unobserved.
+    expect(tail.milestones.firstEventMs).toBe(2);
+    expect(tail.milestones.firstContentMs).toBeNull();
+    expect(tail.milestones.firstReasoningMs).toBeNull();
     expect(tail.milestones.completionMs).toBe(6);
+  });
+
+  test("a [DONE]-only stream marks firstEvent and completion at the same receipt (#20032)", async () => {
+    const clock = scriptedClock(0, 4);
+    const tail = await readWithClock([`data: [DONE]\n\n`], 0, clock);
+    expect(tail.milestones.firstEventMs).toBe(4);
+    expect(tail.milestones.completionMs).toBe(4);
+    expect(tail.sawDone).toBe(true);
   });
 
   test("abort leaves completion null and observed partial milestones intact", async () => {
@@ -175,26 +188,49 @@ describe("readPassthroughStreamTail — milestones (#16079)", () => {
     expect(tail.milestones.completionMs).toBeNull();
   });
 
-  test("milestones default to null for a stream with no data frames", async () => {
+  test("milestones stay all-null for a stream with no data frames (#20032)", async () => {
     const tail = await readPassthroughStreamTail(sseStream(["event: ping\n\n"]), undefined, {
       startedAt: 0,
       now: () => 42,
     });
+    // A close without [DONE] is a truncated stream, not a completion.
     const allNull: PassthroughStreamMilestones = {
       firstEventMs: null,
       firstReasoningMs: null,
       firstContentMs: null,
-      completionMs: 42,
+      completionMs: null,
     };
     expect(tail.milestones).toEqual(allNull);
+    expect(tail.sawDone).toBe(false);
   });
 
-  test("defaults: startedAt/now resolve to performance.now when omitted", async () => {
+  test("defaults: startedAt/now resolve to a live clock when omitted", async () => {
     const tail = await readPassthroughStreamTail(sseStream([`data: [DONE]\n\n`]));
-    // No crash, milestone fields present and completion observed.
-    expect(tail.milestones.firstEventMs).toBeNull();
+    // No crash, first event and completion observed at [DONE] receipt.
+    expect(tail.milestones.firstEventMs).not.toBeNull();
     expect(typeof tail.milestones.completionMs).toBe("number");
     expect(tail.milestones.completionMs).not.toBeNull();
+  });
+
+  test("default clock survives a receiver-enforcing performance.now (#20032)", async () => {
+    // workerd and browsers throw "Illegal invocation" when performance.now is
+    // called without its receiver; the old default stored the unbound method.
+    const original = globalThis.performance;
+    const strict = {
+      now(this: unknown) {
+        if (this !== strict) throw new TypeError("Illegal invocation");
+        return 5;
+      },
+    };
+    (globalThis as { performance: unknown }).performance = strict;
+    try {
+      const tail = await readPassthroughStreamTail(sseStream([`data: [DONE]\n\n`]));
+      expect(tail.readError).toBeNull();
+      expect(tail.milestones.completionMs).toBe(0);
+      expect(tail.sawDone).toBe(true);
+    } finally {
+      (globalThis as { performance: unknown }).performance = original;
+    }
   });
 });
 
@@ -299,5 +335,69 @@ describe("readPassthroughStreamTail — RP review round 1 hardening (#16079)", (
     expect(tail.sawDone).toBe(true);
     expect(tail.sawErrorFrame).toBe(true);
     expect(tail.milestones.completionMs).toBeNull();
+  });
+});
+
+describe("truthful terminal state and push meter (#20032)", () => {
+  test("clean EOF without [DONE] is truncation: no completion, sawDone=false", async () => {
+    const clock = scriptedClock(0, 10);
+    const tail = await readWithClock(
+      [
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+      ],
+      0,
+      clock,
+    );
+    expect(tail.readError).toBeNull();
+    expect(tail.sawDone).toBe(false);
+    expect(tail.deliveredText).toBe("Hi");
+    expect(tail.milestones.firstContentMs).toBe(10);
+    expect(tail.milestones.completionMs).toBeNull();
+  });
+
+  test("meter observes chunks split at arbitrary byte boundaries", () => {
+    let t = 0;
+    const meter = createPassthroughStreamMeter({ startedAt: 0, now: () => ++t });
+    const frame = `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}\n\ndata: [DONE]\n\n`;
+    const bytes = encoder.encode(frame);
+    // Split mid-multibyte-safe ASCII payload into 7-byte chunks.
+    for (let i = 0; i < bytes.length; i += 7) {
+      meter.observe(bytes.slice(i, i + 7));
+    }
+    const tail = meter.finish();
+    expect(tail.deliveredText).toBe("Hello");
+    expect(tail.usage).toEqual({ inputTokens: 1, outputTokens: 2, totalTokens: 3 });
+    expect(tail.sawDone).toBe(true);
+    expect(tail.milestones.firstEventMs).not.toBeNull();
+    expect(tail.milestones.completionMs).not.toBeNull();
+    expect(tail.readError).toBeNull();
+  });
+
+  test("meter terminal calls are first-wins and stable", () => {
+    const meter = createPassthroughStreamMeter({ startedAt: 0, now: () => 1 });
+    meter.observe(encoder.encode(`data: [DONE]\n\n`));
+    const finished = meter.finish();
+    // A later fail (e.g. a cancel racing EOF) must not rewrite the settled tail.
+    const failed = meter.fail(new Error("late cancel"));
+    expect(failed).toBe(finished);
+    expect(failed.readError).toBeNull();
+    expect(failed.sawDone).toBe(true);
+    // Chunks after a terminal are ignored.
+    meter.observe(encoder.encode(`data: {"error":{"message":"late"}}\n\n`));
+    expect(finished.sawErrorFrame).toBe(false);
+  });
+
+  test("meter fail records the reason and a finish cannot fabricate completion after it", () => {
+    const meter = createPassthroughStreamMeter({ startedAt: 0, now: () => 1 });
+    meter.observe(
+      encoder.encode(
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n`,
+      ),
+    );
+    const reason = new Error("client disconnected");
+    const tail = meter.fail(reason);
+    expect(tail.readError).toBe(reason);
+    expect(tail.deliveredText).toBe("partial");
+    expect(meter.finish().milestones.completionMs).toBeNull();
   });
 });

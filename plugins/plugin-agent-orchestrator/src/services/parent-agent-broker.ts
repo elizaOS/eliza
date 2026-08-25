@@ -8,6 +8,8 @@
  * on a follow-up turn; fixed-cost self-spend commands may auto-authorize within
  * the configured spend cap (see spend-allowance.ts), while variable-cost ones
  * always demand confirmation because a child-declared price cannot be trusted.
+ * Cloud command HTTP hops honor `PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS` so a hung
+ * Cloud API cannot stall the parent-agent broker.
  */
 import type {
   HandlerCallback,
@@ -15,7 +17,7 @@ import type {
   Logger,
   Memory,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import { requireConfirmation, toWellFormedUnicode } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -30,11 +32,11 @@ import {
 import type { SessionInfo } from "./types.js";
 
 const LOG_PREFIX = "[ParentAgentBroker]";
-const REQUEST_MAX_CHARS = 4000;
 const ACTION_LIST_LIMIT_DEFAULT = 60;
 const ACTION_LIST_LIMIT_MAX = 200;
-const CLOUD_RESPONSE_MAX_CHARS = 8000;
 const DEFAULT_CLOUD_BASE_URL = "https://api.eliza.app";
+/** Bound for Cloud command `fetch` so a hung peer cannot stall the broker. */
+export const PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS = 30_000;
 
 export const PARENT_AGENT_BROKER_SLUG = "parent-agent";
 
@@ -44,7 +46,7 @@ export const PARENT_AGENT_BROKER_MANIFEST_ENTRY = {
   description:
     "Task-scoped bridge for asking the running parent Eliza agent to use its loaded capabilities, actions, providers, connectors, and confirmation flow.",
   guidance:
-    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
+    'Use when workspace context is not enough and the parent agent should do something with its own capabilities. Examples: `USE_SKILL parent-agent {"request":"Find the next free 30 minute slot on my calendar"}`, `USE_SKILL parent-agent {"mode":"list-actions","query":"github"}`, `USE_SKILL parent-agent {"mode":"list-cloud-commands"}`, or `USE_SKILL parent-agent {"mode":"cloud-command","command":"apps.list"}`. For a repository-editing request that needs the parent coding planner and its mutation-verification contract, explicitly add `"executionMode":"coding"`; this selects planning behavior only and never grants authorization or bypasses role, confirmation, connector, or action gates. Mutating, paid, or destructive Cloud commands require an explicit user yes on a follow-up turn (not LLM `confirmed`). Fixed-cost self-spend commands such as `containers.create` may auto-authorize within the configured agent spend cap; variable-cost self-spend commands such as `domains.buy`, `media.*`, `promote.*`, and `advertising.*` always require human confirmation because the server-quoted price cannot be trusted from child-declared `params.spendEstimateUsd`. To delegate part of your work to a NEW parallel sub-agent on this same task, use `USE_SKILL parent-agent {"mode":"spawn-sub-agent","task":"<instruction for the child>","label":"<optional name>"}` — it spawns a child sub-agent (bounded nesting depth) whose progress shows in this task\'s thread; keep working, do not block waiting on it.',
 } as const;
 
 /**
@@ -95,6 +97,8 @@ interface CloudCommandDefinition {
 
 interface ParentAgentBrokerArgs {
   mode: ParentAgentMode;
+  /** Planner execution profile only; never an authorization signal. */
+  executionMode: "normal" | "coding";
   request?: string;
   query?: string;
   limit: number;
@@ -684,6 +688,22 @@ export interface ParentAgentBrokerRequest {
   args: unknown;
 }
 
+type ParentMessageService = NonNullable<IAgentRuntime["messageService"]>;
+type ParentMessageProcessingResult = Awaited<
+  ReturnType<ParentMessageService["handleMessage"]>
+>;
+
+/** Typed broker boundary returned to child-session dispatchers. */
+export interface ParentAgentBrokerResult {
+  success: boolean;
+  text: string;
+  data?: Record<string, unknown>;
+  /** Authoritative parent runtime failure, independent of delivered prose. */
+  terminalFailure?: NonNullable<
+    ParentMessageProcessingResult["terminalFailure"]
+  >;
+}
+
 function getLogger(runtime: IAgentRuntime): Logger {
   return runtime.logger;
 }
@@ -735,6 +755,7 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return {
       mode: "ask",
+      executionMode: "normal",
       limit: ACTION_LIST_LIMIT_DEFAULT,
     };
   }
@@ -751,6 +772,10 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
       : undefined;
   return {
     mode: normalizeMode(record.mode),
+    executionMode:
+      normalizeString(record.executionMode)?.toLowerCase() === "coding"
+        ? "coding"
+        : "normal",
     request,
     query: normalizeString(record.query),
     limit: normalizeLimit(record.limit),
@@ -773,10 +798,8 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   };
 }
 
-function truncate(value: string, maxChars: number): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxChars) return compact;
-  return `${compact.slice(0, maxChars - 3).trimEnd()}...`;
+export function normalizePromptText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
 function actionDescription(action: {
@@ -823,7 +846,7 @@ function listActions(
 
   const lines = filtered.map((action) => {
     const mode = action.mode ? ` mode=${action.mode}` : "";
-    const desc = truncate(actionDescription(action), 180);
+    const desc = normalizePromptText(actionDescription(action));
     return `- ${action.name}${mode}${desc ? `: ${desc}` : ""}`;
   });
   return [
@@ -1299,22 +1322,39 @@ async function runCloudCommand(args: {
   }
 
   const body = cloudBody(definition, requestParams);
-  const response = await fetch(built.url, {
-    method: definition.method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "X-API-Key": apiKey,
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(built.url, {
+      method: definition.method,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "X-API-Key": apiKey,
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(PARENT_AGENT_CLOUD_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // error-policy:J1 hung Cloud command hop is a failed command, never a hang
+    return {
+      success: false,
+      text: `Eliza Cloud command ${definition.command} failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      data: {
+        actionName: PARENT_AGENT_BROKER_SLUG,
+        mode: "cloud-command",
+        command: definition.command,
+      },
+    };
+  }
   const payload = await responsePayload(response);
   const payloadText =
     typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
   const text = [
     `Eliza Cloud command ${definition.command} ${response.ok ? "succeeded" : "failed"} (${response.status}).`,
     "",
-    truncate(payloadText, CLOUD_RESPONSE_MAX_CHARS),
+    payloadText,
   ].join("\n");
 
   // Bind the created Cloud app to the task's Project so the next task on this
@@ -1403,10 +1443,16 @@ async function askParentAgent(request: {
   sessionId: string;
   session?: SessionInfo;
   text: string;
-}): Promise<string> {
+  executionMode: "normal" | "coding";
+}): Promise<{
+  text: string;
+  terminalFailure?: NonNullable<
+    ParentMessageProcessingResult["terminalFailure"]
+  >;
+}> {
   const messageService = request.runtime.messageService;
   if (!messageService?.handleMessage) {
-    return "Parent message service is not available in this runtime.";
+    return { text: "Parent message service is not available in this runtime." };
   }
 
   const captured: string[] = [];
@@ -1443,6 +1489,9 @@ async function askParentAgent(request: {
     callback,
     {
       continueAfterActions: true,
+      // This changes planner/tool behavior only. The normal action validation,
+      // role gates, confirmation policy, and connector authority still apply.
+      ...(request.executionMode === "coding" ? { codingMode: true } : {}),
     },
   );
 
@@ -1451,10 +1500,18 @@ async function askParentAgent(request: {
       ? result.responseContent.text.trim()
       : "";
   const capturedText = captured.join("\n").trim();
-  if (resultText) return resultText;
-  if (capturedText) return capturedText;
-  if (result.reason) return `Parent agent did not respond: ${result.reason}`;
-  return "Parent agent completed the request without visible output.";
+  if (result.terminalFailure) {
+    return {
+      text: result.terminalFailure.message,
+      terminalFailure: result.terminalFailure,
+    };
+  }
+  if (resultText) return { text: resultText };
+  if (capturedText) return { text: capturedText };
+  if (result.reason) {
+    return { text: `Parent agent did not respond: ${result.reason}` };
+  }
+  return { text: "Parent agent completed the request without visible output." };
 }
 
 const ORCHESTRATOR_TASK_SERVICE_NAME = "ORCHESTRATOR_TASK_SERVICE";
@@ -1474,8 +1531,13 @@ interface SpawnCapableTaskService {
       framework?: string;
       workdir?: string;
       nestingDepth?: number;
+      completionRole?: "coordinator" | "contributor";
+      parentSessionId?: string;
+      requiredForTaskCompletion?: boolean;
     },
-  ): Promise<unknown>;
+  ): Promise<{
+    sessions?: Array<{ sessionId: string; parentSessionId?: string | null }>;
+  } | null>;
 }
 
 /**
@@ -1541,6 +1603,9 @@ async function runSpawnSubAgent(request: {
       framework: request.framework,
       workdir: request.workdir,
       nestingDepth: childDepth,
+      completionRole: "contributor",
+      parentSessionId: request.sessionId,
+      requiredForTaskCompletion: true,
     });
     if (!result) {
       return {
@@ -1559,10 +1624,18 @@ async function runSpawnSubAgent(request: {
       },
       `${LOG_PREFIX} spawned nested sub-agent at depth ${childDepth}`,
     );
+    const childSessionId = result.sessions
+      ?.filter((session) => session.parentSessionId === request.sessionId)
+      .at(-1)?.sessionId;
     return {
       success: true,
-      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${truncate(prompt, 200)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
-      data: { ...data, parentTaskId, nestingDepth: childDepth },
+      text: `Spawned a sub-agent${childSessionId ? ` ${childSessionId}` : ""} (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
+      data: {
+        ...data,
+        parentTaskId,
+        ...(childSessionId ? { childSessionId } : {}),
+        nestingDepth: childDepth,
+      },
     };
   } catch (error) {
     // error-policy:J1 boundary — translates a spawn failure into the structured {success:false} result the child sub-agent reads.
@@ -1586,7 +1659,7 @@ async function runSpawnSubAgent(request: {
 
 export async function runParentAgentBroker(
   request: ParentAgentBrokerRequest,
-): Promise<{ success: boolean; text: string; data?: Record<string, unknown> }> {
+): Promise<ParentAgentBrokerResult> {
   const log = getLogger(request.runtime);
   const args = normalizeArgs(request.args);
 
@@ -1686,17 +1759,29 @@ export async function runParentAgentBroker(
     };
   }
 
-  const requestText = truncate(args.request, REQUEST_MAX_CHARS);
+  const requestText = toWellFormedUnicode(args.request);
   try {
-    const text = await askParentAgent({
+    const parentResult = await askParentAgent({
       runtime: request.runtime,
       sessionId: request.sessionId,
       session: request.session,
       text: requestText,
+      executionMode: args.executionMode,
     });
+    if (parentResult.terminalFailure) {
+      return {
+        success: false,
+        text: `Parent Eliza agent failed:\n\n${parentResult.text}`,
+        terminalFailure: parentResult.terminalFailure,
+        data: {
+          actionName: PARENT_AGENT_BROKER_SLUG,
+          mode: args.mode,
+        },
+      };
+    }
     return {
       success: true,
-      text: `Parent Eliza agent response:\n\n${text}`,
+      text: `Parent Eliza agent response:\n\n${parentResult.text}`,
       data: {
         actionName: PARENT_AGENT_BROKER_SLUG,
         mode: args.mode,

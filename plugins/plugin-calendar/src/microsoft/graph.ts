@@ -20,7 +20,6 @@ import {
 
 const DEFAULT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0/";
 const GRAPH_MAX_PAGE_SIZE = 1_000;
-const GRAPH_MAX_PAGES = 1_000;
 const GRAPH_MAX_SCHEDULES_PER_REQUEST = 20;
 const GRAPH_MAX_RETRIES = 3;
 const GRAPH_RETRY_CAP_MS = 30_000;
@@ -706,23 +705,11 @@ export class DefaultMicrosoftGraphCalendarPort
     assertCapability(account, "microsoft.calendar.read_basic");
     const calendars: MicrosoftGraphCalendarSummary[] = [];
     const seenLinks = new Set<string>();
-    let pageCount = 0;
     let url: URL | null = new URL(
       `me/calendars?$top=${GRAPH_MAX_PAGE_SIZE}`,
       this.baseUrl,
     );
     while (url) {
-      pageCount += 1;
-      if (pageCount > GRAPH_MAX_PAGES) {
-        throw new ElizaError(
-          "Microsoft Graph calendar pagination exceeded its safety limit.",
-          {
-            code: "MICROSOFT_GRAPH_PAGE_LIMIT_EXCEEDED",
-            context: { connectorAccountId: account.account.id },
-            severity: "fatal",
-          },
-        );
-      }
       const page = await this.request(account, url, { method: "GET" });
       calendars.push(
         ...valueArray(page.body, "list_calendars").map(parseCalendar),
@@ -770,22 +757,7 @@ export class DefaultMicrosoftGraphCalendarPort
     const seenLinks = new Set<string>();
     const changes: MicrosoftGraphEventChange[] = [];
     const issues: MicrosoftGraphEventParseIssue[] = [];
-    let pageCount = 0;
     while (true) {
-      pageCount += 1;
-      if (pageCount > GRAPH_MAX_PAGES) {
-        throw new ElizaError(
-          "Microsoft Graph calendar delta pagination exceeded its safety limit.",
-          {
-            code: "MICROSOFT_GRAPH_PAGE_LIMIT_EXCEEDED",
-            context: {
-              connectorAccountId: args.account.account.id,
-              calendarId: args.calendarId,
-            },
-            severity: "fatal",
-          },
-        );
-      }
       const page = await this.request(args.account, url, {
         method: "GET",
         headers: {

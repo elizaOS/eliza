@@ -7,18 +7,25 @@
  * still exported from the `service-mixin-*.ts` files that consumers import.
  */
 
-export { LifeOpsServiceError } from "./service-types.js";
+export {
+  LifeOpsServiceError,
+  LifeOpsWorkflowRunFailedUncompensatedError,
+} from "./service-types.js";
 
 import type {
-  BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionBeginRequest,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
   CreateBrowserBridgeCompanionPairingRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
@@ -84,8 +91,6 @@ import type {
   LifeOpsScreenTimeSession,
   LifeOpsScreenTimeSource,
   LifeOpsScreenTimeSummary,
-  LifeOpsSignalConnectorStatus,
-  LifeOpsSignalInboundMessage,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
   LifeOpsTelegramConnectorStatus,
@@ -156,6 +161,8 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -202,7 +209,6 @@ import {
   SchedulingDomain,
 } from "./domains/scheduling-service.js";
 import { ScreenTimeDomain } from "./domains/screentime-service.js";
-import { SignalDomain } from "./domains/signal-service.js";
 import { SleepDomain } from "./domains/sleep-service.js";
 import { StatusDomain } from "./domains/status-service.js";
 import { SubscriptionsDomain } from "./domains/subscriptions-service.js";
@@ -335,10 +341,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   get discord() {
     return this.discordDomain;
-  }
-
-  get signal() {
-    return this.signalDomain;
   }
 
   get whatsapp() {
@@ -1449,12 +1451,30 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.browserDomain.createBrowserCompanionPairing(request);
   }
 
+  resetBrowserCompanionRevocation(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
+    return this.browserDomain.resetBrowserCompanionRevocation(companionId);
+  }
+
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse> {
     return this.browserDomain.syncBrowserCompanion(
+      companionId,
+      pairingToken,
+      request,
+    );
+  }
+
+  preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    return this.browserDomain.preflightBrowserCompanion(
       companionId,
       pairingToken,
       request,
@@ -1500,9 +1520,23 @@ export class LifeOpsService extends LifeOpsServiceBase {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateLifeOpsBrowserSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession> {
     return this.browserDomain.updateBrowserSessionProgressFromCompanion(
+      companionId,
+      pairingToken,
+      sessionId,
+      request,
+    );
+  }
+
+  beginBrowserSessionActionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: BrowserBridgeCompanionSessionBeginRequest,
+  ): Promise<LifeOpsBrowserSession> {
+    return this.browserDomain.beginBrowserSessionActionFromCompanion(
       companionId,
       pairingToken,
       sessionId,
@@ -1522,13 +1556,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
       sessionId,
       request,
     );
-  }
-
-  autoPairBrowserCompanion(
-    request: CreateBrowserBridgeCompanionAutoPairRequest,
-    apiBaseUrl: string,
-  ): Promise<BrowserBridgeCompanionAutoPairResponse> {
-    return this.browserDomain.autoPairBrowserCompanion(request, apiBaseUrl);
   }
 
   revokeBrowserCompanion(
@@ -1584,7 +1611,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   runWorkflow(
     workflowId: string,
-    request: { now?: string; confirmBrowserActions?: boolean } = {},
+    request: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<LifeOpsWorkflowRun> {
     return this.workflowsDomain.runWorkflow(workflowId, request);
   }
@@ -1661,6 +1692,18 @@ export class LifeOpsService extends LifeOpsServiceBase {
     now?: Date,
   ): Promise<LifeOpsOccurrenceView> {
     return this.definitionsDomain.completeOccurrence(
+      occurrenceId,
+      request,
+      now,
+    );
+  }
+
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult> {
+    return this.definitionsDomain.recordOccurrenceProgress(
       occurrenceId,
       request,
       now,
@@ -1791,7 +1834,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
-      { subjectType: "owner", limit: 200 },
+      {
+        subjectType: "owner",
+        definitionScopes: [
+          {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityId(),
+          },
+        ],
+        limit: 200,
+      },
     );
     return views
       .filter(
@@ -2248,45 +2301,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   // `this` satisfies LifeOpsContext. Public to avoid TS4094 on the
   // re-exported mixin class.
-  readonly signalDomain = new SignalDomain(this);
-
-  lifeOpsSignalServiceConnected(): boolean {
-    return this.signalDomain.lifeOpsSignalServiceConnected();
-  }
-
-  lifeOpsSignalServiceRegistered(): boolean {
-    return this.signalDomain.lifeOpsSignalServiceRegistered();
-  }
-
-  getSignalConnectorStatus(
-    side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsSignalConnectorStatus> {
-    return this.signalDomain.getSignalConnectorStatus(side);
-  }
-
-  readSignalInbound(
-    limit = 25,
-    side?: LifeOpsConnectorSide,
-  ): Promise<LifeOpsSignalInboundMessage[]> {
-    return this.signalDomain.readSignalInbound(limit, side);
-  }
-
-  sendSignalMessage(request: {
-    side?: LifeOpsConnectorSide;
-    recipient: string;
-    text: string;
-  }): Promise<{
-    provider: "signal";
-    side: LifeOpsConnectorSide;
-    recipient: string;
-    ok: true;
-    timestamp: number;
-  }> {
-    return this.signalDomain.sendSignalMessage(request);
-  }
-
-  // `this` satisfies LifeOpsContext. Public to avoid TS4094 on the
-  // re-exported mixin class.
   readonly whatsappDomain = new WhatsAppDomain(this);
 
   getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus> {
@@ -2312,7 +2326,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.whatsappDomain.syncWhatsAppInbound();
   }
 
-  pullWhatsAppRecent(limit = 25): Promise<{
+  pullWhatsAppRecent(limit?: number): Promise<{
     count: number;
     messages: WhatsAppMessage[];
   }> {

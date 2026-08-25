@@ -5,9 +5,15 @@
  * canned strings, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import { ElizaError } from "../../errors";
 import { evaluatorTemplate } from "../../prompts/evaluator";
-import { ModelType } from "../../types/model";
+import {
+	type ChatMessage,
+	ModelType,
+	type PromptSegment,
+} from "../../types/model";
 import { parseEvaluatorOutput, runEvaluator } from "../evaluator";
+import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 evaluator skeleton", () => {
 	it("keeps synthesized replies human-readable unless raw output was requested", () => {
@@ -194,7 +200,7 @@ df -h / /home
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
 		// Wire-shape contract: evaluator emits ONLY `messages`.
 		expect(evaluatorParams.prompt).toBeUndefined();
-		expect(evaluatorParams.maxTokens).toBe(1024);
+		expect(evaluatorParams.maxTokens).toBeUndefined();
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
@@ -217,7 +223,7 @@ df -h / /home
 			evaluatorParams.providerOptions.eliza.modelInputBudget,
 		).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 		expect(evaluatorParams.providerOptions.eliza.thinking).toBe("off");
 		expect(result.decision).toBe("FINISH");
@@ -1348,5 +1354,346 @@ describe("fabricated marker invocations are rejected, real widgets pass", () => 
 			expect(result.decision).toBe("FINISH");
 			expect(result.messageToUser).toBe(answer);
 		}
+	});
+});
+
+describe("provider-owned evaluator output boundaries", () => {
+	// Core never chooses a completion ceiling. If a provider still reports that
+	// its own hard length boundary was reached, reject the partial envelope as a
+	// typed failure instead of parsing or silently retrying it.
+	const truncatedEnvelope = {
+		// A JSON envelope cut mid-string — unparseable by construction.
+		text: '{"success": true, "decision": "FINISH", "thought": "long reasoning that got cut o',
+		finishReason: "length",
+		usage: { promptTokens: 100, completionTokens: 2048 },
+	};
+	const completeEnvelope = {
+		text: '{"success": true, "decision": "FINISH", "thought": "Recovered on the retry."}',
+		finishReason: "stop",
+		usage: { promptTokens: 100, completionTokens: 40 },
+	};
+	const baseParams = (useModel: ReturnType<typeof vi.fn>) => ({
+		runtime: { useModel },
+		context: {
+			id: "ctx",
+			staticPrefix: {
+				characterPrompt: { content: "agent_name: Eliza", stable: true },
+			},
+			events: [
+				{
+					id: "msg",
+					type: "message" as const,
+					message: {
+						role: "user" as const,
+						content: { text: "Check status." },
+					},
+				},
+			],
+		},
+		trajectory: {
+			context: { id: "ctx" },
+			steps: [],
+			archivedSteps: [],
+			plannedQueue: [],
+			evaluatorOutputs: [],
+		},
+	});
+	const captureRecorder = (stages: RecordedStage[]): TrajectoryRecorder => ({
+		startTrajectory: () => "trajectory-evaluator-retry",
+		recordStage: async (_trajectoryId, stage) => {
+			stages.push(stage);
+		},
+		endTrajectory: async () => undefined,
+		load: async () => null,
+		list: async () => [],
+	});
+
+	it("detects truncation via finishReason and via usage-at-cap", async () => {
+		const { evaluatorHitCompletionLimit } = await import("../evaluator");
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "length", usage: { completionTokens: 10 } },
+				2048,
+			),
+		).toBe(true);
+		for (const finishReason of ["max_completion_tokens", "stop_length"]) {
+			expect(
+				evaluatorHitCompletionLimit(
+					{ finishReason, usage: { completionTokens: 10 } },
+					2048,
+				),
+			).toBe(true);
+		}
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 2048 } },
+				2048,
+			),
+		).toBe(true);
+		expect(
+			evaluatorHitCompletionLimit(
+				{ finishReason: "stop", usage: { completionTokens: 40 } },
+				2048,
+			),
+		).toBe(false);
+		// String results carry no metadata and are never treated as truncated.
+		expect(evaluatorHitCompletionLimit("plain text", 2048)).toBe(false);
+	});
+
+	it("rejects an incomplete envelope once without imposing or doubling a cap", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+
+		await expect(runEvaluator(baseParams(useModel))).rejects.toMatchObject({
+			code: "EVALUATOR_OUTPUT_INCOMPLETE",
+		});
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(useModel.mock.calls[0][1].maxTokens).toBeUndefined();
+	});
+
+	it("reports usage for the rejected provider response", async () => {
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+		const onUsage = vi.fn();
+
+		await expect(
+			runEvaluator({ ...baseParams(useModel), onUsage }),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("records the typed incomplete-output failure", async () => {
+		const stages: RecordedStage[] = [];
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockResolvedValueOnce(completeEnvelope);
+
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-incomplete",
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(stages).toHaveLength(1);
+		expect(stages[0]?.model?.response).toContain(
+			"Evaluator provider returned an incomplete output",
+		);
+	});
+
+	it("keeps selected-provider provenance for an incomplete output", async () => {
+		const stages: RecordedStage[] = [];
+		const providerError = Object.assign(new Error("retry rate limited"), {
+			status: 429,
+		});
+		let callIndex = 0;
+		const useModel = vi.fn(
+			async (
+				_modelType: string,
+				request: {
+					messages: ChatMessage[];
+					promptSegments?: PromptSegment[];
+					providerOptions?: Record<string, unknown>;
+					prepareModelAttempt?: (
+						attempt: { modelType: string; provider: string },
+						params: {
+							messages: ChatMessage[];
+							promptSegments?: PromptSegment[];
+							providerOptions?: Record<string, unknown>;
+						},
+					) => Promise<void> | void;
+				},
+			) => {
+				const provider =
+					callIndex === 0 ? "initial-provider" : "retry-provider";
+				await request.prepareModelAttempt?.(
+					{ modelType: ModelType.RESPONSE_HANDLER, provider },
+					request,
+				);
+				callIndex++;
+				if (callIndex === 1) return truncatedEnvelope;
+				throw providerError;
+			},
+		);
+
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				runtime: {
+					useModel,
+					supportsModelAttemptPreparation: true,
+					reportError: vi.fn(),
+				},
+				recorder: captureRecorder(stages),
+				trajectoryId: "trajectory-evaluator-incomplete",
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(stages).toHaveLength(1);
+		expect(stages[0]?.model?.provider).toBe("initial-provider");
+		expect(stages[0]?.model?.response).toContain("incomplete output");
+	});
+
+	it("does not make a second model call after an incomplete output", async () => {
+		const providerError = Object.assign(new Error("retry rate limited"), {
+			status: 429,
+		});
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(providerError);
+		const warn = vi.fn();
+		const reportError = vi.fn();
+		const onUsage = vi.fn();
+
+		await expect(
+			runEvaluator({
+				...baseParams(useModel),
+				runtime: { useModel, logger: { warn }, reportError },
+				onUsage,
+			}),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(warn).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("rejects a complete input that cannot fit the selected provider", async () => {
+		vi.stubEnv("MODEL_CONTEXT_WINDOWS_JSON", '{"tiny-evaluator":8000}');
+		try {
+			const stages: RecordedStage[] = [];
+			const useModel = vi.fn(
+				async (
+					_modelType: string,
+					request: {
+						messages: ChatMessage[];
+						promptSegments?: PromptSegment[];
+						providerOptions?: Record<string, unknown>;
+						prepareModelAttempt?: (
+							attempt: {
+								modelType: string;
+								provider: string;
+								metadata: { displayModel: string };
+							},
+							params: {
+								messages: ChatMessage[];
+								promptSegments?: PromptSegment[];
+								providerOptions?: Record<string, unknown>;
+							},
+						) => Promise<void> | void;
+					},
+				) => {
+					await request.prepareModelAttempt?.(
+						{
+							modelType: ModelType.RESPONSE_HANDLER,
+							provider: "tiny",
+							metadata: { displayModel: "tiny-evaluator" },
+						},
+						request,
+					);
+					throw new ElizaError("final request exceeds context", {
+						code: "MODEL_INPUT_OVER_BUDGET",
+					});
+				},
+			);
+			const reportError = vi.fn();
+
+			await expect(
+				runEvaluator({
+					...baseParams(useModel),
+					runtime: {
+						useModel,
+						supportsModelAttemptPreparation: true,
+						getModelRegistrations: () => [
+							{
+								modelType: ModelType.RESPONSE_HANDLER,
+								provider: "tiny",
+								metadata: { displayModel: "tiny-evaluator" },
+							},
+						],
+						reportError,
+					},
+					context: {
+						...baseParams(useModel).context,
+						staticPrefix: {
+							characterPrompt: {
+								content: `agent_name: Eliza\n${"x".repeat(40_000)}`,
+								stable: true,
+							},
+						},
+					},
+					recorder: captureRecorder(stages),
+					trajectoryId: "trajectory-evaluator-input-budget",
+				}),
+			).rejects.toMatchObject({ code: "MODEL_INPUT_OVER_BUDGET" });
+
+			expect(useModel).toHaveBeenCalledTimes(1);
+			expect(stages).toHaveLength(1);
+			expect(stages[0]?.model?.response).toContain("MODEL_INPUT_OVER_BUDGET");
+			expect(reportError).not.toHaveBeenCalled();
+		} finally {
+			vi.unstubAllEnvs();
+		}
+	});
+
+	it("does not invoke a second-call adapter after incomplete output", async () => {
+		const programmerError = new TypeError("retry result adapter is broken");
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce(truncatedEnvelope)
+			.mockRejectedValueOnce(programmerError);
+		const onUsage = vi.fn();
+
+		await expect(
+			runEvaluator({ ...baseParams(useModel), onUsage }),
+		).rejects.toMatchObject({ code: "EVALUATOR_OUTPUT_INCOMPLETE" });
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledTimes(1);
+		expect(onUsage).toHaveBeenCalledWith({
+			promptTokens: 100,
+			completionTokens: 2048,
+		});
+	});
+
+	it("does not infer a cap from usage when none was requested", async () => {
+		const parseableAtCap = {
+			text: '{"success": true, "decision": "FINISH", "thought": "Fits exactly."}',
+			finishReason: "stop",
+			usage: { promptTokens: 100, completionTokens: 2048 },
+		};
+		const useModel = vi.fn().mockResolvedValue(parseableAtCap);
+
+		const result = await runEvaluator(baseParams(useModel));
+
+		expect(useModel).toHaveBeenCalledTimes(1);
+		expect(result.decision).toBe("FINISH");
+	});
+
+	it("never parses or retries an incomplete provider response", async () => {
+		const useModel = vi.fn().mockResolvedValue(truncatedEnvelope);
+
+		await expect(runEvaluator(baseParams(useModel))).rejects.toMatchObject({
+			code: "EVALUATOR_OUTPUT_INCOMPLETE",
+		});
+		expect(useModel).toHaveBeenCalledTimes(1);
 	});
 });

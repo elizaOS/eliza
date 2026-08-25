@@ -11,7 +11,6 @@
  * reports `already_used`. Cross-account takeovers fail closed at both the
  * owner check and the database uniqueness constraints.
  */
-import { randomBytes } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { and, eq, lt } from "drizzle-orm";
 import { dbWrite } from "../../../db/client";
@@ -24,16 +23,13 @@ import { users } from "../../../db/schemas/users";
 import { isUniqueConstraintError } from "../../utils/db-errors";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
+import { mintIdentityLinkCode } from "./identity-link-code";
 import { invalidateBoundPersonalDeliveryProjection } from "./personal-delivery-projection-contract";
 
-/** Unambiguous alphabet (no 0/O, 1/I/L) so codes survive being typed by hand. */
-const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-const CODE_LENGTH = 8;
 const CODE_TTL_MS = 10 * 60 * 1000;
 const MINT_ATTEMPTS = 3;
 
-/** How the code is presented to and typed by the user, e.g. `LINK-7KQ2M4XW`. */
-export const LINK_CODE_PATTERN = /\bLINK-([A-HJ-NP-Z2-9]{8})\b/i;
+export { LINK_CODE_PATTERN } from "./identity-link-code";
 
 export interface StartIdentityLinkInput {
   userId: string;
@@ -66,15 +62,6 @@ export type ConfirmIdentityLinkResult =
   | { status: "platform_mismatch"; expectedPlatform: IdentityLinkCodePlatform }
   | { status: "handle_conflict" };
 
-function mintCode(): string {
-  const bytes = randomBytes(CODE_LENGTH);
-  let out = "";
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    out += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length];
-  }
-  return out;
-}
-
 function normalizeCode(raw: string): string | null {
   const trimmed = raw.trim().toUpperCase();
   const bare = trimmed.startsWith("LINK-") ? trimmed.slice(5) : trimmed;
@@ -89,7 +76,7 @@ export async function startIdentityLink(
   input: StartIdentityLinkInput,
 ): Promise<StartIdentityLinkResult> {
   for (let attempt = 1; attempt <= MINT_ATTEMPTS; attempt++) {
-    const code = mintCode();
+    const code = mintIdentityLinkCode();
     try {
       return await dbWrite.transaction(async (tx) => {
         const [account] = await tx

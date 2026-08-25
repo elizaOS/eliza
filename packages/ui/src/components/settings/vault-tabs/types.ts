@@ -29,6 +29,29 @@ export interface ManagerPreferences {
   routing?: Record<string, BackendId>;
 }
 
+export interface VaultProtectionStatus {
+  localVault: {
+    encryptedAtRest: boolean;
+    cipher: string;
+    masterKey: {
+      backend: string;
+      available: boolean;
+      synchronized: false;
+      scope: "device" | "host" | "unavailable";
+      access: "app_only" | "user_session" | "unavailable";
+    };
+  };
+  nativeSessionState: {
+    policy: "platform-protected-store";
+    synchronized: false;
+    plaintextFallback: false;
+  };
+  connectorSessions: {
+    telegramPersonal: "vault-master-key-encrypted";
+  };
+  cloudTrustDomain: "separate-organization-kms";
+}
+
 export type InstallMethod =
   | { kind: "brew"; package: string; cask: boolean }
   | { kind: "npm"; package: string }
@@ -36,6 +59,7 @@ export type InstallMethod =
 
 export type VaultEntryCategory =
   | "provider"
+  | "connector"
   | "plugin"
   | "wallet"
   | "credential"
@@ -61,8 +85,20 @@ export interface VaultEntryMeta {
   kind: "secret" | "value" | "reference";
 }
 
+/** Non-revealing credential material still outside encrypted Vault storage. */
+export interface ConnectorSecretFinding {
+  id: string;
+  connector: string;
+  label: string;
+  source: "eliza-config" | "state-file";
+  protection: "mode-0600" | "permissions-need-attention";
+  autoMigratesOnDesktop: boolean;
+  detail: string;
+}
+
 const VAULT_ENTRY_CATEGORIES: ReadonlySet<VaultEntryCategory> = new Set([
   "provider",
+  "connector",
   "plugin",
   "wallet",
   "credential",

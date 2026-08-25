@@ -154,6 +154,7 @@ export interface SupportedVideoModelDefinition {
     | "wan"
     | "pixverse"
     | "seedance"
+    | "seedance25"
     | "atlascloud_snapshot";
   defaultParameters: {
     durationSeconds: number;
@@ -318,6 +319,13 @@ export const SUPPORTED_IMAGE_MODELS: SupportedImageModelDefinition[] = [
  * confirmed `image:generation` catalog row (see ai-pricing/providers/atlascloud.ts).
  */
 export const DEFAULT_IMAGE_MODEL_ID = "google/nano-banana-2/text-to-image";
+
+/**
+ * Ordered models for an unspecified video request. The first configured model
+ * is primary and later entries are terminal-failure fallbacks; explicit model
+ * requests never use this chain.
+ */
+export const DEFAULT_VIDEO_MODEL_IDS = ["fal-ai/veo3", "vidu/q3-turbo/text-to-video"] as const;
 
 export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
   {
@@ -543,6 +551,32 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     pricingParser: "seedance",
     defaultParameters: {
       durationSeconds: 8,
+      resolution: "720p",
+      audio: true,
+    },
+  },
+  {
+    modelId: "bytedance/seedance-2.5/text-to-video",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Seedance 2.5 Text to Video",
+    pageUrl: "https://fal.ai/models/bytedance/seedance-2.5/text-to-video",
+    pricingParser: "seedance25",
+    defaultParameters: {
+      durationSeconds: 5,
+      resolution: "720p",
+      audio: true,
+    },
+  },
+  {
+    modelId: "bytedance/seedance-2.5/image-to-video",
+    provider: "fal",
+    billingSource: "fal",
+    label: "Seedance 2.5 Image to Video",
+    pageUrl: "https://fal.ai/models/bytedance/seedance-2.5/image-to-video",
+    pricingParser: "seedance25",
+    defaultParameters: {
+      durationSeconds: 5,
       resolution: "720p",
       audio: true,
     },

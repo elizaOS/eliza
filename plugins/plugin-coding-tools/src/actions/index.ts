@@ -1,5 +1,6 @@
 /** Re-exports the FILE/SHELL/WORKTREE actions and their per-operation handlers. */
 export { shellAction } from "./bash.js";
+export { editAction, readAction, writeAction } from "./direct-file-actions.js";
 export { editFileHandler } from "./edit.js";
 export { enterWorktreeHandler } from "./enter-worktree.js";
 export { exitWorktreeHandler } from "./exit-worktree.js";

@@ -108,7 +108,7 @@ describe("CONTACT read ambiguity privacy boundary", () => {
       person(2),
     ]);
     const result = await read(runtime, { name: "alex" });
-    expect(getGraphSnapshot).toHaveBeenCalledWith({ search: "alex", limit: 6 });
+    expect(getGraphSnapshot).toHaveBeenCalledWith({ search: "alex" });
     expect(getPersonDetail).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
     expect(result.error).toBe("AMBIGUOUS_CONTACT");
@@ -116,13 +116,14 @@ describe("CONTACT read ambiguity privacy boundary", () => {
     expect(result.text).not.toContain("private medical fact");
   });
 
-  it("marks a saturated match window without claiming an exact total", async () => {
+  it("returns every ambiguous match without a hidden match window", async () => {
     const { runtime } = makeRuntime(
       Array.from({ length: 7 }, (_, i) => person(i)),
     );
     const result = await read(runtime, { name: "alex" });
-    expect(result.text).toContain("at least 6 contacts");
-    expect(result.data).toMatchObject({ hasMore: true });
+    expect(result.text).toContain("7 contacts");
+    expect(result.data).toMatchObject({ hasMore: false });
+    expect((result.data as { matches: unknown[] }).matches).toHaveLength(7);
   });
 
   it("renders a planner-sized name blob safely", async () => {

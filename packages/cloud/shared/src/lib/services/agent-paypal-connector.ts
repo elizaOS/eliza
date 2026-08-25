@@ -23,6 +23,27 @@
 const PAYPAL_LIVE_HOST = "https://api-m.paypal.com";
 const PAYPAL_SANDBOX_HOST = "https://api-m.sandbox.paypal.com";
 
+const PAYPAL_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every PayPal REST hop so a hung or rate-limited API cannot pin the
+ * connector worker indefinitely. A caller-provided abort signal wins.
+ */
+export function paypalFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = PAYPAL_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  // Compose rather than replace: `init?.signal ?? AbortSignal.timeout(...)`
+  // lets any caller that passes a signal silently drop the hop deadline, which
+  // is the failure this bound exists to prevent.
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 export class AgentPaypalConnectorError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -126,7 +147,7 @@ async function paypalTokenRequest(
   const credentials = Buffer.from(`${config.clientId}:${config.secret}`, "utf-8").toString(
     "base64",
   );
-  const response = await fetch(`${config.host}/v1/oauth2/token`, {
+  const response = await paypalFetch(`${config.host}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -210,12 +231,15 @@ export interface PaypalIdentity {
 
 export async function getPaypalIdentity(args: { accessToken: string }): Promise<PaypalIdentity> {
   const config = requireConfig();
-  const response = await fetch(`${config.host}/v1/identity/oauth2/userinfo?schema=paypalv1.1`, {
-    headers: {
-      Authorization: `Bearer ${args.accessToken}`,
-      Accept: "application/json",
+  const response = await paypalFetch(
+    `${config.host}/v1/identity/oauth2/userinfo?schema=paypalv1.1`,
+    {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        Accept: "application/json",
+      },
     },
-  });
+  );
   if (!response.ok) {
     throw new AgentPaypalConnectorError(
       response.status,
@@ -286,12 +310,15 @@ export async function searchPaypalTransactions(
     page_size: "100",
     page: String(Math.max(1, request.page ?? 1)),
   });
-  const response = await fetch(`${config.host}/v1/reporting/transactions?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${request.accessToken}`,
-      Accept: "application/json",
+  const response = await paypalFetch(
+    `${config.host}/v1/reporting/transactions?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${request.accessToken}`,
+        Accept: "application/json",
+      },
     },
-  });
+  );
   if (response.status === 403) {
     // The most common error: user authorized but they're a personal-tier
     // account without Reporting API access. Surface a specific message so

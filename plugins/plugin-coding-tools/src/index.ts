@@ -13,11 +13,14 @@
  */
 import type { Plugin } from "@elizaos/core";
 import {
+  editAction,
   fileAction,
+  readAction,
   shellAction,
   webFetchAction,
   webSearchAction,
   worktreeAction,
+  writeAction,
 } from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
@@ -71,6 +74,9 @@ export const codingToolsPlugin: Plugin = {
   providers: [availableToolsProvider, shellHistoryProvider],
   actions: [
     fileAction,
+    readAction,
+    writeAction,
+    editAction,
     shellAction,
     worktreeAction,
     webFetchAction,

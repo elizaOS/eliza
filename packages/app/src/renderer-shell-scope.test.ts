@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  PHONE_COMPANION_AGENT_VIEW_ID,
   type RendererShellScopeInputs,
   resolveRendererShellKind,
 } from "./renderer-shell-scope";
@@ -18,7 +19,11 @@ const MAIN_INPUTS: RendererShellScopeInputs = {
   isEmbedRoute: false,
 };
 
-describe("resolveRendererShellKind", () => {
+describe("renderer shell scope", () => {
+  it("keeps the dedicated companion renderer on its app-shell view id", () => {
+    expect(PHONE_COMPANION_AGENT_VIEW_ID).toBe("phone-companion");
+  });
+
   it("classifies the default boot as the main shell", () => {
     expect(resolveRendererShellKind(MAIN_INPUTS)).toBe("main");
   });

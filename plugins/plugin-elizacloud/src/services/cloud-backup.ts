@@ -105,7 +105,11 @@ export class CloudBackupService extends Service {
     if (snapshots.length === 0) return null;
 
     // Sort by created_at descending and return the most recent
-    snapshots.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    snapshots.sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.created_at).getTime()) ? new Date(a.created_at).getTime() : 0;
+      const bTime = Number.isFinite(new Date(b.created_at).getTime()) ? new Date(b.created_at).getTime() : 0;
+      return bTime - aTime;
+    });
     return snapshots[0];
   }
 
@@ -175,7 +179,11 @@ export class CloudBackupService extends Service {
 
     const autoSnapshots = snapshots
       .filter((s) => s.snapshotType === "auto")
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      .sort((a, b) => {
+        const aTime = Number.isFinite(new Date(a.created_at).getTime()) ? new Date(a.created_at).getTime() : 0;
+        const bTime = Number.isFinite(new Date(b.created_at).getTime()) ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
 
     const excess = autoSnapshots.slice(this.maxSnapshots);
     if (excess.length === 0) return;

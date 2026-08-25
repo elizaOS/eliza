@@ -12,6 +12,7 @@
  * `ssh2` elsewhere, but this module itself has no Node-only imports.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 import type {
@@ -28,7 +29,6 @@ export type { CreateServerInput, CreateVolumeInput, ProvisionedServer } from "./
 const OFFICIAL_HCLOUD_API_BASE = "https://api.hetzner.cloud/v1";
 const REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
-const MAX_LIST_PAGES = 10_000;
 
 export type HetznerCloudErrorCode =
   | "missing_token"
@@ -221,7 +221,7 @@ export class HetznerCloudClient implements ComputeProvider {
     const visitedPages = new Set<number>([1]);
     let path = basePath;
 
-    for (let pageCount = 0; pageCount < MAX_LIST_PAGES; pageCount += 1) {
+    while (true) {
       const data = await this.request<{
         servers: HetznerServer[];
         meta?: { pagination?: { next_page?: number | null } };
@@ -262,11 +262,6 @@ export class HetznerCloudClient implements ComputeProvider {
       visitedPages.add(nextPage);
       path = `${basePath}${basePath.includes("?") ? "&" : "?"}page=${nextPage}`;
     }
-
-    throw new HetznerCloudError(
-      "server_error",
-      `Hetzner Cloud API list servers exceeded ${MAX_LIST_PAGES} pages`,
-    );
   }
 
   async getServer(serverId: number): Promise<HetznerServer | null> {
@@ -509,7 +504,7 @@ export class HetznerCloudClient implements ComputeProvider {
     } catch {
       throw new HetznerCloudError(
         "server_error",
-        `Hetzner Cloud API ${method} ${path} returned non-JSON: ${text.slice(0, 200)}`,
+        `Hetzner Cloud API ${method} ${path} returned non-JSON: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         response.status,
       );
     }

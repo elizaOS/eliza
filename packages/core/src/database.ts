@@ -24,11 +24,13 @@ import type {
 	DeleteOAuthFlowStateParams,
 	DocumentCompareAndSwapParams,
 	DocumentDeleteParams,
+	DocumentDirectGrantUpdateParams,
 	DocumentFragmentQueryParams,
 	DocumentGetQueryParams,
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRevisionReplaceParams,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
@@ -77,6 +79,21 @@ export function validateQueryEntitiesPagination(params: {
 	}
 }
 
+/** Enforces the portable pagination contract for task-query boundaries. */
+export function validateTaskQueryPagination(params: {
+	limit?: number;
+	offset?: number;
+}): void {
+	for (const field of ["limit", "offset"] as const) {
+		const value = params[field];
+		if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+			throw new RangeError(
+				`getTasks ${field} must be a non-negative safe integer`,
+			);
+		}
+	}
+}
+
 /**
  * Compares UUID-backed memory ids in the same order as PostgreSQL's `uuid`
  * type. PostgreSQL normalizes hexadecimal case before ordering, so in-memory
@@ -90,6 +107,19 @@ export function compareMemoryIds(left: string, right: string): number {
 	if (normalizedLeft < normalizedRight) return -1;
 	if (normalizedLeft > normalizedRight) return 1;
 	return 0;
+}
+
+/** Matches PostgreSQL's ascending `(created_at, id)` task-query order. */
+export function compareTasksForQuery(left: Task, right: Task): number {
+	const leftCreatedAt = left.createdAt;
+	const rightCreatedAt = right.createdAt;
+	if (leftCreatedAt === undefined && rightCreatedAt !== undefined) return 1;
+	if (leftCreatedAt !== undefined && rightCreatedAt === undefined) return -1;
+	if (leftCreatedAt !== undefined && rightCreatedAt !== undefined) {
+		if (leftCreatedAt < rightCreatedAt) return -1;
+		if (leftCreatedAt > rightCreatedAt) return 1;
+	}
+	return compareMemoryIds(String(left.id ?? ""), String(right.id ?? ""));
 }
 
 /**
@@ -115,9 +145,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 {
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
-	 * Version 2 adds canonical lookup/search authorization and CAS mutations.
+	 * Version 4 adds storage-enforced direct-grant replacement.
 	 */
-	abstract readonly documentListQueryCapability: 2;
+	abstract readonly documentListQueryCapability: 4;
 
 	abstract queryDocuments(
 		params: DocumentListQueryParams,
@@ -131,6 +161,14 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract updateDocumentDirectGrants(
+		params: DocumentDirectGrantUpdateParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
 	): Promise<DocumentMutationResult>;
 
 	abstract deleteDocumentWithSnapshot(
@@ -420,6 +458,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		unique?: boolean;
 		query?: string;
 		roomId?: UUID;
@@ -626,6 +665,7 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 */
 	abstract getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
 		agentIds: UUID[];
@@ -643,6 +683,13 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Task CRUD (batch-only) ───────────────────────────────────────────
 	abstract createTasks(tasks: Task[]): Promise<UUID[]>;
 	abstract getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Optional-adapter compatibility default. Official adapters override this
+	 * with a storage-atomic transition; returning false fails closed.
+	 */
+	async updatePendingTask(_id: UUID, _task: Partial<Task>): Promise<boolean> {
+		return false;
+	}
 	abstract updateTasks(
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void>;

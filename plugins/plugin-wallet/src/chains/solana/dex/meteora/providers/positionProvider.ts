@@ -112,7 +112,7 @@ export const meteoraPositionProvider: Provider = {
 
         positions.forEach((pos, index) => {
           positionText += `\n\nPosition ${index + 1}:`;
-          positionText += `\n- Pool: ${pos.poolAddress.slice(0, 8)}...`;
+          positionText += `\n- Pool: ${pos.poolAddress}`;
           positionText += `\n- In Range: ${pos.inRange ? "Yes" : "No"}`;
           positionText += `\n- Distance from Active Bin: ${pos.distanceFromActiveBinBps} bps`;
           positionText += `\n- Bin Range: ${pos.binRange}`;

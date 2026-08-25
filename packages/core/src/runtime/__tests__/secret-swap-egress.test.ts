@@ -9,7 +9,10 @@
  * trajectory context exactly as `useModel` stores it on ingress.
  */
 import { describe, expect, it, vi } from "vitest";
-import { SecretSwapSession } from "../../security/secret-swap";
+import {
+	MAX_SECRET_SWAP_WALK_NODES,
+	SecretSwapSession,
+} from "../../security/secret-swap";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
@@ -133,5 +136,89 @@ describe("secret-swap egress at executePlannedToolCall", () => {
 
 		expect(result.success).toBe(true);
 		expect(received.token).toBe("plain-non-secret-token");
+	});
+
+	it("rejects an unbounded action graph before handler dispatch", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = {
+			name: "PROCESS_PAYLOAD",
+			description: "Process a structured payload",
+			parameters: [
+				{
+					name: "payload",
+					description: "Payload values",
+					required: true,
+					schema: { type: "array" },
+				},
+			],
+			validate: async () => true,
+			handler,
+		} as Action;
+		const session = new SecretSwapSession();
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "run-unbounded", secretSwapSession: session },
+			() =>
+				executePlannedToolCall(
+					makeRuntime([action]),
+					{ message: makeMessage() },
+					{
+						name: action.name,
+						params: { payload: new Array(MAX_SECRET_SWAP_WALK_NODES) },
+					},
+				),
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("walk budget");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("restores placeholders in non-standard records before action dispatch", async () => {
+		const { session, placeholder } = sessionWithSecret();
+		class Payload {
+			token = placeholder;
+		}
+		const records = [
+			Object.assign(Object.create(null), { token: placeholder }),
+			new Payload(),
+			Object.assign(Object.create({ inherited: placeholder }), {
+				token: placeholder,
+			}),
+		];
+
+		for (const [index, payload] of records.entries()) {
+			const received: { token?: unknown } = {};
+			const action = {
+				...makeWebhookAction(received),
+				parameters: [
+					{
+						name: "payload",
+						description: "Structured secret-bearing payload",
+						required: true,
+						schema: { type: "object", additionalProperties: true },
+					},
+				],
+				handler: vi.fn(async (_rt, _msg, _state, options) => {
+					const restoredPayload = options?.parameters?.payload;
+					if (restoredPayload && typeof restoredPayload === "object") {
+						received.token = (restoredPayload as Record<string, unknown>).token;
+					}
+					return { success: true };
+				}),
+			} as Action;
+			const result = await runWithTrajectoryContext(
+				{ runId: `run-record-${index}`, secretSwapSession: session },
+				() =>
+					executePlannedToolCall(
+						makeRuntime([action]),
+						{ message: makeMessage() },
+						{ name: action.name, params: { payload } },
+					),
+			);
+			expect(result.success, JSON.stringify(result)).toBe(true);
+			expect(received.token).toBe(SECRET);
+			expect(action.handler).toHaveBeenCalledTimes(1);
+		}
 	});
 });

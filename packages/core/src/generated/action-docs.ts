@@ -146,7 +146,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply in current chat only; use connector actions for external connector sends.",
+				"Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. Do NOT use REPLY to send to a different channel/person or to run an email/inbox workflow — use MESSAGE (action=send) for a directed send to another channel or DM, MESSAGE inbox operations for triage/drafts, and POST to publish to a public feed.",
 		},
 		{
 			name: "IGNORE",
@@ -250,7 +250,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
+				"Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
 		},
 		{
 			name: "NONE",
@@ -323,7 +323,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Respond without additional action. Default when speaking only.",
+				"Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
 		},
 		{
 			name: "MESSAGE",
@@ -363,17 +363,19 @@ export const coreActionsSpec = {
 							"manage",
 						],
 					},
-					descriptionCompressed: "message action",
+					descriptionCompressed:
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 				},
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector or inbox source",
+					descriptionCompressed:
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 				},
 				{
 					name: "accountId",
@@ -383,7 +385,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector account id",
+					descriptionCompressed:
+						"Optional connector account id for multi-account message connectors.",
 				},
 				{
 					name: "sources",
@@ -396,7 +399,8 @@ export const coreActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed: "inbox sources",
+					descriptionCompressed:
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
 				},
 				{
 					name: "target",
@@ -406,7 +410,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "loose message target",
+					descriptionCompressed:
+						"Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
 				},
 				{
 					name: "channel",
@@ -415,7 +420,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "channel reference",
+					descriptionCompressed:
+						"Loose channel, room, or group name/reference.",
 				},
 				{
 					name: "server",
@@ -425,7 +431,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "server reference",
+					descriptionCompressed:
+						"Loose server, guild, workspace, or team name/reference.",
 				},
 				{
 					name: "message",
@@ -435,7 +442,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message text",
+					descriptionCompressed:
+						"Message text for action=send or replacement text for action=edit.",
 				},
 				{
 					name: "query",
@@ -444,7 +452,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search query",
+					descriptionCompressed:
+						"Search term for action=search or action=search_inbox.",
 				},
 				{
 					name: "content",
@@ -454,7 +463,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message lookup text",
+					descriptionCompressed:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
 				},
 				{
 					name: "sender",
@@ -464,7 +474,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "sender lookup",
+					descriptionCompressed:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
 				},
 				{
 					name: "body",
@@ -474,7 +485,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft body",
+					descriptionCompressed:
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
 				},
 				{
 					name: "to",
@@ -486,7 +498,8 @@ export const coreActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed: "draft recipients",
+					descriptionCompressed:
+						"Recipient identifiers for action=draft_followup.",
 				},
 				{
 					name: "subject",
@@ -495,7 +508,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft subject",
+					descriptionCompressed:
+						"Optional subject for email-like draft operations.",
 				},
 				{
 					name: "messageId",
@@ -505,7 +519,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message id",
+					descriptionCompressed:
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
 				},
 				{
 					name: "draftId",
@@ -515,7 +530,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft id",
+					descriptionCompressed:
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
 				},
 				{
 					name: "confirmed",
@@ -525,7 +541,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed: "send confirmed",
+					descriptionCompressed:
+						"Whether the user explicitly confirmed sending for action=send_draft.",
 				},
 				{
 					name: "sendAt",
@@ -534,7 +551,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "send time",
+					descriptionCompressed:
+						"Scheduled send time for action=schedule_draft_send.",
 				},
 				{
 					name: "emoji",
@@ -543,7 +561,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "reaction emoji",
+					descriptionCompressed: "Reaction value for action=react.",
 				},
 				{
 					name: "pin",
@@ -553,7 +571,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed: "pin state",
+					descriptionCompressed:
+						"Pin state for action=pin. Use false to unpin when supported.",
 				},
 				{
 					name: "manageOperation",
@@ -563,7 +582,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "manage operation",
+					descriptionCompressed:
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
 				},
 				{
 					name: "label",
@@ -573,7 +593,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message label",
+					descriptionCompressed:
+						"Label for action=manage when adding or removing labels.",
 				},
 				{
 					name: "tag",
@@ -582,7 +603,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message tag",
+					descriptionCompressed:
+						"Tag for action=manage when adding or removing tags.",
 				},
 				{
 					name: "limit",
@@ -592,7 +614,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "result limit",
+					descriptionCompressed:
+						"Maximum number of messages/channels/servers/inbox items to return.",
 				},
 				{
 					name: "cursor",
@@ -602,7 +625,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "pagination cursor",
+					descriptionCompressed:
+						"Opaque pagination cursor for read/search/list operations.",
 				},
 				{
 					name: "sinceMs",
@@ -612,7 +636,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "since timestamp",
+					descriptionCompressed:
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
 				},
 				{
 					name: "since",
@@ -622,7 +647,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search start",
+					descriptionCompressed:
+						"Start timestamp or parseable date for action=search_inbox.",
 				},
 				{
 					name: "until",
@@ -632,7 +658,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search end",
+					descriptionCompressed:
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
 				},
 			],
 			examples: [
@@ -677,7 +704,7 @@ export const coreActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 		},
 		{
 			name: "POST",
@@ -693,7 +720,7 @@ export const coreActionsSpec = {
 						type: "string",
 						enum: ["send", "read", "search"],
 					},
-					descriptionCompressed: "post action",
+					descriptionCompressed: "Post action: send, read, or search.",
 				},
 				{
 					name: "source",
@@ -703,7 +730,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post connector source",
+					descriptionCompressed:
+						"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
 				},
 				{
 					name: "accountId",
@@ -713,7 +741,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post account id",
+					descriptionCompressed:
+						"Optional connector account id for multi-account post connectors.",
 				},
 				{
 					name: "text",
@@ -722,7 +751,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post text",
+					descriptionCompressed: "Public post text for action=send.",
 				},
 				{
 					name: "target",
@@ -732,7 +761,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed target",
+					descriptionCompressed:
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
 				},
 				{
 					name: "feed",
@@ -742,7 +772,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed",
+					descriptionCompressed:
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
 				},
 				{
 					name: "query",
@@ -751,7 +782,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post search query",
+					descriptionCompressed: "Search term for action=search.",
 				},
 				{
 					name: "replyTo",
@@ -760,7 +791,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "reply target",
+					descriptionCompressed: "Post/comment/reply target for action=send.",
 				},
 				{
 					name: "mediaId",
@@ -770,7 +801,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "media id",
+					descriptionCompressed:
+						"Media id for connector-specific comment surfaces such as Instagram.",
 				},
 				{
 					name: "limit",
@@ -779,7 +811,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "result limit",
+					descriptionCompressed: "Maximum number of posts to return.",
 				},
 				{
 					name: "cursor",
@@ -789,7 +821,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "pagination cursor",
+					descriptionCompressed:
+						"Opaque pagination cursor for action=read or action=search.",
 				},
 				{
 					name: "attachments",
@@ -798,7 +831,7 @@ export const coreActionsSpec = {
 					schema: {
 						type: "array",
 					},
-					descriptionCompressed: "post attachments",
+					descriptionCompressed: "Optional post attachments.",
 				},
 			],
 			examples: [
@@ -832,7 +865,7 @@ export const coreActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"primary post action ops send read search public feed timeline posts",
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
 		},
 		{
 			name: "ROOM",
@@ -871,7 +904,7 @@ export const coreActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Room action=follow|unfollow|mute|unmute; current room by default.",
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
 		},
 		{
 			name: "ROLE",
@@ -894,7 +927,7 @@ export const coreActionsSpec = {
 						type: "string",
 						enum: ["update"],
 					},
-					descriptionCompressed: "Role operation. update.",
+					descriptionCompressed: "Role operation. Currently update.",
 				},
 				{
 					name: "entityId",
@@ -915,7 +948,8 @@ export const coreActionsSpec = {
 					descriptionCompressed: "Role to assign.",
 				},
 			],
-			descriptionCompressed: "Role action=update; assign trust role to entity.",
+			descriptionCompressed:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
 		},
 		{
 			name: "SEARCH_EXPERIENCES",
@@ -944,10 +978,11 @@ export const coreActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "max number of results to return.",
+					descriptionCompressed: "Maximum number of results to return.",
 				},
 			],
-			descriptionCompressed: "Search prior experiences/memory by query.",
+			descriptionCompressed:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
 		},
 		{
 			name: "CHARACTER",
@@ -983,7 +1018,8 @@ export const coreActionsSpec = {
 					descriptionCompressed: "Structured or textual character updates.",
 				},
 			],
-			descriptionCompressed: "Character action=modify|persist|update_identity.",
+			descriptionCompressed:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -1006,8 +1042,8 @@ export const coreActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
-					descriptionCompressed: "Pending task id.",
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
+					descriptionCompressed: "The pending task id.",
 				},
 				{
 					name: "option",
@@ -1017,7 +1053,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["APPROVE", "ABORT"],
-					descriptionCompressed: "Option name exactly as listed.",
+					descriptionCompressed: "The selected option name exactly as listed.",
 				},
 			],
 			examples: [
@@ -1037,7 +1073,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
-			descriptionCompressed: "Select option for pending multi-choice task.",
+			descriptionCompressed:
+				"Select an option for a pending task that has multiple options.",
 		},
 		{
 			name: "ATTACHMENT",
@@ -1062,7 +1099,8 @@ export const coreActionsSpec = {
 						enum: ["read", "save_as_document"],
 					},
 					examples: ["read", "save_as_document"],
-					descriptionCompressed: "Attachment operation.",
+					descriptionCompressed:
+						"Attachment operation: read or save_as_document.",
 				},
 				{
 					name: "attachmentId",
@@ -1073,7 +1111,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["attachment-123"],
-					descriptionCompressed: "Attachment id.",
+					descriptionCompressed:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
 				},
 				{
 					name: "addToClipboard",
@@ -1085,7 +1124,8 @@ export const coreActionsSpec = {
 						default: false,
 					},
 					examples: [true, false],
-					descriptionCompressed: "Store read result in task clipboard.",
+					descriptionCompressed:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
 				},
 				{
 					name: "title",
@@ -1096,11 +1136,12 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Meeting notes"],
-					descriptionCompressed: "Saved document title.",
+					descriptionCompressed:
+						"Optional title when saving attachment content as a document.",
 				},
 			],
 			descriptionCompressed:
-				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
 		},
 		{
 			name: "GENERATE_MEDIA",
@@ -1136,7 +1177,7 @@ export const coreActionsSpec = {
 						enum: ["image", "video", "audio"],
 					},
 					examples: ["image", "video", "audio"],
-					descriptionCompressed: "Media kind: image, video, audio.",
+					descriptionCompressed: "The kind of media to generate.",
 				},
 				{
 					name: "prompt",
@@ -1147,7 +1188,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
-					descriptionCompressed: "Generation prompt.",
+					descriptionCompressed:
+						"Detailed generation prompt describing the desired media.",
 				},
 				{
 					name: "audioKind",
@@ -1158,29 +1200,70 @@ export const coreActionsSpec = {
 						enum: ["music", "sfx", "tts"],
 					},
 					examples: ["music", "sfx", "tts"],
-					descriptionCompressed: "Audio subtype.",
+					descriptionCompressed:
+						"For audio generation, choose music, sfx, or tts.",
 				},
 				{
 					name: "duration",
 					description:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					examples: [5, 30],
-					descriptionCompressed: "Duration seconds.",
+					descriptionCompressed:
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 				},
 				{
 					name: "aspectRatio",
 					description:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
 					},
 					examples: ["16:9", "9:16"],
-					descriptionCompressed: "Video aspect ratio.",
+					descriptionCompressed:
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
+				},
+				{
+					name: "resolution",
+					description:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["480p", "720p"],
+					},
+					examples: ["480p", "720p"],
+					descriptionCompressed:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+				},
+				{
+					name: "audio",
+					description:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					examples: [true, false],
+					descriptionCompressed:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+				},
+				{
+					name: "seed",
+					description:
+						"Optional non-negative integer seed for reproducible media generation.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [42],
+					descriptionCompressed:
+						"Optional non-negative integer seed for reproducible media generation.",
 				},
 				{
 					name: "size",
@@ -1190,7 +1273,20 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["1024x1024", "landscape_4_3"],
-					descriptionCompressed: "Image size.",
+					descriptionCompressed:
+						"Optional image size or image provider size preset.",
+				},
+				{
+					name: "imageUrl",
+					description:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["https://media.example.com/source-image.png"],
+					descriptionCompressed:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 				},
 			],
 			examples: [
@@ -1240,7 +1336,8 @@ export const coreActionsSpec = {
 					},
 				],
 			],
-			descriptionCompressed: "Generate image, video, or audio from prompt.",
+			descriptionCompressed:
+				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
 		},
 		{
 			name: "PAYMENT",
@@ -1278,7 +1375,8 @@ export const coreActionsSpec = {
 						],
 					},
 					examples: ["create_request", "deliver_link", "settle"],
-					descriptionCompressed: "Payment operation.",
+					descriptionCompressed:
+						"Payment operation: create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request.",
 				},
 				{
 					name: "provider",
@@ -1290,7 +1388,8 @@ export const coreActionsSpec = {
 						enum: ["stripe", "oxapay", "x402", "wallet_native"],
 					},
 					examples: ["stripe", "wallet_native"],
-					descriptionCompressed: "Payment provider.",
+					descriptionCompressed:
+						"For action=create_request, provider key: stripe, oxapay, x402, or wallet_native.",
 				},
 				{
 					name: "amountCents",
@@ -1301,7 +1400,8 @@ export const coreActionsSpec = {
 						type: "number",
 					},
 					examples: [500, 1000],
-					descriptionCompressed: "Amount in cents/minor units.",
+					descriptionCompressed:
+						"For action=create_request, amount in minor currency units.",
 				},
 				{
 					name: "currency",
@@ -1311,7 +1411,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["USD"],
-					descriptionCompressed: "ISO currency.",
+					descriptionCompressed:
+						"For action=create_request, ISO 4217 currency.",
 				},
 				{
 					name: "paymentContext",
@@ -1335,7 +1436,8 @@ export const coreActionsSpec = {
 						},
 					},
 					examples: ["any_payer", "specific_payer:identity_123"],
-					descriptionCompressed: "Payer constraint.",
+					descriptionCompressed:
+						"For action=create_request, payer constraint. kind can be any_payer, verified_payer, or specific_payer; scope can be one_time, session, or recurring.",
 				},
 				{
 					name: "reason",
@@ -1346,7 +1448,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["Invoice #123"],
-					descriptionCompressed: "Reason.",
+					descriptionCompressed:
+						"For action=create_request or cancel_request, payment or cancellation reason.",
 				},
 				{
 					name: "expiresInMs",
@@ -1357,7 +1460,8 @@ export const coreActionsSpec = {
 						type: "number",
 					},
 					examples: [600000],
-					descriptionCompressed: "TTL milliseconds.",
+					descriptionCompressed:
+						"For action=create_request, optional time-to-live override in milliseconds.",
 				},
 				{
 					name: "paymentRequestId",
@@ -1368,7 +1472,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["pay_123"],
-					descriptionCompressed: "Payment request id.",
+					descriptionCompressed:
+						"For deliver_link, verify_payload, settle, await_callback, and cancel_request: payment request ID.",
 				},
 				{
 					name: "target",
@@ -1386,7 +1491,7 @@ export const coreActionsSpec = {
 						],
 					},
 					examples: ["dm", "public_link"],
-					descriptionCompressed: "Delivery target.",
+					descriptionCompressed: "For action=deliver_link, delivery channel.",
 				},
 				{
 					name: "targetChannelId",
@@ -1397,7 +1502,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["room_123"],
-					descriptionCompressed: "Target channel id.",
+					descriptionCompressed:
+						"For action=deliver_link, optional delivery channel override.",
 				},
 				{
 					name: "proof",
@@ -1408,7 +1514,8 @@ export const coreActionsSpec = {
 						type: "object",
 					},
 					examples: ["stripe:evt_123"],
-					descriptionCompressed: "Provider proof payload.",
+					descriptionCompressed:
+						"For action=verify_payload or settle, provider proof payload.",
 				},
 				{
 					name: "strategy",
@@ -1418,7 +1525,8 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					examples: ["webhook"],
-					descriptionCompressed: "Settlement strategy.",
+					descriptionCompressed:
+						"For action=settle, optional settler strategy hint.",
 				},
 				{
 					name: "timeoutMs",
@@ -1429,7 +1537,8 @@ export const coreActionsSpec = {
 						type: "number",
 					},
 					examples: [600000],
-					descriptionCompressed: "Wait timeout ms.",
+					descriptionCompressed:
+						"For action=await_callback, wait timeout in milliseconds. Default is 600000.",
 				},
 			],
 			examples: [
@@ -1465,7 +1574,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Payment create_request|deliver_link|verify_payload|settle|await_callback|cancel_request.",
+				"Payment operations. Use action=create_request to create a payment request, deliver_link to send a payment link, verify_payload to verify a provider proof, settle to finalize a payment, await_callback to wait for settlement, and cancel_request to void a pending request.",
 		},
 		{
 			name: "TRUST",
@@ -1520,7 +1629,7 @@ export const coreActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
 				},
 				{
 					name: "detailed",
@@ -1691,7 +1800,7 @@ export const coreActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
 		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };
@@ -1767,7 +1876,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Reply in current chat only; use connector actions for external connector sends.",
+				"Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. Do NOT use REPLY to send to a different channel/person or to run an email/inbox workflow — use MESSAGE (action=send) for a directed send to another channel or DM, MESSAGE inbox operations for triage/drafts, and POST to publish to a public feed.",
 		},
 		{
 			name: "IGNORE",
@@ -1871,7 +1980,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info.",
+				"Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
 		},
 		{
 			name: "NONE",
@@ -1944,7 +2053,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Respond without additional action. Default when speaking only.",
+				"Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
 		},
 		{
 			name: "MESSAGE",
@@ -1984,17 +2093,19 @@ export const allActionsSpec = {
 							"manage",
 						],
 					},
-					descriptionCompressed: "message action",
+					descriptionCompressed:
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 				},
 				{
 					name: "source",
 					description:
-						"Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector or inbox source",
+					descriptionCompressed:
+						"Connector or inbox source such as discord, slack, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
 				},
 				{
 					name: "accountId",
@@ -2004,7 +2115,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "connector account id",
+					descriptionCompressed:
+						"Optional connector account id for multi-account message connectors.",
 				},
 				{
 					name: "sources",
@@ -2017,7 +2129,8 @@ export const allActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed: "inbox sources",
+					descriptionCompressed:
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
 				},
 				{
 					name: "target",
@@ -2027,7 +2140,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "loose message target",
+					descriptionCompressed:
+						"Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
 				},
 				{
 					name: "channel",
@@ -2036,7 +2150,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "channel reference",
+					descriptionCompressed:
+						"Loose channel, room, or group name/reference.",
 				},
 				{
 					name: "server",
@@ -2046,7 +2161,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "server reference",
+					descriptionCompressed:
+						"Loose server, guild, workspace, or team name/reference.",
 				},
 				{
 					name: "message",
@@ -2056,7 +2172,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message text",
+					descriptionCompressed:
+						"Message text for action=send or replacement text for action=edit.",
 				},
 				{
 					name: "query",
@@ -2065,7 +2182,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search query",
+					descriptionCompressed:
+						"Search term for action=search or action=search_inbox.",
 				},
 				{
 					name: "content",
@@ -2075,7 +2193,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message lookup text",
+					descriptionCompressed:
+						"Inbox search text or message lookup hint for draft/respond/manage operations.",
 				},
 				{
 					name: "sender",
@@ -2085,7 +2204,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "sender lookup",
+					descriptionCompressed:
+						"Sender identifier, handle, or display name for inbox search or reply lookup.",
 				},
 				{
 					name: "body",
@@ -2095,7 +2215,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft body",
+					descriptionCompressed:
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
 				},
 				{
 					name: "to",
@@ -2107,7 +2228,8 @@ export const allActionsSpec = {
 							type: "string",
 						},
 					},
-					descriptionCompressed: "draft recipients",
+					descriptionCompressed:
+						"Recipient identifiers for action=draft_followup.",
 				},
 				{
 					name: "subject",
@@ -2116,7 +2238,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft subject",
+					descriptionCompressed:
+						"Optional subject for email-like draft operations.",
 				},
 				{
 					name: "messageId",
@@ -2126,7 +2249,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message id",
+					descriptionCompressed:
+						"Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
 				},
 				{
 					name: "draftId",
@@ -2136,7 +2260,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "draft id",
+					descriptionCompressed:
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
 				},
 				{
 					name: "confirmed",
@@ -2146,7 +2271,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed: "send confirmed",
+					descriptionCompressed:
+						"Whether the user explicitly confirmed sending for action=send_draft.",
 				},
 				{
 					name: "sendAt",
@@ -2155,7 +2281,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "send time",
+					descriptionCompressed:
+						"Scheduled send time for action=schedule_draft_send.",
 				},
 				{
 					name: "emoji",
@@ -2164,7 +2291,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "reaction emoji",
+					descriptionCompressed: "Reaction value for action=react.",
 				},
 				{
 					name: "pin",
@@ -2174,7 +2301,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "boolean",
 					},
-					descriptionCompressed: "pin state",
+					descriptionCompressed:
+						"Pin state for action=pin. Use false to unpin when supported.",
 				},
 				{
 					name: "manageOperation",
@@ -2184,7 +2312,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "manage operation",
+					descriptionCompressed:
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
 				},
 				{
 					name: "label",
@@ -2194,7 +2323,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message label",
+					descriptionCompressed:
+						"Label for action=manage when adding or removing labels.",
 				},
 				{
 					name: "tag",
@@ -2203,7 +2333,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "message tag",
+					descriptionCompressed:
+						"Tag for action=manage when adding or removing tags.",
 				},
 				{
 					name: "limit",
@@ -2213,7 +2344,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "result limit",
+					descriptionCompressed:
+						"Maximum number of messages/channels/servers/inbox items to return.",
 				},
 				{
 					name: "cursor",
@@ -2223,7 +2355,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "pagination cursor",
+					descriptionCompressed:
+						"Opaque pagination cursor for read/search/list operations.",
 				},
 				{
 					name: "sinceMs",
@@ -2233,7 +2366,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "since timestamp",
+					descriptionCompressed:
+						"Start timestamp in milliseconds for inbox list/search/triage operations.",
 				},
 				{
 					name: "since",
@@ -2243,7 +2377,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search start",
+					descriptionCompressed:
+						"Start timestamp or parseable date for action=search_inbox.",
 				},
 				{
 					name: "until",
@@ -2253,7 +2388,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "search end",
+					descriptionCompressed:
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
 				},
 			],
 			examples: [
@@ -2298,7 +2434,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 		},
 		{
 			name: "POST",
@@ -2314,7 +2450,7 @@ export const allActionsSpec = {
 						type: "string",
 						enum: ["send", "read", "search"],
 					},
-					descriptionCompressed: "post action",
+					descriptionCompressed: "Post action: send, read, or search.",
 				},
 				{
 					name: "source",
@@ -2324,7 +2460,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post connector source",
+					descriptionCompressed:
+						"Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
 				},
 				{
 					name: "accountId",
@@ -2334,7 +2471,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post account id",
+					descriptionCompressed:
+						"Optional connector account id for multi-account post connectors.",
 				},
 				{
 					name: "text",
@@ -2343,7 +2481,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post text",
+					descriptionCompressed: "Public post text for action=send.",
 				},
 				{
 					name: "target",
@@ -2353,7 +2491,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed target",
+					descriptionCompressed:
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
 				},
 				{
 					name: "feed",
@@ -2363,7 +2502,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "feed",
+					descriptionCompressed:
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
 				},
 				{
 					name: "query",
@@ -2372,7 +2512,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "post search query",
+					descriptionCompressed: "Search term for action=search.",
 				},
 				{
 					name: "replyTo",
@@ -2381,7 +2521,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "reply target",
+					descriptionCompressed: "Post/comment/reply target for action=send.",
 				},
 				{
 					name: "mediaId",
@@ -2391,7 +2531,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "media id",
+					descriptionCompressed:
+						"Media id for connector-specific comment surfaces such as Instagram.",
 				},
 				{
 					name: "limit",
@@ -2400,7 +2541,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "result limit",
+					descriptionCompressed: "Maximum number of posts to return.",
 				},
 				{
 					name: "cursor",
@@ -2410,7 +2551,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "pagination cursor",
+					descriptionCompressed:
+						"Opaque pagination cursor for action=read or action=search.",
 				},
 				{
 					name: "attachments",
@@ -2419,7 +2561,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "array",
 					},
-					descriptionCompressed: "post attachments",
+					descriptionCompressed: "Optional post attachments.",
 				},
 			],
 			examples: [
@@ -2453,7 +2595,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"primary post action ops send read search public feed timeline posts",
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
 		},
 		{
 			name: "ROOM",
@@ -2492,7 +2634,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Room action=follow|unfollow|mute|unmute; current room by default.",
+				"Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
 		},
 		{
 			name: "ROLE",
@@ -2515,7 +2657,7 @@ export const allActionsSpec = {
 						type: "string",
 						enum: ["update"],
 					},
-					descriptionCompressed: "Role operation. update.",
+					descriptionCompressed: "Role operation. Currently update.",
 				},
 				{
 					name: "entityId",
@@ -2536,7 +2678,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Role to assign.",
 				},
 			],
-			descriptionCompressed: "Role action=update; assign trust role to entity.",
+			descriptionCompressed:
+				"Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
 		},
 		{
 			name: "SEARCH_EXPERIENCES",
@@ -2565,10 +2708,11 @@ export const allActionsSpec = {
 					schema: {
 						type: "integer",
 					},
-					descriptionCompressed: "max number of results to return.",
+					descriptionCompressed: "Maximum number of results to return.",
 				},
 			],
-			descriptionCompressed: "Search prior experiences/memory by query.",
+			descriptionCompressed:
+				"Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
 		},
 		{
 			name: "CHARACTER",
@@ -2604,7 +2748,8 @@ export const allActionsSpec = {
 					descriptionCompressed: "Structured or textual character updates.",
 				},
 			],
-			descriptionCompressed: "Character action=modify|persist|update_identity.",
+			descriptionCompressed:
+				"Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
 		},
 		{
 			name: "CHOOSE_OPTION",
@@ -2627,8 +2772,8 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					examples: ["c0a8012e"],
-					descriptionCompressed: "Pending task id.",
+					examples: ["aabbccdd-1111-2222-3333-444455556666"],
+					descriptionCompressed: "The pending task id.",
 				},
 				{
 					name: "option",
@@ -2638,7 +2783,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["APPROVE", "ABORT"],
-					descriptionCompressed: "Option name exactly as listed.",
+					descriptionCompressed: "The selected option name exactly as listed.",
 				},
 			],
 			examples: [
@@ -2658,7 +2803,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
-			descriptionCompressed: "Select option for pending multi-choice task.",
+			descriptionCompressed:
+				"Select an option for a pending task that has multiple options.",
 		},
 		{
 			name: "ATTACHMENT",
@@ -2683,7 +2829,8 @@ export const allActionsSpec = {
 						enum: ["read", "save_as_document"],
 					},
 					examples: ["read", "save_as_document"],
-					descriptionCompressed: "Attachment operation.",
+					descriptionCompressed:
+						"Attachment operation: read or save_as_document.",
 				},
 				{
 					name: "attachmentId",
@@ -2694,7 +2841,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["attachment-123"],
-					descriptionCompressed: "Attachment id.",
+					descriptionCompressed:
+						"Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
 				},
 				{
 					name: "addToClipboard",
@@ -2706,7 +2854,8 @@ export const allActionsSpec = {
 						default: false,
 					},
 					examples: [true, false],
-					descriptionCompressed: "Store read result in task clipboard.",
+					descriptionCompressed:
+						"When true with action=read, store the attachment content in bounded task clipboard state.",
 				},
 				{
 					name: "title",
@@ -2717,11 +2866,12 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Meeting notes"],
-					descriptionCompressed: "Saved document title.",
+					descriptionCompressed:
+						"Optional title when saving attachment content as a document.",
 				},
 			],
 			descriptionCompressed:
-				"Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions.",
+				"Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
 		},
 		{
 			name: "GENERATE_MEDIA",
@@ -2757,7 +2907,7 @@ export const allActionsSpec = {
 						enum: ["image", "video", "audio"],
 					},
 					examples: ["image", "video", "audio"],
-					descriptionCompressed: "Media kind: image, video, audio.",
+					descriptionCompressed: "The kind of media to generate.",
 				},
 				{
 					name: "prompt",
@@ -2768,7 +2918,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["A futuristic cityscape at sunset, cinematic lighting"],
-					descriptionCompressed: "Generation prompt.",
+					descriptionCompressed:
+						"Detailed generation prompt describing the desired media.",
 				},
 				{
 					name: "audioKind",
@@ -2779,29 +2930,70 @@ export const allActionsSpec = {
 						enum: ["music", "sfx", "tts"],
 					},
 					examples: ["music", "sfx", "tts"],
-					descriptionCompressed: "Audio subtype.",
+					descriptionCompressed:
+						"For audio generation, choose music, sfx, or tts.",
 				},
 				{
 					name: "duration",
 					description:
-						"Optional target duration in seconds for video or audio.",
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					examples: [5, 30],
-					descriptionCompressed: "Duration seconds.",
+					descriptionCompressed:
+						"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 				},
 				{
 					name: "aspectRatio",
 					description:
-						"Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 					required: false,
 					schema: {
 						type: "string",
+						enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
 					},
 					examples: ["16:9", "9:16"],
-					descriptionCompressed: "Video aspect ratio.",
+					descriptionCompressed:
+						"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
+				},
+				{
+					name: "resolution",
+					description:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["480p", "720p"],
+					},
+					examples: ["480p", "720p"],
+					descriptionCompressed:
+						"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+				},
+				{
+					name: "audio",
+					description:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					examples: [true, false],
+					descriptionCompressed:
+						"Whether video generation should include synchronized audio. Omit it to include audio.",
+				},
+				{
+					name: "seed",
+					description:
+						"Optional non-negative integer seed for reproducible media generation.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					examples: [42],
+					descriptionCompressed:
+						"Optional non-negative integer seed for reproducible media generation.",
 				},
 				{
 					name: "size",
@@ -2811,7 +3003,20 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["1024x1024", "landscape_4_3"],
-					descriptionCompressed: "Image size.",
+					descriptionCompressed:
+						"Optional image size or image provider size preset.",
+				},
+				{
+					name: "imageUrl",
+					description:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					examples: ["https://media.example.com/source-image.png"],
+					descriptionCompressed:
+						"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 				},
 			],
 			examples: [
@@ -2861,7 +3066,8 @@ export const allActionsSpec = {
 					},
 				],
 			],
-			descriptionCompressed: "Generate image, video, or audio from prompt.",
+			descriptionCompressed:
+				"Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
 		},
 		{
 			name: "PAYMENT",
@@ -2899,7 +3105,8 @@ export const allActionsSpec = {
 						],
 					},
 					examples: ["create_request", "deliver_link", "settle"],
-					descriptionCompressed: "Payment operation.",
+					descriptionCompressed:
+						"Payment operation: create_request, deliver_link, verify_payload, settle, await_callback, or cancel_request.",
 				},
 				{
 					name: "provider",
@@ -2911,7 +3118,8 @@ export const allActionsSpec = {
 						enum: ["stripe", "oxapay", "x402", "wallet_native"],
 					},
 					examples: ["stripe", "wallet_native"],
-					descriptionCompressed: "Payment provider.",
+					descriptionCompressed:
+						"For action=create_request, provider key: stripe, oxapay, x402, or wallet_native.",
 				},
 				{
 					name: "amountCents",
@@ -2922,7 +3130,8 @@ export const allActionsSpec = {
 						type: "number",
 					},
 					examples: [500, 1000],
-					descriptionCompressed: "Amount in cents/minor units.",
+					descriptionCompressed:
+						"For action=create_request, amount in minor currency units.",
 				},
 				{
 					name: "currency",
@@ -2932,7 +3141,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["USD"],
-					descriptionCompressed: "ISO currency.",
+					descriptionCompressed:
+						"For action=create_request, ISO 4217 currency.",
 				},
 				{
 					name: "paymentContext",
@@ -2956,7 +3166,8 @@ export const allActionsSpec = {
 						},
 					},
 					examples: ["any_payer", "specific_payer:identity_123"],
-					descriptionCompressed: "Payer constraint.",
+					descriptionCompressed:
+						"For action=create_request, payer constraint. kind can be any_payer, verified_payer, or specific_payer; scope can be one_time, session, or recurring.",
 				},
 				{
 					name: "reason",
@@ -2967,7 +3178,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["Invoice #123"],
-					descriptionCompressed: "Reason.",
+					descriptionCompressed:
+						"For action=create_request or cancel_request, payment or cancellation reason.",
 				},
 				{
 					name: "expiresInMs",
@@ -2978,7 +3190,8 @@ export const allActionsSpec = {
 						type: "number",
 					},
 					examples: [600000],
-					descriptionCompressed: "TTL milliseconds.",
+					descriptionCompressed:
+						"For action=create_request, optional time-to-live override in milliseconds.",
 				},
 				{
 					name: "paymentRequestId",
@@ -2989,7 +3202,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["pay_123"],
-					descriptionCompressed: "Payment request id.",
+					descriptionCompressed:
+						"For deliver_link, verify_payload, settle, await_callback, and cancel_request: payment request ID.",
 				},
 				{
 					name: "target",
@@ -3007,7 +3221,7 @@ export const allActionsSpec = {
 						],
 					},
 					examples: ["dm", "public_link"],
-					descriptionCompressed: "Delivery target.",
+					descriptionCompressed: "For action=deliver_link, delivery channel.",
 				},
 				{
 					name: "targetChannelId",
@@ -3018,7 +3232,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["room_123"],
-					descriptionCompressed: "Target channel id.",
+					descriptionCompressed:
+						"For action=deliver_link, optional delivery channel override.",
 				},
 				{
 					name: "proof",
@@ -3029,7 +3244,8 @@ export const allActionsSpec = {
 						type: "object",
 					},
 					examples: ["stripe:evt_123"],
-					descriptionCompressed: "Provider proof payload.",
+					descriptionCompressed:
+						"For action=verify_payload or settle, provider proof payload.",
 				},
 				{
 					name: "strategy",
@@ -3039,7 +3255,8 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					examples: ["webhook"],
-					descriptionCompressed: "Settlement strategy.",
+					descriptionCompressed:
+						"For action=settle, optional settler strategy hint.",
 				},
 				{
 					name: "timeoutMs",
@@ -3050,7 +3267,8 @@ export const allActionsSpec = {
 						type: "number",
 					},
 					examples: [600000],
-					descriptionCompressed: "Wait timeout ms.",
+					descriptionCompressed:
+						"For action=await_callback, wait timeout in milliseconds. Default is 600000.",
 				},
 			],
 			examples: [
@@ -3086,7 +3304,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Payment create_request|deliver_link|verify_payload|settle|await_callback|cancel_request.",
+				"Payment operations. Use action=create_request to create a payment request, deliver_link to send a payment link, verify_payload to verify a provider proof, settle to finalize a payment, await_callback to wait for settlement, and cancel_request to void a pending request.",
 		},
 		{
 			name: "TRUST",
@@ -3141,7 +3359,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
 				},
 				{
 					name: "detailed",
@@ -3312,7 +3530,7 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed:
-				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+				"Trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
 		},
 		{
 			name: "ACCOUNTS_COMMAND",
@@ -3327,7 +3545,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"use, enable, disable, strategy, refresh - omit for the report",
+						"use, enable, disable, strategy, refresh — omit for the report",
 				},
 				{
 					name: "provider",
@@ -3348,7 +3566,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"account by id, label, or email - or the strategy name for `strategy`",
+						"account by id, label, or email — or the strategy name for `strategy`",
 				},
 			],
 			similes: ["/accounts"],
@@ -3372,23 +3590,6 @@ export const allActionsSpec = {
 			descriptionCompressed: "Show or set the default coding backend",
 		},
 		{
-			name: "COMPACT_COMMAND",
-			description: "Compact conversation history",
-			parameters: [
-				{
-					name: "instructions",
-					description: "Optional compaction instructions",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional compaction instructions",
-				},
-			],
-			similes: ["/compact"],
-			descriptionCompressed: "Compact convo history",
-		},
-		{
 			name: "CONTEXT_COMMAND",
 			description: "Show current context information",
 			parameters: [
@@ -3403,7 +3604,7 @@ export const allActionsSpec = {
 				},
 			],
 			similes: ["/context", "/ctx"],
-			descriptionCompressed: "Show current context info",
+			descriptionCompressed: "Show current context information",
 		},
 		{
 			name: "ELEVATED_COMMAND",
@@ -3435,7 +3636,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"small, large, coding, show, local, cloud - or a model for this room",
+						"small, large, coding, show, local, cloud — or a model for this room",
 				},
 				{
 					name: "model",
@@ -3446,7 +3647,7 @@ export const allActionsSpec = {
 						type: "string",
 					},
 					descriptionCompressed:
-						"model id - for coding, the backend (codex, claude, eliza)",
+						"model id — for coding, the backend (codex, claude, eliza)",
 				},
 				{
 					name: "effort",
@@ -3455,7 +3656,7 @@ export const allActionsSpec = {
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "reasoning effort - for coding, the model id",
+					descriptionCompressed: "reasoning effort — for coding, the model id",
 				},
 				{
 					name: "coding-effort",
@@ -3566,7 +3767,7 @@ export const coreProvidersSpec = {
 			description: "Possible response actions",
 			position: -1,
 			dynamic: false,
-			descriptionCompressed: "Available response actions.",
+			descriptionCompressed: "Possible response actions",
 		},
 		{
 			name: "CHARACTER",
@@ -3574,7 +3775,7 @@ export const coreProvidersSpec = {
 				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 			dynamic: false,
 			descriptionCompressed:
-				"Agent character: bio, topics, adjectives, style, example conversations.",
+				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 		},
 		{
 			name: "RECENT_MESSAGES",
@@ -3583,48 +3784,53 @@ export const coreProvidersSpec = {
 			position: 100,
 			dynamic: true,
 			descriptionCompressed:
-				"Canonical current-room transcript: dialogue, posts, action results, recent interactions.",
+				"Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity",
 		},
 		{
 			name: "ACTION_STATE",
 			description:
 				"Provides information about the current action state and available actions",
 			dynamic: true,
-			descriptionCompressed: "Current action state and available actions.",
+			descriptionCompressed:
+				"Provides information about the current action state and available actions",
 		},
 		{
 			name: "ATTACHMENTS",
 			description: "Media attachments in the current message",
 			dynamic: true,
-			descriptionCompressed: "Media attachments in current message.",
+			descriptionCompressed: "Media attachments in the current message",
 		},
 		{
 			name: "CAPABILITIES",
 			description:
 				"Agent capabilities including models, services, and features",
 			dynamic: false,
-			descriptionCompressed: "Agent capabilities: models, services, features.",
+			descriptionCompressed:
+				"Agent capabilities including models, services, and features",
 		},
 		{
 			name: "CHOICE",
 			description:
 				"Available choice options for selection when there are pending tasks or decisions",
 			dynamic: true,
-			descriptionCompressed: "Pending choice options for multi-option tasks.",
+			descriptionCompressed:
+				"Available choice options for selection when there are pending tasks or decisions",
 		},
 		{
 			name: "CONTACTS",
 			description:
 				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
-			descriptionCompressed: "Contact info from relationships with categories.",
+			descriptionCompressed:
+				"Provides contact information from the relationships including categories and preferences",
 		},
 		{
 			name: "CONTEXT_BENCH",
 			description: "Benchmark/task context injected by a benchmark harness",
 			position: 5,
 			dynamic: true,
-			descriptionCompressed: "Benchmark/task context from harness.",
+			descriptionCompressed:
+				"Benchmark/task context injected by a benchmark harness",
 		},
 		{
 			name: "ENTITIES",
@@ -3632,41 +3838,45 @@ export const coreProvidersSpec = {
 				"Provides information about entities in the current context including users, agents, and participants",
 			dynamic: true,
 			descriptionCompressed:
-				"Entities in context: users, agents, participants.",
+				"Provides information about entities in the current context including users, agents, and participants",
 		},
 		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
 			dynamic: true,
-			descriptionCompressed: "Known facts about entities from conversation.",
+			descriptionCompressed:
+				"Provides known facts about entities learned through conversation",
 		},
 		{
 			name: "FOLLOW_UPS",
 			description:
 				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 			dynamic: true,
-			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
+			descriptionCompressed:
+				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 		},
 		{
 			name: "DOCUMENTS",
 			description:
 				"Provides relevant snippets and recent entries from the agent document store",
 			dynamic: true,
-			descriptionCompressed: "Relevant snippets and recent stored documents.",
+			descriptionCompressed:
+				"Provides relevant snippets and recent entries from the agent document store",
 		},
 		{
 			name: "PROVIDERS",
 			description: "Available context providers",
 			dynamic: false,
-			descriptionCompressed: "Available context providers.",
+			descriptionCompressed: "Available context providers",
 		},
 		{
 			name: "RELATIONSHIPS",
 			description:
 				"Relationships between entities observed by the agent including tags and metadata",
 			dynamic: true,
-			descriptionCompressed: "Entity relationships with tags/metadata.",
+			descriptionCompressed:
+				"Relationships between entities observed by the agent including tags and metadata",
 		},
 		{
 			name: "ROLES",
@@ -3674,28 +3884,31 @@ export const coreProvidersSpec = {
 				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 			dynamic: true,
 			descriptionCompressed:
-				"Entity roles in context (Admin/Owner/Member/None).",
+				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 		},
 		{
 			name: "SETTINGS",
 			description:
 				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 			dynamic: true,
-			descriptionCompressed: "Agent/server settings (security-filtered).",
+			descriptionCompressed:
+				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 		},
 		{
 			name: "TIME",
 			description:
 				"Provides the current date and time in UTC for time-based operations or responses",
 			dynamic: true,
-			descriptionCompressed: "Current UTC date/time.",
+			descriptionCompressed:
+				"Provides the current date and time in UTC for time-based operations or responses",
 		},
 		{
 			name: "WORLD",
 			description:
 				"Provides information about the current world context including settings and members",
 			dynamic: true,
-			descriptionCompressed: "World context: settings and members.",
+			descriptionCompressed:
+				"Provides information about the current world context including settings and members",
 		},
 		{
 			name: "LONG_TERM_MEMORY",
@@ -3704,29 +3917,23 @@ export const coreProvidersSpec = {
 			position: 50,
 			dynamic: false,
 			descriptionCompressed:
-				"Persistent user facts/preferences across conversations.",
-		},
-		{
-			name: "SUMMARIZED_CONTEXT",
-			description:
-				"Provides summarized context from previous conversations for optimized context usage",
-			position: 96,
-			dynamic: false,
-			descriptionCompressed: "Summarized context from prior conversations.",
+				"Persistent facts and preferences about the user learned and remembered across conversations",
 		},
 		{
 			name: "AGENT_SETTINGS",
 			description:
 				"Provides the agent's current configuration settings (filtered for security)",
 			dynamic: true,
-			descriptionCompressed: "Agent config settings (security-filtered).",
+			descriptionCompressed:
+				"Provides the agent's current configuration settings (filtered for security)",
 		},
 		{
 			name: "CURRENT_TIME",
 			description:
 				"Provides current time and date information in various formats",
 			dynamic: true,
-			descriptionCompressed: "Current time/date in various formats.",
+			descriptionCompressed:
+				"Provides current time and date information in various formats",
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };
@@ -3738,7 +3945,7 @@ export const allProvidersSpec = {
 			description: "Possible response actions",
 			position: -1,
 			dynamic: false,
-			descriptionCompressed: "Available response actions.",
+			descriptionCompressed: "Possible response actions",
 		},
 		{
 			name: "CHARACTER",
@@ -3746,7 +3953,7 @@ export const allProvidersSpec = {
 				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 			dynamic: false,
 			descriptionCompressed:
-				"Agent character: bio, topics, adjectives, style, example conversations.",
+				"Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
 		},
 		{
 			name: "RECENT_MESSAGES",
@@ -3755,48 +3962,53 @@ export const allProvidersSpec = {
 			position: 100,
 			dynamic: true,
 			descriptionCompressed:
-				"Canonical current-room transcript: dialogue, posts, action results, recent interactions.",
+				"Canonical bounded transcript for the current room, including prior dialogue, post-style turns, action results, and cross-room recent interactions for memory continuity",
 		},
 		{
 			name: "ACTION_STATE",
 			description:
 				"Provides information about the current action state and available actions",
 			dynamic: true,
-			descriptionCompressed: "Current action state and available actions.",
+			descriptionCompressed:
+				"Provides information about the current action state and available actions",
 		},
 		{
 			name: "ATTACHMENTS",
 			description: "Media attachments in the current message",
 			dynamic: true,
-			descriptionCompressed: "Media attachments in current message.",
+			descriptionCompressed: "Media attachments in the current message",
 		},
 		{
 			name: "CAPABILITIES",
 			description:
 				"Agent capabilities including models, services, and features",
 			dynamic: false,
-			descriptionCompressed: "Agent capabilities: models, services, features.",
+			descriptionCompressed:
+				"Agent capabilities including models, services, and features",
 		},
 		{
 			name: "CHOICE",
 			description:
 				"Available choice options for selection when there are pending tasks or decisions",
 			dynamic: true,
-			descriptionCompressed: "Pending choice options for multi-option tasks.",
+			descriptionCompressed:
+				"Available choice options for selection when there are pending tasks or decisions",
 		},
 		{
 			name: "CONTACTS",
 			description:
 				"Provides contact information from the relationships including categories and preferences",
 			dynamic: true,
-			descriptionCompressed: "Contact info from relationships with categories.",
+			descriptionCompressed:
+				"Provides contact information from the relationships including categories and preferences",
 		},
 		{
 			name: "CONTEXT_BENCH",
 			description: "Benchmark/task context injected by a benchmark harness",
 			position: 5,
 			dynamic: true,
-			descriptionCompressed: "Benchmark/task context from harness.",
+			descriptionCompressed:
+				"Benchmark/task context injected by a benchmark harness",
 		},
 		{
 			name: "ENTITIES",
@@ -3804,41 +4016,45 @@ export const allProvidersSpec = {
 				"Provides information about entities in the current context including users, agents, and participants",
 			dynamic: true,
 			descriptionCompressed:
-				"Entities in context: users, agents, participants.",
+				"Provides information about entities in the current context including users, agents, and participants",
 		},
 		{
 			name: "FACTS",
 			description:
 				"Provides known facts about entities learned through conversation",
 			dynamic: true,
-			descriptionCompressed: "Known facts about entities from conversation.",
+			descriptionCompressed:
+				"Provides known facts about entities learned through conversation",
 		},
 		{
 			name: "FOLLOW_UPS",
 			description:
 				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 			dynamic: true,
-			descriptionCompressed: "Upcoming follow-ups/reminders for contacts.",
+			descriptionCompressed:
+				"Provides information about upcoming follow-ups and reminders scheduled for contacts",
 		},
 		{
 			name: "DOCUMENTS",
 			description:
 				"Provides relevant snippets and recent entries from the agent document store",
 			dynamic: true,
-			descriptionCompressed: "Relevant snippets and recent stored documents.",
+			descriptionCompressed:
+				"Provides relevant snippets and recent entries from the agent document store",
 		},
 		{
 			name: "PROVIDERS",
 			description: "Available context providers",
 			dynamic: false,
-			descriptionCompressed: "Available context providers.",
+			descriptionCompressed: "Available context providers",
 		},
 		{
 			name: "RELATIONSHIPS",
 			description:
 				"Relationships between entities observed by the agent including tags and metadata",
 			dynamic: true,
-			descriptionCompressed: "Entity relationships with tags/metadata.",
+			descriptionCompressed:
+				"Relationships between entities observed by the agent including tags and metadata",
 		},
 		{
 			name: "ROLES",
@@ -3846,28 +4062,31 @@ export const allProvidersSpec = {
 				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 			dynamic: true,
 			descriptionCompressed:
-				"Entity roles in context (Admin/Owner/Member/None).",
+				"Roles assigned to entities in the current context (Admin, Owner, Member, None)",
 		},
 		{
 			name: "SETTINGS",
 			description:
 				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 			dynamic: true,
-			descriptionCompressed: "Agent/server settings (security-filtered).",
+			descriptionCompressed:
+				"Current settings for the agent/server (filtered for security, excludes sensitive keys)",
 		},
 		{
 			name: "TIME",
 			description:
 				"Provides the current date and time in UTC for time-based operations or responses",
 			dynamic: true,
-			descriptionCompressed: "Current UTC date/time.",
+			descriptionCompressed:
+				"Provides the current date and time in UTC for time-based operations or responses",
 		},
 		{
 			name: "WORLD",
 			description:
 				"Provides information about the current world context including settings and members",
 			dynamic: true,
-			descriptionCompressed: "World context: settings and members.",
+			descriptionCompressed:
+				"Provides information about the current world context including settings and members",
 		},
 		{
 			name: "LONG_TERM_MEMORY",
@@ -3876,29 +4095,23 @@ export const allProvidersSpec = {
 			position: 50,
 			dynamic: false,
 			descriptionCompressed:
-				"Persistent user facts/preferences across conversations.",
-		},
-		{
-			name: "SUMMARIZED_CONTEXT",
-			description:
-				"Provides summarized context from previous conversations for optimized context usage",
-			position: 96,
-			dynamic: false,
-			descriptionCompressed: "Summarized context from prior conversations.",
+				"Persistent facts and preferences about the user learned and remembered across conversations",
 		},
 		{
 			name: "AGENT_SETTINGS",
 			description:
 				"Provides the agent's current configuration settings (filtered for security)",
 			dynamic: true,
-			descriptionCompressed: "Agent config settings (security-filtered).",
+			descriptionCompressed:
+				"Provides the agent's current configuration settings (filtered for security)",
 		},
 		{
 			name: "CURRENT_TIME",
 			description:
 				"Provides current time and date information in various formats",
 			dynamic: true,
-			descriptionCompressed: "Current time/date in various formats.",
+			descriptionCompressed:
+				"Provides current time and date information in various formats",
 		},
 	],
 } as const satisfies { version: string; providers: readonly ProviderDoc[] };

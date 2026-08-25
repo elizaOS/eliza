@@ -16,7 +16,7 @@ export function toNewContainer(row: NewAppContainerRow): NewContainer {
     port: row.port,
     // Database credentials belong to the app tenant, never the shared agent DB.
     environment_vars: row.environmentVars,
-    metadata: { appId: row.appId },
+    metadata: { appId: row.appId, deploymentGeneration: row.deploymentGeneration },
     status: "pending",
   };
 }

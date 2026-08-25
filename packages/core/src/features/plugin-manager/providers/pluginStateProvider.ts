@@ -18,9 +18,6 @@ import {
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 } from "./relevance.ts";
 
-const MAX_PLUGIN_STATE_ITEMS = 20;
-const MAX_EJECTED_PLUGIN_ITEMS = 10;
-
 const PLUGIN_STATE_PROVIDER_KEYWORDS = buildProviderKeywords(
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 	COMMON_CONNECTOR_KEYWORDS,
@@ -125,7 +122,6 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 			if (loadedPlugins.length > 0) {
 				sections.push(
 					`**Loaded Plugins:**\n${loadedPlugins
-						.slice(0, MAX_PLUGIN_STATE_ITEMS)
 						.map((p) => `- ${formatPlugin(p)}`)
 						.join("\n")}`,
 				);
@@ -134,7 +130,6 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 			if (errorPlugins.length > 0) {
 				sections.push(
 					`**Plugins with Errors:**\n${errorPlugins
-						.slice(0, MAX_PLUGIN_STATE_ITEMS)
 						.map((p) => `- ${formatPlugin(p)}`)
 						.join("\n")}`,
 				);
@@ -143,7 +138,6 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 			if (readyPlugins.length > 0) {
 				sections.push(
 					`**Ready to Load:**\n${readyPlugins
-						.slice(0, MAX_PLUGIN_STATE_ITEMS)
 						.map((p) => `- ${formatPlugin(p)}`)
 						.join("\n")}`,
 				);
@@ -152,7 +146,6 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 			if (unloadedPlugins.length > 0) {
 				sections.push(
 					`**Unloaded:**\n${unloadedPlugins
-						.slice(0, MAX_PLUGIN_STATE_ITEMS)
 						.map((p) => `- ${formatPlugin(p)}`)
 						.join("\n")}`,
 				);
@@ -161,10 +154,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 			const protectedPlugins = pluginManager.getProtectedPlugins();
 			const originalPlugins = pluginManager.getOriginalPlugins();
 			const ejectedPlugins = await pluginManager.listEjectedPlugins();
-			const visibleEjectedPlugins = ejectedPlugins.slice(
-				0,
-				MAX_EJECTED_PLUGIN_ITEMS,
-			);
+			const visibleEjectedPlugins = ejectedPlugins;
 
 			if (ejectedPlugins.length > 0) {
 				sections.push(
@@ -198,7 +188,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 					originalPlugins,
 				},
 				data: {
-					plugins: plugins.slice(0, MAX_PLUGIN_STATE_ITEMS).map((p) => ({
+					plugins: plugins.map((p) => ({
 						id: p.id,
 						name: p.name,
 						status: p.status,
@@ -210,7 +200,7 @@ export const pluginStateProvider: Provider & { relevanceKeywords: string[] } = {
 						isOriginal: originalPlugins.includes(p.name),
 					})),
 					ejectedPlugins: visibleEjectedPlugins,
-					truncated: plugins.length > MAX_PLUGIN_STATE_ITEMS,
+					truncated: false,
 				},
 			};
 		} catch (error) {

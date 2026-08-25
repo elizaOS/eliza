@@ -12,8 +12,9 @@
  * The native plugin is dynamically imported and feature-detected — fork-only
  * methods (`setCacheType`, `setSpecType`, `getNativeKernels`) warn and skip on
  * stock builds. `generateStream` is the canonical generation path and
- * `generate` drains it into a single result; mobile `maxTokens` is clamped to
- * `MOBILE_MAX_TOKENS_CAP` to avoid OOM.
+ * `generate` drains it into a single result; unsupported mobile output requests
+ * are rejected before decode and a reached native ceiling is never returned as
+ * a complete response.
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
@@ -259,10 +260,27 @@ function detectPlatform(): "ios" | "android" | "web" {
 }
 
 function resolveMobileMaxTokens(requested?: number): number {
-  if (!Number.isFinite(requested) || requested == null || requested <= 0) {
-    return DEFAULT_MAX_TOKENS;
+  if (requested === undefined) return DEFAULT_MAX_TOKENS;
+  if (!Number.isSafeInteger(requested) || requested <= 0) {
+    throw new RangeError(
+      `[capacitor-llama] maxTokens must be a positive safe integer; received ${String(requested)}`,
+    );
   }
-  return Math.min(Math.floor(requested), MOBILE_MAX_TOKENS_CAP);
+  if (requested > MOBILE_MAX_TOKENS_CAP) {
+    throw new RangeError(
+      `[capacitor-llama] requested maxTokens=${requested} exceeds the mobile decode ceiling ${MOBILE_MAX_TOKENS_CAP}`,
+    );
+  }
+  return requested;
+}
+
+function incompleteOutputError(maxTokens: number): Error & { code: string } {
+  return Object.assign(
+    new Error(
+      `[capacitor-llama] native generation reached maxTokens=${maxTokens} before a stop condition; no partial response was returned`,
+    ),
+    { code: "MODEL_OUTPUT_INCOMPLETE" },
+  );
 }
 
 function numberFromUnknown(value: unknown): number | null {
@@ -897,6 +915,8 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     let outputTokens = 0;
     let durationMs = 0;
     let lastError: string | null = null;
+    let finishReason: "stop" | "length" | "tool" | "cancel" | "error" | null =
+      null;
     // Wall-clock time-to-first-token: from the call start to the first decoded
     // token event. This is the on-device prefill wall-clock the resource
     // workbench differences into prefill vs decode throughput. Stays undefined
@@ -913,11 +933,13 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       } else if (event.kind === "error") {
         lastError = event.message;
       } else if (event.kind === "done") {
-        // The done payload's authoritative fields come from the
-        // closed-over scope below — set when the native call returns.
+        finishReason = event.finishReason;
       }
     }
     if (lastError) throw new Error(lastError);
+    if (finishReason === "length") {
+      throw incompleteOutputError(resolveMobileMaxTokens(options.maxTokens));
+    }
     // Re-read native counters from the cached completion result. We stored
     // them on `this.lastCompletionStats` inside the stream's lifecycle.
     const stats = this.lastCompletionStats;

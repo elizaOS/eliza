@@ -660,6 +660,46 @@ describe("ScheduledTaskRunner — every verb", () => {
     ).rejects.toThrow(/read-only/);
   });
 
+  it("edit refuses an own __proto__ key instead of re-parenting the task", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    // `JSON.parse` is the only way to build a real own "__proto__" data
+    // property — an object literal would invoke the setter instead.
+    const payload = JSON.parse(
+      '{"promptInstructions":"edited","__proto__":{"isAdmin":true}}',
+    );
+    expect(Object.hasOwn(payload, "__proto__")).toBe(true);
+    await expect(
+      h.runner.apply(
+        task.taskId,
+        "edit",
+        payload as Parameters<ScheduledTaskRunnerHandle["apply"]>[2],
+      ),
+    ).rejects.toThrow(/__proto__ is read-only/);
+    const persisted = (await h.runner.list()).find(
+      (t) => t.taskId === task.taskId,
+    );
+    expect(Object.getPrototypeOf(persisted)).toBe(Object.prototype);
+    expect((persisted as unknown as { isAdmin?: unknown }).isAdmin).toBe(
+      undefined,
+    );
+    expect(({} as { isAdmin?: unknown }).isAdmin).toBe(undefined);
+    expect(persisted?.promptInstructions).toBe(task.promptInstructions);
+  });
+
+  it("edit still accepts an ordinary patch after the __proto__ guard", async () => {
+    const h = makeHarness();
+    const task = await h.runner.schedule(baseInput());
+    const edited = await h.runner.apply(task.taskId, "edit", {
+      priority: "high",
+      metadata: { note: "kept" },
+      executionProfile: "bg-light-30s",
+    });
+    expect(edited.priority).toBe("high");
+    expect(edited.metadata?.note).toBe("kept");
+    expect(edited.executionProfile).toBe("bg-light-30s");
+  });
+
   it("reopen brings a terminal task back inside the 24h window", async () => {
     const h = makeHarness("2026-05-09T12:00:00.000Z");
     const task = await h.runner.schedule(baseInput());

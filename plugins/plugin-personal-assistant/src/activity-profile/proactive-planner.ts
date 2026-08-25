@@ -6,6 +6,7 @@
  * ProactiveAction[] describing what to send, when, and where.
  */
 
+import { toWellFormedUnicode } from "@elizaos/core";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import { resolveEffectiveDayKey, wasActiveToday } from "./analyzer.js";
 import type {
@@ -784,7 +785,6 @@ function appendInboxDigestContext(
 
   if (inboxDigest.unreadCount > 0) {
     const channelSummary = inboxDigest.channelCounts
-      .slice(0, 3)
       .map((entry) => `${entry.channel} ${entry.unreadCount}`)
       .join(", ");
     contextParts.push(
@@ -795,7 +795,6 @@ function appendInboxDigestContext(
   }
 
   const topHighlights = inboxDigest.highlights
-    .slice(0, 2)
     .map((highlight) => formatInboxHighlight(highlight))
     .filter((highlight) => highlight.length > 0);
   if (topHighlights.length > 0) {
@@ -817,14 +816,11 @@ function formatInboxHighlight(highlight: InboxDigestHighlightSlim): string {
 }
 
 function summarizeSnippet(value: string): string | null {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length === 0) {
     return null;
   }
-  if (trimmed.length <= 72) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, 69).trimEnd()}...`;
+  return wellFormed;
 }
 
 function isBusyDay(
@@ -889,9 +885,15 @@ function getTodayNonAllDayEvents(
         startParts.day === todayParts.day
       );
     })
-    .sort(
-      (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime(),
-    );
+    .sort((a, b) => {
+      const aTime = Number.isFinite(new Date(a.startAt).getTime())
+        ? new Date(a.startAt).getTime()
+        : 0;
+      const bTime = Number.isFinite(new Date(b.startAt).getTime())
+        ? new Date(b.startAt).getTime()
+        : 0;
+      return aTime - bTime;
+    });
 }
 
 function getTodayActionableEvents(

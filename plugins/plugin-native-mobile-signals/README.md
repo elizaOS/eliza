@@ -8,7 +8,7 @@ On iOS and Android the plugin reads native signals that are unavailable to ordin
 
 - **Device state** — whether the screen is active, idle, locked, or the app is backgrounded; battery charging status.
 - **Health data** — current sleep stage, biometrics (heart rate, HRV, respiratory rate, blood oxygen) from HealthKit (iOS) or Health Connect (Android).
-- **Screen time** — per-app usage summaries via Apple's DeviceActivity framework (iOS) or `UsageStatsManager` (Android).
+- **Screen time** — a privacy-preserving category summary rendered inside Apple's sandboxed DeviceActivity report (iOS), or host-readable app usage from `UsageStatsManager` (Android).
 
 In browser environments a web fallback is provided using `document.visibilityState`, `window.focus/blur`, and the Battery Status API. Health and screen-time capabilities return `false` on the web fallback.
 
@@ -19,7 +19,7 @@ In browser environments a web fallback is provided using `document.visibilitySta
 | Device state (active/idle/locked) | Yes | Yes | Partial (visibility/focus only) |
 | Battery on/off charging | Yes | Yes | Yes (Battery Status API) |
 | Sleep stage / biometrics | HealthKit | Health Connect | No |
-| Screen time / usage | DeviceActivity + FamilyControls | `PACKAGE_USAGE_STATS` | No |
+| Screen time / usage | Authorized in-extension category report | `PACKAGE_USAGE_STATS` | No |
 | Background refresh | Not available (foreground monitoring only) | Not available | No |
 
 ## Installation
@@ -62,6 +62,9 @@ await MobileSignals.addListener("signal", (signal) => {
 // One-shot read without streaming
 const { snapshot, healthSnapshot } = await MobileSignals.getSnapshot();
 
+// On an authorized physical iOS device, present the sandboxed native report.
+await MobileSignals.presentScreenTimeReport();
+
 // Stop when done
 await MobileSignals.stopMonitoring();
 ```
@@ -91,6 +94,22 @@ Screen Time features additionally require:
 - The `com.apple.developer.family-controls` entitlement (provisioned by Apple — requires a special request).
 - `DeviceActivityMonitorExtension` and `DeviceActivityReportExtension` app-extension targets in the Xcode project.
 - The `FamilyControls` and `DeviceActivity` frameworks linked via the podspec.
+
+Apple supplies Screen Time usage only to a sandboxed report extension. The
+native host exposes an explicit `presentScreenTimeReport()` surface after
+Family Controls authorization; the extension aggregates total activity and top
+categories and renders them without moving values into the Capacitor host, an
+app group, or a network request. `reportAvailable` becomes true only for an
+authorized physical-device host with the report extension and presenter.
+`coarseSummaryAvailable`, `thresholdEventsAvailable`, and
+`rawUsageExportAvailable` remain false. Threshold availability must stay false until
+the app schedules a concrete `DeviceActivityEvent` and handles its callback
+through a typed signal path.
+
+Android does not expose a DeviceActivity report: `reportAvailable` stays false.
+Its permission state uses `usage-access-required` or `host-summary-available`,
+and a granted host-readable aggregate is exposed through
+`coarseSummaryAvailable` plus the nested `android` fields.
 
 Validate the iOS build wiring:
 
@@ -124,6 +143,6 @@ await MobileSignals.openSettings({ target: "usageAccess" });
 ## Platform notes
 
 - **Node (desktop):** No native integration. The web fallback applies.
-- **iOS:** HealthKit is available only in an explicitly enabled, correctly signed build. Screen Time requires its separately approved entitlements and targets.
+- **iOS:** Device state and HealthKit snapshots are supported. Authorized Screen Time category totals render only inside the bundled report extension through the native presenter; no host-readable usage export or configured threshold event ships.
 - **Android:** Full support for device state and Health Connect. Usage stats require manual user grant via settings.
 - **Web:** Graceful fallback only. Health and screen-time capabilities are unavailable.

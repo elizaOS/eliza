@@ -114,6 +114,28 @@ describe("scheduling plugin boot", () => {
     );
   });
 
+  it("uses the central heavy-boot window for registration after 30 seconds", async () => {
+    vi.useFakeTimers();
+    let registered = false;
+    const service = {} as ScheduledTaskRunnerService;
+    const getServiceLoadPromise = vi.fn(async () => service);
+    const runtime = {
+      initPromise: Promise.resolve(),
+      hasService: () => registered,
+      getServiceRegistrationStatus: () =>
+        registered ? "registered" : "unknown",
+      getServiceLoadPromise,
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    await vi.advanceTimersByTimeAsync(30_250);
+    expect(getServiceLoadPromise).not.toHaveBeenCalled();
+
+    registered = true;
+    await vi.advanceTimersByTimeAsync(250);
+    await expect(load).resolves.toBe(service);
+  });
+
   it("fails at the bounded deadline when the declaration never registers", async () => {
     vi.useFakeTimers();
     const getServiceLoadPromise = vi.fn();
@@ -163,6 +185,186 @@ describe("scheduling plugin boot", () => {
 
     await outcome;
     expect(getServiceLoadPromise).not.toHaveBeenCalled();
+  });
+
+  it("stops polling when runtime shutdown begins", async () => {
+    vi.useFakeTimers();
+    const stop = new AbortController();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      getLifecycleState: () => (stop.signal.aborted ? "stopping" : "running"),
+      getStopSignal: () => stop.signal,
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      registrationTimeoutMs: 10_000,
+      registrationPollMs: 100,
+    });
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    stop.abort();
+
+    await outcome;
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("retains shutdown detection for runtimes with the legacy stopped flag", async () => {
+    vi.useFakeTimers();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      stopped: false,
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime & { stopped: boolean };
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    runtime.stopped = true;
+    await vi.advanceTimersByTimeAsync(250);
+
+    await outcome;
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
+  });
+
+  it("rejects startup after runtime initialization has failed", async () => {
+    const runtime = {
+      initPromise: Promise.resolve(),
+      getLifecycleState: () => "failed" as const,
+      hasService: vi.fn(),
+      getServiceRegistrationStatus: vi.fn(),
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      waitForScheduledTaskRunnerService(runtime),
+    ).rejects.toMatchObject({ code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED" });
+    expect(runtime.hasService).not.toHaveBeenCalled();
+  });
+
+  it("observes runtime shutdown while initialization is still pending", async () => {
+    const stop = new AbortController();
+    const runtime = {
+      initPromise: new Promise<void>(() => undefined),
+      getLifecycleState: () =>
+        stop.signal.aborted ? "stopping" : "initializing",
+      getStopSignal: () => stop.signal,
+      hasService: vi.fn(),
+      getServiceRegistrationStatus: vi.fn(),
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    stop.abort();
+
+    await outcome;
+    expect(runtime.hasService).not.toHaveBeenCalled();
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
+  });
+
+  it("observes runtime shutdown while the registered service is loading", async () => {
+    const stop = new AbortController();
+    let markLoadStarted!: () => void;
+    const loadStarted = new Promise<void>((resolve) => {
+      markLoadStarted = resolve;
+    });
+    const runtime = {
+      initPromise: Promise.resolve(),
+      getLifecycleState: () => (stop.signal.aborted ? "stopping" : "running"),
+      getStopSignal: () => stop.signal,
+      hasService: () => true,
+      getServiceRegistrationStatus: () => "registered",
+      getServiceLoadPromise: vi.fn(() => {
+        markLoadStarted();
+        return new Promise(() => undefined);
+      }),
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime);
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    await loadStarted;
+    stop.abort();
+
+    await outcome;
+    expect(runtime.getServiceLoadPromise).toHaveBeenCalledOnce();
+  });
+
+  it("validates wait bounds before awaiting runtime initialization", async () => {
+    const runtime = {
+      initPromise: new Promise<void>(() => undefined),
+      hasService: vi.fn(),
+      getServiceRegistrationStatus: vi.fn(),
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      waitForScheduledTaskRunnerService(runtime, {
+        registrationPollMs: Number.NaN,
+      }),
+    ).rejects.toMatchObject({ code: "SCHEDULED_TASK_RUNNER_WAIT_INVALID" });
+    expect(runtime.hasService).not.toHaveBeenCalled();
+  });
+
+  it("cancels the pending poll immediately when its owner aborts", async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const runtime = {
+      initPromise: Promise.resolve(),
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      registrationTimeoutMs: 10_000,
+      registrationPollMs: 5_000,
+      signal: controller.signal,
+    });
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+
+    await outcome;
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels while runtime initialization itself is still pending", async () => {
+    const controller = new AbortController();
+    const runtime = {
+      initPromise: new Promise<void>(() => undefined),
+      hasService: vi.fn(),
+      getServiceRegistrationStatus: vi.fn(),
+      getServiceLoadPromise: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const load = waitForScheduledTaskRunnerService(runtime, {
+      signal: controller.signal,
+    });
+    const outcome = expect(load).rejects.toMatchObject({
+      code: "SCHEDULED_TASK_RUNNER_WAIT_STOPPED",
+    });
+    controller.abort();
+
+    await outcome;
+    expect(runtime.hasService).not.toHaveBeenCalled();
+    expect(runtime.getServiceLoadPromise).not.toHaveBeenCalled();
   });
 
   it("does not seed at init; seeding waits for the runner boot hook", async () => {

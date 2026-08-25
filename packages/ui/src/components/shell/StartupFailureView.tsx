@@ -49,11 +49,6 @@ function startupReasonLabel(
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
-/* This is an error surface — the card framing is semantic and keeps its
-   surface scrim over the wallpaper. Inner content is flat — no nested boxes. */
-const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[720px] overflow-hidden border border-border/60 bg-card/95";
-
 interface StartupFailureViewProps {
   error: StartupErrorState;
   onRetry: () => void;
@@ -95,16 +90,16 @@ export function StartupFailureView({
 
   return (
     <div className={SCREEN_SHELL_CLASS}>
-      <Card className={SCREEN_CARD_CLASS}>
+      <Card variant="startupFailure">
         <CardHeader className="pb-6 pt-6">
           <div className="flex flex-col gap-4">
             <span
               aria-label={reasonLabel}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
+              className="inline-flex size-9 items-center justify-center rounded-sm border border-destructive/35 bg-destructive/12 text-destructive"
               role="img"
               title={reasonLabel}
             >
-              <AlertCircle className="h-5 w-5" aria-hidden />
+              <AlertCircle className="size-5" aria-hidden />
             </span>
             <h1 className="text-xl font-semibold leading-tight text-destructive">
               {reasonLabel}

@@ -72,6 +72,12 @@ export const DESKTOP_VIEW_WINDOWS: readonly DesktopViewWindow[] = [
     path: "/character/documents",
   },
   {
+    id: "vault",
+    label: "Vault",
+    labelKey: "desktop.views.vault",
+    path: "/vault",
+  },
+  {
     id: "settings",
     label: "Settings",
     labelKey: "desktop.views.settings",
@@ -226,8 +232,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "tray-open-desktop-workspace",
     entryPoint: "tray",
     label: "Open Desktop Workspace",
-    expectedAction:
-      "Open a detached settings window focused on the desktop workspace section.",
+    expectedAction: "Open the complete Eliza shell in a managed app window.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

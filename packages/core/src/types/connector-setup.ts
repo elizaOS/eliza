@@ -79,7 +79,7 @@ export function buildSetupError(
 /**
  * Compose the canonical path for a connector setup endpoint.
  *
- * `setupPath("signal", "start")` → `/api/setup/signal/start`.
+ * `setupPath("telegram", "start")` → `/api/setup/telegram/start`.
  */
 export function setupPath(
 	connector: string,

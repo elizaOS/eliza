@@ -412,29 +412,27 @@ describe("agent-event-bridge", () => {
 		expect(notificationService.list()).toHaveLength(1);
 	});
 
-	it("notifies for a real Signal payload that stamps no content.channelType", async () => {
+	it("notifies for a registered passive payload that stamps no content.channelType", async () => {
 		const { runtime, notificationService } = await createCtx();
-		// Mirrors plugin-signal: `channelType` appears nowhere on content; the
-		// conversation kind lives on the Room and on `metadata.chatType`.
-		registerConnectorSourceMetadata("signal", {
-			aliases: ["signal"],
+		registerConnectorSourceMetadata("custom-passive", {
+			aliases: ["custom-passive"],
 			sourceKind: "passive",
 			isPassive: true,
 		});
 		await bridgeMessageReceivedToStreams(
 			messagePayload(runtime, {
-				source: "signal",
+				source: "custom-passive",
 				message: {
 					...messagePayload(runtime).message,
 					content: {
 						text: "landed safely",
-						source: "signal",
+						source: "custom-passive",
 						name: "bob",
 					},
 					metadata: {
 						type: "message",
-						source: "signal",
-						provider: "signal",
+						source: "custom-passive",
+						provider: "custom-passive",
 						entityName: "bob",
 						entityUserName: "+15550000000",
 						fromBot: false,

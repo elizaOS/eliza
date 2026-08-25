@@ -1,16 +1,8 @@
 /**
- * Drives the iOS voice/dictation Live Activity from the continuous-chat session
- * lifecycle (issue #12185, sub-issue 2). The `ElizaLiveActivity` native bridge
- * (packages/app-core/platforms/ios/App/App/ElizaLiveActivityBridge.swift) starts
- * the Lock Screen + Dynamic Island activity when a voice session goes active,
- * pushes its `phase`/`transcript` as the session progresses, and ends it when
- * the session stops.
- *
- * `DictationLiveActivityController` serializes ActivityKit calls through a
- * promise chain (so end never races ahead of start), throttles content pushes to
- * respect the ActivityKit update budget, and no-ops off iOS / when the user has
- * Live Activities disabled. `useDictationLiveActivity` is the React seam wired
- * into `useContinuousChat`. The pure mapping/snippet helpers are unit-tested.
+ * Mirrors the canonical batch-or-realtime voice session into the iOS Lock
+ * Screen and Dynamic Island Live Activity. The controller serializes native
+ * lifecycle calls, clears orphaned activities after relaunch, and keeps public
+ * system surfaces transcript-free by sending only a bounded phase.
  */
 
 import { Capacitor } from "@capacitor/core";
@@ -22,15 +14,10 @@ import {
 } from "../bridge/native-plugins";
 import type { VoiceContinuousStatus } from "./voice-chat-types";
 
-/** Longest transcript tail pushed to the activity; older text is dropped. */
-export const DICTATION_SNIPPET_MAX_CHARS = 120;
-/** Minimum gap between transcript-only content pushes (ActivityKit budget). */
-export const DICTATION_MIN_UPDATE_INTERVAL_MS = 800;
-
 /**
- * Map a continuous-chat status to the Live Activity phase. `idle` while the
- * session is still active is the brief settle after speech, surfaced as
- * `transcribing`; `interrupting` folds into `thinking`.
+ * Map the canonical voice status to a public Live Activity phase. `idle` while
+ * a session remains active is a truthful ready state; barge-in remains part of
+ * the in-flight thinking turn.
  */
 export function mapContinuousStatusToPhase(
   status: VoiceContinuousStatus,
@@ -42,179 +29,157 @@ export function mapContinuousStatusToPhase(
     case "interrupting":
       return "thinking";
     case "transcribing":
-    case "idle":
       return "transcribing";
-    default:
-      return "recording";
+    case "listening":
+      return "listening";
+    case "idle":
+      return "ready";
   }
 }
 
-/** Keep only the last `max` characters, prefixing an ellipsis when trimmed. */
-export function truncateTranscriptSnippet(
-  text: string,
-  max: number = DICTATION_SNIPPET_MAX_CHARS,
-): string {
-  const collapsed = text.replace(/\s+/g, " ").trim();
-  if (collapsed.length <= max) return collapsed;
-  return `…${collapsed.slice(collapsed.length - max)}`;
-}
-
-export interface DictationLiveActivityState {
+export interface VoiceLiveActivityState {
   active: boolean;
   phase: DictationActivityPhase;
-  transcript: string;
 }
 
 interface ControllerDeps {
   /** iOS-only; the controller is inert on every other platform. */
   isIos: boolean;
   plugin?: LiveActivityPluginLike;
-  now?: () => number;
-  minUpdateIntervalMs?: number;
   sessionTitle?: string;
+  reportError?: (error: unknown) => void;
 }
 
-export class DictationLiveActivityController {
+export class VoiceLiveActivityController {
   private readonly isIos: boolean;
   private readonly plugin: LiveActivityPluginLike;
-  private readonly now: () => number;
-  private readonly minUpdateIntervalMs: number;
   private readonly sessionTitle: string;
+  private readonly reportError: (error: unknown) => void;
 
   private queue: Promise<void> = Promise.resolve();
-  private supported: boolean | null = null;
   private activityId: string | null = null;
   private starting = false;
   private lastPhase: DictationActivityPhase | null = null;
-  private lastSnippet = "";
-  private lastPushMs = 0;
+  private nativeReconciled = false;
 
   constructor(deps: ControllerDeps) {
     this.isIos = deps.isIos;
     this.plugin = deps.plugin ?? getLiveActivityPlugin();
-    this.now = deps.now ?? (() => Date.now());
-    this.minUpdateIntervalMs =
-      deps.minUpdateIntervalMs ?? DICTATION_MIN_UPDATE_INTERVAL_MS;
     // The native bridge owns the localized default. An empty value keeps
     // custom titles verbatim while avoiding a second English-only authority.
     this.sessionTitle = deps.sessionTitle ?? "";
+    this.reportError =
+      deps.reportError ??
+      ((error) => {
+        console.warn("[iOS Live Activity] Native lifecycle unavailable", error);
+      });
   }
 
   /** Reconcile the activity toward the desired session state. */
-  sync(state: DictationLiveActivityState): Promise<void> {
+  sync(state: VoiceLiveActivityState): Promise<void> {
     if (!this.isIos || typeof this.plugin.start !== "function") {
       return Promise.resolve();
     }
-    const snippet = truncateTranscriptSnippet(state.transcript);
     return this.enqueue(async () => {
+      if (state.phase === "error") {
+        await this.endActive("error");
+        return;
+      }
       if (!state.active) {
-        await this.endActive();
+        await this.endActive("ended");
         return;
       }
       if (!this.activityId && !this.starting) {
-        await this.beginActive(state.phase, snippet);
+        await this.beginActive(state.phase);
         return;
       }
-      await this.maybeUpdate(state.phase, snippet);
+      await this.maybeUpdate(state.phase);
     });
   }
 
   private enqueue(op: () => Promise<void>): Promise<void> {
-    // error-policy:J4 the Live Activity is a UI adornment — a failed
-    // ActivityKit call (e.g. user disabled Live Activities) must not break the
-    // voice session, so it degrades to "no activity" rather than throwing.
-    this.queue = this.queue.then(op).catch(() => {});
+    // error-policy:J4 the Live Activity is an ancillary system surface; a
+    // native failure is reported but must not break the canonical voice path.
+    this.queue = this.queue.then(op).catch((error: unknown) => {
+      this.reportError(error);
+    });
     return this.queue;
   }
 
   private async ensureSupported(): Promise<boolean> {
-    if (this.supported !== null) return this.supported;
     if (typeof this.plugin.isSupported !== "function") {
-      this.supported = false;
       return false;
     }
     const result = await this.plugin.isSupported();
-    this.supported = Boolean(result?.supported && result?.enabled);
-    return this.supported;
+    // Live Activity authorization is mutable in Settings while the app is
+    // running. Re-read it for each attempted start so enabling the feature can
+    // recover without an app relaunch and revocation never relies on a stale
+    // renderer-side grant; the native request remains the final authority.
+    return Boolean(result?.supported && result?.enabled);
   }
 
-  private async beginActive(
-    phase: DictationActivityPhase,
-    snippet: string,
-  ): Promise<void> {
+  private async beginActive(phase: DictationActivityPhase): Promise<void> {
     if (!(await this.ensureSupported())) return;
     this.starting = true;
+    this.nativeReconciled = true;
     try {
       const { activityId } = await this.plugin.start({
         sessionTitle: this.sessionTitle,
         phase,
-        transcript: snippet,
       });
       this.activityId = activityId;
       this.lastPhase = phase;
-      this.lastSnippet = snippet;
-      this.lastPushMs = this.now();
     } finally {
       this.starting = false;
     }
   }
 
-  private async maybeUpdate(
-    phase: DictationActivityPhase,
-    snippet: string,
-  ): Promise<void> {
+  private async maybeUpdate(phase: DictationActivityPhase): Promise<void> {
     if (!this.activityId) return;
-    const phaseChanged = phase !== this.lastPhase;
-    const snippetChanged = snippet !== this.lastSnippet;
-    if (!phaseChanged && !snippetChanged) return;
-    // Phase changes push immediately; transcript-only churn is throttled.
-    if (
-      !phaseChanged &&
-      this.now() - this.lastPushMs < this.minUpdateIntervalMs
-    ) {
-      return;
-    }
+    if (phase === this.lastPhase) return;
     await this.plugin.update({
       activityId: this.activityId,
       phase,
-      transcript: snippet,
     });
     this.lastPhase = phase;
-    this.lastSnippet = snippet;
-    this.lastPushMs = this.now();
   }
 
-  private async endActive(): Promise<void> {
-    if (!this.activityId && !this.starting) return;
+  private async endActive(phase: "error" | "ended"): Promise<void> {
+    if (!this.activityId && !this.starting && this.nativeReconciled) return;
     const activityId = this.activityId;
     this.activityId = null;
     this.starting = false;
     this.lastPhase = null;
-    this.lastSnippet = "";
+    this.nativeReconciled = true;
     if (typeof this.plugin.end === "function") {
-      await this.plugin.end(activityId ? { activityId } : undefined);
+      // A relaunch has no proof that a stale native activity belongs to the
+      // current error. Only an activity owned by this controller may receive
+      // the delayed terminal-error presentation; orphan cleanup ends silently.
+      await this.plugin.end(
+        activityId ? { activityId, phase } : { phase: "ended" },
+      );
     }
   }
 }
 
-export interface UseDictationLiveActivityOptions {
+export interface UseVoiceLiveActivityOptions {
   active: boolean;
   status: VoiceContinuousStatus;
-  transcript: string;
+  error?: boolean;
   sessionTitle?: string;
 }
 
 /**
- * React seam: mirror the continuous-chat session state onto the iOS Live
- * Activity. Inert off iOS. Ends the activity on unmount.
+ * React seam: mirror the final canonical voice-session state onto the iOS Live
+ * Activity. Inert off iOS and ends any owned or stale activity on unmount.
  */
-export function useDictationLiveActivity(
-  options: UseDictationLiveActivityOptions,
+export function useVoiceLiveActivity(
+  options: UseVoiceLiveActivityOptions,
 ): void {
-  const { active, status, transcript, sessionTitle } = options;
-  const controllerRef = useRef<DictationLiveActivityController | null>(null);
+  const { active, status, error = false, sessionTitle } = options;
+  const controllerRef = useRef<VoiceLiveActivityController | null>(null);
   if (controllerRef.current === null) {
-    controllerRef.current = new DictationLiveActivityController({
+    controllerRef.current = new VoiceLiveActivityController({
       isIos: Capacitor.getPlatform() === "ios",
       sessionTitle,
     });
@@ -223,18 +188,16 @@ export function useDictationLiveActivity(
   useEffect(() => {
     void controllerRef.current?.sync({
       active,
-      phase: mapContinuousStatusToPhase(status),
-      transcript,
+      phase: error ? "error" : mapContinuousStatusToPhase(status),
     });
-  }, [active, status, transcript]);
+  }, [active, error, status]);
 
   useEffect(() => {
     const controller = controllerRef.current;
     return () => {
       void controller?.sync({
         active: false,
-        phase: "recording",
-        transcript: "",
+        phase: "ended",
       });
     };
   }, []);

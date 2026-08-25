@@ -94,13 +94,13 @@ import {
   describeTtsCloudFetchTargetForDebug,
   describeTtsFetchTargetForDebug,
   getSpeechRecognitionCtor,
-  globalAudioCache,
   isAbortError,
   localePrefix,
-  MAX_CACHED_SEGMENTS,
   matchesVoiceLocale,
   normalizeSpeechLocale,
   type QueueAssistantSpeechOptions,
+  readCachedAudio,
+  rememberCachedAudio,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
@@ -121,6 +121,10 @@ import {
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
 import { resolveWavAsrRoute } from "../voice/voice-provider-defaults";
+import {
+  formatNamedVoiceError,
+  formatVoiceErrorPreview,
+} from "./voice-error-preview";
 
 // ── Re-exports (public API) ──────────────────────────────────────────
 
@@ -561,11 +565,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const rememberCachedSegment = useCallback(
     (key: string, bytes: Uint8Array) => {
-      globalAudioCache.delete(key);
-      globalAudioCache.set(key, bytes);
-      if (globalAudioCache.size <= MAX_CACHED_SEGMENTS) return;
-      const oldest = globalAudioCache.keys().next().value;
-      if (oldest) globalAudioCache.delete(oldest);
+      rememberCachedAudio(key, bytes);
     },
     [],
   );
@@ -1036,8 +1036,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           name: error instanceof Error ? error.name : "Error",
           reason:
             error instanceof Error
-              ? error.message.slice(0, 80)
-              : String(error).slice(0, 80),
+              ? formatVoiceErrorPreview(error.message, 80)
+              : formatVoiceErrorPreview(error, 80),
         });
         localAsrRecorderRef.current = null;
         return false;
@@ -1075,8 +1075,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           name: error instanceof Error ? error.name : "Error",
           reason:
             error instanceof Error
-              ? error.message.slice(0, 80)
-              : String(error).slice(0, 80),
+              ? formatVoiceErrorPreview(error.message, 80)
+              : formatVoiceErrorPreview(error, 80),
         });
         localAsrRecorderRef.current = null;
         return false;
@@ -1451,8 +1451,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 name: error instanceof Error ? error.name : "Error",
                 reason:
                   error instanceof Error
-                    ? error.message.slice(0, 80)
-                    : String(error).slice(0, 80),
+                    ? formatVoiceErrorPreview(error.message, 80)
+                    : formatVoiceErrorPreview(error, 80),
               });
             }
             ttsDebug("asr:cloud:error", {
@@ -1574,12 +1574,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeElevenCacheKey(text, elConfig)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }
@@ -1749,9 +1748,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             status: res.status,
             ttsTarget: describeTtsCloudFetchTargetForDebug(),
             hadBearer: Boolean(apiToken),
-            bodyPreview: body.slice(0, 120),
+            bodyPreview: formatVoiceErrorPreview(body, 120),
           });
-          throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 200)}`);
+          throw new Error(
+            `ElevenLabs ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
+          );
         }
 
         const audioData = await res.arrayBuffer();
@@ -1810,12 +1811,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeElizaCloudCacheKey(text)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }
@@ -1944,7 +1944,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               if (!directRes.ok) {
                 const preview = await directRes.text().catch(() => "");
                 throw new Error(
-                  `direct cloud TTS ${directRes.status}: ${preview.slice(0, 120)}`,
+                  `direct cloud TTS ${directRes.status}: ${formatVoiceErrorPreview(preview, 120)}`,
                 );
               }
               res = directRes;
@@ -1982,10 +1982,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             status: res.status,
             ttsTarget: describeTtsFetchTargetForDebug(fetchedTtsUrl),
             hadBearer: Boolean(getElizaApiToken()?.trim()),
-            bodyPreview: body.slice(0, 120),
+            bodyPreview: formatVoiceErrorPreview(body, 120),
           });
           throw new Error(
-            `Eliza Cloud TTS ${res.status}: ${body.slice(0, 200)}`,
+            `Eliza Cloud TTS ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
           );
         }
 
@@ -2047,12 +2047,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeLocalInferenceCacheKey(text)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }
@@ -2086,7 +2085,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           throw new Error(
-            `Local inference TTS ${res.status}: ${body.slice(0, 200)}`,
+            `Local inference TTS ${res.status}: ${formatVoiceErrorPreview(body, 200)}`,
           );
         }
 
@@ -2197,10 +2196,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             ttsDebug("play:talkmode:speak-failed", {
               segment: task.segment,
               preview: ttsDebugTextPreview(text),
-              err:
-                err instanceof Error
-                  ? `${err.name}: ${err.message.slice(0, 200)}`
-                  : String(err).slice(0, 200),
+              err: formatNamedVoiceError(err),
             });
           });
           emitPlaybackStart({
@@ -2441,10 +2437,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
               ttsDebug("useVoiceChat:native-talkmode-failed", {
-                err:
-                  error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                err: formatNamedVoiceError(error),
               });
               failClosed("native-talkmode", error);
               break;
@@ -2467,10 +2460,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
               ttsDebug("useVoiceChat:eliza-cloud-failed", {
-                err:
-                  error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                err: formatNamedVoiceError(error),
                 ttsTarget: describeTtsCloudFetchTargetForDebug(),
                 hadBearer: Boolean(getElizaApiToken()?.trim()),
               });
@@ -2499,10 +2489,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);
               ttsDebug("useVoiceChat:local-inference-failed", {
-                err:
-                  error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                err: formatNamedVoiceError(error),
               });
               // FAIL CLOSED (#12253): local-inference (Kokoro) is the configured
               // voice. Do not silently swap to browser SpeechSynthesis — stop the
@@ -2532,10 +2519,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 break;
               }
               ttsDebug("useVoiceChat:elevenlabs-failed", {
-                err:
-                  error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                err: formatNamedVoiceError(error),
                 ttsTarget: describeTtsCloudFetchTargetForDebug(),
                 hadBearer: Boolean(getElizaApiToken()?.trim()),
               });
@@ -2569,10 +2553,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         workerError = error;
         queueRef.current = [];
         ttsDebug("processQueue:error", {
-          err:
-            error instanceof Error
-              ? `${error.name}: ${error.message.slice(0, 200)}`
-              : String(error).slice(0, 200),
+          err: formatNamedVoiceError(error),
         });
       } finally {
         queueWorkerRunningRef.current = false;

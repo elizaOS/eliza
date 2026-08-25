@@ -50,10 +50,13 @@ const pageUrl = await writeFixturePage({
     {
       name: "cockpit-ui-boundary",
       setup(build) {
-        build.onResolve({ filter: /^@elizaos\/ui$/ }, () => ({
+        build.onResolve({ filter: /^@elizaos\/ui(?:\/.*)?$/ }, () => ({
           path: adapter,
         }));
         build.onResolve({ filter: /^@elizaos\/shared$/ }, () => ({
+          path: adapter,
+        }));
+        build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
           path: adapter,
         }));
         build.onResolve(

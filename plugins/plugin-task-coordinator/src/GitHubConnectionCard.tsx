@@ -1,7 +1,7 @@
 // Renders GitHub auth state for coding-agent framework settings.
+
+import { Button, SettingsControls } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import { openExternalUrl } from "@elizaos/ui/utils/openExternalUrl";
 import {
   CheckCircle2,
@@ -246,21 +246,21 @@ export function GitHubConnectionCard() {
   const deviceBusy = deviceFlow.kind !== "idle";
 
   return (
-    <div className="space-y-3 px-1 py-1">
+    <div className="space-y-3 p-1">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <GitPullRequest className="h-4 w-4 text-muted" aria-hidden />
+          <GitPullRequest className="size-4 text-muted" aria-hidden />
           <span className="text-sm font-medium text-txt">GitHub</span>
           {status?.connected ? (
             <span
-              className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
+              className="inline-block size-1.5 rounded-full bg-status-success"
               title={`Connected as @${status.username}`}
               aria-label={`Connected as @${status.username}`}
               role="img"
             />
           ) : (
             <span
-              className="inline-block h-1.5 w-1.5 rounded-full bg-muted/40"
+              className="inline-block size-1.5 rounded-full bg-muted/40"
               title="Not connected"
               aria-label="Not connected"
               role="img"
@@ -273,7 +273,7 @@ export function GitHubConnectionCard() {
         <div className="flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-muted">
             <CheckCircle2
-              className="h-3.5 w-3.5 text-emerald-500"
+              className="size-3.5 text-status-success"
               aria-hidden
             />
             <span>
@@ -290,7 +290,7 @@ export function GitHubConnectionCard() {
             </div>
           ) : (
             <div className="text-muted">
-              Scopes: <span className="text-amber-500">none</span>
+              Scopes: <span className="text-status-warning">none</span>
             </div>
           )}
           <div className="flex items-center justify-between pt-1">
@@ -303,7 +303,7 @@ export function GitHubConnectionCard() {
               onClick={handleDisconnect}
               disabled={submitting}
             >
-              <Unplug className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              <Unplug className="mr-1.5 size-3.5" aria-hidden />
               Disconnect
             </Button>
           </div>
@@ -323,7 +323,7 @@ export function GitHubConnectionCard() {
               onClick={() => void handleDeviceSignIn()}
               disabled={submitting || deviceFlow.kind === "starting"}
             >
-              <LogIn className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              <LogIn className="mr-1.5 size-3.5" aria-hidden />
               {deviceFlow.kind === "starting"
                 ? "Starting sign-in…"
                 : "Sign in with GitHub"}
@@ -335,13 +335,13 @@ export function GitHubConnectionCard() {
               <div className="text-muted">
                 Enter this code on{" "}
                 <Button
-                  unstyled
+                  variant="externalLink"
+                  size="micro"
                   type="button"
-                  className="inline-flex items-center gap-1 text-accent hover:underline"
                   onClick={() => openExternalUrl(deviceFlow.verificationUri)}
                 >
                   {deviceFlow.verificationUri.replace(/^https:\/\//, "")}
-                  <ExternalLink className="h-3 w-3" aria-hidden />
+                  <ExternalLink className="size-3" aria-hidden />
                 </Button>
               </div>
               <div
@@ -364,12 +364,13 @@ export function GitHubConnectionCard() {
           ) : null}
 
           <Button
-            unstyled
+            variant="externalLink"
+            size="micro"
             type="button"
-            className="inline-flex w-fit items-center gap-1 text-xs text-accent hover:underline"
+            className="w-fit"
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
           >
-            <ExternalLink className="h-3 w-3" aria-hidden />
+            <ExternalLink className="size-3" aria-hidden />
             {deviceFlowAvailable
               ? "Or generate a token on github.com (scopes: repo, read:user)"
               : "Generate a token on github.com (scopes: repo, read:user)"}
@@ -400,7 +401,7 @@ export function GitHubConnectionCard() {
       )}
 
       {errorMessage ? (
-        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-500">
+        <div className="rounded-md border border-destructive/40 bg-destructive-subtle px-2 py-1.5 text-xs text-destructive">
           {errorMessage}
         </div>
       ) : null}

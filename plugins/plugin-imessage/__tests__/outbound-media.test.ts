@@ -1,17 +1,13 @@
-// Outbound MEDIA coverage for the iMessage connector (#8876).
-//
-// The agent generates/forwards audio, image, video, pdf, etc. attachments, and
-// the iMessage connector must carry those out — not silently drop them. Two
-// layers are covered here, mirroring the other connectors' outbound-media tests:
-//
-//   1. Connector dispatch: the registered `sendHandler` extracts the first
-//      attachment URL from Content and passes it to `sendMessage({ mediaUrl })`
-//      — including the media-only case (no text).
-//   2. Send build: a real IMessageService turns `{ mediaUrl }` into an
-//      AppleScript that actually attaches the file (`send (POSIX file …)`),
-//      with `file://` URLs normalised to POSIX paths. The osascript exec is
-//      stubbed, so nothing is sent — we assert the connector BUILDS the right
-//      attach command.
+/**
+ * Outbound media contract tests for connector dispatch and the real native
+ * Messages AppleScript builder. The harness stubs only osascript, while file
+ * validation, bounded local-media fetching, temporary staging, cleanup, and
+ * text-chunk attachment cardinality execute through production code.
+ */
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { IMessageService } from "../src/service.js";
@@ -140,10 +136,9 @@ describe("iMessage service — media → AppleScript attachment build", () => {
       emitEvent: vi.fn(),
     } as unknown as IAgentRuntime;
     const svc = new IMessageService(runtime);
-    // Inject the runtime + minimal settings (AppleScript path: cliPath "imsg").
+    // Inject the runtime + minimal native settings.
     (svc as unknown as { runtime: IAgentRuntime }).runtime = runtime;
     (svc as unknown as { settings: unknown }).settings = {
-      cliPath: "imsg",
       pollIntervalMs: 0,
       dmPolicy: "open",
       groupPolicy: "open",
@@ -161,31 +156,152 @@ describe("iMessage service — media → AppleScript attachment build", () => {
 
   it("emits a `send (POSIX file …)` attachment script for a media send", async () => {
     const { svc, scripts } = makeService();
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "clip.mp3");
+    await writeFile(fixturePath, "media");
+    try {
+      const result = await svc.sendMessage("+14155552671", "caption", {
+        mediaUrl: fixturePath,
+      });
 
-    const result = await svc.sendMessage("+14155552671", "caption", {
-      mediaUrl: "/Users/me/Library/media/clip.mp3",
-    });
+      expect(result.success).toBe(true);
+      // One script for the text body, one for the attachment.
+      expect(scripts).toHaveLength(2);
+      const attachmentScript = scripts.find((s) => s.includes("POSIX file"));
+      expect(attachmentScript).toBeDefined();
+      const stagedPath = /POSIX file "([^"]+)"/.exec(attachmentScript ?? "")?.[1] ?? "";
+      expect(stagedPath).toContain("eliza-imessage-");
+      expect(stagedPath.endsWith("attachment.mp3")).toBe(true);
+      expect(attachmentScript).not.toContain(fixturePath);
+      await expect(stat(stagedPath)).rejects.toThrow();
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stays on the built-in AppleScript transport", async () => {
+    const { svc, scripts } = makeService();
+
+    const result = await svc.sendMessage("+14155552671", "native only");
 
     expect(result.success).toBe(true);
-    // One script for the text body, one for the attachment.
-    expect(scripts).toHaveLength(2);
-    const attachmentScript = scripts.find((s) => s.includes("POSIX file"));
-    expect(attachmentScript).toBeDefined();
-    expect(attachmentScript).toContain("/Users/me/Library/media/clip.mp3");
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]).toContain('tell application "Messages"');
+    expect(scripts[0]).toContain("native only");
   });
 
   it("normalises a file:// media URL to a POSIX path", async () => {
     const { svc, scripts } = makeService();
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "generated image.png");
+    await writeFile(fixturePath, "media");
+    try {
+      await svc.sendMessage("+14155552671", "", {
+        mediaUrl: pathToFileURL(fixturePath).href,
+      });
 
-    await svc.sendMessage("+14155552671", "", {
-      mediaUrl: "file:///tmp/generated.png",
+      // Media-only send → exactly one (attachment) script, no text script.
+      expect(scripts).toHaveLength(1);
+      expect(scripts[0]).toContain("POSIX file");
+      const stagedPath = /POSIX file "([^"]+)"/.exec(scripts[0])?.[1] ?? "";
+      expect(stagedPath).toContain("eliza-imessage-");
+      expect(stagedPath.endsWith("attachment.png")).toBe(true);
+      expect(scripts[0]).not.toContain(fixturePath);
+      expect(scripts[0]).not.toContain("file://");
+      await expect(stat(stagedPath)).rejects.toThrow();
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("stages a canonical local media-store handle and removes it after osascript", async () => {
+    const hash = "a".repeat(64);
+    const registrations: MessageConnectorRegistration[] = [];
+    const runtime = makeRuntime(registrations);
+    runtime.fetch = vi.fn(
+      async () =>
+        new Response(Buffer.from("stored image"), {
+          status: 200,
+          headers: {
+            "content-length": "12",
+            "content-type": "image/png",
+          },
+        })
+    );
+    const svc = new IMessageService(runtime);
+    (svc as unknown as { settings: unknown }).settings = {
+      pollIntervalMs: 0,
+      dmPolicy: "open",
+      groupPolicy: "open",
+    };
+    const scripts: string[] = [];
+    let stagedPath = "";
+    (svc as unknown as { runAppleScript: (s: string) => Promise<string> }).runAppleScript = vi.fn(
+      async (script: string) => {
+        scripts.push(script);
+        stagedPath = /POSIX file "([^"]+)"/.exec(script)?.[1] ?? "";
+        expect(stagedPath).toContain("eliza-imessage-");
+        return "";
+      }
+    );
+
+    const result = await svc.sendMessage("+14155552671", "", {
+      mediaUrl: `/api/media/${hash}.png`,
     });
 
-    // Media-only send → exactly one (attachment) script, no text script.
+    expect(result.success).toBe(true);
+    expect(runtime.fetch).toHaveBeenCalledOnce();
     expect(scripts).toHaveLength(1);
-    expect(scripts[0]).toContain("POSIX file");
-    expect(scripts[0]).toContain("/tmp/generated.png");
-    expect(scripts[0]).not.toContain("file://");
+    await expect(stat(stagedPath)).rejects.toThrow();
+  });
+
+  it("sends one attachment after all chunks instead of duplicating it per chunk", async () => {
+    const { svc, scripts } = makeService();
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "one.png");
+    await writeFile(fixturePath, "media");
+    try {
+      const result = await svc.sendMessage("+14155552671", "x".repeat(8_050), {
+        mediaUrl: fixturePath,
+      });
+
+      expect(result.success).toBe(true);
+      expect(scripts.filter((script) => script.includes("POSIX file"))).toHaveLength(1);
+      expect(scripts.filter((script) => script.includes('send "'))).toHaveLength(3);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("fails before osascript when a local attachment exceeds maxBytes", async () => {
+    const { svc, scripts } = makeService();
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "too-large.bin");
+    await writeFile(fixturePath, "oversized");
+    try {
+      const result = await svc.sendMessage("+14155552671", "caption must not leak", {
+        mediaUrl: fixturePath,
+        maxBytes: 4,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("exceeds maxBytes 4");
+      expect(scripts).toHaveLength(0);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it("routes remote attachments through the SSRF guard", async () => {
+    const { svc, scripts } = makeService();
+
+    const result = await svc.sendMessage("+14155552671", "", {
+      mediaUrl: "http://169.254.169.254/latest/meta-data",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/attachment resolution|blocked|SSRF/i);
+    expect(scripts).toHaveLength(0);
   });
 
   it("marks the outbound event as hasMedia when a mediaUrl is present", async () => {
@@ -196,7 +312,6 @@ describe("iMessage service — media → AppleScript attachment build", () => {
     const svc = new IMessageService(runtime);
     (svc as unknown as { runtime: IAgentRuntime }).runtime = runtime;
     (svc as unknown as { settings: unknown }).settings = {
-      cliPath: "imsg",
       pollIntervalMs: 0,
       dmPolicy: "open",
       groupPolicy: "open",
@@ -205,7 +320,14 @@ describe("iMessage service — media → AppleScript attachment build", () => {
       async () => ""
     );
 
-    await svc.sendMessage("+14155552671", "x", { mediaUrl: "/m/a.png" });
+    const fixtureDir = await mkdtemp(join(tmpdir(), "imessage-media-test-"));
+    const fixturePath = join(fixtureDir, "a.png");
+    await writeFile(fixturePath, "media");
+    try {
+      await svc.sendMessage("+14155552671", "x", { mediaUrl: fixturePath });
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
 
     const emit = runtime.emitEvent as unknown as ReturnType<typeof vi.fn>;
     const hasMediaCall = emit.mock.calls.find(

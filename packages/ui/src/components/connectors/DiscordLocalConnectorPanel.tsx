@@ -253,7 +253,6 @@ export function DiscordLocalConnectorPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() => {
               void refreshStatus();
             }}
@@ -267,7 +266,6 @@ export function DiscordLocalConnectorPanel() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
               onClick={() => {
                 void handleDisconnect();
               }}
@@ -283,7 +281,6 @@ export function DiscordLocalConnectorPanel() {
             <Button
               variant="default"
               size="sm"
-              className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
               onClick={() => {
                 void handleAuthorize();
               }}
@@ -353,7 +350,7 @@ export function DiscordLocalConnectorPanel() {
               })}
             </div>
             {guilds.length > 0 ? (
-              <div className="block space-y-1">
+              <div className="space-y-1">
                 <span className="font-medium text-txt">
                   {t("common.server", {
                     defaultValue: "Server",
@@ -410,7 +407,7 @@ export function DiscordLocalConnectorPanel() {
                     })}
                   </div>
                 ) : channels.length > 0 ? (
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-sm border border-border/30 bg-bg/40 p-2">
+                  <div className="max-h-56 space-y-2 overflow-y-auto border-y border-border/30 py-2">
                     {channels.map((channel) => {
                       const checked = selectedChannelIds.includes(channel.id);
                       return (
@@ -447,7 +444,7 @@ export function DiscordLocalConnectorPanel() {
                   <Button
                     variant="default"
                     size="sm"
-                    className="h-8 shrink-0 rounded-sm px-4 text-xs-tight font-semibold sm:self-end"
+                    className="shrink-0 sm:self-end"
                     onClick={() => {
                       void handleSaveSubscriptions();
                     }}

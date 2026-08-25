@@ -4,7 +4,6 @@
  */
 
 import { z } from "zod";
-import { MAX_PROMPT_LENGTH, MAX_RESPONSE_STYLE_LENGTH } from "../constants/image-generation";
 
 /**
  * Sanitize prompt string to prevent injection attacks
@@ -13,11 +12,6 @@ import { MAX_PROMPT_LENGTH, MAX_RESPONSE_STYLE_LENGTH } from "../constants/image
 export function sanitizePromptString(val: string): boolean {
   // Normalize Unicode before any checks to prevent bypass via different encodings
   val = val.normalize("NFC");
-
-  // Check length - reject suspiciously long prompts
-  if (val.length > MAX_PROMPT_LENGTH) {
-    return false;
-  }
 
   // Block RTL override and bidirectional control characters (can hide malicious content)
   if (/[\u202A-\u202E\u2066-\u2069\u200E\u200F]/.test(val)) {
@@ -113,21 +107,18 @@ export const appPromptConfigSchema = z
   .object({
     systemPrefix: z
       .string()
-      .max(MAX_PROMPT_LENGTH)
       .refine(sanitizePromptString, {
         message: "Invalid characters or patterns in systemPrefix",
       })
       .optional(),
     systemSuffix: z
       .string()
-      .max(MAX_PROMPT_LENGTH)
       .refine(sanitizePromptString, {
         message: "Invalid characters or patterns in systemSuffix",
       })
       .optional(),
     responseStyle: z
       .string()
-      .max(MAX_RESPONSE_STYLE_LENGTH)
       .refine(sanitizePromptString, {
         message: "Invalid characters or patterns in responseStyle",
       })

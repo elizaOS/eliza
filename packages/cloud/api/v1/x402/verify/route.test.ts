@@ -18,6 +18,8 @@ const errorLog = mock((..._args: unknown[]) => undefined);
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STRICT: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 
 mock.module("@/lib/services/x402-facilitator", () => ({

@@ -83,9 +83,10 @@ mock.module("./services/users", () => ({
 
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
-    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
-      status: "not_found" as const,
-    }),
+    findPendingPhoneTelegramPersonalAccountConvergence: async () =>
+      userByStewardId
+        ? { status: "canonical_user" as const, user: userByStewardId }
+        : { status: "not_found" as const },
     findBySolanaWalletAddressWithOrganization: async (address: string) => {
       record("findBySolanaWalletAddressWithOrganization", address);
       return userBySolanaWallet;

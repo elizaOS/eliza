@@ -12,7 +12,7 @@
  * events fire, or the caller's listeners miss every token.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createIosStreamingAgentPlugin,
   type IosStreamingRuntime,
@@ -23,6 +23,26 @@ import {
 } from "./native-agent-stream";
 
 type Listener = (event: unknown) => void;
+const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "crypto",
+);
+
+function installCrypto(value: object): void {
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value,
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (originalCryptoDescriptor) {
+    Object.defineProperty(globalThis, "crypto", originalCryptoDescriptor);
+  } else {
+    Reflect.deleteProperty(globalThis, "crypto");
+  }
+});
 
 /**
  * A runtime whose `http_request_stream` call, once invoked, emits a response
@@ -115,6 +135,39 @@ describe("createIosStreamingAgentPlugin", () => {
       path: "/api/conversations/c1/messages/stream",
       streamId,
     });
+  });
+
+  it("uses getRandomValues for an RFC 4122 v4 stream ID when randomUUID is absent", async () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.set(Array.from({ length: 16 }, (_, index) => index));
+      return bytes;
+    });
+    installCrypto({ getRandomValues });
+    const weakRandom = vi.spyOn(Math, "random");
+    const { runtime } = makeFakeRuntime([]);
+    const plugin = createIosStreamingAgentPlugin(runtime);
+
+    const { streamId, completion } = await plugin.requestStream({
+      method: "GET",
+      path: "/api/stream",
+    });
+    await completion;
+
+    expect(streamId).toBe("ios-stream-00010203-0405-4607-8809-0a0b0c0d0e0f");
+    expect(getRandomValues).toHaveBeenCalledOnce();
+    expect(weakRandom).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when no cryptographically secure random source exists", () => {
+    installCrypto({});
+    const weakRandom = vi.spyOn(Math, "random");
+    const { runtime } = makeFakeRuntime([]);
+    const plugin = createIosStreamingAgentPlugin(runtime);
+
+    expect(() =>
+      plugin.requestStream({ method: "GET", path: "/api/stream" }),
+    ).toThrow("cryptographically secure random source");
+    expect(weakRandom).not.toHaveBeenCalled();
   });
 
   it("streams token-by-token through createNativeStreamingResponse", async () => {

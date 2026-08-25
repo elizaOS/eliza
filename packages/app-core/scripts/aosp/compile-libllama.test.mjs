@@ -8,6 +8,7 @@ import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   describeAndroidTargetDryRun,
   ensureZigDrivers,
+  resetIncompatibleCmakeArchiverCache,
   stageStaticFusedRuntimeBackendLibs,
 } from "./compile-libllama.mjs";
 import {
@@ -42,6 +43,49 @@ afterEach(() => {
   while (tmpDirs.length > 0) {
     removePathRecursive(tmpDirs.pop());
   }
+});
+
+describe("compile-libllama CMake archiver cache", () => {
+  test("resets a stale host-archiver build tree", () => {
+    const buildDir = makeTmpDir();
+    fs.writeFileSync(
+      path.join(buildDir, "CMakeCache.txt"),
+      "CMAKE_AR:UNINITIALIZED=/tmp/zig-ar\nCMAKE_RANLIB:UNINITIALIZED=/tmp/zig-ranlib\n",
+    );
+    fs.writeFileSync(path.join(buildDir, "stale-object"), "present");
+    const logs = [];
+
+    expect(
+      resetIncompatibleCmakeArchiverCache({
+        buildDir,
+        arPath: "/tmp/zig-ar",
+        ranlibPath: "/tmp/zig-ranlib",
+        log: (line) => logs.push(line),
+      }),
+    ).toBe(true);
+    expect(fs.existsSync(buildDir)).toBe(false);
+    expect(logs.join("\n")).toContain("Reset stale CMake build tree");
+  });
+
+  test("preserves a build tree already configured with Zig archivers", () => {
+    const buildDir = makeTmpDir();
+    fs.writeFileSync(
+      path.join(buildDir, "CMakeCache.txt"),
+      "CMAKE_AR:FILEPATH=/tmp/zig-ar\nCMAKE_RANLIB:FILEPATH=/tmp/zig-ranlib\n",
+    );
+    fs.writeFileSync(path.join(buildDir, "compiled-object"), "present");
+
+    expect(
+      resetIncompatibleCmakeArchiverCache({
+        buildDir,
+        arPath: "/tmp/zig-ar",
+        ranlibPath: "/tmp/zig-ranlib",
+      }),
+    ).toBe(false);
+    expect(
+      fs.readFileSync(path.join(buildDir, "compiled-object"), "utf8"),
+    ).toBe("present");
+  });
 });
 
 describe("compile-libllama Android Vulkan host resolution", () => {

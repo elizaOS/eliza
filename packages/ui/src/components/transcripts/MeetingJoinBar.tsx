@@ -108,14 +108,13 @@ export function MeetingJoinBar({
             placeholder="Paste a Meet, Teams, or Zoom link"
             aria-label="Meeting URL"
             aria-invalid={showInvalid || undefined}
-            className="pr-28"
           />
           {parsed ? (
             <span
               data-testid="meeting-platform-hint"
               className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs text-accent-fg"
             >
-              <Video className="h-3.5 w-3.5" aria-hidden />
+              <Video className="size-3.5" aria-hidden />
               {MEETING_PLATFORM_LABELS[parsed.platform]}
             </span>
           ) : null}
@@ -164,7 +163,7 @@ export function MeetingJoinBar({
               <span
                 aria-hidden
                 className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  "size-1.5 shrink-0 rounded-full",
                   m.status === "active" ? "bg-accent" : "bg-muted",
                 )}
               />
@@ -175,14 +174,16 @@ export function MeetingJoinBar({
               <span className="text-xs text-muted">
                 {SESSION_STATUS_LABEL[m.status]}
               </span>
-              <button
+              <Button
                 type="button"
                 data-testid={`stop-meeting-${m.id}`}
                 onClick={() => onStop(m.id)}
-                className="ml-auto rounded-sm px-2 py-0.5 text-xs text-muted transition-colors hover:bg-bg-muted/30 hover:text-txt"
+                variant="ghostMuted"
+                size="micro"
+                className="ml-auto"
               >
                 Stop
-              </button>
+              </Button>
             </div>
           ))}
         </div>

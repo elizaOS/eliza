@@ -82,6 +82,16 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
     expect(body?.reasoning_effort).toBeUndefined();
   });
 
+  it("does not override an explicit pin when the caller supplies a small output budget", async () => {
+    const body = await captureBody(
+      "gemma-4-31b",
+      { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+      { maxTokens: 128 }
+    );
+    expect(body?.max_tokens).toBe(128);
+    expect(body?.reasoning_effort).toBe("high");
+  });
+
   it("does not attach the pin to non-Cerebras proxied models", async () => {
     const body = await captureBody("gpt-4o-mini", {
       ELIZAOS_CLOUD_REASONING_EFFORT: "high",
@@ -101,6 +111,28 @@ describe("ELIZAOS_CLOUD_REASONING_EFFORT user pin", () => {
       "zai-glm-4.7",
       { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
       { providerOptions: { eliza: { thinking: "off" } } }
+    );
+    expect(body?.reasoning_effort).toBe("none");
+  });
+
+  it.each([128, 1024, 1025])(
+    "preserves an explicit user pin at maxTokens=%i without thinking-off intent",
+    async (maxTokens) => {
+      const body = await captureBody(
+        "zai-glm-4.7",
+        { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+        { maxTokens }
+      );
+      expect(body?.max_tokens).toBe(maxTokens);
+      expect(body?.reasoning_effort).toBe("high");
+    }
+  );
+
+  it("uses explicit thinking-off intent even on a small-capped call", async () => {
+    const body = await captureBody(
+      "zai-glm-4.7",
+      { ELIZAOS_CLOUD_REASONING_EFFORT: "high" },
+      { maxTokens: 128, providerOptions: { eliza: { thinking: "off" } } }
     );
     expect(body?.reasoning_effort).toBe("none");
   });

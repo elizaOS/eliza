@@ -41,6 +41,9 @@ vi.mock("@elizaos/core", async () => {
   const { checkPairingAllowed } = await import(
     "../../../packages/core/src/services/pairing-integration"
   );
+  const { toWellFormedUnicode, truncateWellFormed } = await import(
+    "../../../packages/core/src/utils/well-formed"
+  );
 
   const logger = {
     debug: vi.fn(),
@@ -151,5 +154,7 @@ vi.mock("@elizaos/core", async () => {
     lifeOpsPassiveConnectorsEnabled,
     logger,
     stringToUuid,
+    toWellFormedUnicode,
+    truncateWellFormed,
   };
 });

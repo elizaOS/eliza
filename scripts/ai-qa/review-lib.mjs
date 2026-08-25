@@ -102,19 +102,18 @@ export function aggregateVerdicts(results) {
 
 /**
  * Gate decision: the captures that should fail the run. A `broken` verdict (or
- * an `error` — the review could not be obtained) fails unless its
- * `${id}-${viewport}-${theme}` key is in the shrinking debt allowlist. In strict
- * mode `needs-work` also fails. Mirrors the aesthetic-audit / story-gate ratchet.
+ * an `error` — the review could not be obtained) fails. In strict mode
+ * `needs-work` also fails.
  * @returns {Array<{key:string, verdict:string, reasons:string[]}>}
  */
-export function gateFailures(results, { debt = {}, strict = false } = {}) {
+export function gateFailures(results, { strict = false } = {}) {
   return results
     .filter((r) => {
       const fail =
         r.error ||
         r.verdict === "broken" ||
         (strict && r.verdict === "needs-work");
-      return fail && debt[r.key] === undefined;
+      return fail;
     })
     .map((r) => ({
       key: r.key,

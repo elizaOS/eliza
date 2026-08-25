@@ -68,6 +68,12 @@ function claimedJob(type: ProvisioningJobType = JOB_TYPES.AGENT_LOGS): Job {
 function stubLaneClaim(job: Job | undefined) {
   const claim = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue(job ? [job] : []);
   spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
+  spyOn(
+    ProvisioningJobService.prototype as unknown as {
+      assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
+    },
+    "assertNoConflictingLifecycleExecution",
+  ).mockResolvedValue(undefined);
   return claim;
 }
 

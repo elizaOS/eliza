@@ -11,6 +11,7 @@
  * --no-emulator-boot, and --no-wait.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +36,7 @@ import {
   resolveSerial,
   verifyInstalledApkMatches,
 } from "./lib/android-device.mjs";
+import { resolveAndroidE2eBuildScript } from "./lib/android-e2e-build.mjs";
 import {
   captureFailureForensics,
   createDeviceE2eBundle,
@@ -261,9 +263,10 @@ function currentHeadCommit() {
   }
 }
 
-function buildAndroidApk(bundle) {
-  log("building WebView-debuggable APK…");
-  run(bundle, "build Android APK", "bun", ["run", "build:android"], {
+function buildAndroidApk(bundle, backend) {
+  const buildScript = resolveAndroidE2eBuildScript(backend);
+  log(`building WebView-debuggable APK via ${buildScript}…`);
+  run(bundle, "build Android APK", "bun", ["run", buildScript], {
     ELIZA_MOBILE_REPO_ROOT: elizaRoot,
     ELIZA_WEBVIEW_DEBUG: "1",
     ELIZA_BUN_RISCV64_OPTIONAL: "1",
@@ -290,7 +293,7 @@ function readApkRendererStamp(apk) {
   }
 }
 
-function ensureFreshApkInstalled(bundle, adb, serial) {
+function ensureFreshApkInstalled(bundle, adb, serial, backend) {
   const forceBuild = has("--force-build") || has("--build");
   const skipBuild = has("--skip-build");
   const headCommit = currentHeadCommit();
@@ -298,7 +301,7 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
   const buildDecision = androidDistNeedsBuild({ freshStamp, headCommit });
 
   if (forceBuild) {
-    buildAndroidApk(bundle);
+    buildAndroidApk(bundle, backend);
   } else if (buildDecision.build) {
     if (skipBuild) {
       throw new Error(
@@ -306,7 +309,7 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
       );
     }
     log(`${buildDecision.reason} — rebuilding before install check.`);
-    buildAndroidApk(bundle);
+    buildAndroidApk(bundle, backend);
   } else {
     log(`fresh dist renderer stamp: ${stampLabel(freshStamp)}`);
   }
@@ -329,7 +332,7 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
     }
     if (!forceBuild) {
       log(`${apkDecision.reason} — rebuilding APK before install.`);
-      buildAndroidApk(bundle);
+      buildAndroidApk(bundle, backend);
       freshStamp = readFreshAndroidRendererStamp();
       if (!freshStamp) {
         throw new Error(
@@ -525,11 +528,12 @@ async function main() {
       }
     }
 
-    ensureFreshApkInstalled(bundle, adb, serial);
+    ensureFreshApkInstalled(bundle, adb, serial, backend);
 
     if (has("--start-host-agent")) {
       const step = startBundleStep(bundle, "start deterministic host agent");
       try {
+        const hostAgentToken = randomBytes(32).toString("hex");
         hostAgent = await startDeviceE2eHostAgent({
           repoRoot: elizaRoot,
           artifactDir: bundle.logsDir,
@@ -537,9 +541,12 @@ async function main() {
             "--host-agent-port",
             process.env.ELIZA_ANDROID_HOST_AGENT_PORT,
           ),
+          env: { ...process.env, ELIZA_API_TOKEN: hostAgentToken },
+          pairingDisabled: false,
           log,
         });
         process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port);
+        process.env.ELIZA_ANDROID_HOST_AGENT_TOKEN = hostAgentToken;
         finishBundleStep(bundle, step, "passed");
       } catch (error) {
         failAndroidStep(bundle, step, error);

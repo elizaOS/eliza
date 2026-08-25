@@ -25,6 +25,7 @@ import {
   type ApprovalPreset,
   SessionCapError,
   type SessionInfo,
+  SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 import { resolveAllowedWorkdir } from "../services/workdir-validation.js";
@@ -65,23 +66,17 @@ function activeSessionNames(sessions: readonly SessionInfo[]): string[] {
     );
 }
 
-const DEFAULT_OUTPUT_LINES = 100;
-const MAX_OUTPUT_LINES = 2_000;
-
 /**
  * Untrusted `?lines=` for GET /api/coding-agents/:id/output.
  * Number.parseInt("1e2", 10) === 1 would silently return 1 session line
- * instead of 100. Omit/empty keeps the documented default 100.
+ * instead of 100. Omission returns the complete retained output; a positive
+ * safe integer is explicit caller-requested suffix pagination.
  */
-function parseOutputLines(raw: string | null): number | null {
-  if (raw === null || raw === "") return DEFAULT_OUTPUT_LINES;
+function parseOutputLines(raw: string | null): number | undefined | null {
+  if (raw === null || raw === "") return undefined;
   if (!/^[1-9]\d*$/.test(raw)) return null;
   const parsed = Number(raw);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed <= 0 ||
-    parsed > MAX_OUTPUT_LINES
-  ) {
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     return null;
   }
   return parsed;
@@ -310,11 +305,7 @@ export async function handleAgentRoutes(
     }
     const rawAgentType = authMatch[1];
 
-    const SUPPORTED_AGENTS: ReadonlyArray<string> = [
-      "claude",
-      "codex",
-      "opencode",
-    ];
+    const SUPPORTED_AGENTS: ReadonlyArray<string> = ["claude", "codex"];
     if (!SUPPORTED_AGENTS.includes(rawAgentType)) {
       sendError(res, `Unsupported agent type: ${rawAgentType}`, 400);
       return true;
@@ -435,7 +426,7 @@ export async function handleAgentRoutes(
       if (!agentType) {
         sendError(
           res,
-          "agentType query parameter required (claude, codex, opencode)",
+          "agentType query parameter required (claude, codex)",
           400,
         );
         return true;
@@ -633,7 +624,15 @@ export async function handleAgentRoutes(
         ? (agentType as string).toLowerCase()
         : String((await ctx.acpService.resolveAgentType?.({})) ?? "codex");
 
-      const callerMetadata = (metadata as Record<string, unknown>) ?? {};
+      const untrustedCallerMetadata =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : {};
+      const {
+        [SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY]:
+          _ignoredAuthorization,
+        ...callerMetadata
+      } = untrustedCallerMetadata;
       const taskRoomId =
         typeof callerMetadata.taskRoomId === "string"
           ? callerMetadata.taskRoomId
@@ -843,11 +842,7 @@ export async function handleAgentRoutes(
     );
     const lines = parseOutputLines(url.searchParams.get("lines"));
     if (lines === null) {
-      sendError(
-        res,
-        `lines must be an integer from 1 to ${MAX_OUTPUT_LINES}`,
-        400,
-      );
+      sendError(res, "lines must be a positive safe integer", 400);
       return true;
     }
 
@@ -877,7 +872,7 @@ export async function handleAgentRoutes(
     }
     try {
       const sessionId = bufferedMatch[1];
-      const output = await ctx.acpService.getSessionOutput(sessionId, 500);
+      const output = await ctx.acpService.getSessionOutput(sessionId);
       sendJson(res, { sessionId, output });
     } catch (error) {
       // error-policy:J1 route boundary — service failure becomes a 500 response.

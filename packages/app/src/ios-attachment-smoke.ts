@@ -13,6 +13,7 @@
  */
 import { Filesystem } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { shellLocalStorage } from "@elizaos/ui/bridge";
 
 const IOS_ATTACHMENT_SMOKE_REQUEST_KEY = "eliza:ios-attachment-smoke:request";
@@ -344,7 +345,7 @@ export async function runIosAttachmentSmokeIfRequested({
     );
     if (!upload.ok) {
       throw new Error(
-        `/api/device-e2e/upload-image returned HTTP ${upload.status}: ${uploadText.slice(0, 500)}`,
+        `/api/device-e2e/upload-image returned HTTP ${upload.status}: ${truncateWellFormed(toWellFormedUnicode(uploadText), 500)}`,
       );
     }
     const uploadJson = JSON.parse(uploadText) as { url?: unknown };

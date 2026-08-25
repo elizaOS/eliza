@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
-  extractMethods,
+  canonicalRouteMethods,
   findCloudApiRoot,
   isGeneratedPublicRoute,
   segmentToRouteParam,
@@ -95,7 +95,11 @@ function responseModeFor(method, route, source) {
 
 function headerTypeLine(endpoint) {
   if (endpoint.route === "/api/v1/apis/storage/objects/_") {
-    return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string; "Content-Type"?: string };`;
+    const integrityHeader =
+      endpoint.method === "PUT"
+        ? ` "X-Content-Length": string; "X-Content-SHA256": string;`
+        : "";
+    return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string;${integrityHeader} "Content-Type"?: string };`;
   }
   if (endpoint.route === "/api/v1/apis/storage/presign") {
     return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string; "Content-Type"?: string };`;
@@ -160,22 +164,17 @@ const endpoints = [];
 
 for (const routeFile of routeFiles) {
   const source = await readFile(routeFile.fullPath, "utf8");
-  let methods = (
-    await extractMethods(source, routeFile.fullPath, cloudRoot)
-  ).filter((method) => method !== "OPTIONS" && method !== "HEAD");
-  if (methods.length === 0) continue;
-
-  const segments = routeFile.relativeSegments.map(segmentToRouteParam);
-  const discoveredRoute = `/api/${segments.map((segment) => segment.routeSegment).join("/")}`;
-  const fixedStorageObject =
-    discoveredRoute === "/api/v1/apis/storage/objects/{key}";
-  const route = fixedStorageObject
-    ? "/api/v1/apis/storage/objects/_"
-    : discoveredRoute;
-  if (fixedStorageObject && !methods.includes("HEAD"))
-    methods = [...methods, "HEAD"];
+  const canonical = await canonicalRouteMethods(
+    source,
+    routeFile.fullPath,
+    cloudRoot,
+    routeFile.relativeSegments,
+  );
+  if (!canonical) continue;
+  const { route, methods, fixedStorageObject } = canonical;
   if (!isGeneratedPublicRoute(route)) continue;
 
+  const segments = routeFile.relativeSegments.map(segmentToRouteParam);
   const pathParams = fixedStorageObject
     ? []
     : segments.flatMap((segment) =>

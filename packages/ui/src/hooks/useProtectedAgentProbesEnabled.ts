@@ -15,6 +15,7 @@
  * `notifications-boot`, `useWeather`, `useRuntimeMode`, `useSlashCommandController`.
  */
 
+import { Capacitor } from "@capacitor/core";
 import { client } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
@@ -29,12 +30,17 @@ export function protectedAgentProbesEnabled(
   authenticated: boolean,
   origin: string | null | undefined,
   agentBase?: string | null,
+  nativeRuntime = false,
 ): boolean {
   // Direct/shared Cloud agent adapters intentionally expose chat, status, and
   // history—not the full app-shell route family. Authentication cannot make
   // commands, custom actions, runtime mode, weather/location, or notification
   // routes appear, so probing them only creates 10-second startup contention.
   if (isLimitedCloudAgentApiBase(agentBase)) return false;
+  // Capacitor serves bundled assets from a synthetic https://localhost origin,
+  // not an app-shell API server. With no selected authority, `/api/*` would
+  // just return the renderer HTML (and cannot become valid after auth alone).
+  if (nativeRuntime && !agentBase?.trim()) return false;
   if (authenticated) return true;
   return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
 }
@@ -45,5 +51,6 @@ export function useProtectedAgentProbesEnabled(): boolean {
     authenticated,
     typeof window !== "undefined" ? window.location.origin : null,
     client.getBaseUrl(),
+    Capacitor.isNativePlatform(),
   );
 }

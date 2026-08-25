@@ -14,6 +14,7 @@ import {
 } from "./helpers";
 import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { seedStewardSession } from "./helpers/test-auth";
 
 const SCREENSHOT_DIR = path.join(
   process.cwd(),
@@ -424,7 +425,9 @@ function assistantComposer(page: Page) {
 }
 
 function assistantMicButton(page: Page) {
-  return page.getByRole("button", { name: /^(talk|voice input)$/i });
+  return page
+    .getByRole("group", { name: "Chat composer" })
+    .getByRole("button", { name: /^(talk|voice input)$/i });
 }
 
 function launcherTile(page: Page, viewId: string) {
@@ -491,6 +494,7 @@ async function seedAssistantFlowStorage(page: Page): Promise<void> {
 
 async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const secureStore = new Map<string, string>();
     type Bridge = {
       request?: Record<string, (params?: unknown) => Promise<unknown>>;
       onMessage?: (
@@ -559,6 +563,24 @@ async function installReadyDesktopStatusBridge(page: Page): Promise<void> {
         desktopGetVersion: async () => ({ runtime: "playwright-smoke" }),
         desktopRegisterShortcut: async () => ({ success: true }),
         desktopSetTrayMenu: async () => undefined,
+        secureStoreGet: async ({ kind }: { kind: string }) =>
+          secureStore.has(kind)
+            ? { ok: true, value: secureStore.get(kind) }
+            : { ok: false, reason: "not_found" },
+        secureStoreSet: async ({
+          kind,
+          value,
+        }: {
+          kind: string;
+          value: string;
+        }) => {
+          secureStore.set(kind, value);
+          return { ok: true };
+        },
+        secureStoreDelete: async ({ kind }: { kind: string }) => ({
+          ok: true,
+          deleted: secureStore.delete(kind),
+        }),
         getAgentStatus: async () => readyStatus,
         launchProgress: async () => readyLaunch,
         bootProgress: async () => readyBoot,
@@ -606,6 +628,27 @@ async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {},
+    });
+    // Chromium's test context reports the microphone permission as denied when
+    // no real device grant exists. The shell now probes that permission before
+    // it opens any capture backend, so keep this browser-STT harness on the
+    // granted branch; SpeechRecognition itself remains the system under test.
+    Object.defineProperty(navigator, "permissions", {
+      configurable: true,
+      value: {
+        query: async ({ name }: { name: string }) => {
+          if (name !== "microphone") {
+            throw new TypeError(`Unsupported permission: ${name}`);
+          }
+          return {
+            state: "granted",
+            onchange: null,
+            addEventListener() {},
+            removeEventListener() {},
+            dispatchEvent: () => true,
+          };
+        },
+      },
     });
     const runtimeWindow = window as unknown as {
       Capacitor?: { Plugins?: Record<string, unknown> };
@@ -679,6 +722,11 @@ async function installChatSpeechRecognitionShim(page: Page): Promise<void> {
     ).webkitSpeechRecognition = makeRecognition;
     (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition =
       makeRecognition;
+    (window as unknown as Record<string, unknown>).__homeVoiceState = () => ({
+      count: instances.length,
+      started: instances.some((instance) => instance.started),
+      continuousMode: localStorage.getItem("eliza:continuous-chat-mode"),
+    });
     (window as unknown as Record<string, unknown>).__homeVoiceSimulate = (
       text: string,
       isFinal: boolean,
@@ -837,6 +885,7 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAssistantFlowStorage(page);
+    await seedStewardSession(page);
     await installChatSpeechRecognitionShim(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
@@ -846,17 +895,39 @@ test.describe("assistant home app flow", () => {
     await expect(mic).toBeEnabled({ timeout: 30_000 });
     await mic.click();
 
-    const accepted = await page.evaluate(() => {
-      const simulate = (
-        window as unknown as {
-          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
-        }
-      ).__homeVoiceSimulate;
-      return simulate?.("show me my pinned views", true) ?? false;
-    });
-    expect(accepted, "home voice shim must receive the scripted turn").toBe(
-      true,
-    );
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const state = (
+              window as unknown as {
+                __homeVoiceState?: () => {
+                  count: number;
+                  started: boolean;
+                  continuousMode: string | null;
+                };
+              }
+            ).__homeVoiceState;
+            return state?.() ?? null;
+          }),
+        {
+          timeout: 10_000,
+          message: "home voice shim must start browser recognition",
+        },
+      )
+      .toMatchObject({ count: 1, started: true });
+
+    expect(
+      await page.evaluate(() => {
+        const simulate = (
+          window as unknown as {
+            __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
+          }
+        ).__homeVoiceSimulate;
+        return simulate?.("show me my pinned views", true) ?? false;
+      }),
+      "home voice shim must receive the scripted turn",
+    ).toBe(true);
 
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })
@@ -964,6 +1035,7 @@ test.describe("assistant home app flow", () => {
     page,
   }) => {
     await seedAssistantFlowStorage(page);
+    await seedStewardSession(page);
     await installChatSpeechRecognitionShim(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
@@ -994,15 +1066,26 @@ test.describe("assistant home app flow", () => {
     // The release-click starts the same hands-free conversation a tap starts:
     // the scripted final transcript is auto-submitted as a turn, not inserted
     // into the composer draft.
-    const accepted = await page.evaluate(() => {
-      const simulate = (
-        window as unknown as {
-          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
-        }
-      ).__homeVoiceSimulate;
-      return simulate?.("held talk works", true) ?? false;
-    });
-    expect(accepted, "home voice shim must receive the held turn").toBe(true);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const simulate = (
+              window as unknown as {
+                __homeVoiceSimulate?: (
+                  text: string,
+                  isFinal: boolean,
+                ) => boolean;
+              }
+            ).__homeVoiceSimulate;
+            return simulate?.("held talk works", true) ?? false;
+          }),
+        {
+          timeout: 10_000,
+          message: "home voice shim must receive the held turn",
+        },
+      )
+      .toBe(true);
 
     await expect
       .poll(() => assistantApi.streamRequests, { timeout: 10_000 })

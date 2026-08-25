@@ -176,7 +176,7 @@ export function startKeyboardDictationSession(
 
   let settled = false;
   let capture: VoiceCaptureHandle | null = null;
-  let liveActivityStarted = false;
+  let liveActivityStart: Promise<{ activityId: string } | null> | null = null;
   let maxTimer: ReturnType<typeof setTimeout> | null = null;
   let finalText = "";
   let resolveDone!: (outcome: KeyboardDictationOutcome) => void;
@@ -190,27 +190,37 @@ export function startKeyboardDictationSession(
   const liveActivity = deps.getLiveActivity();
   function startLiveActivity(): void {
     if (typeof liveActivity.start !== "function") return;
-    liveActivity
+    liveActivityStart = liveActivity
       .start({
         sessionTitleKind: "keyboard-dictation",
         phase: "recording",
       })
-      .then(() => {
-        liveActivityStarted = true;
-      })
-      .catch((error: unknown) => {
-        // error-policy:J4 the Live Activity is an ancillary surface (user sees
-        // the in-app overlay); dictation proceeds and the failure is logged.
-        log("Live Activity unavailable", error);
-      });
+      .then(
+        (result) => result,
+        (error: unknown) => {
+          // error-policy:J4 the Live Activity is an ancillary surface (user sees
+          // the in-app overlay); dictation proceeds and the failure is logged.
+          log("Live Activity unavailable", error);
+          return null;
+        },
+      );
   }
 
   function endLiveActivity(): void {
-    if (!liveActivityStarted || typeof liveActivity.end !== "function") return;
-    liveActivityStarted = false;
-    liveActivity.end({}).catch((error: unknown) => {
-      // error-policy:J6 best-effort teardown of the ancillary Live Activity.
-      log("Failed to end Live Activity", error);
+    const pendingStart = liveActivityStart;
+    liveActivityStart = null;
+    if (!pendingStart || typeof liveActivity.end !== "function") return;
+    void pendingStart.then(async (started) => {
+      if (!started) return;
+      try {
+        await liveActivity.end?.({
+          activityId: started.activityId,
+          phase: "ended",
+        });
+      } catch (error) {
+        // error-policy:J6 best-effort teardown of the ancillary Live Activity.
+        log("Failed to end Live Activity", error);
+      }
     });
   }
 

@@ -1,6 +1,10 @@
 /** Exercises voice tts chunker behavior with deterministic app-core test fixtures. */
 import { describe, expect, it } from "vitest";
-import { VoiceTtsChunker } from "./voice-tts-chunker";
+import {
+  getDefaultVoiceTtsChunkingConfig,
+  getVoiceTtsChunkingConfigFromEnv,
+  VoiceTtsChunker,
+} from "./voice-tts-chunker";
 
 describe("VoiceTtsChunker", () => {
   it("flushes on punctuation after the minimum length", () => {
@@ -88,5 +92,39 @@ describe("VoiceTtsChunker", () => {
         reason: "final",
       },
     ]);
+  });
+});
+
+describe("voice TTS chunking config from env", () => {
+  it("ignores a trailing-garbage chunk limit instead of parsing its prefix", () => {
+    // parseInt("12junk") is 12 — a 12-character speech chunk limit, which
+    // shatters synthesis into fragments, from a value nobody meant as a setting.
+    const config = getVoiceTtsChunkingConfigFromEnv({
+      ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "12junk",
+    });
+
+    expect(config.maxChars).toBe(getDefaultVoiceTtsChunkingConfig().maxChars);
+  });
+
+  it("still honours a clean chunk limit", () => {
+    const config = getVoiceTtsChunkingConfigFromEnv({
+      ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "120",
+    });
+
+    expect(config.maxChars).toBe(120);
+  });
+
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
+    // `parseInt` accepted "+120"; rejecting it would be a regression.
+    expect(
+      getVoiceTtsChunkingConfigFromEnv({
+        ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "+120",
+      }).maxChars,
+    ).toBe(120);
+    expect(
+      getVoiceTtsChunkingConfigFromEnv({
+        ELIZA_VOICE_TTS_CHUNK_MAX_CHARS: "9007199254740993",
+      }).maxChars,
+    ).toBe(getDefaultVoiceTtsChunkingConfig().maxChars);
   });
 });

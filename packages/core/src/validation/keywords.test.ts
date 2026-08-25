@@ -37,7 +37,7 @@ describe("validateActionKeywords", () => {
 		).toBe(false);
 	});
 
-	it("retains the current and last five recent messages", () => {
+	it("retains the current and every recent message", () => {
 		const recentMessages = [
 			memory("old message 1"),
 			memory("old message 2"),
@@ -54,6 +54,6 @@ describe("validateActionKeywords", () => {
 			validateActionKeywords(memory("current"), recentMessages, [
 				"old message 1",
 			]),
-		).toBe(false);
+		).toBe(true);
 	});
 });

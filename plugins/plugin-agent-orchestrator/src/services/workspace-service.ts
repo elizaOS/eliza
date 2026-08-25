@@ -1295,9 +1295,11 @@ export class CodingWorkspaceService {
   }
 
   listScratchWorkspaces(): ScratchWorkspaceRecord[] {
-    return Array.from(this.scratchBySession.values()).sort(
-      (a, b) => b.terminalAt - a.terminalAt,
-    );
+    return Array.from(this.scratchBySession.values()).sort((a, b) => {
+      const aTerm = Number.isFinite(a.terminalAt) ? a.terminalAt : 0;
+      const bTerm = Number.isFinite(b.terminalAt) ? b.terminalAt : 0;
+      return bTerm - aTerm;
+    });
   }
 
   async registerScratchWorkspace(

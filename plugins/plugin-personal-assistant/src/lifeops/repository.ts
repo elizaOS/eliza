@@ -83,6 +83,7 @@ import {
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceView,
   type LifeOpsPersonalBaseline,
+  type LifeOpsProgressEvent,
   type LifeOpsProposalProposer,
   type LifeOpsProposalStatus,
   type LifeOpsRelationshipInteraction,
@@ -175,6 +176,21 @@ type BrowserCompanionPendingPairingToken = {
   hash: string;
   expiresAt: string | null;
 };
+
+export type BrowserCompanionRevocation = {
+  agentId: string;
+  ownerEntityId: string;
+  browser: BrowserBridgeCompanionStatus["browser"];
+  profileId: string;
+  companionId: string;
+  revokedAt: string;
+};
+
+const BROWSER_COMPANION_WILDCARD_PROFILE_ID = "*";
+
+export type BrowserCompanionPendingPromotionResult =
+  | { ok: true; companion: BrowserBridgeCompanionStatus }
+  | { ok: false; reason: "invalid" | "revoked" };
 
 function normalizeConnectorIdentityEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -327,12 +343,29 @@ export type LifeOpsDefinitionScope = {
   subjectId: string;
 };
 
-function definitionScopePredicate(scope?: LifeOpsDefinitionScope): string {
+function definitionScopePredicate(
+  scope?: LifeOpsDefinitionScope,
+  tableAlias?: string,
+): string {
   if (!scope) return "";
+  const prefix = tableAlias ? `${tableAlias}.` : "";
   return `
-          AND domain = ${sqlQuote(scope.domain)}
-          AND subject_type = ${sqlQuote(scope.subjectType)}
-          AND subject_id = ${sqlQuote(scope.subjectId)}`;
+          AND ${prefix}domain = ${sqlQuote(scope.domain)}
+          AND ${prefix}subject_type = ${sqlQuote(scope.subjectType)}
+          AND ${prefix}subject_id = ${sqlQuote(scope.subjectId)}`;
+}
+
+function definitionScopeSetPredicate(
+  scopes?: readonly LifeOpsDefinitionScope[],
+  tableAlias = "definition",
+): string {
+  if (scopes === undefined) return "";
+  if (scopes.length === 0) return " AND FALSE";
+  const clauses = scopes.map(
+    (scope) =>
+      `(${tableAlias}.domain = ${sqlQuote(scope.domain)} AND ${tableAlias}.subject_type = ${sqlQuote(scope.subjectType)} AND ${tableAlias}.subject_id = ${sqlQuote(scope.subjectId)})`,
+  );
+  return ` AND (${clauses.join(" OR ")})`;
 }
 
 function parseOwnershipFields(row: Record<string, unknown>) {
@@ -403,6 +436,12 @@ function parseTaskDefinition(
       row.progression_rule_json,
       { kind: "none" },
     ),
+    checkInPolicy: row.check_in_policy_json
+      ? parseJsonValue<LifeOpsTaskDefinition["checkInPolicy"]>(
+          row.check_in_policy_json,
+          null,
+        )
+      : null,
     websiteAccess: row.website_access_json
       ? parseJsonValue<LifeOpsTaskDefinition["websiteAccess"]>(
           row.website_access_json,
@@ -447,6 +486,31 @@ function parseOccurrence(row: Record<string, unknown>): LifeOpsOccurrence {
 function parseOccurrenceView(
   row: Record<string, unknown>,
 ): LifeOpsOccurrenceView {
+  const cadence = parseJsonRecord(
+    row.definition_cadence_json,
+  ) as LifeOpsOccurrenceView["cadence"];
+  const rawProgress = Number(row.progress_completed_count);
+  if (cadence.kind === "count_per_day" && !Number.isFinite(rawProgress)) {
+    throw new Error(
+      `LifeOpsRepository: invalid quota projection for occurrence ${toText(row.id)}`,
+    );
+  }
+  const progress =
+    cadence.kind === "count_per_day"
+      ? (() => {
+          const completedCount = Math.min(
+            Math.max(Math.trunc(rawProgress), 0),
+            cadence.targetCount,
+          );
+          return {
+            completedCount,
+            targetCount: cadence.targetCount,
+            remainingCount: Math.max(cadence.targetCount - completedCount, 0),
+            unit: cadence.unit,
+            perOccurrenceWork: cadence.perOccurrenceWork,
+          };
+        })()
+      : null;
   return {
     ...parseOccurrence(row),
     definitionKind: toText(
@@ -455,15 +519,14 @@ function parseOccurrenceView(
     definitionStatus: toText(
       row.definition_status,
     ) as LifeOpsOccurrenceView["definitionStatus"],
-    cadence: parseJsonRecord(
-      row.definition_cadence_json,
-    ) as LifeOpsOccurrenceView["cadence"],
+    cadence,
     title: toText(row.definition_title),
     description: toText(row.definition_description),
     priority: toNumber(row.definition_priority, 3),
     timezone: toText(row.definition_timezone),
     source: toText(row.definition_source, "manual"),
     goalId: row.definition_goal_id ? toText(row.definition_goal_id) : null,
+    progress,
   };
 }
 
@@ -1333,12 +1396,93 @@ function parseWorkflowRun(row: Record<string, unknown>): LifeOpsWorkflowRun {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     workflowId: toText(row.workflow_id),
+    idempotencyKey:
+      typeof row.idempotency_key === "string" ? row.idempotency_key : null,
     startedAt: toText(row.started_at),
     finishedAt: row.finished_at ? toText(row.finished_at) : null,
     status: toText(row.status) as LifeOpsWorkflowRun["status"],
     result: parseJsonRecord(row.result_json),
     auditRef: row.audit_ref ? toText(row.audit_ref) : null,
   };
+}
+
+const TERMINAL_WORKFLOW_RUN_STATUSES = new Set<LifeOpsWorkflowRun["status"]>([
+  "success",
+  "failed",
+  "failed_uncompensated",
+  "cancelled",
+]);
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
+  "elizaos:life_workflow_runs:idempotency-backfill:v1";
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
+
+const WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY = `SELECT
+       pg_catalog.pg_get_indexdef(index_catalog.indexrelid) AS indexdef,
+       index_catalog.indisunique AS is_unique,
+       index_catalog.indisvalid AS is_valid,
+       index_catalog.indisready AS is_ready
+  FROM pg_catalog.pg_index AS index_catalog
+  JOIN pg_catalog.pg_class AS index_class
+    ON index_class.oid = index_catalog.indexrelid
+  JOIN pg_catalog.pg_namespace AS index_namespace
+    ON index_namespace.oid = index_class.relnamespace
+  JOIN pg_catalog.pg_class AS table_class
+    ON table_class.oid = index_catalog.indrelid
+  JOIN pg_catalog.pg_namespace AS table_namespace
+    ON table_namespace.oid = table_class.relnamespace
+ WHERE index_namespace.nspname = 'app_lifeops'
+   AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+   AND table_namespace.nspname = 'app_lifeops'
+   AND table_class.relname = 'life_workflow_runs'`;
+
+function assertWorkflowRunIdempotencyIndexDefinition(
+  rows: Array<Record<string, unknown>>,
+): void {
+  const indexDefinition =
+    typeof rows[0]?.indexdef === "string" ? rows[0].indexdef : "";
+  const indexDefinitionIsExpected =
+    rows[0]?.is_unique === true &&
+    rows[0]?.is_valid === true &&
+    rows[0]?.is_ready === true &&
+    /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
+    /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
+    /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
+  if (!indexDefinitionIsExpected) {
+    throw new ElizaError(
+      "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index or is not usable — drop or rename the conflicting index so the workflow-run claim election can be installed",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+        context: {
+          indexDefinition,
+          isUnique: rows[0]?.is_unique,
+          isValid: rows[0]?.is_valid,
+          isReady: rows[0]?.is_ready,
+        },
+      },
+    );
+  }
+}
+
+function assertValidWorkflowRunIdempotencyKey(
+  idempotencyKey: string | null | undefined,
+): void {
+  if (idempotencyKey === null || idempotencyKey === undefined) return;
+  if (
+    idempotencyKey.length === 0 ||
+    idempotencyKey.length > 256 ||
+    idempotencyKey.includes("\0")
+  ) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Workflow run idempotency key must contain 1 to 256 non-NUL characters",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_KEY_INVALID",
+        context: {
+          length: idempotencyKey.length,
+          containsNul: idempotencyKey.includes("\0"),
+        },
+      },
+    );
+  }
 }
 
 function parseReminderAttempt(
@@ -1550,6 +1694,48 @@ function parseBrowserCompanionCredential(
     pendingPairingTokens,
     pendingPairingTokenHashes: pendingPairingTokens.map((token) => token.hash),
   };
+}
+
+async function lockBrowserCompanionCredential(
+  tx: TransactionalDb,
+  companionsTable: string,
+  agentId: string,
+  companionId: string,
+): Promise<BrowserCompanionCredential | null> {
+  const rows = await executeRawSqlTx(
+    tx,
+    `SELECT *
+       FROM ${companionsTable}
+      WHERE agent_id = ${sqlQuote(agentId)}
+        AND id = ${sqlQuote(companionId)}
+      FOR UPDATE`,
+  );
+  return rows[0] ? parseBrowserCompanionCredential(rows[0]) : null;
+}
+
+async function browserCompanionRevocationExists(
+  tx: TransactionalDb,
+  args: {
+    agentId: string;
+    ownerEntityId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+  },
+): Promise<boolean> {
+  const rows = await executeRawSqlTx(
+    tx,
+    `SELECT 1
+       FROM app_lifeops.life_browser_companion_revocations
+      WHERE agent_id = ${sqlQuote(args.agentId)}
+        AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
+        AND browser = ${sqlQuote(args.browser)}
+        AND profile_id IN (
+          ${sqlQuote(args.profileId)},
+          ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}
+        )
+      LIMIT 1`,
+  );
+  return rows.length > 0;
 }
 
 function parseBrowserTabSummary(
@@ -2592,6 +2778,242 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+  }
+
+  /**
+   * Repair pre-column workflow-run tables and lift one deterministic legacy
+   * `result.idempotencyKey` row per scope into the indexed column. The
+   * application-side parser tolerates historical TEXT values PostgreSQL
+   * cannot cast to jsonb (notably JSON strings containing `\\u0000`). When
+   * older code wrote duplicate keys, the most recent `(started_at, id)` row
+   * becomes canonical and the other rows deliberately remain unkeyed.
+   *
+   * A durable comment on the completed unique index is the backfill marker.
+   * The schema migrator can create an uncommented index before this repair,
+   * so index existence alone is not evidence that the one-time scan ran.
+   *
+   * This is a protocol cutover, not a rolling compatibility shim: deployments
+   * must quiesce pre-column workflow writers before starting this migration.
+   * Those writers reserve replay keys only after their side effects, so no
+   * backfill can make mixed-version execution safely idempotent. A table lock
+   * closes the narrower race with writes already draining during the scan.
+   */
+  static async ensureWorkflowRunIdempotencyKey(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    if (!(await tableExists(runtime, "app_lifeops.life_workflow_runs"))) {
+      return;
+    }
+    const markerQuery = `SELECT description.description
+         FROM pg_catalog.pg_description AS description
+         JOIN pg_catalog.pg_class AS index_class
+           ON index_class.oid = description.objoid
+         JOIN pg_catalog.pg_namespace AS namespace
+           ON namespace.oid = index_class.relnamespace
+        WHERE namespace.nspname = 'app_lifeops'
+          AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+          AND description.classoid = 'pg_catalog.pg_class'::regclass
+          AND description.objsubid = 0
+          AND description.description = ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}
+        LIMIT 1`;
+    const markerRows = await executeRawSql(runtime, markerQuery);
+    if (markerRows.length > 0) {
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSql(
+          runtime,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
+      );
+      return;
+    }
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE app_lifeops.life_workflow_runs ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
+    );
+    await withTransaction(runtime, async (tx) => {
+      // Serialize concurrent bootstraps and stop legacy INSERTs from landing
+      // behind the keyset cursor while the one-time scan is in flight.
+      await executeRawSqlTx(
+        tx,
+        "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
+      );
+      if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        assertWorkflowRunIdempotencyIndexDefinition(
+          await executeRawSqlTx(
+            tx,
+            WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+          ),
+        );
+        return;
+      }
+      await executeRawSqlTx(
+        tx,
+        `CREATE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency_backfill_scan
+           ON app_lifeops.life_workflow_runs (started_at DESC, id DESC)
+        WHERE idempotency_key IS NULL`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `WITH ranked_existing AS (
+           SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY agent_id, workflow_id, idempotency_key
+                    ORDER BY started_at DESC, id DESC
+                  ) AS row_number
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NOT NULL
+         )
+         UPDATE app_lifeops.life_workflow_runs AS run
+            SET idempotency_key = NULL
+           FROM ranked_existing
+          WHERE run.id = ranked_existing.id
+            AND ranked_existing.row_number > 1`,
+      );
+
+      let cursor: { startedAt: string; id: string } | null = null;
+      while (true) {
+        const cursorClause = cursor
+          ? `AND (started_at, id) < (${sqlQuote(cursor.startedAt)}, ${sqlQuote(cursor.id)})`
+          : "";
+        const rows = await executeRawSqlTx(
+          tx,
+          `SELECT id, agent_id, workflow_id, started_at, result_json
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NULL
+              ${cursorClause}
+            ORDER BY started_at DESC, id DESC
+            LIMIT ${WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE}`,
+        );
+        if (rows.length === 0) {
+          break;
+        }
+
+        const candidates: Array<{
+          id: string;
+          agentId: string;
+          workflowId: string;
+          idempotencyKey: string;
+          ordinal: number;
+        }> = [];
+        for (const [ordinal, row] of rows.entries()) {
+          let result: Record<string, unknown>;
+          try {
+            result = parseJsonRecord(row.result_json);
+          } catch {
+            // error-policy:J3 corrupt stored JSON produces an explicit skip
+            // rather than a fabricated key, so one bad historical row cannot
+            // block the compatibility migration for every other run. Logged
+            // with the row id, because "backfill completed" and "backfill
+            // silently dropped 4,000 rows" must not look identical.
+            logger.warn(
+              { workflowRunId: row.id },
+              "[lifeops-repository] skipped a workflow run whose stored result could not be parsed during idempotency backfill",
+            );
+            continue;
+          }
+          const legacyKey = result.idempotencyKey;
+          if (
+            typeof legacyKey !== "string" ||
+            legacyKey.length === 0 ||
+            legacyKey.length > 256 ||
+            legacyKey.includes("\0")
+          ) {
+            continue;
+          }
+          candidates.push({
+            id: toText(row.id),
+            agentId: toText(row.agent_id),
+            workflowId: toText(row.workflow_id),
+            idempotencyKey: legacyKey,
+            ordinal,
+          });
+        }
+
+        if (candidates.length > 0) {
+          const values = candidates
+            .map(
+              (candidate) =>
+                `(${sqlQuote(candidate.id)}, ${sqlQuote(candidate.agentId)}, ${sqlQuote(candidate.workflowId)}, ${sqlQuote(candidate.idempotencyKey)}, ${sqlInteger(candidate.ordinal)})`,
+            )
+            .join(",\n");
+          await executeRawSqlTx(
+            tx,
+            `WITH candidates (
+               id, agent_id, workflow_id, idempotency_key, ordinal
+             ) AS (
+               VALUES ${values}
+             ), ranked AS (
+               SELECT candidate.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY candidate.agent_id,
+                                     candidate.workflow_id,
+                                     candidate.idempotency_key
+                        ORDER BY candidate.ordinal ASC
+                      ) AS row_number
+                 FROM candidates AS candidate
+             ), available AS (
+               SELECT candidate.*
+                 FROM ranked AS candidate
+                WHERE candidate.row_number = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM app_lifeops.life_workflow_runs AS claimed
+                     WHERE claimed.agent_id = candidate.agent_id
+                       AND claimed.workflow_id = candidate.workflow_id
+                       AND claimed.idempotency_key = candidate.idempotency_key
+                  )
+             )
+             UPDATE app_lifeops.life_workflow_runs AS run
+                SET idempotency_key = candidate.idempotency_key
+               FROM available AS candidate
+              WHERE run.id = candidate.id
+                AND run.agent_id = candidate.agent_id
+                AND run.workflow_id = candidate.workflow_id
+                AND run.idempotency_key IS NULL`,
+          );
+        }
+
+        const last = rows.at(-1);
+        if (!last) {
+          break;
+        }
+        cursor = {
+          startedAt: toText(last.started_at),
+          id: toText(last.id),
+        };
+      }
+
+      await executeRawSqlTx(
+        tx,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency
+         ON app_lifeops.life_workflow_runs (
+           agent_id, workflow_id, idempotency_key
+         )
+        WHERE idempotency_key IS NOT NULL`,
+      );
+      // `IF NOT EXISTS` silently accepts any pre-existing index with this
+      // name. A foreign non-unique (or wrong-column/predicate) index would
+      // pass creation and then be stamped as the durable completion marker
+      // while electing nothing. Verify the live definition before stamping;
+      // the transaction rolls back on mismatch so a later boot retries after
+      // the operator drops or renames the conflicting index.
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSqlTx(
+          tx,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
+      );
+      await executeRawSqlTx(
+        tx,
+        `COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+           IS ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        "DROP INDEX IF EXISTS app_lifeops.idx_life_workflow_runs_idempotency_backfill_scan",
+      );
+    });
   }
 
   static async ensureSchedulingNegotiationColumns(
@@ -3359,7 +3781,7 @@ export class LifeOpsRepository {
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
-        progression_rule_json, website_access_json, reminder_plan_id, goal_id, source,
+        progression_rule_json, check_in_policy_json, website_access_json, reminder_plan_id, goal_id, source,
         metadata_json, created_at, updated_at
       ) VALUES (
         ${sqlQuote(definition.id)},
@@ -3380,6 +3802,11 @@ export class LifeOpsRepository {
         ${sqlJson(definition.windowPolicy)},
         ${sqlJson(definition.progressionRule)},
         ${sqlText(
+          definition.checkInPolicy
+            ? JSON.stringify(definition.checkInPolicy)
+            : null,
+        )},
+        ${sqlText(
           definition.websiteAccess
             ? JSON.stringify(definition.websiteAccess)
             : null,
@@ -3395,22 +3822,29 @@ export class LifeOpsRepository {
   }
 
   /**
-   * Persist a definition mutation. The predicate binds the row to the
-   * definition's own subject identity so a write can never land on another
-   * subject's record, and an optional `expectedUpdatedAt` turns the write
-   * into an optimistic-concurrency mutation: when the stored revision has
-   * moved (or the row is gone / owned by another subject) exactly zero rows
-   * match and a typed `LIFEOPS_DEFINITION_CONFLICT` error is thrown for the
-   * caller to re-resolve.
+   * Persist a definition mutation. The predicate binds the row to the supplied
+   * expected scope, or to the definition's target scope when no move is being
+   * made, so an authorized caller can move a row without making its old scope
+   * writable by unrelated callers. `expectedUpdatedAt` adds optimistic
+   * concurrency; a stale, missing, or differently scoped row raises a typed
+   * `LIFEOPS_DEFINITION_CONFLICT` for the caller to re-resolve.
    */
   async updateDefinition(
     definition: LifeOpsTaskDefinition,
-    options?: { expectedUpdatedAt?: string },
+    options?: {
+      expectedUpdatedAt?: string;
+      expectedScope?: LifeOpsDefinitionScope;
+    },
   ): Promise<void> {
     const revisionPredicate = options?.expectedUpdatedAt
       ? `
          AND updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
       : "";
+    const expectedScope = options?.expectedScope ?? {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_task_definitions
@@ -3428,6 +3862,11 @@ export class LifeOpsRepository {
              cadence_json = ${sqlJson(definition.cadence)},
              window_policy_json = ${sqlJson(definition.windowPolicy)},
              progression_rule_json = ${sqlJson(definition.progressionRule)},
+             check_in_policy_json = ${sqlText(
+               definition.checkInPolicy
+                 ? JSON.stringify(definition.checkInPolicy)
+                 : null,
+             )},
              website_access_json = ${sqlText(
                definition.websiteAccess
                  ? JSON.stringify(definition.websiteAccess)
@@ -3440,9 +3879,9 @@ export class LifeOpsRepository {
              updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
          AND agent_id = ${sqlQuote(definition.agentId)}
-         AND domain = ${sqlQuote(definition.domain)}
-         AND subject_type = ${sqlQuote(definition.subjectType)}
-         AND subject_id = ${sqlQuote(definition.subjectId)}${revisionPredicate}
+         AND domain = ${sqlQuote(expectedScope.domain)}
+         AND subject_type = ${sqlQuote(expectedScope.subjectType)}
+         AND subject_id = ${sqlQuote(expectedScope.subjectId)}${revisionPredicate}
        RETURNING id`,
     );
     if (rows.length !== 1) {
@@ -3455,6 +3894,9 @@ export class LifeOpsRepository {
             agentId: definition.agentId,
             domain: definition.domain,
             subjectType: definition.subjectType,
+            expectedDomain: expectedScope.domain,
+            expectedSubjectType: expectedScope.subjectType,
+            expectedSubjectId: expectedScope.subjectId,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
         },
@@ -3615,9 +4057,30 @@ export class LifeOpsRepository {
         relevance_start_at = excluded.relevance_start_at,
         relevance_end_at = excluded.relevance_end_at,
         window_name = excluded.window_name,
-        state = excluded.state,
-        snoozed_until = excluded.snoozed_until,
-        completion_payload_json = excluded.completion_payload_json,
+        -- A re-materialization computed from a snapshot taken before a
+        -- concurrent completion must not resurrect the day: when the stored
+        -- row is already completed and the incoming row is non-terminal, the
+        -- completed state and its payload win. Real terminal transitions go
+        -- through completeOccurrenceIfNonTerminal / the skip and expire
+        -- writers, which always carry a terminal state here.
+        state = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.state
+          ELSE excluded.state
+        END,
+        snoozed_until = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN NULL
+          ELSE excluded.snoozed_until
+        END,
+        completion_payload_json = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.completion_payload_json
+          ELSE excluded.completion_payload_json
+        END,
         derived_target_json = excluded.derived_target_json,
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
@@ -3663,13 +4126,17 @@ export class LifeOpsRepository {
   async getOccurrence(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrence | null> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_task_occurrences
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(occurrenceId)}
+      `SELECT occurrence.*
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
+           ON definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id
+        WHERE occurrence.agent_id = ${sqlQuote(agentId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3679,6 +4146,7 @@ export class LifeOpsRepository {
   async getOccurrenceView(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrenceView | null> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3692,12 +4160,16 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND occurrence.id = ${sqlQuote(occurrenceId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3707,6 +4179,7 @@ export class LifeOpsRepository {
   async listOccurrenceViewsForOverview(
     agentId: string,
     horizonIso: string,
+    definitionScopes?: readonly LifeOpsDefinitionScope[],
   ): Promise<LifeOpsOccurrenceView[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3720,12 +4193,16 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND definition.status = 'active'
+          AND definition.status = 'active'${definitionScopeSetPredicate(definitionScopes)}
           AND (
             occurrence.state IN ('visible', 'snoozed')
             OR (
@@ -3747,15 +4224,19 @@ export class LifeOpsRepository {
    * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
    * the owner's local day in TypeScript where timezone math belongs.
    *
-   * `subjectType` is pushed into SQL rather than filtered by the caller so the
-   * LIMIT can never evict matching rows: under multi-room load, agent-subject
-   * completions interleaved with the owner's would otherwise consume the
-   * window and silently drop owner wins from the evening brief.
+   * Ownership filters are pushed into SQL rather than applied after the LIMIT.
+   * Callers serving one owner must pass the exact definition scope: filtering
+   * only on `subjectType` would mix every owner under the same agent and expose
+   * another owner's completed-item titles through recap surfaces.
    */
   async listCompletedOccurrenceViewsSince(
     agentId: string,
     sinceIso: string,
-    options: { subjectType?: "owner" | "agent"; limit?: number } = {},
+    options: {
+      subjectType?: "owner" | "agent";
+      definitionScopes?: readonly LifeOpsDefinitionScope[];
+      limit?: number;
+    } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
     const subjectFilter = options.subjectType
@@ -3773,6 +4254,10 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
@@ -3780,17 +4265,38 @@ export class LifeOpsRepository {
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
           AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
-          ${subjectFilter}
+          ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
         ORDER BY occurrence.updated_at DESC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseOccurrenceView);
   }
 
-  async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await executeRawSql(
+  /**
+   * Persist an occurrence mutation under the owning definition's current
+   * scope and optional occurrence/definition revisions. Caller-facing flows
+   * pass every guard so an ownership move cannot turn a previously authorized
+   * read into a stale write against another owner's row.
+   */
+  async updateOccurrence(
+    occurrence: LifeOpsOccurrence,
+    options?: {
+      definitionScope?: LifeOpsDefinitionScope;
+      expectedUpdatedAt?: string;
+      expectedDefinitionUpdatedAt?: string;
+    },
+  ): Promise<void> {
+    const occurrenceRevisionPredicate = options?.expectedUpdatedAt
+      ? `
+          AND occurrence.updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const definitionRevisionPredicate = options?.expectedDefinitionUpdatedAt
+      ? `
+          AND definition.updated_at = ${sqlQuote(options.expectedDefinitionUpdatedAt)}`
+      : "";
+    const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
           SET domain = ${sqlQuote(occurrence.domain)},
               subject_type = ${sqlQuote(occurrence.subjectType)},
               subject_id = ${sqlQuote(occurrence.subjectId)},
@@ -3807,9 +4313,62 @@ export class LifeOpsRepository {
               derived_target_json = ${occurrence.derivedTarget ? sqlJson(occurrence.derivedTarget) : "NULL"},
               metadata_json = ${sqlJson(occurrence.metadata)},
               updated_at = ${sqlQuote(occurrence.updatedAt)}
-        WHERE id = ${sqlQuote(occurrence.id)}
-          AND agent_id = ${sqlQuote(occurrence.agentId)}`,
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}${occurrenceRevisionPredicate}${definitionRevisionPredicate}
+       RETURNING occurrence.id`,
     );
+    if (rows.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] occurrence update matched no row for this definition scope and revision",
+        {
+          code: "LIFEOPS_OCCURRENCE_CONFLICT",
+          context: {
+            occurrenceId: occurrence.id,
+            definitionId: occurrence.definitionId,
+            agentId: occurrence.agentId,
+            expectedDomain: options?.definitionScope?.domain ?? null,
+            expectedSubjectType: options?.definitionScope?.subjectType ?? null,
+            expectedSubjectId: options?.definitionScope?.subjectId ?? null,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+            expectedDefinitionUpdatedAt:
+              options?.expectedDefinitionUpdatedAt ?? null,
+          },
+        },
+      );
+    }
+  }
+
+  /**
+   * Atomically wins one nonterminal-to-completed transition under the owning
+   * definition's current scope. Callers perform completion side effects only
+   * when this returns true, preventing duplicate rollups and grants when
+   * concurrent quota increments reach the target. Unlike updateOccurrence it
+   * deliberately carries no occurrence-revision guard: the terminal-state
+   * predicate is the race arbiter.
+   */
+  async completeOccurrenceIfNonTerminal(
+    occurrence: LifeOpsOccurrence,
+    options?: { definitionScope?: LifeOpsDefinitionScope },
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
+          SET state = 'completed',
+              snoozed_until = NULL,
+              completion_payload_json = ${occurrence.completionPayload ? sqlJson(occurrence.completionPayload) : "NULL"},
+              updated_at = ${sqlQuote(occurrence.updatedAt)}
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}
+          AND occurrence.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+      RETURNING occurrence.id`,
+    );
+    return rows.length === 1;
   }
 
   async pruneNonTerminalOccurrences(
@@ -4084,6 +4643,129 @@ export class LifeOpsRepository {
    * when the id already existed. Used by circadian event emission to dedupe
    * across runtime restarts (same state transition -> same id).
    */
+  /**
+   * Appends one quota progress increment under an occurrence-row lock. The
+   * transaction serializes the aggregate read with the append, while the
+   * unique idempotency key keeps message replays as no-ops.
+   */
+  async appendProgressEventIfNew(
+    event: LifeOpsProgressEvent,
+    targetCount: number,
+  ): Promise<number | null> {
+    return withTransaction(this.runtime, async (tx) => {
+      const locked = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_occurrences
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND id = ${sqlQuote(event.occurrenceId)}
+          FOR UPDATE`,
+      );
+      if (locked.length !== 1) return null;
+      const duplicate = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}
+            AND idempotency_key = ${sqlQuote(event.idempotencyKey)}
+          LIMIT 1`,
+      );
+      if (duplicate.length > 0) return null;
+      const totals = await executeRawSqlTx(
+        tx,
+        `SELECT COALESCE(SUM(quantity), 0) AS total
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}`,
+      );
+      const currentTotal = Number(totals[0]?.total);
+      if (!Number.isInteger(currentTotal) || currentTotal < 0) {
+        throw new Error(
+          `LifeOpsRepository: invalid progress total for occurrence ${event.occurrenceId}`,
+        );
+      }
+      const quantity = Math.min(
+        Math.trunc(event.quantity),
+        Math.max(Math.trunc(targetCount) - currentTotal, 0),
+      );
+      if (quantity <= 0) return null;
+      const rows = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_task_progress_events (
+          id, agent_id, definition_id, occurrence_id, local_date_key,
+          idempotency_key, quantity, unit, note, actor, created_at
+        ) VALUES (
+          ${sqlQuote(event.id)},
+          ${sqlQuote(event.agentId)},
+          ${sqlQuote(event.definitionId)},
+          ${sqlQuote(event.occurrenceId)},
+          ${sqlQuote(event.localDateKey)},
+          ${sqlQuote(event.idempotencyKey)},
+          ${quantity},
+          ${sqlQuote(event.unit)},
+          ${event.note === null ? "NULL" : sqlQuote(event.note)},
+          ${sqlQuote(event.actor)},
+          ${sqlQuote(event.createdAt)}
+        )
+        ON CONFLICT (agent_id, occurrence_id, idempotency_key) DO NOTHING
+        RETURNING quantity`,
+      );
+      if (rows.length !== 1) return null;
+      return quantity;
+    });
+  }
+
+  /** Derived completed count for an occurrence: always summed from the append-only rows. */
+  async sumProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}`,
+    );
+    const raw = rows[0]?.total;
+    const total = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(total)) {
+      throw new Error(
+        `LifeOpsRepository: non-numeric progress sum for occurrence ${occurrenceId}`,
+      );
+    }
+    return Math.trunc(total);
+  }
+
+  async listProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<LifeOpsProgressEvent[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}
+        ORDER BY created_at ASC, id ASC`,
+    );
+    return rows.map((row) => ({
+      id: String(row.id),
+      agentId: String(row.agent_id),
+      definitionId: String(row.definition_id),
+      occurrenceId: String(row.occurrence_id),
+      localDateKey: String(row.local_date_key),
+      idempotencyKey: String(row.idempotency_key),
+      quantity: Number(row.quantity),
+      unit: String(row.unit),
+      note:
+        row.note === null || row.note === undefined ? null : String(row.note),
+      actor: String(row.actor),
+      createdAt: String(row.created_at),
+    }));
+  }
+
   async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
@@ -6039,10 +6721,10 @@ export class LifeOpsRepository {
     },
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGmailSpamReviewItem[]> {
-    const limit =
+    const limitClause =
       options?.maxResults !== undefined && Number.isFinite(options.maxResults)
-        ? options.maxResults
-        : 100;
+        ? `LIMIT ${sqlInteger(options.maxResults)}`
+        : "";
     const sideClause = side ? `AND side = ${sqlQuote(side)}` : "";
     const statusClause = options?.status
       ? `AND status = ${sqlQuote(options.status)}`
@@ -6060,7 +6742,7 @@ export class LifeOpsRepository {
           ${statusClause}
           ${grantClause}
         ORDER BY updated_at DESC, received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseGmailSpamReviewItem);
   }
@@ -6229,15 +6911,17 @@ export class LifeOpsRepository {
   }
 
   async createWorkflowRun(run: LifeOpsWorkflowRun): Promise<void> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_workflow_runs (
-        id, agent_id, workflow_id, started_at, finished_at, status,
-        result_json, audit_ref
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
       ) VALUES (
         ${sqlQuote(run.id)},
         ${sqlQuote(run.agentId)},
         ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
         ${sqlQuote(run.startedAt)},
         ${sqlText(run.finishedAt)},
         ${sqlQuote(run.status)},
@@ -6245,6 +6929,114 @@ export class LifeOpsRepository {
         ${sqlText(run.auditRef)}
       )`,
     );
+  }
+
+  /**
+   * Atomically reserve a workflow run before any workflow step can perform a
+   * side effect. The unique `(agent, workflow, idempotency key)` index elects
+   * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
+   * independent. The conflict target names that partial index explicitly so a
+   * table missing the index raises ("no unique or exclusion constraint
+   * matching the ON CONFLICT specification") instead of letting every
+   * claimant insert-win and duplicate external workflow execution.
+   */
+  async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (run.status !== "running" || run.finishedAt !== null) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run claims must be unfinished running records",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_CLAIM_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_workflow_runs (
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
+      ) VALUES (
+        ${sqlQuote(run.id)},
+        ${sqlQuote(run.agentId)},
+        ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
+        ${sqlQuote(run.startedAt)},
+        NULL,
+        'running',
+        ${sqlJson(run.result)},
+        ${sqlText(run.auditRef)}
+      )
+      ON CONFLICT (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+      DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length === 1;
+  }
+
+  async getWorkflowRunByIdempotencyKey(
+    agentId: string,
+    workflowId: string,
+    idempotencyKey: string,
+  ): Promise<LifeOpsWorkflowRun | null> {
+    assertValidWorkflowRunIdempotencyKey(idempotencyKey);
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_workflow_runs
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND workflow_id = ${sqlQuote(workflowId)}
+          AND idempotency_key = ${sqlQuote(idempotencyKey)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseWorkflowRun(row) : null;
+  }
+
+  /**
+   * Finalize only the still-running reservation represented by `run`. A stale
+   * writer, a losing claimant, a mismatched key, or a repeated completion sees
+   * zero affected rows and returns false.
+   */
+  async completeWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (
+      !TERMINAL_WORKFLOW_RUN_STATUSES.has(run.status) ||
+      run.finishedAt === null
+    ) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run completion requires a terminal status and finish time",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_COMPLETION_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_runs
+          SET finished_at = ${sqlQuote(run.finishedAt)},
+              status = ${sqlQuote(run.status)},
+              result_json = ${sqlJson(run.result)},
+              audit_ref = ${sqlText(run.auditRef)}
+        WHERE id = ${sqlQuote(run.id)}
+          AND agent_id = ${sqlQuote(run.agentId)}
+          AND workflow_id = ${sqlQuote(run.workflowId)}
+          AND idempotency_key IS NOT DISTINCT FROM ${sqlText(run.idempotencyKey)}
+          AND status = 'running'
+          AND finished_at IS NULL
+      RETURNING id`,
+    );
+    return rows.length === 1;
   }
 
   async listWorkflowRuns(
@@ -6510,6 +7302,243 @@ export class LifeOpsRepository {
     );
   }
 
+  /** Atomically settles one still-current owner confirmation decision. */
+  async updateBrowserSessionIfAwaitingConfirmation(args: {
+    session: LifeOpsBrowserSession;
+    expectedActionId: string;
+    expectedUpdatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const { session } = args;
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET status = ${sqlQuote(session.status)},
+              current_action_index = ${sqlInteger(session.currentActionIndex)},
+              awaiting_confirmation_for_action_id = ${sqlText(session.awaitingConfirmationForActionId)},
+              result_json = ${sqlJson(session.result)},
+              metadata_json = ${sqlJson(session.metadata)},
+              updated_at = ${sqlQuote(session.updatedAt)},
+              finished_at = ${sqlText(session.finishedAt)}
+        WHERE id = ${sqlQuote(session.id)}
+          AND agent_id = ${sqlQuote(session.agentId)}
+          AND status = 'awaiting_confirmation'
+          AND awaiting_confirmation_for_action_id = ${sqlQuote(args.expectedActionId)}
+          AND updated_at = ${sqlQuote(args.expectedUpdatedAt)}
+          AND actions_json = ${sqlJson(session.actions)}
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Atomically claims the oldest eligible session for one exact companion. */
+  async claimBrowserSession(
+    agentId: string,
+    companion: BrowserBridgeCompanionStatus,
+    claimedAt: string,
+  ): Promise<LifeOpsBrowserSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `WITH candidate AS (
+         SELECT id
+           FROM app_lifeops.life_workflow_browser_sessions
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND (browser IS NULL OR browser = ${sqlQuote(companion.browser)})
+            AND (profile_id IS NULL OR profile_id = ${sqlQuote(companion.profileId)})
+            AND (companion_id IS NULL OR companion_id = ${sqlQuote(companion.id)})
+            AND (
+              status = 'queued'
+              OR (
+                status = 'running'
+                AND metadata_json::jsonb ->> 'claimedByCompanionId' = ${sqlQuote(companion.id)}
+              )
+            )
+          ORDER BY
+            CASE WHEN status = 'running' THEN 0 ELSE 1 END,
+            created_at ASC,
+            id ASC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+       )
+       UPDATE app_lifeops.life_workflow_browser_sessions AS session
+          SET status = 'running',
+              browser = COALESCE(session.browser, ${sqlQuote(companion.browser)}),
+              companion_id = ${sqlQuote(companion.id)},
+              profile_id = COALESCE(session.profile_id, ${sqlQuote(companion.profileId)}),
+              metadata_json = (session.metadata_json::jsonb || ${sqlJson({
+                claimedAt,
+                claimedByCompanionId: companion.id,
+                claimedBrowser: companion.browser,
+                claimedProfileId: companion.profileId,
+              })}::jsonb)::text,
+              updated_at = ${sqlQuote(claimedAt)}
+         FROM candidate
+        WHERE session.id = candidate.id
+          AND session.agent_id = ${sqlQuote(agentId)}
+        RETURNING session.*`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Atomically leases one exact action before any browser side effect. */
+  async beginBrowserSessionActionFromCompanion(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    currentActionIndex: number;
+    actionId: string;
+    attemptId: string;
+    startedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const attempt = {
+      actionId: args.actionId,
+      actionIndex: args.currentActionIndex,
+      attemptId: args.attemptId,
+      startedAt: args.startedAt,
+    };
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET metadata_json = (metadata_json::jsonb || ${sqlJson({
+            browserActionAttempt: attempt,
+          })}::jsonb)::text,
+              updated_at = ${sqlQuote(args.startedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+          AND current_action_index = ${sqlInteger(args.currentActionIndex)}
+          AND (actions_json::jsonb -> ${sqlInteger(args.currentActionIndex)} ->> 'id') = ${sqlQuote(args.actionId)}
+          AND NOT (metadata_json::jsonb ? 'browserActionAttempt')
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Moves a currently targeted action back behind owner confirmation. */
+  async requireBrowserSessionActionConfirmation(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    currentActionIndex: number;
+    actionId: string;
+    updatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET status = 'awaiting_confirmation',
+              awaiting_confirmation_for_action_id = ${sqlQuote(args.actionId)},
+              metadata_json = (metadata_json::jsonb - 'browserActionAttempt')::text,
+              updated_at = ${sqlQuote(args.updatedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+          AND current_action_index = ${sqlInteger(args.currentActionIndex)}
+          AND (actions_json::jsonb -> ${sqlInteger(args.currentActionIndex)} ->> 'id') = ${sqlQuote(args.actionId)}
+          AND NOT (metadata_json::jsonb ? 'browserActionAttempt')
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Applies a monotonic companion checkpoint without a read/write race. */
+  async updateBrowserSessionProgressFromCompanion(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    expectedActionIndex: number;
+    completedActionId: string;
+    attemptId: string;
+    currentActionIndex: number;
+    resultPatch: Record<string, unknown>;
+    metadataPatch: Record<string, unknown>;
+    updatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    if (args.currentActionIndex !== args.expectedActionIndex + 1) {
+      return null;
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET current_action_index = ${sqlInteger(args.currentActionIndex)},
+              result_json = ${sqlJson(args.resultPatch)},
+              metadata_json = ${sqlJson(args.metadataPatch)},
+              updated_at = ${sqlQuote(args.updatedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+          AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+          AND (actions_json::jsonb -> ${sqlInteger(args.expectedActionIndex)} ->> 'id') = ${sqlQuote(args.completedActionId)}
+          AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionId' = ${sqlQuote(args.completedActionId)}
+          AND (metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionIndex')::integer = ${sqlInteger(args.expectedActionIndex)}
+          AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'attemptId' = ${sqlQuote(args.attemptId)}
+          AND ${sqlInteger(args.currentActionIndex)} <= jsonb_array_length(actions_json::jsonb)
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
+  /** Completes only a running session owned by the exact companion identity. */
+  async completeBrowserSessionFromCompanion(args: {
+    agentId: string;
+    sessionId: string;
+    companion: BrowserBridgeCompanionStatus;
+    status: Extract<LifeOpsBrowserSession["status"], "done" | "failed">;
+    expectedActionIndex: number;
+    completedActionId: string | null;
+    attemptId: string | null;
+    resultPatch: Record<string, unknown>;
+    updatedAt: string;
+  }): Promise<LifeOpsBrowserSession | null> {
+    const executionFence =
+      args.status === "failed"
+        ? `AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+           AND (actions_json::jsonb -> ${sqlInteger(args.expectedActionIndex)} ->> 'id') = ${sqlQuote(args.completedActionId ?? "")}
+           AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionId' = ${sqlQuote(args.completedActionId ?? "")}
+           AND (metadata_json::jsonb -> 'browserActionAttempt' ->> 'actionIndex')::integer = ${sqlInteger(args.expectedActionIndex)}
+           AND metadata_json::jsonb -> 'browserActionAttempt' ->> 'attemptId' = ${sqlQuote(args.attemptId ?? "")}`
+        : args.expectedActionIndex === 0
+          ? `AND current_action_index = 0
+             AND jsonb_array_length(actions_json::jsonb) = 0
+             AND NOT (metadata_json::jsonb ? 'browserActionAttempt')`
+          : `AND current_action_index = ${sqlInteger(args.expectedActionIndex)}
+             AND current_action_index = jsonb_array_length(actions_json::jsonb)
+             AND metadata_json::jsonb -> 'browserActionReceipt' ->> 'actionId' = ${sqlQuote(args.completedActionId ?? "")}
+             AND (metadata_json::jsonb -> 'browserActionReceipt' ->> 'actionIndex')::integer = ${sqlInteger(args.expectedActionIndex - 1)}
+             AND metadata_json::jsonb -> 'browserActionReceipt' ->> 'attemptId' = ${sqlQuote(args.attemptId ?? "")}
+             AND NOT (metadata_json::jsonb ? 'browserActionAttempt')`;
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_browser_sessions
+          SET status = ${sqlQuote(args.status)},
+              current_action_index = jsonb_array_length(actions_json::jsonb),
+              result_json = (result_json::jsonb || ${sqlJson(args.resultPatch)}::jsonb)::text,
+              updated_at = ${sqlQuote(args.updatedAt)},
+              finished_at = ${sqlQuote(args.updatedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.sessionId)}
+          AND status = 'running'
+          AND companion_id = ${sqlQuote(args.companion.id)}
+          AND browser = ${sqlQuote(args.companion.browser)}
+          AND profile_id = ${sqlQuote(args.companion.profileId)}
+          ${executionFence}
+          AND (
+            ${sqlQuote(args.status)} = 'failed'
+            OR current_action_index = jsonb_array_length(actions_json::jsonb)
+          )
+        RETURNING *`,
+    );
+    return rows[0] ? parseBrowserSession(rows[0]) : null;
+  }
+
   async getBrowserSession(
     agentId: string,
     sessionId: string,
@@ -6687,81 +7716,155 @@ export class LifeOpsRepository {
     );
   }
 
-  async updateBrowserCompanionPairingToken(
-    agentId: string,
-    companionId: string,
-    pairingTokenHash: string,
-    pairingTokenExpiresAt: string | null,
-    pairedAt: string,
-    updatedAt: string,
-  ): Promise<void> {
+  async updateBrowserCompanionPairingToken(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+    pairingTokenHash: string;
+    pairingTokenExpiresAt: string | null;
+    pairedAt: string;
+    updatedAt: string;
+  }): Promise<boolean> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
-              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
-              pairing_token_revoked_at = NULL,
-              pending_pairing_token_hashes_json = '[]',
-              paired_at = ${sqlQuote(pairedAt)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return false;
+      if (await browserCompanionRevocationExists(tx, args)) return false;
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = ${sqlQuote(args.pairingTokenHash)},
+                pairing_token_expires_at = ${sqlText(args.pairingTokenExpiresAt)},
+                pairing_token_revoked_at = NULL,
+                pending_pairing_token_hashes_json = '[]',
+                paired_at = ${sqlQuote(args.pairedAt)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return true;
+    });
   }
 
-  async updateBrowserCompanionPendingPairingTokenHashes(
-    agentId: string,
-    companionId: string,
-    pendingPairingTokenHashes: Array<
-      string | { hash: string; expiresAt?: string | null }
-    >,
-    updatedAt: string,
-  ): Promise<void> {
+  async updateBrowserCompanionPendingPairingTokenHashes(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    browser: BrowserBridgeCompanionStatus["browser"];
+    profileId: string;
+    pairingTokenHash: string;
+    pairingTokenExpiresAt: string | null;
+    updatedAt: string;
+  }): Promise<boolean> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return false;
+      if (await browserCompanionRevocationExists(tx, args)) return false;
+      const pendingPairingTokens = [
+        {
+          hash: args.pairingTokenHash,
+          expiresAt: args.pairingTokenExpiresAt,
+        },
+        ...credential.pendingPairingTokens,
+      ]
+        .filter(
+          (candidate, index, candidates) =>
+            candidate.hash !== credential.pairingTokenHash &&
+            candidates.findIndex((other) => other.hash === candidate.hash) ===
+              index,
+        )
+        .slice(0, 4);
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokens)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return true;
+    });
   }
 
-  async promoteBrowserCompanionPendingPairingToken(
-    agentId: string,
-    companionId: string,
-    pairingTokenHash: string,
-    pendingPairingTokenHashes: Array<
-      string | { hash: string; expiresAt?: string | null }
-    >,
-    pairingTokenExpiresAt: string | null,
-    pairedAt: string,
-    updatedAt: string,
-  ): Promise<void> {
+  async promoteBrowserCompanionPendingPairingToken(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companionId: string;
+    pairingTokenHash: string;
+    pairedAt: string;
+    updatedAt: string;
+  }): Promise<BrowserCompanionPendingPromotionResult> {
     const companionsTable = await resolveBrowserBridgeTable(
       this.runtime,
       "companions",
     );
-    await executeRawSql(
-      this.runtime,
-      `UPDATE ${companionsTable}
-          SET pairing_token_hash = ${sqlQuote(pairingTokenHash)},
-              pairing_token_expires_at = ${sqlText(pairingTokenExpiresAt)},
-              pairing_token_revoked_at = NULL,
-              pending_pairing_token_hashes_json = ${sqlJson(pendingPairingTokenHashes)},
-              paired_at = ${sqlQuote(pairedAt)},
-              updated_at = ${sqlQuote(updatedAt)}
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(companionId)}`,
-    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companionId,
+      );
+      if (!credential) return { ok: false, reason: "invalid" };
+      if (
+        credential.companion.pairingTokenRevokedAt ||
+        (await browserCompanionRevocationExists(tx, {
+          agentId: args.agentId,
+          ownerEntityId: args.ownerEntityId,
+          browser: credential.companion.browser,
+          profileId: credential.companion.profileId,
+        }))
+      ) {
+        return { ok: false, reason: "revoked" };
+      }
+      const promoted = credential.pendingPairingTokens.find(
+        (candidate) => candidate.hash === args.pairingTokenHash,
+      );
+      if (!promoted) return { ok: false, reason: "invalid" };
+      const remainingPendingPairingTokens =
+        credential.pendingPairingTokens.filter(
+          (candidate) => candidate.hash !== args.pairingTokenHash,
+        );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = ${sqlQuote(args.pairingTokenHash)},
+                pairing_token_expires_at = ${sqlText(promoted.expiresAt)},
+                pending_pairing_token_hashes_json = ${sqlJson(remainingPendingPairingTokens)},
+                paired_at = ${sqlQuote(args.pairedAt)},
+                updated_at = ${sqlQuote(args.updatedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND id = ${sqlQuote(args.companionId)}`,
+      );
+      return {
+        ok: true,
+        companion: {
+          ...credential.companion,
+          pairingTokenExpiresAt: promoted.expiresAt,
+          pairedAt: args.pairedAt,
+          updatedAt: args.updatedAt,
+        },
+      };
+    });
   }
 
   async revokeBrowserCompanionPairingToken(
@@ -6783,6 +7886,166 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(companionId)}`,
     );
+  }
+
+  async getBrowserCompanionRevocation(
+    agentId: string,
+    ownerEntityId: string,
+    browser: BrowserBridgeCompanionStatus["browser"],
+    profileId: string,
+  ): Promise<BrowserCompanionRevocation | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT agent_id, owner_entity_id, browser, profile_id, companion_id, revoked_at
+         FROM app_lifeops.life_browser_companion_revocations
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND owner_entity_id = ${sqlQuote(ownerEntityId)}
+          AND browser = ${sqlQuote(browser)}
+          AND profile_id IN (
+            ${sqlQuote(profileId)},
+            ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)}
+          )
+        ORDER BY CASE WHEN profile_id = ${sqlQuote(profileId)} THEN 0 ELSE 1 END
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row
+      ? {
+          agentId: toText(row.agent_id),
+          ownerEntityId: toText(row.owner_entity_id),
+          browser: toText(
+            row.browser,
+          ) as BrowserBridgeCompanionStatus["browser"],
+          profileId: toText(row.profile_id),
+          companionId: toText(row.companion_id),
+          revokedAt: toText(row.revoked_at),
+        }
+      : null;
+  }
+
+  async revokeBrowserCompanionWithTombstone(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companion: BrowserBridgeCompanionStatus;
+    revokedAt: string;
+  }): Promise<void> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
+    await withTransaction(this.runtime, async (tx) => {
+      await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companion.id,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_revoked_at = ${sqlQuote(args.revokedAt)},
+                pending_pairing_token_hashes_json = '[]',
+                connection_state = 'disconnected',
+                updated_at = ${sqlQuote(args.revokedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_workflow_browser_sessions
+            SET status = 'failed',
+                result_json = (result_json::jsonb || ${sqlJson({
+                  code: "browser_companion_revoked",
+                  error: "Browser companion was disconnected",
+                })}::jsonb)::text,
+                metadata_json = (metadata_json::jsonb - 'browserActionAttempt')::text,
+                updated_at = ${sqlQuote(args.revokedAt)},
+                finished_at = ${sqlQuote(args.revokedAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}
+            AND subject_type = 'owner'
+            AND subject_id = ${sqlQuote(args.ownerEntityId)}
+            AND status IN ('queued', 'running', 'awaiting_confirmation')`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_browser_companion_revocations (
+           agent_id, owner_entity_id, browser, profile_id, companion_id,
+           revoked_at, created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(args.agentId)},
+           ${sqlQuote(args.ownerEntityId)},
+           ${sqlQuote(args.companion.browser)},
+           ${sqlQuote(args.companion.profileId)},
+           ${sqlQuote(args.companion.id)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)}
+         ), (
+           ${sqlQuote(args.agentId)},
+           ${sqlQuote(args.ownerEntityId)},
+           ${sqlQuote(args.companion.browser)},
+           ${sqlQuote(BROWSER_COMPANION_WILDCARD_PROFILE_ID)},
+           ${sqlQuote(args.companion.id)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)},
+           ${sqlQuote(args.revokedAt)}
+         )
+         ON CONFLICT (agent_id, owner_entity_id, browser, profile_id)
+         DO UPDATE SET
+           companion_id = excluded.companion_id,
+           revoked_at = excluded.revoked_at,
+           updated_at = excluded.updated_at`,
+      );
+    });
+  }
+
+  async resetBrowserCompanionRevocation(args: {
+    agentId: string;
+    ownerEntityId: string;
+    companion: BrowserBridgeCompanionStatus;
+    resetAt: string;
+  }): Promise<boolean> {
+    const companionsTable = await resolveBrowserBridgeTable(
+      this.runtime,
+      "companions",
+    );
+    return await withTransaction(this.runtime, async (tx) => {
+      const credential = await lockBrowserCompanionCredential(
+        tx,
+        companionsTable,
+        args.agentId,
+        args.companion.id,
+      );
+      if (!credential) return false;
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM app_lifeops.life_browser_companion_revocations
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND owner_entity_id = ${sqlQuote(args.ownerEntityId)}
+            AND browser = ${sqlQuote(args.companion.browser)}
+          RETURNING revoked_at`,
+      );
+      if (deleted.length === 0) return false;
+      // A wildcard tombstone deliberately makes revocation browser-wide so a
+      // reinstall cannot evade it with a new profile identifier. Reset must
+      // therefore clear that browser's exact and wildcard rows atomically;
+      // reporting a per-profile success while the wildcard survives would
+      // leave the requested profile unusable.
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${companionsTable}
+            SET pairing_token_hash = NULL,
+                pairing_token_expires_at = NULL,
+                pairing_token_revoked_at = NULL,
+                pending_pairing_token_hashes_json = '[]',
+                connection_state = 'disconnected',
+                updated_at = ${sqlQuote(args.resetAt)}
+          WHERE agent_id = ${sqlQuote(args.agentId)}
+            AND browser = ${sqlQuote(args.companion.browser)}`,
+      );
+      return true;
+    });
   }
 
   async listBrowserCompanions(
@@ -7164,11 +8427,10 @@ export class LifeOpsRepository {
     agentId: string,
     opts: { conversationId?: string; limit?: number } = {},
   ): Promise<LifeOpsXDm[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const conversationClause = opts.conversationId
       ? `AND conversation_id = ${sqlQuote(opts.conversationId)}`
       : "";
@@ -7179,7 +8441,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           ${conversationClause}
         ORDER BY received_at DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXDm);
   }
@@ -7219,11 +8481,10 @@ export class LifeOpsRepository {
     feedType: LifeOpsXFeedType,
     opts: { limit?: number } = {},
   ): Promise<LifeOpsXFeedItem[]> {
-    const DEFAULT_LIMIT = 100;
-    const limit =
+    const limitClause =
       opts.limit !== undefined && Number.isFinite(opts.limit)
-        ? opts.limit
-        : DEFAULT_LIMIT;
+        ? `LIMIT ${sqlInteger(opts.limit)}`
+        : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -7231,7 +8492,7 @@ export class LifeOpsRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND feed_type = ${sqlQuote(feedType)}
         ORDER BY created_at_source DESC
-        LIMIT ${sqlInteger(limit)}`,
+        ${limitClause}`,
     );
     return rows.map(parseXFeedItem);
   }
@@ -9132,11 +10393,16 @@ export class LifeOpsRepository {
 }
 
 export function createLifeOpsTaskDefinition(
-  params: Omit<LifeOpsTaskDefinition, "id" | "createdAt" | "updatedAt">,
+  params: Omit<
+    LifeOpsTaskDefinition,
+    "id" | "createdAt" | "updatedAt" | "checkInPolicy"
+  > &
+    Pick<Partial<LifeOpsTaskDefinition>, "checkInPolicy">,
 ): LifeOpsTaskDefinition {
   const timestamp = isoNow();
   return {
     ...params,
+    checkInPolicy: params.checkInPolicy ?? null,
     id: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,

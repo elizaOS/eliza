@@ -7,7 +7,6 @@ SYSTEM message rewrites:
   - "You are a function calling AI model" → "You are Eliza, an AI assistant with tool use capabilities."
   - "You are a large language model"  → "You are Eliza, an AI assistant."
   - "You are ChatGPT" / "You are GPT-4" → "You are Eliza, an AI assistant."
-  - System messages > 2000 chars: truncate to first 2000 chars at sentence boundary
 
 ASSISTANT content strips:
   - Leading "Certainly! ", "Of course! ", "Sure! ", "Absolutely! ", "Great! " (case insensitive)
@@ -57,8 +56,6 @@ _EXPERT_RE = re.compile(
 )
 
 # System message length cap
-_SYSTEM_MAX_CHARS = 2000
-_SENTENCE_END_RE = re.compile(r"[.!?]\s+")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -89,20 +86,6 @@ _TRAIL_LET_ME_KNOW_RE = re.compile(
 # Transform functions
 # ──────────────────────────────────────────────────────────────
 
-def _truncate_at_sentence(text: str, max_chars: int) -> str:
-    """Truncate text to at most max_chars, ending at a sentence boundary."""
-    if len(text) <= max_chars:
-        return text
-    # Find the last sentence-ending punctuation before the limit.
-    candidate = text[:max_chars]
-    matches = list(_SENTENCE_END_RE.finditer(candidate))
-    if matches:
-        last_end = matches[-1].end()
-        return candidate[:last_end].rstrip()
-    # No sentence boundary found; hard-cut.
-    return candidate.rstrip()
-
-
 def clean_system_message(text: str) -> tuple[str, list[str]]:
     if not isinstance(text, str) or not text:
         return text, []
@@ -121,11 +104,6 @@ def clean_system_message(text: str) -> tuple[str, list[str]]:
     if n:
         text = new_text.strip()
         fired.append("system_remove_expert")
-
-    # Length cap.
-    if len(text) > _SYSTEM_MAX_CHARS:
-        text = _truncate_at_sentence(text, _SYSTEM_MAX_CHARS)
-        fired.append("system_truncate")
 
     text = text.strip()
     if not text:

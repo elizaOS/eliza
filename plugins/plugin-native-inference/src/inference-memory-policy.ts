@@ -161,8 +161,11 @@ export function resolveInferenceIdleUnloadMs(
 ): number {
   const raw = env.ELIZA_LOCAL_IDLE_UNLOAD_MS?.trim();
   if (raw) {
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    // `0` is documented as "disables", so a prefix-parsed "0junk" silently
+    // turned idle unloading off and leaked the loaded model. Require the whole
+    // value to be a decimal integer.
+    const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
   }
   return ramClass === "constrained"
     ? CONSTRAINED_IDLE_UNLOAD_MS

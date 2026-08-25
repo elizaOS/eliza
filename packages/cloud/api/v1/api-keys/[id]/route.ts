@@ -1,6 +1,7 @@
 /**
  * DELETE /api/v1/api-keys/[id] — delete a key (org-scoped).
  * PATCH  /api/v1/api-keys/[id] — partial update.
+ * Mobile lifecycle credentials are not addressable through either operation.
  */
 
 import { Hono } from "hono";
@@ -34,7 +35,7 @@ app.delete("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await apiKeysService.getManageableById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     await assertOrgMembership(user, existingKey.organization_id, {
       resourceType: "api_key",
@@ -72,7 +73,7 @@ app.patch("/", async (c) => {
     const id = c.req.param("id");
     if (!id) return c.json({ error: "Missing id" }, 400);
 
-    const existingKey = await apiKeysService.getById(id);
+    const existingKey = await apiKeysService.getManageableById(id);
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     await assertOrgMembership(user, existingKey.organization_id, {
       resourceType: "api_key",

@@ -62,3 +62,9 @@ try {
 } finally {
   server.stop(true);
 }
+
+// The loopback listener and the SDK's keep-alive sockets can outlive
+// `server.stop`, leaving the child alive long enough for the parent's
+// spawnSync to look like a hang. The evidence is already flushed, so exit
+// explicitly rather than waiting for the event loop to drain.
+process.exit(0);

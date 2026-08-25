@@ -22,6 +22,7 @@ mock.module("@elizaos/cloud-sdk", () => ({
 const { listCloudAppsAction } = await import(
   "../src/actions/list-cloud-apps.ts"
 );
+const { cloudAppsPlugin } = await import("../src/index.ts");
 
 describe("LIST_CLOUD_APPS", () => {
   beforeEach(() => {
@@ -35,10 +36,55 @@ describe("LIST_CLOUD_APPS", () => {
       ).toBe(true);
     });
 
-    it("returns false when no Cloud API key is configured", async () => {
+    // #17363: gating this read on the key made the canonical no-key reply
+    // unreachable — catalog construction and the executor both drop an action
+    // whose validate() is false, so the handler never ran and the user got the
+    // local installed-app answer or a generic refusal instead of the truthful
+    // "no Cloud API key is configured". The action stays reachable and the
+    // handler owns the capability failure.
+    it("stays reachable with no Cloud API key so the handler owns the failure (#17363)", async () => {
       expect(
         await listCloudAppsAction.validate(unkeyedRuntime(), makeMessage("x")),
-      ).toBe(false);
+      ).toBe(true);
+    });
+
+    it("survives the public validate() gate that builds the action surface (#17363)", async () => {
+      const runtime = unkeyedRuntime();
+      const message = makeMessage("list my cloud apps");
+      // The same filter the runtime applies when constructing the catalog.
+      const reachable: string[] = [];
+      for (const action of cloudAppsPlugin.actions ?? []) {
+        if (await action.validate(runtime, message))
+          reachable.push(action.name);
+      }
+      expect(reachable).toContain("LIST_CLOUD_APPS");
+    });
+
+    it("delivers exactly one canonical no-key reply once past that gate (#17363)", async () => {
+      const runtime = unkeyedRuntime();
+      const message = makeMessage("list my cloud apps");
+      const action = requireDefined(
+        (cloudAppsPlugin.actions ?? []).find(
+          (candidate) => candidate.name === "LIST_CLOUD_APPS",
+        ),
+        "LIST_CLOUD_APPS registration",
+      );
+      expect(await action.validate(runtime, message)).toBe(true);
+
+      const cb = captureCallback();
+      const result = await action.handler(
+        runtime,
+        message,
+        undefined,
+        undefined,
+        cb.fn,
+      );
+      expect(cb.calls).toHaveLength(1);
+      expect(cb.calls[0]?.text).toContain("no Cloud API key");
+      expect(result?.success).toBe(false);
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text ?? "");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
   });
 
@@ -140,9 +186,27 @@ describe("LIST_CLOUD_APPS", () => {
           .count,
       ).toBe(0);
       expect(cb.calls[0]?.text).toContain("haven't created any apps");
-      // The canned empty message is not a verified terminal answer — the
-      // evaluator still runs and may add guidance (e.g. how to create one).
-      expect(result?.turnComplete).toBeUndefined();
+      // The verified empty inventory IS the complete answer: the terminal
+      // stamp keeps the evaluator from paraphrasing it into a second reply
+      // (#17363).
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text ?? "");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
+    });
+
+    it("delivers exactly one canonical reply without a callback (userFacingText carries it)", async () => {
+      setListApps(() => Promise.resolve({ success: true, apps: [] }));
+      const result = await listCloudAppsAction.handler(
+        keyedRuntime(),
+        makeMessage("list my cloud apps"),
+        undefined,
+        undefined,
+        undefined,
+      );
+      expect(result?.success).toBe(true);
+      expect(result?.userFacingText).toContain("haven't created any apps");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("degrades gracefully when no Cloud API key is configured", async () => {
@@ -161,6 +225,11 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("no_key");
       expect(cb.calls[0]?.text).toContain("no Cloud API key");
+      // Verified terminal FAILURE: one canonical reply, success stays false,
+      // and the core failure gate may end the turn (#17363).
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text ?? "");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
     });
 
     it("handles a Cloud API error without throwing", async () => {
@@ -181,6 +250,17 @@ describe("LIST_CLOUD_APPS", () => {
           .reason,
       ).toBe("error");
       expect(cb.calls[0]?.text).toContain("couldn't fetch");
+      expect(result?.userFacingText).toBe(cb.calls[0]?.text ?? "");
+      expect(result?.verifiedUserFacing).toBe(true);
+      expect(result?.turnComplete).toBe(true);
+    });
+
+    it("claims only cloud-qualified aliases, leaving generic installed-app language to APP (#17363)", () => {
+      const similes = listCloudAppsAction.similes ?? [];
+      expect(similes.length).toBeGreaterThan(0);
+      for (const simile of similes) {
+        expect(simile).toMatch(/CLOUD|DEPLOYED|HOSTED/);
+      }
     });
 
     it("does not translate a callback failure into an API error", async () => {

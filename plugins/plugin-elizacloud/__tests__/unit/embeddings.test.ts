@@ -1,4 +1,7 @@
-import type { IAgentRuntime } from "@elizaos/core";
+/**
+ * Exercises Cloud embedding initialization, strict dimension validation, and response integrity through a mocked API boundary.
+ */
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Control the Cloud API client the embeddings handlers use. requestRaw is the
@@ -17,7 +20,7 @@ const { handleTextEmbedding, handleBatchTextEmbedding, embeddingBackoffMs, EMBED
 
 const DIM = 1536;
 
-function makeRuntime(dimension = DIM): IAgentRuntime {
+function makeRuntime(dimension: number | string = DIM): IAgentRuntime {
   return {
     getSetting: (key: string) => {
       if (key === "ELIZAOS_CLOUD_EMBEDDING_MODEL") return "text-embedding-3-small";
@@ -57,6 +60,52 @@ describe("handleTextEmbedding init + validation", () => {
     expect(result[0]).toBe(0.1);
     // Init must never touch the network.
     expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a prefix-parsed dimension instead of accepting its leading digits", async () => {
+    // `Number.parseInt("1536junk")` is 1536, which then PASSES the allowlist
+    // below — so the existing guard reported the truncated number and let a
+    // malformed setting through as if it were valid.
+    await expect(handleTextEmbedding(makeRuntime("1536junk"), null)).rejects.toThrow(
+      /Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS/
+    );
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("rejects a fractional dimension", async () => {
+    await expect(handleTextEmbedding(makeRuntime("1536.9"), null)).rejects.toThrow(
+      /Invalid ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS/
+    );
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("throws a classified error with the operator's exact value", async () => {
+    let thrown: unknown;
+    try {
+      await handleTextEmbedding(makeRuntime("1536junk"), null);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect(thrown).toMatchObject({
+      code: "ELIZA_CLOUD_EMBEDDING_DIMENSION_INVALID",
+      context: {
+        setting: "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+        value: "1536junk",
+        allowedDimensions: [384, 512, 768, 1024, 1536, 3072],
+      },
+      severity: "fatal",
+    });
+    expect((thrown as Error).message).toContain("1536junk");
+    expect(requestRaw).not.toHaveBeenCalled();
+  });
+
+  it("still accepts every allowlisted dimension", async () => {
+    for (const dim of [384, 512, 768, 1024, 1536, 3072]) {
+      const result = await handleTextEmbedding(makeRuntime(dim), null);
+      expect(result).toHaveLength(dim);
+    }
   });
 
   it("throws on malformed params instead of returning a marker vector", async () => {

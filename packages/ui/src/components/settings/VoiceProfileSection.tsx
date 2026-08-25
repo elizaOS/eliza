@@ -178,7 +178,7 @@ function VoiceProfileLifecycleEditor({
             <Button
               type="button"
               variant="secondary"
-              className="min-h-11"
+              size="touch"
               disabled={!mergeIntoId || pending}
               onClick={() =>
                 void dispatch({
@@ -189,7 +189,7 @@ function VoiceProfileLifecycleEditor({
               }
               data-testid={`voice-profile-merge-${profile.id}`}
             >
-              <GitMerge className="mr-1.5 h-4 w-4" />
+              <GitMerge className="mr-1.5 size-4" />
               {t("voiceprofile.merge.action", {
                 defaultValue: "Merge profile",
               })}
@@ -235,7 +235,8 @@ function VoiceProfileLifecycleEditor({
           <Button
             type="button"
             variant="secondary"
-            className="min-h-11 justify-self-start"
+            size="touch"
+            className="justify-self-start"
             disabled={!canSplit || pending}
             onClick={() =>
               void dispatch({
@@ -246,7 +247,7 @@ function VoiceProfileLifecycleEditor({
             }
             data-testid={`voice-profile-split-${profile.id}`}
           >
-            <Scissors className="mr-1.5 h-4 w-4" />
+            <Scissors className="mr-1.5  size-4" />
             {t("voiceprofile.split.action", { defaultValue: "Split profile" })}
           </Button>
           {selectedSamples.size === profile.samples.length ? (
@@ -289,7 +290,8 @@ function VoiceProfileLifecycleEditor({
           <Button
             type="button"
             variant="secondary"
-            className="min-h-11 justify-self-start"
+            size="touch"
+            className="justify-self-start"
             disabled={!canBind || pending}
             onClick={() => {
               const label = entityLabel.trim();
@@ -302,7 +304,7 @@ function VoiceProfileLifecycleEditor({
             }}
             data-testid={`voice-profile-bind-${profile.id}`}
           >
-            <Link2 className="mr-1.5 h-4 w-4" />
+            <Link2 className="mr-1.5 size-4" />
             {t("voiceprofile.bind.action", { defaultValue: "Bind entity" })}
           </Button>
         </div>
@@ -318,12 +320,12 @@ function VoiceProfileLifecycleEditor({
             <Button
               type="button"
               variant="secondary"
-              className="min-h-11"
+              size="touch"
               disabled={pending}
               onClick={() => void dispatch({ type: "unbind", id: profile.id })}
               data-testid={`voice-profile-unbind-${profile.id}`}
             >
-              <Link2Off className="mr-1.5 h-4 w-4" />
+              <Link2Off className="mr-1.5 size-4" />
               {t("voiceprofile.unbind.action", { defaultValue: "Unbind" })}
             </Button>
           ) : null}
@@ -443,12 +445,12 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
       <div className="flex flex-wrap items-center gap-3">
         {profile.isOwner ? (
           <Crown
-            className="h-4 w-4 shrink-0 text-accent"
+            className="size-4 shrink-0 text-accent"
             aria-label={t("voiceprofile.owner", { defaultValue: "Owner" })}
             data-testid={`voice-profile-crown-${profile.id}`}
           />
         ) : (
-          <span className="inline-block h-4 w-4 shrink-0" aria-hidden="true" />
+          <span className="inline-block size-4 shrink-0" aria-hidden="true" />
         )}
 
         <div className="min-w-0 flex-1">
@@ -456,6 +458,8 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             <Input
               ref={renameInputRef}
               type="text"
+              variant="config"
+              density="relaxed"
               value={renameValue}
               onChange={(event) => setRenameValue(event.target.value)}
               onBlur={() => {
@@ -476,7 +480,6 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 }
               }}
               autoFocus
-              className="h-11 rounded-md border-border bg-surface text-sm"
               data-testid={`voice-profile-rename-input-${profile.id}`}
               aria-label={t("voiceprofile.renameAria", {
                 defaultValue: "Rename voice profile",
@@ -490,9 +493,9 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 setRenameId(profile.id);
                 setRenameValue(profile.displayName);
               }}
-              variant="ghost"
-              size="sm"
-              className="min-h-11 justify-start px-0 py-0 text-left text-sm font-medium hover:bg-transparent hover:underline"
+              variant="link"
+              size="content"
+              align="start"
               data-testid={`voice-profile-name-${profile.id}`}
               {...nameAgentProps}
             >
@@ -569,7 +572,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-11 w-11"
+                className="size-11"
                 onClick={() => {
                   setRenameId(profile.id);
                   setRenameValue(profile.displayName);
@@ -580,14 +583,14 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 })}
                 {...renameBtnAgentProps}
               >
-                <Pencil className="h-3.5 w-3.5" />
+                <Pencil className="size-3.5" />
               </Button>
               <Button
                 ref={deleteRef}
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="h-11 w-11"
+                className="size-11"
                 onClick={() =>
                   void dispatch({ type: "delete", id: profile.id })
                 }
@@ -597,7 +600,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                 })}
                 {...deleteAgentProps}
               >
-                <Trash2 className="h-3.5 w-3.5 text-danger" />
+                <Trash2 className="size-3.5 text-danger" />
               </Button>
             </>
           ) : null}
@@ -606,7 +609,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             type="button"
             variant={isManagingThis ? "secondary" : "ghost"}
             size="icon"
-            className="h-11 w-11"
+            className="size-11"
             onClick={() => setManageId(isManagingThis ? null : profile.id)}
             data-testid={`voice-profile-manage-${profile.id}`}
             aria-expanded={isManagingThis}
@@ -615,7 +618,7 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
             })}
             {...manageAgentProps}
           >
-            <Settings2 className="h-3.5 w-3.5" />
+            <Settings2 className="size-3.5" />
           </Button>
         </div>
       </div>
@@ -944,8 +947,7 @@ export function VoiceProfileSection({
           <Button
             ref={exportRef}
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             onClick={() => void onExport()}
             data-testid="voice-profile-export"
             aria-label={t("voiceprofile.exportAria", {
@@ -953,14 +955,13 @@ export function VoiceProfileSection({
             })}
             {...exportAgentProps}
           >
-            <Download className="mr-1 h-3.5 w-3.5" />{" "}
+            <Download className="mr-1 size-3.5" />{" "}
             {t("voiceprofile.export", { defaultValue: "Export" })}
           </Button>
           <Button
             ref={resetRef}
             variant="ghost"
-            size="sm"
-            className="min-h-11"
+            size="touch"
             onClick={() => void onDeleteAll()}
             data-testid="voice-profile-delete-all"
             aria-label={t("voiceprofile.resetAria", {
@@ -968,7 +969,7 @@ export function VoiceProfileSection({
             })}
             {...resetAgentProps}
           >
-            <Trash2 className="mr-1 h-3.5 w-3.5" />{" "}
+            <Trash2 className="mr-1 size-3.5" />{" "}
             {t("voiceprofile.reset", { defaultValue: "Reset" })}
           </Button>
         </div>
@@ -1005,7 +1006,7 @@ export function VoiceProfileSection({
           className="flex flex-col items-center gap-2 py-6 text-center text-xs text-muted"
           data-testid="voice-profile-empty"
         >
-          <Mic className="h-5 w-5 text-muted" aria-hidden />
+          <Mic className="size-5 text-muted" aria-hidden />
           {t("voiceprofile.empty", {
             defaultValue: "No voice profiles yet.",
           })}

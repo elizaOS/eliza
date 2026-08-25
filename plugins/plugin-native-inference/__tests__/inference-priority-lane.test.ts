@@ -6,8 +6,9 @@
  * This is the host-level lock-instrumented regression the issue asks for:
  * with a long background job mid-flight (and more background work queued), an
  * interactive turn dispatches ahead of queued background work; background jobs
- * get the device-class budget clamps; a background job that cannot get the
- * lane within its bounded wait fails typed and classifies as cloud-fallbackable.
+ * must declare an output request supported by the device class; a background
+ * job that cannot get the lane within its bounded wait fails typed and
+ * classifies as cloud-fallbackable.
  */
 
 import {
@@ -112,12 +113,14 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
 
     const bg1 = generateOnPriorityLane(lane.loader, lane.lifecycle, {
       prompt: "bg1-long-autonomous-job",
+      maxTokens: 64,
       priority: "background",
     });
     await sleep(10); // bg1 holds the lane
 
     const bg2 = generateOnPriorityLane(lane.loader, lane.lifecycle, {
       prompt: "bg2-next-firing",
+      maxTokens: 64,
       priority: "background",
     });
     await sleep(5);
@@ -146,26 +149,27 @@ describe("generateOnPriorityLane — lock priority (#11914)", () => {
     }
   });
 
-  it("clamps a background job to the constrained device-class budget", async () => {
+  it("rejects an unsupported background output request before the loader", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);
 
     await withEnv({ ELIZA_INFERENCE_RAM_CLASS: "constrained" }, async () => {
-      // The observed poison job: ~11k-char prompt, maxTokens 8192.
-      await generateOnPriorityLane(lane.loader, lane.lifecycle, {
-        prompt: "x".repeat(11_169),
-        maxTokens: 8_192,
-        priority: "background",
+      await expect(
+        generateOnPriorityLane(lane.loader, lane.lifecycle, {
+          prompt: "x".repeat(11_169),
+          maxTokens: 8_192,
+          priority: "background",
+        }),
+      ).rejects.toMatchObject({
+        code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
       });
     });
 
-    expect(lane.calls).toHaveLength(1);
-    expect(lane.calls[0].prompt.length).toBeLessThanOrEqual(4_000);
-    expect(lane.calls[0].maxTokens).toBe(192);
+    expect(lane.calls).toHaveLength(0);
   });
 
-  it("never clamps an interactive turn", async () => {
+  it("never rewrites an interactive turn", async () => {
     setInferencePriorityGate(new InferencePriorityGate());
     const lane = makeFakeLane();
     lane.setDecodeMs(1);

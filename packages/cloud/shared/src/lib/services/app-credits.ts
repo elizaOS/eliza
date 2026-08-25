@@ -2,6 +2,7 @@
  * Service for managing app-specific credit balances and purchases.
  */
 
+import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import { and, eq, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
@@ -30,6 +31,7 @@ import {
   parseAppMonetizationNumber,
 } from "./app-credit-math";
 import { APP_USAGE_PROJECTION_VERSION } from "./app-usage-projections";
+import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import {
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
   assertCreditRefundWithinReservation,
@@ -225,6 +227,17 @@ function normalizeUuidIdentity(value: unknown): string | null {
     return null;
   }
   return value.toLowerCase();
+}
+
+function appRefundReservationMismatch(
+  reason: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(`App credit refund reservation ${reason}`, {
+    code: "CREDIT_REFUND_RESERVATION_MISMATCH",
+    context: { scope: "AppCreditsService.reconcileCredits", ...context },
+    severity: "fatal",
+  });
 }
 
 /**
@@ -459,6 +472,8 @@ export interface AppCreditReconciliationParams {
    * twice (#11512). MUST never be a client-supplied value: that unique index
    * is global (not org-scoped), so a client-controlled key would let one
    * org's settle dedupe away another org's refund or overage charge.
+   * Positive refunds require this id; exact/no-op and charge-only legacy
+   * reconciliation may omit it because neither path can create credit.
    */
   reservationTransactionId?: string | null;
 }
@@ -1202,15 +1217,39 @@ export class AppCreditsService {
       scope: "AppCreditsService.reconcileCredits",
     });
 
+    const baseCostDifference = actualBaseCost - estimatedBaseCost;
+    const isMaterialRefund = -baseCostDifference >= RECONCILIATION_THRESHOLD;
+    assertCreditRefundReservationPresent({
+      reservationTransactionId,
+      refundAmount: -baseCostDifference,
+      refundTolerance: RECONCILIATION_THRESHOLD,
+      scope: "AppCreditsService.reconcileCredits",
+    });
+
     // Validate metadata size and depth
     const metadata = validateMetadata(rawMetadata, "reconcileCredits");
+    let refundReservation:
+      | {
+          organizationId: string;
+          totalCost: number;
+          accountingApp: AppCreditAccountingApp;
+        }
+      | undefined;
     if (reservationTransactionId) {
       const [candidate] = await dbWrite
-        .select({ metadata: creditTransactions.metadata })
+        .select({
+          organizationId: creditTransactions.organization_id,
+          amount: creditTransactions.amount,
+          type: creditTransactions.type,
+          metadata: creditTransactions.metadata,
+        })
         .from(creditTransactions)
         .where(eq(creditTransactions.id, reservationTransactionId))
         .limit(1);
       if (!candidate) {
+        if (isMaterialRefund) {
+          throw appRefundReservationMismatch("does not exist", { reservationTransactionId });
+        }
         throw new Error("App reconciliation reservation does not exist");
       }
       if (
@@ -1227,6 +1266,66 @@ export class AppCreditsService {
           metadata,
           reservationTransactionId,
         });
+      }
+
+      if (isMaterialRefund) {
+        const facts = candidate.metadata;
+        const reservedBaseCost = Number(facts.baseCost);
+        const reservedTotalCost = Math.abs(Number(candidate.amount));
+        const factTotalCost = Number(facts.totalCost);
+        const creatorMarkup = Number(facts.creatorMarkup);
+        const markupPercentage = Number(facts.markupPercentage);
+        const monetizationActive = facts.monetizationActive;
+        const creatorUserId = typeof facts.creatorUserId === "string" ? facts.creatorUserId : null;
+        const appName =
+          typeof facts.appName === "string" || facts.appName === null ? facts.appName : null;
+        const expectedCreatorMarkup = new Decimal(reservedBaseCost)
+          .mul(markupPercentage)
+          .div(100)
+          .toDecimalPlaces(6);
+        const expectedTotalCost = new Decimal(reservedBaseCost)
+          .plus(creatorMarkup)
+          .toDecimalPlaces(6);
+        if (
+          candidate.type !== "debit" ||
+          facts.appId !== appId ||
+          facts.userId !== userId ||
+          !Number.isFinite(reservedBaseCost) ||
+          reservedBaseCost < 0 ||
+          Math.abs(reservedBaseCost - estimatedBaseCost) > RECONCILIATION_THRESHOLD ||
+          !Number.isFinite(reservedTotalCost) ||
+          !Number.isFinite(factTotalCost) ||
+          Math.abs(factTotalCost - reservedTotalCost) > RECONCILIATION_THRESHOLD ||
+          !Number.isFinite(creatorMarkup) ||
+          creatorMarkup < 0 ||
+          !Number.isFinite(markupPercentage) ||
+          markupPercentage < 0 ||
+          markupPercentage > 1000 ||
+          typeof monetizationActive !== "boolean" ||
+          !new Decimal(creatorMarkup).toDecimalPlaces(6).equals(expectedCreatorMarkup) ||
+          !new Decimal(factTotalCost).toDecimalPlaces(6).equals(expectedTotalCost) ||
+          (!monetizationActive && (markupPercentage !== 0 || creatorMarkup !== 0)) ||
+          (creatorMarkup > 0 && !creatorUserId)
+        ) {
+          throw appRefundReservationMismatch("facts do not match the refund", {
+            reservationTransactionId,
+            appId,
+            userId,
+          });
+        }
+        refundReservation = {
+          organizationId: candidate.organizationId,
+          totalCost: reservedTotalCost,
+          accountingApp: {
+            name: appName,
+            created_by_user_id: creatorUserId,
+            monetization_enabled: monetizationActive,
+            review_status: monetizationActive ? "approved" : "rejected",
+            platform_offset_amount: 0,
+            purchase_share_percentage: 0,
+            inference_markup_percentage: markupPercentage,
+          },
+        };
       }
     }
     const settlementMetadata = reservationTransactionId
@@ -1254,11 +1353,9 @@ export class AppCreditsService {
     // `recon:<txid>:<phase>` keys (#10846). The `reconcile-refund:` /
     // `reconcile-charge:` prefixes keep the synthetic keys disjoint from
     // real Stripe intent ids (`pi_…`) and those `recon:` keys. When no
-    // reservation transaction id is available (the apps/[id]/chat
-    // direct-reconcile paths), we pass NO key — the prior non-idempotent
-    // behavior, backstopped by those routes' settle-started flags and the
-    // settler's first-call-wins guard (createCreditReservationSettler) — and
-    // NEVER fall back to a client-supplied value.
+    // reservation transaction id is available, only exact/no-op and
+    // charge-only legacy reconciliation may continue. Those paths pass NO key
+    // and NEVER fall back to a client-supplied value.
     const chargeKey = reservationTransactionId || null;
 
     // #11683: the creator-earnings legs below must dedupe across ALL writers
@@ -1271,14 +1368,12 @@ export class AppCreditsService {
     // transaction id (threaded as metadata.idempotencyKey, which
     // recordCreatorEarnings/reverseCreatorEarnings prefer over the ALS key);
     // the movement leg still disambiguates reconcile_refund vs
-    // reconcile_charge. Unkeyed callers keep the prior request-scoped dedup.
+    // reconcile_charge. Unkeyed charge callers keep request-scoped dedup.
     const earningsLegMetadata = (extra: Record<string, unknown>): Record<string, unknown> => ({
       ...extra,
       ...settlementMetadata,
       ...(chargeKey && { idempotencyKey: `reconcile:${chargeKey}` }),
     });
-
-    const baseCostDifference = actualBaseCost - estimatedBaseCost;
 
     // Resolve the org once — every branch below charges or refunds against the
     // org credit balance, not a per-app pool. Stale-settlement callers pass the
@@ -1298,6 +1393,13 @@ export class AppCreditsService {
         adjustedAmount: 0,
         newBalance: 0,
       };
+    }
+    if (refundReservation && refundReservation.organizationId !== organizationId) {
+      throw appRefundReservationMismatch("belongs to a different organization", {
+        reservationTransactionId,
+        organizationId,
+        reservationOrganizationId: refundReservation.organizationId,
+      });
     }
 
     const markReservationSettled = async (): Promise<void> => {
@@ -1334,17 +1436,19 @@ export class AppCreditsService {
       };
     }
 
-    // Calculate the total cost difference including markup. Math in
-    // app-credit-math.ts. Uses the same effective flag as deductCredits so a
-    // review-rejected app's reconcile never mints/reverses markup its deduct
-    // leg didn't charge.
-    const monetizationActive = isAppMonetizationActive(app);
+    // Positive refunds must use the debit row's immutable creator and markup
+    // contract. Current/provided app state remains suitable for no-op and
+    // charge-only paths, but cannot redirect a clawback or change a refund.
+    const settlementApp: AppCreditAccountingApp = refundReservation
+      ? { ...app, ...refundReservation.accountingApp }
+      : app;
+    const monetizationActive = isAppMonetizationActive(settlementApp);
     const { markupPercentage, totalCostDifference, creatorMarkupDifference } =
       computeReconciliation(baseCostDifference, {
         monetizationEnabled: monetizationActive,
-        platformOffsetAmount: app.platform_offset_amount,
-        purchaseSharePercentage: app.purchase_share_percentage,
-        inferenceMarkupPercentage: app.inference_markup_percentage,
+        platformOffsetAmount: settlementApp.platform_offset_amount,
+        purchaseSharePercentage: settlementApp.purchase_share_percentage,
+        inferenceMarkupPercentage: settlementApp.inference_markup_percentage,
       });
 
     if (baseCostDifference < 0) {
@@ -1353,14 +1457,16 @@ export class AppCreditsService {
       // partial clawback would leave both parties holding the same money.
       const refundAmount = Math.abs(totalCostDifference);
       const creatorEarningsReduction = Math.abs(creatorMarkupDifference);
-      const maximumRefund = computeInferenceCharge(estimatedBaseCost, {
-        monetizationEnabled: monetizationActive,
-        platformOffsetAmount: app.platform_offset_amount,
-        purchaseSharePercentage: app.purchase_share_percentage,
-        inferenceMarkupPercentage: app.inference_markup_percentage,
-      }).totalCost;
+      if (!refundReservation) {
+        throw appRefundReservationMismatch("was not verified before mutation", {
+          reservationTransactionId,
+          organizationId,
+          appId,
+          userId,
+        });
+      }
       assertCreditRefundWithinReservation({
-        reservedAmount: maximumRefund,
+        reservedAmount: refundReservation.totalCost,
         refundAmount,
         scope: "AppCreditsService.reconcileCredits",
       });
@@ -1380,7 +1486,7 @@ export class AppCreditsService {
               actualBaseCost,
               description,
             }),
-            app,
+            settlementApp,
           );
         } catch (reversalError) {
           // error-policy:J2 a failed clawback must retain the consumer charge;
@@ -1403,7 +1509,7 @@ export class AppCreditsService {
       const { newBalance } = await creditsService.refundCredits({
         organizationId,
         amount: refundAmount,
-        description: `App reconciliation refund (${app.name ?? appId})`,
+        description: `App reconciliation refund (${settlementApp.name ?? appId})`,
         // Idempotent per reservation (#11512): a re-invoked reconcile must not
         // credit the org a second refund (2×reserved − actual = minted,
         // cashable credit).

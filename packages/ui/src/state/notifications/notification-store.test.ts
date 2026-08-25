@@ -1256,7 +1256,7 @@ describe("notification-store — authority isolation (#18391)", () => {
 
       // The canonical token writer knows that the credential changed before
       // /api/auth/me can publish B's non-secret identity.
-      writeStoredStewardToken("account-b-token");
+      await writeStoredStewardToken("account-b-token");
 
       expect(__getStateForTests().notifications).toHaveLength(0);
       expect(rotateConnection).toHaveBeenCalledTimes(1);
@@ -1301,7 +1301,7 @@ describe("notification-store — authority isolation (#18391)", () => {
 
     it("clears immediately when a canonical rejected-token path removes the Steward credential", async () => {
       __setAuthStatusForTests(authenticated("user-a", "session-a"));
-      writeStoredStewardToken("rejected-steward-token");
+      await writeStoredStewardToken("rejected-steward-token");
       const notifA = makeNotification({ id: "a-row", title: "A's row" });
       listNotifications.mockResolvedValueOnce({
         notifications: [notifA],
@@ -1316,7 +1316,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // client-cloud's dedicated-agent 401 path calls this canonical clear
       // while the unrelated Eliza API bearer remains present.
       expect(hasToken()).toBe(true);
-      clearStoredStewardToken();
+      await clearStoredStewardToken();
 
       expect(__getStateForTests().notifications).toHaveLength(0);
       expect(__getStateForTests().hydrationStatus).toBe("idle");

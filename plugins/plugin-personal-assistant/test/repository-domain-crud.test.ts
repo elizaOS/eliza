@@ -354,6 +354,7 @@ describe("LifeOpsRepository domain CRUD", () => {
     const run = createLifeOpsWorkflowRun({
       agentId: runtime.agentId,
       workflowId: workflow.id,
+      idempotencyKey: null,
       startedAt: NOW,
       finishedAt: LATER,
       status: "completed",

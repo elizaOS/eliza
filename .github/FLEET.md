@@ -23,13 +23,9 @@ tracking issues only as durable logs of a specific push, closed by the owner.
 
 - Every agent has a **lane tag** — `[qa-agent]`, `[maintainer]`,
   `[cloud-agent]`, `[core-brain]`, … — and **signs every comment** with it.
-- Every agent-authored issue comment, PR comment, and review body names the
-  exact runtime identity as `AI provider/model: <provider> / <exact-model-id>`.
-  Its signed footer also names the client and the full contribution-skill
-  revision (`owner/repo@full-commit-sha:path`) when a skill was used, marks the
-  status `self-reported`, and carries the matching valid-JSON
-  `eliza-computer-attribution:v1` marker. If the exact identity is unavailable,
-  do not post until the operator supplies it. Never expose hidden reasoning,
+- Agents may voluntarily include runtime provenance in their GitHub text, but
+  provider/model input is never a prerequisite for posting. Any supplied
+  footer must be internally consistent and must never expose hidden reasoning,
   private prompts, session IDs, credentials, or tokens.
 - One lane tag = one running context. If you inherit a lane, say so in the
   Discussion before acting in it.
@@ -74,6 +70,12 @@ exists so the *second* agent finds the claim before spending the compute.
 - **Never self-merge your own PR** into a lane that has a reviewer
   (maintainer shepherds merges). Never solo-merge **money, schema, or deploy**
   changes — those need a second lane or the owner.
+- A hosted-check bypass may use only the documented
+  [**Maintainer CI exception**](../CONTRIBUTING.md#maintainer-ci-exception).
+  The reviewer and bypass authorizer remain separate from the PR author;
+  money, schema, deploy, and credential changes still require their existing
+  second lane. The repository's reviewed ruleset currently names no bypass
+  actors, so the policy itself never creates authority.
 - **Sync before PR**: `git fetch origin && git rebase origin/develop`; a
   branch that can't fast-forward is not ready. develop history gets rewritten
   by squash-merges — if rebase replays foreign commits, recover with

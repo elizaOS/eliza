@@ -203,7 +203,7 @@ function PasswordTab({
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg px-4 py-6 font-body text-txt sm:px-6";
-const SCREEN_CARD_CLASS =
+const _SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95";
 
 export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
@@ -216,7 +216,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_40%),linear-gradient(180deg,rgba(11,14,20,0.24),rgba(6,7,8,0.62))]" />
       </div>
 
-      <Card className={SCREEN_CARD_CLASS}>
+      <Card variant="pairingGate">
         <CardHeader className="pb-2 pt-6 px-6">
           <div className="mb-1">
             <p className={setupEyebrowClass} style={setupBodyTextShadowStyle}>
@@ -274,7 +274,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                         "From a browser on the host machine, open this URL then go to Settings → Security:",
                     })}
                   </p>
-                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-xs-tight text-foreground">
                     http://localhost:31337/
                   </code>
                 </div>
@@ -285,7 +285,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
                         "Or via SSH (replace YOURNAME and YOURPASS with your own):",
                     })}
                   </p>
-                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-[11px] text-foreground">
+                  <code className="block break-all rounded-sm bg-bg/70 px-2 py-1.5 font-mono text-xs-tight text-foreground">
                     {`curl -X POST http://127.0.0.1:31337/api/auth/setup -H "Content-Type: application/json" -d '{"displayName":"YOURNAME","password":"YOURPASS"}'`}
                   </code>
                 </div>

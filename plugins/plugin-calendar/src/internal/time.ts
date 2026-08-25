@@ -92,14 +92,10 @@ export function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
 }
 
 function localPartsToEpochMs(parts: ZonedDateParts): number {
-  return Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
+  const d = new Date(0);
+  d.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  d.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+  return d.getTime();
 }
 
 function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
@@ -118,18 +114,27 @@ export function buildUtcDateFromLocalParts(
   parts: ZonedDateParts,
 ): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
+  if (!Number.isFinite(baseUtcMs)) {
+    throw new RangeError(
+      `Local date-time cannot be resolved in timezone ${timeZone}`,
+    );
+  }
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
       getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
     ),
   );
-  const candidates = [...offsets].map(
-    (offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS),
-  );
+  const candidates = [...offsets]
+    .map((offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS))
+    .filter((candidate) => Number.isFinite(candidate.getTime()));
   const exact = candidates
-    .filter((candidate) =>
-      sameZonedParts(getZonedDateParts(candidate, timeZone), parts),
-    )
+    .filter((candidate) => {
+      try {
+        return sameZonedParts(getZonedDateParts(candidate, timeZone), parts);
+      } catch {
+        return false;
+      }
+    })
     .sort((left, right) => left.getTime() - right.getTime());
   if (exact[0]) {
     // "Compatible" selects the earlier instant when a fall-back repeats time.
@@ -137,12 +142,23 @@ export function buildUtcDateFromLocalParts(
   }
 
   const shiftedForward = candidates
-    .map((candidate) => ({
-      candidate,
-      wallDeltaMs:
-        localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs,
-    }))
-    .filter(({ wallDeltaMs }) => wallDeltaMs > 0)
+    .map((candidate) => {
+      let wallDeltaMs: number;
+      try {
+        wallDeltaMs =
+          localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) -
+          baseUtcMs;
+      } catch {
+        wallDeltaMs = Number.NaN;
+      }
+      return { candidate, wallDeltaMs };
+    })
+    .filter(
+      ({ wallDeltaMs, candidate }) =>
+        Number.isFinite(wallDeltaMs) &&
+        wallDeltaMs > 0 &&
+        Number.isFinite(candidate.getTime()),
+    )
     .sort(
       (left, right) =>
         left.wallDeltaMs - right.wallDeltaMs ||
@@ -164,16 +180,13 @@ export function addDaysToLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
   dayDelta: number,
 ): Pick<ZonedDateParts, "year" | "month" | "day"> {
-  const utcDate = new Date(
-    Date.UTC(
-      dateOnly.year,
-      dateOnly.month - 1,
-      dateOnly.day + dayDelta,
-      12,
-      0,
-      0,
-    ),
+  const utcDate = new Date(0);
+  utcDate.setUTCFullYear(
+    dateOnly.year,
+    dateOnly.month - 1,
+    dateOnly.day + dayDelta,
   );
+  utcDate.setUTCHours(12, 0, 0, 0);
   return {
     year: utcDate.getUTCFullYear(),
     month: utcDate.getUTCMonth() + 1,
@@ -184,9 +197,10 @@ export function addDaysToLocalDate(
 export function getWeekdayForLocalDate(
   dateOnly: Pick<ZonedDateParts, "year" | "month" | "day">,
 ): number {
-  return new Date(
-    Date.UTC(dateOnly.year, dateOnly.month - 1, dateOnly.day, 12, 0, 0),
-  ).getUTCDay();
+  const d = new Date(0);
+  d.setUTCFullYear(dateOnly.year, dateOnly.month - 1, dateOnly.day);
+  d.setUTCHours(12, 0, 0, 0);
+  return d.getUTCDay();
 }
 
 export function addMinutes(date: Date, minutes: number): Date {

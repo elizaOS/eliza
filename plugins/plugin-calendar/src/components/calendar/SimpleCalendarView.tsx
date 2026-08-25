@@ -6,6 +6,14 @@
  */
 
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import {
   Popover,
@@ -79,6 +87,51 @@ const SECONDARY_STYLE: CSSProperties = {
   color: "var(--muted, rgba(255,255,255,.58))",
   fontSize: 13,
   lineHeight: 1.45,
+};
+
+// Static fragments of the per-day cell / header controls, hoisted so month
+// re-renders only allocate the selection-dependent fields.
+const DAY_CELL_BASE_STYLE: CSSProperties = {
+  boxSizing: "border-box",
+  minWidth: 0,
+  minHeight: "clamp(38px, 7vw, 62px)",
+  border: 0,
+  borderRadius: 11,
+  padding: "6px clamp(4px, .8vw, 8px)",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: 5,
+  cursor: "pointer",
+  fontFamily: "inherit",
+  textAlign: "start",
+  transition:
+    "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
+};
+
+const DAY_EVENT_BADGE_STYLE: CSSProperties = {
+  alignSelf: "flex-start",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 3,
+  color: "var(--muted-strong, rgba(255,255,255,.76))",
+  fontSize: 9,
+  fontVariantNumeric: "tabular-nums",
+  fontWeight: 700,
+  lineHeight: 1,
+};
+
+const YEAR_SELECT_STYLE: CSSProperties = {
+  minHeight: 36,
+  border: "1px solid var(--border, rgba(255,255,255,.14))",
+  borderRadius: 10,
+  padding: "0 28px 0 12px",
+  background: "var(--surface, #171717)",
+  color: "var(--txt, #f5f5f5)",
+  fontFamily: "inherit",
+  fontSize: 16,
+  fontWeight: 720,
+  cursor: "pointer",
 };
 
 function localDateKey(date: Date): string {
@@ -194,23 +247,19 @@ function CalendarDay({
   });
 
   return (
-    <button
+    <Button
       ref={cell.ref}
       {...cell.agentProps}
       className="eliza-calendar-day"
       data-selected={selected ? "true" : "false"}
-      type="button"
+      variant="selection"
+      size="row"
       onClick={selectDay}
       aria-label={formatSelectedDate(key)}
       aria-pressed={selected}
       aria-current={today ? "date" : undefined}
       style={{
-        boxSizing: "border-box",
-        minWidth: 0,
-        minHeight: "clamp(38px, 7vw, 62px)",
-        border: 0,
-        borderRadius: 11,
-        padding: "6px clamp(4px, .8vw, 8px)",
+        ...DAY_CELL_BASE_STYLE,
         background: selected
           ? "color-mix(in srgb, var(--accent, #ff6a1f) 22%, var(--surface, rgba(255,255,255,.08)))"
           : currentMonth
@@ -222,15 +271,6 @@ function CalendarDay({
         boxShadow: selected
           ? "inset 0 0 0 2px color-mix(in srgb, var(--accent, #ff6a1f) 82%, white), 0 8px 20px rgba(0,0,0,.18)"
           : "none",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        gap: 5,
-        cursor: "pointer",
-        fontFamily: "inherit",
-        textAlign: "start",
-        transition:
-          "background-color 140ms ease, box-shadow 140ms ease, color 140ms ease, transform 140ms ease",
       }}
     >
       <span
@@ -260,17 +300,7 @@ function CalendarDay({
         <span
           role="img"
           aria-label={`${dayEvents.length} ${dayEvents.length === 1 ? "event" : "events"} on ${formatSelectedDate(key)}`}
-          style={{
-            alignSelf: "flex-start",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-            color: "var(--muted-strong, rgba(255,255,255,.76))",
-            fontSize: 9,
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 700,
-            lineHeight: 1,
-          }}
+          style={DAY_EVENT_BADGE_STYLE}
         >
           <span
             aria-hidden
@@ -284,7 +314,7 @@ function CalendarDay({
           <span aria-hidden>{dayEvents.length}</span>
         </span>
       ) : null}
-    </button>
+    </Button>
   );
 }
 
@@ -353,18 +383,6 @@ function MonthControls({
     },
     [onMonthChange, pickerYear],
   );
-  const navigationButton: CSSProperties = {
-    width: 44,
-    height: 44,
-    display: "grid",
-    placeItems: "center",
-    border: 0,
-    borderRadius: 13,
-    background:
-      "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 72%, transparent)",
-    color: "var(--txt, #f5f5f5)",
-    cursor: "pointer",
-  };
   return (
     <div
       style={{
@@ -375,45 +393,30 @@ function MonthControls({
         marginBottom: 12,
       }}
     >
-      <button
+      <Button
         ref={prevControl.ref}
         {...prevControl.agentProps}
-        type="button"
+        variant="surface"
+        size="icon-lg"
         aria-label={`Previous month, ${month}`}
         title="Previous month"
         onClick={onPrevious}
-        style={navigationButton}
       >
         <ChevronLeft size={19} aria-hidden />
-      </button>
+      </Button>
       <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
         <PopoverTrigger asChild>
-          <button
+          <Button
             ref={monthPickerControl.ref}
             {...monthPickerControl.agentProps}
-            type="button"
+            variant="transparent"
+            size="touch"
+            className="min-w-0"
             aria-label={`Choose month and year. Current month is ${month}`}
-            style={{
-              minWidth: 0,
-              minHeight: 44,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              border: 0,
-              borderRadius: 13,
-              background: "transparent",
-              color: "var(--txt, #f5f5f5)",
-              fontFamily: "inherit",
-              fontSize: 17,
-              lineHeight: 1.25,
-              fontWeight: 760,
-              cursor: "pointer",
-            }}
           >
             <span>{month}</span>
             <ChevronDown size={15} aria-hidden />
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="center"
@@ -428,45 +431,42 @@ function MonthControls({
               marginBottom: 10,
             }}
           >
-            <button
-              type="button"
+            <Button
+              variant="surface"
+              size="regularCompact"
+              className="w-9"
               aria-label="Previous year"
               onClick={() => setPickerYear((year) => year - 1)}
-              style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronLeft size={17} aria-hidden />
-            </button>
-            <select
-              aria-label="Calendar year"
-              value={pickerYear}
-              onChange={(event) => setPickerYear(Number(event.target.value))}
-              style={{
-                minHeight: 36,
-                border: "1px solid var(--border, rgba(255,255,255,.14))",
-                borderRadius: 10,
-                padding: "0 28px 0 12px",
-                background: "var(--surface, #171717)",
-                color: "var(--txt, #f5f5f5)",
-                fontFamily: "inherit",
-                fontSize: 14,
-                fontWeight: 720,
-                cursor: "pointer",
-              }}
+            </Button>
+            <Select
+              value={String(pickerYear)}
+              onValueChange={(value) => setPickerYear(Number(value))}
             >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
+              <SelectTrigger
+                aria-label="Calendar year"
+                style={YEAR_SELECT_STYLE}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {yearOptions.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="surface"
+              size="regularCompact"
+              className="w-9"
               aria-label="Next year"
               onClick={() => setPickerYear((year) => year + 1)}
-              style={{ ...navigationButton, width: 36, height: 36 }}
             >
               <ChevronRight size={17} aria-hidden />
-            </button>
+            </Button>
           </div>
           <div
             style={{
@@ -480,64 +480,42 @@ function MonthControls({
                 pickerYear === cursor.getFullYear() &&
                 monthIndex === cursor.getMonth();
               return (
-                <button
+                <Button
                   key={label}
-                  type="button"
+                  variant={active ? "default" : "surface"}
+                  size="compact"
                   aria-pressed={active}
                   onClick={() => chooseMonth(monthIndex)}
-                  style={{
-                    minHeight: 38,
-                    border: 0,
-                    borderRadius: 10,
-                    background: active
-                      ? "var(--accent, #ff6a1f)"
-                      : "color-mix(in srgb, var(--surface, rgba(255,255,255,.06)) 74%, transparent)",
-                    color: active ? "#fff" : "var(--txt, #f5f5f5)",
-                    fontFamily: "inherit",
-                    fontSize: 12,
-                    fontWeight: active ? 760 : 650,
-                    cursor: "pointer",
-                  }}
                 >
                   {label}
-                </button>
+                </Button>
               );
             })}
           </div>
         </PopoverContent>
       </Popover>
-      <button
+      <Button
         ref={nextControl.ref}
         {...nextControl.agentProps}
-        type="button"
+        variant="surface"
+        size="icon-lg"
         aria-label={`Next month, ${month}`}
         title="Next month"
         onClick={onNext}
-        style={navigationButton}
       >
         <ChevronRight size={19} aria-hidden />
-      </button>
-      <button
+      </Button>
+      <Button
         ref={todayControl.ref}
         {...todayControl.agentProps}
-        type="button"
+        variant="ghostMuted"
+        size="tiny"
+        shape="circle"
+        className="col-start-2 justify-self-center"
         onClick={onToday}
-        style={{
-          gridColumn: "2",
-          justifySelf: "center",
-          border: 0,
-          borderRadius: 9999,
-          padding: "4px 10px",
-          background: "transparent",
-          color: "var(--muted-strong, rgba(255,255,255,.76))",
-          fontFamily: "inherit",
-          fontSize: 11,
-          fontWeight: 650,
-          cursor: "pointer",
-        }}
       >
         Today
-      </button>
+      </Button>
     </div>
   );
 }

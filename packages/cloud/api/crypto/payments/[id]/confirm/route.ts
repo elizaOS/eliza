@@ -13,8 +13,8 @@ import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
 import { logger, redact } from "@/lib/utils/logger";
@@ -49,7 +49,7 @@ const confirmSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   const ip =
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-real-ip") ||

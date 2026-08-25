@@ -160,9 +160,9 @@ export const PAGE_SCOPE_DEFAULT_TITLE: Record<PageScope, string> = {
 
 /**
  * Browser scope intro copy varies by Agent Browser Bridge companion state: when the
- * extension is connected the agent can drive real tabs; when it isn't the
- * intro has to walk the user through installing the extension instead of
- * pretending real-browser control is available.
+ * extension is connected the agent can drive real tabs; when it is not, the
+ * intro describes the browser-owned install boundary without exposing
+ * development packaging controls in the normal app surface.
  */
 export function getBrowserPageScopeCopy(state: {
   browserBridgeConnected: boolean;
@@ -189,10 +189,10 @@ export function getBrowserPageScopeCopy(state: {
     };
   }
   return {
-    title: "Install Agent Browser Bridge",
-    body: "Install Agent Browser Bridge so I can drive real Chrome tabs. User Tabs are writable; Agent Tabs and App Tabs are read-only context. Until it connects, I can still help with the embedded browser.",
+    title: "Connect your browser",
+    body: "Install the Eliza Browser extension for your browser. It connects automatically when Eliza is open and signed in. Until then, I can still help with the embedded browser.",
     systemAddendum:
-      "You are answering inside the Browser view. The user has NOT installed the Agent Browser Bridge companion extension yet. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Guide them to click the Install Agent Browser Bridge button visible in this chat panel — it builds the extension and opens Chrome's extension manager so they can load the unpacked folder. Recommend connecting the extension before requests that need real Chrome control. Until the extension is connected, only the embedded iframe browser is available; do not invent real-browser tabs or promise real-tab control. Offer to answer setup questions or help with embedded browsing.",
+      "You are answering inside the Browser view. The user's browser extension is not connected. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate embedded User Tabs only. Agent Tabs and App Tabs are read-only context. Explain that the released Eliza Browser extension connects automatically when the Eliza app is open and signed in. Do not direct the user to unpacked builds, filesystem folders, browser developer mode, pairing tokens, ports, or manual refresh controls. Until the extension connects, only the embedded browser is available; do not invent real-browser tabs or promise real-tab control.",
   };
 }
 

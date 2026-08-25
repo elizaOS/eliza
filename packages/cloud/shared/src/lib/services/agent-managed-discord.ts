@@ -1,14 +1,34 @@
-// Coordinates cloud service agent managed discord behavior behind route handlers.
+/**
+ * Coordinates managed Discord gateway admission and agent connector
+ * configuration. Connector mutations persist first, then schedule lifecycle
+ * work only for running agents backed by a container.
+ */
+import { and, desc, eq, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
+import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
+import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
+} from "../../db/schemas/agent-sandboxes";
+import { organizations } from "../../db/schemas/organizations";
+import { getMaxNonTerminalAgentsForOrg } from "../constants/agent-sandbox-quota";
 import { logger } from "../utils/logger";
 import {
+  AGENT_MANAGED_DISCORD_GATEWAY_KEY,
   type ManagedAgentDiscordBinding,
   readManagedAgentDiscordBinding,
-  readManagedAgentDiscordGateway,
   withManagedAgentDiscordBinding,
   withManagedAgentDiscordGateway,
   withoutManagedAgentDiscordBinding,
 } from "./eliza-agent-config";
+import {
+  configureElizaLifecycleTransaction,
+  elizaAgentCreateAdvisoryLockSql,
+} from "./eliza-provision-lock";
+import { assertOrgAgentQuota } from "./eliza-sandbox";
 import { provisioningJobService } from "./provisioning-jobs";
 
 const DISCORD_OWNER_USER_IDS_ENV_KEY = "AGENT_DISCORD_OWNER_USER_IDS_JSON";
@@ -131,44 +151,110 @@ function toStatus(
   };
 }
 
-export class ManagedAgentDiscordService {
-  async ensureGatewayAgent(params: { organizationId: string; userId: string }): Promise<{
-    created: boolean;
-    sandbox: Awaited<ReturnType<typeof agentSandboxesRepository.create>>;
-  }> {
-    const sandboxes = await agentSandboxesRepository.listByOrganization(params.organizationId);
-    const existingGateway = sandboxes.find((sandbox) =>
-      readManagedAgentDiscordGateway(
-        (sandbox.agent_config as Record<string, unknown> | null) ?? {},
+/**
+ * Execute the gateway marker recheck and quota admission under one caller-owned
+ * primary transaction. Exported for a transaction-trace test; production
+ * callers should use {@link ManagedAgentDiscordService.ensureGatewayAgent}.
+ */
+export async function ensureManagedDiscordGatewayInTransaction(
+  tx: DbTransaction,
+  params: { organizationId: string; userId: string },
+): Promise<{ created: boolean; sandbox: AgentSandbox }> {
+  await configureElizaLifecycleTransaction(tx);
+  await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+
+  // Resolve the tier from the primary inside the admission transaction.
+  // Cache/replica reads can lag a balance decrease for minutes and admit a
+  // gateway against a tier the organization no longer owns.
+  const [organization] = await tx
+    .select({ creditBalance: organizations.credit_balance })
+    .from(organizations)
+    .where(eq(organizations.id, params.organizationId))
+    .limit(1);
+  const creditBalance = Number.parseFloat(String(organization?.creditBalance ?? ""));
+  const maxNonTerminalAgents = getMaxNonTerminalAgentsForOrg(creditBalance);
+
+  // This MUST be a primary-DB marker recheck under the org lock. Filter to the
+  // one logical gateway row: locking every sandbox in the organization couples
+  // admission to unrelated lifecycle work and can exhaust the bounded timeout.
+  const [existingGateway] = await tx
+    .select()
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.organization_id, params.organizationId),
+        sql`${agentSandboxes.agent_config} -> ${AGENT_MANAGED_DISCORD_GATEWAY_KEY} ->> 'mode' = 'shared-gateway'`,
       ),
-    );
+    )
+    .orderBy(desc(agentSandboxes.created_at))
+    .for("update")
+    .limit(1);
 
-    if (existingGateway) {
-      return {
-        created: false,
-        sandbox: existingGateway,
-      };
-    }
+  if (existingGateway) {
+    return {
+      created: false,
+      sandbox: existingGateway,
+    };
+  }
 
-    const sandbox = await agentSandboxesRepository.create({
+  await assertOrgAgentQuota(tx, params.organizationId, maxNonTerminalAgents);
+
+  const [sandbox] = await tx
+    .insert(agentSandboxes)
+    .values({
       organization_id: params.organizationId,
       user_id: params.userId,
       agent_name: MANAGED_DISCORD_GATEWAY_AGENT_NAME,
       agent_config: withManagedAgentDiscordGateway({}),
       environment_vars: {},
+      // `pending` + non-pool is intentionally quota-counted. Keep this aligned
+      // with QUOTA_COUNTED_STATUSES and account-limit snapshots.
       status: "pending",
+      execution_tier: "shared",
+      pool_status: null,
       database_status: "none",
-    });
+    })
+    .returning();
+  if (!sandbox) {
+    throw new Error("Failed to create managed Discord gateway agent");
+  }
 
-    logger.info("[managed-discord] Created shared Discord gateway agent", {
-      agentId: sandbox.id,
-      organizationId: params.organizationId,
-    });
+  return {
+    created: true,
+    sandbox,
+  };
+}
 
-    return {
-      created: true,
-      sandbox,
-    };
+export class ManagedAgentDiscordService {
+  /**
+   * Return the org's shared Discord gateway, creating it atomically when absent.
+   *
+   * The gateway is deliberately a regular non-pool `pending` sandbox, so it
+   * consumes one slot from the same resource-holding agent quota as every other
+   * user-owned sandbox. The marker recheck, quota count, and insert all run
+   * under the canonical per-org create lock; concurrent gateway retries and
+   * sibling create routes therefore share one admission authority.
+   */
+  async ensureGatewayAgent(params: { organizationId: string; userId: string }): Promise<{
+    created: boolean;
+    sandbox: AgentSandbox;
+  }> {
+    // Preserve the repository create path's compatibility bootstrap before
+    // moving the admission itself into a direct transaction.
+    await ensureAgentSandboxSchema();
+
+    const result = await dbWrite.transaction((tx) =>
+      ensureManagedDiscordGatewayInTransaction(tx, params),
+    );
+
+    if (result.created) {
+      logger.info("[managed-discord] Created shared Discord gateway agent", {
+        agentId: result.sandbox.id,
+        organizationId: params.organizationId,
+      });
+    }
+
+    return result;
   }
 
   async getStatus(params: {
@@ -229,7 +315,10 @@ export class ManagedAgentDiscordService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -237,7 +326,8 @@ export class ManagedAgentDiscordService {
       });
       // The restart job is already enqueued; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays restart to the next poll.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,
@@ -291,7 +381,10 @@ export class ManagedAgentDiscordService {
     // daemon picks it up, stops the container, and re-provisions with
     // the freshly-persisted agent_config above.
     let restarted = false;
-    if (sandbox.status === "running") {
+    if (
+      sandbox.status === "running" &&
+      CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === sandbox.execution_tier)
+    ) {
       await provisioningJobService.enqueueAgentRestartOnce({
         agentId: sandbox.id,
         organizationId: params.organizationId,
@@ -299,7 +392,8 @@ export class ManagedAgentDiscordService {
       });
       // The restart job is already enqueued; triggerImmediate only nudges the
       // daemon to pick it up now. A failed nudge delays restart to the next poll.
-      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      // error-policy:J5 The durable restart remains observable by the scheduled poller;
+      // this handler observes and reports only the failed immediate nudge.
       void provisioningJobService.triggerImmediate().catch((err) =>
         logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
           agentId: sandbox.id,

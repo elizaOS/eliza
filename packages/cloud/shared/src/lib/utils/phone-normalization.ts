@@ -52,9 +52,7 @@ export function normalizePhoneNumber(phone: string, defaultCountry?: string): st
   // Handle email addresses (for iMessage)
   if (input.includes("@")) {
     if (!isValidEmail(input)) {
-      logger.warn("[PhoneNormalization] Invalid email format", {
-        email: input,
-      });
+      logger.warn("[PhoneNormalization] Invalid email format");
     }
     return input.toLowerCase();
   }
@@ -72,23 +70,17 @@ export function normalizePhoneNumber(phone: string, defaultCountry?: string): st
 
     // Best-effort format for parseable but invalid numbers
     if (parsed) {
-      logger.warn("[PhoneNormalization] Using best-effort format", {
-        phone: input,
-        country,
-      });
+      logger.warn("[PhoneNormalization] Using best-effort format");
       return parsed.format("E.164");
     }
 
-    logger.warn("[PhoneNormalization] Could not parse", {
-      phone: input,
-      country,
-    });
+    logger.warn("[PhoneNormalization] Could not parse");
     return input.replace(/[^\d+]/g, "");
-  } catch (error) {
+  } catch {
+    // error-policy:J3 malformed phone input is reduced to its documented
+    // sanitized representation and logs only a constant diagnostic class.
     logger.warn("[PhoneNormalization] Invalid phone", {
-      phone: input,
-      country,
-      error: error instanceof Error ? error.message : "Unknown",
+      errorClass: "phone_parse_failed",
     });
     return input.replace(/[^\d+]/g, "");
   }
@@ -154,6 +146,7 @@ export function parsePhoneNumber(
       isValid: parsed.isValid(),
     };
   } catch {
+    // error-policy:J3 parsing failure is the explicit invalid result.
     return null;
   }
 }

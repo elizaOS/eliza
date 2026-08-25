@@ -23,6 +23,7 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
+import { Button } from "../ui/button";
 import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
@@ -126,7 +127,7 @@ export function ClearConfirmationContent({
       >
         <X
           aria-hidden
-          className="eliza-notif-control-transition h-3.5 w-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
+          className="eliza-notif-control-transition size-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
         />
       </span>
       {armingLabel ? (
@@ -188,12 +189,12 @@ function NotificationSourceIcon({
       }
       title={decorative ? undefined : meta.label}
       className={cn(
-        "eliza-notif-source-icon relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
+        "eliza-notif-source-icon relative flex size-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
         registered && meta.iconClassName,
       )}
     >
       {registered ? (
-        <Icon className="h-5 w-5" />
+        <Icon className="size-5" />
       ) : decorative ? (
         <span
           data-notification-stack-preview-source-initial={
@@ -215,7 +216,7 @@ function NotificationSourceIcon({
           }
           aria-hidden
           style={{ opacity: countVisibility }}
-          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
+          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-xs-tight font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(16,10,5,0.7),0_1px_4px_rgba(16,10,5,0.45)]"
         >
           {decorative ? null : count > 99 ? "99+" : count}
         </span>
@@ -537,8 +538,11 @@ export const NotificationRow = memo(function NotificationRow({
         onPointerCancel={onPointerEnd}
         className="eliza-notif-row-inner eliza-notif-row-surface eliza-notif-glass group relative z-[2] flex min-h-0 flex-col overflow-hidden rounded-2xl"
       >
-        <button
+        <Button
           type="button"
+          variant="surface"
+          size="row"
+          align="start"
           data-testid="notification-row"
           data-notification-stack-key={stackKey}
           data-notification-stack-opener={stackKey ? "" : undefined}
@@ -559,7 +563,7 @@ export const NotificationRow = memo(function NotificationRow({
               onExpandStack(stackKey, event.detail === 0);
             } else onOpen(notification);
           }}
-          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left"
+          className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
             source={notification.source}
@@ -584,7 +588,7 @@ export const NotificationRow = memo(function NotificationRow({
               </span>
             ) : null}
           </span>
-        </button>
+        </Button>
       </div>
       {stackPeeks
         ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {
@@ -595,9 +599,11 @@ export const NotificationRow = memo(function NotificationRow({
               collapsedOffsetPx +
               (openOffsetPx - collapsedOffsetPx) * stackPeeks.expansionProgress;
             return (
-              <button
+              <Button
                 key={`${notification.id}-stack-peek-${layer}`}
                 type="button"
+                variant="transparent"
+                size="fill"
                 data-testid={
                   stackPeeks.testIdVisible
                     ? "notification-stack-peek"
@@ -649,7 +655,7 @@ export const NotificationRow = memo(function NotificationRow({
                     visibility={index === 0 ? stackPreviewVisibility : 0}
                   />
                 ) : null}
-              </button>
+              </Button>
             );
           })
         : null}

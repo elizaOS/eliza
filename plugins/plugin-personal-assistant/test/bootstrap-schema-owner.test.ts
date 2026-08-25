@@ -14,6 +14,7 @@ const ENSURE_METHODS = [
   "ensureBrowserBridgeCompanionTokenColumns",
   "ensureConnectorAccountColumns",
   "ensureInboxCacheIndexes",
+  "ensureWorkflowRunIdempotencyKey",
 ] as const;
 
 afterEach(() => {

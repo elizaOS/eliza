@@ -18,6 +18,7 @@ import type {
 } from "../../api/client-types-core";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { NativeSelect } from "../ui/native-select";
 import { Spinner } from "../ui/spinner";
 
 const WORKFLOW_RUN_EVENT = "workflow_run_event";
@@ -198,7 +199,7 @@ export function WorkflowTriggerPanel({
     <section aria-label="Workflow triggers" className="bg-card/40 px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
         <span
-          className="h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+          className="size-2 shrink-0 rounded-full bg-status-success"
           title="Manual"
         >
           <span className="sr-only">Manual</span>
@@ -212,11 +213,13 @@ export function WorkflowTriggerPanel({
               className="group flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-2 py-1 text-xs"
               title={`${meta.label} · ${triggerSummary(trigger)}`}
             >
-              <Icon className="h-3.5 w-3.5 text-primary" />
+              <Icon className="size-3.5 text-primary" />
               <span>{triggerSummary(trigger)}</span>
-              <button
+              <Button
                 type="button"
-                className="ml-0.5 text-muted-foreground opacity-40 hover:text-destructive group-hover:opacity-100"
+                variant="dangerGhost"
+                size="disclosure"
+                className="ml-0.5"
                 aria-label={`Delete ${meta.label} trigger`}
                 onClick={() =>
                   void client
@@ -232,20 +235,21 @@ export function WorkflowTriggerPanel({
                     })
                 }
               >
-                <Trash2 className="h-3 w-3" />
-              </button>
+                <Trash2 className="size-3" />
+              </Button>
             </span>
           );
         })}
         <Button
           type="button"
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="shrink-0 rounded-full"
+          shape="circle"
+          className="shrink-0"
           aria-label="Add workflow trigger"
           onClick={() => setType((current) => current ?? "once")}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="size-3.5" />
         </Button>
       </div>
 
@@ -257,10 +261,12 @@ export function WorkflowTriggerPanel({
           {(Object.keys(TYPE_META) as TriggerType[]).map((option) => {
             const Icon = TYPE_META[option].icon;
             return (
-              <button
+              <Button
                 key={option}
                 type="button"
-                className={`grid h-8 w-8 place-items-center rounded-md ${type === option ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"}`}
+                variant="selection"
+                size="icon-sm"
+                data-state={type === option ? "on" : "off"}
                 aria-label={TYPE_META[option].label}
                 aria-pressed={type === option}
                 title={TYPE_META[option].label}
@@ -280,32 +286,32 @@ export function WorkflowTriggerPanel({
                   }
                 }}
               >
-                <Icon className="h-4 w-4" />
-              </button>
+                <Icon className="size-4" />
+              </Button>
             );
           })}
           {type === "event" ? (
             <>
-              <select
+              <NativeSelect
                 aria-label="Event source"
                 value={eventMode}
                 onChange={(event) =>
                   setEventMode(event.target.value as EventMode)
                 }
-                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-xs"
+                className="h-8 min-w-28 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
               >
                 {EVENT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               {eventMode !== "message" ? (
-                <select
+                <NativeSelect
                   aria-label="Source workflow"
                   value={sourceWorkflowId}
                   onChange={(event) => setSourceWorkflowId(event.target.value)}
-                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                  className="h-8 min-w-32 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
                 >
                   {sources.length === 0 ? (
                     <option value="">No source</option>
@@ -315,14 +321,14 @@ export function WorkflowTriggerPanel({
                       {definition.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               ) : null}
               {eventMode === "step" ? (
-                <select
+                <NativeSelect
                   aria-label="Source step"
                   value={sourceStepId}
                   onChange={(event) => setSourceStepId(event.target.value)}
-                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+                  className="h-8 min-w-28 flex-1 rounded-md border border-input bg-background px-2 text-base sm:text-xs"
                 >
                   {(sourceWorkflow?.steps ?? []).length === 0 ? (
                     <option value="">No steps</option>
@@ -332,7 +338,7 @@ export function WorkflowTriggerPanel({
                       {step.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               ) : null}
             </>
           ) : (
@@ -361,7 +367,8 @@ export function WorkflowTriggerPanel({
                     ? "Cron expression"
                     : "Start time"
               }
-              className="h-8 min-w-40 flex-1 text-xs"
+              density="compact"
+              className="min-w-40 flex-1"
             />
           )}
           <Button
@@ -371,9 +378,9 @@ export function WorkflowTriggerPanel({
             onClick={() => void create()}
           >
             {busy ? (
-              <Spinner className="h-3.5 w-3.5" />
+              <Spinner className="size-3.5" />
             ) : (
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="size-3.5" />
             )}
           </Button>
           <Button
@@ -382,7 +389,7 @@ export function WorkflowTriggerPanel({
             aria-label="Cancel trigger"
             onClick={() => setType(null)}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
         </div>
       ) : null}

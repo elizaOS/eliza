@@ -25,10 +25,9 @@ RUBRIC:
 CANDIDATE RESPONSE:
 {candidate}
 
-Respond with ONLY a compact JSON object on one line, no markdown, no prose, no code fences. Keep "reason" under 20 words so the output fits in 120 tokens:
-{"score": <0.0-1.0 float>, "reason": "<≤20 word justification>"}`;
+Respond with ONLY a JSON object on one line, no markdown, no prose, no code fences:
+{"score": <0.0-1.0 float>, "reason": "<justification>"}`;
 
-const MAX_JUDGE_TOKENS = 512;
 const MAX_RETRIES = 2;
 
 type LifeOpsEvalModelModule = {
@@ -132,7 +131,6 @@ export async function judgeTextWithLlm(
     let result: JudgeResult | null;
     if (cerebrasJudge) {
       const response = await cerebrasJudge.judge(prompt, {
-        maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
       lastRaw = response.raw;
@@ -140,7 +138,6 @@ export async function judgeTextWithLlm(
     } else {
       const output = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
-        maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
       const raw = typeof output === "string" ? output : JSON.stringify(output);

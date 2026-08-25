@@ -103,6 +103,9 @@ project(':elizaos-capacitor-phone').projectDir = new File('../../../../plugins/p
 include ':elizaos-capacitor-screencapture'
 project(':elizaos-capacitor-screencapture').projectDir = new File('../../../../plugins/plugin-native-screencapture/android')
 
+include ':elizaos-capacitor-secure-store'
+project(':elizaos-capacitor-secure-store').projectDir = new File('../../../../plugins/plugin-native-secure-store/android')
+
 include ':elizaos-capacitor-swabble'
 project(':elizaos-capacitor-swabble').projectDir = new File('../../../../plugins/plugin-native-swabble/android')
 

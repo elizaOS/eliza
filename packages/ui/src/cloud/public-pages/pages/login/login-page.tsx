@@ -3,27 +3,26 @@
  * Steward login section with the terms/privacy links. Listens for device-code
  * auth completion on same-origin tabs so an orphaned sign-in form does not
  * stay live after the session already finished (#18001).
+ *
+ * The same bundle serves canonical app hosts, dedicated managed-agent hosts,
+ * and self-hosted origins. `/login` renders Steward locally on every one of
+ * them. Canonical app hosts must keep passwordless login on-origin, while the
+ * SSO bridge deliberately excludes dedicated subdomains because they may host
+ * user-controlled content. Routing dedicated hosts through the bridge would
+ * therefore be dead code that immediately falls back to this same page.
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import {
-  redirectToSsoBridge,
-  sanitizeBridgeReturnTo,
-  shouldAutoBridgeToSso,
-} from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
-const MANAGED_CLOUD_HANDOFF_TIMEOUT_MS = 5_000;
 
 // Chunk-load fallback with the SAME geometry as the section's own
 // provider-discovery skeleton and the final option stack, so the card holds
@@ -38,7 +37,7 @@ function StewardLoginSectionFallback() {
 
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="theme-cloud relative h-[100dvh] min-h-0 overflow-hidden text-txt">
+    <div className="theme-cloud relative isolate h-[100dvh] min-h-0 overflow-hidden bg-bg text-txt">
       {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
           inset-0` underlay, NOT a `min-h-[100dvh]` slab. On the installed
           standalone PWA the body is non-fixed (base.css / styles.css lockdown),
@@ -53,10 +52,10 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
       <div
         aria-hidden="true"
         data-testid="login-safe-area-fill"
-        className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
+        className="pointer-events-none fixed inset-0 z-0 bg-bg"
       />
       <div
-        className="flex h-full min-h-0 w-full flex-col px-4"
+        className="flex h-full min-h-0 w-full flex-col px-4 sm:px-6"
         style={{
           paddingTop: "max(env(safe-area-inset-top, 0px), 1rem)",
           paddingBottom: "max(env(safe-area-inset-bottom, 0px), 1rem)",
@@ -71,7 +70,7 @@ function LoginBackground({ children }: { children: React.ReactNode }) {
             1080×1240) where the OAuth / wallet rows fell below an unscrollable
             fold — see login-page.safe-area.test.tsx. */}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto">
-          <div className="my-auto w-full max-w-md shrink-0 rounded-xl border border-border bg-card p-6 text-txt md:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
+          <div className="my-auto w-full max-w-lg shrink-0 rounded-2xl border border-border bg-card p-6 text-txt shadow-[0_32px_96px_-40px_rgba(16,10,5,0.58)] sm:p-8 motion-safe:animate-[shell-overlay-in_320ms_cubic-bezier(0.16,1,0.3,1)]">
             {children}
           </div>
         </div>
@@ -91,54 +90,6 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
     void error;
     return null;
   }
-}
-
-function ManagedCloudLoginHandoff(): React.JSX.Element {
-  const [searchParams] = useSearchParams();
-  const [handoffRequired] = useState(() => shouldAutoBridgeToSso());
-  const [failed, setFailed] = useState(false);
-  const attemptRef = useRef<Promise<boolean> | null>(null);
-  const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
-
-  useEffect(() => {
-    if (!handoffRequired) return;
-    let attempt = attemptRef.current;
-    if (!attempt) {
-      attempt = redirectToSsoBridge(returnTo);
-      attemptRef.current = attempt;
-    }
-
-    let active = true;
-    const timeout = window.setTimeout(() => {
-      if (!active) return;
-      active = false;
-      setFailed(true);
-    }, MANAGED_CLOUD_HANDOFF_TIMEOUT_MS);
-
-    void attempt
-      .then((started) => {
-        if (active && !started) setFailed(true);
-      })
-      .catch(() => {
-        // error-policy:J4 bridge initiation failed before navigation; keep
-        // sign-in available on this host through the normal Steward form.
-        if (active) setFailed(true);
-      });
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-    };
-  }, [handoffRequired, returnTo]);
-
-  if (!handoffRequired || failed) return <PublicLoginPage />;
-  return (
-    <LoginBackground>
-      <p className="text-center font-mono text-[11px] uppercase tracking-[0.32em] text-muted">
-        Taking you to Eliza sign in
-      </p>
-    </LoginBackground>
-  );
 }
 
 function PublicLoginPage(): React.JSX.Element {
@@ -168,7 +119,7 @@ function PublicLoginPage(): React.JSX.Element {
     return (
       <LoginBackground>
         <div className="space-y-6 text-center">
-          <CheckCircle2 className="mx-auto h-10 w-10 text-status-success" />
+          <CheckCircle2 className="mx-auto size-10 text-status-success" />
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.handoffCompleteTitle", {
@@ -201,7 +152,7 @@ function PublicLoginPage(): React.JSX.Element {
 
   return (
     <LoginBackground>
-      <main className="space-y-8">
+      <main className="space-y-7">
         <div className="space-y-3 text-center">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
@@ -212,7 +163,7 @@ function PublicLoginPage(): React.JSX.Element {
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {
-                defaultValue: "Sign in to Eliza",
+                defaultValue: "Sign in",
               })}
             </h1>
             <p className="text-sm text-muted">
@@ -249,9 +200,5 @@ function PublicLoginPage(): React.JSX.Element {
 }
 
 export default function LoginPage(): React.JSX.Element {
-  const managedCloudHost =
-    isAppModeHost() ||
-    (typeof window !== "undefined" &&
-      isElizaManagedCloudUiHostname(window.location.hostname));
-  return managedCloudHost ? <ManagedCloudLoginHandoff /> : <PublicLoginPage />;
+  return <PublicLoginPage />;
 }

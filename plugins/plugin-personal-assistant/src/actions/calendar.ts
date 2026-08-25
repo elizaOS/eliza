@@ -31,6 +31,7 @@ import {
   resolveActionArgs,
   type SubactionsMap,
   stableStringify,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   type CalendarActionDeps,
@@ -73,7 +74,6 @@ import {
   resolveDefaultTimeZone,
 } from "../lifeops/defaults.js";
 import {
-  formatCalendarEventDateTime,
   runLifeOpsJsonModel,
   runLifeOpsTextModel,
 } from "../lifeops/google/format-helpers.js";
@@ -91,6 +91,7 @@ import {
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
+import { formatBulkReschedulePreviewLines } from "./calendar-preview.js";
 import {
   calendarSnapshotEffectProof,
   readCalendarSnapshotEffectProof,
@@ -133,12 +134,13 @@ interface CalendarApprovalQueue {
 }
 
 function approvalSafeLabel(value: string): string {
-  return value
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/[[\]]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 160);
+  return toWellFormedUnicode(
+    value
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[[\]]/g, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
 }
 
 function requireApprovalMessageIdentity(message: Memory): {
@@ -1416,17 +1418,16 @@ async function handleBulkReschedulePreview(args: {
 
   const matches = feed.events
     .filter((event) => eventMatchesBulkRescheduleCohort(event, cohortLabel))
-    .sort(
-      (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
-    );
+    .sort((left, right) => {
+      const aTime = Date.parse(left.startAt);
+      const bTime = Date.parse(right.startAt);
+      const aSafe = Number.isFinite(aTime) ? aTime : 0;
+      const bSafe = Number.isFinite(bTime) ? bTime : 0;
+      return aSafe - bSafe;
+    });
 
   const cohortText = cohortLabel ? `${cohortLabel} meetings` : "those meetings";
-  const previewLines = matches.slice(0, 8).map((event) => {
-    const when = formatCalendarEventDateTime(event, {
-      includeTimeZoneName: true,
-    });
-    return `- ${event.title || "Untitled"} — ${when}`;
-  });
+  const previewLines = formatBulkReschedulePreviewLines(matches);
 
   const responseText =
     matches.length === 0

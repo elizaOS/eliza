@@ -1,6 +1,17 @@
-// Defines the agent phone contacts Drizzle table shape used by cloud repositories and services.
+/** Defines tenant-owned phone contact routing with typed provider metadata. */
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -38,7 +49,7 @@ export const agentPhoneContacts = pgTable(
     last_inbound_at: timestamp("last_inbound_at", { withTimezone: true }),
     last_outbound_at: timestamp("last_outbound_at", { withTimezone: true }),
     is_active: boolean("is_active").notNull().default(true),
-    metadata: text("metadata").notNull().default("{}"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -57,6 +68,10 @@ export const agentPhoneContacts = pgTable(
     agent_idx: index("agent_phone_contacts_agent_idx").on(table.agent_id),
     organization_idx: index("agent_phone_contacts_organization_idx").on(table.organization_id),
     user_idx: index("agent_phone_contacts_user_idx").on(table.user_id),
+    metadata_object_check: check(
+      "agent_phone_contacts_metadata_object_check",
+      sql`jsonb_typeof(${table.metadata}) = 'object'`,
+    ),
   }),
 );
 

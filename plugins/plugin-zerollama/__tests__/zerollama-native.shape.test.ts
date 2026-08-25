@@ -11,9 +11,11 @@ import {
   buildZerollamaChatBody,
   toZerollamaChatMessages,
   toZerollamaTools,
+  ZerollamaHttpError,
   zerollamaChatComplete,
   zerollamaChatStream,
   zerollamaEmbed,
+  zerollamaEmbedMany,
 } from "../utils/zerollama-native";
 
 describe("resolveOllamaHostFlavor", () => {
@@ -179,6 +181,70 @@ describe("zerollama native wire helpers", () => {
     expect(streamFetch.mock.calls[0]?.[1]?.signal).toBe(controller.signal);
   });
 
+  it("rejects a native completion that stopped at its output boundary", async () => {
+    const fetchImpl = vi.fn(async () =>
+      Response.json({
+        message: { content: "partial" },
+        done: true,
+        done_reason: "length",
+      })
+    );
+    const body = buildZerollamaChatBody({
+      model: "qwen3:0.6b",
+      messages: [{ role: "user", content: "hi" }],
+      stream: false,
+    });
+
+    await expect(
+      zerollamaChatComplete({
+        apiBase: "http://host:11434",
+        body,
+        fetchImpl: fetchImpl as typeof fetch,
+        promptForEstimate: "hi",
+        modelName: "qwen3:0.6b",
+      })
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
+  it("signals a native stream output-boundary stop after its final delta", async () => {
+    const encoder = new TextEncoder();
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                encoder.encode(
+                  '{"message":{"content":"partial"},"done":false}\n' +
+                    '{"done":true,"done_reason":"length"}\n'
+                )
+              );
+              controller.close();
+            },
+          })
+        )
+    );
+    const body = buildZerollamaChatBody({
+      model: "qwen3:0.6b",
+      messages: [{ role: "user", content: "hi" }],
+      stream: true,
+    });
+    const result = zerollamaChatStream({
+      apiBase: "http://host:11434",
+      body,
+      fetchImpl: fetchImpl as typeof fetch,
+      promptForEstimate: "hi",
+      modelName: "qwen3:0.6b",
+    });
+    const chunks: string[] = [];
+
+    await expect(async () => {
+      for await (const chunk of result.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
   it("posts /api/embed with model+input only", async () => {
     const controller = new AbortController();
     const fetchImpl = vi.fn(async () =>
@@ -234,5 +300,79 @@ describe("zerollama native wire helpers", () => {
         }),
       })
     );
+  });
+});
+
+describe("zerollamaEmbedMany error-message truncation", () => {
+  /** Body whose last surrogate pair straddles `limit` so a naive slice would split it. */
+  const straddlingBody = (limit: number): string => `${"x".repeat(limit - 1)}\u{1F600}tail`;
+
+  const textResponse = (status: number, body: string): Response =>
+    new Response(body, { status, headers: { "Content-Type": "text/plain" } });
+
+  it("keeps /api/embed 5xx messages well-formed at the 300-unit cap and retains the raw body", async () => {
+    const raw = straddlingBody(300);
+    const fetchImpl = vi.fn(async () => textResponse(500, raw));
+    const error = await zerollamaEmbedMany({
+      apiBase: "http://host:8080",
+      model: "embeddinggemma:300m",
+      input: "hello",
+      fetchImpl: fetchImpl as typeof fetch,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ZerollamaHttpError);
+    const httpError = error as ZerollamaHttpError;
+    expect(httpError.message.isWellFormed()).toBe(true);
+    expect(httpError.message).toContain("x".repeat(299));
+    expect(httpError.message).not.toContain("\u{1F600}");
+    expect(httpError.message).not.toContain("tail");
+    expect(httpError.responseBody).toBe(raw);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the dual-route failure message well-formed at both 160-unit caps", async () => {
+    const nativeRaw = straddlingBody(160);
+    const v1Raw = `${"y".repeat(159)}\u{1F600}v1tail`;
+    const fetchImpl = vi.fn(async (url: string) =>
+      String(url).endsWith("/api/embed") ? textResponse(400, nativeRaw) : textResponse(502, v1Raw)
+    );
+    const error = await zerollamaEmbedMany({
+      apiBase: "http://host:8080",
+      model: "embeddinggemma:300m",
+      input: "hello",
+      fetchImpl: fetchImpl as typeof fetch,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ZerollamaHttpError);
+    const httpError = error as ZerollamaHttpError;
+    expect(httpError.message.isWellFormed()).toBe(true);
+    expect(httpError.message).toContain("x".repeat(159));
+    expect(httpError.message).toContain("y".repeat(159));
+    expect(httpError.message).not.toContain("\u{1F600}");
+    expect(httpError.message).not.toContain("tail");
+    expect(httpError.statusCode).toBe(502);
+    expect(httpError.responseBody).toBe(v1Raw);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the empty-embedding message well-formed at the 120-unit cap", async () => {
+    const nativeRaw = straddlingBody(120);
+    const fetchImpl = vi.fn(async (url: string) =>
+      String(url).endsWith("/api/embed")
+        ? textResponse(400, nativeRaw)
+        : Response.json({ data: [{ embedding: [] }] })
+    );
+    const error = await zerollamaEmbedMany({
+      apiBase: "http://host:8080",
+      model: "embeddinggemma:300m",
+      input: "hello",
+      fetchImpl: fetchImpl as typeof fetch,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ZerollamaHttpError);
+    const message = (error as Error).message;
+    expect(message.isWellFormed()).toBe(true);
+    expect(message).toContain("returned an empty embedding");
+    expect(message).toContain("x".repeat(119));
+    expect(message).not.toContain("\u{1F600}");
+    expect(message).not.toContain("tail");
   });
 });

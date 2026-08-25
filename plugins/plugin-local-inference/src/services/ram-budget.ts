@@ -28,6 +28,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { ELIZA_1_TIER_IDS, type Eliza1TierId, MODEL_CATALOG } from "./catalog";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 import { type Eliza1Manifest, validateManifest } from "./manifest";
@@ -43,6 +44,7 @@ const BYTES_PER_MB = 1024 * 1024;
  * Override via `ELIZA_LOCAL_RAM_HEADROOM_MB`.
  */
 const DEFAULT_RAM_HEADROOM_RESERVE_MB = 1536;
+const RAM_HEADROOM_ENV_KEY = "ELIZA_LOCAL_RAM_HEADROOM_MB";
 
 /**
  * Default context window assumed for a catalog entry that doesn't declare
@@ -52,12 +54,22 @@ const DEFAULT_RAM_HEADROOM_RESERVE_MB = 1536;
 const FALLBACK_DEFAULT_CONTEXT_TOKENS = 32768;
 
 export function ramHeadroomReserveMb(): number {
-	const raw = process.env.ELIZA_LOCAL_RAM_HEADROOM_MB?.trim();
-	if (raw) {
-		const parsed = Number.parseInt(raw, 10);
-		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+	const configured = process.env[RAM_HEADROOM_ENV_KEY];
+	if (configured === undefined) {
+		return DEFAULT_RAM_HEADROOM_RESERVE_MB;
 	}
-	return DEFAULT_RAM_HEADROOM_RESERVE_MB;
+	const raw = configured.trim();
+	const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+	if (Number.isSafeInteger(parsed) && parsed >= 0) return parsed;
+
+	throw new ElizaError(
+		`${RAM_HEADROOM_ENV_KEY} must be a complete non-negative decimal integer in MB`,
+		{
+			code: "INVALID_LOCAL_RAM_HEADROOM",
+			context: { envKey: RAM_HEADROOM_ENV_KEY, configured },
+			severity: "fatal",
+		},
+	);
 }
 
 export type { RamBudget } from "./types.js";

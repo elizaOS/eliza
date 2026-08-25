@@ -10,8 +10,8 @@
  * the *bare* original task and no memory of what the predecessor already did,
  * so it starts cold and can redo (or clobber) prior progress.
  *
- * This module builds a compact, deterministic RESUME PREAMBLE the router
- * prepends to the successor's first instruction, plus the small persisted
+ * This module builds a deterministic RESUME PREAMBLE the router prepends to
+ * the successor's first instruction, plus the persisted
  * marker (`ResumeContext`) stamped onto successor metadata and surfaced in task
  * events so the UI can distinguish "rate-limited, resumable" from "failed".
  *
@@ -59,7 +59,7 @@ export interface ResumeContext {
   /** `git diff --shortstat`-style line (e.g. "3 files changed, 40 insertions"),
    * when the predecessor's changeset was captured. */
   diffStat?: string;
-  /** Predecessor's changed-file paths (capped) so the successor knows what was
+  /** Predecessor's changed-file paths so the successor knows what was
    * already touched and doesn't blindly re-create it. */
   changedFiles?: string[];
   /** The predecessor's last progress/completion summary, if any. */
@@ -67,13 +67,6 @@ export interface ResumeContext {
   /** When the resume marker was built (epoch ms). */
   capturedAt: number;
 }
-
-/** Cap on how many changed-file paths ride in the marker / preamble — bounds
- * the persisted size and the prompt budget. */
-export const MAX_RESUME_CHANGED_FILES = 40;
-
-/** Cap on the predecessor progress summary length in the preamble (chars). */
-export const MAX_RESUME_PROGRESS_CHARS = 1200;
 
 /** Human phrasing per reason for the preamble/UI. */
 const REASON_PHRASE: Record<ResumeReason, string> = {
@@ -102,17 +95,15 @@ function cleanStr(value: string | null | undefined): string | undefined {
 
 /**
  * Build the persisted {@link ResumeContext} marker from the failover inputs.
- * Pure — all fields are normalized/clamped here so both the metadata stamp and
- * the preamble render from one validated shape. `changedFiles` is deduped and
- * capped; `lastProgress` is trimmed and length-clamped.
+ * Pure — all fields are normalized here so both the metadata stamp and the
+ * preamble render from one validated shape. `changedFiles` is deduped and
+ * `lastProgress` is trimmed without discarding content.
  */
 export function buildResumeContext(
   input: BuildResumeContextInput,
 ): ResumeContext {
   const changed = input.changedFiles
-    ? [
-        ...new Set(input.changedFiles.map((f) => f.trim()).filter(Boolean)),
-      ].slice(0, MAX_RESUME_CHANGED_FILES)
+    ? [...new Set(input.changedFiles.map((f) => f.trim()).filter(Boolean))]
     : undefined;
   const progress = cleanStr(input.lastProgress);
   return {
@@ -125,10 +116,7 @@ export function buildResumeContext(
     branch: cleanStr(input.branch),
     diffStat: cleanStr(input.diffStat),
     changedFiles: changed && changed.length > 0 ? changed : undefined,
-    lastProgress:
-      progress && progress.length > MAX_RESUME_PROGRESS_CHARS
-        ? `${progress.slice(0, MAX_RESUME_PROGRESS_CHARS)}…`
-        : progress,
+    lastProgress: progress,
     capturedAt:
       typeof input.now === "number" && Number.isFinite(input.now)
         ? input.now
@@ -190,7 +178,7 @@ export function readResumeContext(value: unknown): ResumeContext | undefined {
       cleanStr(file as string | undefined),
     );
     if (parsed.some((file) => file === undefined)) return undefined;
-    changedFiles = parsed.slice(0, MAX_RESUME_CHANGED_FILES) as string[];
+    changedFiles = parsed as string[];
   }
   return {
     kind: "rate-limit-failover",
@@ -230,7 +218,7 @@ export function buildResumePreamble(ctx: ResumeContext): string {
     lines.push(`Work already in progress: ${ctx.diffStat}.`);
   }
   if (ctx.changedFiles && ctx.changedFiles.length > 0) {
-    const shown = ctx.changedFiles.slice(0, MAX_RESUME_CHANGED_FILES);
+    const shown = ctx.changedFiles;
     lines.push(
       `Files already touched by the previous run:\n${shown.map((f) => `  - ${f}`).join("\n")}`,
     );

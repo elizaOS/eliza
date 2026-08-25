@@ -24,7 +24,9 @@ import {
   CapabilityError,
   getCapabilityRouter,
   type IAgentRuntime,
+  normalizeWorkspaceDeltaReceipt,
   sanitizeSpawnEnv,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
@@ -55,6 +57,32 @@ export interface ShellResult {
   sandbox: ShellSandboxBackend;
   timedOut: boolean;
   signal: NodeJS.Signals | null;
+  /** True only when complete capture was refused; stdout/stderr are empty. */
+  outputLimitExceeded?: boolean;
+  workspaceExecution?: {
+    root: string;
+    rootId: string;
+    executionDomainId: string;
+  };
+  workspaceDeltaReceipt?: WorkspaceDeltaReceipt;
+}
+
+const COMPLETE_SHELL_CAPTURE_LIMIT_CHARS = 1_000_000;
+
+function enforceCompleteCaptureLimit(result: ShellResult): ShellResult {
+  if (
+    result.outputLimitExceeded === true ||
+    result.stdout.length + result.stderr.length <=
+      COMPLETE_SHELL_CAPTURE_LIMIT_CHARS
+  ) {
+    return result;
+  }
+  return {
+    ...result,
+    stdout: "",
+    stderr: "",
+    outputLimitExceeded: true,
+  };
 }
 
 export interface BackgroundShellStartResult {
@@ -140,8 +168,6 @@ function toSandboxWorkdir(cwd: string): string | undefined {
   }
   return undefined;
 }
-
-const STREAM_CAP_CHARS = 30_000;
 
 function hostSpawnEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return applyHostExecutionBaseline(sanitizeSpawnEnv(env));
@@ -561,18 +587,30 @@ function runOnHostWithShell(
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let outputLimitExceeded = false;
+    const rejectOversizeCapture = () => {
+      if (outputLimitExceeded) return;
+      outputLimitExceeded = true;
+      stdout = "";
+      stderr = "";
+      killHostProcess(proc.pid, "SIGTERM", useProcessGroup, proc);
+    };
 
     // Preserve code points split across OS pipe chunks before accumulating.
     proc.stdout.setEncoding("utf8");
     proc.stderr.setEncoding("utf8");
     proc.stdout.on("data", (chunk: string) => {
-      if (stdout.length < STREAM_CAP_CHARS * 2) {
-        stdout += chunk;
+      if (outputLimitExceeded) return;
+      stdout += chunk;
+      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
+        rejectOversizeCapture();
       }
     });
     proc.stderr.on("data", (chunk: string) => {
-      if (stderr.length < STREAM_CAP_CHARS * 2) {
-        stderr += chunk;
+      if (outputLimitExceeded) return;
+      stderr += chunk;
+      if (stdout.length + stderr.length > COMPLETE_SHELL_CAPTURE_LIMIT_CHARS) {
+        rejectOversizeCapture();
       }
     });
 
@@ -595,6 +633,7 @@ function runOnHostWithShell(
         timedOut,
         durationMs: Date.now() - start,
         sandbox: "host",
+        outputLimitExceeded,
       });
     });
     proc.on("error", (err) => {
@@ -607,6 +646,7 @@ function runOnHostWithShell(
         timedOut,
         durationMs: Date.now() - start,
         sandbox: "host",
+        outputLimitExceeded,
       });
     });
   });
@@ -625,6 +665,22 @@ async function runThroughCapabilityRouter(
       cwd: opts.cwd,
       timeoutMs: opts.timeoutMs,
     });
+    const workspaceDeltaReceipt = result.workspaceDeltaReceipt
+      ? normalizeWorkspaceDeltaReceipt(result.workspaceDeltaReceipt)
+      : undefined;
+    if (
+      workspaceDeltaReceipt &&
+      (!result.workspaceExecution ||
+        workspaceDeltaReceipt.scope.root !== result.workspaceExecution.root ||
+        workspaceDeltaReceipt.scope.rootId !==
+          result.workspaceExecution.rootId ||
+        workspaceDeltaReceipt.scope.executionDomainId !==
+          result.workspaceExecution.executionDomainId)
+    ) {
+      throw new Error(
+        "routed workspace receipt does not match its attested execution scope",
+      );
+    }
     return {
       exitCode: result.exitCode ?? -1,
       signal: null,
@@ -633,6 +689,10 @@ async function runThroughCapabilityRouter(
       durationMs: Date.now() - start,
       timedOut: result.timedOut,
       sandbox: "capability-router",
+      ...(result.workspaceExecution
+        ? { workspaceExecution: result.workspaceExecution }
+        : {}),
+      ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
     };
   } catch (error) {
     // error-policy:J4 only the expected "no PTY capability" shape
@@ -669,7 +729,7 @@ export async function runShell(
   const mode = resolveRuntimeExecutionMode(runtime);
 
   const routed = await runThroughCapabilityRouter(runtime, opts);
-  if (routed) return routed;
+  if (routed) return enforceCompleteCaptureLimit(routed);
 
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
@@ -705,7 +765,7 @@ export async function runShell(
       workdir: sandboxWorkdir,
       timeoutMs: opts.timeoutMs,
     });
-    return {
+    return enforceCompleteCaptureLimit({
       exitCode: result.exitCode,
       signal: null,
       stdout: result.stdout,
@@ -713,13 +773,15 @@ export async function runShell(
       durationMs: result.durationMs,
       timedOut: false,
       sandbox: backendForManager(manager),
-    };
+    });
   }
 
-  return runOnHost({
-    command: opts.command,
-    cwd: opts.cwd,
-    timeoutMs: opts.timeoutMs,
-    env: hostSpawnEnv(process.env),
-  });
+  return enforceCompleteCaptureLimit(
+    await runOnHost({
+      command: opts.command,
+      cwd: opts.cwd,
+      timeoutMs: opts.timeoutMs,
+      env: hostSpawnEnv(process.env),
+    }),
+  );
 }

@@ -11,6 +11,7 @@
  */
 
 import { toast } from "sonner";
+import { apiWithStatus } from "../../lib/api-client";
 import { isSafeNavigationUrl } from "../../lib/navigation-url";
 
 const MAX_PAIRING_WAIT_MS = 120_000;
@@ -43,15 +44,9 @@ function setPopupMessage(popup: Window, message: string) {
   }
 }
 
-function retryAfterMs(res: Response, data: PairingTokenResponse): number {
+function retryAfterMs(data: PairingTokenResponse): number {
   const fromBody = data.data?.retryAfterMs;
   if (typeof fromBody === "number" && fromBody > 0) return fromBody;
-
-  const retryAfter = Number(res.headers.get("Retry-After"));
-  if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return retryAfter * 1000;
-  }
-
   return DEFAULT_RETRY_AFTER_MS;
 }
 
@@ -69,28 +64,26 @@ export async function openWebUIWithPairing(agentId: string): Promise<void> {
 
     const deadline = Date.now() + MAX_PAIRING_WAIT_MS;
     while (Date.now() < deadline) {
-      const res = await fetch(`/api/v1/eliza/agents/${agentId}/pairing-token`, {
-        method: "POST",
-      });
-      const data = (await res
-        .json()
-        .catch(() => ({ error: "Unknown error" }))) as PairingTokenResponse;
+      const { status, data } = await apiWithStatus<PairingTokenResponse>(
+        `/api/v1/eliza/agents/${agentId}/pairing-token`,
+        { method: "POST" },
+      );
 
       if (popup.closed) return;
 
-      if (res.status === 202) {
+      if (status === 202) {
         const message =
           data.data?.message ??
           "Agent is starting. Connecting when the Web UI is ready…";
         setPopupMessage(popup, message);
-        await sleep(retryAfterMs(res, data));
+        await sleep(retryAfterMs(data));
         continue;
       }
 
-      if (!res.ok) {
+      if (status < 200 || status >= 300) {
         popup.close();
         toast.error(
-          data.error || `Failed to generate pairing token (HTTP ${res.status})`,
+          data.error || `Failed to generate pairing token (HTTP ${status})`,
         );
         return;
       }

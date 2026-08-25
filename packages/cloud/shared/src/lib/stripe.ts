@@ -35,6 +35,13 @@ type PinnedStripeApiVersion = Stripe.WebhookEndpointCreateParams.ApiVersion;
 type StripeConstructorConfig = NonNullable<ConstructorParameters<typeof Stripe>[1]>;
 
 const STRIPE_API_VERSION: PinnedStripeApiVersion = "2024-11-20.acacia";
+const CLOUD_E2E_STRIPE_SECRET_KEY = "sk_test_cloud_e2e";
+
+interface CloudE2EStripeEndpoint {
+  host: string;
+  port: string;
+  protocol: "http";
+}
 
 let stripeInstance: Stripe | null = null;
 let stripeInitError: Error | null = null;
@@ -48,7 +55,72 @@ function buildStripeCacheKey(
   env: Record<string, string | undefined>,
   secretKey: string | undefined,
 ): string {
-  return [env.ENVIRONMENT ?? "", env.NODE_ENV ?? "", secretKey ?? "missing"].join("\0");
+  return [
+    env.ENVIRONMENT ?? "",
+    env.NODE_ENV ?? "",
+    env.CLOUD_E2E ?? "",
+    env.STRIPE_CLOUD_E2E_API_ORIGIN ?? "",
+    secretKey ?? "missing",
+  ].join("\0");
+}
+
+/**
+ * Resolve the Stripe-compatible loopback endpoint used by the full cloud E2E
+ * harness. This is deliberately not a generic Stripe base-URL override: an
+ * override is accepted only for the exact synthetic test key and only inside
+ * the explicit local E2E runtime.
+ */
+function resolveCloudE2EStripeEndpoint(
+  env: Record<string, string | undefined>,
+  secretKey: string,
+): CloudE2EStripeEndpoint | null {
+  const rawOrigin = env.STRIPE_CLOUD_E2E_API_ORIGIN?.trim();
+  if (!rawOrigin) {
+    if (secretKey === CLOUD_E2E_STRIPE_SECRET_KEY) {
+      throw new Error(
+        "SECURITY: the synthetic Stripe Cloud E2E key requires its canonical loopback endpoint",
+      );
+    }
+    return null;
+  }
+
+  if (
+    env.CLOUD_E2E !== "1" ||
+    env.NODE_ENV !== "test" ||
+    env.ENVIRONMENT !== "local" ||
+    secretKey !== CLOUD_E2E_STRIPE_SECRET_KEY
+  ) {
+    throw new Error(
+      "SECURITY: the Stripe Cloud E2E endpoint is allowed only in the explicit local CLOUD_E2E test runtime with its synthetic test key",
+    );
+  }
+
+  let origin: URL;
+  try {
+    origin = new URL(rawOrigin);
+  } catch {
+    throw new Error("SECURITY: the Stripe Cloud E2E endpoint must be a valid loopback origin");
+  }
+  if (
+    origin.protocol !== "http:" ||
+    origin.hostname !== "127.0.0.1" ||
+    !origin.port ||
+    origin.pathname !== "/" ||
+    origin.search ||
+    origin.hash ||
+    origin.username ||
+    origin.password
+  ) {
+    throw new Error(
+      "SECURITY: the Stripe Cloud E2E endpoint must be an http://127.0.0.1:<port> origin without credentials, path, query, or fragment",
+    );
+  }
+  const port = Number(origin.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error("SECURITY: the Stripe Cloud E2E endpoint must use an explicit valid port");
+  }
+
+  return { host: origin.hostname, port: origin.port, protocol: "http" };
 }
 
 /**
@@ -101,9 +173,28 @@ function initStripe(): Stripe | null {
     );
   }
 
+  let cloudE2EEndpoint: CloudE2EStripeEndpoint | null;
+  try {
+    cloudE2EEndpoint = resolveCloudE2EStripeEndpoint(env, secretKey);
+  } catch (error) {
+    stripeInitError = error instanceof Error ? error : new Error(String(error));
+    stripeInstance = null;
+    stripeCacheKey = cacheKey;
+    logger.error(`[Stripe] ${stripeInitError.message}`);
+    return null;
+  }
+
   stripeInstance = new Stripe(secretKey, {
     typescript: true,
     apiVersion: STRIPE_API_VERSION as StripeConstructorConfig["apiVersion"],
+    ...(cloudE2EEndpoint
+      ? {
+          ...cloudE2EEndpoint,
+          // A deliberately lost provider response must surface to the Worker;
+          // the durable checkout-order reconciliation owns the retry policy.
+          maxNetworkRetries: 0,
+        }
+      : {}),
   });
   stripeInitError = null;
   stripeCacheKey = cacheKey;
@@ -153,7 +244,13 @@ export function isStripeConfigured(): boolean {
   // A live key outside production is treated as NOT configured (#13752):
   // callers that gate on this helper degrade gracefully instead of creating
   // real-money checkout sessions against a non-prod database.
-  return !shouldBlockLiveStripeKeyOutsideProduction(env);
+  if (shouldBlockLiveStripeKeyOutsideProduction(env)) return false;
+  try {
+    resolveCloudE2EStripeEndpoint(env, key);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

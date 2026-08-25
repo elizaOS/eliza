@@ -81,4 +81,46 @@ describe("useJobPoller — sleep-wake / backgrounding lifecycle (#9943)", () => 
     });
     expect(fetchMock.mock.calls.length).toBeGreaterThan(beforeBackground);
   });
+
+  it("aborts a hung poll hop at the per-poll timeout instead of pinning the poller", async () => {
+    // A jobs endpoint that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the per-poll `AbortSignal.timeout(10s)`).
+    // Note: Node's AbortSignal.timeout uses an internal timer that vitest fake
+    // timers cannot drive, so back it with the faked global setTimeout here.
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), ms);
+      return controller.signal;
+    });
+    const hungFetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            ),
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", hungFetch);
+    const { result } = renderHook(() => useJobPoller({ intervalMs: 60_000 }));
+
+    // Tracking an active job arms the poll effect (immediate poll + interval).
+    await act(async () => {
+      result.current.track("agent-1", "job-1");
+      await Promise.resolve();
+    });
+    expect(hungFetch).toHaveBeenCalledTimes(1);
+    expect(hungFetch.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+
+    // The hung hop aborts after the 10s bound; the in-flight guard resets in
+    // the finally block, so the NEXT interval tick still fires a fresh poll.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_100);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(hungFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
 });

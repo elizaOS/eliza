@@ -308,10 +308,10 @@ export function LoginsTab() {
           {...addLoginAgentProps}
           variant="outline"
           size="sm"
-          className="h-8 shrink-0 gap-1 rounded-sm px-2"
+          className="shrink-0"
           onClick={() => setShowAdd((v) => !v)}
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <Plus className="size-3.5" aria-hidden />
           {t("logins.addLogin", { defaultValue: "Add login" })}
         </Button>
       </div>
@@ -366,10 +366,10 @@ export function LoginsTab() {
               <Input
                 ref={addDomainRef}
                 {...addDomainAgentProps}
+                density="compact"
                 value={addDomain}
                 onChange={(e) => setAddDomain(e.target.value)}
                 placeholder="github.com"
-                className="h-8 text-xs"
                 autoComplete="off"
                 required
               />
@@ -383,10 +383,10 @@ export function LoginsTab() {
               <Input
                 ref={addUsernameRef}
                 {...addUsernameAgentProps}
+                density="compact"
                 value={addUsername}
                 onChange={(e) => setAddUsername(e.target.value)}
                 placeholder="alice@example.com"
-                className="h-8 text-xs"
                 autoComplete="off"
                 required
               />
@@ -400,9 +400,9 @@ export function LoginsTab() {
               ref={addPasswordRef}
               {...addPasswordAgentProps}
               type="password"
+              density="compact"
               value={addPassword}
               onChange={(e) => setAddPassword(e.target.value)}
-              className="h-8 text-xs"
               autoComplete="new-password"
               required
             />
@@ -414,7 +414,6 @@ export function LoginsTab() {
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 rounded-sm px-3 text-xs"
               onClick={() => setShowAdd(false)}
               disabled={submitting}
             >
@@ -426,14 +425,13 @@ export function LoginsTab() {
               type="submit"
               variant="default"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-3 text-xs"
               disabled={
                 submitting || !addDomain.trim() || !addUsername || !addPassword
               }
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
                   {t("logins.saving", { defaultValue: "Saving…" })}
                 </>
               ) : (
@@ -448,12 +446,12 @@ export function LoginsTab() {
         <Input
           ref={filterRef}
           {...filterAgentProps}
+          density="compact"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder={t("logins.filterPlaceholder", {
             defaultValue: "Filter by title, user, or domain",
           })}
-          className="h-8 text-xs"
           autoComplete="off"
           data-testid="saved-logins-filter"
         />
@@ -461,13 +459,13 @@ export function LoginsTab() {
 
       {logins === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{" "}
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />{" "}
           {t("logins.loading", { defaultValue: "Loading…" })}
         </div>
       ) : logins.length === 0 ? (
         <div
           data-testid="saved-logins-empty"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
         >
           {t("logins.empty", {
             defaultValue:
@@ -477,7 +475,7 @@ export function LoginsTab() {
       ) : filtered.length === 0 ? (
         <div
           data-testid="saved-logins-no-match"
-          className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+          className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
         >
           {t("logins.noMatch", {
             filter,
@@ -570,18 +568,17 @@ function AgentAutoallowToggle({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
-      size="sm"
-      className={`h-7 w-7 shrink-0 rounded-sm p-0 ${
-        allowed ? "text-accent hover:text-accent" : "text-muted hover:text-txt"
-      }`}
+      variant="selection"
+      size="tiny"
+      data-state={allowed ? "on" : "off"}
+      className="shrink-0"
       aria-label={label}
       title={label}
       onClick={() => onChange(!allowed)}
       data-testid={`agent-autoallow-toggle-${domain}`}
       data-allowed={allowed ? "1" : "0"}
     >
-      <Bot className="h-3.5 w-3.5" aria-hidden />
+      <Bot className="size-3.5" aria-hidden />
     </Button>
   );
 }
@@ -607,16 +604,16 @@ function DeleteLoginButton({
     <Button
       ref={ref}
       {...agentProps}
-      variant="ghost"
-      size="sm"
-      className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
+      variant="destructive"
+      size="icon-sm"
+      className="shrink-0"
       aria-label={t("logins.deleteLabel", {
         target,
         defaultValue: "Delete saved login for {{target}}",
       })}
       onClick={onDelete}
     >
-      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+      <Trash2 className="size-3.5" aria-hidden />
     </Button>
   );
 }
@@ -649,7 +646,7 @@ function ExternalRowAction({ login }: { login: SavedLogin }) {
       aria-label={viewLabel}
       title={viewLabel}
     >
-      <ExternalLink className="h-3 w-3" aria-hidden />
+      <ExternalLink className="size-3" aria-hidden />
       {t("logins.view", { defaultValue: "View" })}
     </a>
   );

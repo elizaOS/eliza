@@ -1,21 +1,19 @@
 #!/usr/bin/env node
 /**
- * Story-coverage report: for every .tsx in packages/ui/src/components/ that
- * defines a React component, checks whether a sibling *.stories.tsx exists.
- * Emits a markdown report + JSON.
+ * Story-coverage report for React components under packages/ui/src/components.
+ * A component is covered by a sibling story or an import from any story file.
+ * The script prints a summary and can write Markdown and JSON reports.
  *
- * Usage: bun run scripts/stories-coverage.mjs [--all]
- *   --all   include non-/components/ files (chat, apps, etc.)
+ * Usage: node scripts/stories-coverage.mjs [--all] [--check] [--write-report]
+ *   --all          include components outside src/components
+ *   --check        fail on count, ratio, or newly missing-story regressions
+ *   --write-report write the JSON and Markdown reports under scripts
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractLocalStoryImports,
-  findStoryCoverageRegressions,
-  resolveLocalStoryImport,
-} from "./story-coverage-ratchet.mjs";
+import { compareCoverage } from "./stories-coverage-gate.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -23,8 +21,31 @@ const componentsRoot = path.resolve(pkgRoot, "src/components");
 
 const args = process.argv.slice(2);
 const onlyComponents = !args.includes("--all");
-const updateBaseline = args.includes("--update-baseline");
 const writeReport = args.includes("--write-report");
+const checkCoverage = args.includes("--check");
+
+function extractLocalStoryImports(source) {
+  const imports = [];
+  const pattern = /(?:\bfrom\s*|\bimport\s*)["']([^"']+)["']/gu;
+  for (const match of source.matchAll(pattern)) {
+    if (match[1].startsWith(".")) imports.push(match[1]);
+  }
+  return imports;
+}
+
+function resolveLocalStoryImport(storyFile, specifier, fileExists) {
+  const base = path.resolve(path.dirname(storyFile), specifier);
+  for (const candidate of [
+    base,
+    `${base}.tsx`,
+    `${base}.ts`,
+    path.join(base, "index.tsx"),
+    path.join(base, "index.ts"),
+  ]) {
+    if (fileExists(candidate)) return candidate;
+  }
+  return null;
+}
 
 function* walk(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -139,6 +160,24 @@ const report = {
   present,
 };
 
+if (checkCoverage) {
+  const baselinePath = path.join(here, "stories-coverage-baseline.json");
+  let baseline;
+  try {
+    baseline = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read story coverage baseline: ${baselinePath}`, {
+      cause: error,
+    });
+  }
+  const comparison = compareCoverage(report, baseline);
+  if (comparison.failures.length > 0) {
+    throw new Error(
+      `Story coverage regression:\n${comparison.failures.join("\n")}`,
+    );
+  }
+}
+
 // Group missing by top-level directory
 const byDir = new Map();
 for (const m of missing) {
@@ -172,24 +211,6 @@ if (writeReport) {
   );
 }
 
-const baselinePath = path.join(here, "stories-coverage-baseline.json");
-const baseline = {
-  componentFiles: report.componentFiles,
-  withStories: report.withStories,
-  missingStories: report.missingStories,
-  missing: report.missing,
-};
-if (updateBaseline) {
-  fs.writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
-} else {
-  const previous = JSON.parse(fs.readFileSync(baselinePath, "utf8"));
-  const regressions = findStoryCoverageRegressions(report, previous);
-  if (regressions.length > 0) {
-    throw new Error(
-      `Story coverage regressed with ${regressions.length} newly uncovered component${regressions.length === 1 ? "" : "s"}:\n${regressions.map((file) => `- ${file}`).join("\n")}`,
-    );
-  }
-}
 if (writeReport) {
   fs.writeFileSync(
     path.join(here, "stories-coverage-report.md"),
@@ -205,4 +226,3 @@ if (writeReport) {
   console.log(`\nWrote: scripts/stories-coverage-report.json`);
   console.log(`Wrote: scripts/stories-coverage-report.md`);
 }
-if (updateBaseline) console.log("Updated story coverage baseline.");

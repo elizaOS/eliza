@@ -118,3 +118,111 @@ describe("Google Chat account config", () => {
     ]);
   });
 });
+
+describe("resolveGoogleChatAccountSettings owner-bind fail-closed", () => {
+  const ownerCharacter = {
+    googleChat: {
+      serviceAccount: '{"client_email":"owner@example.com"}',
+      serviceAccountFile: "/owner/sa.json",
+      audience: "https://owner.example.com/googlechat",
+      spaces: ["spaces/OWNER"],
+    },
+  };
+  const ownerEnv = {
+    GOOGLE_CHAT_SERVICE_ACCOUNT: '{"client_email":"env@example.com"}',
+    GOOGLE_CHAT_SERVICE_ACCOUNT_FILE: "/env/sa.json",
+    GOOGLE_CHAT_AUDIENCE: "https://env.example.com/googlechat",
+  };
+
+  it("lets the default account inherit owner character service-account credentials", () => {
+    const rt = runtime({}, ownerCharacter);
+    const resolved = resolveGoogleChatAccountSettings(rt, "default");
+    expect(resolved.accountId).toBe("default");
+    expect(resolved.serviceAccount).toBe('{"client_email":"owner@example.com"}');
+    expect(resolved.serviceAccountFile).toBe("/owner/sa.json");
+  });
+
+  it("does not give a ghost accountId the owner service-account JSON or key file", () => {
+    const rt = runtime({}, ownerCharacter);
+    const ghost = resolveGoogleChatAccountSettings(rt, "ghost-account");
+    expect(ghost.accountId).toBe("ghost-account");
+    expect(ghost.serviceAccount).toBeUndefined();
+    expect(ghost.serviceAccountFile).toBeUndefined();
+  });
+
+  it("does not let a named account without its own credentials inherit character tokens", () => {
+    const rt = runtime(
+      {},
+      {
+        googleChat: {
+          ...ownerCharacter.googleChat,
+          accounts: {
+            partner: { enabled: true, audience: "https://partner.example.com/googlechat" },
+          },
+        },
+      }
+    );
+    const partner = resolveGoogleChatAccountSettings(rt, "partner");
+    expect(partner.accountId).toBe("partner");
+    expect(partner.serviceAccount).toBeUndefined();
+    expect(partner.serviceAccountFile).toBeUndefined();
+    expect(partner.audience).toBe("https://partner.example.com/googlechat");
+  });
+
+  it("keeps a named account own credentials and does not attach owner character secrets", () => {
+    const rt = runtime(
+      {},
+      {
+        googleChat: {
+          ...ownerCharacter.googleChat,
+          accounts: {
+            partner: {
+              serviceAccount: '{"client_email":"partner@example.com"}',
+              serviceAccountFile: "/partner/sa.json",
+              audience: "https://partner.example.com/googlechat",
+            },
+          },
+        },
+      }
+    );
+    const partner = resolveGoogleChatAccountSettings(rt, "partner");
+    expect(partner.serviceAccount).toBe('{"client_email":"partner@example.com"}');
+    expect(partner.serviceAccountFile).toBe("/partner/sa.json");
+  });
+
+  it("does not give a ghost accountId owner env credentials either", () => {
+    const rt = runtime(ownerEnv);
+    const ghost = resolveGoogleChatAccountSettings(rt, "ghost-account");
+    expect(ghost.serviceAccount).toBeUndefined();
+    expect(ghost.serviceAccountFile).toBeUndefined();
+    const def = resolveGoogleChatAccountSettings(rt, "default");
+    expect(def.serviceAccount).toBe('{"client_email":"env@example.com"}');
+    expect(def.serviceAccountFile).toBe("/env/sa.json");
+  });
+
+  it("binds application-default credentials only to the default account", () => {
+    const previous = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/owner/application-default.json";
+    try {
+      const rt = runtime();
+      expect(resolveGoogleChatAccountSettings(rt, "default").serviceAccountFile).toBe(
+        "/owner/application-default.json"
+      );
+      expect(
+        resolveGoogleChatAccountSettings(rt, "ghost-account").serviceAccountFile
+      ).toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    }
+  });
+
+  it("fails closed when readGoogleChatAccountId supplies a ghost id from request metadata", () => {
+    const rt = runtime({}, ownerCharacter);
+    const accountId = readGoogleChatAccountId({ metadata: { accountId: "ghost-account" } });
+    expect(accountId).toBe("ghost-account");
+    const ghost = resolveGoogleChatAccountSettings(rt, accountId);
+    expect(ghost.serviceAccount).toBeUndefined();
+    expect(ghost.serviceAccountFile).toBeUndefined();
+  });
+});

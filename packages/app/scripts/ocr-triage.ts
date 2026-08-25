@@ -18,13 +18,10 @@
  * the DOM report row count and a stale render can never be mis-reported as a
  * current regression (#15790).
  *
- * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>] [--baseline <json>]`.
+ * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>]`.
  * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.mjs`, which prefers the
  * installed `tesseract.js` package so CI and local verification do not depend on
- * Homebrew/apt state. A `--baseline` file lists `slug::viewport` regressions already tracked by
- * an issue; the gate exits non-zero only on a regression NOT in that baseline —
- * the same ratchet posture as the aesthetic audit's verdict-debt map, so a known
- * bug stays visible without wedging CI while a NEW pixel-broken render fails it.
+ * Homebrew/apt state. Every pixel-broken regression fails the gate directly.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -353,15 +350,6 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
     (process.env.ELIZA_AUDIT_APP_DIR?.trim() || "aesthetic-audit-output");
   const outPath = args.out ?? join(auditDir, "ocr-triage.json");
 
-  // Baseline = `slug::viewport` keys of regressions already tracked by an issue.
-  // A regression in the baseline is known debt (reported, not gating); one that
-  // is NOT in the baseline is a new pixel-broken render and fails the gate.
-  const baseline: Set<string> = new Set(
-    args.baseline && existsSync(args.baseline)
-      ? (JSON.parse(readFileSync(args.baseline, "utf8")).known ?? [])
-      : [],
-  );
-
   const reportPath = join(auditDir, "report.json");
   if (!existsSync(reportPath)) {
     throw new Error(`Current audit report is missing: ${reportPath}`);
@@ -479,12 +467,8 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   });
 
   const regressions = entries.filter((e) => e.regression);
-  const newRegressions = regressions.filter(
-    (e) => !baseline.has(`${e.slug}::${e.viewport}`),
-  );
-  const knownRegressions = regressions.filter((e) =>
-    baseline.has(`${e.slug}::${e.viewport}`),
-  );
+  const newRegressions = regressions;
+  const knownRegressions: TriageEntry[] = [];
 
   const summary = {
     total: entries.length,
@@ -502,16 +486,6 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   console.log(
     `[ocr-triage] ${summary.total} views | verified ${summary.verified} | broken ${summary.broken} | needs-eyeball ${summary.needsEyeball}`,
   );
-  if (knownRegressions.length) {
-    console.log(
-      `\n[ocr-triage] ${knownRegressions.length} known regression(s) (baselined — tracked by issue):`,
-    );
-    for (const e of knownRegressions) {
-      console.log(
-        `  · ${e.slug} [${e.viewport}] dom=${e.domVerdict} → broken: ${e.reasons.join("; ")}`,
-      );
-    }
-  }
   if (newRegressions.length) {
     console.log(
       `\n[ocr-triage] ${newRegressions.length} NEW REGRESSION(S) — DOM audit passed, pixels are broken:`,

@@ -84,8 +84,6 @@ export interface Eliza1EotScorerOptions {
 	loraPath?: string;
 	/** Adapter scale (default 1.0). Only meaningful when `loraPath` is set. */
 	loraScale?: number;
-	/** Max history tokens to keep in the prompt window. LiveKit uses 128. */
-	maxHistoryTokens?: number;
 	/** Context size for the dedicated EOT context. Default 512. */
 	contextSize?: number;
 	/** Model label for telemetry. */
@@ -110,7 +108,6 @@ export class Eliza1EotScorer {
 	private readonly model: LlamaModelLike;
 	private readonly loraPath: string | undefined;
 	private readonly loraScale: number | undefined;
-	private readonly maxHistoryTokens: number;
 	private readonly contextSize: number;
 	readonly modelLabel: string;
 
@@ -125,7 +122,6 @@ export class Eliza1EotScorer {
 		this.model = options.model;
 		this.loraPath = options.loraPath;
 		this.loraScale = options.loraScale;
-		this.maxHistoryTokens = options.maxHistoryTokens ?? 128;
 		this.contextSize = options.contextSize ?? 512;
 		this.modelLabel =
 			options.modelLabel ??
@@ -207,8 +203,12 @@ export class Eliza1EotScorer {
 	): number[] {
 		const formatted = formatEotPrompt(transcript, contract);
 		const ids = this.model.tokenize(formatted, true);
-		if (ids.length <= this.maxHistoryTokens) return [...ids];
-		return [...ids.slice(ids.length - this.maxHistoryTokens)];
+		if (ids.length > this.contextSize) {
+			throw new RangeError(
+				`[voice] Eliza1EotScorer: complete prompt requires ${ids.length} tokens, exceeding the dedicated ${this.contextSize}-token context.`,
+			);
+		}
+		return [...ids];
 	}
 
 	private async runOnce(

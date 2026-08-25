@@ -2,12 +2,14 @@
  * Ensures a requested Ollama model exists before inference, pulling it once
  * when the daemon reports it missing and surfacing every transport failure.
  */
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 async function responseDetail(response: Response): Promise<string> {
   try {
     const body = (await response.text()).trim();
-    return body.length > 0 ? body.slice(0, 500) : response.statusText;
+    return body.length > 0
+      ? truncateWellFormed(toWellFormedUnicode(body), 500)
+      : response.statusText;
   } catch (error) {
     // error-policy:J4 the HTTP status remains authoritative; preserve an
     // explicit unavailable marker instead of disguising the missing body.

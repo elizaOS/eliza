@@ -111,4 +111,31 @@ describe("computeAwakeProbability", () => {
     }
     expect(awake.computedAt).toBe(iso(nowDay));
   });
+
+  it("selects strongest evidence deterministically when evidence confidences contain non-finite numbers", () => {
+    const result = computeAwakeProbability(
+      args({
+        nowMs: now3am,
+        timezone: "UTC",
+        signals: [],
+        windows: [],
+        sleepCycle: {
+          isProbablySleeping: true,
+          sleepConfidence: 0.9,
+          currentSleepStartedAt: iso(now3am - 4 * 3_600_000),
+          lastSleepEndedAt: null,
+          sleepStatus: "sleeping_now",
+          evidence: [
+            { source: "device_gap", confidence: Number.NaN },
+            { source: "wearable_tracker", confidence: 0.85 },
+            { source: "ambient_sensor", confidence: 0.5 },
+          ],
+        },
+        regularity: insufficientRegularity,
+      }),
+    );
+    expect(result.contributingSources.map((c) => c.source)).toContain(
+      "wearable_tracker",
+    );
+  });
 });

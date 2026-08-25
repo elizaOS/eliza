@@ -24,11 +24,14 @@
       "@elizaos/capacitor-bun-runtime": [
         "../plugin-native-bun-runtime/src/index.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
       "@elizaos/plugin-whatsapp": ["../plugin-whatsapp/src/index.ts"],
       "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "include": ["auto-enable.ts", "src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
   "exclude": [
     "dist",
     "node_modules",

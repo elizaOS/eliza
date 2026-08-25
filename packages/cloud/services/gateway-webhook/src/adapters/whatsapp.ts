@@ -2,7 +2,35 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
+import { boundedGatewayFetch } from "./bounded-fetch";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+  type WebhookConfig,
+} from "./types";
+
+const WHATSAPP_REQUEST_TIMEOUT_MS = 30_000;
+const WHATSAPP_RESPONSE_MAX_BYTES = 64 * 1024;
+
+/**
+ * Bound every WhatsApp Cloud API hop so a hung gateway cannot pin the
+ * adapter. A caller-provided abort signal is composed with the timeout
+ * (either cancelling aborts), not substituted for it.
+ */
+export function whatsappFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = WHATSAPP_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedGatewayFetch(
+    fetch,
+    input,
+    init,
+    timeoutMs,
+    WHATSAPP_RESPONSE_MAX_BYTES,
+  );
+}
 
 const WHATSAPP_API_BASE = "https://graph.facebook.com/v21.0";
 
@@ -53,6 +81,84 @@ const WhatsAppWebhookPayloadSchema = z.object({
     }),
   ),
 });
+
+async function sendWhatsAppReply(
+  config: WebhookConfig,
+  event: ChatEvent,
+  text: string,
+): Promise<string[]> {
+  if (!config.accessToken || !config.phoneNumberId) {
+    throw new PlatformDeliveryError(
+      "Missing WhatsApp credentials for reply",
+      "failed",
+      "DELIVERY_CREDENTIALS_MISSING",
+      false,
+    );
+  }
+  const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
+  const response = await whatsappFetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: event.senderId,
+      type: "text",
+      text: { body: text },
+    }),
+  });
+  if (!response.ok) {
+    throw new PlatformDeliveryError(
+      `WhatsApp rejected delivery (${response.status})`,
+      response.status >= 500 ? "uncertain" : "failed",
+      "DELIVERY_PROVIDER_REJECTED",
+      response.status === 429,
+      response.status,
+    );
+  }
+  let receipt: unknown;
+  try {
+    receipt = await response.json();
+  } catch (cause) {
+    // error-policy:J2 preserve the provider parse failure while adding a
+    // stable delivery classification for the gateway boundary.
+    throw new PlatformDeliveryError(
+      "WhatsApp accepted delivery without a valid receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+      undefined,
+      { cause },
+    );
+  }
+  const messages =
+    receipt && typeof receipt === "object"
+      ? (receipt as { messages?: unknown }).messages
+      : undefined;
+  const providerMessageIds = Array.isArray(messages)
+    ? messages
+        .map((message) =>
+          message &&
+          typeof message === "object" &&
+          typeof (message as { id?: unknown }).id === "string"
+            ? (message as { id: string }).id.trim()
+            : "",
+        )
+        .filter(Boolean)
+    : [];
+  if (providerMessageIds.length === 0) {
+    throw new PlatformDeliveryError(
+      "WhatsApp accepted delivery without a message receipt",
+      "uncertain",
+      "DELIVERY_RECEIPT_INVALID",
+      false,
+    );
+  }
+  return providerMessageIds;
+}
 
 export const whatsappAdapter: PlatformAdapter = {
   platform: "whatsapp",
@@ -149,30 +255,11 @@ export const whatsappAdapter: PlatformAdapter = {
     event: ChatEvent,
     text: string,
   ): Promise<void> {
-    if (!config.accessToken || !config.phoneNumberId) {
-      throw new Error("Missing WhatsApp credentials for reply");
-    }
+    await sendWhatsAppReply(config, event, text);
+  },
 
-    const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        recipient_type: "individual",
-        to: event.senderId,
-        type: "text",
-        text: { body: text },
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`WhatsApp send error (${response.status}): ${errorText}`);
-    }
+  async sendReplyWithReceipt(config, event, text) {
+    return { providerMessageIds: await sendWhatsAppReply(config, event, text) };
   },
 
   async sendTypingIndicator(
@@ -182,7 +269,7 @@ export const whatsappAdapter: PlatformAdapter = {
     if (!config.accessToken || !config.phoneNumberId) return;
     try {
       const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;
-      await fetch(url, {
+      await whatsappFetch(url, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${config.accessToken}`,

@@ -58,7 +58,7 @@ export function CreditBalanceDisplay() {
           })}
         </div>
         <div className="flex items-center justify-center py-2">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -66,9 +66,9 @@ export function CreditBalanceDisplay() {
 
   if (error || creditBalance === null) {
     return (
-      <div className="rounded-sm border border-red-500/40 bg-red-500/10 p-4">
-        <div className="flex items-center gap-2 text-sm text-red-400">
-          <AlertCircle className="h-4 w-4" />
+      <div className="rounded-sm border border-destructive/40 bg-destructive-subtle p-4">
+        <div className="flex items-center gap-2 text-sm text-destructive">
+          <AlertCircle className="size-4" />
           {error
             ? t("cloud.successClient.couldNotLoadBalanceWithError", {
                 error,
@@ -82,9 +82,8 @@ export function CreditBalanceDisplay() {
           variant="ghost"
           type="button"
           onClick={() => void fetchCreditBalance()}
-          className="mt-2 inline-flex items-center gap-1 text-xs text-red-300 hover:text-red-200"
         >
-          <RefreshCw className="h-3 w-3" />
+          <RefreshCw className="size-3" />
           {t("cloud.successClient.refreshBalance", {
             defaultValue: "Refresh balance",
           })}

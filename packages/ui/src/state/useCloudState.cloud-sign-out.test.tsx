@@ -16,6 +16,8 @@ const getCloudStatusMock = vi.hoisted(() => vi.fn());
 const getCloudCreditsMock = vi.hoisted(() => vi.fn());
 const cloudDisconnectMock = vi.hoisted(() => vi.fn());
 const signOutFromSsoBridgedHostMock = vi.hoisted(() => vi.fn());
+const isElizaCloudRuntimeLockedMock = vi.hoisted(() => vi.fn());
+const isAppModeHostMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({
   client: {
@@ -30,11 +32,15 @@ vi.mock("../cloud/sso-bridge/sso-bridge", () => ({
   signOutFromSsoBridgedHost: signOutFromSsoBridgedHostMock,
 }));
 
+vi.mock("../cloud/app-mode/app-mode", () => ({
+  isAppModeHost: isAppModeHostMock,
+}));
+
 vi.mock("../first-run/mobile-runtime-mode", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../first-run/mobile-runtime-mode")
   >()),
-  isElizaCloudRuntimeLocked: () => true,
+  isElizaCloudRuntimeLocked: isElizaCloudRuntimeLockedMock,
 }));
 
 function makeParams() {
@@ -45,7 +51,7 @@ function makeParams() {
   };
 }
 
-describe("useCloudState — locked Cloud account sign-out", () => {
+describe("useCloudState — Cloud account sign-out", () => {
   beforeEach(() => {
     getCloudStatusMock.mockResolvedValue({
       connected: true,
@@ -59,6 +65,8 @@ describe("useCloudState — locked Cloud account sign-out", () => {
     });
     cloudDisconnectMock.mockResolvedValue(undefined);
     signOutFromSsoBridgedHostMock.mockResolvedValue(undefined);
+    isElizaCloudRuntimeLockedMock.mockReturnValue(true);
+    isAppModeHostMock.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -93,5 +101,28 @@ describe("useCloudState — locked Cloud account sign-out", () => {
 
     await waitFor(() => expect(client.getCloudStatus).toHaveBeenCalled());
     expect(result.current.elizaCloudConnected).toBe(false);
+  });
+
+  it("uses cross-host logout on the hosted Cloud app", async () => {
+    isElizaCloudRuntimeLockedMock.mockReturnValue(false);
+    isAppModeHostMock.mockReturnValue(true);
+    const params = makeParams();
+    const { result } = renderHook(() => useCloudState(params));
+
+    act(() => {
+      result.current.setElizaCloudEnabled(true);
+      result.current.setElizaCloudConnected(true);
+      result.current.setElizaCloudUserId("hosted-user-before-sign-out");
+    });
+
+    await act(async () => {
+      await result.current.handleCloudSignOut();
+    });
+
+    expect(signOutFromSsoBridgedHost).toHaveBeenCalledTimes(1);
+    expect(client.cloudDisconnect).not.toHaveBeenCalled();
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudEnabled).toBe(false);
+    expect(result.current.elizaCloudUserId).toBeNull();
   });
 });

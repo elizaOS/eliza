@@ -14,11 +14,11 @@ import {
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
+import { navigateBrowserPath } from "../../app-navigate-view";
 import { useAppSelectorShallow } from "../../state";
 import { claimCloudLoginWindow } from "../../state/cloud-login-launch";
 import { openExternalUrl } from "../../utils";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import {
   CloudServicesSection,
@@ -31,7 +31,6 @@ import {
   EVM_RPC_OPTIONS,
   SOLANA_RPC_OPTIONS,
 } from "./config-page-sections.helpers";
-import { SecretsView } from "./SecretsView";
 
 /* ── ConfigPageView ──────────────────────────────────────────────────── */
 
@@ -84,8 +83,8 @@ function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
       </p>
       <Button
         aria-label="Open Eliza Cloud sign-in in your browser"
-        variant="ghost"
-        className="block h-auto w-full whitespace-normal break-all px-0 py-0 text-left text-xs font-normal text-accent underline-offset-2 hover:bg-transparent hover:underline"
+        variant="externalLink"
+        className="block w-full whitespace-normal break-all"
         onClick={() => void openExternalUrl(browserUrl)}
       >
         {browserUrl}
@@ -121,7 +120,6 @@ export function ConfigPageView({
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
   }));
 
-  const [secretsOpen, setSecretsOpen] = useState(false);
   const manualRpcModeSelection = useRef(false);
 
   const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
@@ -144,6 +142,7 @@ export function ConfigPageView({
   const handleRpcFieldChange = useCallback((key: string, value: unknown) => {
     setRpcFieldValues((prev) => ({ ...prev, [key]: String(value ?? "") }));
   }, []);
+  const handleOpenVault = useCallback(() => navigateBrowserPath("/vault"), []);
 
   /* ── RPC provider selection state ──────────────────────────────────── */
   const initialSelectedRpc = allCloud ? CLOUD_RPC_SELECTIONS : initialRpc;
@@ -380,12 +379,12 @@ export function ConfigPageView({
     },
   });
   const secretsEl = useAgentElement<HTMLButtonElement>({
-    id: "open-secrets",
+    id: "open-vault",
     role: "button",
-    label: t("configpageview.Secrets", { defaultValue: "Secrets" }),
+    label: t("configpageview.Secrets", { defaultValue: "Vault" }),
     group: "rpc-config",
-    description: "Open the secrets vault to manage API keys",
-    onActivate: () => setSecretsOpen(true),
+    description: "Open the Vault workspace to manage encrypted credentials",
+    onActivate: handleOpenVault,
   });
 
   return (
@@ -408,15 +407,14 @@ export function ConfigPageView({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           <Button
             ref={cloudModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "cloud" ? "on" : "off"}
             data-testid="wallet-rpc-mode-cloud"
             {...cloudModeEl.agentProps}
             onClick={() => handleModeChange("cloud")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "cloud"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg
@@ -450,22 +448,21 @@ export function ConfigPageView({
               })}
             </span>
             {rpcMode === "cloud" && (
-              <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                <Check className="h-3 w-3" aria-hidden />
+              <span className="absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
+                <Check className="size-3" aria-hidden />
               </span>
             )}
           </Button>
 
           <Button
             ref={customModeEl.ref}
-            variant="ghost"
+            variant="choice"
+            size="card"
+            align="start"
+            data-state={rpcMode === "custom" ? "on" : "off"}
             {...customModeEl.agentProps}
             onClick={() => handleModeChange("custom")}
-            className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
-              rpcMode === "custom"
-                ? "border-accent bg-accent/8"
-                : "border-border/40 bg-card/30 hover:border-border"
-            }`}
+            className="relative"
           >
             <div className="flex items-center gap-2">
               <svg
@@ -498,8 +495,8 @@ export function ConfigPageView({
               })}
             </span>
             {rpcMode === "custom" && (
-              <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
-                <Check className="h-3 w-3" aria-hidden />
+              <span className="absolute top-3 right-3 flex size-5 items-center justify-center rounded-full bg-accent text-2xs font-bold text-accent-fg">
+                <Check className="size-3" aria-hidden />
               </span>
             )}
           </Button>
@@ -534,7 +531,7 @@ export function ConfigPageView({
                       key={chain.label}
                       className="flex items-center gap-3 px-3 py-2.5"
                     >
-                      <span className="w-1.5 h-1.5 rounded-full bg-ok shrink-0" />
+                      <span className="size-1.5 rounded-full bg-ok shrink-0" />
                       <span className="text-xs font-semibold text-txt">
                         {chain.label}
                       </span>
@@ -582,8 +579,7 @@ export function ConfigPageView({
                 <Button
                   ref={cloudConnectEl.ref}
                   variant="default"
-                  size="sm"
-                  className="text-xs font-bold"
+                  size="denseWide"
                   {...cloudConnectEl.agentProps}
                   onClick={() => {
                     claimCloudLoginWindow();
@@ -611,9 +607,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -639,10 +634,10 @@ export function ConfigPageView({
               </div>
               <Button
                 ref={secretsEl.ref}
-                variant="outline"
-                className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+                variant="outlineMuted"
+                size="formAction"
                 {...secretsEl.agentProps}
-                onClick={() => setSecretsOpen(true)}
+                onClick={handleOpenVault}
               >
                 <svg
                   width="13"
@@ -660,7 +655,7 @@ export function ConfigPageView({
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
-                {t("configpageview.Secrets", { defaultValue: "Secrets" })}
+                {t("configpageview.Secrets", { defaultValue: "Vault" })}
               </Button>
             </div>
 
@@ -739,9 +734,8 @@ export function ConfigPageView({
               <Button
                 ref={saveEl.ref}
                 variant="default"
-                size="sm"
+                size="dense"
                 data-testid="wallet-rpc-save"
-                className="text-xs-tight !text-black"
                 {...saveEl.agentProps}
                 onClick={() => {
                   void handleWalletSaveAll();
@@ -753,51 +747,6 @@ export function ConfigPageView({
             </div>
           </div>
         )}
-
-        {/* ── Secrets modal ── */}
-        <Dialog open={secretsOpen} onOpenChange={setSecretsOpen}>
-          <DialogContent
-            showCloseButton={false}
-            className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0"
-          >
-            <div className="flex max-h-[min(88vh,48rem)] flex-col">
-              <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-accent"
-                  >
-                    <title>{t("configpageview.SecretsVault")}</title>
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
-                  <DialogTitle className="text-sm font-bold">
-                    {t("configpageview.SecretsVault1")}
-                  </DialogTitle>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted hover:text-txt text-lg leading-none"
-                  onClick={() => setSecretsOpen(false)}
-                  aria-label={t("common.close")}
-                >
-                  {t("bugreportmodal.Times")}
-                </Button>
-              </DialogHeader>
-              <div className="flex-1 min-h-0 overflow-y-auto p-5">
-                <SecretsView />
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </ShellViewAgentSurface>
   );

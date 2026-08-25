@@ -153,22 +153,23 @@ type GoogleChatAccountState = {
   cachedSpaces: GoogleChatSpace[];
 };
 
-function normalizeConnectorLimit(limit: number | undefined, fallback = 50): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new RangeError("Google Chat connector limit must be a positive finite number");
   }
-  return Math.min(Math.floor(limit), 200);
+  return Math.floor(limit);
 }
 
 async function readStoredMessageMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
-  limit: number
+  limit: number | undefined
 ): Promise<Memory[]> {
   return runtime.getMemories({
     tableName: "messages",
     roomId,
-    limit,
+    ...(limit === undefined ? {} : { limit }),
     orderBy: "createdAt",
     orderDirection: "desc",
   });
@@ -177,7 +178,7 @@ async function readStoredMessageMemories(
 async function readStoredMessagesForTargets(
   runtime: IAgentRuntime,
   targets: MessageConnectorTarget[],
-  limit: number
+  limit: number | undefined
 ): Promise<Memory[]> {
   const roomIds = Array.from(
     new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
@@ -185,23 +186,30 @@ async function readStoredMessagesForTargets(
   const chunks = await Promise.all(
     roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
   );
-  return chunks
-    .flat()
-    .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-    .slice(0, limit);
+  const sorted = chunks.flat().sort((left, right) => {
+    const rightCreated =
+      typeof right.createdAt === "number" && Number.isFinite(right.createdAt) ? right.createdAt : 0;
+    const leftCreated =
+      typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+    return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+  });
+  return limit === undefined ? sorted : sorted.slice(0, limit);
 }
 
-function filterMemoriesByQuery(memories: Memory[], query: string, limit: number): Memory[] {
+function filterMemoriesByQuery(
+  memories: Memory[],
+  query: string,
+  limit: number | undefined
+): Memory[] {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
-    return memories.slice(0, limit);
+    return limit === undefined ? memories : memories.slice(0, limit);
   }
-  return memories
-    .filter((memory) => {
-      const text = typeof memory.content.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
-    .slice(0, limit);
+  const matches = memories.filter((memory) => {
+    const text = typeof memory.content.text === "string" ? memory.content.text : "";
+    return text.toLowerCase().includes(normalized);
+  });
+  return limit === undefined ? matches : matches.slice(0, limit);
 }
 
 function getMutationMessageName(params: ConnectorMutationParams): string {
@@ -366,14 +374,14 @@ export class GoogleChatService extends Service implements IGoogleChatService {
             .filter(({ score }) => score > 0)
             .map(({ space, score }) => googleChatSpaceToConnectorTarget(space, score, accountId));
 
-          return [...directTarget, ...spaceTargets]
-            .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-            .slice(0, 10);
+          return [...directTarget, ...spaceTargets].sort(
+            (left, right) => (right.score ?? 0) - (left.score ?? 0)
+          );
         },
         listRecentTargets: async () =>
-          (await service.listConnectorSpaces(accountId))
-            .slice(0, 10)
-            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
+          (await service.listConnectorSpaces(accountId)).map((space) =>
+            googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+          ),
         listRooms: async () =>
           (await service.listConnectorSpaces(accountId)).map((space) =>
             googleChatSpaceToConnectorTarget(space, 0.55, accountId)
@@ -384,22 +392,22 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           if (target?.roomId) {
             return readStoredMessageMemories(context.runtime, target.roomId, limit);
           }
-          const targets = (await service.listConnectorSpaces(accountId))
-            .slice(0, 10)
-            .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId));
+          const targets = (await service.listConnectorSpaces(accountId)).map((space) =>
+            googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+          );
           return readStoredMessagesForTargets(context.runtime, targets, limit);
         },
         searchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params.limit);
           const target = params.target ?? context.target;
           const messages = target?.roomId
-            ? await readStoredMessageMemories(context.runtime, target.roomId, Math.max(limit, 100))
+            ? await readStoredMessageMemories(context.runtime, target.roomId, undefined)
             : await readStoredMessagesForTargets(
                 context.runtime,
-                (await service.listConnectorSpaces(accountId))
-                  .slice(0, 10)
-                  .map((space) => googleChatSpaceToConnectorTarget(space, 0.55, accountId)),
-                Math.max(limit, 100)
+                (await service.listConnectorSpaces(accountId)).map((space) =>
+                  googleChatSpaceToConnectorTarget(space, 0.55, accountId)
+                ),
+                undefined
               );
           return filterMemoriesByQuery(messages, params.query, limit);
         },
@@ -507,12 +515,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private validateSettings(settings: GoogleChatSettings): void {
     if (!settings.serviceAccount && !settings.serviceAccountFile) {
-      if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        throw new GoogleChatConfigurationError(
-          "Google Chat requires service account credentials. Set GOOGLE_CHAT_SERVICE_ACCOUNT, GOOGLE_CHAT_SERVICE_ACCOUNT_FILE, or GOOGLE_APPLICATION_CREDENTIALS.",
-          "GOOGLE_CHAT_SERVICE_ACCOUNT"
-        );
-      }
+      throw new GoogleChatConfigurationError(
+        "Google Chat requires service account credentials. Set GOOGLE_CHAT_SERVICE_ACCOUNT, GOOGLE_CHAT_SERVICE_ACCOUNT_FILE, or GOOGLE_APPLICATION_CREDENTIALS.",
+        "GOOGLE_CHAT_SERVICE_ACCOUNT"
+      );
     }
 
     if (!settings.audience) {
@@ -545,9 +551,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       });
     }
 
-    return new GoogleAuth({
-      scopes: [CHAT_SCOPE],
-    });
+    throw new GoogleChatConfigurationError(
+      "Google Chat service account credentials were not resolved for this account.",
+      "GOOGLE_CHAT_SERVICE_ACCOUNT"
+    );
   }
 
   private async testConnection(state = this.getState()): Promise<void> {

@@ -345,6 +345,46 @@ describe("conversation failureKind round-trip", () => {
     expect(assistant?.failureKind).toBe("insufficient_credits");
   });
 
+  it("GET /messages re-emits the complete typed terminal failure", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "Typecheck still fails after repair.",
+        failureKind: "coding_verification_failed",
+        terminalFailure: {
+          kind: "coding_verification_failed",
+          message: "Typecheck still fails after repair.",
+          transient: false,
+          code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+        },
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{
+        role: string;
+        terminalFailure?: Record<string, unknown>;
+      }>;
+    };
+    const assistant = payload.messages.find((m) => m.role === "assistant");
+    expect(assistant?.terminalFailure).toEqual({
+      kind: "coding_verification_failed",
+      message: "Typecheck still fails after repair.",
+      transient: false,
+      code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+    });
+    expect(assistant).toMatchObject({
+      failureKind: "coding_verification_failed",
+    });
+  });
+
   it.each([
     "handler_error",
     "missing_capability",

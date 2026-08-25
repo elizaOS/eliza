@@ -4,7 +4,7 @@
  * turns, over the LifeOps repository.
  */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";
 import type {
   ThreadSourceRef,
@@ -116,12 +116,8 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-function compactText(value: string, maxLength: number): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
-  }
-  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+function normalizeText(value: string): string {
+  return toWellFormedUnicode(value.trim());
 }
 
 function normalizeSourceRefs(
@@ -181,11 +177,8 @@ export function createWorkThreadStore(
         agentId,
         ownerEntityId: input.ownerEntityId ?? null,
         status: "active",
-        title: compactText(input.title || "Active thread", 120),
-        summary: compactText(
-          input.summary || input.title || "Active thread",
-          500,
-        ),
+        title: normalizeText(input.title || "Active thread"),
+        summary: normalizeText(input.summary || input.title || "Active thread"),
         currentPlanSummary: input.currentPlanSummary ?? null,
         primarySourceRef: sourceRefs[0] ?? input.primarySourceRef,
         sourceRefs,
@@ -230,11 +223,11 @@ export function createWorkThreadStore(
         status: input.status ?? current.status,
         title:
           typeof input.title === "string"
-            ? compactText(input.title, 120)
+            ? normalizeText(input.title)
             : current.title,
         summary:
           typeof input.summary === "string"
-            ? compactText(input.summary, 500)
+            ? normalizeText(input.summary)
             : current.summary,
         currentPlanSummary:
           input.currentPlanSummary !== undefined
@@ -331,7 +324,7 @@ export function createWorkThreadStore(
       const timestamp = isoNow();
       const summary =
         typeof input.patch?.summary === "string"
-          ? compactText(input.patch.summary, 500)
+          ? normalizeText(input.patch.summary)
           : target.summary;
       const currentPlanSummary =
         typeof input.patch?.instruction === "string" &&

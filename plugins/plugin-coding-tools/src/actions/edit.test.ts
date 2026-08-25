@@ -163,6 +163,37 @@ describe("EDIT", () => {
     expect(result.text).toContain("identical");
   });
 
+  it("rejects accidental literal newline escapes unless explicitly allowed", async () => {
+    const file = await seedFile("literal-escape.txt", "const value = 1;");
+
+    const rejected = await editFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: file,
+          old_string: "const value = 1;",
+          new_string: "const value = 1;\\nconst next = 2;",
+        },
+      },
+    );
+    expect(rejected.success).toBe(false);
+    expect(rejected.text).toContain("literal \\n or \\r sequence");
+    expect(await fs.readFile(file, "utf8")).toBe("const value = 1;");
+
+    const allowed = await editFileHandler(env.runtime, env.message, undefined, {
+      parameters: {
+        file_path: file,
+        old_string: "const value = 1;",
+        new_string: 'const value = "\\n";',
+        allow_literal_escapes: true,
+      },
+    });
+    expect(allowed.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe('const value = "\\n";');
+  });
+
   it("refuses edits that introduce a detected secret", async () => {
     const file = await seedFile("f.txt", "API_KEY = REPLACE_ME");
 

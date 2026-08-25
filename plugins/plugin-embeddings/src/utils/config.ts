@@ -31,17 +31,32 @@ export function getSetting(
     : resolveSetting(runtime, key, { defaultValue });
 }
 
+/**
+ * Resolve a numeric setting that must be a strict positive integer.
+ *
+ * Only accepts a value when the ENTIRE trimmed string is a run of digits
+ * denoting a value `> 0`. Unlike `Number.parseInt`, which stops at the first
+ * non-numeric character and silently truncates (`"1536abc"` -> `1536`,
+ * `"3.5"` -> `3`), any mixed, fractional, scientific, zero, or negative input
+ * is rejected with the same error so a malformed vector width can never be
+ * partially accepted (issue #23028). Unset/empty returns the default. Callers
+ * (dimensions, counts) are always positive integers.
+ */
 export function getNumericSetting(
   runtime: IAgentRuntime,
   key: string,
   defaultValue: number
 ): number {
   const value = getSetting(runtime, key);
-  if (value === undefined || value.trim() === "") {
+  const trimmed = value?.trim();
+  if (trimmed === undefined || trimmed === "") {
     return defaultValue;
   }
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) {
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`Setting '${key}' must be a valid integer, got: ${value}`);
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     throw new Error(`Setting '${key}' must be a valid integer, got: ${value}`);
   }
   return parsed;

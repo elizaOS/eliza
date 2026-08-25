@@ -33,6 +33,22 @@ const spaFallback = () =>
     },
   });
 
+// The Pages static layer serves `public/` bytes through next(); these tests
+// read the committed files and hand them back the way Cloudflare would, so the
+// assertions cover the real shipped robots/sitemap content without the suite
+// ever writing into the repository's public directory.
+const readPublicFile = (name: string): string =>
+  readFileSync(join(import.meta.dirname, "..", "public", name), "utf8");
+
+const staticFile = (body: string, contentType: string) =>
+  new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=14400",
+    },
+  });
+
 const assetHit = () =>
   new Response("export const chunk = 1;", {
     status: 200,
@@ -361,6 +377,86 @@ describe("unified host migration", () => {
     });
     expect(response.status).toBe(503);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("serves the static robots.txt bytes with a pinned text/plain type", async () => {
+    const response = await run(new Request(`${ORIGIN}/robots.txt`), async () =>
+      staticFile(readPublicFile("robots.txt"), "text/plain"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(await response.text()).toContain("Sitemap:");
+  });
+
+  it("serves the static sitemap.xml bytes with a pinned xml type", async () => {
+    const response = await run(new Request(`${ORIGIN}/sitemap.xml`), async () =>
+      staticFile(readPublicFile("sitemap.xml"), "application/xml"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/xml; charset=utf-8",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    expect(await response.text()).toContain("<urlset");
+  });
+
+  // A crawler that gets index.html for robots.txt reads it as a parse failure
+  // and falls back to crawling everything, so a missing file must 404 rather
+  // than pass the SPA shell through.
+  it("fails closed when the static layer misses robots.txt", async () => {
+    const response = await run(new Request(`${ORIGIN}/robots.txt`), async () =>
+      spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await response.text()).toBe("Not Found");
+  });
+
+  it("fails closed when the static layer misses sitemap.xml", async () => {
+    const response = await run(new Request(`${ORIGIN}/sitemap.xml`), async () =>
+      spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("returns 404 for unknown crawl endpoints instead of SPA HTML", async () => {
+    const response = await run(
+      new Request(`${ORIGIN}/bogus-crawl-endpoint.xml`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await response.text()).toBe("Not Found");
+  });
+
+  it("returns 404 for unknown crawl .txt endpoints instead of SPA HTML", async () => {
+    const response = await run(
+      new Request(`${ORIGIN}/random-note.txt`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await response.text()).toBe("Not Found");
   });
 });
 

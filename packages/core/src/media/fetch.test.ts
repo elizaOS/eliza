@@ -154,4 +154,44 @@ describe("fetchRemoteMedia", () => {
 		);
 		expect(result.fileName).toBe("report.txt");
 	});
+
+	it("keeps surrogate pairs intact in diagnostic error snippets", async () => {
+		const { readErrorBodySnippet } = await import("./fetch.ts");
+		const emojiBody = `${"a".repeat(50)}🦊${"b".repeat(50)}`;
+		const res = new Response(emojiBody);
+		const snippet = await readErrorBodySnippet(res, 200);
+		expect(snippet).toBeDefined();
+		expect(snippet?.isWellFormed()).toBe(true);
+		expect(snippet?.length).toBeLessThanOrEqual(200);
+	});
+
+	it("sanitizes lone surrogates in diagnostic error bodies", async () => {
+		const { readErrorBodySnippet } = await import("./fetch.ts");
+		const lone = `bad ${String.fromCharCode(0xd800)} body`;
+		const res = new Response(lone);
+		const snippet = await readErrorBodySnippet(res, 200);
+		expect(snippet).toBe("bad \uFFFD body");
+		expect(snippet?.isWellFormed()).toBe(true);
+	});
+
+	it("preserves a fitting emoji without truncation", async () => {
+		const { readErrorBodySnippet } = await import("./fetch.ts");
+		const body = `${"a".repeat(50)}🦊`;
+		const res = new Response(body);
+		const snippet = await readErrorBodySnippet(res, 200);
+		expect(snippet).toBe(body);
+		expect(snippet?.isWellFormed()).toBe(true);
+	});
+
+	it("never splits surrogate at the 200-char budget via well-formed helper", async () => {
+		const { truncateWellFormed, toWellFormedUnicode } = await import(
+			"../utils/well-formed.ts"
+		);
+		const text = `${"a".repeat(199)}🦊tail`;
+		const wellFormed = toWellFormedUnicode(text);
+		const budget = 199;
+		const truncated = `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
+		expect(truncated.isWellFormed()).toBe(true);
+		expect(truncated.length).toBeLessThanOrEqual(200);
+	});
 });

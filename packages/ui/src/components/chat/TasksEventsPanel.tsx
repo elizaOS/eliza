@@ -234,13 +234,13 @@ export function TasksEventsPanel({
       >
         <Button
           data-testid="chat-widgets-expand-floating"
-          variant="ghost"
+          variant="ghostMuted"
           size="icon-sm"
-          className="fixed bottom-3 right-3 z-40 h-6 w-6 shrink-0 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
+          className="fixed bottom-3 right-3 z-40 shrink-0"
           aria-label="Expand widgets"
           onClick={() => onToggleCollapsed?.(false)}
         >
-          <PanelRightOpen className="h-3.5 w-3.5" aria-hidden />
+          <PanelRightOpen className="size-3.5" aria-hidden />
         </Button>
       </aside>
     );
@@ -283,7 +283,7 @@ export function TasksEventsPanel({
         />
       ) : (
         <>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3">
             <div className="flex flex-col gap-3">
               {showAppsSection ? <AppsSection /> : null}
               <WidgetHost
@@ -299,28 +299,27 @@ export function TasksEventsPanel({
             <div className="flex items-center justify-between border-t border-border/30 pl-2 pr-2 pt-1.5 pb-2">
               <Button
                 data-testid="chat-widgets-edit-inline"
-                variant="ghost"
-                size="sm"
-                className="h-5 shrink-0 gap-1 bg-transparent px-1 text-[10px] leading-none font-semibold uppercase tracking-[0.1em] text-muted transition-colors hover:bg-transparent hover:text-txt"
+                variant="ghostMuted"
+                size="micro"
+                className="shrink-0 leading-none"
                 aria-label="Edit widgets"
                 onClick={() => setEditOpen(true)}
               >
-                <Pencil className="h-3 w-3" aria-hidden />
+                <Pencil className="size-3" aria-hidden />
                 <span>Widgets</span>
               </Button>
               {showCollapseButton ? (
                 <Button
                   data-testid="chat-widgets-collapse-inline"
-                  variant="ghost"
+                  variant="ghostMuted"
                   size="icon-sm"
-                  className="h-6 w-6 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
                   aria-label="Collapse widgets"
                   onClick={() => onToggleCollapsed?.(true)}
                 >
-                  <PanelRightClose className="h-3.5 w-3.5" aria-hidden />
+                  <PanelRightClose className="size-3.5" aria-hidden />
                 </Button>
               ) : (
-                <span className="h-6 w-6" />
+                <span className="size-6" />
               )}
             </div>
           ) : null}

@@ -22,6 +22,7 @@ import {
   type CacheableToolDescriptor,
   defaultPrivacyRedactor,
   isCacheable,
+  isCacheableToolOutput,
   resolveToolDescriptor,
   ToolCallCache,
   type ToolOutput,
@@ -77,33 +78,6 @@ function extractArgs(options: unknown): Record<string, unknown> {
   return {};
 }
 
-function isToolOutput(
-  value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-): value is ToolOutput {
-  if (
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    value === null
-  ) {
-    return true;
-  }
-  if (typeof value === "number") return Number.isFinite(value);
-  if (!value || typeof value !== "object") return false;
-
-  if (seen.has(value)) return false;
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isToolOutput(entry, seen));
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-
-  return Object.values(value).every((entry) => isToolOutput(entry, seen));
-}
-
 /**
  * Wrap an Action's handler so cacheable tools route through the cache.
  * Non-cacheable actions are returned unchanged.
@@ -135,7 +109,7 @@ export function wrapActionWithCache(
         !Array.isArray(result) &&
         "success" in result &&
         typeof result.success === "boolean" &&
-        isToolOutput(result),
+        isCacheableToolOutput(result),
     );
   };
 

@@ -63,7 +63,6 @@ export const activeWorkflowsProvider: Provider = {
       }
 
       const workflowList = workflows
-        .slice(0, 20)
         .map((wf) => {
           const status = wf.active ? 'ACTIVE' : 'INACTIVE';
           const stepCount = wf.steps?.length ?? 0;

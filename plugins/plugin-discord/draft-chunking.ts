@@ -1,3 +1,5 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 /**
  * Splits streaming draft text into Discord-sized chunks at natural break points
  * (paragraph, newline, sentence).
@@ -21,11 +23,12 @@ export function findBreakPoint(
 	maxLen: number,
 	breakPreference: BreakPreference = "sentence",
 ): number {
-	if (text.length <= maxLen) {
-		return text.length;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxLen) {
+		return wellFormed.length;
 	}
 
-	const region = text.slice(0, maxLen);
+	const region = truncateWellFormed(wellFormed, maxLen);
 	if (breakPreference === "paragraph" || breakPreference === "newline") {
 		const paragraphBreak = region.lastIndexOf("\n\n");
 		if (paragraphBreak > maxLen * 0.3) {
@@ -60,5 +63,5 @@ export function findBreakPoint(
 		return wordBreak + 1;
 	}
 
-	return maxLen;
+	return region.length;
 }

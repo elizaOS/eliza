@@ -12,6 +12,19 @@ import {
 } from "./effect-delivery";
 
 describe("effect delivery binding authenticity", () => {
+	it("requires at least one applied receipt ID", () => {
+		const boundWithoutReceipts = bindEffectDelivery(
+			{ text: "Done.", effectReceiptIds: [] },
+			"Done.",
+			[],
+			true,
+		);
+
+		expect(effectDeliveryBindingProvesApplication(boundWithoutReceipts)).toBe(
+			false,
+		);
+	});
+
 	it("survives an object spread while rejecting a forged replacement", () => {
 		const bound = bindEffectDelivery(
 			{

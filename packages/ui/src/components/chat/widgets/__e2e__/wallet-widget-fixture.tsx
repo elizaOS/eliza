@@ -28,7 +28,7 @@ function WalletSectionSurface(): React.JSX.Element {
     <div
       style={{
         background: "#101014",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         flexDirection: "column",
       }}
@@ -55,7 +55,7 @@ function WidgetField(): React.JSX.Element {
       // chromeless tile on it. A fixed narrow column mimics the 2-col home grid.
       style={{
         background: "#e8590c",
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "grid",
         placeItems: "start center",
         padding: "48px 0",
@@ -72,10 +72,10 @@ function WidgetField(): React.JSX.Element {
           }}
         >
           {state === "held"
-            ? "HELD — top-3 by holding value"
+            ? "HELD: top-3 by holding value"
             : state === "unavailable"
-              ? "UNAVAILABLE — holdings unknown"
-              : "DEFAULT — no holdings"}
+              ? "UNAVAILABLE: holdings unknown"
+              : "DEFAULT: no holdings"}
         </div>
         <div className="grid grid-cols-2 gap-2">
           <WalletBalanceWidget spanClassName="col-span-2 row-span-1" />

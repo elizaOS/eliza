@@ -155,15 +155,19 @@ describe("default Eliza voice", () => {
     }
   });
 
-  test("credits its makers and stays open source", () => {
-    const identity = `${character.system}\n${character.bio.join("\n")}`.toLowerCase();
-    // The persona now attributes the org rather than individual handles.
-    for (const name of ["eliza research", "elizaos"]) {
-      expect(identity).toContain(name);
-    }
-    expect(identity).toContain("san francisco");
-    expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
-    expect(identity).toContain("github.com/elizaos/eliza");
+  test("keeps consumer identity free of company and framework biography", () => {
+    const identity = [
+      character.system,
+      ...character.bio,
+      ...character.topics,
+      ...character.message_examples.flatMap((example) =>
+        example.map((message) => (message.content as { text?: string }).text ?? ""),
+      ),
+    ].join("\n");
+    expect(character.system).toContain('say "I\'m {{name}}."');
+    expect(identity).not.toMatch(
+      /eliza research|san francisco|elizaos|open source|self-host|github\.com|api_key|model provider/i,
+    );
   });
 
   test("replies stay short: median reply is a sentence, not a paragraph", () => {

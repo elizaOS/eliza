@@ -3,10 +3,6 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import {
-  requireBoundedIdentity,
-  requireSha256Hex,
-} from "../../lib/services/agent-backup-catalog-state";
 import { isValidUUID } from "../../lib/utils/validation";
 import { dbWrite } from "../helpers";
 import {
@@ -21,7 +17,10 @@ import {
   lockAgentBackupCatalogAuthority,
 } from "./agent-backup-catalog";
 import type { AgentBackupRestoreSourceV3Input } from "./agent-backup-restore";
-import { hasAgentBackupRestoreAuthority } from "./agent-backup-restore-authority";
+import {
+  AgentBackupRestoreAuthorityError,
+  hasAgentBackupRestoreAuthority,
+} from "./agent-backup-restore-authority";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 export type AgentBackupRestoreLeaseAcquisition =
@@ -70,31 +69,69 @@ function leaseAuthorityReceipt(
 
 function requireUuid(value: string, field: string): string {
   if (!isValidUUID(value) || value !== value.toLowerCase()) {
-    throw new Error(`${field} must be a canonical lowercase UUID`);
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a canonical lowercase UUID`,
+      { field },
+    );
   }
   return value;
 }
 
 function requireCanonicalUint64(value: string, field: string): bigint {
   if (!/^(0|[1-9][0-9]*)$/.test(value)) {
-    throw new Error(`${field} must be a canonical unsigned decimal integer`);
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a canonical unsigned decimal integer`,
+      { field },
+    );
   }
   const parsed = BigInt(value);
-  if (parsed > 18_446_744_073_709_551_615n) throw new Error(`${field} must fit uint64`);
+  if (parsed > 18_446_744_073_709_551_615n) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must fit uint64`,
+      { field },
+    );
+  }
   return parsed;
 }
 
 function requireOwnerId(value: string): string {
-  requireBoundedIdentity(value, "ownerId");
-  if (Buffer.byteLength(value, "utf8") > 255) {
-    throw new Error("ownerId must contain at most 255 UTF-8 bytes");
+  if (
+    value.length === 0 ||
+    value.length > 512 ||
+    /^\s|\s$/.test(value) ||
+    /[\u0000-\u001f\u007f]/.test(value) ||
+    Buffer.byteLength(value, "utf8") > 255
+  ) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "ownerId must be canonical and contain 1-255 UTF-8 bytes",
+      { field: "ownerId" },
+    );
   }
   return value;
 }
 
 function requireCopyRole(value: AgentBackupCopyRole): AgentBackupCopyRole {
   if (value !== "primary" && value !== "secondary") {
-    throw new Error("copyRole must be primary or secondary");
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "copyRole must be primary or secondary",
+      { field: "copyRole" },
+    );
+  }
+  return value;
+}
+
+function requireSha256(value: string, field: string): string {
+  if (!/^[0-9a-f]{64}$/.test(value)) {
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      `${field} must be a lowercase sha256 digest`,
+      { field },
+    );
   }
   return value;
 }
@@ -120,13 +157,17 @@ export async function acquireAgentBackupRestoreLease(params: {
     params.sourceLifecycleRevision,
     "sourceLifecycleRevision",
   );
-  requireSha256Hex(params.expectedManifestSha256, "expectedManifestSha256");
+  requireSha256(params.expectedManifestSha256, "expectedManifestSha256");
   requireCopyRole(params.copyRole);
   requireUuid(params.restoreAttemptId, "restoreAttemptId");
   requireOwnerId(params.ownerId);
   const generation = requireUuid(params.fencingToken ?? randomUUID(), "fencingToken");
   if (!Number.isSafeInteger(params.leaseMs) || params.leaseMs < 1 || params.leaseMs > 3_600_000) {
-    throw new Error("leaseMs must be a safe integer between 1 and 3600000");
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "leaseMs must be a safe integer between 1 and 3600000",
+      { field: "leaseMs" },
+    );
   }
 
   return dbWrite.transaction(async (tx) => {
@@ -202,10 +243,29 @@ export async function acquireAgentBackupRestoreLease(params: {
         and(
           eq(agentBackupRestoreLeases.organization_id, params.organizationId),
           eq(agentBackupRestoreLeases.restore_attempt_id, params.restoreAttemptId),
+          eq(agentBackupRestoreLeases.backup_id, params.backupId),
         ),
       )
       .for("update")
       .limit(1);
+    if (!existingAttempt) {
+      // A replay bound to another backup is only an authority conflict. Do not
+      // wait on its lease after taking this agent's catalogue lock: exact
+      // restore consumers take that lease before the catalogue lock.
+      const [divergentAttempt] = await tx
+        .select({ id: agentBackupRestoreLeases.id })
+        .from(agentBackupRestoreLeases)
+        .where(
+          and(
+            eq(agentBackupRestoreLeases.organization_id, params.organizationId),
+            eq(agentBackupRestoreLeases.restore_attempt_id, params.restoreAttemptId),
+          ),
+        )
+        .limit(1);
+      if (divergentAttempt) {
+        throw new AgentBackupCatalogConflictError("Restore attempt replay authority mismatch");
+      }
+    }
     const [unreleased] = await tx
       .select()
       .from(agentBackupRestoreLeases)
@@ -360,7 +420,7 @@ export async function renewAgentBackupRestoreLease(params: {
     params.sourceLifecycleRevision,
     "sourceLifecycleRevision",
   );
-  requireSha256Hex(params.expectedManifestSha256, "expectedManifestSha256");
+  requireSha256(params.expectedManifestSha256, "expectedManifestSha256");
   requireCopyRole(params.copyRole);
   requireUuid(params.restoreAttemptId, "restoreAttemptId");
   requireUuid(params.leaseId, "leaseId");
@@ -368,7 +428,11 @@ export async function renewAgentBackupRestoreLease(params: {
   const catalogEpoch = requireCanonicalUint64(params.catalogEpoch, "catalogEpoch");
   requireOwnerId(params.ownerId);
   if (!Number.isSafeInteger(params.leaseMs) || params.leaseMs < 1 || params.leaseMs > 3_600_000) {
-    throw new Error("leaseMs must be a safe integer between 1 and 3600000");
+    throw new AgentBackupRestoreAuthorityError(
+      "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      "leaseMs must be a safe integer between 1 and 3600000",
+      { field: "leaseMs" },
+    );
   }
 
   return dbWrite.transaction(async (tx) => {
@@ -511,7 +575,7 @@ export async function releaseAgentBackupRestoreLease(
     params.sourceLifecycleRevision,
     "sourceLifecycleRevision",
   );
-  requireSha256Hex(params.expectedManifestSha256, "expectedManifestSha256");
+  requireSha256(params.expectedManifestSha256, "expectedManifestSha256");
   requireCopyRole(params.copyRole);
   requireUuid(params.restoreAttemptId, "restoreAttemptId");
   requireUuid(params.leaseId, "leaseId");

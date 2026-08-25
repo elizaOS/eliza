@@ -42,6 +42,9 @@
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/dist/esm/index.d.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/dist/esm/index.d.ts"
+      ],
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/dist/esm/index.d.ts"
       ],

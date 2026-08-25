@@ -105,6 +105,7 @@ export const lifeTaskDefinitions = appLifeopsPgSchema.table(
     cadenceJson: text("cadence_json").notNull().default("{}"),
     windowPolicyJson: text("window_policy_json").notNull().default("{}"),
     progressionRuleJson: text("progression_rule_json").notNull().default("{}"),
+    checkInPolicyJson: text("check_in_policy_json"),
     websiteAccessJson: text("website_access_json"),
     reminderPlanId: text("reminder_plan_id"),
     goalId: text("goal_id"),
@@ -168,6 +169,43 @@ export const lifeTaskOccurrences = appLifeopsPgSchema.table(
     index("idx_life_task_occurrences_definition").on(
       t.definitionId,
       t.relevanceStartAt,
+    ),
+  ],
+);
+
+/**
+ * Append-only per-increment progress for count-quota occurrences. The
+ * completed count is always derived by summing rows for an occurrence — it is
+ * never cached on the occurrence row, so concurrent increments cannot clobber
+ * each other through full-row occurrence upserts. The (agent, occurrence,
+ * idempotency key) uniqueness makes replayed increments no-ops inside the
+ * occurrence-locked append transaction.
+ */
+export const lifeTaskProgressEvents = appLifeopsPgSchema.table(
+  "life_task_progress_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    definitionId: text("definition_id").notNull(),
+    occurrenceId: text("occurrence_id").notNull(),
+    localDateKey: text("local_date_key").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    quantity: integer("quantity").notNull().default(1),
+    unit: text("unit").notNull(),
+    note: text("note"),
+    actor: text("actor").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.occurrenceId, t.idempotencyKey),
+    index("idx_life_task_progress_events_occurrence").on(
+      t.agentId,
+      t.occurrenceId,
+    ),
+    index("idx_life_task_progress_events_definition_day").on(
+      t.agentId,
+      t.definitionId,
+      t.localDateKey,
     ),
   ],
 );
@@ -840,6 +878,7 @@ export const lifeWorkflowRuns = appLifeopsPgSchema.table(
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     workflowId: text("workflow_id").notNull(),
+    idempotencyKey: text("idempotency_key"),
     startedAt: text("started_at").notNull(),
     finishedAt: text("finished_at"),
     status: text("status").notNull().default("running"),
@@ -904,6 +943,31 @@ export const lifeWorkflowBrowserSessions = appLifeopsPgSchema.table(
       t.subjectId,
       t.status,
       t.updatedAt,
+    ),
+  ],
+);
+
+/** Owner-scoped browser profile revocations survive extension reinstall and token rotation. */
+export const lifeBrowserCompanionRevocations = appLifeopsPgSchema.table(
+  "life_browser_companion_revocations",
+  {
+    agentId: text("agent_id").notNull(),
+    ownerEntityId: text("owner_entity_id").notNull(),
+    browser: text("browser").notNull(),
+    profileId: text("profile_id").notNull(),
+    companionId: text("companion_id").notNull(),
+    revokedAt: text("revoked_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.agentId, t.ownerEntityId, t.browser, t.profileId],
+    }),
+    index("idx_life_browser_companion_revocations_companion").on(
+      t.agentId,
+      t.ownerEntityId,
+      t.companionId,
     ),
   ],
 );
@@ -1967,6 +2031,7 @@ export const lifeOpsSchema = {
   lifeAccountPrivacy,
   lifeTaskDefinitions,
   lifeTaskOccurrences,
+  lifeTaskProgressEvents,
   lifeGoalDefinitions,
   lifeGoalLinks,
   lifeReminderPlans,
@@ -1991,6 +2056,7 @@ export const lifeOpsSchema = {
   lifeWorkflowDefinitions,
   lifeWorkflowRuns,
   lifeWorkflowBrowserSessions,
+  lifeBrowserCompanionRevocations,
   lifeEscalationStates,
   lifeIntents,
   lifeCheckinReports,

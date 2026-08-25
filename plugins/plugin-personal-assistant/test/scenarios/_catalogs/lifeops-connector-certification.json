@@ -33,11 +33,6 @@
       "requiredAxes": ["core", "disconnected"]
     },
     {
-      "connector": "signal",
-      "providers": ["Signal bridge"],
-      "requiredAxes": ["core", "session-revoked"]
-    },
-    {
       "connector": "whatsapp",
       "providers": ["WhatsApp bridge"],
       "requiredAxes": ["core", "delivery-degraded"]
@@ -236,36 +231,6 @@
       "capabilities": ["disconnect-surfacing", "reconnect-request"],
       "requiredSeedTypes": ["connectorStatus"],
       "requiredFinalCheckTypes": ["clarificationRequested"]
-    },
-    {
-      "id": "connector.signal.certify-core",
-      "connector": "signal",
-      "axis": "core",
-      "providers": ["Signal bridge"],
-      "actions": ["MESSAGE", "MESSAGE"],
-      "capabilities": [
-        "inbound-fetch",
-        "reply-draft",
-        "send",
-        "delivery",
-        "degraded-behavior"
-      ],
-      "requiredFinalCheckTypes": [
-        "draftExists",
-        "messageDelivered",
-        "interventionRequestExists"
-      ]
-    },
-    {
-      "id": "connector.signal.certify-session-revoked",
-      "connector": "signal",
-      "axis": "session-revoked",
-      "degraded": true,
-      "providers": ["Signal bridge"],
-      "actions": ["MESSAGE", "MESSAGE"],
-      "capabilities": ["revoked-session-surfacing", "relink-request"],
-      "requiredSeedTypes": ["connectorAuthSession"],
-      "requiredFinalCheckTypes": ["interventionRequestExists"]
     },
     {
       "id": "connector.whatsapp.certify-core",

@@ -26,8 +26,6 @@ const EMPTY: ProviderResult = {
   data: { delegationContracts: [] },
 };
 
-const CONTRACT_QUERY_LIMIT = 20;
-
 export const delegationContractsProvider: Provider = {
   name: "delegationContracts",
   description:
@@ -55,12 +53,10 @@ export const delegationContractsProvider: Provider = {
     let contracts: LifeOpsDelegationContractRecord[];
     try {
       const repo = new LifeOpsRepository(runtime);
-      contracts = (
-        await repo.listDelegationContracts(runtime.agentId, {
-          statuses: ["active"],
-          activeAtIso: new Date().toISOString(),
-        })
-      ).slice(0, CONTRACT_QUERY_LIMIT);
+      contracts = await repo.listDelegationContracts(runtime.agentId, {
+        statuses: ["active"],
+        activeAtIso: new Date().toISOString(),
+      });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade - omit the block when the
       // backing store is unavailable, but report the failure so a broken

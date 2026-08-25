@@ -331,7 +331,7 @@ class AdminService {
       .values({
         userId,
         roomId,
-        messageText: messageText.slice(0, 500),
+        messageText,
         categories,
         scores,
         action,

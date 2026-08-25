@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 let spendReads = 0;
 let overrideReads = 0;
-let totalSpend = "0";
+let tierSourceCreditTotal = "0";
 let overrideError: Error | null = null;
 
 mock.module("../../db/helpers", () => ({
@@ -19,7 +19,7 @@ mock.module("../../db/helpers", () => ({
       from: () => ({
         where: async () => {
           spendReads += 1;
-          return [{ totalSpend }];
+          return [{ tierSourceCreditTotal }];
         },
       }),
     }),
@@ -47,7 +47,7 @@ const orgId = () => `org-tier-${++sequence}`;
 beforeEach(() => {
   spendReads = 0;
   overrideReads = 0;
-  totalSpend = "0";
+  tierSourceCreditTotal = "0";
   overrideError = null;
   __clearOrgTierHydrationsForTests();
 });
@@ -77,7 +77,7 @@ describe("organization rate-limit tier cache-only resolution", () => {
 
   test("returns warming on a miss and retains hydration under waitUntil", async () => {
     const org = orgId();
-    totalSpend = "7";
+    tierSourceCreditTotal = "7";
     await cache.del(CacheKeys.org.rateLimitTier(org));
     const background: Promise<unknown>[] = [];
 

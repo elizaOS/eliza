@@ -8,7 +8,13 @@
  * opens itself.
  */
 import os from "node:os";
-import { logger, type RouteRequestContext } from "@elizaos/core";
+import {
+  logger,
+  type RouteRequestContext,
+  redactSensitiveText,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { PostBugReportRequestSchema } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "elizaOS/eliza";
@@ -128,19 +134,25 @@ interface BugReportBody {
 }
 
 export function sanitize(input: string, maxLen = 10_000): string {
-  const clipped = input.length > maxLen ? input.slice(0, maxLen) : input;
+  const wellFormed = toWellFormedUnicode(input);
+  const clipped =
+    wellFormed.length > maxLen
+      ? truncateWellFormed(wellFormed, maxLen)
+      : wellFormed;
   let prev = clipped;
   let next = prev.replace(/<[^<>]{0,1024}>/g, "");
   while (next !== prev) {
     prev = next;
     next = prev.replace(/<[^<>]{0,1024}>/g, "");
   }
-  return next.replace(/[<>]/g, "").slice(0, maxLen);
+  const cleaned = next.replace(/[<>]/g, "");
+  return cleaned.length > maxLen
+    ? truncateWellFormed(cleaned, maxLen)
+    : cleaned;
 }
 
-function redactSecrets(input: string, maxLen = 10_000): string {
-  const sanitized = sanitize(input, maxLen);
-  return sanitized
+function redactBugReportText(input: string): string {
+  const patternRedacted = toWellFormedUnicode(input)
     .replace(
       /\b(0x[a-fA-F0-9]{64}|[A-Za-z0-9+/]{80,}={0,2})\b/g,
       "[redacted-secret]",
@@ -153,6 +165,40 @@ function redactSecrets(input: string, maxLen = 10_000): string {
       /\b(mnemonic|private[_ -]?key|seed phrase)\b\s*[:=]\s*.+/gi,
       "$1: [redacted]",
     );
+  return redactSensitiveText(patternRedacted, { mode: "tools" });
+}
+
+function redactSecrets(input: string, maxLen = 10_000): string {
+  return sanitize(redactBugReportText(input), maxLen);
+}
+
+function redactBugReport(body: BugReportBody): BugReportBody {
+  const redactOptional = (value: string | undefined): string | undefined =>
+    value === undefined ? undefined : redactBugReportText(value);
+
+  return {
+    description: redactBugReportText(body.description),
+    stepsToReproduce: redactBugReportText(body.stepsToReproduce),
+    expectedBehavior: redactOptional(body.expectedBehavior),
+    actualBehavior: redactOptional(body.actualBehavior),
+    environment: redactOptional(body.environment),
+    nodeVersion: redactOptional(body.nodeVersion),
+    modelProvider: redactOptional(body.modelProvider),
+    logs: redactOptional(body.logs),
+    category: body.category,
+    appVersion: redactOptional(body.appVersion),
+    releaseChannel: redactOptional(body.releaseChannel),
+    startup: body.startup
+      ? {
+          reason: redactOptional(body.startup.reason),
+          phase: redactOptional(body.startup.phase),
+          message: redactOptional(body.startup.message),
+          detail: redactOptional(body.startup.detail),
+          status: body.startup.status,
+          path: redactOptional(body.startup.path),
+        }
+      : undefined,
+  };
 }
 
 function formatIssueBody(body: BugReportBody): string {
@@ -185,10 +231,19 @@ function formatIssueBody(body: BugReportBody): string {
     sections.push(
       `### Startup Context\n\n\`\`\`json\n${JSON.stringify(
         {
-          reason: body.startup.reason,
-          phase: body.startup.phase,
+          reason:
+            body.startup.reason === undefined
+              ? undefined
+              : sanitize(body.startup.reason, 120),
+          phase:
+            body.startup.phase === undefined
+              ? undefined
+              : sanitize(body.startup.phase, 120),
           status: body.startup.status,
-          path: body.startup.path,
+          path:
+            body.startup.path === undefined
+              ? undefined
+              : sanitize(body.startup.path, 500),
         },
         null,
         2,
@@ -331,7 +386,10 @@ export async function handleBugReportRoutes(
       );
       return true;
     }
-    const body = parsedBug.data;
+    // Apply the complete user-controlled text policy once before either remote
+    // intake or GitHub dispatch. Sink-specific formatting may shorten or strip
+    // markup afterward, but it never receives the original credential text.
+    const body = redactBugReport(parsedBug.data);
 
     if (getRemoteBugReportUrl()) {
       const remoteFetch = createBugReportFetchSignal(req);
@@ -364,10 +422,13 @@ export async function handleBugReportRoutes(
 
     const githubFetch = createBugReportFetchSignal(req);
     try {
-      const sanitizedTitle = sanitize(body.description, 80).replace(
-        /[\r\n]+/g,
-        " ",
-      );
+      // GitHub titles carry a `[Bug] ` prefix; budget the truncation so the
+      // final title (prefix included) stays within the documented 80-char bound
+      // instead of silently growing to 86.
+      const sanitizedTitle = sanitize(
+        body.description,
+        80 - "[Bug] ".length,
+      ).replace(/[\r\n]+/g, " ");
       const issueBody = formatIssueBody(body);
       const issueRes = await fetch(githubIssuesUrl, {
         method: "POST",

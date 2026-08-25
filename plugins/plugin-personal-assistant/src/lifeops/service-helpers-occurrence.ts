@@ -269,9 +269,17 @@ export function computeDefinitionPerformance(
   const nowMs = now.getTime();
   const dueOccurrences = occurrences
     .filter((occurrence) => occurrenceAnchorMs(occurrence) <= nowMs)
-    .sort(
-      (left, right) => occurrenceAnchorMs(left) - occurrenceAnchorMs(right),
-    );
+    .sort((left, right) => {
+      const leftAnchor = occurrenceAnchorMs(left);
+      const rightAnchor = occurrenceAnchorMs(right);
+      if (leftAnchor !== rightAnchor) {
+        return leftAnchor - rightAnchor;
+      }
+      // Occurrences that share an anchor must still order deterministically:
+      // streak and window math reads this list positionally, so a caller's
+      // incoming order must not change the reported performance.
+      return left.id.localeCompare(right.id);
+    });
   const lastCompletedAt =
     dueOccurrences
       .filter((occurrence) => occurrence.state === "completed")

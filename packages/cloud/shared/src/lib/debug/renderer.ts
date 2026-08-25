@@ -36,11 +36,6 @@ function formatRelativeTime(timestamp: number, startTime: number): string {
   return `+${formatDuration(relativeMs)}`;
 }
 
-function truncate(text: string, maxLength: number = 500): string {
-  if (!text || text.length <= maxLength) return text;
-  return text.substring(0, maxLength) + "...";
-}
-
 function statusEmoji(status: string): string {
   switch (status) {
     case "completed":
@@ -132,7 +127,7 @@ export class DebugTraceRenderer {
 
     // Input
     lines.push("## Input");
-    lines.push(`> ${truncate(trace.inputMessage.text, 200)}`);
+    lines.push(`> ${trace.inputMessage.text}`);
     lines.push("");
 
     // Execution Timeline
@@ -197,7 +192,7 @@ export class DebugTraceRenderer {
     // Final Response
     if (trace.finalResponse) {
       lines.push("## Final Response");
-      lines.push(`> ${truncate(trace.finalResponse.text, 300)}`);
+      lines.push(`> ${trace.finalResponse.text}`);
       lines.push("");
     }
 
@@ -241,7 +236,7 @@ export class DebugTraceRenderer {
 
       lines.push("### Composed Prompt");
       lines.push("```");
-      lines.push(truncate(data.composedPrompt, opts.maxPromptLength ?? 1000));
+      lines.push(data.composedPrompt);
       lines.push("```");
       lines.push("");
 
@@ -259,7 +254,7 @@ export class DebugTraceRenderer {
           `**Model**: ${modelData.modelType} | **Duration**: ${formatDuration(modelData.durationMs)}`,
         );
         lines.push("```");
-        lines.push(truncate(modelData.response, opts.maxPromptLength ?? 1000));
+        lines.push(modelData.response);
         lines.push("```");
         lines.push("");
       }
@@ -337,7 +332,7 @@ export class DebugTraceRenderer {
 
       lines.push("### Result");
       if (data.result.text) {
-        lines.push(`**Text**: ${truncate(data.result.text, 300)}`);
+        lines.push(`**Text**: ${data.result.text}`);
       }
       if (data.result.error) {
         lines.push(`**Error**: ${data.result.error}`);
@@ -351,7 +346,7 @@ export class DebugTraceRenderer {
       if (data.result.data && Object.keys(data.result.data).length > 0) {
         lines.push("**Data**:");
         lines.push("```json");
-        lines.push(truncate(JSON.stringify(data.result.data, null, 2), 500));
+        lines.push(JSON.stringify(data.result.data, null, 2));
         lines.push("```");
       }
       lines.push("");

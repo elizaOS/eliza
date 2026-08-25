@@ -27,7 +27,9 @@ import {
 	type PromptSegment,
 } from "../types/model";
 import { modelProviderErrorDetail } from "../utils/model-errors";
+import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
+import { toWellFormedUnicode } from "../utils/well-formed.js";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -39,10 +41,9 @@ import {
 	extractJsonObjects,
 	parseJsonObject,
 } from "./json-output";
-import { DEFAULT_MAX_KEPT_STEP_CHARS } from "./limits";
 import {
 	buildModelInputBudget,
-	DEFAULT_COMPACTION_RESERVE_TOKENS,
+	DEFAULT_INPUT_RESERVE_TOKENS,
 	MODEL_WINDOW_RESERVE_FRACTION,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
@@ -53,6 +54,7 @@ import {
 import type {
 	ContextObject,
 	EvaluatorEffects,
+	EvaluatorModelResult,
 	EvaluatorOutput,
 	EvaluatorRoute,
 	EvaluatorRuntime,
@@ -103,12 +105,51 @@ const EVALUATOR_ENVELOPE_KEYS = new Set([
 	"recommendedToolCallId",
 ]);
 
-const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
+/**
+ * Whether the provider reports an incomplete evaluator result. Core does not
+ * impose an evaluator output cap; a provider length stop is therefore a typed
+ * failure rather than a partial envelope that may be parsed as a decision.
+ */
+export function evaluatorHitCompletionLimit(
+	raw: EvaluatorModelResult,
+	requestedMaxTokens?: number,
+): boolean {
+	if (typeof raw === "string") return false;
+	const finishReason = raw.finishReason?.toLowerCase() ?? "";
+	if (
+		/(?:^|[^a-z0-9])(?:length|max(?:imum)?(?:[-_\s]completion)?[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)(?:$|[^a-z0-9])/u.test(
+			finishReason,
+		)
+	) {
+		return true;
+	}
+	return (
+		requestedMaxTokens !== undefined &&
+		typeof raw.usage?.completionTokens === "number" &&
+		Number.isFinite(raw.usage.completionTokens) &&
+		raw.usage.completionTokens >= requestedMaxTokens
+	);
+}
 
 type EvaluatorBudgetResolution = {
 	contextWindowTokens?: number;
 	modelNames: string[];
 	unknownReachableModel: boolean;
+};
+
+type PreparedEvaluatorAttempt = {
+	input: ReturnType<typeof renderEvaluatorModelInput>;
+	providerOptions: Record<string, unknown>;
+	prefixHashes: ReturnType<typeof computePrefixHashes>;
+	prefixHash: string;
+	provider: string | undefined;
+};
+
+type EvaluatorModelCall = {
+	raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>;
+	preparedAttempt?: PreparedEvaluatorAttempt;
+	startedAt: number;
+	endedAt: number;
 };
 
 function modelNameFromMetadata(
@@ -199,16 +240,13 @@ function evaluatorBudgetOptions(contextWindowTokens: number): {
 	reserveTokens: number;
 } {
 	const desiredReserve = Math.max(
-		DEFAULT_COMPACTION_RESERVE_TOKENS,
+		DEFAULT_INPUT_RESERVE_TOKENS,
 		Math.floor(contextWindowTokens * MODEL_WINDOW_RESERVE_FRACTION),
 	);
 	// Custom/local model windows can be smaller than the global 10k reserve.
-	// Keep enough room for input and the requested evaluator output instead of
+	// Keep enough room for both input and provider-owned evaluator output instead of
 	// turning such models into an unconditional one-token bottom-out.
-	const smallWindowCap = Math.max(
-		DEFAULT_EVALUATOR_MAX_TOKENS,
-		Math.floor(contextWindowTokens * 0.4),
-	);
+	const smallWindowCap = Math.floor(contextWindowTokens * 0.4);
 	return {
 		contextWindowTokens,
 		reserveTokens: Math.min(
@@ -219,19 +257,37 @@ function evaluatorBudgetOptions(contextWindowTokens: number): {
 	};
 }
 
-function structuredParameterChars(messages: readonly ChatMessage[]): number {
-	return messages.reduce((total, message) => {
-		if (message.role !== "assistant" || !Array.isArray(message.content)) {
-			return total;
-		}
-		return (
-			total +
-			message.content.reduce((messageTotal, part) => {
-				if (part.type !== "tool-call") return messageTotal;
-				return messageTotal + JSON.stringify(part.input ?? {}).length;
-			}, 0)
-		);
-	}, 0);
+function finalizeEvaluatorOutput(
+	raw: EvaluatorModelResult,
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	return sanitizeOutputMessage(
+		repairFinishWithUnservedDeclaredIntents(
+			repairFinishWithProgressPromise(
+				repairFinishedToolTurnWithoutUserMessage(
+					repairMissingEvaluatorMessage(
+						repairMissingEvaluatorSuccess(
+							rejectEvaluatorInvocationMessage(
+								recoverEvaluatorTextOutput(
+									parseEvaluatorOutput(raw),
+									raw,
+									trajectory,
+								),
+							),
+							trajectory,
+						),
+						context,
+						trajectory,
+					),
+					trajectory,
+				),
+				trajectory,
+			),
+			context,
+			trajectory,
+		),
+	);
 }
 
 export async function runEvaluator(
@@ -246,50 +302,20 @@ export async function runEvaluator(
 		params.provider,
 	);
 	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
-	const EVALUATOR_MIN_TOOL_RESULT_CHARS = 2_000;
-	let toolResultCap = DEFAULT_MAX_KEPT_STEP_CHARS;
-	let renderedInput = renderEvaluatorModelInput({
+	const initialBudgetOptions = budgetResolution.contextWindowTokens
+		? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
+		: {};
+	const renderArgs = {
 		context: params.context,
 		trajectory: params.trajectory,
-		maxToolResultChars: undefined,
 		redactText: redactDiagnosticText,
-	});
-	let modelInputBudget = buildModelInputBudget({
+	};
+	const renderedInput = renderEvaluatorModelInput(renderArgs);
+	const modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
-		...(budgetResolution.contextWindowTokens
-			? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
-			: {}),
+		...initialBudgetOptions,
 	});
-	// Degrade, don't fail: when the assembled input would exceed the window
-	// (threshold = window - output reserve), shrink only the rendered tool
-	// results and re-estimate. Stable/context segments (system instructions,
-	// current user message) are never modified or dropped. Bounded: 30k -> 7.5k
-	// -> 2k. Live incident 2026-08: one oversized tool result rendered verbatim
-	// pushed the evaluator call to 2.28M tokens and the provider hard-400'd the
-	// whole turn with context_length_exceeded instead of answering.
-	while (
-		modelInputBudget.shouldCompact &&
-		toolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
-	) {
-		toolResultCap = Math.max(
-			EVALUATOR_MIN_TOOL_RESULT_CHARS,
-			Math.floor(toolResultCap / 4),
-		);
-		renderedInput = renderEvaluatorModelInput({
-			context: params.context,
-			trajectory: params.trajectory,
-			maxToolResultChars: toolResultCap,
-			redactText: redactDiagnosticText,
-		});
-		modelInputBudget = buildModelInputBudget({
-			messages: renderedInput.messages,
-			promptSegments: renderedInput.promptSegments,
-			...(budgetResolution.contextWindowTokens
-				? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
-				: {}),
-		});
-	}
 	const buildAttemptProviderOptions = (
 		input: ReturnType<typeof renderEvaluatorModelInput>,
 		budget: ReturnType<typeof buildModelInputBudget>,
@@ -309,7 +335,9 @@ export async function runEvaluator(
 				segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
 				promptSegments: input.promptSegments,
 				provider,
-				conversationId: params.trajectoryId,
+				conversationId: params.cacheConversationId
+					? `${params.cacheConversationId}:evaluator`
+					: params.trajectoryId,
 			}),
 			budget,
 		) as Record<string, unknown> & { eliza?: Record<string, unknown> };
@@ -334,46 +362,15 @@ export async function runEvaluator(
 	// received; stage recording below must persist this snapshot when present
 	// so the trajectory reports the real model input (and, on a terminal
 	// budget rejection, the last input that failed to fit).
-	let preparedAttempt:
-		| {
-				input: ReturnType<typeof renderEvaluatorModelInput>;
-				providerOptions: Record<string, unknown>;
-				prefixHashes: ReturnType<typeof computePrefixHashes>;
-				prefixHash: string;
-				provider: string | undefined;
-		  }
-		| undefined;
-
-	const buildInputBudgetError = (args: {
-		input: ReturnType<typeof renderEvaluatorModelInput>;
-		budget: ReturnType<typeof buildModelInputBudget>;
-		toolResultCap: number;
-		resolvedModelNames: string[];
-		unknownReachableModel: boolean;
-	}): ElizaError =>
-		new ElizaError(
-			"Evaluator model input exceeds the context budget even after tool results were compacted to the floor",
-			{
-				code: "EVALUATOR_INPUT_OVER_BUDGET",
-				context: {
-					estimatedInputTokens: args.budget.estimatedInputTokens,
-					compactionThresholdTokens: args.budget.compactionThresholdTokens,
-					contextWindowTokens: args.budget.contextWindowTokens,
-					toolResultCap: args.toolResultCap,
-					structuredParameterChars: structuredParameterChars(
-						args.input.messages,
-					),
-					resolvedModelNames: args.resolvedModelNames,
-					unknownReachableModel: args.unknownReachableModel,
-				},
-			},
-		);
+	let preparedAttempt: PreparedEvaluatorAttempt | undefined;
 
 	const recordInputBudgetFailure = async (args: {
 		error: ElizaError;
 		input: ReturnType<typeof renderEvaluatorModelInput>;
 		provider: string | undefined;
 		providerOptions: Record<string, unknown>;
+		attempt?: number;
+		failureStartedAt?: number;
 	}): Promise<void> => {
 		const failurePrefixHashes = computePrefixHashes(args.input.promptSegments);
 		await recordEvaluationStage({
@@ -382,20 +379,21 @@ export async function runEvaluator(
 			trajectoryId: params.trajectoryId,
 			parentStageId: params.parentStageId,
 			iteration: params.iteration ?? 1,
+			attempt: args.attempt,
 			modelType: String(modelType),
 			provider: args.provider,
 			messages: args.input.messages,
 			providerOptions: args.providerOptions,
-			raw: `[evaluator input budget failure] ${args.error.message} | code: EVALUATOR_INPUT_OVER_BUDGET`,
+			raw: `[evaluator input budget failure] ${args.error.message} | code: MODEL_INPUT_OVER_BUDGET`,
 			output: {
 				success: false,
 				decision: "CONTINUE",
 				thought:
 					"Evaluator input exceeded the resolved model budget before provider call.",
 				protocolFailure: true,
-				raw: { code: "EVALUATOR_INPUT_OVER_BUDGET" },
+				raw: { code: "MODEL_INPUT_OVER_BUDGET" },
 			},
-			startedAt,
+			startedAt: args.failureStartedAt ?? startedAt,
 			endedAt: Date.now(),
 			segmentHashes: failurePrefixHashes.map((entry) => entry.segmentHash),
 			prefixHash:
@@ -416,38 +414,17 @@ export async function runEvaluator(
 		const modelName = modelNameFromMetadata(params.runtime, attempt.metadata);
 		const resolvedBudget = buildModelInputBudget({ modelName });
 		const attemptWindow = resolvedBudget.contextWindowTokens;
-		let attemptCap = DEFAULT_MAX_KEPT_STEP_CHARS;
-		let attemptInput = renderEvaluatorModelInput({
+		const attemptBudgetOptions = evaluatorBudgetOptions(attemptWindow);
+		const attemptInput = renderEvaluatorModelInput({
 			context: params.context,
 			trajectory: params.trajectory,
-			maxToolResultChars: undefined,
 			redactText: redactDiagnosticText,
 		});
-		let attemptBudget = buildModelInputBudget({
+		const attemptBudget = buildModelInputBudget({
 			messages: attemptInput.messages,
 			promptSegments: attemptInput.promptSegments,
-			...evaluatorBudgetOptions(attemptWindow),
+			...attemptBudgetOptions,
 		});
-		while (
-			attemptBudget.shouldCompact &&
-			attemptCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
-		) {
-			attemptCap = Math.max(
-				EVALUATOR_MIN_TOOL_RESULT_CHARS,
-				Math.floor(attemptCap / 4),
-			);
-			attemptInput = renderEvaluatorModelInput({
-				context: params.context,
-				trajectory: params.trajectory,
-				maxToolResultChars: attemptCap,
-				redactText: redactDiagnosticText,
-			});
-			attemptBudget = buildModelInputBudget({
-				messages: attemptInput.messages,
-				promptSegments: attemptInput.promptSegments,
-				...evaluatorBudgetOptions(attemptWindow),
-			});
-		}
 		const attemptOptions = buildAttemptProviderOptions(
 			attemptInput,
 			attemptBudget,
@@ -460,85 +437,78 @@ export async function runEvaluator(
 			prefixHash: attemptOptions.prefixHash,
 			provider: attempt.provider,
 		};
-		if (attemptBudget.shouldCompact) {
-			// Attempt-local rejection: this registration's window cannot fit the
-			// stable input even at the tool-result floor. The runtime treats a
-			// preparation throw as a skip and advances to the next registration;
-			// the stage is recorded only if the rejection turns out terminal
-			// (see the EVALUATOR_INPUT_OVER_BUDGET branch in the catch below).
-			throw buildInputBudgetError({
-				input: attemptInput,
-				budget: attemptBudget,
-				toolResultCap: attemptCap,
-				resolvedModelNames: modelName ? [modelName] : [],
-				unknownReachableModel: resolvedBudget.resolvedModelKey === null,
-			});
-		}
 		request.messages = attemptInput.messages;
 		request.promptSegments = attemptInput.promptSegments;
 		request.providerOptions = attemptOptions.providerOptions;
 	};
-	// Bottom-out guard: if the input is still over the compaction threshold at
-	// the 2k floor, the overflow lives in the stable/context segments this loop
-	// deliberately never touches. Calling the provider anyway is a guaranteed
-	// context_length_exceeded 400 that burns a round trip and surfaces as an
-	// opaque provider error — fail fast with a typed error instead so the
-	// planner-loop's degrade/propagate policy sees the real cause.
-	if (
-		modelInputBudget.shouldCompact &&
-		params.runtime.supportsModelAttemptPreparation !== true
-	) {
-		const preflightError = buildInputBudgetError({
-			input: renderedInput,
-			budget: modelInputBudget,
-			toolResultCap,
-			resolvedModelNames: budgetResolution.modelNames,
-			unknownReachableModel: budgetResolution.unknownReachableModel,
-		});
-		await recordInputBudgetFailure({
-			error: preflightError,
-			input: renderedInput,
-			provider: params.provider,
-			providerOptions,
-		});
-		throw preflightError;
-	}
 	let raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>;
+	let selectedCall: EvaluatorModelCall | undefined;
+	let activeCallStartedAt = startedAt;
+	let activeAttempt: number | undefined;
 	try {
-		raw = await runWithStreamingContext(
-			streamingContext
-				? {
-						...streamingContext,
-						onStreamChunk: async () => undefined,
-					}
-				: undefined,
-			() => {
-				const modelRequest = {
-					messages: renderedInput.messages,
-					maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
-					responseSchema: evaluatorSchema,
-					promptSegments: renderedInput.promptSegments,
-					providerOptions,
-					prepareModelAttempt: (
-						attempt: ModelAttemptContext,
-						attemptParams: {
-							messages: ChatMessage[];
-							promptSegments?: PromptSegment[];
-							providerOptions?: Record<string, unknown>;
-						},
-					) => prepareModelAttempt(attempt, attemptParams),
-				};
-				return params.runtime.useModel(
-					modelType,
-					modelRequest,
-					params.provider,
-				);
-			},
-		);
+		const callEvaluatorModel = async (): Promise<EvaluatorModelCall> => {
+			preparedAttempt = undefined;
+			const callStartedAt = Date.now();
+			activeCallStartedAt = callStartedAt;
+			const callInput = renderedInput;
+			const callRaw = await runWithStreamingContext(
+				streamingContext
+					? {
+							...streamingContext,
+							onStreamChunk: async () => undefined,
+						}
+					: undefined,
+				() => {
+					const modelRequest = {
+						messages: callInput.messages,
+						responseSchema: evaluatorSchema,
+						promptSegments: callInput.promptSegments,
+						providerOptions,
+						prepareModelAttempt: (
+							attempt: ModelAttemptContext,
+							attemptParams: {
+								messages: ChatMessage[];
+								promptSegments?: PromptSegment[];
+								providerOptions?: Record<string, unknown>;
+							},
+						) => prepareModelAttempt(attempt, attemptParams),
+					};
+					return params.runtime.useModel(
+						modelType,
+						modelRequest,
+						params.provider,
+					);
+				},
+			);
+			return {
+				raw: callRaw,
+				preparedAttempt,
+				startedAt: callStartedAt,
+				endedAt: Date.now(),
+			};
+		};
+		activeAttempt = undefined;
+		const initialCall = await callEvaluatorModel();
+		selectedCall = initialCall;
+		raw = initialCall.raw;
+		reportEvaluatorUsage(raw, params.onUsage);
+		if (evaluatorHitCompletionLimit(raw)) {
+			throw new ElizaError(
+				"Evaluator provider returned an incomplete output at its length boundary",
+				{
+					code: "EVALUATOR_OUTPUT_INCOMPLETE",
+					context: {
+						modelType: String(modelType),
+						finishReason:
+							typeof raw === "string" ? undefined : raw.finishReason,
+					},
+				},
+			);
+		}
 	} catch (error) {
 		if (
 			error instanceof ElizaError &&
-			error.code === "EVALUATOR_INPUT_OVER_BUDGET"
+			error.code === "MODEL_INPUT_OVER_BUDGET"
 		) {
 			// Terminal budget rejection: every reachable registration was either
 			// exhausted or refused the input pre-handler. Record the last
@@ -549,6 +519,9 @@ export async function runEvaluator(
 				input: preparedAttempt?.input ?? renderedInput,
 				provider: preparedAttempt?.provider ?? params.provider,
 				providerOptions: preparedAttempt?.providerOptions ?? providerOptions,
+				attempt: activeAttempt,
+				failureStartedAt:
+					activeAttempt === undefined ? undefined : activeCallStartedAt,
 			});
 			throw error;
 		}
@@ -566,6 +539,7 @@ export async function runEvaluator(
 			trajectoryId: params.trajectoryId,
 			parentStageId: params.parentStageId,
 			iteration: params.iteration ?? 1,
+			attempt: activeAttempt,
 			modelType: String(modelType),
 			provider: preparedAttempt?.provider ?? params.provider,
 			messages: (preparedAttempt?.input ?? renderedInput).messages,
@@ -582,7 +556,7 @@ export async function runEvaluator(
 				protocolFailure: true,
 				raw: {},
 			},
-			startedAt,
+			startedAt: activeAttempt === undefined ? startedAt : activeCallStartedAt,
 			endedAt: Date.now(),
 			segmentHashes: (preparedAttempt?.prefixHashes ?? prefixHashes).map(
 				(entry) => entry.segmentHash,
@@ -592,38 +566,10 @@ export async function runEvaluator(
 		});
 		throw error;
 	}
-	const endedAt = Date.now();
-	const usage = extractEvaluatorUsage(raw);
-	if (
-		usage?.promptTokens !== undefined &&
-		usage.completionTokens !== undefined
-	) {
-		params.onUsage?.({
-			promptTokens: usage.promptTokens,
-			completionTokens: usage.completionTokens,
-		});
-	}
-	const output = sanitizeOutputMessage(
-		repairFinishWithProgressPromise(
-			repairFinishedToolTurnWithoutUserMessage(
-				repairMissingEvaluatorMessage(
-					repairMissingEvaluatorSuccess(
-						rejectEvaluatorInvocationMessage(
-							recoverEvaluatorTextOutput(
-								parseEvaluatorOutput(raw),
-								raw,
-								params.trajectory,
-							),
-						),
-						params.trajectory,
-					),
-					params.context,
-					params.trajectory,
-				),
-				params.trajectory,
-			),
-			params.trajectory,
-		),
+	const output = finalizeEvaluatorOutput(
+		raw,
+		params.context,
+		params.trajectory,
 	);
 	await emitStreamingHook(streamingContext, "onEvaluation", {
 		evaluation: projectToolDiagnosticValue(
@@ -634,6 +580,7 @@ export async function runEvaluator(
 	});
 	await applyEvaluatorEffects(output, params.effects);
 
+	const snapshot = selectedCall?.preparedAttempt;
 	await recordEvaluationStage({
 		runtime: params.runtime,
 		recorder: params.recorder,
@@ -641,17 +588,17 @@ export async function runEvaluator(
 		parentStageId: params.parentStageId,
 		iteration: params.iteration ?? 1,
 		modelType: String(modelType),
-		provider: preparedAttempt?.provider ?? params.provider,
-		messages: (preparedAttempt?.input ?? renderedInput).messages,
-		providerOptions: preparedAttempt?.providerOptions ?? providerOptions,
+		provider: snapshot?.provider ?? params.provider,
+		messages: (snapshot?.input ?? renderedInput).messages,
+		providerOptions: snapshot?.providerOptions ?? providerOptions,
 		raw,
 		output,
 		startedAt,
-		endedAt,
-		segmentHashes: (preparedAttempt?.prefixHashes ?? prefixHashes).map(
+		endedAt: selectedCall?.endedAt ?? Date.now(),
+		segmentHashes: (snapshot?.prefixHashes ?? prefixHashes).map(
 			(entry) => entry.segmentHash,
 		),
-		prefixHash: preparedAttempt?.prefixHash ?? prefixHash,
+		prefixHash: snapshot?.prefixHash ?? prefixHash,
 		logger: params.runtime.logger,
 	});
 
@@ -664,6 +611,8 @@ async function recordEvaluationStage(args: {
 	trajectoryId?: string;
 	parentStageId?: string;
 	iteration: number;
+	/** Present only when one evaluator run made multiple provider calls. */
+	attempt?: number;
 	modelType: string;
 	provider?: string;
 	messages?: ChatMessage[];
@@ -687,7 +636,9 @@ async function recordEvaluationStage(args: {
 		const usage = extractEvaluatorUsage(args.raw);
 		const modelName = extractEvaluatorModelName(args.raw);
 		const stage: RecordedStage = {
-			stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}`,
+			stageId: `stage-eval-iter-${args.iteration}-${args.startedAt}${
+				args.attempt === undefined ? "" : `-attempt-${args.attempt}`
+			}`,
 			kind: "evaluation",
 			iteration: args.iteration,
 			parentStageId: args.parentStageId,
@@ -796,32 +747,44 @@ function extractEvaluatorUsage(
 	return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function reportEvaluatorUsage(
+	raw: Awaited<ReturnType<EvaluatorRuntime["useModel"]>>,
+	onUsage: RunEvaluatorParams["onUsage"],
+): void {
+	const usage = extractEvaluatorUsage(raw);
+	if (
+		usage?.promptTokens !== undefined &&
+		usage.completionTokens !== undefined
+	) {
+		onUsage?.({
+			promptTokens: usage.promptTokens,
+			completionTokens: usage.completionTokens,
+		});
+	}
+}
+
 function renderEvaluatorModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
 	redactText: ToolDiagnosticTextRedactor;
-	/**
-	 * Per-tool-result render cap (chars) applied via
-	 * `trajectoryStepsToMessages`. Undefined preserves the trajectory result
-	 * byte-for-byte; `runEvaluator` applies the cap only after the resolved
-	 * model budget requires compaction.
-	 */
-	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
 } {
-	const renderedContext = renderContextObject(params.context);
+	const renderedContext = renderContextObject(
+		params.trajectory.modelBaseContext ?? params.context,
+	);
 	const template = params.template ?? evaluatorTemplate;
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
-		maxToolResultChars: params.maxToolResultChars,
-		redactText: params.redactText,
-	});
+	const stepMessages =
+		params.trajectory.modelHistory ??
+		trajectoryStepsToMessages(params.trajectory.steps, {
+			redactText: params.redactText,
+		});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
@@ -1142,6 +1105,65 @@ const FINISH_BARE_PROGRESS_ACK_RE =
 	/^(?:checking|fetching|gathering|reading|scanning|looking (?:up|into)|working on it|on it|one (?:moment|sec(?:ond)?)|give me a (?:sec(?:ond)?|moment)|let me (?!know\b)[a-z]+)[.…!\s]*$/i;
 const FINISH_PROGRESS_PROMISE_TAIL_RE =
 	/(?:^|[.!?…]\s+|\n\s*)(?:checking|reading|opening|fetching|scanning|pulling(?: up)?|going through|digging into|looking (?:up|into)|working on)\s+(?:this|that|these|those|it\b|the\b)[^.!?\n]{0,80}[.!?…]?\s*$/i;
+
+/**
+ * A FINISH that leaves declared multi-step work unserved is a broken promise:
+ * Stage 1 explicitly listed the turn's intents ("delete reminder", "create
+ * reminder", "list reminders"), the planner served the first and quit, and
+ * the reminder stayed deleted (live 2026-08-18, three times — the context
+ * instruction alone did not move a small planner model). When the context
+ * carries the declared-intents instruction and fewer successful non-terminal
+ * operations exist than declared intents, coerce ONE CONTINUE so the loop
+ * gets the iterations the declaration promised; the marker thought makes the
+ * coercion once-per-turn so an intent genuinely unservable cannot loop.
+ */
+const UNSERVED_INTENTS_THOUGHT_MARKER = "unserved declared intents";
+
+function declaredIntentsFromContext(context: ContextObject): string[] {
+	const events = Array.isArray(context.events) ? context.events : [];
+	for (const event of events) {
+		if (
+			event &&
+			typeof event === "object" &&
+			(event as { id?: unknown }).id === "stage1-declared-intents"
+		) {
+			const content = (event as { content?: unknown }).content;
+			if (typeof content !== "string") return [];
+			return content
+				.split("\n")
+				.filter((line) => line.startsWith("- "))
+				.map((line) => line.slice(2).trim())
+				.filter(Boolean);
+		}
+	}
+	return [];
+}
+
+function repairFinishWithUnservedDeclaredIntents(
+	output: EvaluatorOutput,
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (output.decision !== "FINISH") return output;
+	const intents = declaredIntentsFromContext(context);
+	if (intents.length < 2) return output;
+	const priorCoercion = (trajectory.evaluatorOutputs ?? []).some((prior) =>
+		(prior?.thought ?? "").includes(UNSERVED_INTENTS_THOUGHT_MARKER),
+	);
+	if (priorCoercion) return output;
+	const served = [
+		...(trajectory.archivedSteps ?? []),
+		...trajectory.steps,
+	].filter((step) => step.toolCall && step.result?.success === true).length;
+	if (served >= intents.length) return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		messageToUser: undefined,
+		thought: `Stage 1 declared ${intents.length} intents (${intents.join("; ")}) but only ${served} tool operation(s) succeeded — continuing with the ${UNSERVED_INTENTS_THOUGHT_MARKER}.`,
+	};
+}
 
 function repairFinishWithProgressPromise(
 	output: EvaluatorOutput,
@@ -1798,7 +1820,7 @@ function getStructuredEvaluatorObject(
 		if (!isEvaluatorShapedObject(raw.object)) {
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${toWellFormedUnicode(JSON.stringify(raw.object))}`,
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
@@ -1848,13 +1870,11 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 	// `None</think>\`\`\`json {…}` fails the fence unwrap, the strict parse,
 	// AND the leading-fence repair (which requires the text to START with a
 	// fence) — the raw envelope then leaked verbatim to Discord (live
-	// tj-b8809c9841cdfd, matrix F18). The think contract is unambiguous:
-	// everything before the LAST </think> is reasoning, never output — strip
-	// it before any envelope handling.
-	const thinkEnd = text.lastIndexOf("</think>");
-	const visible =
-		thinkEnd >= 0 ? text.slice(thinkEnd + "</think>".length) : text;
-	return parseEvaluatorVisibleText(visible);
+	// tj-b8809c9841cdfd, matrix F18). The reasoning-tag contract is
+	// unambiguous for every canonical spelling (think/thinking/reasoning/…):
+	// everything before the LAST close is reasoning, never output — strip it
+	// before any envelope handling (#20080 generalizes the F18 </think> fix).
+	return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {

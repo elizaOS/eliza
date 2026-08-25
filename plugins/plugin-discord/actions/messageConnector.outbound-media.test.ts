@@ -34,6 +34,7 @@ function createDiscordConnectorTestService<
 function createRuntime() {
 	return {
 		agentId: "agent-1",
+		getSetting: vi.fn(() => undefined),
 		logger: {
 			info: vi.fn(),
 			debug: vi.fn(),

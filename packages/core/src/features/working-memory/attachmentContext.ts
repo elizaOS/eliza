@@ -275,17 +275,13 @@ export async function listConversationAttachments(
 	message: Memory,
 	options: { maxLookback?: number } = {},
 ): Promise<AttachmentWithInlineData[]> {
+	void options;
 	const currentMessageAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
-	const conversationLength =
-		typeof options.maxLookback === "number"
-			? Math.min(runtime.getConversationLength(), options.maxLookback)
-			: runtime.getConversationLength();
 	const accessContext = await buildAttachmentAccessContext(runtime, message);
 	const agentId = runtime.agentId as UUID | undefined;
 	const recentMessages = await runtime.getMemories({
 		roomId: message.roomId,
-		count: conversationLength,
 		unique: false,
 		tableName: "messages",
 	});

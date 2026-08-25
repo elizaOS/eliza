@@ -316,6 +316,11 @@ function runtimeFromContext(ctx: ScenarioContext): CloudAppsScenarioRuntime {
 export default scenario({
   id: "cloud-apps-structured-confirm",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Cloud Apps destructive and paid actions require structured confirmation",
   domain: "cloud-apps",

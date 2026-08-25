@@ -7,21 +7,19 @@
  * can reconnect automatically on subsequent startups.
  */
 
-import fs from "node:fs";
-import path from "node:path";
 import { logger as coreLogger } from "@elizaos/core";
+import {
+  loadDurableBaileysAuthState,
+  removeDurableBaileysAuthState,
+  validateWhatsAppAccountId,
+  whatsappDurableAuthExists,
+} from "../baileys/auth";
 
 const LOG_PREFIX = "[whatsapp-pairing]";
 
 /** Validate accountId to prevent path traversal. Only allows alphanumeric, dash, underscore. */
 export function sanitizeAccountId(raw: string): string {
-  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "");
-  if (!cleaned || cleaned !== raw) {
-    throw new Error(
-      `Invalid accountId: must only contain alphanumeric characters, dashes, and underscores`
-    );
-  }
-  return cleaned;
+  return validateWhatsAppAccountId(raw);
 }
 
 export type WhatsAppPairingStatus =
@@ -80,17 +78,14 @@ export class WhatsAppPairingSession {
 
     const baileys = await import("@whiskeysockets/baileys");
     const makeWASocket = baileys.default;
-    const {
-      useMultiFileAuthState: loadMultiFileAuthState,
-      fetchLatestBaileysVersion,
-      DisconnectReason,
-    } = baileys;
+    const { fetchLatestBaileysVersion, DisconnectReason } = baileys;
     const QRCode = (await import("qrcode")).default;
     const { Boom } = await import("@hapi/boom");
 
-    fs.mkdirSync(this.options.authDir, { recursive: true });
-
-    const { state, saveCreds } = await loadMultiFileAuthState(this.options.authDir);
+    const { state, saveCreds } = await loadDurableBaileysAuthState(
+      this.options.accountId,
+      this.options.authDir
+    );
     const { version } = await fetchLatestBaileysVersion();
 
     const pino = (await import("pino")).default;
@@ -258,24 +253,20 @@ export class WhatsAppPairingSession {
   }
 }
 
-export function whatsappAuthExists(workspaceDir: string, accountId = "default"): boolean {
-  const credsPath = path.join(workspaceDir, "whatsapp-auth", accountId, "creds.json");
-  return fs.existsSync(credsPath);
+export function whatsappAuthExists(accountId = "default"): Promise<boolean> {
+  return whatsappDurableAuthExists(accountId);
 }
 
-export async function whatsappLogout(workspaceDir: string, accountId = "default"): Promise<void> {
-  const authDir = path.join(workspaceDir, "whatsapp-auth", accountId);
-  const credsPath = path.join(authDir, "creds.json");
-
-  if (fs.existsSync(credsPath)) {
-    try {
+export async function whatsappLogout(accountId = "default"): Promise<void> {
+  try {
+    if (await whatsappDurableAuthExists(accountId)) {
       const baileys = await import("@whiskeysockets/baileys");
       const makeWASocket = baileys.default;
-      const { useMultiFileAuthState: loadMultiFileAuthState, fetchLatestBaileysVersion } = baileys;
+      const { fetchLatestBaileysVersion } = baileys;
       const pino = (await import("pino")).default;
       const logger = pino({ level: "silent" });
 
-      const { state } = await loadMultiFileAuthState(authDir);
+      const { state } = await loadDurableBaileysAuthState(accountId);
       const { version } = await fetchLatestBaileysVersion();
 
       const sock = makeWASocket({
@@ -322,11 +313,11 @@ export async function whatsappLogout(workspaceDir: string, accountId = "default"
           }
         });
       });
-    } catch {
-      // error-policy:J6 Local auth deletion remains valid if the remote logout cannot connect.
-      // If Baileys can't connect, just delete files anyway.
     }
+  } catch {
+    // error-policy:J6 Remote logout and snapshot loading are best-effort; local removal separately proves ownership.
+    coreLogger.warn(`${LOG_PREFIX} Remote logout unavailable for account ${accountId}`);
   }
 
-  fs.rmSync(authDir, { recursive: true, force: true });
+  await removeDurableBaileysAuthState(accountId);
 }

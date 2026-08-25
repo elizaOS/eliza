@@ -36,6 +36,7 @@
  * only throws `missing_token` when it actually fires.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "../../utils/logger";
 import type {
   ComputeAction,
@@ -553,7 +554,7 @@ export class DigitalOceanComputeProvider implements ComputeProvider {
       // explicit typed failure, never a fabricated-valid default.
       throw new DigitalOceanComputeError(
         "server_error",
-        `DigitalOcean API ${method} ${path} returned non-JSON: ${text.slice(0, 200)}`,
+        `DigitalOcean API ${method} ${path} returned non-JSON: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         response.status,
       );
     }

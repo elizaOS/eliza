@@ -45,30 +45,32 @@ function TabButton({
           : "border-border/40 bg-card/60 text-muted hover:border-border hover:text-txt"
       }`}
     >
-      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-accent">
-        <ViewIcon icon={tab.icon} label={tab.label} className="h-3 w-3" />
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-accent">
+        <ViewIcon icon={tab.icon} label={tab.label} className="size-3" />
       </span>
       <Button
-        variant="ghost"
+        variant="transparent"
+        size="content"
+        align="start"
         aria-pressed={active}
         title={tab.label}
         onClick={onClick}
-        className="h-auto min-w-0 truncate rounded-none bg-transparent p-0 text-xs font-medium leading-none hover:bg-transparent"
+        className="min-w-0 truncate"
       >
         {tab.label}
       </Button>
       <Button
-        variant="ghost"
-        size="icon-sm"
+        variant="ghostMuted"
+        size="disclosure"
         title={`Close ${tab.label}`}
         onClick={(e) => {
           e.stopPropagation();
           onClose();
         }}
-        className="ml-0.5 h-5 w-5 shrink-0 rounded-sm p-0 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100"
+        className="ml-0.5 shrink-0"
         aria-label={`Close ${tab.label}`}
       >
-        <X className="h-2.5 w-2.5" />
+        <X className="size-2.5" />
       </Button>
     </div>
   );
@@ -104,14 +106,14 @@ export function DesktopTabBar({
         />
       ))}
       <Button
-        variant="secondary"
-        size="icon-sm"
+        variant="outlineMuted"
+        size="disclosure"
         title="Open Launcher"
         onClick={onOpenViewManager}
-        className="ml-1 h-6 w-6 shrink-0 rounded-sm border border-border/40 bg-card/40 p-0 text-muted transition-colors hover:border-border hover:text-txt"
+        className="ml-1 shrink-0"
         aria-label="Open Launcher"
       >
-        <Plus className="h-3 w-3" />
+        <Plus className="size-3" />
       </Button>
     </div>
   );

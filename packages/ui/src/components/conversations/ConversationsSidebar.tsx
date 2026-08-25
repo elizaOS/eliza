@@ -122,10 +122,10 @@ function isTerminalRow(row: ConversationsSidebarRow): boolean {
 
 function renderRailIdentity(row: ConversationsSidebarRow) {
   if (isTerminalRow(row)) {
-    return <TerminalIcon className="h-4 w-4" />;
+    return <TerminalIcon className="size-4" />;
   }
   if (row.kind === "inbox" && typeof row.source === "string" && row.source) {
-    return <ChatSourceIcon source={row.source} className="h-4 w-4" />;
+    return <ChatSourceIcon source={row.source} className="size-4" />;
   }
 
   return railMonogram(row.title);
@@ -700,7 +700,7 @@ export function ConversationsSidebar({
     () => ({
       key: ELIZA_SOURCE_SCOPE,
       label: t("conversations.sectionMessages", { defaultValue: "Messages" }),
-      icon: <MessagesSquare className="h-3.5 w-3.5" aria-hidden />,
+      icon: <MessagesSquare className="size-3.5" aria-hidden />,
       rows: messagesModel.rows,
     }),
     [messagesModel.rows, t],
@@ -729,7 +729,7 @@ export function ConversationsSidebar({
         className="inline-flex items-center gap-1 rounded-full bg-bg-hover/40 px-1.5 py-0.5 text-3xs font-semibold tabular-nums text-muted"
       >
         <span
-          className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}${pulse}`}
+          className={`inline-block size-1.5 shrink-0 rounded-full ${dotClass}${pulse}`}
         />
         {ptySessions.length}
       </span>
@@ -740,7 +740,7 @@ export function ConversationsSidebar({
     () => ({
       key: TERMINAL_SOURCE_SCOPE,
       label: t("conversations.scopeTerminal", { defaultValue: "Terminal" }),
-      icon: <TerminalIcon className="h-3.5 w-3.5" aria-hidden />,
+      icon: <TerminalIcon className="size-3.5" aria-hidden />,
       indicator: terminalIndicator,
       rows: terminalRows,
     }),
@@ -790,16 +790,18 @@ export function ConversationsSidebar({
         return {
           ...group,
           icon: Brand ? (
-            <Brand className="h-3.5 w-3.5" />
+            <Brand className="size-3.5" />
           ) : (
             <ChatSourceIcon
               source={group.sourceKey}
-              className="h-3.5 w-3.5"
+              className="size-3.5"
               decorative
             />
           ),
           rows: [...group.rows].sort(
-            (left, right) => right.sortKey - left.sortKey,
+            (left, right) =>
+              (Number.isFinite(right.sortKey) ? right.sortKey : 0) -
+              (Number.isFinite(left.sortKey) ? left.sortKey : 0),
           ),
           serverMuted: group.rows.some(
             (row) => row.muted && row.mutedScope === "server",
@@ -858,7 +860,7 @@ export function ConversationsSidebar({
           <div
             ref={menuAnchorRef}
             aria-hidden
-            className="fixed h-0 w-0 pointer-events-none"
+            className="fixed size-0 pointer-events-none"
             style={{
               left: menuPosition.x,
               top: menuPosition.y,
@@ -937,7 +939,7 @@ export function ConversationsSidebar({
               aria-label={t("conversations.newChat")}
               onClick={handleNewChat}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="size-4" />
             </SidebarCollapsedActionButton>
           ) : undefined
         }
@@ -993,12 +995,14 @@ export function ConversationsSidebar({
                 </div>
               ) : (
                 <Button
-                  variant="outline"
+                  variant="outlineMuted"
+                  size="compact"
+                  align="start"
                   data-testid="conversations-search-messages"
                   onClick={() => setMessageSearchOpen(true)}
-                  className="h-auto w-full justify-start gap-2 rounded-lg border-border/60 px-2.5 py-1.5 text-sm font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  className="w-full"
                 >
-                  <Search className="h-3.5 w-3.5" />
+                  <Search className="size-3.5" />
                   {t("conversations.searchMessages", {
                     defaultValue: "Search messages",
                   })}
@@ -1234,17 +1238,18 @@ function CollapsibleChannelSection({
         <div className="mb-1 flex items-center gap-1 pl-1 pr-2">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="h-6 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-2 text-2xs text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="micro"
+            align="start"
+            className="min-w-0 flex-1"
             onClick={() => onToggleSectionMute(serverMuted ? "unmute" : "mute")}
             title={sectionMuteLabel}
             aria-label={sectionMuteLabel}
           >
             {serverMuted ? (
-              <BellOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <BellOff className="size-3.5 shrink-0" aria-hidden />
             ) : (
-              <Bell className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <Bell className="size-3.5 shrink-0" aria-hidden />
             )}
             <span className="truncate">{sectionMuteLabel}</span>
           </Button>
@@ -1253,9 +1258,9 @@ function CollapsibleChannelSection({
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghostMuted"
                   size="icon-sm"
-                  className="h-6 w-6 shrink-0 rounded-sm text-muted hover:text-txt"
+                  className="shrink-0"
                   aria-label={t("conversations.muteServerDuration", {
                     defaultValue: "Mute server duration",
                   })}
@@ -1263,7 +1268,7 @@ function CollapsibleChannelSection({
                     defaultValue: "Mute server duration",
                   })}
                 >
-                  <BellOff className="h-3.5 w-3.5" aria-hidden />
+                  <BellOff className="size-3.5" aria-hidden />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-36">
@@ -1359,9 +1364,9 @@ function CollapsibleChannelSection({
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghostMuted"
                     size="icon-sm"
-                    className="h-7 w-7 shrink-0 rounded-sm text-muted hover:text-txt"
+                    className="shrink-0"
                     aria-label={
                       row.muted
                         ? t("conversations.unmuteChannel", {
@@ -1382,9 +1387,9 @@ function CollapsibleChannelSection({
                     }
                   >
                     {row.muted ? (
-                      <BellOff className="h-3.5 w-3.5" aria-hidden />
+                      <BellOff className="size-3.5" aria-hidden />
                     ) : (
-                      <Bell className="h-3.5 w-3.5" aria-hidden />
+                      <Bell className="size-3.5" aria-hidden />
                     )}
                   </Button>
                 </DropdownMenuTrigger>

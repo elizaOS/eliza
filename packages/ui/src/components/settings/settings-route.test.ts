@@ -78,8 +78,8 @@ describe("settingsRouteToHash", () => {
 
 describe("connector detail history", () => {
   it("returns index → detail navigation to the index on browser Back", async () => {
-    openConnectorDetailHash("signal");
-    expect(window.location.hash).toBe("#connectors/signal");
+    openConnectorDetailHash("telegram");
+    expect(window.location.hash).toBe("#connectors/telegram");
 
     const popped = nextPopState();
     window.history.back();
@@ -91,7 +91,7 @@ describe("connector detail history", () => {
   it("consumes detail on visible Back so the next hardware Back leaves index", async () => {
     window.history.replaceState(null, "", "/#appearance");
     window.history.pushState(null, "", "#connectors");
-    openConnectorDetailHash("signal");
+    openConnectorDetailHash("telegram");
 
     let popped = nextPopState();
     backFromConnectorDetail();
@@ -109,8 +109,8 @@ describe("connector detail history", () => {
     // hardware Back must leave connectors (not stall on a replaced index).
     window.history.replaceState(null, "", "/#appearance");
     window.history.pushState(null, "", "#connectors");
-    openConnectorDetailHash("signal");
-    expect(window.location.hash).toBe("#connectors/signal");
+    openConnectorDetailHash("telegram");
+    expect(window.location.hash).toBe("#connectors/telegram");
     expect(isPushedConnectorDetailRoute()).toBe(true);
 
     replaceConnectorDetailHash("discord");
@@ -130,8 +130,8 @@ describe("connector detail history", () => {
 
   it("keeps direct/programmatic detail entry marker-free", () => {
     window.history.replaceState(null, "", "/#connectors");
-    replaceConnectorDetailHash("signal");
-    expect(window.location.hash).toBe("#connectors/signal");
+    replaceConnectorDetailHash("telegram");
+    expect(window.location.hash).toBe("#connectors/telegram");
     expect(isPushedConnectorDetailRoute()).toBe(false);
 
     backFromConnectorDetail();

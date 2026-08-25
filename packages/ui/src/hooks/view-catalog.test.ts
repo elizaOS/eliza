@@ -278,7 +278,7 @@ describe("viewToEntry uses packaged icons (native 404 fix)", () => {
           pluginName: "@elizaos/builtin",
           visibleInManager: false,
         }),
-        makeView("my-apps", {
+        makeView("memories", {
           builtin: true,
           pluginName: "@elizaos/builtin",
           visibleInManager: false,
@@ -291,7 +291,7 @@ describe("viewToEntry uses packaged icons (native 404 fix)", () => {
       visibilityScope: "routable",
     });
 
-    expect(entries.map((entry) => entry.id)).toEqual(["settings", "my-apps"]);
+    expect(entries.map((entry) => entry.id)).toEqual(["settings", "memories"]);
   });
 
   it("does not let third-party views bypass manager visibility by claiming builtin metadata", () => {

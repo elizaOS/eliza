@@ -50,22 +50,34 @@ import {
 } from "./priority-scoring.ts";
 import type { InboundMessage } from "./types.ts";
 
-const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CACHE_FRESH_MS = 60_000;
-const INBOX_CACHE_WARM_LIMIT = 200;
-const INBOX_CACHE_READ_LIMIT = 800;
-const INBOX_CACHE_FULL_LIMIT = 5000;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
   "imessage",
   "sms",
   "whatsapp",
 ]);
-const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 
 export type InboxChatType = "dm" | "group" | "channel";
+
+function stripSubjectReplyPrefixes(value: string): string {
+  let cursor = 0;
+  while (cursor < value.length) {
+    let prefixStart = cursor;
+    while (prefixStart < value.length && value[prefixStart]?.trim() === "") {
+      prefixStart += 1;
+    }
+    const colon = value.indexOf(":", prefixStart);
+    if (colon < 0) break;
+    const marker = value.slice(prefixStart, colon).trim().toLowerCase();
+    if (marker !== "re" && marker !== "fw" && marker !== "fwd") break;
+    cursor = colon + 1;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+  }
+  return value.slice(cursor);
+}
 
 export function normalizeInboxChannel(
   source: string | null | undefined,
@@ -127,13 +139,11 @@ function deriveThreadId(
     return message.xConversationId;
   }
   if (channel === "gmail") {
-    const subject = message.channelName
-      .replace(/^Email from\s+/i, "")
-      .replace(SUBJECT_REPLY_PREFIX, "")
-      .trim();
+    const subject = message.channelName.replace(/^Email from\s+/i, "").trim();
+    const normalizedSubject = stripSubjectReplyPrefixes(subject).trim();
     const fromKey =
       message.senderEmail?.trim().toLowerCase() ?? message.senderName;
-    return `gmail:${fromKey}:${subject || externalId}`;
+    return `gmail:${fromKey}:${normalizedSubject || externalId}`;
   }
   if (message.roomId) {
     return message.roomId;
@@ -152,7 +162,9 @@ export function toInboxMessage(
     channel === "gmail"
       ? (message.gmailMessageId ?? message.id)
       : (message.entityId ?? message.roomId ?? message.id);
-  const receivedAt = new Date(message.timestamp).toISOString();
+  const receivedAt = Number.isFinite(message.timestamp)
+    ? new Date(message.timestamp).toISOString()
+    : new Date(0).toISOString();
   const subject =
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
@@ -240,7 +252,7 @@ export function toInboxMessages(
 }
 
 interface InboxBuildOptions {
-  limit: number;
+  limit?: number;
   allowed: Set<LifeOpsInboxChannel>;
   /**
    * Per-source connector health for the fetch/read that produced the input
@@ -301,7 +313,15 @@ function buildThreadGroups(
 
   const groups: LifeOpsInboxThreadGroup[] = [];
   for (const [key, members] of buckets) {
-    members.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+    members.sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.receivedAt))
+        ? Date.parse(a.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.receivedAt))
+        ? Date.parse(b.receivedAt)
+        : 0;
+      return bTime - aTime;
+    });
     const latestMessage = members[0];
     if (!latestMessage) continue;
     const totalCount = members.length;
@@ -388,20 +408,29 @@ function buildThreadGroups(
 
   if (sortByPriority) {
     groups.sort((a, b) => {
-      const aScore = a.maxPriorityScore ?? -1;
-      const bScore = b.maxPriorityScore ?? -1;
+      const aRaw = a.maxPriorityScore ?? -1;
+      const bRaw = b.maxPriorityScore ?? -1;
+      const aScore = Number.isFinite(aRaw) ? aRaw : -1;
+      const bScore = Number.isFinite(bRaw) ? bRaw : -1;
       if (aScore !== bScore) return bScore - aScore;
-      return (
-        Date.parse(b.latestMessage.receivedAt) -
-        Date.parse(a.latestMessage.receivedAt)
-      );
+      const aTime = Number.isFinite(Date.parse(a.latestMessage.receivedAt))
+        ? Date.parse(a.latestMessage.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.latestMessage.receivedAt))
+        ? Date.parse(b.latestMessage.receivedAt)
+        : 0;
+      return bTime - aTime;
     });
   } else {
-    groups.sort(
-      (a, b) =>
-        Date.parse(b.latestMessage.receivedAt) -
-        Date.parse(a.latestMessage.receivedAt),
-    );
+    groups.sort((a, b) => {
+      const aTime = Number.isFinite(Date.parse(a.latestMessage.receivedAt))
+        ? Date.parse(a.latestMessage.receivedAt)
+        : 0;
+      const bTime = Number.isFinite(Date.parse(b.latestMessage.receivedAt))
+        ? Date.parse(b.latestMessage.receivedAt)
+        : 0;
+      return bTime - aTime;
+    });
   }
   return groups;
 }
@@ -486,10 +515,18 @@ export function buildInboxFromMessages(
     }
   }
 
-  collected.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
+  collected.sort((a, b) => {
+    const aTime = Number.isFinite(Date.parse(a.receivedAt))
+      ? Date.parse(a.receivedAt)
+      : 0;
+    const bTime = Number.isFinite(Date.parse(b.receivedAt))
+      ? Date.parse(b.receivedAt)
+      : 0;
+    return bTime - aTime;
+  });
 
   const trimmed =
-    collected.length > options.limit
+    options.limit !== undefined && collected.length > options.limit
       ? collected.slice(0, options.limit)
       : collected;
 
@@ -530,24 +567,15 @@ export function buildInboxFromMessages(
   return inbox;
 }
 
-function cacheReadLimitFor(resolved: ResolvedInboxRequest): number {
-  if (resolved.cacheMode === "cache-only") {
-    return Math.max(resolved.limit, resolved.cacheLimit);
-  }
-  if (resolved.cacheLimit > INBOX_CACHE_READ_LIMIT) {
-    return Math.max(resolved.limit, resolved.cacheLimit);
-  }
-  return Math.min(
-    INBOX_CACHE_READ_LIMIT,
-    Math.max(resolved.limit * 4, INBOX_CACHE_WARM_LIMIT),
-  );
+function cacheReadLimitFor(resolved: ResolvedInboxRequest): number | undefined {
+  if (resolved.limit === undefined) return resolved.cacheLimit;
+  return resolved.cacheLimit === undefined
+    ? resolved.limit
+    : Math.max(resolved.limit, resolved.cacheLimit);
 }
 
-function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number {
-  if (resolved.cacheMode === "refresh") {
-    return resolved.cacheLimit;
-  }
-  return Math.min(500, Math.max(resolved.limit, INBOX_CACHE_WARM_LIMIT));
+function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number | undefined {
+  return resolved.cacheLimit ?? resolved.limit;
 }
 
 function isFreshCache(records: readonly CachedInboxMessage[]): boolean {
@@ -575,7 +603,7 @@ function flattenInboxMessages(inbox: LifeOpsInbox): LifeOpsInboxMessage[] {
 }
 
 export interface ResolvedInboxRequest {
-  limit: number;
+  limit?: number;
   allowed: Set<LifeOpsInboxChannel>;
   groupByThread: boolean;
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
@@ -585,7 +613,7 @@ export interface ResolvedInboxRequest {
   missedOnly: boolean;
   sortByPriority: boolean;
   cacheMode: LifeOpsInboxCacheMode;
-  cacheLimit: number;
+  cacheLimit?: number;
 }
 
 export function resolveInboxRequest(
@@ -595,8 +623,8 @@ export function resolveInboxRequest(
     typeof request.limit === "number" &&
     Number.isFinite(request.limit) &&
     request.limit > 0
-      ? Math.min(Math.floor(request.limit), 500)
-      : DEFAULT_INBOX_LIMIT;
+      ? Math.floor(request.limit)
+      : undefined;
   const requestedChannels =
     request.channels && request.channels.length > 0
       ? (request.channels.filter((channel) =>
@@ -619,13 +647,7 @@ export function resolveInboxRequest(
     request.cacheLimit > 0
       ? Math.floor(request.cacheLimit)
       : undefined;
-  const cacheLimit = Math.min(
-    requestedCacheLimit ??
-      (cacheMode === "read-through"
-        ? INBOX_CACHE_WARM_LIMIT
-        : INBOX_CACHE_FULL_LIMIT),
-    INBOX_CACHE_FULL_LIMIT,
-  );
+  const cacheLimit = requestedCacheLimit;
   const phoneAccountIds =
     Array.isArray(request.phoneAccountIds) && request.phoneAccountIds.length > 0
       ? new Set(
@@ -637,7 +659,7 @@ export function resolveInboxRequest(
         )
       : undefined;
   return {
-    limit,
+    ...(limit === undefined ? {} : { limit }),
     allowed: new Set<LifeOpsInboxChannel>(requestedChannels),
     groupByThread: request.groupByThread === true,
     chatTypeFilter,
@@ -656,7 +678,7 @@ export function resolveInboxRequest(
     missedOnly: request.missedOnly === true,
     sortByPriority: request.sortByPriority === true,
     cacheMode,
-    cacheLimit,
+    ...(cacheLimit === undefined ? {} : { cacheLimit }),
   };
 }
 
@@ -729,7 +751,7 @@ async function buildInboxWithLlm(
   // honor the chatType / participant / gmail filters here because LLM scoring
   // should only run on messages the user will actually see.
   const initial = buildInbox(inbound, {
-    limit: resolved.limit,
+    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
@@ -752,7 +774,7 @@ async function buildInboxWithLlm(
   // Second pass: re-build with the LLM scores so thread grouping picks them
   // up and missedOnly can filter on score >= 50.
   return buildInbox(inbound, {
-    limit: resolved.limit,
+    ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
     allowed: resolved.allowed,
     sources,
     chatTypeFilter: resolved.chatTypeFilter,
@@ -777,8 +799,13 @@ export async function fetchInbox(
   const resolved = resolveInboxRequest(request);
   const { messages: inbound, sources } = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
-    limit:
-      resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
+    ...(resolved.cacheMode === "refresh"
+      ? resolved.cacheLimit === undefined
+        ? {}
+        : { limit: resolved.cacheLimit }
+      : resolved.limit === undefined
+        ? {}
+        : { limit: resolved.limit }),
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
@@ -870,7 +897,7 @@ export class InboxDomain {
       sourceStatuses: LifeOpsInboxSourceStatus[],
     ): LifeOpsInbox =>
       buildInboxFromMessages(messages, {
-        limit: resolved.limit,
+        ...(resolved.limit === undefined ? {} : { limit: resolved.limit }),
         allowed: resolved.allowed,
         sources: sourceStatuses,
         chatTypeFilter: resolved.chatTypeFilter,
@@ -882,9 +909,10 @@ export class InboxDomain {
         missedOnly: resolved.missedOnly,
         sortByPriority: resolved.sortByPriority,
       });
+    const cacheReadLimit = cacheReadLimitFor(resolved);
     const cached = await cache.listCachedInboxMessages(runtime.agentId, {
       channels: Array.from(resolved.allowed),
-      maxResults: cacheReadLimitFor(resolved),
+      ...(cacheReadLimit === undefined ? {} : { maxResults: cacheReadLimit }),
       gmailAccountId: resolved.gmailAccountId,
     });
     if (resolved.cacheMode === "cache-only") {
@@ -894,10 +922,11 @@ export class InboxDomain {
       return buildFromCache(cached, await probeStatuses());
     }
 
+    const cacheWarmLimit = cacheWarmLimitFor(resolved);
     const { messages: inbound, sources: sourceStatuses } =
       await fetchAllMessages(runtime, {
         sources: Array.from(resolved.allowed),
-        limit: cacheWarmLimitFor(resolved),
+        ...(cacheWarmLimit === undefined ? {} : { limit: cacheWarmLimit }),
         includeGmail: resolved.allowed.has("gmail"),
         gmailSource: sources,
         xDmSource: sources,

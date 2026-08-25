@@ -25,6 +25,7 @@ import type {
 import { logger, ServiceType } from "@elizaos/core";
 import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";
+import { extractAsciiEmailAddress } from "./email-address.ts";
 import {
   type CurationDecision,
   curateEmailCandidates,
@@ -68,10 +69,7 @@ function normalizeSenderEmail(
 ): string | null {
   const raw = candidate.fromEmail ?? candidate.from;
   if (!raw) return null;
-  const angle = raw.match(/<([^>]+)>/);
-  const value = (angle?.[1] ?? raw).trim().toLowerCase();
-  const email = value.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
-  return email?.[0]?.toLowerCase() ?? null;
+  return extractAsciiEmailAddress(raw);
 }
 
 /**

@@ -5,6 +5,11 @@
 
 import { resolveAliasedEnvValue } from "./boot-env.js";
 import { isTruthyEnvValue } from "./env-utils.js";
+import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "./utils/well-formed";
 
 /** Keys whose values are always redacted in debug dumps. */
 const SENSITIVE_KEY_RE =
@@ -45,20 +50,22 @@ export function isElizaSettingsDebugEnabled(options?: {
 }
 
 function maskString(s: string): string {
-	const t = s.trim();
-	if (t.length <= 8) return "[redacted:short]";
-	return `${t.slice(0, 4)}…${t.slice(-2)} (${t.length} chars)`;
+	const wellFormed = toWellFormedUnicode(s.trim());
+	if (wellFormed.length <= 8) return "[redacted:short]";
+	const head = truncateWellFormed(wellFormed, 4);
+	const tail = tailWellFormed(wellFormed, 2);
+	return `${head}…${tail} (${wellFormed.length} chars)`;
 }
 
 export function sanitizeDebugString(value: string): string {
-	const trimmed = value.trim();
+	const trimmed = toWellFormedUnicode(value.trim());
 	if (trimmed.length === 0) return "";
 	if (trimmed.toUpperCase() === "[REDACTED]") return "[REDACTED]";
 	if (trimmed.length > 48 || /^(sk-|pk_|Bearer\s)/i.test(trimmed)) {
 		return maskString(trimmed);
 	}
 	if (trimmed.length > MAX_STRING)
-		return `${trimmed.slice(0, MAX_STRING - 1)}…`;
+		return `${truncateWellFormed(trimmed, MAX_STRING - 1)}…`;
 	return trimmed;
 }
 

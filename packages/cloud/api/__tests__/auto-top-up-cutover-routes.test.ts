@@ -115,6 +115,14 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
     rateLimitConfigs.push(config);
     return async (_context: unknown, next: () => Promise<void>) => next();
   },
+  moneyRateLimit: (config: Record<string, unknown>) => {
+    rateLimitConfigs.push({
+      ...config,
+      failClosed: true,
+      localLease: false,
+    });
+    return async (_context: unknown, next: () => Promise<void>) => next();
+  },
 }));
 
 const executeAutoTopUpForOrganization = mock(
@@ -263,11 +271,12 @@ beforeEach(() => {
 });
 
 describe("manual durable auto-top-up route", () => {
-  test("uses STRICT fail-closed limiting", () => {
+  test("uses STRICT fail-closed MONEY limiting", () => {
     expect(rateLimitConfigs).toHaveLength(1);
     expect(rateLimitConfigs[0]).toMatchObject({
       ...STRICT_RATE_LIMIT,
       failClosed: true,
+      localLease: false,
     });
   });
 

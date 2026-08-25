@@ -29,12 +29,15 @@ import { cn } from "../lib/utils";
 import { BrandButton, BrandCard } from "./brand";
 
 type BadgeVariant = React.ComponentProps<typeof Badge>["variant"];
+type BadgeTone = React.ComponentProps<typeof Badge>["tone"];
+type BadgeSize = React.ComponentProps<typeof Badge>["size"];
 
 export interface LogViewerBadge {
   key?: string;
   label: React.ReactNode;
   variant?: BadgeVariant;
-  className?: string;
+  tone?: BadgeTone;
+  size?: BadgeSize;
 }
 
 export interface LogViewerSelectOption {
@@ -127,9 +130,10 @@ function getDefaultLineClassName(line: string): string {
     normalized.includes("fatal") ||
     normalized.includes("panic")
   ) {
-    return "border-l-red-500 text-red-300";
+    return "border-l-destructive text-destructive";
   }
-  if (normalized.includes("warn")) return "border-l-yellow-500 text-yellow-300";
+  if (normalized.includes("warn"))
+    return "border-l-status-warning text-status-warning";
   if (normalized.includes("info"))
     return "border-l-status-info text-status-info";
   return "border-l-neutral-700 text-neutral-300";
@@ -151,9 +155,9 @@ function getDefaultEntryLevelVariant(level: string): BadgeVariant {
 function getDefaultEntryClassName(entry: LogViewerStructuredEntry): string {
   switch (entry.level) {
     case "error":
-      return "text-red-500";
+      return "text-destructive";
     case "warn":
-      return "text-yellow-500";
+      return "text-status-warning";
     case "info":
       return "text-status-info";
     case "debug":
@@ -237,7 +241,7 @@ export function LogViewer({
         <div className="flex flex-col gap-4 border-b border-border pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-txt" />
+              <span className="inline-block size-2 rounded-full bg-txt" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -248,7 +252,8 @@ export function LogViewer({
                 <Badge
                   key={badge.key ?? String(badge.label)}
                   variant={badge.variant ?? "outline"}
-                  className={badge.className}
+                  tone={badge.tone}
+                  size={badge.size}
                 >
                   {badge.label}
                 </Badge>
@@ -298,11 +303,11 @@ export function LogViewer({
                 title={streamingTitle}
               >
                 {streaming?.active ? (
-                  <Wifi className="h-4 w-4" />
+                  <Wifi className="size-4" />
                 ) : streaming?.enabled ? (
-                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <RefreshCw className="size-4 animate-spin" />
                 ) : (
-                  <WifiOff className="h-4 w-4" />
+                  <WifiOff className="size-4" />
                 )}
               </BrandButton>
             )}
@@ -315,7 +320,7 @@ export function LogViewer({
                 title={refreshTitle}
               >
                 <RefreshCw
-                  className={cn("h-4 w-4", loading && "animate-spin")}
+                  className={cn("size-4", loading && "animate-spin")}
                 />
               </BrandButton>
             )}
@@ -328,7 +333,7 @@ export function LogViewer({
                 disabled={copyDisabled}
                 title={copyTitle}
               >
-                <Copy className="h-4 w-4" />
+                <Copy className="size-4" />
               </BrandButton>
             )}
             {onDownload && (
@@ -340,7 +345,7 @@ export function LogViewer({
                 disabled={downloadDisabled}
                 title={downloadTitle}
               >
-                <Download className="h-4 w-4" />
+                <Download className="size-4" />
               </BrandButton>
             )}
           </div>
@@ -352,13 +357,14 @@ export function LogViewer({
           <div className="flex flex-col gap-3 sm:flex-row">
             {search && (
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/60" />
                 <Input
+                  variant="config"
+                  adornment="leading"
                   aria-label={search.placeholder ?? "Search logs"}
                   placeholder={search.placeholder ?? "Search logs..."}
                   value={search.value}
                   onChange={(event) => search.onChange(event.target.value)}
-                  className="rounded-none border-border bg-black/40 pl-9 text-white placeholder:text-white/60 "
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 />
               </div>
@@ -407,9 +413,9 @@ export function LogViewer({
           </div>
         ) : error ? (
           <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
+            <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p
-              className="mb-1 text-sm font-medium text-red-400"
+              className="mb-1 text-sm font-medium text-destructive"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               {errorTitle}
@@ -422,14 +428,14 @@ export function LogViewer({
                 onClick={onRetry}
                 className="mt-4"
               >
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <RefreshCw className="mr-2 size-4" />
                 {retryLabel}
               </BrandButton>
             )}
           </div>
         ) : !hasData ? (
           <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
+            <Terminal className="mx-auto mb-3 size-8 text-neutral-600" />
             <p className="text-sm text-white/60">
               {isFilteredEmpty ? filteredEmptyState.title : emptyState.title}
             </p>
@@ -492,7 +498,8 @@ export function LogViewer({
                   {entry.level && (
                     <Badge
                       variant={entryLevelVariant(entry.level)}
-                      className="h-5 shrink-0 rounded-none font-mono text-xs"
+                      size="compact"
+                      className="shrink-0"
                     >
                       {entry.level.toUpperCase()}
                     </Badge>
@@ -520,10 +527,10 @@ export function LogViewer({
                       variant="ghost"
                       size="sm"
                       onClick={() => onCopyEntry(entry)}
-                      className="h-6 w-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="size-6 shrink-0 p-0 opacity-0 transition-opacity group-hover:opacity-100"
                       title="Copy log line"
                     >
-                      <Copy className="h-3 w-3" />
+                      <Copy className="size-3" />
                     </BrandButton>
                   )}
                 </div>
@@ -539,8 +546,8 @@ export function LogViewer({
           >
             {streaming.active ? (
               <>
-                <Wifi className="h-3 w-3 text-green-500" />
-                <span className="text-green-500">
+                <Wifi className="size-3 text-status-success" />
+                <span className="text-status-success">
                   {streaming.activeLabel ??
                     streaming.label ??
                     "Live streaming enabled"}
@@ -548,7 +555,7 @@ export function LogViewer({
               </>
             ) : (
               <>
-                <RefreshCw className="h-3 w-3 animate-spin" />
+                <RefreshCw className="size-3 animate-spin" />
                 {streaming.inactiveLabel ??
                   streaming.label ??
                   "Auto-refreshing"}

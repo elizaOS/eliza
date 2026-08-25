@@ -62,7 +62,7 @@ test.describe("app onboarding handoff — success switch", () => {
     const prevBoot = getBootConfig();
     const prevToken = readStoredStewardToken();
     setBootConfig({ ...prevBoot, cloudApiBase });
-    writeStoredStewardToken(authToken);
+    await writeStoredStewardToken(authToken);
 
     // Price the shared turn's model so the in-Worker billing path can settle a
     // real debit (no live BitRouter key). `openai/<model>` resolves billingSource
@@ -268,9 +268,9 @@ test.describe("app onboarding handoff — success switch", () => {
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       } else {
-        writeStoredStewardToken(prevToken);
+        await writeStoredStewardToken(prevToken);
       }
     }
   });

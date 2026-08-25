@@ -37,6 +37,12 @@ mock.module("@/lib/security/redirect-validation", () => ({
   assertAllowedAbsoluteRedirectUrl: (url: string) => new URL(url),
 }));
 
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  RateLimitPresets: { STANDARD: {} },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
+}));
+
 mock.module("@/lib/utils/logger", () => ({
   logger: { info: () => undefined, error: () => undefined },
 }));

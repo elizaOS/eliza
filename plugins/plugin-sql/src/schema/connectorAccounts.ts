@@ -23,6 +23,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -65,6 +66,7 @@ export const connectorAccountsTable = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).default(sql`now()`).notNull(),
   },
   (table) => [
+    unique("connector_accounts_id_agent_unique").on(table.id, table.agentId),
     uniqueIndex("connector_accounts_agent_provider_account_key_uniq")
       .on(table.agentId, table.provider, table.accountKey)
       .where(sql`${table.deletedAt} IS NULL`),

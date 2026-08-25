@@ -36,6 +36,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from training.tokenization import tokenize_with_explicit_limit
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -109,6 +111,7 @@ def build_preference_dataset(
     tokenizer: Any,
     *,
     max_n: int | None = None,
+    max_tokens: int,
     seed: int = 42,
 ) -> Any:
     """Walk `pair_dirs/*.jsonl`, build {prompt, chosen, rejected} rows.
@@ -152,6 +155,18 @@ def build_preference_dataset(
                     rejected = _corrupt_response(chosen, task_type, rng)
                     if rejected.strip() == chosen.strip():
                         continue
+                    tokenize_with_explicit_limit(
+                        tokenizer,
+                        prompt_text + chosen,
+                        max_tokens=max_tokens,
+                        add_special_tokens=True,
+                    )
+                    tokenize_with_explicit_limit(
+                        tokenizer,
+                        prompt_text + rejected,
+                        max_tokens=max_tokens,
+                        add_special_tokens=True,
+                    )
                     rows.append({
                         "prompt": prompt_text,
                         "chosen": chosen,
@@ -229,7 +244,6 @@ def main() -> int:
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.truncation_side = "left"
 
     pairs_dir = Path(args.pairs_dir)
     if not pairs_dir.exists():
@@ -238,6 +252,7 @@ def main() -> int:
     train_ds = build_preference_dataset(
         [pairs_dir], tokenizer,
         max_n=args.max_samples or None,
+        max_tokens=args.max_seq_len,
     )
     if len(train_ds) == 0:
         log.error("no preference pairs constructed — check pairs-dir layout")
@@ -311,7 +326,7 @@ def main() -> int:
         weight_decay=0.0,
         bf16=device == "cuda",
         beta=args.beta,
-        max_length=args.max_seq_len,
+        max_length=None,
         logging_steps=10,
         save_steps=500,
         save_total_limit=3,

@@ -35,6 +35,18 @@ export interface BenchmarkResult {
   duration_ms: number;
   success: boolean;
   error?: string;
+  failure_kind?: string;
+  failure_code?: string;
+  transient?: boolean;
+}
+
+const REQUIRED_CODING_ACTIONS = ["READ", "WRITE", "EDIT", "SHELL"] as const;
+
+function missingCodingActions(runtime: AgentRuntime): string[] {
+  const names = new Set(
+    runtime.actions.map((action) => action.name.trim().toUpperCase()),
+  );
+  return REQUIRED_CODING_ACTIONS.filter((name) => !names.has(name));
 }
 
 function detectTaskType(task: BenchmarkTask): string {
@@ -67,6 +79,20 @@ export async function runBenchmarkTask(
 
   try {
     abortSignal.throwIfAborted();
+    if (taskType === "coding") {
+      const missing = missingCodingActions(runtime);
+      if (missing.length > 0) {
+        return {
+          id: task.id,
+          response: "",
+          task_type: taskType,
+          actions_taken: [],
+          duration_ms: Math.round(performance.now() - start),
+          success: false,
+          error: `Coding benchmark runtime is missing required actions: ${missing.join(", ")}`,
+        };
+      }
+    }
     await runtime.ensureConnection({
       entityId: userId,
       roomId,
@@ -121,6 +147,7 @@ export async function runBenchmarkTask(
       },
       {
         abortSignal,
+        ...(taskType === "coding" ? { codingMode: true } : {}),
         onStreamChunk: async (chunk: string) => {
           if (chunk) streamText += chunk;
         },
@@ -138,7 +165,10 @@ export async function runBenchmarkTask(
     // the final answer with duplicated chunks or verbose action output.
     const responseText =
       resultText || messagesText || streamText || callbackText || "";
-    const success = result.didRespond && responseText.trim().length > 0;
+    const success =
+      result.terminalFailure === undefined &&
+      result.didRespond &&
+      responseText.trim().length > 0;
 
     return {
       id: task.id,
@@ -148,7 +178,21 @@ export async function runBenchmarkTask(
       duration_ms: Math.round(performance.now() - start),
       success,
       ...(!success
-        ? { error: result.reason ?? "Agent completed without a response" }
+        ? {
+            error:
+              result.terminalFailure?.message ??
+              result.reason ??
+              "Agent completed without a response",
+            ...(result.terminalFailure
+              ? {
+                  failure_kind: result.terminalFailure.kind,
+                  ...(result.terminalFailure.code
+                    ? { failure_code: result.terminalFailure.code }
+                    : {}),
+                  transient: result.terminalFailure.transient,
+                }
+              : {}),
+          }
         : {}),
     };
   } catch (err) {
@@ -423,6 +467,11 @@ export async function runBenchmark(
     process.env.LOG_LEVEL = "error";
   }
   process.env.ELIZA_HEADLESS = "1";
+  const previousBlockDeferred = process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
+  // Coding tools are part of the normal deferred desktop wave. A benchmark is
+  // not latency-sensitive boot UI: it must await the complete capability set
+  // before sending the first task or the planner can receive zero native tools.
+  process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS = "1";
 
   const ownerController = new AbortController();
   const removeSignalHandlers = installOwnerSignalHandlers(ownerController);
@@ -494,6 +543,11 @@ export async function runBenchmark(
       }
     } finally {
       removeSignalHandlers();
+      if (previousBlockDeferred === undefined) {
+        delete process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS;
+      } else {
+        process.env.ELIZA_BLOCK_DEFERRED_PLUGIN_IMPORTS = previousBlockDeferred;
+      }
     }
   }
 }

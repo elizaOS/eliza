@@ -23,6 +23,7 @@ import type {
 } from "../../config/config-catalog";
 import {
   evaluateFieldVisibility,
+  matchesSafeUntrustedRegexPattern,
   resolveFields,
   runValidation,
 } from "../../config/config-catalog";
@@ -222,8 +223,9 @@ function ValidationSummary({
           <li key={key}>
             <Button
               type="button"
-              variant="link"
-              className="text-xs text-destructive p-0 h-auto hover:underline transition-all text-left flex items-center gap-1.5"
+              variant="surfaceDestructive"
+              size="content"
+              align="start"
               onClick={() => handleFieldClick(key)}
             >
               <span className="opacity-60">
@@ -306,16 +308,8 @@ export const ConfigRenderer = forwardRef<
 
       // 3. Pattern validation from hints
       if (field.hint.pattern && typeof value === "string" && value) {
-        try {
-          // Guard against ReDoS: reject overly long or nested-quantifier patterns
-          const pat = field.hint.pattern;
-          if (pat.length <= 200 && !/([+*])\)?[+*]/.test(pat)) {
-            if (!new RegExp(pat).test(value)) {
-              errors.push(field.hint.patternError ?? "Invalid format.");
-            }
-          }
-        } catch {
-          // invalid regex in hint — skip
+        if (!matchesSafeUntrustedRegexPattern(field.hint.pattern, value)) {
+          errors.push(field.hint.patternError ?? "Invalid format.");
         }
       }
 
@@ -710,7 +704,8 @@ function AdvancedSectionToggle({
     <Button
       type="button"
       variant="ghost"
-      className="flex items-center gap-2 cursor-pointer select-none group mb-3 p-0 h-auto"
+      size="content"
+      className="group mb-3"
       onClick={() => setAdvancedOpen((prev) => !prev)}
     >
       <span

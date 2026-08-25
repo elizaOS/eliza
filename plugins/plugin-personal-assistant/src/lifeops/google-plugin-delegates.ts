@@ -493,7 +493,7 @@ export function lifeOpsGmailMessageFromGoogle(args: {
     replyTo: message.replyTo?.email ?? null,
     to: (message.to ?? []).map((item: GoogleEmailAddress) => item.email),
     cc: (message.cc ?? []).map((item: GoogleEmailAddress) => item.email),
-    snippet: message.snippet ?? message.bodyText?.slice(0, 240) ?? "",
+    snippet: message.snippet ?? message.bodyText ?? "",
     receivedAt,
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),

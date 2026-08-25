@@ -89,6 +89,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
       "all",
       "app",
       "scenarios",
+      "live-information",
       "cloud",
       "voice",
       "dedicated",

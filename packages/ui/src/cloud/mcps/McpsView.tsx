@@ -58,7 +58,7 @@ export function McpsView() {
             setEditorOpen(true);
           }}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="size-4" />
           {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
         </BrandButton>
       ),
@@ -132,16 +132,13 @@ export function McpsView() {
       <div className="flex gap-1 border-b border-border">
         {tabs.map((tabDef) => (
           <Button
-            variant="ghost"
+            variant="selection"
+            size="touch"
+            data-state={tab === tabDef.id ? "on" : "off"}
             type="button"
             key={tabDef.id}
             onClick={() => setTab(tabDef.id)}
-            className={cn(
-              "min-h-touch px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-              tab === tabDef.id
-                ? "border-accent text-txt-strong"
-                : "border-transparent text-muted hover:text-txt",
-            )}
+            className="-mb-px"
           >
             {tabDef.label}
           </Button>
@@ -151,29 +148,25 @@ export function McpsView() {
       {/* Search + category filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2  size-4 text-muted" />
           <Input
+            adornment="leading"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("cloud.mcps.searchPlaceholder", {
               defaultValue: "Search MCPs...",
             })}
-            className="pl-9"
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
           {categories.map((cat) => (
             <Button
-              variant="ghost"
+              variant="selection"
+              size="pillDense"
+              data-state={category === cat ? "on" : "off"}
               type="button"
               key={cat}
               onClick={() => setCategory(cat)}
-              className={cn(
-                "min-h-touch px-3 text-xs rounded-full border transition-colors capitalize",
-                category === cat
-                  ? "border-accent/50 bg-accent-subtle text-txt-strong"
-                  : "border-border bg-bg-elevated text-muted hover:bg-bg-hover hover:text-txt",
-              )}
             >
               {cat}
             </Button>
@@ -219,7 +212,7 @@ export function McpsView() {
                   setEditorOpen(true);
                 }}
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="size-4" />
                 {t("cloud.mcps.registerCta", { defaultValue: "Register MCP" })}
               </BrandButton>
             ) : undefined
@@ -265,21 +258,23 @@ const UserMcpCard = memo(function UserMcpCard({
   const t = useCloudT();
   return (
     <Button
-      variant="ghost"
+      variant="choice"
+      size="card"
+      align="start"
       type="button"
       onClick={() => onSelect(mcp.id)}
-      className="group text-left rounded-sm border border-border bg-card p-4 transition-colors hover:border-border-strong hover:bg-bg-hover"
+      className="group"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
-            <Puzzle className="h-4 w-4 text-accent" />
+            <Puzzle className="size-4 text-accent" />
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate flex items-center gap-2">
               {mcp.name}
               {mcp.x402_enabled && (
-                <Zap className="h-3 w-3 text-accent shrink-0" />
+                <Zap className="size-3 text-accent shrink-0" />
               )}
             </h3>
             <p className="text-xs text-muted">
@@ -324,11 +319,11 @@ const BuiltinCard = memo(function BuiltinCard({
   };
 
   return (
-    <div className="rounded-sm border border-border bg-card p-4">
+    <div className="border-b border-border p-4 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
           <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
-            <Puzzle className="h-4 w-4 text-accent" />
+            <Puzzle className="size-4 text-accent" />
           </div>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate">
@@ -403,7 +398,7 @@ function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-4 rounded-sm border border-border bg-card py-16 text-center">
-      <Puzzle className="h-10 w-10 text-muted" />
+      <Puzzle className="size-10 text-muted" />
       <p className="text-sm text-muted">{message}</p>
       {action}
     </div>

@@ -11,6 +11,7 @@ import http from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  _resetAuthRateLimiter,
   ensureRouteAuthorized,
   ensureRouteMinRole,
   resolveAuthorizedRouteRole,
@@ -162,11 +163,33 @@ function clearEnv() {
 describe("ensureRouteMinRole", () => {
   beforeEach(() => {
     clearEnv();
+    _resetAuthRateLimiter();
     vi.clearAllMocks();
     mocks.verifyCsrfToken.mockReturnValue(true);
   });
 
   afterEach(clearEnv);
+
+  it("does not rate-limit trusted loopback recovery requests", async () => {
+    const failedReq = makeReq({ remoteAddress: "127.0.0.1" });
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await resolveAuthorizedRouteRole(failedReq, {
+        state: { current: null },
+        skipCsrf: true,
+      });
+    }
+
+    const trustedReq = makeReq({
+      remoteAddress: "127.0.0.1",
+      headers: { host: "localhost:2138" },
+    });
+    await expect(
+      resolveAuthorizedRouteRole(trustedReq, {
+        state: { current: null },
+        skipCsrf: true,
+      }),
+    ).resolves.toEqual({ ok: true, role: "OWNER" });
+  });
 
   it("allows an owner browser session to reach OWNER routes", async () => {
     mocks.findActiveSession.mockResolvedValue(makeSession());
@@ -192,6 +215,51 @@ describe("ensureRouteMinRole", () => {
       role: "OWNER",
       identityId: "identity-id",
     });
+  });
+
+  it("ignores ambient cookies when the caller origin is not trusted", async () => {
+    mocks.findActiveSession.mockResolvedValue(makeSession());
+    mocks.findIdentity.mockResolvedValue(makeIdentity("owner"));
+    const req = makeReq({ headers: { cookie: "eliza_session=owner-session" } });
+
+    await expect(
+      resolveAuthorizedRouteRole(req, {
+        state: STATE_WITH_DB,
+        allowCookieAuth: false,
+      }),
+    ).resolves.toEqual({ ok: false, status: 401, reason: "Unauthorized" });
+    expect(mocks.findActiveSession).not.toHaveBeenCalled();
+    expect(mocks.verifyCsrfToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit bearer sessions available when cookie auth is disabled", async () => {
+    mocks.findActiveSession.mockResolvedValue(makeSession());
+    mocks.findIdentity.mockResolvedValue(makeIdentity("owner"));
+    const req = makeReq({
+      method: "POST",
+      headers: {
+        authorization: "Bearer bearer-session",
+        cookie: "eliza_session=ambient-session",
+      },
+    });
+
+    await expect(
+      resolveAuthorizedRouteRole(req, {
+        state: STATE_WITH_DB,
+        allowCookieAuth: false,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      role: "OWNER",
+      identityId: "identity-id",
+    });
+    expect(mocks.findActiveSession).toHaveBeenCalledTimes(1);
+    expect(mocks.findActiveSession).toHaveBeenCalledWith(
+      expect.anything(),
+      "bearer-session",
+      undefined,
+    );
+    expect(mocks.verifyCsrfToken).not.toHaveBeenCalled();
   });
 
   it("rejects a machine session from OWNER routes", async () => {

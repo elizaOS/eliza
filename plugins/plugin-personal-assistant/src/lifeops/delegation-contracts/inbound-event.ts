@@ -22,7 +22,6 @@ const CHANNEL_ALIASES: Readonly<Record<string, DelegationChannel>> = {
   gmail: "email",
   google: "email",
   imessage: "imessage",
-  signal: "signal",
   slack: "slack",
   telegram: "telegram",
   whatsapp: "whatsapp",

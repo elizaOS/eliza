@@ -28,9 +28,7 @@ export type ConnectorSetupPanelToken =
   | "telegram-account"
   | "telegram-bot"
   | "whatsapp"
-  | "signal"
   | "discord-local"
-  | "bluebubbles"
   | "imessage"
   | "lifeops-browser";
 
@@ -95,18 +93,8 @@ registerConnectorSetupPanelRule({
   match: "exact",
 });
 registerConnectorSetupPanelRule({
-  token: "signal",
-  needle: "signal",
-  match: "exact",
-});
-registerConnectorSetupPanelRule({
   token: "discord-local",
   needle: "discordlocal",
-  match: "exact",
-});
-registerConnectorSetupPanelRule({
-  token: "bluebubbles",
-  needle: "bluebubbles",
   match: "exact",
 });
 registerConnectorSetupPanelRule({

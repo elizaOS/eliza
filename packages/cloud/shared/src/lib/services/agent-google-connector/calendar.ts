@@ -15,8 +15,6 @@ import {
 const GOOGLE_CALENDAR_EVENTS_ENDPOINT = "https://www.googleapis.com/calendar/v3/calendars";
 const GOOGLE_CALENDAR_LIST_ENDPOINT =
   "https://www.googleapis.com/calendar/v3/users/me/calendarList";
-// Bounds provider calls independently from the accumulated Worker response.
-const MAX_GOOGLE_CALENDAR_FEED_PAGES = 1_000;
 const MAX_GOOGLE_CALENDAR_FEED_EVENTS = 10_000;
 
 type GoogleCalendarEventDate = {
@@ -155,16 +153,25 @@ function sameZonedParts(left: LocalDateTimeParts, right: LocalDateTimeParts): bo
  */
 export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTimeParts): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
+  if (!Number.isFinite(baseUtcMs)) {
+    throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
+  }
   const offsets = new Set(
     OFFSET_SAMPLE_HOURS.map((hours) =>
       getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
     ),
   );
-  const candidates = [...offsets].map(
-    (offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS),
-  );
+  const candidates = [...offsets]
+    .map((offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS))
+    .filter((candidate) => Number.isFinite(candidate.getTime()));
   const exact = candidates
-    .filter((candidate) => sameZonedParts(getZonedDateParts(candidate, timeZone), parts))
+    .filter((candidate) => {
+      try {
+        return sameZonedParts(getZonedDateParts(candidate, timeZone), parts);
+      } catch {
+        return false;
+      }
+    })
     .sort((left, right) => left.getTime() - right.getTime());
   if (exact[0]) {
     // Compatible disambiguation selects the earlier instant during a repeat.
@@ -172,11 +179,19 @@ export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTim
   }
 
   const shiftedForward = candidates
-    .map((candidate) => ({
-      candidate,
-      wallDeltaMs: localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs,
-    }))
-    .filter(({ wallDeltaMs }) => wallDeltaMs > 0)
+    .map((candidate) => {
+      let wallDeltaMs: number;
+      try {
+        wallDeltaMs = localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs;
+      } catch {
+        wallDeltaMs = Number.NaN;
+      }
+      return { candidate, wallDeltaMs };
+    })
+    .filter(
+      ({ wallDeltaMs, candidate }) =>
+        Number.isFinite(wallDeltaMs) && wallDeltaMs > 0 && Number.isFinite(candidate.getTime()),
+    )
     .sort(
       (left, right) =>
         left.wallDeltaMs - right.wallDeltaMs ||
@@ -326,16 +341,8 @@ export async function fetchManagedGoogleCalendarFeed(args: {
 
   const events: ManagedGoogleCalendarEvent[] = [];
   let pageToken: string | undefined;
-  let pageCount = 0;
   const seenPageTokens = new Set<string>();
   do {
-    pageCount += 1;
-    if (pageCount > MAX_GOOGLE_CALENDAR_FEED_PAGES) {
-      fail(
-        502,
-        `Google Calendar feed pagination exceeded ${MAX_GOOGLE_CALENDAR_FEED_PAGES} pages.`,
-      );
-    }
     const params = new URLSearchParams(baseParams);
     if (pageToken) {
       params.set("pageToken", pageToken);

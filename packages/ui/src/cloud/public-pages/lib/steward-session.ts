@@ -25,6 +25,10 @@ import {
   TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "../../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../../lib/jwt";
+import {
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "../../lib/steward-session-cookie-sync-marker";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../../shell/steward-url";
 
 export function resolveStewardAuthEndpoint(
@@ -42,11 +46,19 @@ async function postAuthJson(
   body?: object,
   method: "POST" | "DELETE" = "POST",
   signal?: AbortSignal,
+  resolvedEndpoint = resolveStewardAuthEndpoint(path),
 ): Promise<Response> {
-  return fetch(resolveStewardAuthEndpoint(path), {
+  return fetch(resolvedEndpoint, {
     method,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    // Cookie-authenticated mutations must carry an explicit non-simple marker.
+    // Keep this even for bodyless DELETEs: browsers/proxies may discard a
+    // content type when there is no body, which otherwise turns logout and
+    // stale-session recovery into a CSRF-guarded 403.
+    headers: {
+      "Content-Type": "application/json",
+      "X-Eliza-CSRF": "1",
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
     ...(signal ? { signal } : {}),
   });
@@ -85,7 +97,14 @@ export async function syncStewardSessionCookie(
     ...(refreshToken ? { refreshToken } : {}),
     ...(options?.verifiedPhone ? { verifiedPhone: options.verifiedPhone } : {}),
   };
-  const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
+  const sessionEndpoint = resolveStewardAuthEndpoint(STEWARD_SESSION_ENDPOINT);
+  const response = await postAuthJson(
+    STEWARD_SESSION_ENDPOINT,
+    request,
+    "POST",
+    undefined,
+    sessionEndpoint,
+  );
 
   if (!response.ok) {
     const body = await readSessionError(response);
@@ -95,10 +114,16 @@ export async function syncStewardSessionCookie(
   }
 
   if (typeof window !== "undefined") {
+    // The server cookie is authoritative at this endpoint now. Record this
+    // exact token/endpoint pair before publishing canonical storage: that write
+    // can rerender the mounted Steward runtime, whose passive mirror may skip
+    // only an identical POST target. The module-private, one-shot marker cannot
+    // be forged through browser event detail.
+    markStewardServerCookieSynced(token, sessionEndpoint);
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );
@@ -134,7 +159,7 @@ export async function confirmTelegramAccountClaim(
     TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
   );
   if (typeof window !== "undefined") {
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );
@@ -192,10 +217,14 @@ export function consumeStewardCodeFromQuery(): string | null {
   const hashCode = hashParams.get("code");
   if (!hashCode) return null;
   hashParams.delete("code");
+  const nextHash = hashParams.toString();
   if (snapshotted) {
-    delete stewardWindow.__stewardOAuthHash;
+    if (nextHash) {
+      stewardWindow.__stewardOAuthHash = `#${nextHash}`;
+    } else {
+      delete stewardWindow.__stewardOAuthHash;
+    }
   } else {
-    const nextHash = hashParams.toString();
     window.history.replaceState(
       null,
       "",
@@ -203,6 +232,55 @@ export function consumeStewardCodeFromQuery(): string | null {
     );
   }
   return hashCode;
+}
+
+/**
+ * Consume the app-owned OAuth `state` echo from either the query string or
+ * fragment. Steward's nonce-exchange callback intentionally returns `code`
+ * and `state` in the fragment, so reading React Router's query params alone
+ * rejects every otherwise-valid provider callback as a state mismatch.
+ */
+export function consumeStewardOAuthStateFromCallback(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const queryParams = new URLSearchParams(window.location.search);
+  const queryState = queryParams.get("state");
+  if (queryState) {
+    queryParams.delete("code");
+    queryParams.delete("state");
+    const query = queryParams.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+    return queryState;
+  }
+
+  const stewardWindow = window as Window & { __stewardOAuthHash?: string };
+  const snapshotted = stewardWindow.__stewardOAuthHash;
+  const hash = snapshotted || window.location.hash;
+  if (!hash || hash.length < 2) return null;
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+  const hashState = hashParams.get("state");
+  if (!hashState) return null;
+  hashParams.delete("code");
+  hashParams.delete("state");
+  const nextHash = hashParams.toString();
+  if (snapshotted) {
+    if (nextHash) {
+      stewardWindow.__stewardOAuthHash = `#${nextHash}`;
+    } else {
+      delete stewardWindow.__stewardOAuthHash;
+    }
+  } else {
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ""}`,
+    );
+  }
+  return hashState;
 }
 
 /**
@@ -416,6 +494,9 @@ function isRejectedCookieSession(error: unknown): boolean {
 }
 
 async function clearRejectedCookieSession(): Promise<void> {
+  // The DELETE and subsequent token removal can each fail. Retire proof before
+  // either boundary so recovery can never reuse pre-clear cookie authority.
+  invalidateStewardServerCookieSyncMarker();
   const response = await postAuthJson(
     STEWARD_SESSION_ENDPOINT,
     undefined,
@@ -429,7 +510,7 @@ async function clearRejectedCookieSession(): Promise<void> {
       body.code ?? null,
     );
   }
-  clearStoredStewardToken();
+  await clearStoredStewardToken();
 }
 
 /**

@@ -23,6 +23,7 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
+import { __codingMutationRequiresVerificationForTests } from "@elizaos/core/runtime/planner-loop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
@@ -37,8 +38,10 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
 import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
+import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
 import {
+  BackgroundShellReapTimeoutError,
   BackgroundShellService,
   SandboxService,
   SessionCwdService,
@@ -120,11 +123,14 @@ async function withShellTimeoutEnv<T>(
 
 interface RuntimeOptions {
   blockedPaths?: string;
+  workspaceRoots?: string;
   shellTimeoutMs?: unknown;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
   backgroundBufferChars?: number;
+  backgroundKillGraceMs?: number;
+  backgroundReapWaitMs?: number;
   configuredSecret?: string;
 }
 
@@ -150,12 +156,20 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
+  if (opts.workspaceRoots)
+    settings.CODING_TOOLS_WORKSPACE_ROOTS = opts.workspaceRoots;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
   if (opts.backgroundBufferChars !== undefined) {
     settings.CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS =
       opts.backgroundBufferChars;
   }
+  if (opts.backgroundKillGraceMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS =
+      opts.backgroundKillGraceMs;
+  if (opts.backgroundReapWaitMs !== undefined)
+    settings.CODING_TOOLS_BACKGROUND_SHELL_REAP_WAIT_MS =
+      opts.backgroundReapWaitMs;
 
   const services = new Map<string, unknown>();
   const character = {
@@ -167,6 +181,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    runtimeInstanceId: secretOwner.runtimeInstanceId,
     actions: [shellAction],
     character,
     getSetting: vi.fn((key: string) => settings[key]),
@@ -245,6 +260,28 @@ async function pollUntil(
   throw new Error(`condition not met; last=${last?.text ?? "(none)"}`);
 }
 
+async function waitForBackgroundToSettle(
+  service: BackgroundShellService,
+  conversationId: string,
+  handle: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const session = service
+      .list(conversationId)
+      .find((candidate) => candidate.handle === handle);
+    if (
+      session &&
+      (session.status === "exited" ||
+        session.status === "killed" ||
+        session.status === "error")
+    ) {
+      return;
+    }
+    await delay(50);
+  }
+  throw new Error(`background shell ${handle} did not settle`);
+}
+
 function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -312,6 +349,35 @@ function makeMessage(
     content: { text },
     createdAt: Date.now(),
   } as Memory;
+}
+
+function confirmationMessage(
+  original: Memory,
+  token: string,
+  overrides: Partial<Pick<Memory, "id" | "entityId" | "roomId">> & {
+    text?: string;
+  } = {},
+): Memory {
+  return {
+    ...original,
+    id: overrides.id ?? ("55555555-5555-5555-5555-555555555555" as UUID),
+    entityId: overrides.entityId ?? original.entityId,
+    roomId: overrides.roomId ?? original.roomId,
+    content: {
+      ...original.content,
+      text: overrides.text ?? `confirm ${token}`,
+    },
+    createdAt: Date.now(),
+  } as Memory;
+}
+
+function confirmationChallenge(result: ActionResult): string {
+  const challenge = (result.data as Record<string, unknown> | undefined)
+    ?.confirmation_challenge;
+  if (typeof challenge !== "string" || !challenge) {
+    throw new Error("Expected confirmation_challenge");
+  }
+  return challenge;
 }
 
 describeIfPosix("shellAction", () => {
@@ -473,6 +539,9 @@ describeIfPosix("shellAction", () => {
     expect(providerResult.text).toContain("start_background");
     expect(providerResult.data?.codingTools).toEqual([
       "FILE",
+      "READ",
+      "WRITE",
+      "EDIT",
       "SHELL",
       "WEB_FETCH",
       "WEB_SEARCH",
@@ -525,6 +594,197 @@ describeIfPosix("shellAction", () => {
     expect(result.text).not.toContain("--- stdout ---\nlocal shell output");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("echo local shell output");
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it("binds a routed receipt to an attested execution domain and opaque root", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const router = makeShellRouter(async () => ({
+      output: "remote\n",
+      exitCode: 0,
+      timedOut: false,
+      workspaceExecution,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+      scope: workspaceExecution,
+    });
+  });
+
+  it("carries real routed receipts through SHELL and planner scope matching", async () => {
+    const workspaceExecution = {
+      root: "/remote/workspace",
+      rootId: "a".repeat(64),
+      executionDomainId: "b".repeat(64),
+    };
+    const receipt = (outcome: "changed" | "unchanged") => ({
+      version: 1 as const,
+      kind: "workspace_delta" as const,
+      scope: {
+        kind: "git_worktree" as const,
+        ...workspaceExecution,
+        coverage: "tracked_and_untracked_nonignored" as const,
+      },
+      outcome,
+      beforeFingerprint: "c".repeat(64),
+      afterFingerprint: (outcome === "changed" ? "d" : "c").repeat(64),
+      observedAt: "2026-08-23T12:00:00.000Z",
+    });
+    let routedCall = 0;
+    const router = makeShellRouter(async () => {
+      routedCall += 1;
+      if (routedCall === 2) {
+        throw new CapabilityError({
+          code: "CAPABILITY_UNAVAILABLE",
+          message: "use local host",
+          capability: "pty",
+          method: "pty.command.run",
+        });
+      }
+      const workspaceDeltaReceipt = receipt(
+        routedCall === 1 ? "changed" : "unchanged",
+      );
+      return {
+        output: "remote ok\n",
+        exitCode: 0,
+        timedOut: false,
+        workspaceExecution,
+        workspaceDeltaReceipt,
+      };
+    });
+    const localRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "routed-receipt-local-domain-"),
+    );
+    await execFileAsync("git", ["init", "-q"], { cwd: localRoot });
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: router,
+    });
+    const message = makeMessage(undefined, "Mutate and verify remotely.");
+    session.setCwd(String(message.roomId), localRoot);
+    const execute = (command: string) =>
+      executePlannedToolCall(
+        runtime,
+        { message, activeContexts: ["code"], userRoles: ["OWNER"] },
+        { name: "SHELL", params: { command } },
+      );
+    const steps = [
+      {
+        toolCall: { name: "SHELL", params: { command: "node mutate.js" } },
+        result: await execute("node mutate.js"),
+      },
+    ];
+    const trajectory = { steps, archivedSteps: [] } as unknown as Parameters<
+      typeof __codingMutationRequiresVerificationForTests
+    >[0];
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test --help" } },
+      result: await execute("bun test --help"),
+    });
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(true);
+    steps.push({
+      toolCall: { name: "SHELL", params: { command: "bun test" } },
+      result: await execute("bun test"),
+    });
+    expect(steps.map((step) => step.result.success)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+    expect(
+      steps.map(
+        (step) =>
+          (step.result.data as Record<string, unknown> | undefined)
+            ?.workspaceDeltaReceipt,
+      ),
+    ).toMatchObject([
+      { outcome: "changed", scope: workspaceExecution },
+      {
+        outcome: "unchanged",
+        scope: { rootId: expect.not.stringMatching(/^a+$/) },
+      },
+      { outcome: "unchanged", scope: workspaceExecution },
+    ]);
+    expect(__codingMutationRequiresVerificationForTests(trajectory)).toBe(
+      false,
+    );
+    expect(routedCall).toBe(3);
+    await fs.rm(localRoot, { recursive: true, force: true });
+  });
+
+  it.each([
+    {
+      name: "dispatch exception",
+      run: async () => {
+        throw new Error("remote dispatch failed");
+      },
+    },
+    {
+      name: "complete-capture overflow",
+      run: async () => ({
+        output: "x".repeat(1_000_001),
+        exitCode: 0,
+        timedOut: false,
+      }),
+    },
+  ])("fails conservatively with a routed receipt on $name", async ({ run }) => {
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(run),
+    });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "node generate.js",
+      }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
+  });
+
+  it("preserves the receipt when transcript callback delivery fails", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
+    const router = makeShellRouter(async () => ({
+      output: "done\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "node generate.js" },
+        async () => {
+          throw new Error("callback unavailable");
+        },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("callback failed");
+    expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+      outcome: "indeterminate",
+      reasonCode: "REMOTE_EXECUTION_UNOBSERVED",
+    });
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
@@ -593,6 +853,176 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
+  it("returns complete redacted Unicode stdout and stderr above the former model cap", async () => {
+    const secret = "marigold9-complete-shell-secret";
+    const stdout = `${"🙂α\n".repeat(7_000)}${secret}\nstdout-tail`;
+    const stderr = `${"界β\n".repeat(8_000)}${secret}\nstderr-tail`;
+    expect(stdout.length + stderr.length).toBeGreaterThan(50_000);
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const script = [
+      `process.stdout.write(${JSON.stringify("🙂α\n")}.repeat(7000)+${JSON.stringify(`${secret}\nstdout-tail`)});`,
+      `process.stderr.write(${JSON.stringify("界β\n")}.repeat(8000)+${JSON.stringify(`${secret}\nstderr-tail`)});`,
+    ].join("");
+
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `node -e ${JSON.stringify(script)}`,
+      }),
+    );
+    const redactedStdout = stdout.replace(secret, "[REDACTED:TEST_SECRET]");
+    const redactedStderr = stderr.replace(secret, "[REDACTED:TEST_SECRET]");
+    const resultText = result.text ?? "";
+    const streamText = resultText.slice(resultText.indexOf("--- stdout ---"));
+
+    expect(result.success).toBe(true);
+    expect(streamText).toBe(
+      `--- stdout ---\n${redactedStdout}\n--- stderr ---\n${redactedStderr}`,
+    );
+    expect((result.data as Record<string, unknown>).output_truncated).toBe(
+      false,
+    );
+    expect(result).not.toHaveProperty("data.output_artifact_handle");
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it("retrieves a retained legacy artifact through an authorized opaque handle", async () => {
+    const stateDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-artifact-"),
+    );
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousJobTtl = process.env.SHELL_JOB_TTL_MS;
+    process.env.ELIZA_STATE_DIR = stateDir;
+    process.env.SHELL_JOB_TTL_MS = "60000";
+    const artifactRoot = path.join(stateDir, "coding-tools", "shell-output");
+    const workspace = path.join(stateDir, "workspace");
+    const staleArtifact = path.join(artifactRoot, "shell_stale");
+    const secret = "marigold9-artifact-secret";
+    try {
+      await fs.mkdir(workspace, { recursive: true });
+      await fs.mkdir(staleArtifact, { recursive: true });
+      await fs.writeFile(path.join(staleArtifact, "stdout.txt"), "stale");
+      const staleDate = new Date(Date.now() - 120_000);
+      await fs.utimes(staleArtifact, staleDate, staleDate);
+      const { runtime, sandbox } = await makeRuntime({
+        configuredSecret: secret,
+        workspaceRoots: workspace,
+      });
+      const message = makeMessage();
+      const stdout = `${"row\n".repeat(14_000)}[REDACTED:TEST_SECRET]`;
+      const stderr = "stderr-tail\n";
+      const artifact = await persistShellOutputArtifact({
+        command: "legacy large command",
+        cwd: workspace,
+        stdout,
+        stderr,
+        exitCode: 0,
+        timedOut: false,
+        signal: null,
+        modelCharacterLimit: 50_000,
+        modelCharacters: 50_000,
+        ownerAgentId: String(runtime.agentId),
+        ownerConversationId: String(message.roomId),
+      });
+      const handle = artifact.handle;
+      const artifactDirectory = path.join(artifactRoot, handle);
+      const manifestPath = path.join(artifactDirectory, "manifest.json");
+      const stdoutPath = path.join(artifactDirectory, "stdout.txt");
+      const stderrPath = path.join(artifactDirectory, "stderr.txt");
+      expect(await fs.readFile(stdoutPath, "utf8")).toBe(stdout);
+      expect(await fs.readFile(stderrPath, "utf8")).toBe(stderr);
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8")) as {
+        stdout: { bytes: number; lines: number };
+        stderr: { bytes: number; lines: number };
+        truncation: { modelCharacterLimit: number; completeBytes: number };
+      };
+
+      expect(await fs.readFile(manifestPath, "utf8")).not.toContain(secret);
+      expect(manifest.stdout).toEqual({
+        path: stdoutPath,
+        characters: stdout.length,
+        bytes: Buffer.byteLength(stdout),
+        lines: 14001,
+      });
+      expect(manifest.stderr).toEqual({
+        path: stderrPath,
+        characters: stderr.length,
+        bytes: Buffer.byteLength(stderr),
+        lines: 1,
+      });
+      expect(manifest.truncation.modelCharacterLimit).toBe(50_000);
+      expect(manifest.truncation.completeBytes).toBe(
+        Buffer.byteLength(stdout) + Buffer.byteLength(stderr),
+      );
+      await expect(
+        sandbox.validatePath(String(message.roomId), manifestPath),
+      ).resolves.toMatchObject({ ok: false });
+
+      const retrieveStream = async (stream: "stdout" | "stderr") => {
+        let offset = 0;
+        let complete = false;
+        let retrieved = "";
+        while (!complete) {
+          const page = requireActionResult(
+            await shellAction.handler?.(runtime, message, undefined, {
+              action: "read_output_artifact",
+              handle,
+              artifact_stream: stream,
+              artifact_offset: offset,
+              artifact_limit: 20_000,
+            }),
+          );
+          expect(page.success).toBe(true);
+          const pageData = page.data as Record<string, unknown>;
+          expect(pageData.handle).toBe(handle);
+          expect(pageData.stream).toBe(stream);
+          expect(pageData.startOffset).toBe(offset);
+          retrieved += pageData.text as string;
+          offset = pageData.nextOffset as number;
+          complete = pageData.complete as boolean;
+        }
+        return retrieved;
+      };
+
+      expect(await retrieveStream("stdout")).toBe(stdout);
+      expect(await retrieveStream("stderr")).toBe(stderr);
+
+      const crossRoom = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage("99999999-aaaa-bbbb-cccc-222222222222"),
+          undefined,
+          {
+            action: "read_output_artifact",
+            handle,
+            artifact_stream: "stdout",
+          },
+        ),
+      );
+      expect(crossRoom.success).toBe(false);
+      expect(JSON.stringify(crossRoom)).not.toContain("row\n");
+
+      const malformed = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "read_output_artifact",
+          handle: "../manifest.json",
+          artifact_stream: "stdout",
+        }),
+      );
+      expect(malformed.success).toBe(false);
+      expect((await fs.stat(manifestPath)).mode & 0o777).toBe(0o600);
+      expect((await fs.stat(path.dirname(manifestPath))).mode & 0o777).toBe(
+        0o700,
+      );
+      expect(await pathExists(staleArtifact)).toBe(false);
+    } finally {
+      if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = previousStateDir;
+      if (previousJobTtl === undefined) delete process.env.SHELL_JOB_TTL_MS;
+      else process.env.SHELL_JOB_TTL_MS = previousJobTtl;
+      await fs.rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -655,6 +1085,337 @@ describeIfPosix("shellAction", () => {
     expect(isProcessAlive(pid)).toBe(false);
   });
 
+  it("carries a pending receipt until a background mutation is observed", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const start = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; sleep 1`,
+        }),
+      );
+      expect(start.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+      });
+      const handle = (start.data as Record<string, unknown>).handle as string;
+      const settled = await pollUntil(
+        runtime,
+        message,
+        handle,
+        (data) => data.status === "exited",
+      );
+      expect(settled.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: { root: await fs.realpath(root) },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves background ownership and final receipts across callback failures", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-callback-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const callbackFailure = async () => {
+        throw new Error("callback unavailable");
+      };
+      const started = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "start_background", command: "true" },
+          callbackFailure,
+        ),
+      );
+      expect(started.success).toBe(false);
+      expect(started.data).toMatchObject({
+        action: "start_background",
+        handle: expect.stringMatching(/^bgsh_/),
+        workspaceDeltaReceipt: {
+          operation: { handle: expect.stringMatching(/^bgsh_/) },
+        },
+      });
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const polled = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "poll_background", handle },
+          callbackFailure,
+        ),
+      );
+      expect(polled.success).toBe(false);
+      expect(polled.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        status: "exited",
+        workspaceDeltaReceipt: {
+          outcome: expect.stringMatching(/^(?:unchanged|indeterminate)$/),
+          operation: { handle },
+        },
+      });
+      expect(
+        (
+          (polled.data as Record<string, unknown>)
+            .workspaceDeltaReceipt as Record<string, unknown>
+        ).reasonCode,
+      ).not.toBe("BACKGROUND_RECEIPT_PENDING");
+
+      const second = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command: "sleep 5",
+        }),
+      );
+      const secondHandle = (second.data as Record<string, unknown>)
+        .handle as string;
+      const killed = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          message,
+          undefined,
+          { action: "kill_background", handle: secondHandle },
+          callbackFailure,
+        ),
+      );
+      expect(killed.success).toBe(false);
+      expect(killed.data).toMatchObject({
+        action: "kill_background",
+        handle: secondHandle,
+        status: "killed",
+        workspaceDeltaReceipt: {
+          operation: { handle: secondHandle },
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("waits for overflow termination before snapshotting descendant late mutation", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-overflow-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      const { runtime, session, backgroundShell } = await makeRuntime({
+        workspaceRoots: root,
+        backgroundBufferChars: 5,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+      const started = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "start_background",
+          command:
+            "trap 'sleep 0.15; printf late > generated.txt; exit 0' TERM; printf 123456; while :; do sleep 1; done",
+        }),
+      );
+      const handle = (started.data as Record<string, unknown>).handle as string;
+      let terminating:
+        | Awaited<ReturnType<BackgroundShellService["inspect"]>>
+        | undefined;
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        const candidate = await backgroundShell.inspect({
+          conversationId: String(message.roomId),
+          handle,
+        });
+        if (candidate.status === "terminating") {
+          terminating = candidate;
+          break;
+        }
+        await delay(10);
+      }
+      expect(terminating).toMatchObject({
+        status: "terminating",
+        endedAt: null,
+        workspaceDeltaReceipt: {
+          reasonCode: "BACKGROUND_RECEIPT_PENDING",
+          operation: { handle, status: "terminating" },
+        },
+      });
+      await waitForBackgroundToSettle(
+        backgroundShell,
+        String(message.roomId),
+        handle,
+      );
+      const poll = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          action: "poll_background",
+          handle,
+        }),
+      );
+
+      expect(poll.success).toBe(false);
+      expect(poll.data).toMatchObject({
+        action: "poll_background",
+        handle,
+        workspaceDeltaReceipt: {
+          outcome: "changed",
+          operation: { handle, status: "error" },
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("escalates overflow from TERM to KILL and reaps a TERM-ignoring process", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 5,
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const startedAt = Date.now();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf 123456; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(message.roomId),
+      handle,
+    );
+    const settled = await backgroundShell.inspect({
+      conversationId: String(message.roomId),
+      handle,
+    });
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(settled).toMatchObject({
+      status: "error",
+      endedAt: expect.any(Number),
+      signal: "SIGKILL",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "error" },
+      },
+    });
+  });
+
+  it("bounds explicit kill while escalating a TERM-ignoring process", async () => {
+    const { runtime } = await makeRuntime({
+      backgroundKillGraceMs: 50,
+      backgroundReapWaitMs: 500,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    const startedAt = Date.now();
+    const killed = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "kill_background",
+        handle,
+      }),
+    );
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(killed.data).toMatchObject({
+      handle,
+      status: "killed",
+      workspaceDeltaReceipt: {
+        operation: { handle, status: "killed" },
+      },
+    });
+  });
+
+  it("retains a pending receipt when close cannot prove reap before the deadline", async () => {
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundKillGraceMs: 30,
+      backgroundReapWaitMs: 80,
+    });
+    const message = makeMessage();
+    const started = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command: "trap '' TERM; printf ready; while :; do sleep 1; done",
+      }),
+    );
+    const handle = (started.data as Record<string, unknown>).handle as string;
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+    type CloseListener = (
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ) => void;
+    type CloseControlledProcess = {
+      rawListeners(event: "close"): CloseListener[];
+      removeAllListeners(event: "close"): void;
+      once(event: "close", listener: CloseListener): CloseControlledProcess;
+    };
+    const internal = backgroundShell as unknown as {
+      sessions: Map<string, { process: CloseControlledProcess }>;
+    };
+    const process = internal.sessions.get(handle)?.process;
+    if (!process) throw new Error("background process unavailable");
+    const closeListeners = process.rawListeners("close");
+    const originalOnce = process.once.bind(process);
+    process.removeAllListeners("close");
+    process.once = () => process;
+
+    await expect(
+      backgroundShell.kill({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).rejects.toBeInstanceOf(BackgroundShellReapTimeoutError);
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({
+      status: "terminating",
+      endedAt: null,
+      workspaceDeltaReceipt: {
+        outcome: "indeterminate",
+        reasonCode: "BACKGROUND_RECEIPT_PENDING",
+        operation: { handle, status: "terminating" },
+      },
+    });
+
+    process.once = originalOnce;
+    for (const listener of closeListeners) listener(null, "SIGKILL");
+    expect(
+      await backgroundShell.inspect({
+        conversationId: String(message.roomId),
+        handle,
+      }),
+    ).toMatchObject({ status: "killed", endedAt: expect.any(Number) });
+  });
+
   it("returns incremental background output using stream offsets", async () => {
     const { runtime } = await makeRuntime();
     const message = makeMessage();
@@ -700,37 +1461,6 @@ describeIfPosix("shellAction", () => {
       handle,
       (data) => data.status === "exited",
     );
-  });
-
-  it("decodes split multibyte background stdout and stderr as UTF-8 streams", async () => {
-    const { runtime } = await makeRuntime();
-    const message = makeMessage();
-    const script = [
-      'const value = Buffer.from("\u4f60");',
-      "process.stdout.write(value.subarray(0, 1));",
-      "process.stderr.write(value.subarray(0, 2));",
-      "setTimeout(() => {",
-      "  process.stdout.write(value.subarray(1));",
-      "  process.stderr.write(value.subarray(2));",
-      "}, 50);",
-    ].join("");
-    const start = await shellAction.handler?.(runtime, message, undefined, {
-      action: "start_background",
-      command: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(script)}`,
-    });
-    const handle = (requireActionResult(start).data as Record<string, unknown>)
-      .handle as string;
-
-    const poll = await pollUntil(
-      runtime,
-      message,
-      handle,
-      (data) => data.status === "exited",
-    );
-    const data = poll.data as Record<string, unknown>;
-
-    expect((data.stdout as Record<string, unknown>).text).toBe("\u4f60");
-    expect((data.stderr as Record<string, unknown>).text).toBe("\u4f60");
   });
 
   it("fences every user-facing background/history relay (#16563)", async () => {
@@ -839,7 +1569,7 @@ describeIfPosix("shellAction", () => {
     expect(posts[0].text.length).toBeLessThan(1700);
   });
 
-  it("reports buffer truncation when background output exceeds the cap", async () => {
+  it("rejects background output beyond the complete-capture ceiling", async () => {
     const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
     const message = makeMessage();
     const start = await shellAction.handler?.(runtime, message, undefined, {
@@ -849,20 +1579,12 @@ describeIfPosix("shellAction", () => {
     const handle = (requireActionResult(start).data as Record<string, unknown>)
       .handle as string;
 
-    const poll = await pollUntil(runtime, message, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return (
-        data.status === "exited" &&
-        typeof stdout?.truncatedBefore === "number" &&
-        stdout.truncatedBefore > 0
-      );
-    });
-    const data = poll.data as Record<string, unknown>;
-    const stdout = data.stdout as Record<string, unknown>;
-    expect(stdout.text).toBe("ghijklmnopqrstuvwxyz");
-    expect(stdout.startOffset).toBe(6);
-    expect(stdout.endOffset).toBe(26);
-    expect(stdout.truncatedBefore).toBe(6);
+    const poll = await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("no partial output is available"),
+    );
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
+    expect(poll.text).not.toContain("ghijklmnopqrstuvwxyz");
   });
 
   it("reaps background sessions during service teardown", async () => {
@@ -1854,6 +2576,100 @@ describeIfPosix("shellAction", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.command).toBe("exit 7");
     expect(data?.exit_code).toBe(7);
+    expect(data?.signal).toBeNull();
+  });
+
+  it("retains an observed worktree mutation when the command later fails", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({
+        workspaceRoots: root,
+      });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: `printf 'generated\\n' > '${path.join(root, "generated.txt")}'; exit 7`,
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+      expect(JSON.stringify(result.data?.workspaceDeltaReceipt)).not.toContain(
+        "generated\\n",
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("retains an observed worktree mutation when the command times out", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-shell-timeout-delta-"),
+    );
+    try {
+      await execFileAsync("git", ["init", "-q"], { cwd: root });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Test",
+          "-c",
+          "user.email=test@example.com",
+          "commit",
+          "--allow-empty",
+          "-qm",
+          "initial",
+        ],
+        { cwd: root },
+      );
+      const { runtime, session } = await makeRuntime({ workspaceRoots: root });
+      const message = makeMessage();
+      session.setCwd(String(message.roomId), root);
+
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, message, undefined, {
+          command: `printf 'generated\\n' > '${path.join(root, "timed-out.txt")}'; sleep 5`,
+          timeout: 200,
+        }),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("timeout");
+      expect(result.data?.workspaceDeltaReceipt).toMatchObject({
+        outcome: "changed",
+        scope: {
+          root: await fs.realpath(root),
+          coverage: "tracked_and_untracked_nonignored",
+        },
+      });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it("returns command_failed when an earlier pipeline command fails", async () => {
@@ -2229,9 +3045,9 @@ describeIfPosix("shellAction", () => {
     expect(JSON.stringify(afterTaint)).not.toContain(secret);
   });
 
-  it("keeps a split configured secret tainted through tiny visible caps", async () => {
+  it("rejects split-secret output that exceeds the complete-capture limit", async () => {
     const secret = "marigold9";
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       configuredSecret: secret,
       backgroundBufferChars: 5,
     });
@@ -2244,26 +3060,29 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(
-      runtime,
-      actor,
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
       handle,
-      (data) => data.status === "exited",
     );
-    const data = poll.data as Record<string, unknown>;
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("mari");
-    expect(
-      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
-    ).not.toContain("gold9");
-    expect(data.stdout).toMatchObject({
-      text: "-safe",
-      startOffset: "mariXlater-safe".length - 5,
-      endOffset: "mariXlater-safe".length,
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
+    expect(JSON.stringify(poll)).not.toContain("mari");
+    expect(JSON.stringify(poll)).not.toContain("gold9");
+    expect(poll.data).toMatchObject({
+      action: "poll_background",
+      handle,
+      workspaceDeltaReceipt: {
+        operation: { kind: "background_shell", handle },
+      },
     });
-    expect((data.stderr as Record<string, unknown>).text).toBe("");
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {
@@ -2490,10 +3309,10 @@ describeIfPosix("shellAction", () => {
     );
   });
 
-  it("keeps an eviction-split configured secret inside the private overlap", async () => {
+  it("rejects eviction-split secret output beyond the capture limit", async () => {
     const secret = "violet73";
     const payload = `${"a".repeat(26)}${secret}${"z".repeat(16)}`;
-    const { runtime } = await makeRuntime({
+    const { runtime, backgroundShell } = await makeRuntime({
       backgroundBufferChars: 20,
       configuredSecret: secret,
     });
@@ -2505,25 +3324,30 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return data.status === "exited" && stdout?.truncatedBefore === 30;
-    });
-    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
-      string,
-      unknown
-    >;
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(stdout.text).toBe("z".repeat(16));
-    expect(stdout.startOffset).toBe(30);
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
   });
 
-  it("expands the private overlap when a configured secret rotates", async () => {
+  it("rejects rotated-secret output beyond the capture limit", async () => {
     const rotatedSecret = "rotated-secret-value-LEAK_SENTINEL_9Q";
     const payload = `${"a".repeat(10)}${rotatedSecret}${"z".repeat(8)}`;
-    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    const { runtime, backgroundShell } = await makeRuntime({
+      backgroundBufferChars: 20,
+    });
     runtime.character.settings = {
       secrets: { ROTATED_SECRET: rotatedSecret },
     };
@@ -2538,18 +3362,20 @@ describeIfPosix("shellAction", () => {
       }),
     );
     const handle = (start.data as Record<string, unknown>).handle as string;
-    const poll = await pollUntil(runtime, actor, handle, (data) => {
-      const stdout = data.stdout as Record<string, unknown> | undefined;
-      return (
-        data.status === "exited" &&
-        stdout?.truncatedBefore === payload.length - 20
-      );
-    });
+    await waitForBackgroundToSettle(
+      backgroundShell,
+      String(actor.roomId),
+      handle,
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+      }),
+    );
 
-    expect(
-      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
-        .text,
-    ).toBe("z".repeat(8));
+    expect(poll.success).toBe(false);
+    expect(poll.text).toContain("no partial output is available");
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 
@@ -3170,6 +3996,37 @@ describe("platform-aware canned resource commands", () => {
 });
 
 describe("destructive-bulk confirm gate", () => {
+  it("classifies and executes the same final command after CHAT rewrites", async () => {
+    const calls: string[] = [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params.command);
+      return { output: "rewritten", exitCode: 0, timedOut: false };
+    });
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const rawCommand = "du -sh /* 2>/dev/null | sort -hr | head -n 5";
+    const prompt =
+      "check disk space and name the biggest safe cleanup candidate";
+    const expected = resolveDiskInspectionCommand({
+      command: rawCommand,
+      messageText: prompt,
+      platform: resolveCommandPlatform(),
+    });
+    expect(expected.rewritten).toBe(true);
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, prompt),
+        undefined,
+        { command: rawCommand },
+      ),
+    );
+    expect(result.success).toBe(true);
+    expect(calls).toEqual([expected.command]);
+    expect((result.data as Record<string, unknown>).command).toBe(
+      expected.command,
+    );
+  });
+
   it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
@@ -3191,17 +4048,42 @@ describe("destructive-bulk confirm gate", () => {
     }
   });
 
-  it.runIf(process.platform !== "win32")(
-    "blocks GNU long-form recursive delete before shell execution",
-    async () => {
+  it("blocks GNU long-form recursive delete before shell execution", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up the old projects"),
+        undefined,
+        { command: command.replace("rm -rf", "rm --recursive --force") },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.data).toMatchObject({
+        destructive_reason: "recursive delete",
+      });
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["line feed", "\n"],
+    ["carriage return", "\r"],
+    ["background separator", " & "],
+  ])(
+    "blocks an unconfirmed recursive delete after an unquoted %s",
+    async (_name, separator) => {
       const { command, target } = await createRecursiveDeleteCommand();
       const { runtime } = await makeRuntime();
       try {
         const result = await shellAction.handler?.(
           runtime,
-          makeMessage(undefined, "clean up the old projects"),
+          makeMessage(undefined, "inspect, then clean up the old projects"),
           undefined,
-          { command: command.replace("rm -rf", "rm --recursive --force") },
+          { command: `printf safe${separator}${command}` },
         );
         expect(result.success).toBe(false);
         expect(result.text).toContain("needs_confirmation");
@@ -3215,24 +4097,441 @@ describe("destructive-bulk confirm gate", () => {
     },
   );
 
-  it("runs the same command when confirm=true", async () => {
+  it.runIf(process.platform !== "win32")(
+    "does not gate destructive-looking heredoc data",
+    async () => {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print this example without running it"),
+        undefined,
+        { command: "cat <<'EOF'\nrm -rf ./data\nEOF" },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("rm -rf ./data");
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "blocks recursive deletes across nested executable expansion shapes",
+    async () => {
+      const commandShapes = [
+        (command: string) => `printf '%s' "$(${command})"`,
+        (command: string) => `printf '%s' \`${command}\``,
+        (command: string) => `cat <<EOF\n$(${command})\nEOF`,
+        (command: string) => `printf '%s' "prefix ' $(${command})"`,
+        (command: string) => `printf '%s' "$(printf safe # )\n${command}\n)"`,
+      ];
+
+      for (const shape of commandShapes) {
+        const syntaxProbe = await execFileAsync("/bin/bash", [
+          "--noprofile",
+          "--norc",
+          "-c",
+          shape("printf nested-expansion-boundary"),
+        ]);
+        expect(syntaxProbe.stdout).toContain("nested-expansion-boundary");
+
+        const { command, target } = await createRecursiveDeleteCommand();
+        const { runtime } = await makeRuntime();
+        try {
+          const result = await shellAction.handler?.(
+            runtime,
+            makeMessage(undefined, "inspect the generated value"),
+            undefined,
+            { command: shape(command) },
+          );
+
+          expect(result.success).toBe(false);
+          expect(result.text).toContain("needs_confirmation");
+          expect(result.data).toMatchObject({
+            destructive_reason: "recursive delete",
+          });
+          expect(await pathExists(target)).toBe(true);
+        } finally {
+          await fs.rm(target, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "runs nested destructive-looking text when shell quoting makes it literal",
+    async () => {
+      const { runtime } = await makeRuntime();
+      const literal = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the literal example"),
+        undefined,
+        { command: "printf '%s' '$(rm -rf ./data)'" },
+      );
+      const quotedHeredoc = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the quoted heredoc example"),
+        undefined,
+        { command: "cat <<'EOF'\n$(rm -rf ./data)\nEOF" },
+      );
+      const commentedLiteral = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the benign generated value"),
+        undefined,
+        {
+          command: `printf '%s' "$(printf safe # rm -rf ./data )\n)"`,
+        },
+      );
+
+      expect(literal.success).toBe(true);
+      expect(literal.text).toContain("$(rm -rf ./data)");
+      expect(quotedHeredoc.success).toBe(true);
+      expect(quotedHeredoc.text).toContain("$(rm -rf ./data)");
+      expect(commentedLiteral.success).toBe(true);
+      expect(commentedLiteral.text).toContain("safe");
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "does not let parameter expansion text hide a recursive delete",
+    async () => {
+      const { command, target } = await createRecursiveDeleteCommand();
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "inspect, then clean up the old projects"),
+          undefined,
+          {
+            command: `printf '%s' \${review_unset:-<<EOF}\n${command}\nEOF`,
+          },
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(result.data).toMatchObject({
+          destructive_reason: "recursive delete",
+        });
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(target, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "gates executable lines after arithmetic shifts and continued heredoc terminators",
+    async () => {
+      const commandShapes = [
+        (command: string) =>
+          `review_slots[1<<2]=ready\n${command}\n2]=ready\n:`,
+        (command: string) => `printf '%s' $[1<<2]\n${command}\n2]\n:`,
+        (command: string) =>
+          `cat <<EOF\nsafe payload\nEO\\\nF\n${command}\nEOF\n:`,
+      ];
+
+      for (const shape of commandShapes) {
+        const syntaxProbe = await execFileAsync("/bin/bash", [
+          "--noprofile",
+          "--norc",
+          "-c",
+          shape("printf shell-boundary"),
+        ]);
+        expect(syntaxProbe.stdout).toContain("shell-boundary");
+
+        const { command, target } = await createRecursiveDeleteCommand();
+        const { runtime } = await makeRuntime();
+        try {
+          const result = await shellAction.handler?.(
+            runtime,
+            makeMessage(undefined, "inspect, then clean up the old projects"),
+            undefined,
+            { command: shape(command) },
+          );
+
+          expect(result.success).toBe(false);
+          expect(result.text).toContain("needs_confirmation");
+          expect(result.data).toMatchObject({
+            destructive_reason: "recursive delete",
+          });
+          expect(await pathExists(target)).toBe(true);
+        } finally {
+          await fs.rm(target, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
+  it("runs the exact command only after the one-time later-message ceremony", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
+    const firstMessage = makeMessage(undefined, "clean up the old projects");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, firstMessage, undefined, {
+        command,
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
     const result = await shellAction.handler?.(
       runtime,
-      makeMessage(undefined, "yes do it"),
+      confirmationMessage(firstMessage, challenge),
       undefined,
       {
         command,
         confirm: true,
+        confirmation_challenge: challenge,
       },
     );
     expect(result.success).toBe(true);
     expect(await pathExists(target)).toBe(false);
   });
 
-  it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+  it("rejects confirm=true on the first call", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "should not run",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "rm -rf ./first-call",
+        confirm: true,
+      }),
+    );
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "missing",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unrelated yes and requires the exact challenge token", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, {
+        command: "rm -rf ./negative",
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        confirmationMessage(original, challenge, { text: "yes" }),
+        undefined,
+        {
+          command: "rm -rf ./negative",
+          confirm: true,
+          confirmation_challenge: challenge,
+        },
+      ),
+    );
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "token_not_confirmed",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects command-digest, room, requester, and same-message mismatches", async () => {
+    const attempts = [
+      { command: "rm -rf ./different", expected: "command_mismatch" },
+      {
+        roomId: "66666666-6666-6666-6666-666666666666" as UUID,
+        expected: "room_mismatch",
+      },
+      {
+        entityId: "77777777-7777-7777-7777-777777777777" as UUID,
+        expected: "requester_mismatch",
+      },
+    ] as const;
+    for (const attempt of attempts) {
+      const runCommand = vi.fn(async () => ({
+        output: "",
+        exitCode: 0,
+        timedOut: false,
+      }));
+      const { runtime } = await makeRuntime({
+        capabilityRouter: makeShellRouter(runCommand),
+      });
+      const command = "rm -rf ./bound";
+      const original = makeMessage(undefined, "remove it");
+      const blocked = requireActionResult(
+        await shellAction.handler?.(runtime, original, undefined, { command }),
+      );
+      const challenge = confirmationChallenge(blocked);
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          confirmationMessage(original, challenge, attempt),
+          undefined,
+          {
+            command: "command" in attempt ? attempt.command : command,
+            confirm: true,
+            confirmation_challenge: challenge,
+          },
+        ),
+      );
+      expect(
+        (result.data as Record<string, unknown>).confirmation_failure,
+      ).toBe(attempt.expected);
+      expect(runCommand).not.toHaveBeenCalled();
+    }
+
+    const { runtime } = await makeRuntime();
+    const command = "rm -rf ./same-turn";
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, { command }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const sameMessage = {
+      ...original,
+      content: { text: `confirm ${challenge}` },
+    } as Memory;
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, sameMessage, undefined, {
+        command,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }),
+    );
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "same_message",
+    );
+  });
+
+  it("rejects a confirmation when the resolved execution directory changes", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime, session } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const command = "rm -rf ./relative-target";
+    const originalDirectory = process.cwd();
+    const changedDirectory = path.join(process.cwd(), "src");
+    const original = makeMessage(
+      undefined,
+      `remove the relative target in ${originalDirectory}`,
+    );
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, {
+        command,
+        cwd: originalDirectory,
+      }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    session.setCwd(String(original.roomId), changedDirectory);
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        confirmationMessage(original, challenge),
+        undefined,
+        { command, confirm: true, confirmation_challenge: challenge },
+      ),
+    );
+
+    expect(result.success).toBe(false);
+    expect((result.data as Record<string, unknown>).confirmation_failure).toBe(
+      "cwd_mismatch",
+    );
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it("expires challenges and consumes a successful challenge exactly once", async () => {
+    const runCommand = vi.fn(async () => ({
+      output: "executed",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: makeShellRouter(runCommand),
+    });
+    const command = "rm -rf ./one-time";
+    const original = makeMessage(undefined, "remove it");
+    const blocked = requireActionResult(
+      await shellAction.handler?.(runtime, original, undefined, { command }),
+    );
+    const challenge = confirmationChallenge(blocked);
+    const confirmedMessage = confirmationMessage(original, challenge);
+    const success = requireActionResult(
+      await shellAction.handler?.(runtime, confirmedMessage, undefined, {
+        command,
+        confirm: true,
+        confirmation_challenge: challenge,
+      }),
+    );
+    expect(success.success).toBe(true);
+    expect(runCommand).toHaveBeenCalledTimes(1);
+    const replay = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        {
+          ...confirmedMessage,
+          id: "88888888-8888-8888-8888-888888888888" as UUID,
+        },
+        undefined,
+        { command, confirm: true, confirmation_challenge: challenge },
+      ),
+    );
+    expect(replay.success).toBe(false);
+    expect((replay.data as Record<string, unknown>).confirmation_failure).toBe(
+      "missing",
+    );
+    expect(runCommand).toHaveBeenCalledTimes(1);
+
+    const expiringOriginal = makeMessage(
+      "99999999-9999-9999-9999-999999999999",
+      "remove it",
+    );
+    const expiring = requireActionResult(
+      await shellAction.handler?.(runtime, expiringOriginal, undefined, {
+        command: "rm -rf ./expiry",
+      }),
+    );
+    const expiringToken = confirmationChallenge(expiring);
+    const now = Date.now();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(now + 5 * 60 * 1000 + 1);
+    try {
+      const expired = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          confirmationMessage(expiringOriginal, expiringToken),
+          undefined,
+          {
+            command: "rm -rf ./expiry",
+            confirm: true,
+            confirmation_challenge: expiringToken,
+          },
+        ),
+      );
+      expect(expired.success).toBe(false);
+      expect(
+        (expired.data as Record<string, unknown>).confirmation_failure,
+      ).toBe("expired");
+      expect(runCommand).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("does not treat full action-surface configuration as destructive authority", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
+    const previousMode = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
     try {
       const { runtime } = await makeRuntime();
@@ -3242,10 +4541,18 @@ describe("destructive-bulk confirm gate", () => {
         undefined,
         { command },
       );
-      expect(result.success).toBe(true);
-      expect(await pathExists(target)).toBe(false);
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.data).toMatchObject({
+        destructive_reason: "recursive delete",
+      });
+      expect(await pathExists(target)).toBe(true);
     } finally {
-      delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      if (previousMode === undefined) {
+        delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      } else {
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previousMode;
+      }
       await fs.rm(target, { recursive: true, force: true });
     }
   });
@@ -3278,5 +4585,113 @@ describe("destructive-bulk confirm gate", () => {
       { command: 'node -e "process.exit(0)"' },
     );
     expect(result.success).toBe(true);
+  });
+});
+
+describeIfPosix("destructive-bulk scanner integration", () => {
+  it.each([
+    ["bash -lc", "bash -lc 'rm -rf ./clustered-login-shell'"],
+    ["zsh -fc", "zsh -fc 'rm -rf ./clustered-fast-shell'"],
+    ["sh -xc", "sh -xc 'rm -rf ./clustered-traced-shell'"],
+    [
+      "wrapped bash -lc",
+      "env -u UNUSED bash -lc 'rm -rf ./clustered-wrapped-shell'",
+    ],
+    ["exec wrapper", "exec rm -rf ./exec-wrapped-shell"],
+    ["dynamic options", "opts=-rf; rm $opts ./dynamic-options-shell"],
+    ["negated command", "! rm -rf ./negated-shell"],
+    ["brace-expanded options", "rm -{r,r}f ./brace-expanded-shell"],
+    ["env split-string escapes", "env -S 'rm\\_-rf\\_./split-string-shell'"],
+    [
+      "bash rcfile option",
+      "bash --rcfile /dev/null -lc 'rm -rf ./rcfile-wrapped-shell'",
+    ],
+  ])(
+    "blocks a destructive %s program before the real shell dispatches it",
+    async (_label, command) => {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the nested shell command"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+    },
+  );
+
+  it("allows a benign clustered shell program to run", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "print from the nested shell"),
+      undefined,
+      { command: "sh -lc 'printf clustered-safe'" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("clustered-safe");
+  });
+
+  it("blocks mkfs.ext4 after a newline before the real shell can dispatch it", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-newline-command-"),
+    );
+    const marker = path.join(directory, "dispatched");
+    const quotedMarker = `'${marker.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the marker"),
+        undefined,
+        {
+          command: `printf dispatched > ${quotedMarker}\nmkfs.ext4 /dev/codex-never-run`,
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.text).toContain("confirm=true");
+      expect(await pathExists(marker)).toBe(false);
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks a quote-composed executable before it deletes a real fixture", async () => {
+    const target = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-quoted-command-"),
+    );
+    const quotedTarget = `'${target.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show the marker"),
+        undefined,
+        { command: `'r''m' -rf ${quotedTarget}` },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
+  it("allows benign quoted examples and comment-contained quotes to run", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "print the example"),
+      undefined,
+      {
+        command:
+          "printf '%s\\n' 'rm -rf ./mentioned-only' # '\" cannot poison state\nprintf '%s\\n' done",
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("rm -rf ./mentioned-only");
+    expect(result.text).toContain("done");
   });
 });

@@ -35,6 +35,18 @@ export type PolicyDecision = {
   matchedRule: string;
 };
 
+function clonePolicy(policy: SigningPolicy): SigningPolicy {
+  // Defensive copies keep allow/deny authority inside the evaluator: callers
+  // must not be able to change decisions by mutating shared arrays.
+  return {
+    ...policy,
+    allowedChainIds: [...policy.allowedChainIds],
+    allowedContracts: [...policy.allowedContracts],
+    deniedContracts: [...policy.deniedContracts],
+    allowedMethodSelectors: [...policy.allowedMethodSelectors],
+  };
+}
+
 export function createDefaultPolicy(): SigningPolicy {
   return {
     allowedChainIds: [],
@@ -55,15 +67,28 @@ export class SigningPolicyEvaluator {
   private processedRequestIds = new Set<string>();
 
   constructor(policy?: SigningPolicy) {
-    this.policy = policy ?? createDefaultPolicy();
+    this.policy = policy ? clonePolicy(policy) : createDefaultPolicy();
   }
 
   updatePolicy(policy: SigningPolicy): void {
-    this.policy = policy;
+    this.policy = clonePolicy(policy);
   }
 
+  /**
+   * `clonePolicy()` already isolates callers from the live arrays; freezing
+   * the snapshot additionally makes a mutation attempt throw immediately
+   * (in strict-mode/ESM code) rather than silently succeed on a copy that
+   * happens to have no effect — surfacing the caller bug instead of masking
+   * it (#23228).
+   */
   getPolicy(): SigningPolicy {
-    return { ...this.policy };
+    const snapshot = clonePolicy(this.policy);
+    for (const value of Object.values(snapshot)) {
+      if (Array.isArray(value)) {
+        Object.freeze(value);
+      }
+    }
+    return Object.freeze(snapshot);
   }
 
   evaluate(request: SigningRequest): PolicyDecision {
@@ -122,6 +147,14 @@ export class SigningPolicyEvaluator {
     try {
       const txValue = BigInt(request.value || "0");
       const maxValue = BigInt(this.policy.maxTransactionValueWei);
+      if (txValue < 0n) {
+        return {
+          allowed: false,
+          reason: "Transaction value must not be negative",
+          requiresHumanConfirmation: false,
+          matchedRule: "value_non_negative",
+        };
+      }
       if (txValue > maxValue) {
         return {
           allowed: false,
@@ -142,9 +175,21 @@ export class SigningPolicyEvaluator {
     // ── Method selector ──────────────────────────────────────────────
     if (
       this.policy.allowedMethodSelectors.length > 0 &&
-      request.data &&
-      request.data.length >= 10
+      request.data.toLowerCase() !== "0x"
     ) {
+      // Whole-payload validation: a 4-byte selector followed by whole hex
+      // bytes. A valid prefix must not smuggle a malformed tail past the
+      // allowlist.
+      if (!/^0x[0-9a-f]{8}(?:[0-9a-f]{2})*$/i.test(request.data)) {
+        return {
+          allowed: false,
+          reason:
+            "Calldata must be a complete 4-byte hex selector followed by whole hex bytes",
+          requiresHumanConfirmation: false,
+          matchedRule: "method_selector_format",
+        };
+      }
+
       const selector = request.data.substring(0, 10).toLowerCase();
       if (
         !this.policy.allowedMethodSelectors.some(
@@ -228,5 +273,38 @@ export class SigningPolicyEvaluator {
         this.processedRequestIds.delete(id);
       }
     }
+  }
+
+  /**
+   * Atomically evaluates `request` and, when the policy allows it, reserves
+   * the rate-limit slot and replay marker in the same synchronous step as
+   * the check. A separate `evaluate()` then later `recordRequest()` call is
+   * a TOCTOU race: two concurrent submissions can both call `evaluate()`
+   * (e.g. both observe 0/1 hourly) before either has recorded, so both pass
+   * a `maxTransactionsPerHour: 1` policy (#23228). JS execution is
+   * single-threaded, so doing the check and the record with no `await`
+   * between them — as this method does — makes the pair uninterruptible: no
+   * other `tryReserve` call can run in between and observe stale state.
+   * `evaluate()`/`recordRequest()` stay as separate primitives, unchanged,
+   * for read-only previews and for tests that seed history directly.
+   *
+   * The caller owns the reservation once this returns `allowed: true`; call
+   * `release(request.requestId)` on every path where the reservation is not
+   * consumed by an actual signed transaction — a failed sign, a rejected or
+   * expired human-confirmation request — or the slot and replay marker are
+   * gone from the pool forever.
+   */
+  tryReserve(request: SigningRequest): PolicyDecision {
+    const decision = this.evaluate(request);
+    if (decision.allowed) {
+      this.recordRequest(request.requestId);
+    }
+    return decision;
+  }
+
+  /** Undo a reservation made by `tryReserve()` that the caller did not follow through on. */
+  release(requestId: string): void {
+    this.processedRequestIds.delete(requestId);
+    this.requestLog = this.requestLog.filter((r) => r.requestId !== requestId);
   }
 }

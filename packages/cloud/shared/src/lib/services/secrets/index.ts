@@ -3,6 +3,7 @@ export {
   AWSKMSProvider,
   createEncryptionService,
   type DecryptionParams,
+  EncryptionKeyMismatchError,
   type EncryptionResult,
   getEncryptionService,
   type KMSProvider,

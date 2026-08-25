@@ -28,6 +28,7 @@
 
 import { SHOULD_RESPOND_SCHEMA_DESCRIPTION } from "../actions/to-tool";
 import type { JSONSchema } from "../types/model";
+import { trimEndCharacters } from "../utils/string-boundaries";
 import { stripJsonStructuralJunkReply } from "./json-output";
 import type { ResponseHandlerFieldEvaluator } from "./response-handler-field-evaluator";
 
@@ -70,9 +71,9 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "shouldRespond",
 	description:
-		'RESPOND if addressed to you, asked a helpful question, needed to act, active in the conversation, or able to usefully add to substantive ambient chatter. IGNORE pure content-free acknowledgements/reactions ("lol", "ok", "nice", "same", "haha", "brb"), bot/webhook/status feeds, or people clearly talking to each other. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.',
+		"RESPOND when the current message addresses you, assigns you work, clearly continues a question you asked, or needs a concrete correction or action specifically from you. A question broadcast to a group is not by itself a reason to interrupt; apply the ambient-turn policy when present. IGNORE acknowledgements, reactions, side chatter, feeds, and messages directed to other people. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
 	descriptionCompressed:
-		"RESPOND if asked, active in the conversation, or able to usefully add to substantive ambient chatter; IGNORE content-free reactions, feeds, or others' conversation; STOP only explicit stop.",
+		"RESPOND when the current message addresses you, assigns work, continues your question, or specifically needs your correction/action; otherwise apply ambient policy and IGNORE reactions, feeds, or others' conversation; STOP only explicit stop.",
 	priority: 5,
 	schema: {
 		type: "string",
@@ -149,17 +150,19 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		const seen = new Set<string>();
 		const result: string[] = [];
 		for (const item of value) {
-			const normalized = String(item ?? "")
-				.trim()
-				.toLowerCase()
-				.replace(/[.!?]+$/, "");
+			const normalized = trimEndCharacters(
+				String(item ?? "")
+					.trim()
+					.toLowerCase(),
+				".!?",
+			);
 			if (!normalized || normalized.length > 80) continue;
 			const key = normalized;
 			if (seen.has(key)) continue;
 			seen.add(key);
 			result.push(normalized);
 		}
-		return result.slice(0, 8);
+		return result;
 	},
 };
 
@@ -278,7 +281,7 @@ export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 			if (result.includes(normalized)) continue;
 			result.push(normalized);
 		}
-		return result.slice(0, 20);
+		return result;
 	},
 };
 
@@ -342,7 +345,7 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 			if (!subject || !predicate || !object) continue;
 			result.push({ subject, predicate, object });
 		}
-		return result.slice(0, 12);
+		return result;
 	},
 };
 
@@ -356,16 +359,10 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 // weigh topic relevance.
 // ---------------------------------------------------------------------------
 
-/** Max topic labels kept per turn. */
-export const MAX_MESSAGE_TOPICS = 5;
-/** Drop topic labels longer than this (a topic label, not a sentence). */
-export const MAX_TOPIC_LABEL_LENGTH = 40;
-
 /**
- * Normalize a raw list of topic candidates into 1-5 SHORT labels: lowercase,
- * trimmed, deduped, empties/overlong dropped, capped at {@link MAX_MESSAGE_TOPICS}.
+ * Normalize a raw list of topic candidates into lowercase, deduplicated labels.
  * Shared by the field evaluator and the message-handler parse path so both
- * apply identical rules.
+ * apply identical rules without silently dropping model-produced context.
  */
 export function normalizeTopics(value: unknown): string[] {
 	if (!Array.isArray(value)) return [];
@@ -376,11 +373,10 @@ export function normalizeTopics(value: unknown): string[] {
 			.trim()
 			.toLowerCase()
 			.replace(/\s+/g, " ");
-		if (!normalized || normalized.length > MAX_TOPIC_LABEL_LENGTH) continue;
+		if (!normalized) continue;
 		if (seen.has(normalized)) continue;
 		seen.add(normalized);
 		result.push(normalized);
-		if (result.length >= MAX_MESSAGE_TOPICS) break;
 	}
 	return result;
 }
@@ -396,7 +392,7 @@ export const topicsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Short topic labels. Lowercase. 1-3 words each. Nouns/noun-phrases, not verbs. Max 5.",
+			"Short topic labels. Lowercase. Nouns/noun-phrases, not verbs.",
 	},
 	parse(value) {
 		return normalizeTopics(value);
@@ -433,7 +429,7 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 			seen.add(key);
 			result.push(normalized);
 		}
-		return result.slice(0, 8);
+		return result;
 	},
 };
 

@@ -19,12 +19,14 @@ import {
   APPS_JOB_TYPES,
   COLD_BOOT_JOB_TYPES,
   COLD_BOOT_STALE_JOB_THRESHOLD_MS,
+  CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES,
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   ORPHAN_PENDING_THRESHOLD_MS,
   PROVISIONING_RECONCILIATION_BATCH_SIZE,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
+  requiresContainerBackedTarget,
   resolveJobTypesForLanes,
   STUCK_PROVISIONING_RECONCILIATION_GRACE_MS,
   STUCK_PROVISIONING_THRESHOLD_MS,
@@ -60,6 +62,39 @@ describe("provisioning status ownership", () => {
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_UPGRADE)).toBe(false);
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)).toBe(false);
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_DOWNGRADE)).toBe(false);
+  });
+});
+
+describe("container-backed target admission", () => {
+  test("derives the worker and enqueue classification from lifecycle metadata", () => {
+    expect([...CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES]).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(({ requiresContainerBackedTarget }) =>
+        Boolean(requiresContainerBackedTarget),
+      ).map(({ type }) => type),
+    );
+  });
+
+  test("requires a container for exactly the eleven container lifecycle operations", () => {
+    const required = [
+      JOB_TYPES.AGENT_PROVISION,
+      JOB_TYPES.AGENT_SUSPEND,
+      JOB_TYPES.AGENT_RESUME,
+      JOB_TYPES.AGENT_SLEEP,
+      JOB_TYPES.AGENT_WAKE,
+      JOB_TYPES.AGENT_RESTART,
+      JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      JOB_TYPES.AGENT_DOWNGRADE,
+      JOB_TYPES.AGENT_LOGS,
+      JOB_TYPES.AGENT_SNAPSHOT,
+    ];
+
+    expect(new Set(CONTAINER_BACKED_TARGET_AGENT_JOB_TYPES)).toEqual(new Set(required));
+    for (const jobType of required) {
+      expect(requiresContainerBackedTarget(jobType)).toBe(true);
+    }
+    expect(requiresContainerBackedTarget(JOB_TYPES.AGENT_MESSAGE)).toBe(false);
+    expect(requiresContainerBackedTarget(JOB_TYPES.AGENT_DELETE)).toBe(false);
   });
 });
 

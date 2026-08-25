@@ -109,10 +109,8 @@ describe("parseRedemptionQuotePointsAmount", () => {
   test.each([
     [undefined, 100],
     ["", 100],
-    ["1", 1],
     ["100", 100],
     ["100000", 100_000],
-    ["9007199254740991", Number.MAX_SAFE_INTEGER],
   ] as const)("accepts %s", (raw, expected) => {
     expect(parseRedemptionQuotePointsAmount(raw)).toEqual({
       ok: true,
@@ -132,6 +130,9 @@ describe("parseRedemptionQuotePointsAmount", () => {
     ["100 ", "trailing whitespace"],
     ["1_000", "separator"],
     ["0", "zero"],
+    ["1", "below redemption minimum"],
+    ["99", "below redemption minimum"],
+    ["100001", "above redemption maximum"],
     ["Infinity", "Infinity"],
     ["NaN", "NaN"],
     [" ", "whitespace only"],
@@ -147,9 +148,10 @@ describe("GET /api/v1/redemptions/quote — pointsAmount contract", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       success: boolean;
-      quote: { pointsAmount: number };
+      quote: { asset: string; pointsAmount: number };
     };
     expect(body.success).toBe(true);
+    expect(body.quote.asset).toBe("eliza");
     expect(body.quote.pointsAmount).toBe(100);
     expect(getRedemptionQuote).toHaveBeenCalledTimes(1);
     expect(getRedemptionQuote).toHaveBeenCalledWith("base", 100, USER_ID);
@@ -166,9 +168,9 @@ describe("GET /api/v1/redemptions/quote — pointsAmount contract", () => {
   });
 
   test.each([
-    ["1", 1],
     ["100", 100],
     ["2500", 2500],
+    ["100000", 100_000],
   ] as const)(
     "canonical pointsAmount %s is forwarded unchanged",
     async (raw, expected) => {
@@ -199,6 +201,9 @@ describe("GET /api/v1/redemptions/quote — pointsAmount contract", () => {
     ["100 ", "trailing whitespace"],
     ["1_000", "numeric separator"],
     ["0", "zero"],
+    ["1", "below redemption minimum"],
+    ["99", "below redemption minimum"],
+    ["100001", "above redemption maximum"],
     ["Infinity", "Infinity"],
     ["NaN", "NaN"],
     ["9007199254740992", "unsafe integer"],

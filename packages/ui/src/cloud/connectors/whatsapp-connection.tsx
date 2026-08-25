@@ -184,7 +184,7 @@ export function WhatsAppConnection() {
         name={t("cloud.whatsapp.cardName", {
           defaultValue: "WhatsApp Business",
         })}
-        icon={<MessageSquare className="text-green-500" />}
+        icon={<MessageSquare className="text-accent" />}
         description={t("cloud.whatsapp.cardDescription", {
           defaultValue: "Connect WhatsApp Business for AI-powered automation",
         })}
@@ -198,7 +198,7 @@ export function WhatsAppConnection() {
       name={t("cloud.whatsapp.cardName", {
         defaultValue: "WhatsApp Business",
       })}
-      icon={<MessageSquare className="text-green-500" />}
+      icon={<MessageSquare className="text-accent" />}
       description={t("cloud.whatsapp.cardDescription", {
         defaultValue: "Connect WhatsApp Business for AI-powered automation",
       })}
@@ -220,8 +220,8 @@ export function WhatsAppConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Phone className="h-6 w-6 text-green-600" />}
-            iconClassName="bg-green-100"
+            icon={<Phone className="size-6 text-accent" />}
+            iconClassName="bg-accent-subtle"
             title={
               status?.businessPhone ||
               t("cloud.whatsapp.cardName", {
@@ -284,7 +284,7 @@ export function WhatsAppConnection() {
                   {t("cloud.whatsapp.metaDashboard", {
                     defaultValue: "Meta App Dashboard",
                   })}
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>
               </li>
               <li>
@@ -361,10 +361,10 @@ export function WhatsAppConnection() {
                   href="https://developers.facebook.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:underline inline-flex items-center gap-1"
+                  className="text-accent hover:underline inline-flex items-center gap-1"
                 >
                   developers.facebook.com
-                  <ExternalLink className="h-3 w-3" />
+                  <ExternalLink className="size-3" />
                 </a>{" "}
                 {t("cloud.whatsapp.instructCreateApp", {
                   defaultValue: "and create a Meta Business App",
@@ -526,18 +526,18 @@ export function WhatsAppConnection() {
               !phoneNumberId.trim() ||
               !appSecret.trim()
             }
-            className="w-full bg-green-600 hover:bg-green-700"
+            className="w-full"
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.whatsapp.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MessageSquare className="h-4 w-4 mr-2" />
+                <MessageSquare className="size-4 mr-2" />
                 {t("cloud.whatsapp.connectButton", {
                   defaultValue: "Connect WhatsApp",
                 })}

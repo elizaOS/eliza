@@ -68,7 +68,6 @@ export const HIGH_PRIORITY_ESCALATION_CHANNEL_ORDER: readonly EscalationStep[] =
   Object.freeze([
     { delayMinutes: 15, channelKey: "push", intensity: "normal" },
     { delayMinutes: 45, channelKey: "telegram", intensity: "urgent" },
-    { delayMinutes: 45, channelKey: "signal", intensity: "urgent" },
     { delayMinutes: 45, channelKey: "whatsapp", intensity: "urgent" },
     { delayMinutes: 45, channelKey: "discord", intensity: "urgent" },
     { delayMinutes: 45, channelKey: "sms", intensity: "urgent" },

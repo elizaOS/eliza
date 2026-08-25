@@ -12,6 +12,7 @@ const VALID_CADENCE_KINDS = new Set([
   "daily",
   "weekly",
   "times_per_day",
+  "count_per_day",
   "interval",
 ]);
 
@@ -22,6 +23,11 @@ export interface ExtractedUpdateFields {
   weekdays: number[] | null;
   timeOfDay: string | null;
   everyMinutes: number | null;
+  quotaTargetCount: number | null;
+  quotaUnit: string | null;
+  perOccurrenceWork: string | null;
+  checkInRequested: boolean | null;
+  checkInWindows: string[] | null;
   priority: number | null;
   description: string | null;
   /**
@@ -45,6 +51,11 @@ const EMPTY_UPDATE_FIELDS: ExtractedUpdateFields = {
   weekdays: null,
   timeOfDay: null,
   everyMinutes: null,
+  quotaTargetCount: null,
+  quotaUnit: null,
+  perOccurrenceWork: null,
+  checkInRequested: null,
+  checkInWindows: null,
   priority: null,
   description: null,
   dueDate: null,
@@ -196,6 +207,14 @@ function buildUpdateFields(
         ? parseTimeOfDay(parsed.timeOfDay)
         : null,
     everyMinutes: validatePositiveNumber(parsed.everyMinutes),
+    quotaTargetCount: validatePositiveNumber(parsed.quotaTargetCount),
+    quotaUnit: validateTitle(parsed.quotaUnit),
+    perOccurrenceWork: validateTitle(parsed.perOccurrenceWork),
+    checkInRequested:
+      typeof parsed.checkInRequested === "boolean"
+        ? parsed.checkInRequested
+        : null,
+    checkInWindows: validateWindows(parsed.checkInWindows),
     priority: validatePriority(parsed.priority),
     description: validateTitle(parsed.description),
     dueDate: validateDueDate(parsed.dueDate),
@@ -215,10 +234,10 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps update extractor was invalid.",
     "Return ONLY a valid JSON object with exactly these fields:",
-    "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, priority, description, dueDate, dueInDays, dueWeekday, dueInMinutes",
+    "title, cadenceKind, windows, weekdays, timeOfDay, everyMinutes, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, description, dueDate, dueInDays, dueWeekday, dueInMinutes",
     "",
     "Use null for any field the user did not ask to change.",
-    "cadenceKind must be one of: once, daily, weekly, times_per_day, interval.",
+    "cadenceKind must be one of: once, daily, weekly, times_per_day, count_per_day, interval.",
     'timeOfDay must be HH:MM 24h format like "06:00" when present.',
     'dueDate must be "YYYY-MM-DD"; dueInDays/dueWeekday/dueInMinutes must be integers; set at most ONE of the four.',
     "",
@@ -258,11 +277,16 @@ export async function extractUpdateFieldsWithLlm(args: {
     "",
     "Return a JSON object with these fields (null = no change requested):",
     "- title: new name if user wants to rename",
-    "- cadenceKind: new schedule type if changing (once/daily/weekly/times_per_day/interval)",
+    "- cadenceKind: new schedule type if changing (once/daily/weekly/times_per_day/count_per_day/interval)",
     "- windows: new time windows if changing (morning/afternoon/evening/night)",
     "- weekdays: new weekday numbers if changing (0=Sun..6=Sat)",
     '- timeOfDay: new specific time like "06:00" if changing time',
     "- everyMinutes: new interval if changing",
+    '- quotaTargetCount: new daily target for a flexible quota (for example 4 for "make it four sets")',
+    '- quotaUnit: new singular quota unit (for example "set")',
+    '- perOccurrenceWork: work represented by one increment (for example "30 pushups")',
+    "- checkInRequested: true to enable progress check-ins, false to disable them, null when unchanged",
+    "- checkInWindows: new allowed check-in windows, null when unchanged",
     "- priority: new priority 1-5 if changing",
     "- description: new description if changing",
     '- dueDate: for one-off tasks, the new local calendar date "YYYY-MM-DD" when the user names a specific date ("move it to april 17" — infer the next future occurrence)',

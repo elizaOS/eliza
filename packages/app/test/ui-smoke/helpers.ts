@@ -1703,6 +1703,22 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  // BrowserWorkspaceView reads the persisted Agent Browser session list on
+  // mount. A fresh smoke fixture has no sessions; model that designed-empty
+  // state explicitly so the all-views audit reviews the browser view rather
+  // than an unrelated unimplemented-route error card.
+  await page.route("**/api/browser-bridge/sessions", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sessions: [] }),
+    });
+  });
+
   await page.route("**/api/notes/state", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

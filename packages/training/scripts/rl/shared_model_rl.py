@@ -37,6 +37,13 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from training.tokenization import tokenize_with_explicit_limit
+
+from lib.generation_integrity import (
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 from .simulation_bridge import ActionOutcome, Scenario, SimulationBridge
 from .turboquant import TurboQuantSettings, build_generation_cache
 
@@ -321,7 +328,6 @@ class SharedModelConfig:
     turboquant_residual_length: int = 128
 
     # Generation
-    max_new_tokens: int = 256
     temperature: float = 0.7
     top_p: float = 0.9
 
@@ -597,12 +603,22 @@ class SharedModelTrainer:
     ) -> tuple[str, torch.Tensor, torch.Tensor]:
         """Generate an action for the given NPC using the shared model."""
         prompt = self.build_prompt(npc_id, scenario)
-        enc = self.tokenizer(
+        enc = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompt,
+            max_tokens=model_context_tokens(
+                self.model,
+                self.tokenizer,
+                source="shared_model_rl.generate_action",
+            ),
             return_tensors="pt",
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            self.model,
+            self.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="shared_model_rl.generate_action",
+        )
 
         past_kv = None
         if self.turboquant_settings is not None and self.model is not None:
@@ -613,7 +629,7 @@ class SharedModelTrainer:
             )
 
         generate_kwargs: dict[str, Any] = {
-            "max_new_tokens": self.config.max_new_tokens,
+            "max_new_tokens": max_new_tokens,
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
             "do_sample": True,
@@ -629,8 +645,15 @@ class SharedModelTrainer:
         self.model.train()
 
         prompt_len = enc["input_ids"].shape[1]
+        generated_ids = output_ids[0, prompt_len:]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=max_new_tokens,
+            source="shared_model_rl.generate_action",
+            terminal_token_ids=self.tokenizer.eos_token_id,
+        )
         response_text = self.tokenizer.decode(
-            output_ids[0, prompt_len:],
+            generated_ids,
             skip_special_tokens=True,
         )
         return response_text, enc["input_ids"], output_ids
@@ -661,16 +684,26 @@ class SharedModelTrainer:
 
         # Tokenize with left-padding for batched generation
         self.tokenizer.padding_side = "left"
-        encodings = self.tokenizer(
+        encodings = tokenize_with_explicit_limit(
+            self.tokenizer,
             prompts,
+            max_tokens=model_context_tokens(
+                self.model,
+                self.tokenizer,
+                source="shared_model_rl.generate_batch",
+            ),
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=2048,
         ).to(self.config.device)
+        max_new_tokens = remaining_model_context_tokens(
+            self.model,
+            self.tokenizer,
+            prompt_tokens=encodings["input_ids"].shape[1],
+            source="shared_model_rl.generate_batch",
+        )
 
         generate_kwargs: dict[str, Any] = {
-            "max_new_tokens": self.config.max_new_tokens,
+            "max_new_tokens": max_new_tokens,
             "temperature": self.config.temperature,
             "top_p": self.config.top_p,
             "do_sample": True,
@@ -688,13 +721,18 @@ class SharedModelTrainer:
 
         # Split batch into individual results
         results: List[Tuple[str, torch.Tensor, torch.Tensor]] = []
+        padded_prompt_len = encodings["input_ids"].shape[1]
         for i in range(len(npc_ids)):
             # Find where actual content starts (skip left padding)
             prompt_len = int(encodings["attention_mask"][i].sum().item())
-            resp_text = self.tokenizer.decode(
-                output_ids[i, prompt_len:],
-                skip_special_tokens=True,
+            generated_ids = output_ids[i, padded_prompt_len:]
+            require_complete_generated_tokens(
+                generated_ids,
+                max_new_tokens=max_new_tokens,
+                source=f"shared_model_rl.generate_batch[{i}]",
+                terminal_token_ids=self.tokenizer.eos_token_id,
             )
+            resp_text = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
             # Return individual tensors (unpadded prompt + full output)
             input_ids_i = encodings["input_ids"][i : i + 1, -prompt_len:]
             output_ids_i = output_ids[i : i + 1]
@@ -1760,17 +1798,17 @@ def tokenize_trajectory(
 
         full_text = prompt_text + response
 
-        prompt_enc = tokenizer(
+        prompt_enc = tokenize_with_explicit_limit(
+            tokenizer,
             prompt_text,
+            max_tokens=max_length,
             return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
         )
-        full_enc = tokenizer(
+        full_enc = tokenize_with_explicit_limit(
+            tokenizer,
             full_text,
+            max_tokens=max_length,
             return_tensors="pt",
-            truncation=True,
-            max_length=max_length,
         )
 
         prompt_len = prompt_enc["input_ids"].shape[1]

@@ -1,19 +1,8 @@
 /**
- * The two evaluators of the advanced-memory capability. `summaryEvaluator` rolls
- * the room's compact conversation summary forward; `longTermMemoryEvaluator`
- * extracts high-confidence, durable facts about the user from recent dialogue.
- * Both are bundled as `memoryItems` and registered by
- * `createAdvancedMemoryPlugin`; each resolves `MemoryService` via
- * `runtime.getService("memory")` and persists through it (summaries as session
- * summaries, facts as long-term memories).
- *
- * Dialogue counting keys off the canonical `MemoryType.MESSAGE` (plus two legacy
- * metadata strings for back-compat) and excludes synthetic-compaction and
- * action_result rows, so summarization thresholds reflect real turns. Both the
- * summary prompt and its store operate on a bounded slice of new dialogue
- * (`summaryMaxNewMessages`) and advance `lastMessageOffset` by exactly that
- * slice, so busy rooms never over-send and the rolling summary catches up across
- * runs.
+ * The long-term-memory evaluator extracts every high-confidence, durable fact
+ * about the user from the complete retained conversation. Conversation
+ * summaries are deliberately absent: retained dialogue stays canonical instead
+ * of being replaced by a lossy rolling projection.
  */
 import { logger } from "../../../logger.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
@@ -23,27 +12,27 @@ import type {
 	JSONSchema,
 	Memory,
 	RegisteredEvaluator,
-	UUID,
 } from "../../../types/index.ts";
-import { MemoryType } from "../../../types/memory.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
+
+function createdAtSortKey(memory: Memory): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(a: Memory, b: Memory): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
 
 const MEMORY_CATEGORIES = Object.values(LongTermMemoryCategory);
-
-const summarySchema: JSONSchema = {
-	type: "object",
-	properties: {
-		text: { type: "string" },
-		topics: { type: "array", items: { type: "string" } },
-		keyPoints: { type: "array", items: { type: "string" } },
-	},
-	required: ["text", "topics", "keyPoints"],
-	additionalProperties: false,
-};
 
 const longTermMemorySchema: JSONSchema = {
 	type: "object",
@@ -66,25 +55,8 @@ const longTermMemorySchema: JSONSchema = {
 	additionalProperties: false,
 };
 
-export interface SummaryOutput {
-	text: string;
-	topics: string[];
-	keyPoints: string[];
-}
-
 export interface LongTermMemoryOutput {
 	memories: MemoryExtraction[];
-}
-
-export interface SummaryPrepared {
-	memoryService: MemoryService;
-	summarizationMessages: Memory[];
-	existingSummary: Awaited<
-		ReturnType<MemoryService["getCurrentSessionSummary"]>
-	>;
-	lastOffset: number;
-	totalDialogueCount: number;
-	canSummarize: boolean;
 }
 
 export interface LongTermMemoryPrepared {
@@ -92,69 +64,6 @@ export interface LongTermMemoryPrepared {
 	recentMessages: Memory[];
 	existingMemories: string;
 	currentMessageCount: number;
-}
-
-const SUMMARY_PLACEHOLDER = "Summary not available";
-
-function toStringArray(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return value
-		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-		.filter(Boolean);
-}
-
-function isDialogueMessage(msg: Memory): boolean {
-	const metadataType = msg.metadata?.type as string | undefined;
-	return (
-		!isSyntheticConversationArtifactMemory(msg) &&
-		// Exclude action results on content.type alone (matching the dialogue
-		// filter in recentMessages): the action_result writers stamp
-		// content.type "action_result" with metadata.type "message", so
-		// requiring both would count them as dialogue.
-		msg.content.type !== "action_result" &&
-		// The canonical current format: createMessageMemory stamps
-		// MemoryType.MESSAGE ("message") — matching this is what actually makes
-		// summarization fire. The two legacy strings are kept for back-compat but
-		// nothing in the repo writes them anymore, so without MESSAGE the dialogue
-		// count was permanently 0 and short-term summarization never ran (silently).
-		(metadataType === MemoryType.MESSAGE ||
-			metadataType === "agent_response_message" ||
-			metadataType === "user_message")
-	);
-}
-
-async function getDialogueMessageCount(
-	runtime: IAgentRuntime,
-	roomId: UUID,
-): Promise<number> {
-	const messages = await runtime.getMemories({
-		tableName: "messages",
-		roomId,
-		limit: 100,
-		unique: false,
-	});
-	return messages.filter(isDialogueMessage).length;
-}
-
-async function shouldSummarize(
-	runtime: IAgentRuntime,
-	message: Memory,
-	memoryService: MemoryService,
-): Promise<boolean> {
-	const config = memoryService.getConfig();
-	const currentDialogueCount = await getDialogueMessageCount(
-		runtime,
-		message.roomId,
-	);
-	const existingSummary = await memoryService.getCurrentSessionSummary(
-		message.roomId,
-	);
-	if (!existingSummary) {
-		return currentDialogueCount >= config.shortTermSummarizationThreshold;
-	}
-	const newDialogueCount =
-		currentDialogueCount - existingSummary.lastMessageOffset;
-	return newDialogueCount >= config.shortTermSummarizationInterval;
 }
 
 async function shouldExtractLongTerm(
@@ -189,16 +98,6 @@ function formatMessages(runtime: IAgentRuntime, msgs: Memory[]): string {
 		.join("\n");
 }
 
-function parseSummaryOutput(output: unknown): SummaryOutput | null {
-	if (!isRecord(output)) return null;
-	const text = typeof output.text === "string" ? output.text.trim() : "";
-	return {
-		text: text || SUMMARY_PLACEHOLDER,
-		topics: toStringArray(output.topics),
-		keyPoints: toStringArray(output.keyPoints),
-	};
-}
-
 function parseLongTermOutput(output: unknown): LongTermMemoryOutput | null {
 	if (!isRecord(output) || !Array.isArray(output.memories)) return null;
 	const memories: MemoryExtraction[] = [];
@@ -221,65 +120,27 @@ function parseLongTermOutput(output: unknown): LongTermMemoryOutput | null {
 	return { memories };
 }
 
-async function prepareSummary(
-	runtime: IAgentRuntime,
-	message: Memory,
-): Promise<SummaryPrepared> {
-	const memoryService = runtime.getService("memory") as MemoryService | null;
-	if (!memoryService) throw new Error("MemoryService not found");
-	const config = memoryService.getConfig();
-	const allMessages = await runtime.getMemories({
-		tableName: "messages",
-		roomId: message.roomId,
-		limit: 1000,
-		unique: false,
-	});
-	const allDialogueMessages = allMessages
-		.filter(isDialogueMessage)
-		.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-	const existingSummary = await memoryService.getCurrentSessionSummary(
-		message.roomId,
-	);
-	const lastOffset = existingSummary?.lastMessageOffset || 0;
-	const totalDialogueCount = allDialogueMessages.length;
-	const newDialogueCount = totalDialogueCount - lastOffset;
-	const maxNewMessages = config.summaryMaxNewMessages || 50;
-	const messagesToProcess = Math.min(newDialogueCount, maxNewMessages);
-	const summarizationMessages =
-		newDialogueCount > 0
-			? allDialogueMessages.slice(lastOffset, lastOffset + messagesToProcess)
-			: [];
-	return {
-		memoryService,
-		summarizationMessages,
-		existingSummary,
-		lastOffset,
-		totalDialogueCount,
-		canSummarize: summarizationMessages.length > 0,
-	};
-}
-
 async function prepareLongTermMemory(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<LongTermMemoryPrepared> {
 	const memoryService = runtime.getService("memory") as MemoryService | null;
 	if (!memoryService) throw new Error("MemoryService not found");
-	const [recentRaw, existingLongTerm, currentMessageCount] = await Promise.all([
+	const currentMessageCount = await runtime.countMemories({
+		roomIds: [message.roomId],
+		unique: false,
+		tableName: "messages",
+	});
+	const [recentRaw, existingLongTerm] = await Promise.all([
 		runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: 20,
+			limit: Math.max(1, currentMessageCount),
 			unique: false,
 		}),
 		message.entityId
-			? memoryService.getLongTermMemories(message.entityId, undefined, 30)
+			? memoryService.getLongTermMemories(message.entityId)
 			: Promise.resolve([]),
-		runtime.countMemories({
-			roomIds: [message.roomId],
-			unique: false,
-			tableName: "messages",
-		}),
 	]);
 	const existingMemories =
 		existingLongTerm.length > 0
@@ -294,140 +155,13 @@ async function prepareLongTermMemory(
 		memoryService,
 		recentMessages: recentRaw
 			.filter((memory) => !isSyntheticConversationArtifactMemory(memory))
-			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
+			.sort(compareMemoryByCreatedAtAsc),
 		existingMemories,
 		currentMessageCount,
 	};
 }
 
-export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
-	name: "summary",
-	description: "Rolls forward the room's compact conversation summary.",
-	priority: EvaluatorPriority.MEMORY_SUMMARY,
-	schema: summarySchema,
-	async shouldRun({ runtime, message }) {
-		if (!message.content.text || !message.roomId) return false;
-		const memoryService = runtime.getService("memory") as MemoryService | null;
-		if (!memoryService) return false;
-		return shouldSummarize(runtime, message, memoryService);
-	},
-	async prepare({ runtime, message }) {
-		return prepareSummary(runtime, message);
-	},
-	prompt({ runtime, prepared }) {
-		// Always prompt with the bounded summarizationMessages slice. The stored
-		// lastMessageOffset only advances by this slice, so prompting with the full
-		// allDialogueMessages (up to 1000 fetched) on the first summary both
-		// over-sends — context_length_exceeded in busy rooms, the summary never
-		// stores, so the same oversized request retries forever — and double-counts
-		// messages on the next run. The rolling summary builds up across runs.
-		const recentMessages = prepared.summarizationMessages;
-		return `Update rolling summary. Merge recent messages into existing summary/topics. Keep key info, decisions, open questions, main topics. If nothing useful: text="", topics=[], keyPoints=[].
-
-Existing summary:
-${prepared.existingSummary?.summary ?? "None"}
-
-Existing topics:
-${prepared.existingSummary?.topics?.join(", ") || "None"}
-
-Recent messages to merge:
-${formatMessages(runtime, recentMessages)}`;
-	},
-	parse: parseSummaryOutput,
-	processors: [
-		{
-			name: "storeSummary",
-			async process({ runtime, message, prepared, output }) {
-				if (!prepared.canSummarize) return undefined;
-				const summaryText = output.text;
-				if (
-					!summaryText ||
-					summaryText === SUMMARY_PLACEHOLDER ||
-					summaryText.trim().length === 0
-				) {
-					return undefined;
-				}
-				const firstMessage = prepared.summarizationMessages[0];
-				const lastMessage =
-					prepared.summarizationMessages[
-						prepared.summarizationMessages.length - 1
-					];
-				const startTime = prepared.existingSummary
-					? prepared.existingSummary.startTime
-					: firstMessage?.createdAt && firstMessage.createdAt > 0
-						? new Date(firstMessage.createdAt)
-						: new Date();
-				const endTime =
-					lastMessage?.createdAt && lastMessage.createdAt > 0
-						? new Date(lastMessage.createdAt)
-						: new Date();
-				const newOffset =
-					prepared.lastOffset + prepared.summarizationMessages.length;
-
-				if (prepared.existingSummary) {
-					await prepared.memoryService.updateSessionSummary(
-						prepared.existingSummary.id,
-						message.roomId,
-						{
-							summary: summaryText,
-							messageCount:
-								prepared.existingSummary.messageCount +
-								prepared.summarizationMessages.length,
-							lastMessageOffset: newOffset,
-							endTime,
-							topics: output.topics,
-							metadata: { keyPoints: output.keyPoints },
-						},
-					);
-				} else {
-					await prepared.memoryService.storeSessionSummary({
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-						entityId:
-							message.entityId !== runtime.agentId
-								? message.entityId
-								: undefined,
-						summary: summaryText,
-						// Advance by the bounded slice we actually summarized, not the full
-						// backlog — otherwise the first summary covers only the first
-						// summaryMaxNewMessages messages but jumps the offset past the rest,
-						// silently dropping them. Mirrors the existing-summary branch
-						// (newOffset) so the rolling summary catches up over runs.
-						messageCount: prepared.summarizationMessages.length,
-						lastMessageOffset: newOffset,
-						startTime,
-						endTime,
-						topics: output.topics,
-						metadata: { keyPoints: output.keyPoints },
-					});
-				}
-
-				logAdvancedMemoryTrajectory({
-					runtime,
-					message,
-					providerName: "MEMORY_SUMMARIZATION",
-					purpose: "evaluate",
-					data: {
-						hasExistingSummary: !!prepared.existingSummary,
-						processedDialogueMessages: prepared.summarizationMessages.length,
-						totalDialogueMessages: prepared.totalDialogueCount,
-						topicCount: output.topics.length,
-						keyPointCount: output.keyPoints.length,
-					},
-					query: { roomId: message.roomId },
-				});
-
-				return {
-					success: true,
-					values: {
-						summarized: true,
-						summaryMessagesProcessed: prepared.summarizationMessages.length,
-					},
-				};
-			},
-		},
-	],
-};
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
 
 export const longTermMemoryEvaluator: Evaluator<
 	LongTermMemoryOutput,
@@ -450,7 +184,7 @@ export const longTermMemoryEvaluator: Evaluator<
 		return prepareLongTermMemory(runtime, message);
 	},
 	prompt({ runtime, prepared }) {
-		return `Extract up to 3 high-confidence persistent user memories. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, rolling summaries, compacted ledgers, synthetic compaction artifacts.
+		return `Extract every high-confidence persistent user memory. Categories: episodic, semantic, procedural. Keep only specific, concrete, user-unique info likely useful in 3+ months, confidence >=0.85, not already present. Skip one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, and synthetic historical artifacts.
 
 Existing long-term memories:
 ${prepared.existingMemories}
@@ -518,7 +252,4 @@ ${formatMessages(runtime, prepared.recentMessages)}`;
 	],
 };
 
-export const memoryItems: RegisteredEvaluator[] = [
-	summaryEvaluator,
-	longTermMemoryEvaluator,
-];
+export const memoryItems: RegisteredEvaluator[] = [longTermMemoryEvaluator];

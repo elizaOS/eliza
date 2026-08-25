@@ -64,7 +64,7 @@ describe("GET /api/whatsapp/status authScope identity", () => {
       ).resolves.toBe(true);
       expect(res.statusCode).toBe(200);
       expect(parsed(chunks).authScope).toBe("platform");
-      expect(whatsappAuthExists).toHaveBeenCalledWith(state.workspaceDir, "default");
+      expect(whatsappAuthExists).toHaveBeenCalledWith("default");
     }
   );
 
@@ -79,11 +79,7 @@ describe("GET /api/whatsapp/status authScope identity", () => {
       ).resolves.toBe(true);
       expect(res.statusCode).toBe(200);
       expect(parsed(chunks).authScope).toBe(token);
-      if (token === "platform") {
-        expect(whatsappAuthExists).toHaveBeenCalled();
-      } else {
-        expect(whatsappAuthExists).not.toHaveBeenCalled();
-      }
+      expect(whatsappAuthExists).toHaveBeenCalled();
     }
   );
 
@@ -222,6 +218,6 @@ describe("WhatsApp pairing route teardown ordering", () => {
 
     releaseStop?.();
     await expect(handling).resolves.toBe(true);
-    expect(deps.whatsappLogout).toHaveBeenCalledWith(state.workspaceDir, "default");
+    expect(deps.whatsappLogout).toHaveBeenCalledWith("default");
   });
 });

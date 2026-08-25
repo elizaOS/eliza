@@ -547,8 +547,11 @@ export function buildGenerateArgsFromParams(
 function readPositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // Prefix-parse hole: "4junk" parsed to 4, so a typo in e.g. ELIZA_LLAMA_N_CTX
+  // silently became a 4-token context window instead of falling back. The `> 0`
+  // check stays the range authority, so a signed value is still judged by it.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 /**
@@ -577,8 +580,9 @@ function readKvCacheTypeEnv(
 function readNonNegativeIntEnv(name: string): number | null {
   const raw = process.env[name]?.trim();
   if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  // Same hole on the non-negative form.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 export function isAospLocalEmbeddingEnabled(
@@ -604,8 +608,9 @@ function readPositiveIntEnvFrom(
 ): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // Same prefix-parse hole as the process.env forms above.
+  const parsed = /^[+-]?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readBooleanEnv(name: string): boolean | null {
@@ -1902,9 +1907,9 @@ async function ensureAospLoaderOwner(
  * native lane) acquire the shared {@link getInferencePriorityGate} first:
  * interactive turns dispatch ahead of queued background jobs; background jobs
  * run only when the lane is idle, wait at most the RAM-class bound before
- * failing back to their scheduler, and are clamped to the RAM-class budget
- * (`maxTokens` + prompt size) so one autonomous job cannot hold the lane for
- * multi-minute stretches on a constrained phone.
+ * failing back to their scheduler, and reject unsupported output requests
+ * before dispatch so a partial generation is never reported as the requested
+ * result.
  *
  * Exported for unit tests; production callers go through the registered
  * TEXT_SMALL / TEXT_LARGE handlers.
@@ -1921,17 +1926,12 @@ export async function generateOnPriorityLane(
     const budget = resolveBackgroundInferenceBudget(
       classifyInferenceRamClass(),
     );
-    const clampedArgs = applyBackgroundInferenceBudget(
+    const budgetedArgs = applyBackgroundInferenceBudget(
       { prompt: args.prompt, maxTokens: args.maxTokens },
       budget,
     );
-    if (clampedArgs.clamped.length > 0) {
-      logger.info(
-        `[aosp-local-inference] background generate clamped to the device-class budget: ${clampedArgs.clamped.join(", ")} (#11914)`,
-      );
-    }
-    args.prompt = clampedArgs.prompt;
-    args.maxTokens = clampedArgs.maxTokens;
+    args.prompt = budgetedArgs.prompt;
+    args.maxTokens = budgetedArgs.maxTokens;
     lockWaitMs = budget.lockWaitMs;
   }
   return getInferencePriorityGate().runExclusive(
@@ -2235,7 +2235,7 @@ function isFfiNullPointer(value: unknown): boolean {
  * hand-written {@link AospFusedLlmSymbols} interface (different function
  * representations), so the assertion is centralized here — one auditable FFI
  * boundary instead of the same `as unknown as` double-cast repeated inline at
- * every `createAospStreamingLlmBinding` call site (#12452 type-safety ratchet).
+ * every `createAospStreamingLlmBinding` call site (#12452 type-safety guard).
  */
 function asFusedLlmSymbols(symbols: unknown): AospFusedLlmSymbols {
   return symbols as AospFusedLlmSymbols;
@@ -3406,8 +3406,11 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
         throw new Error("[aosp-local-inference] fused text generate aborted");
       }
       const promptTokens = tokenizeFused(active, args.prompt);
+      const maxTokens =
+        args.maxTokens ??
+        Math.max(1, (active.contextSize ?? 32_768) - promptTokens.length);
       const config: AospLlmStreamConfig = {
-        maxTokens: args.maxTokens ?? 512,
+        maxTokens,
         temperature: args.temperature ?? 0.7,
         topP: 0.9,
         topK: 40,
@@ -3429,6 +3432,15 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           ...(args.signal ? { signal: args.signal } : {}),
           ...(args.onTextChunk ? { onTextChunk: args.onTextChunk } : {}),
         });
+        if (result.accepted >= maxTokens) {
+          throw new ElizaError(
+            "AOSP local model output reached the decode boundary before a stop condition",
+            {
+              code: "MODEL_OUTPUT_INCOMPLETE",
+              context: { maxTokens, outputTokens: result.accepted },
+            },
+          );
+        }
         return result.text;
       };
       try {

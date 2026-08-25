@@ -4,7 +4,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { extractMethods } from "../scripts/route-discovery.mjs";
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  canonicalRouteMethods,
+  extractMethods,
+} from "../scripts/route-discovery.mjs";
 import { ELIZA_CLOUD_PUBLIC_ENDPOINTS } from "./public-routes.js";
 
 const ALL_HONO_METHODS = ["DELETE", "GET", "PATCH", "POST", "PUT"];
@@ -32,6 +38,37 @@ describe("Hono route method discovery", () => {
         );
       }
     }
+  });
+
+  test("a route file with no generator-eligible methods canonicalizes to nothing", async () => {
+    // canonicalRouteMethods must skip empty-method files entirely (the
+    // generator's `continue`), never synthesize a HEAD pair for them — using
+    // the storage segments pins that the guard fires BEFORE HEAD synthesis,
+    // so a future reordering cannot resurrect a phantom storage HEAD that
+    // the audit would then read as covered.
+    const canonical = await canonicalRouteMethods(
+      "// route with no exported HTTP handlers\nexport const config = {};\n",
+      "/repo/packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+      "/repo",
+      ["v1", "apis", "storage", "objects", "[...key]"],
+    );
+    expect(canonical).toBeNull();
+  });
+
+  test("the storage objects catch-all canonicalizes to the fixed route with HEAD", async () => {
+    const canonical = await canonicalRouteMethods(
+      'const app = new Hono();\napp.get("/", handler);\napp.put("/", handler);\napp.delete("/", handler);\n',
+      "/repo/packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+      "/repo",
+      ["v1", "apis", "storage", "objects", "[...key]"],
+    );
+    expect(canonical).toEqual({
+      route: "/api/v1/apis/storage/objects/_",
+      // extractMethods returns sorted methods; the synthesized HEAD is
+      // appended after them.
+      methods: ["DELETE", "GET", "PUT", "HEAD"],
+      fixedStorageObject: true,
+    });
   });
 
   test("ignores a concise wildcard 405 fallback", async () => {
@@ -124,5 +161,35 @@ describe("Hono route method discovery", () => {
     `);
 
     expect(methods).toEqual(ALL_HONO_METHODS);
+  });
+});
+
+describe("generated public endpoint inventory matches the live route tree", () => {
+  // The generated `file` fields are repo-root-relative (see
+  // generate-public-routes.mjs: path.relative(cloudRoot, ...) where cloudRoot
+  // is the repository root).
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
+
+  test("retired phone-gateway bluebubbles routes stay out of the SDK", () => {
+    // 52bf81d527 deleted packages/cloud/api/v1/phone-gateways/bluebubbles/;
+    // wrappers surviving regeneration drift back in as phantom routes that
+    // call endpoints that 404 in production (#24317).
+    for (const key of Object.keys(ELIZA_CLOUD_PUBLIC_ENDPOINTS)) {
+      expect(key.includes("phone-gateways/bluebubbles")).toBe(false);
+    }
+  });
+
+  test("every generated endpoint points at a route file that still exists", () => {
+    // Guards the whole drift class, not just bluebubbles: a deleted route
+    // directory whose generated wrappers were never regenerated leaves
+    // descriptors pointing at files that no longer exist.
+    for (const [key, endpoint] of Object.entries(
+      ELIZA_CLOUD_PUBLIC_ENDPOINTS,
+    )) {
+      const routeFile = join(repoRoot, endpoint.file);
+      expect(existsSync(routeFile), `${key} -> missing ${endpoint.file}`).toBe(
+        true,
+      );
+    }
   });
 });

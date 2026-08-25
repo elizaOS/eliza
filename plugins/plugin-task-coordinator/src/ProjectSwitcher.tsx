@@ -20,18 +20,18 @@
  * projectId to the host so the task list stays unfiltered exactly like today.
  */
 
-import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { client } from "@elizaos/ui/api";
-import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 // Direct subpath (mirrors the sibling panels): the browser barrel doesn't
 // reliably re-export the newer dropdown-menu primitives.
 import {
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@elizaos/ui/components/ui/dropdown-menu";
+} from "@elizaos/ui";
+import { useAgentElement } from "@elizaos/ui/agent-surface";
+import { client } from "@elizaos/ui/api";
+import type { ProjectSummary } from "@elizaos/ui/api/client-types-cloud";
 import { useAppSelectorShallow } from "@elizaos/ui/state";
 import { Check, FolderGit2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -157,14 +157,14 @@ export function ProjectSwitcher({
     return (
       <Button
         type="button"
-        variant="secondary"
-        size="sm"
+        variant="dangerOutline"
+        size="dense"
         disabled
         data-testid="project-switcher-error"
         title={state.error}
-        className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-danger/40 bg-danger/10 px-2.5 text-xs font-medium text-danger"
+        className="max-w-[12rem]"
       >
-        <FolderGit2 className="h-3.5 w-3.5 shrink-0" />
+        <FolderGit2 className="size-3.5 shrink-0" />
         <span className="truncate">
           {t("projectswitcher.unavailable", {
             defaultValue: "Projects unavailable",
@@ -198,15 +198,15 @@ export function ProjectSwitcher({
         <Button
           ref={triggerRef}
           type="button"
-          variant="secondary"
-          size="sm"
+          variant="outlineAccent"
+          size="dense"
           disabled={state.switching}
           data-testid="project-switcher-trigger"
           aria-label={triggerLabel}
-          className="inline-flex h-8 max-w-[12rem] items-center gap-1.5 rounded-xl border border-border/50 bg-bg-accent/30 px-2.5 text-xs font-medium text-txt hover:text-txt-strong"
+          className="max-w-[12rem]"
           {...triggerAgentProps}
         >
-          <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <FolderGit2 className="size-3.5 shrink-0 text-accent" />
           <span className="truncate">{activeName}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -228,7 +228,7 @@ export function ProjectSwitcher({
               className="flex items-start gap-2"
             >
               <Check
-                className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                className={`mt-0.5 size-3.5 shrink-0 ${
                   isActive ? "text-accent" : "text-transparent"
                 }`}
                 aria-hidden="true"

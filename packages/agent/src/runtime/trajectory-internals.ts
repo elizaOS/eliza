@@ -6,7 +6,6 @@
  * and trajectory-export modules. Not intended for direct external consumption.
  */
 
-import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -26,20 +25,20 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
 export { asRecord };
 
-import {
-  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
-  type TrajectoryActionAttempt,
-  type TrajectoryLlmCall,
-  type TrajectoryProviderAccess,
-  type TrajectorySkillInvocation,
-  type TrajectoryStatus,
-  type TrajectoryStep,
-  type TrajectoryStepKind,
+import type {
+  TrajectoryActionAttempt,
+  TrajectoryLlmCall,
+  TrajectoryProviderAccess,
+  TrajectorySkillInvocation,
+  TrajectoryStatus,
+  TrajectoryStep,
+  TrajectoryStepKind,
 } from "../types/trajectory.ts";
 
 // ---------------------------------------------------------------------------
@@ -80,6 +79,43 @@ type RuntimeWithOrchestratorTrajectoryContext = {
   __orchestratorTrajectoryCtx?: OrchestratorTrajectoryContext;
 };
 
+/**
+ * Appends derived trajectory text records without a recency window, dedupe, or
+ * normalization. Invalid persisted metadata is rejected so a corrupt legacy
+ * value cannot make later context look complete.
+ */
+export function appendCompleteTrajectoryTextRecords(
+  existing: unknown,
+  additions: readonly string[],
+  field: string,
+): string[] {
+  const prior = existing === undefined ? [] : existing;
+  if (
+    !Array.isArray(prior) ||
+    prior.some((record) => typeof record !== "string") ||
+    additions.some((record) => typeof record !== "string")
+  ) {
+    throw new ElizaError("Trajectory text metadata is malformed", {
+      code: "TRAJECTORY_TEXT_METADATA_INVALID",
+      context: { field },
+    });
+  }
+  for (const [index, record] of [...prior, ...additions].entries()) {
+    assertWellFormedTrajectoryText(record, `${field}[${index}]`);
+  }
+  return [...prior, ...additions];
+}
+
+function assertWellFormedTrajectoryText(value: string, field: string): string {
+  if (toWellFormedUnicode(value) !== value) {
+    throw new ElizaError("Trajectory text contains malformed Unicode", {
+      code: "TRAJECTORY_TEXT_MALFORMED_UNICODE",
+      context: { field },
+    });
+  }
+  return value;
+}
+
 export type PersistedLlmCall = TrajectoryLlmCall & {
   callId: string;
   timestamp: number;
@@ -113,7 +149,7 @@ export type PersistedStep = TrajectoryStep & {
   childSteps?: string[];
   /** Full inline script source for script-backed dedicated rows. */
   script?: string;
-  /** sha256 hex digest of the original script when it exceeded the cap. */
+  /** Legacy digest retained when reading rows written before full script preservation. */
   scriptHash?: string;
   /** Skill names the step relied on (populated by Track C). */
   usedSkills?: string[];
@@ -432,51 +468,17 @@ export function normalizeTrajectoryMetadata(
 }
 
 // ---------------------------------------------------------------------------
-// Truncation helpers
-// ---------------------------------------------------------------------------
-
-const DEFAULT_TRUNCATE_LIMIT = 500;
-
-export function truncateField(
-  value: string,
-  limit = DEFAULT_TRUNCATE_LIMIT,
-): string {
-  if (value.length <= limit * 2) return value;
-  const removed = value.length - limit * 2;
-  return `${value.slice(0, limit)}\n[...truncated ${removed} chars...]\n${value.slice(-limit)}`;
-}
-
-export function truncateRecord(
-  obj: Record<string, unknown>,
-  limit = DEFAULT_TRUNCATE_LIMIT,
-): Record<string, unknown> {
-  const serialized = JSON.stringify(obj);
-  if (serialized.length <= limit * 2) return obj;
-  return { _truncated: truncateField(serialized, limit) };
-}
-
-// ---------------------------------------------------------------------------
 // Script capture helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Cap a script source for inline persistence on a trajectory step. When the
- * source exceeds `TRAJECTORY_STEP_SCRIPT_MAX_CHARS`, returns a truncated
- * prefix together with the sha256 hex digest of the full source so callers
- * can store the digest alongside.
+ * Preserve complete script source for trajectory persistence.
  */
 export function capScriptForPersistence(script: string): {
   script: string;
   scriptHash?: string;
 } {
-  if (script.length <= TRAJECTORY_STEP_SCRIPT_MAX_CHARS) {
-    return { script };
-  }
-  const scriptHash = createHash("sha256").update(script, "utf8").digest("hex");
-  return {
-    script: script.slice(0, TRAJECTORY_STEP_SCRIPT_MAX_CHARS),
-    scriptHash,
-  };
+  return { script: assertWellFormedTrajectoryText(script, "script") };
 }
 
 // ---------------------------------------------------------------------------
@@ -488,24 +490,23 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const safeResponse =
-    response.length > 100_000 ? response.slice(0, 100_000) : response;
-  const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
+  const safeResponse = assertWellFormedTrajectoryText(response, "response");
+  const decisionPattern = /DECISION:[ \t]*([^\n]+)/gi;
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(safeResponse);
   while (match !== null) {
     const decision = match[1];
     if (decision) {
-      insights.push(decision.trim());
+      insights.push(decision);
     }
     match = decisionPattern.exec(safeResponse);
   }
-  const keyDecisionPattern = /"keyDecision"\s{0,32}:\s{0,32}"([^"]{1,1024})"/g;
+  const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(safeResponse);
   while (match !== null) {
     const keyDecision = match[1];
     if (keyDecision) {
-      insights.push(keyDecision.trim());
+      insights.push(keyDecision);
     }
     match = keyDecisionPattern.exec(safeResponse);
   }
@@ -513,11 +514,9 @@ export function extractInsightsFromResponse(
     (purpose === "turn-complete" || purpose === "coordination") &&
     insights.length === 0
   ) {
-    const reasoningMatch = safeResponse.match(
-      /"reasoning"\s{0,32}:\s{0,32}"([^"]{20,200})"/,
-    );
+    const reasoningMatch = safeResponse.match(/"reasoning"\s*:\s*"([^"]+)"/);
     const reasoning = reasoningMatch?.[1];
-    if (reasoning) insights.push(reasoning.trim());
+    if (reasoning && reasoning.length >= 20) insights.push(reasoning);
   }
   return insights;
 }
@@ -624,7 +623,7 @@ export async function flushObservationBuffer(
   const exchangeText = exchanges
     .map(
       (e, i) =>
-        `Exchange ${i + 1}:\nUser: ${e.userPrompt.slice(0, 500)}\nAssistant: ${e.response.slice(0, 500)}`,
+        `Exchange ${i + 1}:\nUser: ${toWellFormedUnicode(e.userPrompt)}\nAssistant: ${toWellFormedUnicode(e.response)}`,
     )
     .join("\n\n");
 
@@ -644,7 +643,6 @@ export async function flushObservationBuffer(
 
     const result = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt,
-      maxTokens: 512,
       temperature: 0,
     });
 
@@ -657,7 +655,7 @@ export async function flushObservationBuffer(
 
     const observations = parsed
       .filter((s: unknown) => typeof s === "string" && s.length > 0)
-      .map((s: string) => s.slice(0, 150)) as string[];
+      .map((s: string) => toWellFormedUnicode(s)) as string[];
 
     if (observations.length === 0) return [];
 
@@ -672,16 +670,23 @@ export async function flushObservationBuffer(
     );
     if (trajectory) {
       const meta = trajectory.metadata as Record<string, unknown>;
-      const existing = Array.isArray(meta.observations)
-        ? (meta.observations as string[])
-        : [];
-      meta.observations = [...existing, ...observations].slice(-30);
+      meta.observations = appendCompleteTrajectoryTextRecords(
+        meta.observations,
+        observations,
+        "observations",
+      );
       trajectory.metadata = meta;
       await saveTrajectory(runtime, trajectory, { changedStepIds: [] });
     }
 
     return observations;
   } catch (err) {
+    // error-policy:J7 observation extraction is diagnostic enrichment, but its
+    // failures must remain visible to the runtime error stream without killing
+    // the surrounding message loop.
+    runtime.reportError("TrajectoryPersistence.flushObservationBuffer", err, {
+      agentId: runtime.agentId,
+    });
     warnRuntime(
       runtime,
       "[trajectory-persistence] observation flush failed",
@@ -1586,10 +1591,9 @@ function snapshotCaptureParams(
 }
 
 /**
- * Snapshot an LLM capture with its completeness fields first in the shared
- * byte budget. Optional prompts and metadata may exhaust that budget, but the
- * persisted record must still identify the model, purpose, action type, and
- * bounded response without adding data after sanitization.
+ * Snapshot a complete LLM capture after JSON-safe normalization. Field order
+ * keeps the required completeness contract visible without imposing a byte
+ * budget or dropping optional prompt and metadata fields.
  */
 function snapshotLlmCaptureParams(
   params: Record<string, unknown>,
@@ -1842,17 +1846,9 @@ function validateLlmCapture(
 }
 
 /**
- * Snapshot a provider capture with its completeness fields first in the shared
- * byte budget, mirroring {@link snapshotLlmCaptureParams}.
- *
- * `data` carries the provider's rendered output and routinely dominates the
- * row budget, and the canonical producer shape emits it BEFORE the required
- * `purpose` string. Bounding in producer order therefore starved `purpose`
- * into a truncation marker, and re-validating the deliberately lossy snapshot
- * against the same completeness contract discarded the ENTIRE provider access
- * — on exactly the context-heavy turns the record exists to explain. Reserving
- * the small required strings first keeps the record complete and lets `data`
- * degrade to a bounded object instead.
+ * Snapshot a complete provider capture after JSON-safe normalization, mirroring
+ * {@link snapshotLlmCaptureParams}. Required fields are ordered first for
+ * readability; provider data remains intact regardless of its serialized size.
  */
 function snapshotProviderCaptureParams(
   params: Record<string, unknown>,

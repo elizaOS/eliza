@@ -18,6 +18,12 @@ export interface IStorage {
     predicate?: (item: T) => boolean
   ): Promise<number>;
   clear(): Promise<void>;
+  /** Applies one collection mutation without exposing intermediate state. */
+  applyBatch?(batch: {
+    collection: string;
+    deletes: string[];
+    sets: Array<{ id: string; data: unknown }>;
+  }): Promise<void>;
 }
 
 export interface IVectorStorage {

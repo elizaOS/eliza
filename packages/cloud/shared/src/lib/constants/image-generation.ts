@@ -9,12 +9,6 @@ export const MAX_IMAGE_SIZE_MB = 10;
 export const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 /**
- * Prompt configuration limits
- */
-export const MAX_PROMPT_LENGTH = 2000;
-export const MAX_RESPONSE_STYLE_LENGTH = 1000;
-
-/**
  * Rate limiting for auto-image generation
  */
 export const MIN_IMAGE_INTERVAL_MS = 60 * 1000; // 1 minute between auto-generated images

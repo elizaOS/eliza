@@ -82,7 +82,6 @@ function normalizeMessageChannel(
   if (normalized.includes("discord")) return "discord";
   if (normalized.includes("imessage")) return "imessage";
   if (normalized.includes("whatsapp")) return "whatsapp";
-  if (normalized.includes("signal")) return "signal";
   if (normalized.includes("sms") || normalized.includes("twilio")) {
     return "sms";
   }

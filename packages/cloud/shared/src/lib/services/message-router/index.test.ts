@@ -1,20 +1,46 @@
-// Exercises index behavior with deterministic cloud-shared lib fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+/** Exercises index behavior with deterministic cloud-shared lib fixtures. */
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
+// Load SQL metadata projections before this suite installs process-global
+// schema doubles, so later batched PGlite suites retain the real columns.
+import "../../../db/repositories/phone-metadata-readers";
 import * as realDbSchemas from "../../../db/schemas";
 
 const blooioApiRequest = mock();
 const secretsGet = mock();
 const insertValues = mock();
 const onConflictDoUpdate = mock();
+const findHydratedById = mock(async () => null);
+const createPhoneMessage = mock(async () => "message-log-1");
+const updateAgentResponse = mock(async () => undefined);
+const markFailed = mock(async () => undefined);
+const selectLimit = mock(async () => []);
+const updateWhere = mock(async () => undefined);
+const loggerInfo = mock();
+const loggerDebug = mock();
+const loggerWarn = mock();
+const loggerError = mock();
+const originalFetch = globalThis.fetch;
 
 const insertBuilder = {
   values: insertValues,
   onConflictDoUpdate,
 };
+const selectBuilder = {
+  from: mock(() => selectBuilder),
+  where: mock(() => selectBuilder),
+  limit: selectLimit,
+};
+const updateBuilder = {
+  set: mock(() => updateBuilder),
+  where: updateWhere,
+};
 
 const dbWrite = {
   insert: mock(() => insertBuilder),
+  select: mock(() => selectBuilder),
+  update: mock(() => updateBuilder),
 };
 
 mock.module("../../../db/client", () => ({
@@ -26,6 +52,15 @@ mock.module("../../../db/client", () => ({
   runWithDbCacheAsync: async (fn: () => Promise<unknown>) => fn(),
   withReadDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
   withWriteDb: async (fn: (db: unknown) => Promise<unknown>) => fn(dbWrite),
+}));
+
+mock.module("../../../db/repositories/phone-message-logs", () => ({
+  phoneMessageLogsRepository: {
+    create: createPhoneMessage,
+    findHydratedById,
+    markFailed,
+    updateAgentResponse,
+  },
 }));
 
 mock.module("../../../db/schemas", () => ({
@@ -81,24 +116,51 @@ mock.module("../../utils/blooio-api", () => ({
   blooioApiRequest,
 }));
 
+mock.module("../../utils/logger", () => ({
+  logger: {
+    debug: loggerDebug,
+    error: loggerError,
+    info: loggerInfo,
+    warn: loggerWarn,
+  },
+}));
+
 const { messageRouterService } = await import("./index");
 
 describe("MessageRouterService contact recording", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   beforeEach(() => {
     blooioApiRequest.mockReset();
     secretsGet.mockReset();
     dbWrite.insert.mockClear();
+    dbWrite.select.mockClear();
+    dbWrite.update.mockClear();
+    selectLimit.mockReset();
+    selectLimit.mockResolvedValue([]);
+    updateWhere.mockReset();
+    updateWhere.mockResolvedValue(undefined);
+    createPhoneMessage.mockReset();
+    createPhoneMessage.mockResolvedValue("message-log-1");
     insertValues.mockReset();
     insertValues.mockReturnValue(insertBuilder);
     onConflictDoUpdate.mockReset();
     onConflictDoUpdate.mockResolvedValue(undefined);
+    loggerInfo.mockClear();
+    loggerDebug.mockClear();
+    loggerWarn.mockClear();
+    loggerError.mockClear();
+    findHydratedById.mockClear();
+    findHydratedById.mockResolvedValue(null);
   });
 
   test("records a phone contact after a successful agent outbound message", async () => {
     secretsGet.mockResolvedValue("blooio-api-key");
     blooioApiRequest.mockResolvedValue({ id: "sent-message" });
 
-    const sent = await messageRouterService.sendMessage({
+    const delivery = await messageRouterService.sendMessage({
       provider: "blooio",
       organizationId: "gateway-org",
       from: "+14159611510",
@@ -110,7 +172,11 @@ describe("MessageRouterService contact recording", () => {
       contactDisplayName: "Friend",
     });
 
-    expect(sent).toBe(true);
+    expect(delivery).toEqual({
+      status: "delivered",
+      provider: "blooio",
+      providerMessageIds: ["sent-message"],
+    });
     expect(blooioApiRequest).toHaveBeenCalledWith(
       "blooio-api-key",
       "POST",
@@ -159,7 +225,7 @@ describe("MessageRouterService contact recording", () => {
     secretsGet.mockResolvedValue("blooio-api-key");
     blooioApiRequest.mockResolvedValue({ id: "sent-message" });
 
-    const sent = await messageRouterService.sendMessage({
+    const delivery = await messageRouterService.sendMessage({
       provider: "blooio",
       organizationId: "gateway-org",
       from: "+14159611510",
@@ -167,7 +233,7 @@ describe("MessageRouterService contact recording", () => {
       body: "hello friend",
     });
 
-    expect(sent).toBe(true);
+    expect(delivery.status).toBe("delivered");
     expect(dbWrite.insert).not.toHaveBeenCalled();
   });
 
@@ -175,7 +241,7 @@ describe("MessageRouterService contact recording", () => {
     secretsGet.mockResolvedValue("blooio-api-key");
     blooioApiRequest.mockRejectedValue(new Error("provider down"));
 
-    const sent = await messageRouterService.sendMessage({
+    const delivery = await messageRouterService.sendMessage({
       provider: "blooio",
       organizationId: "gateway-org",
       from: "+14159611510",
@@ -186,7 +252,396 @@ describe("MessageRouterService contact recording", () => {
       agentUserId: "agent-user",
     });
 
-    expect(sent).toBe(false);
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_TRANSPORT_UNCERTAIN",
+      retryable: false,
+    });
     expect(dbWrite.insert).not.toHaveBeenCalled();
+  });
+
+  test("marks a successful provider response without a receipt uncertain", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockResolvedValue({});
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_RECEIPT_INVALID",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+    expect(dbWrite.insert).not.toHaveBeenCalled();
+  });
+
+  test("never retries after a provider deadline with ambiguous acceptance", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new DOMException("Provider request deadline expired", "TimeoutError"),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_TIMEOUT",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an oversized accepted response as uncertain without retry", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("REST response exceeds its bounded-body contract", {
+        code: "CLOUD_REST_RESPONSE_TOO_LARGE",
+        context: { maxResponseBytes: 4 * 1024 * 1024 },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_RESPONSE_TOO_LARGE",
+      retryable: false,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("treats a provider 5xx after dispatch as uncertain without retry", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("Blooio rejected the provider request", {
+        code: "PROVIDER_REQUEST_REJECTED",
+        context: { provider: "blooio", status: 503, retryable: true },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "blooio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+      providerStatus: 503,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves an explicit rate-limit rejection as safely retryable", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(
+      new ElizaError("Blooio rejected the provider request", {
+        code: "PROVIDER_REQUEST_REJECTED",
+        context: { provider: "blooio", status: 429, retryable: true },
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "failed",
+      provider: "blooio",
+      code: "DELIVERY_PROVIDER_REJECTED",
+      retryable: true,
+      providerStatus: 429,
+    });
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+  });
+
+  test("preserves a Twilio 500 as uncertain with its provider status", async () => {
+    secretsGet.mockResolvedValueOnce("twilio-account-sid");
+    secretsGet.mockResolvedValueOnce("twilio-auth-token");
+    const fetchMock = mock(
+      async () => new Response("accepted before upstream error", { status: 500 }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "twilio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "uncertain",
+      provider: "twilio",
+      code: "DELIVERY_PROVIDER_RESPONSE_UNCERTAIN",
+      retryable: false,
+      providerStatus: 500,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails closed for an unsupported runtime provider", async () => {
+    const sentinelProvider = "SENTINEL_UNSUPPORTED_PROVIDER";
+    const delivery = await messageRouterService.sendMessage({
+      provider: sentinelProvider as never,
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+    });
+
+    expect(delivery).toEqual({
+      status: "failed",
+      provider: "unknown",
+      code: "DELIVERY_PROVIDER_UNSUPPORTED",
+      retryable: false,
+    });
+    expect(blooioApiRequest).not.toHaveBeenCalled();
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(sentinelProvider);
+  });
+
+  test("keeps provider delivery authoritative when the phone-contact migration is absent", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockResolvedValue({ id: "sent-message" });
+    onConflictDoUpdate.mockRejectedValueOnce(
+      Object.assign(new Error('relation "agent_phone_contacts" does not exist'), {
+        code: "42P01",
+      }),
+    );
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+      agentId: "agent-1",
+      agentOrganizationId: "agent-org",
+      agentUserId: "agent-user",
+    });
+
+    expect(delivery.status).toBe("delivered");
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+    expect(dbWrite.insert).toHaveBeenCalledTimes(1);
+    expect(loggerError).toHaveBeenCalledWith(
+      "[MessageRouter] Contact record failed after delivery",
+      expect.objectContaining({ errorClass: "schema_migration_required" }),
+    );
+  });
+
+  test("keeps provider delivery authoritative when contact recording fails afterward", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockResolvedValue({ id: "sent-message" });
+    onConflictDoUpdate.mockRejectedValueOnce(new Error("contact database unavailable"));
+
+    const delivery = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+      agentId: "agent-1",
+      agentOrganizationId: "agent-org",
+      agentUserId: "agent-user",
+    });
+
+    expect(delivery.status).toBe("delivered");
+    expect(blooioApiRequest).toHaveBeenCalledTimes(1);
+    expect(dbWrite.insert).toHaveBeenCalledTimes(1);
+  });
+
+  test("never writes phone numbers, message content, or provider error bodies to logs", async () => {
+    const sentinelPhone = "+19995550123";
+    const sentinelContent = "SENTINEL_PRIVATE_MESSAGE_BODY";
+    const sentinelProviderBody = "SENTINEL_PROVIDER_RESPONSE_BODY";
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockRejectedValue(new Error(sentinelProviderBody));
+
+    await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+19995550999",
+      to: sentinelPhone,
+      body: sentinelContent,
+    });
+
+    const serializedLogs = JSON.stringify([
+      ...loggerInfo.mock.calls,
+      ...loggerDebug.mock.calls,
+      ...loggerWarn.mock.calls,
+      ...loggerError.mock.calls,
+    ]);
+    expect(serializedLogs).not.toContain(sentinelPhone);
+    expect(serializedLogs).not.toContain(sentinelContent);
+    expect(serializedLogs).not.toContain(sentinelProviderBody);
+  });
+
+  test("distinguishes a genuine routing miss from an unavailable lookup", async () => {
+    const sentinelPhone = "+19995550123";
+    const missing = await messageRouterService.routeIncomingMessage({
+      provider: "twilio",
+      from: "+19995550999",
+      to: sentinelPhone,
+      body: "private inbound body",
+    });
+    expect(missing).toEqual({
+      success: false,
+      error: "No active phone routing configuration",
+    });
+    const routingProjection = dbWrite.select.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(routingProjection).toHaveProperty("agent_id");
+    expect(routingProjection).toHaveProperty("id");
+    expect(routingProjection).toHaveProperty("organization_id");
+    expect(routingProjection).not.toHaveProperty("metadata");
+    expect(JSON.stringify(missing)).not.toContain(sentinelPhone);
+    expect(createPhoneMessage).not.toHaveBeenCalled();
+
+    const sentinelDatabaseBody = "SENTINEL_DATABASE_ERROR_BODY";
+    const lookupFailure = new Error(sentinelDatabaseBody);
+    selectLimit.mockRejectedValueOnce(lookupFailure);
+    await expect(
+      messageRouterService.routeIncomingMessage({
+        provider: "twilio",
+        from: "+19995550999",
+        to: sentinelPhone,
+        body: "private inbound body",
+      }),
+    ).rejects.toMatchObject({
+      code: "PHONE_MESSAGE_ROUTING_UNAVAILABLE",
+      cause: lookupFailure,
+    });
+
+    const serializedLogs = JSON.stringify([
+      ...loggerInfo.mock.calls,
+      ...loggerDebug.mock.calls,
+      ...loggerWarn.mock.calls,
+      ...loggerError.mock.calls,
+    ]);
+    expect(serializedLogs).not.toContain(sentinelPhone);
+    expect(serializedLogs).not.toContain(sentinelDatabaseBody);
+    expect(loggerError).toHaveBeenCalledWith(
+      "[MessageRouter] Error routing message",
+      expect.objectContaining({ errorClass: "routing_lookup_failed" }),
+    );
+    expect(createPhoneMessage).not.toHaveBeenCalled();
+  });
+
+  test("propagates a canonical message write failure as a bounded retry signal", async () => {
+    const sentinelStorageBody = "SENTINEL_PRIVATE_OBJECT_STORAGE_BODY";
+    const storageFailure = Object.assign(new Error(sentinelStorageBody), {
+      code: "OBJECT_STORAGE_UPLOAD_FAILED",
+    });
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: "phone-number-1",
+        agent_id: "agent-1",
+        organization_id: "organization-1",
+      },
+    ]);
+    createPhoneMessage.mockRejectedValueOnce(storageFailure);
+
+    await expect(
+      messageRouterService.routeIncomingMessage({
+        provider: "whatsapp",
+        from: "+19995550999",
+        to: "+19995550123",
+        body: "private inbound body",
+      }),
+    ).rejects.toMatchObject({
+      code: "PHONE_MESSAGE_PERSISTENCE_FAILED",
+      cause: storageFailure,
+    });
+
+    expect(createPhoneMessage).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(sentinelStorageBody);
+  });
+
+  test("does not retry after only the denormalized timestamp update fails", async () => {
+    const sentinelUpdateBody = "SENTINEL_TIMESTAMP_UPDATE_BODY";
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: "phone-number-1",
+        agent_id: "agent-1",
+        organization_id: "organization-1",
+      },
+    ]);
+    updateWhere.mockRejectedValueOnce(new Error(sentinelUpdateBody));
+
+    await expect(
+      messageRouterService.routeIncomingMessage({
+        provider: "whatsapp",
+        from: "+19995550999",
+        to: "+19995550123",
+        body: "private inbound body",
+      }),
+    ).resolves.toEqual({
+      success: true,
+      agentId: "agent-1",
+      phoneNumberId: "phone-number-1",
+      organizationId: "organization-1",
+    });
+
+    expect(createPhoneMessage).toHaveBeenCalledTimes(1);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[MessageRouter] Last-message timestamp update failed after persistence",
+      { errorClass: "unexpected_phone_failure" },
+    );
+    expect(JSON.stringify(loggerWarn.mock.calls)).not.toContain(sentinelUpdateBody);
+  });
+
+  test("delegates payload reads to the tenant-scoped canonical repository", async () => {
+    await expect(messageRouterService.getMessageLog("org-1", "message-1")).resolves.toBeNull();
+    expect(findHydratedById).toHaveBeenCalledWith("org-1", "message-1");
+  });
+
+  test("hydrates phone-number metadata from canonical SQL text before returning it", async () => {
+    const extremeMetadata =
+      '{"huge":1e400,"tiny":1e-400,"rounded":9007199254740993,"ordinary":3.5}';
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: "phone-number-1",
+        agent_id: "agent-1",
+        organization_id: "organization-1",
+        metadata: extremeMetadata,
+      },
+    ]);
+
+    const phoneNumber = await messageRouterService.getPhoneNumberById("phone-number-1");
+
+    expect(phoneNumber).not.toBeNull();
+    expect(JSON.stringify(phoneNumber?.metadata)).toBe(extremeMetadata);
+    expect(dbWrite.select.mock.calls[0]?.[0]).toHaveProperty("metadata");
   });
 });

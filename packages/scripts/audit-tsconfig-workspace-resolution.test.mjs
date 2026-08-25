@@ -19,10 +19,31 @@ import {
   auditTsconfigWorkspaceResolution,
   builtBeforeTypecheck,
   discoverTypecheckProjects,
+  workspaceSourceEntry,
 } from "./audit-tsconfig-workspace-resolution.mjs";
 import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "..", "..");
+
+test("substitutes every wildcard in a source export target", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "workspace-export-stars-"));
+  try {
+    const target = path.join(root, "src", "feature", "feature.ts");
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, "export {};\n");
+    assert.equal(
+      workspaceSourceEntry(
+        { exports: { "./*": "./src/*/*.ts" } },
+        "@scope/example/feature",
+        "@scope/example",
+        root,
+      ),
+      target,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 function writeJson(filePath, value) {
   mkdirSync(path.dirname(filePath), { recursive: true });

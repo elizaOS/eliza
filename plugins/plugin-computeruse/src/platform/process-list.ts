@@ -116,11 +116,20 @@ export function parsePsOutput(text: string): ProcessInfo[] {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    const m = trimmed.match(/^(\d+)\s+(.+)$/);
-    if (!m) continue;
-    const pid = Number.parseInt(m[1] ?? "0", 10);
+    let pidEnd = 0;
+    while (pidEnd < trimmed.length) {
+      const code = trimmed.charCodeAt(pidEnd);
+      if (code < 48 || code > 57) break;
+      pidEnd += 1;
+    }
+    if (pidEnd === 0 || trimmed[pidEnd]?.trim() !== "") continue;
+    let nameStart = pidEnd;
+    while (nameStart < trimmed.length && trimmed[nameStart]?.trim() === "") {
+      nameStart += 1;
+    }
+    const pid = Number.parseInt(trimmed.slice(0, pidEnd), 10);
     if (!Number.isFinite(pid) || pid <= 0) continue;
-    const rawName = (m[2] ?? "").trim();
+    const rawName = trimmed.slice(nameStart);
     if (!rawName) continue;
     // For `ps -axo pid=,comm=` without `-c` the comm column holds an absolute
     // path. We strip to the basename so the scene-builder's join key matches

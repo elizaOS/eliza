@@ -8,6 +8,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import { usePageTitle } from "../../lib/use-page-title";
+import { AuthResultShell } from "./auth-result-shell";
 
 export default function AuthErrorPage() {
   const t = useCloudT();
@@ -55,44 +56,40 @@ export default function AuthErrorPage() {
   const error = errorMessages[reason] || errorMessages.unknown;
 
   return (
-    <div className="theme-cloud relative flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-      <div className="relative w-full max-w-md bg-card border border-border p-8">
-        <div className="flex flex-col items-center gap-6 text-center">
-          <div className="flex h-14 w-14 items-center justify-center bg-destructive-subtle">
-            <AlertCircle className="h-7 w-7 text-destructive" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold text-txt">{error.title}</h2>
-            <p className="text-sm text-muted">{error.description}</p>
-          </div>
-
-          <div className="w-full space-y-3">
-            <Button
-              onClick={() => navigate("/login")}
-              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              {t("cloud.authError.tryAgain", { defaultValue: "Try Again" })}
-            </Button>
-            <Button
-              variant="outline"
-              asChild
-              className="w-full h-11 border-border hover:bg-bg-hover"
-            >
-              <Link to="/">
-                <Home className="h-4 w-4 mr-2" />
-                {t("cloud.authError.goHome", { defaultValue: "Go Home" })}
-              </Link>
-            </Button>
-          </div>
-
-          <p className="text-xs text-muted">
-            {t("cloud.authError.contactSupport", {
-              defaultValue: "If this problem persists, please contact support.",
-            })}
-          </p>
-        </div>
+    <AuthResultShell>
+      <div className="flex size-14 items-center justify-center bg-destructive-subtle">
+        <AlertCircle className="size-7 text-destructive" />
       </div>
-    </div>
+      <div className="space-y-2">
+        <h2 className="text-xl font-semibold text-txt">{error.title}</h2>
+        <p className="text-sm text-muted">{error.description}</p>
+      </div>
+
+      <div className="w-full space-y-3">
+        <Button
+          onClick={() => navigate("/login")}
+          className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+        >
+          <RefreshCw className="size-4 mr-2" />
+          {t("cloud.authError.tryAgain", { defaultValue: "Try Again" })}
+        </Button>
+        <Button
+          variant="outline"
+          asChild
+          className="w-full h-11 border-border hover:bg-bg-hover"
+        >
+          <Link to="/">
+            <Home className="size-4 mr-2" />
+            {t("cloud.authError.goHome", { defaultValue: "Go Home" })}
+          </Link>
+        </Button>
+      </div>
+
+      <p className="text-xs text-muted">
+        {t("cloud.authError.contactSupport", {
+          defaultValue: "If this problem persists, please contact support.",
+        })}
+      </p>
+    </AuthResultShell>
   );
 }

@@ -28,7 +28,6 @@ export {
   BrandTabsList,
   BrandTabsResponsive,
   BrandTabsTrigger,
-  brandButtonVariants,
   CornerBrackets,
   DashboardSection,
   DashboardStatCard,
@@ -171,6 +170,7 @@ export * from "./apps/FullscreenView.helpers";
 export * from "./apps/GameViewOverlay";
 export * from "./apps/overlay-app-api";
 export * from "./apps/overlay-app-registry";
+export * from "./browser";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";
@@ -200,7 +200,6 @@ export { SidebarContent } from "./composites/sidebar/sidebar-content";
 export { SidebarPanel } from "./composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./composites/sidebar/sidebar-scroll-region";
 export * from "./config-ui";
-export * from "./connectors/BlueBubblesStatusPanel";
 export * from "./connectors/ConnectorAccountAuditList";
 export * from "./connectors/ConnectorAccountCard";
 export * from "./connectors/ConnectorAccountList";
@@ -211,7 +210,6 @@ export * from "./connectors/ConnectorSetupPanel";
 export * from "./connectors/ConnectorSetupPanel.helpers";
 export * from "./connectors/DiscordLocalConnectorPanel";
 export * from "./connectors/OwnerAgentConnectorSetupPanel";
-export * from "./connectors/SignalQrOverlay";
 export * from "./connectors/WhatsAppQrOverlay";
 export * from "./conversations/ConversationsSidebar";
 export * from "./conversations/conversation-utils";
@@ -266,6 +264,7 @@ export * from "./settings/permission-types";
 export * from "./settings/SubscriptionStatus";
 export * from "./settings/VoiceConfigView";
 export * from "./settings/VoiceConfigView.helpers";
+export * from "./shared/ActionListRow";
 export * from "./shared/AppPageSidebar";
 export * from "./shared/confirm-delete-control";
 export * from "./shared/LanguageDropdown";

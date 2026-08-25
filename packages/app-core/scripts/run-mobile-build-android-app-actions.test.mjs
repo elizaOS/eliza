@@ -14,12 +14,28 @@ import {
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
+  findAndroidBionicInferenceOffenders,
   injectCopyForkLlamaLibTask,
   patchAndroidAppActionsXmlResource,
   removeInactiveAndroidJavaSourceRoots,
   syncAndroidVoiceStringResources,
   validateAndroidAppActionsXmlResource,
 } from "./run-mobile-build.mjs";
+
+test("Android bionic inference audit rejects Linux libc symbols", () => {
+  assert.deepEqual(
+    findAndroidBionicInferenceOffenders(
+      Buffer.from("ELF-prefix-__errno_location-suffix"),
+    ),
+    ["__errno_location"],
+  );
+  assert.deepEqual(
+    findAndroidBionicInferenceOffenders(
+      Buffer.from("ELF-prefix-stderr@LIBC-liblog.so-suffix"),
+    ),
+    [],
+  );
+});
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");

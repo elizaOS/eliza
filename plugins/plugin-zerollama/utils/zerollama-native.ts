@@ -9,7 +9,9 @@
  */
 
 import type { GenerateTextResult, TextStreamResult, TokenUsage, ToolCall } from "@elizaos/core";
+import { isElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ModelMessage, ToolSet } from "ai";
+import { assertZerollamaStreamTerminated } from "./model-output";
 import { estimateUsage } from "./modelUsage";
 
 export type ZerollamaChatMessage = {
@@ -373,6 +375,11 @@ export async function zerollamaChatComplete(args: {
   }
   const text = parsed.message?.content ?? "";
   const toolCalls = mapWireToolCalls(parsed.message?.tool_calls);
+  const finishReason =
+    parsed.done === true
+      ? (parsed.done_reason ?? (toolCalls.length > 0 ? "tool-calls" : "stop"))
+      : undefined;
+  assertZerollamaStreamTerminated(finishReason);
   const usage = usageFromCounts(
     parsed.prompt_eval_count,
     parsed.eval_count,
@@ -382,7 +389,7 @@ export async function zerollamaChatComplete(args: {
   return {
     text,
     toolCalls,
-    finishReason: parsed.done_reason ?? (toolCalls.length > 0 ? "tool-calls" : "stop"),
+    finishReason,
     usage,
     providerMetadata: { modelName: args.modelName, provider: "zerollama" },
   };
@@ -406,6 +413,10 @@ export function zerollamaChatStream(args: {
   const textPromise = new Promise<string>((resolve, reject) => {
     resolveText = resolve;
     rejectText = reject;
+  });
+  void textPromise.catch(() => {
+    // error-policy:J5 the same native stream failure is rethrown by textStream;
+    // this observer prevents an unhandled rejection before a caller awaits text.
   });
 
   let resolveUsage!: (value: TokenUsage | undefined) => void;
@@ -510,6 +521,8 @@ export function zerollamaChatStream(args: {
         }
       }
 
+      assertZerollamaStreamTerminated(finishReason);
+
       if (args.plannerToolArgsOnly) {
         if (toolCalls[0]) {
           const argsJson =
@@ -539,7 +552,7 @@ export function zerollamaChatStream(args: {
       // error-policy:J2 attach the stream endpoint to raw transport failures
       // while preserving already-classified HTTP/protocol errors.
       const failure =
-        err instanceof ZerollamaHttpError
+        err instanceof ZerollamaHttpError || isElizaError(err)
           ? err
           : new ZerollamaHttpError({
               message: `zerollama /api/chat stream failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -685,7 +698,7 @@ export async function zerollamaEmbedMany(args: {
     // with nothing.
   } else if (nativeResponse.status !== 400 && nativeResponse.status !== 501) {
     throw new ZerollamaHttpError({
-      message: `zerollama /api/embed failed (${nativeResponse.status}): ${nativeRaw.slice(0, 300)}`,
+      message: `zerollama /api/embed failed (${nativeResponse.status}): ${truncateWellFormed(toWellFormedUnicode(nativeRaw), 300)}`,
       statusCode: nativeResponse.status,
       responseBody: nativeRaw,
       url: nativeUrl,
@@ -704,7 +717,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Raw = await readErrorBody(v1Response);
   if (!v1Response.ok) {
     throw new ZerollamaHttpError({
-      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${nativeRaw.slice(0, 160)}; /v1/embeddings ${v1Response.status}: ${v1Raw.slice(0, 160)}) [model=${model}]`,
+      message: `zerollama embed failed (/api/embed ${nativeResponse.status}: ${truncateWellFormed(toWellFormedUnicode(nativeRaw), 160)}; /v1/embeddings ${v1Response.status}: ${truncateWellFormed(toWellFormedUnicode(v1Raw), 160)}) [model=${model}]`,
       statusCode: v1Response.status,
       responseBody: v1Raw || nativeRaw,
       url: v1Url,
@@ -713,7 +726,7 @@ export async function zerollamaEmbedMany(args: {
   const v1Vectors = parseEmbedVectors(v1Raw, v1Url);
   if (v1Vectors.length === 0 || v1Vectors.some((row) => row.length === 0)) {
     throw new Error(
-      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${nativeRaw.slice(0, 120)})`
+      `[Ollama] zerollama embed returned an empty embedding (model=${model}; /api/embed body=${truncateWellFormed(toWellFormedUnicode(nativeRaw), 120)})`
     );
   }
   return v1Vectors;

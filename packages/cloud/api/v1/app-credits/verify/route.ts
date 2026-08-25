@@ -10,12 +10,18 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", async (c) => {
   try {

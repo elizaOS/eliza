@@ -58,7 +58,12 @@ export {
   type CalendarSnapshot,
   CalendarSpatialView,
 } from "./components/calendar/CalendarSpatialView.js";
-export { CalendarView } from "./components/calendar/CalendarView.js";
+// Keep the historical public name while pointing every shipped/importable
+// Calendar entry at the same month-grid implementation.
+export {
+  SimpleCalendarView,
+  SimpleCalendarView as CalendarView,
+} from "./components/calendar/SimpleCalendarView.js";
 export {
   type EventEditorDefaults,
   EventEditorDrawer,

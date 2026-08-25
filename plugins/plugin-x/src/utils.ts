@@ -16,12 +16,12 @@ import {
   fetchRemoteMedia,
   logger,
   type Memory,
-  truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TWEET_MAX_LENGTH } from "./constants";
+import { countTwitterWeightedLength } from "./tweet-length";
 import type { ActionResponse, MediaData } from "./types";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
 
@@ -139,44 +139,6 @@ export async function fetchMediaData(
 }
 
 /**
- * Handles sending a note tweet with optional media data.
- *
- * @param {ClientBase} client - The client object used for sending the note tweet.
- * @param {string} content - The content of the note tweet.
- * @param {string} [tweetId] - Optional Tweet ID to reply to.
- * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
- * @returns {Promise<Object>} - The result of the note tweet operation.
- * @throws {Error} - If the note tweet operation fails.
- */
-async function _handleNoteTweet(
-  client: ClientBase,
-  content: string,
-  tweetId?: string,
-  mediaData?: MediaData[],
-) {
-  // Twitter API v2 handles long tweets automatically
-  // Just use the regular sendTweet method
-  const result = await client.twitterClient.sendTweet(
-    content,
-    tweetId,
-    mediaData,
-  );
-
-  // Check if the result was successful
-  if (!result?.ok) {
-    // Tweet failed. Falling back to truncated Tweet.
-    const truncateContent = truncateToCompleteSentence(
-      content,
-      TWEET_MAX_LENGTH,
-    );
-    return await sendStandardTweet(client, truncateContent, tweetId);
-  }
-
-  // Return the result directly
-  return result;
-}
-
-/**
  * Send a standard tweet through the client
  */
 export async function sendStandardTweet(
@@ -226,12 +188,21 @@ export async function sendTweet(
   tweetToReplyTo?: string,
   mediaIds?: string[],
 ): Promise<SentTweet> {
+  const weightedLength = countTwitterWeightedLength(text);
+  if (weightedLength > TWEET_MAX_LENGTH) {
+    throw new ElizaError(
+      `X posts are limited to ${TWEET_MAX_LENGTH} weighted characters; received ${weightedLength}`,
+      {
+        code: "X_POST_LENGTH_EXCEEDED",
+        context: {
+          weightedLength,
+          maxWeightedLength: TWEET_MAX_LENGTH,
+        },
+      },
+    );
+  }
   return client.withAuthenticatedSession(async (session) => {
     const { profile } = session;
-    const isNoteTweet = text.length > TWEET_MAX_LENGTH;
-    const postText = isNoteTweet
-      ? truncateToCompleteSentence(text, TWEET_MAX_LENGTH)
-      : text;
 
     if (!client.isAuthenticatedSessionCurrent(session)) {
       throw new ElizaError("X credentials rotated before post egress", {
@@ -239,7 +210,7 @@ export async function sendTweet(
       });
     }
     const result: SendTweetResponse = await client.twitterClient.sendTweet(
-      postText,
+      text,
       tweetToReplyTo,
       mediaData,
       false,
@@ -387,7 +358,10 @@ function splitTweetContent(content: string, maxLength: number): string[] {
   for (const paragraph of paragraphs) {
     if (!paragraph) continue;
 
-    if (`${currentTweet}\n\n${paragraph}`.trim().length <= maxLength) {
+    if (
+      countTwitterWeightedLength(`${currentTweet}\n\n${paragraph}`.trim()) <=
+      maxLength
+    ) {
       if (currentTweet) {
         currentTweet += `\n\n${paragraph}`;
       } else {
@@ -397,7 +371,7 @@ function splitTweetContent(content: string, maxLength: number): string[] {
       if (currentTweet) {
         tweets.push(currentTweet.trim());
       }
-      if (paragraph.length <= maxLength) {
+      if (countTwitterWeightedLength(paragraph) <= maxLength) {
         currentTweet = paragraph;
       } else {
         // Split long paragraph into smaller chunks
@@ -458,7 +432,10 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
   let currentChunk = "";
 
   for (const sentence of sentences) {
-    if (`${currentChunk} ${sentence}`.trim().length <= maxLength) {
+    if (
+      countTwitterWeightedLength(`${currentChunk} ${sentence}`.trim()) <=
+      maxLength
+    ) {
       if (currentChunk) {
         currentChunk += ` ${sentence}`;
       } else {
@@ -471,14 +448,17 @@ function splitSentencesAndWords(text: string, maxLength: number): string[] {
       }
 
       // If current sentence itself is less than or equal to maxLength
-      if (sentence.length <= maxLength) {
+      if (countTwitterWeightedLength(sentence) <= maxLength) {
         currentChunk = sentence;
       } else {
         // Need to split sentence by spaces
         const words = sentence.split(" ");
         currentChunk = "";
         for (const word of words) {
-          if (`${currentChunk} ${word}`.trim().length <= maxLength) {
+          if (
+            countTwitterWeightedLength(`${currentChunk} ${word}`.trim()) <=
+            maxLength
+          ) {
             if (currentChunk) {
               currentChunk += ` ${word}`;
             } else {

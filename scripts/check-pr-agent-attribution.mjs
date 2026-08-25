@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Fails pull requests that omit the repository's visible AI-assistance and
- * exact model-provenance declaration. The gate cannot detect undisclosed AI
- * use; it makes an explicit human-only or provider/model declaration mandatory
- * so reviewers and the contribution ledger never have to infer provenance.
+ * Validates voluntarily supplied pull-request attribution. Pull requests with
+ * no attribution block are accepted without inferring how they were authored.
  */
 
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { evaluateCommentAttribution } from "./check-agent-comment-attribution.mjs";
 
 // Two markers satisfy the PR gate: the bare template marker and the signed
 // v2 run-receipt footer the published contribute-to-eliza skill appends. A
@@ -60,7 +59,7 @@ function isGenericModel(value) {
   );
 }
 
-export const REQUIRED_ATTRIBUTION_ROWS = [
+export const ATTRIBUTION_ROWS = [
   "ai-assistance",
   "models",
   "client",
@@ -119,7 +118,7 @@ export function extractModelIds(value) {
 
 // A row may carry an optional human label ("Skill revision: <value>"), which is
 // dropped so the predicates below judge the value alone. The strip must stop at
-// the label and never run on into the value, because two of the required rows
+// the label and never run on into the value, because two attribution rows
 // carry a colon inside the value by construction: skill-revision's documented
 // `owner/repo@<40-hex>:path`, and a routed model identifier such as
 // `bedrock/anthropic.claude-3:1`. Stripping to the first colon reduced those to
@@ -185,6 +184,51 @@ export function evaluatePrAttribution(body) {
   const templateMarkerCount = [...source.matchAll(ATTRIBUTION_MARKER_RE)]
     .length;
   const receiptMarkerCount = [...source.matchAll(RECEIPT_MARKER_RE)].length;
+  if (templateMarkerCount === 0 && rowMarkers.length === 0) {
+    const voluntaryFooter = evaluateCommentAttribution(source);
+    if (!voluntaryFooter.skipped) {
+      const disclosure = voluntaryFooter.attribution;
+      const machine = disclosure?.kind === "machine";
+      return {
+        ok: voluntaryFooter.ok,
+        skipped: false,
+        findings: voluntaryFooter.findings,
+        attribution: machine
+          ? {
+              aiAssistance: "yes",
+              kind: "ai-assisted",
+              noAiReason: "",
+              modelIds: [
+                `${disclosure.provider}/${disclosure.model}`.toLowerCase(),
+              ],
+              client: disclosure.client,
+              skillRevision: disclosure.skillRevision,
+              status: "self-reported",
+            }
+          : {
+              aiAssistance: "no",
+              kind: "human-only",
+              noAiReason: "human-only contribution",
+              modelIds: [],
+              client: "",
+              skillRevision: "",
+              status: "self-reported",
+            },
+      };
+    }
+  }
+  if (
+    templateMarkerCount === 0 &&
+    receiptMarkerCount === 0 &&
+    rowMarkers.length === 0
+  ) {
+    return {
+      ok: true,
+      skipped: true,
+      findings: [],
+      attribution: null,
+    };
+  }
   if (templateMarkerCount === 0 && receiptMarkerCount === 0) {
     findings.push({
       id: "marker",
@@ -207,7 +251,7 @@ export function evaluatePrAttribution(body) {
     });
   }
 
-  for (const id of REQUIRED_ATTRIBUTION_ROWS) {
+  for (const id of ATTRIBUTION_ROWS) {
     const rowCount = rowMarkers.filter((marker) => marker === id).length;
     if (rowCount === 0) {
       findings.push({
@@ -336,6 +380,7 @@ export function evaluatePrAttribution(body) {
 
   return {
     ok: findings.length === 0,
+    skipped: false,
     findings,
     attribution: {
       aiAssistance: noAi ? "no" : "yes",
@@ -371,6 +416,10 @@ export function runCli(argv = process.argv.slice(2)) {
 
   const result = evaluatePrAttribution(readFileSync(bodyFile, "utf8"));
   if (result.ok) {
+    if (result.skipped) {
+      process.stdout.write("No pull-request attribution block to validate.\n");
+      return 0;
+    }
     process.stdout.write(
       `Contribution attribution valid: ${
         result.attribution.aiAssistance === "no"

@@ -87,6 +87,40 @@ describe("completed action navigation", () => {
     window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
   });
 
+  it("delivers an APP launch Browser fallback through the same renderer dedupe path", () => {
+    const listener = vi.fn((event: Event) => {
+      markCompletedActionNavigationHandled(
+        event,
+        (event as CustomEvent).detail,
+      );
+    });
+    window.addEventListener(NAVIGATE_VIEW_EVENT, listener);
+
+    const delivered = dispatchViewActionHandoffDirect([
+      {
+        actionName: "APP",
+        success: true,
+        values: {
+          mode: "launch",
+          viewId: "browser",
+          viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+          completedActionHandoffId: "handoff-app-browser",
+        },
+      },
+    ]);
+
+    expect(delivered).toBe(true);
+    expect(listener).toHaveBeenCalledTimes(1);
+    const event = listener.mock.calls[0]?.[0];
+    if (!event) throw new Error("expected Browser navigation event");
+    expect((event as CustomEvent).detail).toMatchObject({
+      viewId: "browser",
+      viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+      completedActionHandoffId: "handoff-app-browser",
+    });
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, listener);
+  });
+
   it.each([
     ["WebSocket-first", websocketDelivery, terminalDelivery],
     ["terminal-first", terminalDelivery, websocketDelivery],

@@ -520,9 +520,47 @@ async function writeJsonFile(
 	payload: unknown,
 ): Promise<void> {
 	await fsp.mkdir(path.dirname(filePath), { recursive: true });
-	const tmp = `${filePath}.tmp`;
-	await fsp.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-	await fsp.rename(tmp, filePath);
+	// Unique staging name per write: concurrent writers to the same target must
+	// not share one fixed `${filePath}.tmp`, or one writer's rename races the
+	// other's and throws ENOENT once the first rename consumes the shared temp
+	// file — an unhandled error out of a mutation that reported success
+	// (issue #25123). Mirrors plugin-matrix's saveCryptoStore atomic-write.
+	const tmp = `${filePath}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+	try {
+		await fsp.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
+		await fsp.rename(tmp, filePath);
+	} catch (error) {
+		// error-policy:J6 temp cleanup is best-effort; unique names keep an orphan
+		// harmless to concurrent writers, and the primary write error is preserved.
+		await fsp.rm(tmp, { force: true }).catch(() => undefined);
+		throw error;
+	}
+}
+
+// Serializes read-modify-write transactions per persisted config file. The
+// management mutations (set_assignment, upsertInstalledModel,
+// removeInstalledModel) each read the current JSON, mutate it, and write it
+// back; two concurrent mutations against one file would otherwise both read the
+// pre-write state and the second write would clobber the first, silently
+// dropping an update while both callers return success (issue #25123). Keyed by
+// absolute file path so unrelated files never serialize against each other. The
+// stored promise is settle-tracking, so one rejected transaction never breaks
+// the chain for the next waiter.
+const configFileMutex = new Map<string, Promise<unknown>>();
+async function withConfigFileLock<T>(
+	filePath: string,
+	task: () => Promise<T>,
+): Promise<T> {
+	const prior = configFileMutex.get(filePath) ?? Promise.resolve();
+	const next = prior.then(task, task);
+	configFileMutex.set(
+		filePath,
+		next.then(
+			() => undefined,
+			() => undefined,
+		),
+	);
+	return next;
 }
 
 async function hashFile(filePath: string): Promise<string> {
@@ -591,20 +629,24 @@ async function writeRegistry(models: InstalledModel[]): Promise<void> {
 }
 
 async function upsertInstalledModel(model: InstalledModel): Promise<void> {
-	const current = await readRegistry();
-	await writeRegistry([
-		...current.filter((entry) => entry.id !== model.id),
-		model,
-	]);
+	await withConfigFileLock(registryPath(), async () => {
+		const current = await readRegistry();
+		await writeRegistry([
+			...current.filter((entry) => entry.id !== model.id),
+			model,
+		]);
+	});
 }
 
 async function removeInstalledModel(id: string): Promise<boolean> {
-	const current = await readRegistry();
-	const target = current.find((model) => model.id === id);
-	if (!target) return false;
-	await fsp.rm(target.path, { force: true });
-	await writeRegistry(current.filter((model) => model.id !== id));
-	return true;
+	return withConfigFileLock(registryPath(), async () => {
+		const current = await readRegistry();
+		const target = current.find((model) => model.id === id);
+		if (!target) return false;
+		await fsp.rm(target.path, { force: true });
+		await writeRegistry(current.filter((model) => model.id !== id));
+		return true;
+	});
 }
 
 async function readAssignments(): Promise<Assignments> {
@@ -624,29 +666,45 @@ async function writeAssignments(
 	return assignments;
 }
 
+// Serialized read-modify-write for assignments.json. The mutator runs inside
+// the per-file lock between a fresh read and the write-back, so concurrent
+// assignment updates observe each other's writes instead of racing on the
+// stale pre-write snapshot (issue #25123).
+async function updateAssignments(
+	mutate: (assignments: Assignments) => void,
+): Promise<Assignments> {
+	return withConfigFileLock(assignmentsPath(), async () => {
+		const assignments = await readAssignments();
+		mutate(assignments);
+		return writeAssignments(assignments);
+	});
+}
+
 async function assignModel(
 	model: CatalogModel,
 	overwrite: boolean,
 ): Promise<void> {
-	const assignments = await readAssignments();
-	if (model.role === "embedding") {
-		if (overwrite || !assignments.TEXT_EMBEDDING) {
-			assignments.TEXT_EMBEDDING = model.id;
+	await updateAssignments((assignments) => {
+		if (model.role === "embedding") {
+			if (overwrite || !assignments.TEXT_EMBEDDING) {
+				assignments.TEXT_EMBEDDING = model.id;
+			}
+		} else if (model.role === "chat") {
+			if (overwrite || !assignments.TEXT_SMALL)
+				assignments.TEXT_SMALL = model.id;
+			if (overwrite || !assignments.TEXT_LARGE)
+				assignments.TEXT_LARGE = model.id;
+			if (overwrite || !assignments.TEXT_EMBEDDING) {
+				assignments.TEXT_EMBEDDING = model.id;
+			}
+			if (overwrite || !assignments.TEXT_TO_SPEECH) {
+				assignments.TEXT_TO_SPEECH = model.id;
+			}
+			if (overwrite || !assignments.TRANSCRIPTION) {
+				assignments.TRANSCRIPTION = model.id;
+			}
 		}
-	} else if (model.role === "chat") {
-		if (overwrite || !assignments.TEXT_SMALL) assignments.TEXT_SMALL = model.id;
-		if (overwrite || !assignments.TEXT_LARGE) assignments.TEXT_LARGE = model.id;
-		if (overwrite || !assignments.TEXT_EMBEDDING) {
-			assignments.TEXT_EMBEDDING = model.id;
-		}
-		if (overwrite || !assignments.TEXT_TO_SPEECH) {
-			assignments.TEXT_TO_SPEECH = model.id;
-		}
-		if (overwrite || !assignments.TRANSCRIPTION) {
-			assignments.TRANSCRIPTION = model.id;
-		}
-	}
-	await writeAssignments(assignments);
+	});
 }
 
 async function ensureDefaultAssignment(model: CatalogModel): Promise<void> {
@@ -923,9 +981,31 @@ function recommendedChatModel(): CatalogModel | null {
 	const totalRamGb = os.totalmem() / 1024 ** 3;
 	const candidates = chatModels()
 		.filter((model) => totalRamGb >= model.minRamGb)
-		.sort((left, right) => right.sizeGb - left.sizeGb);
+		.sort((left, right) => {
+			const rightSize =
+				typeof right.sizeGb === "number" && Number.isFinite(right.sizeGb)
+					? right.sizeGb
+					: 0;
+			const leftSize =
+				typeof left.sizeGb === "number" && Number.isFinite(left.sizeGb)
+					? left.sizeGb
+					: 0;
+			return rightSize - leftSize || left.id.localeCompare(right.id);
+		});
 	return (
-		candidates[0] ?? chatModels().sort((a, b) => a.sizeGb - b.sizeGb)[0] ?? null
+		candidates[0] ??
+		chatModels().sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0] ??
+		null
 	);
 }
 
@@ -1087,7 +1167,17 @@ async function resolveDefaultChatModel(
 			CATALOG.find((model) => model.id === entry.id && model.role === "chat"),
 		)
 		.filter((model): model is CatalogModel => Boolean(model))
-		.sort((a, b) => a.sizeGb - b.sizeGb)[0];
+		.sort((a, b) => {
+			const aSize =
+				typeof a.sizeGb === "number" && Number.isFinite(a.sizeGb)
+					? a.sizeGb
+					: 0;
+			const bSize =
+				typeof b.sizeGb === "number" && Number.isFinite(b.sizeGb)
+					? b.sizeGb
+					: 0;
+			return aSize - bSize || a.id.localeCompare(b.id);
+		})[0];
 	return installedCatalog ?? recommendedChatModel();
 }
 
@@ -1487,23 +1577,24 @@ export async function applyLocalInferenceManagementMutation(
 			if (!ASSIGNMENT_SLOTS.has(slot as keyof Assignments)) {
 				throw new Error(`Unknown local-inference assignment slot: ${slot}`);
 			}
-			const assignments = await readAssignments();
 			const modelId = input.modelId?.trim() || null;
-			if (modelId) {
-				if (!isCuratedCatalogModelId(modelId)) {
-					throw new Error(
-						"Local inference assignments are limited to curated Eliza-1 tiers.",
-					);
-				}
-				assignments[slot as keyof Assignments] = modelId;
-			} else {
-				delete assignments[slot as keyof Assignments];
+			if (modelId && !isCuratedCatalogModelId(modelId)) {
+				throw new Error(
+					"Local inference assignments are limited to curated Eliza-1 tiers.",
+				);
 			}
+			const assignments = await updateAssignments((current) => {
+				if (modelId) {
+					current[slot as keyof Assignments] = modelId;
+				} else {
+					delete current[slot as keyof Assignments];
+				}
+			});
 			return {
 				op: input.op,
 				slot: slot as keyof Assignments,
 				modelId,
-				assignments: await writeAssignments(assignments),
+				assignments,
 			};
 		}
 		default: {
@@ -1720,22 +1811,30 @@ export async function handleLocalInferenceRoutes(
 			sendJsonError(res, "slot is required");
 			return true;
 		}
-		const assignments = await readAssignments();
-		if (typeof body.modelId === "string" && body.modelId.trim()) {
-			const modelId = body.modelId.trim();
-			if (!isCuratedCatalogModelId(modelId)) {
-				sendJsonError(
-					res,
-					"Local inference assignments are limited to curated Eliza-1 tiers.",
-					400,
-				);
-				return true;
-			}
-			assignments[slot as keyof Assignments] = modelId;
-		} else {
-			delete assignments[slot as keyof Assignments];
+		const modelId =
+			typeof body.modelId === "string" && body.modelId.trim()
+				? body.modelId.trim()
+				: null;
+		if (modelId && !isCuratedCatalogModelId(modelId)) {
+			sendJsonError(
+				res,
+				"Local inference assignments are limited to curated Eliza-1 tiers.",
+				400,
+			);
+			return true;
 		}
-		sendJson(res, { assignments: await writeAssignments(assignments) });
+		// Read-modify-write must run inside the per-file lock: a bare
+		// readAssignments/writeAssignments pair here loses one of two
+		// concurrent POSTs to the stale pre-write snapshot (issue #25123's
+		// race, on the route that motivated it).
+		const assignments = await updateAssignments((current) => {
+			if (modelId) {
+				current[slot as keyof Assignments] = modelId;
+			} else {
+				delete current[slot as keyof Assignments];
+			}
+		});
+		sendJson(res, { assignments });
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {

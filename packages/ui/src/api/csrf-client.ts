@@ -18,7 +18,8 @@ import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-to
 import { resolveApiUrl } from "../utils/asset-url";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
-import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
+import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
 import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transport";
 import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
@@ -26,27 +27,7 @@ import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
-/**
- * Reads the current CSRF token from `document.cookie`.
- * Returns null when the cookie is absent (no active session).
- */
-export function readCsrfTokenFromCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const prefix = `${CSRF_COOKIE_NAME}=`;
-  for (const part of document.cookie.split(";")) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(prefix)) {
-      try {
-        return decodeURIComponent(trimmed.slice(prefix.length));
-      } catch {
-        // error-policy:J3 untrusted cookie values — a malformed percent-escape
-        // is an absent CSRF token, not a client crash.
-        return null;
-      }
-    }
-  }
-  return null;
-}
+export { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
 
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 

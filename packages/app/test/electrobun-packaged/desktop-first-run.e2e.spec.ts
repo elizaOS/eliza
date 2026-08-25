@@ -17,6 +17,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -69,7 +70,23 @@ async function waitForDom(
     if (last === true) return;
     await delay(500);
   }
-  throw new Error(`${options.message}. Last result: ${JSON.stringify(last)}`);
+  const diagnostics = await bridgeEval(
+    harness,
+    `(() => ({
+    body: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(-1200),
+    choiceIds: Array.from(document.querySelectorAll('[data-testid^="choice-"]'))
+      .map((element) => element.getAttribute('data-testid'))
+      .filter(Boolean)
+      .slice(-40),
+    firstRunStep: localStorage.getItem('eliza:setup:step'),
+    firstRunComplete: localStorage.getItem('eliza:first-run-complete'),
+    externalApiBase: window.__ELIZA_DESKTOP_EXTERNAL_API_BASE__ ?? null,
+    bootApiBase: window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase ?? null,
+  }))()`,
+  );
+  throw new Error(
+    `${options.message}. Last result: ${JSON.stringify(last)}. DOM diagnostics: ${JSON.stringify(diagnostics)}`,
+  );
 }
 
 async function clickTestId(
@@ -183,11 +200,20 @@ test("packaged desktop drives chat-first onboarding and persists first-run", asy
     await waitForTestId(harness, TUTORIAL_CHOICE("skip"));
     await clickTestId(harness, TUTORIAL_CHOICE("skip"));
 
+    await dismissPermissionPrimingIfShown(harness);
     await waitForRestingShell(harness);
     expect(
       api.requests.filter((request) => request === "POST /api/first-run"),
       "packaged onboarding should persist first-run exactly once",
     ).toHaveLength(1);
+    expect(
+      api.responses,
+      "the first-run write should be handled successfully by the live upstream",
+    ).toContain("POST /api/first-run -> 200");
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nRecent live API responses:\n${api?.responses.slice(-80).join("\n") ?? "(server unavailable)"}`,
+    );
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);
@@ -198,13 +224,18 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
   test.setTimeout(600_000);
 
   const pairedToken = "packaged-paired-token";
-  const pairingCode = "ABCD EFGH IJKL";
+  const pairingCode = "ABCD-EFGH-IJKL";
   let api: MockApiServer | null = null;
   let harness: PackagedDesktopHarness | null = null;
   try {
     api = await startMockApiServer({
       firstRunComplete: true,
       port: 0,
+      // The packaged shell intentionally treats 127.0.0.1 as its embedded
+      // local agent and resolves auth through native RPC. A paired device is
+      // an external HTTP target, so use a private alternate loopback alias to
+      // exercise that production route without exposing the fixture on LAN.
+      host: "127.0.0.2",
       auth: {
         token: pairedToken,
         pairingCode,
@@ -224,13 +255,20 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
         timeoutMs: 120_000,
       },
     );
+    await waitForDom(
+      harness,
+      `Boolean(document.querySelector("#pairing-code"))`,
+      {
+        message: "Expected pairing screen to expose the pair-code field",
+        timeoutMs: 10_000,
+      },
+    );
 
     const pairResult = await bridgeEval<EvalResult<{ submitted: boolean }>>(
       harness,
       `(() => {
         try {
-          const input = Array.from(document.querySelectorAll("input, textarea"))
-            .find((el) => /pairing code/i.test(el.getAttribute("placeholder") || ""));
+          const input = document.querySelector("#pairing-code");
           if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) {
             return { ok: false, error: "pairing input not found" };
           }
@@ -242,8 +280,7 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
           if (!setter) return { ok: false, error: "no native value setter" };
           setter.call(input, ${cssString(pairingCode)});
           input.dispatchEvent(new Event("input", { bubbles: true }));
-          const button = Array.from(document.querySelectorAll("button"))
-            .find((el) => /submit|pair|activate/i.test(el.textContent || ""));
+          const button = input.form?.querySelector('button[type="submit"]');
           if (!(button instanceof HTMLButtonElement)) {
             return { ok: false, error: "pairing submit button not found" };
           }
@@ -266,6 +303,7 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
         timeoutMs: 60_000,
       },
     );
+    await dismissPermissionPrimingIfShown(harness);
     await waitForRestingShell(harness);
 
     const storedToken = await bridgeEval<string | null>(
@@ -283,6 +321,41 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
     expect(storedToken).toBe(pairedToken);
     expect(api.requests).toContain("POST /api/auth/pair");
     expect(api.requests).toContain("GET /api/auth/me");
+    expect(api.requests).not.toContain("POST /api/auth/login/password");
+    expect(api.authStatusResponses).toContainEqual(
+      expect.objectContaining({
+        required: true,
+        authenticated: false,
+        pairingEnabled: true,
+      }),
+    );
+    // The cold auth gate may establish the unauthenticated pairing state from
+    // /api/auth/status without issuing a redundant pre-pair /api/auth/me. The
+    // status assertion above proves the starting state; the bearer response
+    // below proves the authenticated post-reload end state.
+    expect(api.authMeResponses).toContainEqual(
+      expect.objectContaining({
+        identity: expect.objectContaining({
+          id: "bearer-agent",
+          kind: "machine",
+        }),
+        session: expect.objectContaining({ id: "bearer", kind: "machine" }),
+        access: expect.objectContaining({
+          mode: "bearer",
+          passwordConfigured: true,
+          ownerConfigured: false,
+          role: "OWNER",
+        }),
+      }),
+    );
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n` +
+        `Mock API requests: ${JSON.stringify(api?.requests ?? [])}\n` +
+        `Auth status responses: ${JSON.stringify(api?.authStatusResponses ?? [])}\n` +
+        `Auth/me challenges: ${JSON.stringify(api?.authMeChallenges ?? [])}\n` +
+        `Auth/me responses: ${JSON.stringify(api?.authMeResponses ?? [])}`,
+    );
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);

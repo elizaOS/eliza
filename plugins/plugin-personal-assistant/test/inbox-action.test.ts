@@ -96,19 +96,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(inboxAction.name).toBe("INBOX");
-      const similes = inboxAction.similes ?? [];
-      for (const required of [
-        "INBOX",
-        "CROSS_CHANNEL_INBOX",
-        "ALL_MESSAGES",
-        "INBOX_TRIAGE_PRIORITY",
-      ]) {
-        expect(similes).toContain(required);
-      }
-    });
-
     it("rejects calls with no subaction selector", async () => {
       const result = await callInbox(makeRuntime(), makeMessage(), {});
       expect(result.success).toBe(false);
@@ -267,7 +254,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
         "slack",
         "discord",
         "telegram",
-        "signal",
         "imessage",
         "whatsapp",
       ]);

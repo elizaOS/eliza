@@ -18,6 +18,7 @@
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/core/atomic-json": ["../core/src/utils/atomic-json.ts"],
       "@elizaos/logger": ["../logger/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"]
     }
   },

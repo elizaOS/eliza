@@ -61,6 +61,8 @@ describe("explicit Shared reminder relative delay", () => {
 
   it.each([
     'Use the example "remind me in 2 minutes" in the documentation.',
+    'Don\'t say "remind me in 5 minutes" yet.',
+    'It\'s just an example: "remind me in 5 minutes".',
     "For example: remind me in 2 minutes.",
     "Remind me tomorrow to stretch for five minutes.",
     "Remind me at 3pm to check in with the team for 30 minutes.",
@@ -306,5 +308,34 @@ describe("explicit Shared reminder relative delay", () => {
 
     expect(result).toMatchObject({ success: false });
     expect(scheduleWithResult).not.toHaveBeenCalled();
+  });
+
+  it("handles multiple and sequential candidate delay expressions through parser", () => {
+    expect(
+      resolveExplicitSharedReminderDelay(
+        "Remind me in 5 minutes to call mom, and please remind me in 10 minutes to stretch.",
+      ),
+    ).toEqual({
+      kind: "invalid",
+      reason: "Use exactly one relative delay for a reminder.",
+    });
+
+    expect(
+      resolveExplicitSharedReminderDelay(
+        "Please remind me to submit the document in 45 minutes.",
+      ),
+    ).toEqual({
+      kind: "resolved",
+      milliseconds: 2_700_000,
+    });
+
+    expect(
+      resolveExplicitSharedReminderDelay(
+        "In 15 minutes, please remind me to stretch.",
+      ),
+    ).toEqual({
+      kind: "resolved",
+      milliseconds: 900_000,
+    });
   });
 });

@@ -63,6 +63,15 @@ describe("MobileSignalsWeb fallback", () => {
     ).rejects.toThrow("target must be a valid mobile settings target");
   });
 
+  it("does not fabricate a DeviceActivity presenter on the web", async () => {
+    await expect(
+      new MobileSignalsWeb().presentScreenTimeReport(),
+    ).resolves.toEqual({
+      presented: false,
+      reason: "Web fallback cannot present a native DeviceActivity report.",
+    });
+  });
+
   it("builds snapshots from visibility, focus, platform, and clamped battery data", async () => {
     setNavigator({
       userAgent: "Mozilla/5.0 (Linux; Android 15)",

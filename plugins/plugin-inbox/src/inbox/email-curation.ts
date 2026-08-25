@@ -8,6 +8,8 @@
  * connector or runtime dependency. Consumed by the inbox triage flow and
  * exposed at the `@elizaos/plugin-inbox/inbox/email-curation` subpath.
  */
+import { extractAsciiEmailAddress } from "./email-address.ts";
+
 export type EmailCurationAction = "save" | "archive" | "delete" | "review";
 
 export type EmailCurationMode = "body_semantic" | "metadata_degraded";
@@ -373,10 +375,7 @@ function normalizeWhitespace(value: string): string {
 function normalizeAddress(value: string | null | undefined): string | null {
   const raw = value?.trim();
   if (!raw) return null;
-  const angleMatch = raw.match(/<([^>]+)>/);
-  const candidate = (angleMatch?.[1] ?? raw).trim().toLowerCase();
-  const emailMatch = candidate.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
-  return emailMatch?.[0]?.toLowerCase() ?? null;
+  return extractAsciiEmailAddress(raw);
 }
 
 function localPart(address: string | null): string | null {
@@ -1481,6 +1480,17 @@ function decisionSortScore(decision: CurationDecision): number {
   return ACTION_WEIGHT[decision.action] * 10 + decision.confidence;
 }
 
+export function compareCurationDecisions(
+  a: CurationDecision,
+  b: CurationDecision,
+): number {
+  const bScore = decisionSortScore(b);
+  const aScore = decisionSortScore(a);
+  const bVal = Number.isFinite(bScore) ? bScore : 0;
+  const aVal = Number.isFinite(aScore) ? aScore : 0;
+  return bVal - aVal || a.candidateId.localeCompare(b.candidateId);
+}
+
 function makeDecision(
   analysis: CandidateAnalysis,
   group: CandidateGroup,
@@ -1584,9 +1594,7 @@ export function curateEmailCandidates(
     const analysis = initialAnalysis(group.primary, input, policy);
     return makeDecision(analysis, group, input, policy);
   });
-  const ranked = [...decisions].sort(
-    (a, b) => decisionSortScore(b) - decisionSortScore(a),
-  );
+  const ranked = [...decisions].sort(compareCurationDecisions);
   const rankedWithIndexes = ranked.map((decision, index) => ({
     ...decision,
     rank: index + 1,
@@ -1642,8 +1650,8 @@ export function buildEmailCurationPrompt(
           formatEmailCurationField("fromEmail", candidate.fromEmail ?? ""),
           formatEmailCurationField("subject", text.subject),
           formatEmailCurationField("snippet", text.snippet),
-          formatEmailCurationField("headers", text.headers.slice(0, 2000)),
-          formatEmailCurationField("body", text.body.slice(0, 8000)),
+          formatEmailCurationField("headers", text.headers),
+          formatEmailCurationField("body", text.body),
         ].join("\n"),
       ),
     ].join("\n");

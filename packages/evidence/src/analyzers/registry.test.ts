@@ -1,0 +1,66 @@
+/**
+ * Unit coverage for evidence analyzer registry in registry.ts.
+ *
+ * Tests analyzer lookup, tierRunnable matrix evaluation, analyzersForTier
+ * filtering, and analyzersForKind filtering.
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+  ANALYZERS,
+  analyzersForKind,
+  analyzersForTier,
+  getAnalyzer,
+  tierRunnable,
+} from "./registry.js";
+
+describe("evidence analyzer registry", () => {
+  describe("getAnalyzer", () => {
+    it("returns undefined for unknown analyzer names", () => {
+      expect(getAnalyzer("nonexistent.analyzer")).toBeUndefined();
+      expect(getAnalyzer("")).toBeUndefined();
+    });
+  });
+
+  describe("tierRunnable", () => {
+    it("allows cpu analyzers at all tiers", () => {
+      expect(tierRunnable("cpu", "cpu")).toBe(true);
+      expect(tierRunnable("cpu", "gpu")).toBe(true);
+      expect(tierRunnable("cpu", "full")).toBe(true);
+    });
+
+    it("allows gpu analyzers only at gpu and full tiers", () => {
+      expect(tierRunnable("gpu", "cpu")).toBe(false);
+      expect(tierRunnable("gpu", "gpu")).toBe(true);
+      expect(tierRunnable("gpu", "full")).toBe(true);
+    });
+
+    it("allows full analyzers only at full tier", () => {
+      expect(tierRunnable("full", "cpu")).toBe(false);
+      expect(tierRunnable("full", "gpu")).toBe(false);
+      expect(tierRunnable("full", "full")).toBe(true);
+    });
+  });
+
+  describe("analyzersForTier", () => {
+    it("filters analyzers matching the specified execution tier", () => {
+      const cpuAnalyzers = analyzersForTier("cpu");
+      for (const analyzer of cpuAnalyzers) {
+        expect(analyzer.tier).toBe("cpu");
+      }
+
+      const fullAnalyzers = analyzersForTier("full");
+      expect(fullAnalyzers.length).toBe(ANALYZERS.length);
+    });
+  });
+
+  describe("analyzersForKind", () => {
+    it("filters analyzers consuming the specified artifact kind", () => {
+      const screenshotAnalyzers = analyzersForKind("screenshot");
+      expect(screenshotAnalyzers.length).toBeGreaterThan(0);
+      for (const analyzer of screenshotAnalyzers) {
+        expect(analyzer.kinds).toContain("screenshot");
+      }
+    });
+  });
+});

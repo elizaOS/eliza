@@ -9,7 +9,15 @@
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { afterEach, describe, expect, it } from "vitest";
-import { hasHydratableStewardToken } from "./steward-session";
+import {
+  clearStewardSession,
+  hasHydratableStewardToken,
+} from "./steward-session";
+import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+  markStewardServerCookieSynced,
+} from "./steward-session-cookie-sync-marker";
 
 function makeJwt(payload: Record<string, unknown>): string {
   const b64url = (value: object) =>
@@ -49,5 +57,28 @@ describe("hasHydratableStewardToken", () => {
       makeJwt({ exp: Math.floor(Date.now() / 1000) + 600 }),
     );
     expect(hasHydratableStewardToken()).toBe(false);
+  });
+});
+
+describe("clearStewardSession", () => {
+  afterEach(() => {
+    invalidateStewardServerCookieSyncMarker();
+  });
+
+  it("retires proof before a failing cookie DELETE is issued", () => {
+    const endpoint = "/api/auth/steward-session";
+    markStewardServerCookieSynced("token-a", endpoint);
+    let proofAtDeleteIssue: boolean | undefined;
+    const fetchImpl = (() => {
+      proofAtDeleteIssue = consumeStewardServerCookieSynced(
+        "token-a",
+        endpoint,
+      );
+      return Promise.reject(new Error("offline"));
+    }) as typeof fetch;
+
+    clearStewardSession({ endpoints: [endpoint], fetchImpl });
+
+    expect(proofAtDeleteIssue).toBe(false);
   });
 });

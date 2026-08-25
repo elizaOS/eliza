@@ -132,15 +132,15 @@ const NOTICE_META: Record<string, NoticeMeta> = {
     label: "Auto-resolved",
   },
   escalation: { icon: CircleAlert, tone: "text-muted", label: "Escalation" },
-  error: { icon: CircleX, tone: "text-red-500", label: "Error" },
+  error: { icon: CircleX, tone: "text-destructive", label: "Error" },
 };
 
-function noticeMeta(eventType: string): NoticeMeta {
+function noticeMeta(eventType?: string): NoticeMeta {
   return (
-    NOTICE_META[eventType] ?? {
+    (eventType ? NOTICE_META[eventType] : undefined) ?? {
       icon: Circle,
       tone: "text-muted",
-      label: eventType.replace(/_/g, " "),
+      label: eventType ? eventType.replace(/_/g, " ") : "notice",
     }
   );
 }
@@ -629,7 +629,7 @@ export function buildConversation(
         sessionId: atom.sessionId,
         icon: meta.icon,
         tone: meta.tone,
-        text: atom.summary.trim() || meta.label,
+        text: (atom.summary ? atom.summary.trim() : "") || meta.label,
       });
     }
   }

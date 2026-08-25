@@ -1,7 +1,8 @@
 // Defines the user mcps Drizzle table shape used by cloud repositories and services.
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -207,6 +208,13 @@ export const mcpUsage = pgTable(
       precision: 10,
       scale: 4,
     }).default("0.0000"),
+    // Canonical fee-inclusive receipt. `credits_charged` remains the legacy
+    // base-price points mirror (100 points = $1) for compatibility.
+    base_amount_usd: numeric("base_amount_usd", { precision: 18, scale: 6 }).notNull(),
+    affiliate_fee_usd: numeric("affiliate_fee_usd", { precision: 18, scale: 6 }).notNull(),
+    platform_fee_usd: numeric("platform_fee_usd", { precision: 18, scale: 6 }).notNull(),
+    total_amount_usd: numeric("total_amount_usd", { precision: 18, scale: 6 }).notNull(),
+    fee_components_known: boolean("fee_components_known").notNull().default(false),
     x402_amount_usd: numeric("x402_amount_usd", {
       precision: 10,
       scale: 6,
@@ -242,6 +250,10 @@ export const mcpUsage = pgTable(
     user_idx: index("mcp_usage_user_idx").on(table.user_id),
     created_at_idx: index("mcp_usage_created_at_idx").on(table.created_at),
     mcp_org_idx: index("mcp_usage_mcp_org_idx").on(table.mcp_id, table.organization_id),
+    canonical_receipt_check: check(
+      "mcp_usage_canonical_receipt_check",
+      sql`${table.base_amount_usd} >= 0 AND ${table.affiliate_fee_usd} >= 0 AND ${table.platform_fee_usd} >= 0 AND ${table.total_amount_usd} = ${table.base_amount_usd} + ${table.affiliate_fee_usd} + ${table.platform_fee_usd} AND ${table.base_amount_usd}::text <> 'NaN' AND ${table.affiliate_fee_usd}::text <> 'NaN' AND ${table.platform_fee_usd}::text <> 'NaN' AND ${table.total_amount_usd}::text <> 'NaN'`,
+    ),
   }),
 );
 

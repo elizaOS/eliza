@@ -325,7 +325,7 @@ export function recalibrateBriefItemClasses(
  * With an explicit `itemClass` the command is a direct owner decision: the
  * matching class is selected whenever it has any ledger history and is not
  * already demoted. Without one, only revealed preference qualifies: classes
- * the owner has seen at least `surfacedThreshold` times (rendered + ignored)
+ * the owner has seen at least `surfacedThreshold` times (`rendered` rows)
  * without ever acting on. Filtering happens here, before any write, so a
  * targeted command can never touch an unrelated class.
  */
@@ -339,8 +339,7 @@ export function selectRecalibrationCandidates(
     if (alreadyDemoted.has(summary.itemClass)) return false;
     if (options.itemClass) return summary.itemClass === options.itemClass;
     return (
-      summary.actedOnCount === 0 &&
-      summary.renderedCount + summary.ignoredCount >= surfacedThreshold
+      summary.actedOnCount === 0 && summary.renderedCount >= surfacedThreshold
     );
   });
 }

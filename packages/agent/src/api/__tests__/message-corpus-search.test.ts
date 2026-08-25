@@ -114,6 +114,9 @@ describe("message-corpus seeder → real time-window search", () => {
       now: NOW,
     });
     const summary = await seedMessageCorpus(makeRuntimeShim(adapter), corpus);
+    if (summary.oldestMessageAt === null || summary.newestMessageAt === null) {
+      throw new Error("non-empty seeded corpus must have timestamp bounds");
+    }
     roomIds = summary.conversations.map((c) => c.roomId);
     sampleQueries = summary.sampleQueries;
     oldestMessageAt = summary.oldestMessageAt;

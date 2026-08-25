@@ -96,6 +96,9 @@
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
+      ],
       "@elizaos/capacitor-calendar": [
         "../../plugins/plugin-native-calendar/src/index.ts"
       ],

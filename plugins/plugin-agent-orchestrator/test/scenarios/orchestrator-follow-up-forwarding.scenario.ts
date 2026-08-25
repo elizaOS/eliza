@@ -179,13 +179,18 @@ function forwardingScenarioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-follow-up-forwarding",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Orchestrator forwards origin-room follow-ups to the running sub-agent session",
   domain: "agent-orchestrator",
   tags: ["orchestrator", "forwarding", "follow-up", "pr", "deterministic"],
   isolation: "shared-runtime",
   requires: {
-    plugins: [PLUGIN_NAME],
+    fixturePlugins: [PLUGIN_NAME],
   },
   seed: [
     {

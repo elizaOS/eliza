@@ -31,6 +31,13 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PYTHON_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PYTHON_ROOT))
 
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
+
 from src.training.deterministic_eval import (
     ACTION_REASON_ALIGNMENT_SAMPLES,
     ACTION_REASON_ASSISTANT_PREFIX,
@@ -67,22 +74,38 @@ def generate_eval_responses(team: TeamModel, device: str) -> list[dict]:
             add_generation_prompt=True,
         )
         prompt_text += ACTION_REASON_ASSISTANT_PREFIX
-        enc = team.tokenizer(prompt_text, return_tensors="pt", truncation=True, max_length=1024).to(
-            device
+        enc = tokenize_with_explicit_limit(
+            team.tokenizer,
+            prompt_text,
+            max_tokens=model_context_tokens(
+                team.model, team.tokenizer, source="diagnose_learning.evaluation"
+            ),
+            return_tensors="pt",
+        ).to(device)
+        max_new_tokens = remaining_model_context_tokens(
+            team.model,
+            team.tokenizer,
+            prompt_tokens=enc["input_ids"].shape[1],
+            source="diagnose_learning.evaluation",
         )
         with torch.no_grad():
             out = team.model.generate(
                 enc["input_ids"],
                 attention_mask=enc["attention_mask"],
-                max_new_tokens=128,
+                max_new_tokens=max_new_tokens,
                 temperature=0.3,
                 top_p=0.9,
                 do_sample=True,
                 pad_token_id=team.tokenizer.pad_token_id or team.tokenizer.eos_token_id,
             )
-        resp = team.tokenizer.decode(
-            out[0, enc["input_ids"].shape[1] :], skip_special_tokens=True
-        ).strip()
+        generated_ids = out[0, enc["input_ids"].shape[1] :]
+        require_complete_generated_tokens(
+            generated_ids,
+            max_new_tokens=max_new_tokens,
+            source="diagnose_learning.evaluation",
+            terminal_token_ids=team.tokenizer.eos_token_id,
+        )
+        resp = team.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
         full_resp = ACTION_REASON_ASSISTANT_PREFIX + resp
         score_result = score_action_reason_response(full_resp, spec)
         results.append(
@@ -117,11 +140,21 @@ def sft_warmup(team: TeamModel, device: str, epochs: int):
                 add_generation_prompt=True,
             )
             full_text = prompt_text + sample["response"]
-            enc = team.tokenizer(
-                full_text, return_tensors="pt", truncation=True, max_length=512
+            enc = tokenize_with_explicit_limit(
+                team.tokenizer,
+                full_text,
+                max_tokens=model_context_tokens(
+                    team.model, team.tokenizer, source="diagnose_learning.sft"
+                ),
+                return_tensors="pt",
             ).to(device)
-            prompt_enc = team.tokenizer(
-                prompt_text, return_tensors="pt", truncation=True, max_length=512
+            prompt_enc = tokenize_with_explicit_limit(
+                team.tokenizer,
+                prompt_text,
+                max_tokens=model_context_tokens(
+                    team.model, team.tokenizer, source="diagnose_learning.sft"
+                ),
+                return_tensors="pt",
             )
             prompt_len = prompt_enc["input_ids"].shape[1]
             labels = enc["input_ids"][:, 1:].clone()

@@ -6,7 +6,7 @@ export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-type DirectRouteCase =
+type DirectRouteCase = (
   | {
       name: string;
       path: string;
@@ -18,7 +18,8 @@ type DirectRouteCase =
       path: string;
       readyChecks: readonly ReadyCheck[];
       timeoutMs?: number;
-    };
+    }
+) & { expectedUrl?: RegExp };
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -46,15 +47,25 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "my-apps app window",
+    // Retired My Apps slug (#17031): resolves to the consolidated Projects
+    // surface with its Apps segment pre-selected.
+    name: "my-apps compat deep link",
     path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }],
+    readyChecks: [
+      { text: "Projects" },
+      { selector: '[data-testid="projects-apps-segment"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
     name: "plugins app window",
     path: "/apps/plugins",
-    readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
+    // A content check, not the shell container: [data-testid="plugins-shell"]
+    // is the unconditional top-level frame of PluginsView, so it appears the
+    // instant the component mounts and the route would pass on an empty or
+    // failed catalog. "AI Providers" is a live group label
+    // (plugin-list-utils.ts:759), so it only renders once data actually loaded.
+    readyChecks: [{ text: "AI Providers" }],
     timeoutMs: 90_000,
   },
   {
@@ -64,9 +75,11 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "my apps app window",
-    path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
+    // Retired bare My Apps route (#17031): same consolidated Projects surface,
+    // Apps segment pre-selected with the app-management copy visible.
+    name: "bare /apps compat deep link",
+    path: "/apps",
+    readyChecks: [{ text: "Projects" }, { text: "Install, create, and run" }],
     timeoutMs: 90_000,
   },
   {
@@ -148,9 +161,33 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "task coordinator app shell page",
+    path: "/task-coordinator",
+    selector: '[data-testid="task-coordinator-panel"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "coding cockpit app shell page",
+    path: "/cockpit",
+    selector: '[data-testid="cockpit-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "notes app shell page",
     path: "/notes",
     selector: '[data-testid="simple-notes-view"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "maps app shell page",
+    path: "/maps",
+    selector: '[data-testid="maps-view"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "computer sessions app shell page",
+    path: "/computer-use-sessions",
+    readyChecks: [{ text: "Computer sessions" }],
     timeoutMs: 90_000,
   },
   {
@@ -168,6 +205,13 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "vault view",
+    path: "/vault",
+    expectedUrl: /\/vault#vault\/overview$/,
+    selector: '[data-testid="vault-page"]',
+    timeoutMs: 90_000,
+  },
+  {
     name: "background view",
     path: "/background",
     selector: 'button[aria-label="Upload a background image"]',
@@ -181,13 +225,13 @@ const managerVisibleViewTileCases = [
   { viewId: "computer-use-sessions", path: "/computer-use-sessions" },
   { viewId: "contacts", path: "/contacts" },
   { viewId: "cockpit", path: "/cockpit" },
-  { viewId: "documents", path: "/documents" },
   { viewId: "finances", path: "/finances" },
   { viewId: "focus", path: "/focus" },
   { viewId: "goals", path: "/goals" },
   { viewId: "health", path: "/health" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
+  { viewId: "maps", path: "/maps" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },

@@ -7,6 +7,7 @@
  */
 import type { ReportedError } from "../errors";
 import type { Logger } from "../logger";
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interactions/profiles";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
@@ -136,6 +137,7 @@ export type MessageConnectorCapability =
 	| "webhook_identity"
 	| "rich_components"
 	| "rich_embed"
+	| "manage_server"
 	| (string & {});
 
 export type PostConnectorCapability =
@@ -365,6 +367,56 @@ export interface MessageConnectorPostToThreadParams {
 	identity?: ConnectorPostIdentity;
 }
 
+/**
+ * Structural server/guild management request forwarded to a connector
+ * (create/edit/delete channels and roles, permission overwrites, member role
+ * assignment, invites, moderation, template reconcile). The connector owns
+ * validation, its own configuration gating (fail closed), and platform
+ * hierarchy checks; `operation` and `params` are treated as untrusted input.
+ */
+export interface MessageConnectorManageServerParams {
+	target?: TargetInfo;
+	/** Connector-defined management verb, e.g. "create_channel". */
+	operation: string;
+	/** Platform server/guild id the operation applies to. */
+	serverId?: string;
+	/** Trusted authorization minted by core for the exact destination binding. */
+	authorization: MessageConnectorManageServerAuthorization;
+	/** Bounded operation arguments; the connector validates every field. */
+	params?: Record<string, unknown>;
+}
+
+/** Exact connector destination resolved before any server-management write. */
+export interface MessageConnectorManageServerDestination {
+	source: string;
+	accountId: string;
+	serverId: string;
+	messageServerId: UUID;
+	destinationWorldId: UUID;
+	target: TargetInfo;
+}
+
+/**
+ * Trusted destination authorization carried from core to the connector. The
+ * connector must independently revalidate this envelope immediately before
+ * mutation; it is provenance, not a reusable capability grant.
+ */
+export interface MessageConnectorManageServerAuthorization
+	extends MessageConnectorManageServerDestination {
+	requesterEntityId: UUID;
+	authorizedEntityId: UUID;
+	role: "ADMIN" | "OWNER";
+	bindingRoomIds: UUID[];
+}
+
+/** Structured result of a connector server-management operation. */
+export interface MessageConnectorManageServerResult {
+	/** Human-readable receipt line for the acting agent. */
+	summary: string;
+	/** Structured receipt (created/updated/unchanged/skipped entities). */
+	data?: Record<string, unknown>;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -381,6 +433,13 @@ export interface MessageConnector {
 	description?: string;
 	contexts: AgentContext[];
 	metadata?: Metadata;
+	/** Resolve the negotiated interaction contract for this exact account/target. */
+	resolveInteractionProfile?: (
+		target: TargetInfo,
+		context: MessageConnectorQueryContext,
+	) =>
+		| Promise<ConnectorInteractionCapabilityProfile>
+		| ConnectorInteractionCapabilityProfile;
 	resolveTargets?: (
 		query: string,
 		context: MessageConnectorQueryContext,
@@ -460,6 +519,16 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
 	) => Promise<Memory | undefined>;
+	resolveManageServerDestination?: (
+		runtime: IAgentRuntime,
+		params: { target?: TargetInfo; serverId: string },
+	) =>
+		| Promise<MessageConnectorManageServerDestination>
+		| MessageConnectorManageServerDestination;
+	manageServerHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorManageServerParams,
+	) => Promise<MessageConnectorManageServerResult>;
 	contentShaping?: ConnectorContentShaping;
 }
 
@@ -555,6 +624,8 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "getDocument"
 	| "queryDocumentFragments"
 	| "compareAndSwapDocument"
+	| "updateDocumentDirectGrants"
+	| "replaceDocumentRevision"
 	| "deleteDocumentWithSnapshot"
 >;
 
@@ -563,11 +634,22 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
 	agentId: UUID;
+	/** Opaque identity of this concrete runtime instance, never character-derived. */
+	runtimeInstanceId: UUID;
 	character: Character;
 	enableAutonomy: boolean;
 	/** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
 	serverless?: boolean;
 	initPromise: Promise<void>;
+	/** Optional lifecycle capability for cancellable deferred startup. */
+	getLifecycleState?():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped";
+	/** Optional signal that aborts when terminal runtime shutdown is requested. */
+	getStopSignal?(): AbortSignal;
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];
@@ -852,6 +934,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		name,
 		source,
 		channelId,
+		serverId,
 		messageServerId,
 		type,
 		worldId,
@@ -865,6 +948,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldName?: string;
 		source?: string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		type?: ChannelType | string;
 		worldId?: UUID;
@@ -1327,6 +1411,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 
 	createTask(task: Task): Promise<UUID>;
 	getTask(id: UUID): Promise<Task | null>;
+	updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>;
 	updateTask(id: UUID, task: Partial<Task>): Promise<void>;
 	deleteTask(id: UUID): Promise<void>;
 

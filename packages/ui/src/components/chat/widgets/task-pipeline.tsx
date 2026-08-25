@@ -60,13 +60,13 @@ function StatusDot({ status }: { status: SwarmActivityStatus }) {
   const Icon = STATUS_ICON[status];
   return (
     <span
-      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
+      className={`inline-flex size-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
       role="img"
       aria-label={STATUS_LABEL[status]}
       title={STATUS_LABEL[status]}
     >
       <Icon
-        className={`h-3.5 w-3.5 ${status === "running" ? "animate-pulse" : ""}`}
+        className={`size-3.5 ${status === "running" ? "animate-pulse" : ""}`}
       />
     </span>
   );
@@ -152,11 +152,11 @@ export const PlanChecklist = memo(function PlanChecklist({
                   ? "text-muted line-through"
                   : isActive
                     ? "text-txt"
-                    : "text-txt/80"
+                    : "text-muted-strong"
               }`}
             >
               <Icon
-                className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                className={`mt-0.5 size-3.5 shrink-0 ${
                   isDone
                     ? "text-ok"
                     : isActive
@@ -190,7 +190,7 @@ export const ChecklistWidget = memo(function ChecklistWidget({
     <ChatWidgetShell
       title={resolvedTitle}
       status={
-        <span className="text-[11px] font-medium tabular-nums text-muted">
+        <span className="text-xs-tight font-medium tabular-nums text-muted">
           {done}/{entries.length}
         </span>
       }

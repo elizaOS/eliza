@@ -82,6 +82,7 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import type {
   ApprovalAction,
@@ -548,7 +549,7 @@ export async function planJob(
   if (!parsed) {
     throw new BackgroundPlannerError(
       jobContext.jobKind,
-      `planner returned unparsable output: ${raw.slice(0, 200)}`,
+      `planner returned unparsable output: ${toWellFormedUnicode(raw)}`,
     );
   }
 

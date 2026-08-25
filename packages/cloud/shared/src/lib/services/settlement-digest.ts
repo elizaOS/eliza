@@ -8,7 +8,10 @@ function canonicalJson(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([, nested]) => nested !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent and
+      // ranks canonically equivalent distinct keys as equal, so the replay digest
+      // would vary with the host locale and with key insertion order.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, nested]) => [key, canonicalJson(nested)]),
   );
 }

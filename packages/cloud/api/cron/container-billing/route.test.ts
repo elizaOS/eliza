@@ -141,6 +141,59 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+mock.module("@/lib/api/cloud-worker-errors", () => ({
+  failureResponse: (
+    c: { json: (b: unknown, s?: number) => Response },
+    error: unknown,
+  ) => c.json({ success: false, error: String(error) }, 500),
+  ApiError: class ApiError extends Error {},
+}));
+
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  requireCronSecret: () => undefined,
+}));
+
+mock.module("@/lib/constants/pricing", () => ({
+  CONTAINER_PRICING: {
+    DAILY_RUNNING_COST: 0.67,
+    SHUTDOWN_WARNING_HOURS: 48,
+    LOW_CREDITS_WARNING_THRESHOLD: 2,
+  },
+  calculateDailyContainerCost: () => 0.67,
+  CONTAINER_LIMITS: {},
+}));
+
+mock.module("@/lib/services/container-billing-policy", () => ({
+  computeContainerBillingPlan: (input: {
+    dailyCost: number;
+    currentBalance: number;
+    ownerEarningsAvailable: number;
+    payAsYouGoFromEarnings: boolean;
+  }) => {
+    const earningsEligible = input.payAsYouGoFromEarnings
+      ? input.ownerEarningsAvailable
+      : 0;
+    const totalAvailable = input.currentBalance + earningsEligible;
+    if (totalAvailable < input.dailyCost) {
+      return {
+        action: "insufficient" as const,
+        fromEarnings: 0,
+        fromCredits: 0,
+        totalAvailable,
+        earningsEligible,
+      };
+    }
+    const fromEarnings = Math.min(earningsEligible, input.dailyCost);
+    return {
+      action: "billed" as const,
+      fromEarnings,
+      fromCredits: input.dailyCost - fromEarnings,
+      totalAvailable,
+      earningsEligible,
+    };
+  },
+}));
+
 const { default: app } = await import("./route");
 
 const ORG_ID = "11111111-1111-1111-1111-111111111111";
@@ -426,5 +479,73 @@ describe("container-billing cron", () => {
     expect(json.data.errors).toBe(0);
     expect(json.data.results[0].action).toBe("skipped");
     expect(json.data.results[0].error).toContain("Already billed");
+  });
+
+  test("filters invalid member timestamps so corrupt created_at cannot hijack earnings source", async () => {
+    listBillableContainers.mockImplementation(async () => [makeContainer()]);
+    listBillingOrganizations.mockImplementation(async () => [
+      makeOrg({ credit_balance: "100" }),
+    ]);
+    const invalidMember = {
+      id: "invalid-member",
+      role: "member",
+      email: "invalid@example.test",
+      created_at: new Date(Number.NaN),
+    };
+    const validMember = {
+      id: "valid-member",
+      role: "member",
+      email: "valid@example.test",
+      created_at: new Date("2020-01-02T00:00:00Z"),
+    };
+    listByOrganization.mockImplementation(async () => [
+      invalidMember,
+      validMember,
+    ]);
+    let balanceQueriedFor: string | null = null;
+    getBalance.mockImplementation(async (userId: string) => {
+      balanceQueriedFor = userId;
+      return { availableBalance: 5 };
+    });
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    expect(balanceQueriedFor!).toBe("valid-member");
+
+    const billed = recordSuccessfulDailyBilling.mock.calls[0]?.[0] as {
+      fromEarnings: number;
+    };
+    expect(billed.fromEarnings).toBeGreaterThan(0);
+  });
+
+  test("fails closed when fallback members all have invalid timestamps (no earnings debit)", async () => {
+    listBillableContainers.mockImplementation(async () => [makeContainer()]);
+    listBillingOrganizations.mockImplementation(async () => [
+      makeOrg({ credit_balance: "100" }),
+    ]);
+    const invalidA = {
+      id: "invalid-a",
+      role: "member",
+      email: "a@example.test",
+      created_at: new Date(Number.NaN),
+    };
+    const invalidB = {
+      id: "invalid-b",
+      role: "member",
+      email: "b@example.test",
+      created_at: new Date(Number.NaN),
+    };
+    listByOrganization.mockImplementation(async () => [invalidA, invalidB]);
+    getBalance.mockImplementation(async () => ({ availableBalance: 999 }));
+
+    const response = await runCron();
+    expect(response.status).toBe(200);
+    expect(getBalance).not.toHaveBeenCalled();
+    const billed = recordSuccessfulDailyBilling.mock.calls[0]?.[0] as {
+      fromEarnings: number;
+      fromCredits: number;
+    };
+    expect(billed.fromEarnings).toBe(0);
+    expect(billed.fromCredits).toBeCloseTo(0.67, 4);
   });
 });

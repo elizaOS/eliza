@@ -10,14 +10,16 @@
  * can pick a specific verb directly from the action catalogue.
  */
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  State,
+import {
+  type Action,
+  type ActionResult,
+  type HandlerCallback,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   ClipboardUnavailableError,
@@ -50,7 +52,8 @@ type ClipboardParameters = Omit<Partial<ClipboardActionParams>, "action"> & {
   op?: ClipboardActionType | string;
 };
 
-const CLIPBOARD_PREVIEW_BYTES = 4096;
+const CLIPBOARD_PREVIEW_CODE_UNITS = 4096;
+const CLIPBOARD_PREVIEW_SUFFIX = "…";
 
 function getComputerUseService(
   runtime: IAgentRuntime,
@@ -83,10 +86,13 @@ async function runClipboardAction(
   params: ClipboardActionParams,
 ): Promise<ClipboardActionResult> {
   if (params.action === "read") {
-    const text = await driverReadClipboard();
+    const text = toWellFormedUnicode(await driverReadClipboard());
     const preview =
-      text.length > CLIPBOARD_PREVIEW_BYTES
-        ? `${text.slice(0, CLIPBOARD_PREVIEW_BYTES - 1)}…`
+      text.length > CLIPBOARD_PREVIEW_CODE_UNITS
+        ? `${truncateWellFormed(
+            text,
+            CLIPBOARD_PREVIEW_CODE_UNITS - CLIPBOARD_PREVIEW_SUFFIX.length,
+          )}${CLIPBOARD_PREVIEW_SUFFIX}`
         : text;
     return {
       success: true,

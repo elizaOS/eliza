@@ -26,6 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
+SCRIPTS_DIR = Path(__file__).resolve().parent.parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 
 GEMMA_END_OF_TURN_TOKEN: Final[str] = "<end_of_turn>"
 
@@ -156,11 +162,11 @@ def smoke_test(
 
     def _score(transcript: str) -> float:
         prompt = _format_livekit_prompt(tokenizer, transcript)
-        encoded = tokenizer(
+        encoded = tokenize_with_explicit_limit(
+            tokenizer,
             prompt,
+            max_tokens=128,
             return_tensors="np",
-            max_length=128,
-            truncation=True,
             add_special_tokens=False,
         )
         outputs = session.run(

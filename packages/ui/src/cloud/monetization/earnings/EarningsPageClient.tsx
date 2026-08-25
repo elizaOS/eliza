@@ -10,6 +10,19 @@
 "use client";
 
 import {
+  type CreateRedemptionResponse,
+  canonicalizeRedemptionNetwork,
+  type ListRedemptionsResponse,
+  REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS,
+  REDEMPTION_MAX_POINTS,
+  REDEMPTION_MIN_POINTS,
+  REDEMPTION_POINTS_PER_USD,
+  type RedemptionListItem,
+  type RedemptionNetwork,
+  type RedemptionQuoteResponse,
+  type RedemptionStatusResponse,
+} from "@elizaos/cloud-sdk/redemption-contract";
+import {
   AlertTriangle,
   AppWindow,
   ArrowRight,
@@ -24,7 +37,7 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import {
@@ -52,9 +65,19 @@ import {
   // Deep primitive/brand imports per the packages/ui extension rules — the
   // root cloud-ui barrel would drag the entire kit into this chunk graph.
 } from "../../../cloud-ui/components/primitives";
-import { api, apiFetch } from "../../lib/api-client";
+import { api } from "../../lib/api-client";
 import { formatUsd as formatCurrency } from "../../lib/format-usd";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import {
+  buildCreateRedemptionRequest,
+  buildRedemptionQuotePath,
+  ceilRedemptionUsdToPoints,
+  createRedemptionIdempotencyKey,
+  floorRedemptionUsdToPoints,
+  isRedemptionQuoteExpired,
+  parseRedemptionUsdToPoints,
+  quoteMatchesRedemptionRequest,
+} from "./redemption-client-contract";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -94,50 +117,17 @@ interface BalanceData {
   };
 }
 
-interface QuoteData {
-  success: boolean;
-  quote?: {
-    pointsToRedeem: number;
-    usdValue: number;
-    elizaPriceUsd: string;
-    elizaAmount: string;
-    network: string;
-    expiresAt: string;
-    safetySpread: number;
-    priceSource: string;
-  };
-  error?: string;
-}
-
-interface RedemptionData {
-  id: string;
-  status: string;
-  usd_value: string;
-  eliza_amount: string;
-  network: string;
-  payout_address: string;
-  created_at: string;
-  completed_at?: string;
-  tx_hash?: string;
-}
-
-interface RedemptionsListResponse {
-  redemptions?: RedemptionData[];
-}
-
-interface SystemStatus {
-  operational: boolean;
-  networks: Record<string, { available: boolean; reason?: string }>;
-  message?: string;
-}
-
 /**
  * Network options for the redemption payout. The original rendered branded
  * `@web3icons/react` marks; we keep colored dots so the selector works without
  * that (undeclared) dependency. `dotClass` uses the tokenized chain-brand
  * colors (`--color-chain-*`) — the one legitimate brand-hex exception in views.
  */
-const NETWORKS: Array<{ value: string; label: string; dotClass: string }> = [
+const NETWORKS: Array<{
+  value: RedemptionNetwork;
+  label: string;
+  dotClass: string;
+}> = [
   { value: "base", label: "Base", dotClass: "bg-chain-base" },
   { value: "solana", label: "Solana", dotClass: "bg-chain-sol" },
   { value: "ethereum", label: "Ethereum", dotClass: "bg-chain-eth" },
@@ -170,19 +160,83 @@ export function EarningsPageClient() {
   const t = useCloudT();
   const SOURCE_LABELS = buildSourceLabels(t);
   const [balance, setBalance] = useState<BalanceData | null>(null);
-  const [redemptions, setRedemptions] = useState<RedemptionData[]>([]);
-  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [redemptions, setRedemptions] = useState<RedemptionListItem[]>([]);
+  const [systemStatus, setSystemStatus] =
+    useState<RedemptionStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [redemptionsLoading, setRedemptionsLoading] = useState(true);
 
   // Redemption form state
   const [showRedeemDialog, setShowRedeemDialog] = useState(false);
   const [redeemAmount, setRedeemAmount] = useState("");
-  const [redeemNetwork, setRedeemNetwork] = useState("base");
+  const [redeemNetwork, setRedeemNetwork] = useState<RedemptionNetwork>("base");
   const [redeemAddress, setRedeemAddress] = useState("");
-  const [quote, setQuote] = useState<QuoteData | null>(null);
+  const [quote, setQuote] = useState<RedemptionQuoteResponse | null>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteRefreshNonce, setQuoteRefreshNonce] = useState(0);
+  // A quote is absent during the initial render, so wall time is irrelevant
+  // until the quote response arrives and advances this clock.
+  const [quoteClock, setQuoteClock] = useState(0);
+  const [redemptionIdempotencyKey, setRedemptionIdempotencyKey] = useState<
+    string | null
+  >(null);
   const [submitting, setSubmitting] = useState(false);
+  const submissionInFlight = useRef(false);
+  const parsedRedeemPoints = parseRedemptionUsdToPoints(redeemAmount);
+  const redeemMinPoints = Math.max(
+    REDEMPTION_MIN_POINTS,
+    ceilRedemptionUsdToPoints(balance?.limits.minRedemptionUsd ?? 1),
+  );
+  const networkMaxPoints =
+    redeemNetwork === "solana"
+      ? REDEMPTION_MAX_POINTS
+      : REDEMPTION_EVM_SIGNATURE_THRESHOLD_POINTS;
+  const redeemMaxPoints = Math.min(
+    REDEMPTION_MAX_POINTS,
+    networkMaxPoints,
+    floorRedemptionUsdToPoints(
+      Math.max(
+        0,
+        Math.min(
+          balance?.balance.availableBalance ?? 0,
+          balance?.limits.maxSingleRedemptionUsd ?? 1_000,
+          balance?.eligibility.dailyLimitRemaining ?? Number.POSITIVE_INFINITY,
+        ),
+      ),
+    ),
+  );
+  const redeemAmountError =
+    redeemAmount.length === 0
+      ? null
+      : parsedRedeemPoints === null
+        ? t("cloud.earnings.amountInvalid", {
+            defaultValue:
+              "Enter a valid USD amount with at most two decimal places.",
+          })
+        : parsedRedeemPoints < redeemMinPoints
+          ? t("cloud.earnings.amountBelowMinimum", {
+              amount: formatCurrency(
+                redeemMinPoints / REDEMPTION_POINTS_PER_USD,
+              ),
+              defaultValue: "Minimum redemption is {{amount}}.",
+            })
+          : parsedRedeemPoints > redeemMaxPoints
+            ? t("cloud.earnings.amountAboveMaximum", {
+                amount: formatCurrency(
+                  redeemMaxPoints / REDEMPTION_POINTS_PER_USD,
+                ),
+                defaultValue: "Maximum available redemption is {{amount}}.",
+              })
+            : null;
+  const redeemAmountInvalid = redeemAmountError !== null;
+  const quoteExpired =
+    quote?.success === true &&
+    isRedemptionQuoteExpired(quote.quote.validUntil, quoteClock);
+  const unavailableRedemptionNetworks = new Set(
+    systemStatus?.networks
+      .filter((network) => !network.available)
+      .map((network) => network.network) ?? [],
+  );
 
   const fetchBalance = useCallback(async () => {
     try {
@@ -196,7 +250,7 @@ export function EarningsPageClient() {
 
   const fetchRedemptions = useCallback(async () => {
     try {
-      const data = await api<RedemptionsListResponse>(
+      const data = await api<ListRedemptionsResponse>(
         "/api/v1/redemptions?limit=10",
       );
       setRedemptions(data.redemptions || []);
@@ -208,7 +262,9 @@ export function EarningsPageClient() {
 
   const fetchSystemStatus = useCallback(async () => {
     try {
-      const data = await api<SystemStatus>("/api/v1/redemptions/status");
+      const data = await api<RedemptionStatusResponse>(
+        "/api/v1/redemptions/status",
+      );
       setSystemStatus(data);
     } catch {
       // status banner stays hidden when unavailable
@@ -229,9 +285,14 @@ export function EarningsPageClient() {
     };
   }, [fetchBalance, fetchRedemptions, fetchSystemStatus]);
 
+  // quoteRefreshNonce intentionally retriggers the same request after expiry.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explicit retry signal
   useEffect(() => {
-    const amount = parseFloat(redeemAmount);
-    const shouldFetch = amount > 0 && redeemNetwork;
+    const pointsAmount = parseRedemptionUsdToPoints(redeemAmount);
+    const shouldFetch =
+      pointsAmount !== null &&
+      pointsAmount >= redeemMinPoints &&
+      pointsAmount <= redeemMaxPoints;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -241,11 +302,28 @@ export function EarningsPageClient() {
         if (cancelled) return;
         setQuoteLoading(true);
         try {
-          const data = await api<QuoteData>(
-            `/api/v1/redemptions/quote?amount=${amount}&network=${redeemNetwork}`,
+          const data = await api<RedemptionQuoteResponse>(
+            buildRedemptionQuotePath({ pointsAmount, network: redeemNetwork }),
           );
           if (cancelled) return;
-          setQuote(data);
+          if (
+            data.success &&
+            !quoteMatchesRedemptionRequest(data, {
+              pointsAmount,
+              network: redeemNetwork,
+            })
+          ) {
+            setQuote({
+              success: false,
+              error: t("cloud.earnings.quoteMismatch", {
+                defaultValue:
+                  "The quote did not match this request. Refresh it before continuing.",
+              }),
+            });
+          } else {
+            if (data.success) setQuoteClock(Date.now());
+            setQuote(data);
+          }
         } catch (error) {
           if (cancelled) return;
           const message =
@@ -261,7 +339,10 @@ export function EarningsPageClient() {
     } else {
       // Use microtask to avoid synchronous setState in effect
       queueMicrotask(() => {
-        if (!cancelled) setQuote(null);
+        if (!cancelled) {
+          setQuote(null);
+          setQuoteLoading(false);
+        }
       });
     }
 
@@ -269,35 +350,132 @@ export function EarningsPageClient() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [redeemAmount, redeemNetwork, t]);
+  }, [
+    quoteRefreshNonce,
+    redeemAmount,
+    redeemMaxPoints,
+    redeemMinPoints,
+    redeemNetwork,
+    t,
+  ]);
+
+  useEffect(() => {
+    if (!quote?.success) return;
+    const expiresAtMs = Date.parse(quote.quote.validUntil);
+    const remainingMs = Number.isFinite(expiresAtMs)
+      ? Math.max(0, expiresAtMs - Date.now())
+      : 0;
+    const timer = setTimeout(
+      () => setQuoteClock(Date.now()),
+      Math.min(remainingMs + 20, 2_147_483_647),
+    );
+    return () => clearTimeout(timer);
+  }, [quote]);
+
+  const invalidateQuote = () => {
+    setQuote(null);
+  };
+
+  const rotateRedemptionIntent = () => {
+    setRedemptionIdempotencyKey(createRedemptionIdempotencyKey());
+  };
+
+  const handleRedeemDialogOpenChange = (open: boolean) => {
+    if (!open && submissionInFlight.current) return;
+    setShowRedeemDialog(open);
+    if (open) {
+      rotateRedemptionIntent();
+      invalidateQuote();
+      setQuoteRefreshNonce((value) => value + 1);
+    } else {
+      setRedemptionIdempotencyKey(null);
+    }
+  };
+
+  const handleRedeemAmountChange = (value: string) => {
+    setRedeemAmount(value);
+    rotateRedemptionIntent();
+    invalidateQuote();
+  };
+
+  const handleRedeemNetworkChange = (value: RedemptionNetwork) => {
+    setRedeemNetwork(value);
+    rotateRedemptionIntent();
+    invalidateQuote();
+  };
+
+  const handleRedeemAddressChange = (value: string) => {
+    setRedeemAddress(value);
+    rotateRedemptionIntent();
+  };
+
+  const handleRefreshQuote = () => {
+    invalidateQuote();
+    setQuoteRefreshNonce((value) => value + 1);
+  };
 
   const handleSubmitRedemption = async () => {
-    if (!quote?.quote || !redeemAddress) return;
+    if (submissionInFlight.current) return;
+    if (
+      !quote?.success ||
+      !quote.canRedeem ||
+      !redeemAddress ||
+      !redemptionIdempotencyKey
+    ) {
+      return;
+    }
 
+    const request = buildCreateRedemptionRequest({
+      usdAmount: redeemAmount,
+      network: redeemNetwork,
+      payoutAddress: redeemAddress,
+      idempotencyKey: redemptionIdempotencyKey,
+    });
+    if (!request) return;
+
+    if (!quoteMatchesRedemptionRequest(quote, request)) {
+      setQuote({
+        success: false,
+        error: t("cloud.earnings.quoteMismatch", {
+          defaultValue:
+            "The quote did not match this request. Refresh it before continuing.",
+        }),
+      });
+      return;
+    }
+
+    if (isRedemptionQuoteExpired(quote.quote.validUntil)) {
+      setQuoteClock(Date.now());
+      return;
+    }
+
+    submissionInFlight.current = true;
     setSubmitting(true);
     try {
-      await apiFetch("/api/v1/redemptions", {
-        method: "POST",
-        json: {
-          amount: parseFloat(redeemAmount),
-          network: redeemNetwork,
-          payoutAddress: redeemAddress,
+      const response = await api<CreateRedemptionResponse>(
+        "/api/v1/redemptions",
+        {
+          method: "POST",
+          json: request,
         },
-      });
+      );
+      if (!response.success) throw new Error(response.error);
       toast.success(
         t("cloud.earnings.submittedTitle", {
           defaultValue: "Redemption request submitted!",
         }),
         {
-          description: t("cloud.earnings.submittedDescription", {
-            defaultValue: "Your request is being processed.",
-          }),
+          description: response.message,
         },
       );
-      setShowRedeemDialog(false);
+      // Release the close guard only after the server has durably accepted the
+      // intent. Ambiguous in-flight dismissals keep the same retry UUID.
+      submissionInFlight.current = false;
+      handleRedeemDialogOpenChange(false);
       setRedeemAmount("");
       setRedeemAddress("");
       setQuote(null);
+      setRedemptionIdempotencyKey(null);
       fetchBalance();
       fetchRedemptions();
     } catch (error) {
@@ -311,8 +489,10 @@ export function EarningsPageClient() {
         }),
         { description },
       );
+    } finally {
+      submissionInFlight.current = false;
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
 
   const formatDate = (dateStr: string) => {
@@ -356,7 +536,7 @@ export function EarningsPageClient() {
           corners={false}
         >
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-status-warning" />
+            <AlertTriangle className="size-5 text-status-warning" />
             <div>
               <h4 className="font-semibold text-status-warning">
                 {t("cloud.earnings.redemptionsLimited", {
@@ -392,15 +572,15 @@ export function EarningsPageClient() {
               </p>
             </div>
             <div className="p-2 rounded-sm bg-accent-subtle">
-              <Wallet className="h-6 w-6 text-accent" />
+              <Wallet className="size-6 text-accent" />
             </div>
           </div>
           <Button
             className="w-full mt-4"
             disabled={!balance?.eligibility.canRedeem}
-            onClick={() => setShowRedeemDialog(true)}
+            onClick={() => handleRedeemDialogOpenChange(true)}
           >
-            <Coins className="mr-2 h-4 w-4" />
+            <Coins className="mr-2 size-4" />
             {t("cloud.earnings.redeemForEliza", {
               defaultValue: "Redeem for elizaOS",
             })}
@@ -431,7 +611,7 @@ export function EarningsPageClient() {
               </p>
             </div>
             <div className="p-2 rounded-sm bg-status-success-bg">
-              <TrendingUp className="h-6 w-6 text-status-success" />
+              <TrendingUp className="size-6 text-status-success" />
             </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-2">
@@ -439,7 +619,7 @@ export function EarningsPageClient() {
               const Icon = SOURCE_ICONS[source.source];
               return (
                 <div key={source.source} className="text-center">
-                  <Icon className="h-4 w-4 mx-auto text-muted mb-1" />
+                  <Icon className="size-4 mx-auto text-muted mb-1" />
                   <p className="text-xs text-muted">
                     {SOURCE_LABELS[source.source]}
                   </p>
@@ -465,13 +645,13 @@ export function EarningsPageClient() {
                 {formatCurrency(balance?.balance.totalRedeemed || 0)}
               </p>
               <p className="text-xs text-muted mt-1">
-                {t("cloud.earnings.convertedToEliza", {
-                  defaultValue: "Converted to elizaOS tokens",
+                {t("cloud.earnings.allPayoutAssets", {
+                  defaultValue: "Across all payout assets",
                 })}
               </p>
             </div>
             <div className="p-2 rounded-sm bg-bg-muted">
-              <CheckCircle className="h-6 w-6 text-muted-strong" />
+              <CheckCircle className="size-6 text-muted-strong" />
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-border space-y-2">
@@ -507,7 +687,7 @@ export function EarningsPageClient() {
       {/* How it Works */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <Info className="h-4 w-4 text-accent mt-0.5 shrink-0" />
+          <Info className="size-4 text-accent mt-0.5 shrink-0" />
           <div>
             <h4 className="font-semibold text-txt-strong mb-1">
               {t("cloud.earnings.howItWorksTitle", {
@@ -517,7 +697,7 @@ export function EarningsPageClient() {
             <p className="text-sm text-muted">
               {t("cloud.earnings.howItWorksBody", {
                 defaultValue:
-                  "Earnings from your apps, agents, and MCPs can be redeemed for elizaOS tokens. The conversion rate is $1 = equivalent value in elizaOS at current market price. Tokens are sent directly to your wallet on your chosen network (Base, Solana, Ethereum, or BNB). Large redemptions (> $1,000) require admin approval for security.",
+                  "Earnings from your apps, agents, and MCPs can be redeemed for elizaOS tokens. The conversion rate is $1 = equivalent value in elizaOS at current market price. Tokens are sent to your wallet after every redemption request is reviewed.",
               })}
             </p>
           </div>
@@ -542,7 +722,7 @@ export function EarningsPageClient() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-sm bg-bg-muted">
-                      <Icon className="h-4 w-4 text-muted" />
+                      <Icon className="size-4 text-muted" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-txt-strong">
@@ -580,7 +760,7 @@ export function EarningsPageClient() {
             }}
           >
             <RefreshCw
-              className={`h-4 w-4 ${redemptionsLoading ? "animate-spin" : ""}`}
+              className={`size-4 ${redemptionsLoading ? "animate-spin" : ""}`}
             />
           </Button>
         </div>
@@ -593,7 +773,7 @@ export function EarningsPageClient() {
           </div>
         ) : redemptions.length === 0 ? (
           <div className="text-center py-8 text-muted">
-            <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <Wallet className="size-12 mx-auto mb-3 opacity-50" />
             <p>
               {t("cloud.earnings.noRedemptionsYet", {
                 defaultValue: "No redemptions yet",
@@ -630,15 +810,16 @@ export function EarningsPageClient() {
               {redemptions.map((r) => (
                 <TableRow key={r.id} className="border-border">
                   <TableCell className="text-txt">
-                    {formatDate(r.created_at)}
+                    {formatDate(r.createdAt)}
                   </TableCell>
                   <TableCell>
                     <div>
                       <p className="text-txt-strong font-medium">
-                        {formatCurrency(parseFloat(r.usd_value))}
+                        {formatCurrency(r.usdValue)}
                       </p>
                       <p className="text-xs text-muted">
-                        {parseFloat(r.eliza_amount).toFixed(2)} elizaOS
+                        {r.elizaAmount.toFixed(2)}{" "}
+                        {r.asset === "usdc" ? "USDC" : "elizaOS"}
                       </p>
                     </div>
                   </TableCell>
@@ -655,15 +836,15 @@ export function EarningsPageClient() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {r.tx_hash ? (
+                    {r.txHash ? (
                       <a
-                        href={getExplorerUrl(r.network, r.tx_hash)}
+                        href={getExplorerUrl(r.network, r.txHash)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-accent hover:underline inline-flex min-h-touch items-center gap-1"
                       >
                         {t("cloud.earnings.view", { defaultValue: "View" })}{" "}
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink className="size-3" />
                       </a>
                     ) : (
                       <span className="text-muted">-</span>
@@ -677,8 +858,11 @@ export function EarningsPageClient() {
       </BrandCard>
 
       {/* Redeem Dialog */}
-      <Dialog open={showRedeemDialog} onOpenChange={setShowRedeemDialog}>
-        <DialogContent className="sm:max-w-lg bg-card border-border">
+      <Dialog
+        open={showRedeemDialog}
+        onOpenChange={handleRedeemDialogOpenChange}
+      >
+        <DialogContent className="grid-rows-[auto_minmax(0,1fr)_auto] bg-card border-border sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-txt-strong">
               {t("cloud.earnings.redeemDialogTitle", {
@@ -693,7 +877,7 @@ export function EarningsPageClient() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto py-4 pr-1">
             {/* Amount Input */}
             <div>
               <label
@@ -707,23 +891,26 @@ export function EarningsPageClient() {
               <Input
                 id="redeem-amount"
                 type="number"
+                inputMode="decimal"
+                step="0.01"
                 placeholder={t("cloud.earnings.enterAmount", {
                   defaultValue: "Enter amount",
                 })}
                 value={redeemAmount}
-                onChange={(e) => setRedeemAmount(e.target.value)}
+                onChange={(e) => handleRedeemAmountChange(e.target.value)}
                 className="bg-bg-hover border-border text-txt"
-                min={balance?.limits.minRedemptionUsd || 1}
-                max={Math.min(
-                  balance?.balance.availableBalance || 0,
-                  balance?.limits.maxSingleRedemptionUsd || 10000,
-                )}
+                min={redeemMinPoints / REDEMPTION_POINTS_PER_USD}
+                max={redeemMaxPoints / REDEMPTION_POINTS_PER_USD}
+                aria-invalid={redeemAmountInvalid}
+                aria-describedby={
+                  redeemAmountInvalid ? "redeem-amount-error" : undefined
+                }
               />
               <div className="flex justify-between text-xs text-muted mt-1">
                 <span>
                   {t("cloud.earnings.min", {
                     amount: formatCurrency(
-                      balance?.limits.minRedemptionUsd || 1,
+                      redeemMinPoints / REDEMPTION_POINTS_PER_USD,
                     ),
                     defaultValue: "Min: {{amount}}",
                   })}
@@ -731,23 +918,34 @@ export function EarningsPageClient() {
                 <span>
                   {t("cloud.earnings.max", {
                     amount: formatCurrency(
-                      Math.min(
-                        balance?.balance.availableBalance || 0,
-                        balance?.limits.maxSingleRedemptionUsd || 10000,
-                      ),
+                      redeemMaxPoints / REDEMPTION_POINTS_PER_USD,
                     ),
                     defaultValue: "Max: {{amount}}",
                   })}
                 </span>
               </div>
+              {redeemAmountInvalid && (
+                <p
+                  id="redeem-amount-error"
+                  className="mt-1 text-xs text-destructive"
+                  role="alert"
+                >
+                  {redeemAmountError}
+                </p>
+              )}
             </div>
 
             {/* Network Select */}
             <div>
-              <p className="text-sm text-muted mb-2 block">
+              <p className="text-sm text-muted mb-2">
                 {t("cloud.earnings.networkLabel", { defaultValue: "Network" })}
               </p>
-              <Select value={redeemNetwork} onValueChange={setRedeemNetwork}>
+              <Select
+                value={redeemNetwork}
+                onValueChange={(value) =>
+                  handleRedeemNetworkChange(value as RedemptionNetwork)
+                }
+              >
                 <SelectTrigger className="bg-bg-hover border-border text-txt">
                   <SelectValue />
                 </SelectTrigger>
@@ -757,19 +955,19 @@ export function EarningsPageClient() {
                       key={network.value}
                       value={network.value}
                       className="text-txt"
-                      disabled={
-                        systemStatus?.networks?.[network.value]?.available ===
-                        false
-                      }
+                      disabled={unavailableRedemptionNetworks.has(
+                        canonicalizeRedemptionNetwork(network.value),
+                      )}
                     >
                       <span className="flex items-center gap-2">
                         <span
-                          className={`inline-block h-2.5 w-2.5 rounded-full ${network.dotClass}`}
+                          className={`inline-block size-2.5 rounded-full ${network.dotClass}`}
                           aria-hidden="true"
                         />
                         <span>{network.label}</span>
-                        {systemStatus?.networks?.[network.value]?.available ===
-                          false && (
+                        {unavailableRedemptionNetworks.has(
+                          canonicalizeRedemptionNetwork(network.value),
+                        ) && (
                           <span className="text-xs text-destructive">
                             {t("cloud.earnings.unavailable", {
                               defaultValue: "(unavailable)",
@@ -810,14 +1008,18 @@ export function EarningsPageClient() {
                       })
                 }
                 value={redeemAddress}
-                onChange={(e) => setRedeemAddress(e.target.value)}
+                onChange={(e) => handleRedeemAddressChange(e.target.value)}
                 className="bg-bg-hover border-border text-txt font-mono text-sm"
               />
             </div>
 
             {/* Quote Display */}
             {quoteLoading && (
-              <div className="p-4 rounded-sm bg-bg-hover animate-pulse">
+              <div
+                className="p-4 rounded-sm bg-bg-hover animate-pulse"
+                role="status"
+                aria-live="polite"
+              >
                 <p className="text-muted text-center">
                   {t("cloud.earnings.gettingQuote", {
                     defaultValue: "Getting quote...",
@@ -828,7 +1030,7 @@ export function EarningsPageClient() {
 
             {quote && !quoteLoading && (
               <div className="p-4 rounded-sm bg-bg-hover space-y-2">
-                {quote.success && quote.quote ? (
+                {quote.success ? (
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted">
@@ -841,16 +1043,16 @@ export function EarningsPageClient() {
                       </span>
                     </div>
                     <div className="flex justify-center py-2">
-                      <ArrowRight className="h-4 w-4 text-muted" />
+                      <ArrowRight className="size-4 text-muted" />
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">
-                        {t("cloud.earnings.youReceive", {
-                          defaultValue: "You receive",
+                        {t("cloud.earnings.estimatedReceive", {
+                          defaultValue: "Estimated amount",
                         })}
                       </span>
                       <span className="text-accent font-semibold">
-                        {parseFloat(quote.quote.elizaAmount).toFixed(4)} elizaOS
+                        {quote.quote.elizaAmount.toFixed(4)} elizaOS
                       </span>
                     </div>
                     <div className="pt-2 border-t border-border text-xs text-muted">
@@ -861,7 +1063,7 @@ export function EarningsPageClient() {
                           })}
                         </span>
                         <span>
-                          ${parseFloat(quote.quote.elizaPriceUsd).toFixed(6)}
+                          ${quote.quote.twapPriceUsd.toFixed(6)}
                           /token
                         </span>
                       </div>
@@ -872,14 +1074,57 @@ export function EarningsPageClient() {
                           })}
                         </span>
                         <span>
-                          <Clock className="inline h-3 w-3 mr-1" />
-                          {new Date(quote.quote.expiresAt).toLocaleTimeString()}
+                          <Clock className="inline size-3 mr-1" />
+                          {new Date(
+                            quote.quote.validUntil,
+                          ).toLocaleTimeString()}
                         </span>
                       </div>
                     </div>
+                    <p className="pt-2 border-t border-border text-xs text-muted">
+                      {t("cloud.earnings.quotePreviewNotice", {
+                        defaultValue:
+                          "This is a preview. The final token amount is recalculated when you submit and may change with the market price.",
+                      })}
+                    </p>
+                    {!quote.canRedeem && (
+                      <p
+                        className="pt-2 border-t border-border text-sm text-destructive"
+                        role="alert"
+                      >
+                        {quote.message}
+                      </p>
+                    )}
+                    {quoteExpired && (
+                      <div
+                        className="pt-2 border-t border-border text-sm text-destructive"
+                        role="alert"
+                      >
+                        <p>
+                          {t("cloud.earnings.quoteExpired", {
+                            defaultValue:
+                              "This quote has expired. Request a new quote to continue.",
+                          })}
+                        </p>
+                        <Button
+                          className="mt-2"
+                          size="sm"
+                          variant="outline"
+                          onClick={handleRefreshQuote}
+                        >
+                          <RefreshCw className="size-3.5" />
+                          {t("cloud.earnings.refreshQuote", {
+                            defaultValue: "Refresh quote",
+                          })}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <p className="text-destructive text-sm text-center">
+                  <p
+                    className="text-destructive text-sm text-center"
+                    role="alert"
+                  >
                     {quote.error}
                   </p>
                 )}
@@ -888,28 +1133,36 @@ export function EarningsPageClient() {
           </div>
 
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowRedeemDialog(false)}>
+            <Button
+              variant="ghost"
+              disabled={submitting}
+              onClick={() => handleRedeemDialogOpenChange(false)}
+            >
               {t("cloud.earnings.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               onClick={handleSubmitRedemption}
               disabled={
                 !quote?.success ||
+                !quote.canRedeem ||
+                quoteExpired ||
+                redeemAmountInvalid ||
                 !redeemAddress ||
+                !redemptionIdempotencyKey ||
                 submitting ||
                 !balance?.eligibility?.canRedeem
               }
             >
               {submitting ? (
                 <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  <RefreshCw className="mr-2 size-4 animate-spin" />
                   {t("cloud.earnings.submitting", {
                     defaultValue: "Submitting...",
                   })}
                 </>
               ) : (
                 <>
-                  <Coins className="mr-2 h-4 w-4" />
+                  <Coins className="mr-2 size-4" />
                   {t("cloud.earnings.redeemTokens", {
                     defaultValue: "Redeem Tokens",
                   })}

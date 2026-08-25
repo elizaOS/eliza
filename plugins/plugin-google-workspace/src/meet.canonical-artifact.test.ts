@@ -358,11 +358,16 @@ describe("Google Meet canonical artifact mapping", () => {
     expect(list).toHaveBeenNthCalledWith(2, expect.objectContaining({ pageToken: opaqueToken }));
   });
 
-  it("bounds Google Meet pagination with unique provider tokens", async () => {
+  it("accepts Google Meet results beyond the former fixed page ceiling", async () => {
     let page = 0;
     const list = vi.fn(async () => {
       page += 1;
-      return { data: { transcripts: [], nextPageToken: `unique-token-${page}` } };
+      return {
+        data: {
+          transcripts: page === 1_001 ? [{ name: "transcripts/late" }] : [],
+          ...(page < 1_001 && { nextPageToken: `unique-token-${page}` }),
+        },
+      };
     });
     const fakeMeet = { conferenceRecords: { transcripts: { list } } };
     const factory = { meet: vi.fn(async () => fakeMeet) } as unknown as GoogleApiClientFactory;
@@ -373,7 +378,7 @@ describe("Google Meet canonical artifact mapping", () => {
         accountId: "acct_google_1",
         conferenceRecordName: CONFERENCE_RECORD,
       })
-    ).rejects.toMatchObject({ code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED" });
-    expect(list).toHaveBeenCalledTimes(1_000);
+    ).resolves.toMatchObject([{ name: "transcripts/late" }]);
+    expect(list).toHaveBeenCalledTimes(1_001);
   });
 });

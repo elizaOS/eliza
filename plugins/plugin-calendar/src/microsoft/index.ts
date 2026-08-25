@@ -1,5 +1,6 @@
 /** Microsoft delegated-account resolution and Graph calendar provider port. */
 export {
+  capabilitiesForScopes as microsoftCapabilitiesForScopes,
   DefaultMicrosoftCalendarTokenResolver,
   isMicrosoftCalendarGrantId,
   listMicrosoftCalendarAccounts,

@@ -143,6 +143,13 @@ describe("isTriagableBotNoiseMessage — deterministic preconditions", () => {
 		const clientChat = relayEmbedMessage();
 		clientChat.content = { ...clientChat.content, source: "client_chat" };
 		expect(isTriagableBotNoiseMessage(clientChat, false)).toBe(false);
+
+		const scheduledTrigger = relayEmbedMessage();
+		scheduledTrigger.content = {
+			...scheduledTrigger.content,
+			source: "trigger-prompt",
+		};
+		expect(isTriagableBotNoiseMessage(scheduledTrigger, false)).toBe(false);
 	});
 });
 
@@ -257,6 +264,20 @@ describe("runBotNoiseTriage — cheap-tier verdict", () => {
 		}
 	});
 
+	it("does not impose an output cap on the triage model", async () => {
+		const runtime = makeRuntime({ modelResult: "IGNORE" });
+		await runBotNoiseTriage({
+			runtime,
+			message: relayEmbedMessage(),
+			explicitlyAddressesAgent: false,
+		});
+
+		expect(runtime.useModel).toHaveBeenCalledWith(
+			ModelType.TEXT_SMALL,
+			expect.not.objectContaining({ maxTokens: expect.anything() }),
+		);
+	});
+
 	it("fails open when the TEXT_SMALL call throws (missing handler / provider down)", async () => {
 		const runtime = makeRuntime({
 			modelError: new Error("No handler found for delegate type: TEXT_SMALL"),
@@ -340,14 +361,14 @@ describe("runBotNoiseTriage — cheap-tier verdict", () => {
 });
 
 describe("buildBotNoiseTriagePrompt", () => {
-	it("clips oversized embed bodies so triage stays cheap", () => {
+	it("preserves oversized embed bodies in the model request", () => {
+		const messageText = "x".repeat(10_000);
 		const prompt = buildBotNoiseTriagePrompt({
 			agentName: "Remilio",
 			senderName: "ZenithProxy",
-			messageText: "x".repeat(10_000),
+			messageText,
 			historyLines: [],
 		});
-		expect(prompt.length).toBeLessThan(2_500);
-		expect(prompt).toContain("…");
+		expect(prompt).toContain(messageText);
 	});
 });

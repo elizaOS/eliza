@@ -70,22 +70,19 @@ describe("RUNTIME self_status registry seam", () => {
     expect(seen).toEqual({ module: "runtime", level: "brief" });
   });
 
-  it.each([
-    ["brief", 1200],
-    ["full", 8000],
-  ] as const)(
-    "keeps truncated %s detail within its %i-character contract",
-    async (detailLevel, maxChars) => {
+  it.each(["brief", "full"] as const)(
+    "retains complete %s detail",
+    async (detailLevel) => {
+      const detail = `start-${"x".repeat(20_000)}-end`;
       const service: AwarenessServiceLike = {
-        getDetail: async () => "x".repeat(maxChars + 100),
+        getDetail: async () => detail,
       };
 
       const result = await runSelfStatus(makeRuntime(service), detailLevel);
 
       expect(result.success).toBe(true);
-      expect(result.text).toHaveLength(maxChars);
-      expect(result.text?.endsWith("\n…[self-status truncated]")).toBe(true);
-      expect(result.data?.truncated).toBe(true);
+      expect(result.text).toBe(detail);
+      expect(result.data?.truncated).toBe(false);
     },
   );
 

@@ -28,6 +28,10 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE } from "@elizaos/core";
+import {
+  CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA,
+  matchesCredentialBridgeToken,
+} from "../services/credential-bridge-auth.js";
 import type { SessionInfo } from "../services/types.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 import {
@@ -156,6 +160,18 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function requestCredentialBridgeToken(req: IncomingMessage): string | null {
+  const header = req.headers["x-eliza-session-token"];
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string") {
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
 /**
  * Resolve the per-runtime credential adapter. The orchestrator registers it
  * as a runtime service under the well-known key below. Returning null lets
@@ -190,6 +206,20 @@ async function resolveActiveSession(
   return session;
 }
 
+function isSessionCallerAuthorized(
+  req: IncomingMessage,
+  session: SessionInfo,
+): boolean {
+  const token = requestCredentialBridgeToken(req);
+  return (
+    token !== null &&
+    matchesCredentialBridgeToken(
+      token,
+      session.metadata?.[CREDENTIAL_BRIDGE_TOKEN_HASH_METADATA],
+    )
+  );
+}
+
 async function handlePost(
   req: IncomingMessage,
   res: ServerResponse,
@@ -218,6 +248,17 @@ async function handlePost(
         code: "session_not_active",
       },
       410,
+    );
+    return;
+  }
+  if (!isSessionCallerAuthorized(req, session)) {
+    sendJson(
+      res,
+      {
+        error: "invalid credential bridge session token",
+        code: "unauthorized",
+      },
+      401,
     );
     return;
   }
@@ -313,6 +354,17 @@ async function handleGet(
     );
     return;
   }
+  if (!isSessionCallerAuthorized(req, session)) {
+    sendJson(
+      res,
+      {
+        error: "invalid credential bridge session token",
+        code: "unauthorized",
+      },
+      401,
+    );
+    return;
+  }
   const url = new URL(req.url ?? "", "http://localhost");
   const scopedToken = (url.searchParams.get("token") ?? "").trim();
   if (!scopedToken) {
@@ -334,13 +386,46 @@ async function handleGet(
       scopedToken,
     });
     if (outcome.status === "ready") {
+      // The long-poll may have waited minutes after the initial ownership
+      // check. Re-authorize at the disclosure boundary: a child that stopped,
+      // was removed, or otherwise became terminal while the adapter was
+      // waiting must never receive the plaintext even if its one-shot scope
+      // became ready in the same race.
+      const authorizedSession = await resolveActiveSession(ctx, sessionId);
+      if (!authorizedSession) {
+        sendJson(
+          res,
+          {
+            error:
+              "sub-agent session became inactive before credential delivery",
+            code: "session_not_active",
+          },
+          410,
+        );
+        return;
+      }
       // #8907: tell the origin thread the task is unblocked (best-effort).
       await emitCredentialResolved({
         runtime: ctx.runtime,
-        metadata: session.metadata,
+        metadata: authorizedSession.metadata,
         key,
-        label: session.name,
+        label: authorizedSession.name,
       });
+      // `emitCredentialResolved` may cross a connector boundary. Close that
+      // final await-shaped race as well: this check is the last operation
+      // before the synchronous plaintext response write.
+      if (!(await resolveActiveSession(ctx, sessionId))) {
+        sendJson(
+          res,
+          {
+            error:
+              "sub-agent session became inactive before credential delivery",
+            code: "session_not_active",
+          },
+          410,
+        );
+        return;
+      }
       sendJson(res, {
         key,
         value: outcome.value,

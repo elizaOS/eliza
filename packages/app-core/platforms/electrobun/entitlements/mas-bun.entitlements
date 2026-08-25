@@ -11,5 +11,13 @@
 	     scoped to the Bun helper instead of granting it to the outer app. -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.ai.elizaos.browserbridge</string>
+	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)ai.elizaos.browserbridge.shared</string>
+	</array>
 </dict>
 </plist>

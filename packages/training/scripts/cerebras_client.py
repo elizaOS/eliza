@@ -36,6 +36,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from lib.generation_integrity import require_complete_generation
+
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_MODEL = "gpt-oss-120b"
 
@@ -105,7 +107,6 @@ class CerebrasClient:
         messages: list[dict[str, str]],
         *,
         temperature: float = 0.7,
-        max_tokens: int = 2048,
         top_p: float = 1.0,
         extra: dict[str, Any] | None = None,
     ) -> str:
@@ -113,7 +114,6 @@ class CerebrasClient:
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
             "top_p": top_p,
         }
         if extra:
@@ -121,19 +121,11 @@ class CerebrasClient:
         resp = self._post("/chat/completions", payload)
         try:
             choice = resp["choices"][0]
+            require_complete_generation(choice, source="cerebras.chat")
             msg = choice["message"]
             content = msg.get("content")
         except (KeyError, IndexError, TypeError) as exc:
             raise CerebrasError(f"unexpected response shape: {json.dumps(resp)[:500]}") from exc
-        if (not isinstance(content, str) or not content.strip()) and choice.get("finish_reason") == "length":
-            # gpt-oss-120b is a reasoning model: it spends tokens in `reasoning`
-            # then emits the answer in `content`. Hitting the cap mid-thought
-            # leaves content empty — surface that clearly so the caller can
-            # retry with a higher max_tokens rather than treating it as content.
-            raise CerebrasError(
-                "Cerebras completion truncated before the answer (finish_reason=length); "
-                f"raise max_tokens (was {max_tokens})."
-            )
         if not isinstance(content, str) or not content.strip():
             raise CerebrasError(f"Cerebras returned an empty completion: {json.dumps(resp)[:300]}")
         return content
@@ -143,7 +135,6 @@ class CerebrasClient:
         messages: list[dict[str, str]],
         *,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
     ) -> list[dict[str, Any]]:
         """Call ``chat`` and parse the response as JSONL (one object per line).
 
@@ -151,7 +142,7 @@ class CerebrasClient:
         when the model genuinely emitted nothing parseable — the caller logs
         and continues; an API failure still raises ``CerebrasError``.
         """
-        raw = self.chat(messages, temperature=temperature, max_tokens=max_tokens)
+        raw = self.chat(messages, temperature=temperature)
         out: list[dict[str, Any]] = []
         for line in _iter_jsonish_lines(raw):
             try:
@@ -191,4 +182,4 @@ if __name__ == "__main__":
 
     c = CerebrasClient()
     prompt = sys.argv[1] if len(sys.argv) > 1 else "Say 'ok' and nothing else."
-    print(c.chat([{"role": "user", "content": prompt}], temperature=0.0, max_tokens=32))
+    print(c.chat([{"role": "user", "content": prompt}], temperature=0.0))

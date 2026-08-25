@@ -5,6 +5,8 @@
  * See: https://discord.com/developers/docs/topics/oauth2
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { discordFetch } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
 import { elizaAppConfig } from "./config";
 
@@ -70,7 +72,7 @@ class DiscordAuthService {
     }
 
     // Step 1: Exchange the authorization code for an access token.
-    const tokenResponse = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+    const tokenResponse = await discordFetch(`${DISCORD_API_BASE}/oauth2/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -92,13 +94,13 @@ class DiscordAuthService {
       if (tokenResponse.status === 400) {
         logger.warn("[DiscordAuth] Authorization code rejected by Discord", {
           status: tokenResponse.status,
-          error: errorText.slice(0, 200),
+          error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
         });
         return null;
       }
       logger.error("[DiscordAuth] Token exchange failed", {
         status: tokenResponse.status,
-        error: errorText.slice(0, 200),
+        error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
       });
       throw new Error(
         `[DiscordAuth] Discord token endpoint returned status ${tokenResponse.status}`,
@@ -114,7 +116,7 @@ class DiscordAuthService {
     // Step 2: Fetch the user profile with the access token. We now hold a valid
     // token, so any failure here is internal (transport/Discord/protocol) — never
     // a user-supplied-code problem — and must surface, not degrade to "invalid code".
-    const userResponse = await fetch(`${DISCORD_API_BASE}/users/@me`, {
+    const userResponse = await discordFetch(`${DISCORD_API_BASE}/users/@me`, {
       headers: {
         Authorization: `Bearer ${tokenData.access_token}`,
       },
@@ -124,7 +126,7 @@ class DiscordAuthService {
       const errorText = await userResponse.text();
       logger.error("[DiscordAuth] User profile fetch failed", {
         status: userResponse.status,
-        error: errorText.slice(0, 200),
+        error: truncateWellFormed(toWellFormedUnicode(errorText), 200),
       });
       throw new Error(`[DiscordAuth] Discord user endpoint returned status ${userResponse.status}`);
     }

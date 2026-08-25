@@ -32,6 +32,15 @@ import ts from "typescript";
  * Do NOT add a view here for a plugin that no longer exists.
  */
 export const smokeViewDeclarations = [
+  [
+    "cloud",
+    "Cloud",
+    "plugin-elizacloud",
+    "/cloud",
+    "CloudView",
+    "gui",
+    { capabilities: ["agent-surface"] },
+  ],
   ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
   // The decomposed personal-assistant domain views are the real surfaces (the
   // old monolithic `lifeops` overview view was removed). `documents` is

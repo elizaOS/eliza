@@ -136,12 +136,17 @@ function makeDiscordGraph() {
 			// REST fetch — see getConnectorChatContext); fetch remains for the
 			// message operations that do address single messages by id.
 			cache: new Collection(messages),
-			fetch: vi.fn(async (arg?: string | { limit?: number }) => {
-				if (typeof arg === "string") {
-					return messages.get(arg);
-				}
-				return new Collection(messages);
-			}),
+			fetch: vi.fn(
+				async (
+					arg?: string | { limit?: number; before?: string; after?: string },
+				) => {
+					if (typeof arg === "string") {
+						return messages.get(arg);
+					}
+					if (arg?.before || arg?.after) return new Collection();
+					return new Collection(messages);
+				},
+			),
 		},
 		threads: {
 			create: vi.fn(async () => ({
@@ -381,6 +386,78 @@ describe("DiscordService.getAccountLabel", () => {
 });
 
 describe("DiscordService account-scoped primitives", () => {
+	it("projects interaction-only and long relay payloads through the real send handler", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			channelId: graph.textChannel.id,
+		};
+
+		const interactionOnlyResult = await service.handleSendMessage(
+			runtime as never,
+			target,
+			{
+				text: "[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]",
+			},
+		);
+		expect(interactionOnlyResult.kind).toBe("delivered");
+		const interactionOnlyPayload = graph.textChannel.send.mock.calls[0]?.[0];
+		expect(interactionOnlyPayload).toMatchObject({
+			content: "Choose an option:",
+			components: expect.any(Array),
+		});
+		expect(interactionOnlyPayload.content).not.toContain("[FOLLOWUPS]");
+		const interactionOnlyMemory = runtime.createMemory.mock.calls[0]?.[0];
+		expect(interactionOnlyMemory?.content.text).toBe("Choose an option:");
+		expect(interactionOnlyMemory?.content.text).not.toContain("[FOLLOWUPS]");
+
+		graph.textChannel.send.mockClear();
+		runtime.createMemory.mockClear();
+		const longResult = await service.handleSendMessage(
+			runtime as never,
+			target,
+			{
+				text: `${"x".repeat(2_050)}\n[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]`,
+			},
+		);
+		expect(longResult.kind).toBe("delivered");
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(2);
+		const firstChunk = graph.textChannel.send.mock.calls[0]?.[0];
+		const finalChunk = graph.textChannel.send.mock.calls[1]?.[0];
+		expect(firstChunk).not.toHaveProperty("components");
+		expect(firstChunk.content).not.toContain("[FOLLOWUPS]");
+		expect(finalChunk).toMatchObject({
+			components: expect.any(Array),
+		});
+		expect(finalChunk.content).not.toContain("[FOLLOWUPS]");
+		expect(runtime.createMemory).toHaveBeenCalledTimes(2);
+		for (const [memory] of runtime.createMemory.mock.calls) {
+			expect(memory.content.text).not.toContain("[FOLLOWUPS]");
+		}
+	});
+
+	it("does not dedupe equal prose carrying distinct native controls", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			channelId: graph.textChannel.id,
+		};
+
+		const first = await service.handleSendMessage(runtime as never, target, {
+			text: "Choose next.\n[FOLLOWUPS]\nnavigate:/apps=View apps\n[/FOLLOWUPS]",
+		});
+		const second = await service.handleSendMessage(runtime as never, target, {
+			text: "Choose next.\n[FOLLOWUPS]\nnavigate:/settings=View settings\n[/FOLLOWUPS]",
+		});
+
+		expect(first.kind).toBe("delivered");
+		expect(second.kind).toBe("delivered");
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(2);
+		expect(graph.textChannel.send.mock.calls[0]?.[0].components).not.toEqual(
+			graph.textChannel.send.mock.calls[1]?.[0].components,
+		);
+	});
+
 	it("registers account connectors and scopes wrapper calls to the selected account", async () => {
 		const { runtime, service } = makeService();
 		DiscordService.registerSendHandlers(runtime as never, service);
@@ -1029,8 +1106,46 @@ describe("DiscordService account-scoped primitives", () => {
 		);
 	});
 
+	it("paginates complete connector history when limit is omitted", async () => {
+		const { graph, runtime, service } = makeService();
+		const all = Array.from({ length: 201 }, (_, index) =>
+			makeMessage({
+				id: String(900_000_000_000_000_000n - BigInt(index)),
+				content: `message ${index}`,
+				createdTimestamp: 2_000_000 - index,
+			}),
+		);
+		graph.textChannel.messages.fetch = vi.fn(
+			async (params: { before?: string; limit?: number }) => {
+				const start = params.before
+					? all.findIndex((message) => message.id === params.before) + 1
+					: 0;
+				const page = all.slice(start, start + (params.limit ?? 100));
+				return new Collection(page.map((message) => [message.id, message]));
+			},
+		);
+
+		const result = await service.fetchConnectorMessages(
+			{
+				runtime,
+				target: { source: "discord", channelId: graph.textChannel.id },
+			},
+			{ target: { source: "discord", channelId: graph.textChannel.id } },
+		);
+
+		expect(result).toHaveLength(201);
+		expect(graph.textChannel.messages.fetch).toHaveBeenCalledTimes(4);
+	});
+
 	it("serves chat-context history from the gateway cache without a REST fetch or room read", async () => {
 		const { graph, runtime, service } = makeService();
+		for (let index = 0; index < 12; index++) {
+			const cached = makeMessage({
+				id: `cached-${index}`,
+				content: `cached message ${index}`,
+			});
+			graph.textChannel.messages.cache.set(cached.id, cached);
+		}
 		const getRoom = vi.fn(async () => ({
 			id: "00000000-0000-0000-0000-000000000002",
 			channelId: graph.textChannel.id,
@@ -1055,6 +1170,7 @@ describe("DiscordService account-scoped primitives", () => {
 			context,
 		);
 		expect(chatContext?.recentMessages[0]?.text).toBe("hello from discord");
+		expect(chatContext?.recentMessages).toHaveLength(13);
 		expect(getRoom).not.toHaveBeenCalled();
 		expect(graph.textChannel.messages.fetch).not.toHaveBeenCalled();
 

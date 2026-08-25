@@ -4,9 +4,7 @@
  * CQRS writer for the dedicated `trajectory_steps` table. Successful writes
  * return their real result; invalid ownership and unavailable storage throw.
  *
- * Scripts are stored in a dedicated `script` TEXT column with no character
- * cap (the legacy `TRAJECTORY_STEP_SCRIPT_MAX_CHARS=4096` cap applied only
- * to inline JSON storage).
+ * Scripts are stored completely in the dedicated `script` TEXT column.
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";

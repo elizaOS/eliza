@@ -1,9 +1,9 @@
 // Shared visual task-card language for the /orchestrator and /task-coordinator
 // single-pane landings. Both views render the same card medallion + chips so the
 // two surfaces read as one product. Pure presentation — no data fetching.
+
+import { Button, Input } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
 import {
   Archive,
   Circle,
@@ -149,7 +149,7 @@ export function TaskStatusChip({
       className={`inline-flex items-center gap-1.5 text-2xs font-medium ${visual.fg}`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${visual.dot}${visual.pulse ? " animate-pulse" : ""}`}
+        className={`size-1.5 rounded-full ${visual.dot}${visual.pulse ? " animate-pulse" : ""}`}
       />
       {statusLabel(status, t)}
     </span>
@@ -172,7 +172,7 @@ export function TaskMetaChip({
         tone === "accent" ? "text-accent" : "text-muted"
       }`}
     >
-      <span className="inline-flex h-3 w-3 items-center justify-center">
+      <span className="inline-flex size-3 items-center justify-center">
         {icon}
       </span>
       {children}
@@ -203,17 +203,19 @@ export function TaskSearchInput({
       className={`relative flex h-9 items-center border-border/35 border-b transition-colors focus-within:border-accent/60 ${className ?? "flex-1"}`}
     >
       <Search
-        className="pointer-events-none absolute left-1 h-3.5 w-3.5 text-muted"
+        className="pointer-events-none absolute left-1 size-3.5 text-muted"
         aria-hidden
       />
       <Input
         ref={inputRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        variant="embeddedSearch"
+        density="short"
+        adornment="leading"
         placeholder={placeholder}
         aria-label={placeholder}
         data-testid={testId}
-        className="h-full w-full bg-transparent pl-7 pr-1 text-sm text-txt outline-none placeholder:text-muted"
         {...agentProps}
       />
     </div>
@@ -229,7 +231,7 @@ export function SparseWatermark({ icon }: { icon: LucideIcon }) {
       className="pointer-events-none absolute bottom-6 right-4 select-none"
       aria-hidden
     >
-      <Icon className="h-44 w-44 text-accent opacity-[0.05]" strokeWidth={1} />
+      <Icon className="size-44 text-accent opacity-[0.05]" strokeWidth={1} />
     </div>
   );
 }
@@ -263,12 +265,14 @@ export function TaskCard({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="eventRow"
+      align="start"
       ref={ref}
       type="button"
       onClick={() => onOpen(id)}
       data-testid="task-card"
-      className="group relative flex w-full items-start gap-2 px-1 py-2 text-left transition-colors hover:bg-bg-hover/30"
+      className="group relative"
       {...agentProps}
     >
       <TaskStatusMedallion status={status} />
@@ -278,10 +282,7 @@ export function TaskCard({
             {title}
           </span>
           {forked ? (
-            <GitBranch
-              className="h-3.5 w-3.5 shrink-0 text-muted"
-              aria-hidden
-            />
+            <GitBranch className="size-3.5 shrink-0 text-muted" aria-hidden />
           ) : null}
           <TaskStatusChip status={status} t={t} />
         </span>
@@ -368,7 +369,7 @@ export function TaskEmptyState({
       data-testid="task-empty-state"
     >
       <CircleDashed
-        className="h-10 w-10 text-accent/40"
+        className="size-10 text-accent/40"
         strokeWidth={1.5}
         aria-hidden
       />
@@ -398,12 +399,12 @@ export function BackChip({
   });
   return (
     <Button
-      unstyled
+      variant="ghostMuted"
+      size="micro"
       ref={ref}
       type="button"
       onClick={onClick}
       data-testid={testId}
-      className="inline-flex items-center gap-1.5 py-1 text-xs font-medium text-muted transition-colors hover:text-txt"
       {...agentProps}
     >
       <span aria-hidden>←</span>

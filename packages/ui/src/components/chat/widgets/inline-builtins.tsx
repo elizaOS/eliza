@@ -1,7 +1,8 @@
 /**
  * Built-in inline chat-reply widgets, registered into the inline-widget
  * registry at module load. Importing this module (a side effect) is what makes
- * `[CHOICE]`, `[FOLLOWUPS]`, and `[FORM]` markers render in chat.
+ * `[CHOICE]`, `[FOLLOWUPS]`, `[FORM]`, `[MAPSCARD]`, and `[CONNECTOR]` markers
+ * render in chat.
  *
  * Each entry pairs the marker's parser (the parsing semantics) with its React
  * renderer, the same contract a plugin uses via `registerInlineWidget`. The
@@ -19,19 +20,29 @@ import {
 } from "../message-checklist-parser";
 import { type ChoiceMatch, findChoiceRegions } from "../message-choice-parser";
 import {
+  type ConnectorCardMatch,
+  findConnectorCardRegions,
+} from "../message-connector-parser";
+import {
   type FollowupsMatch,
   findFollowupsRegions,
 } from "../message-followups-parser";
 import { type FormMatch, findFormRegions } from "../message-form-parser";
+import {
+  findMapsCardRegions,
+  type MapsCardMatch,
+} from "../message-maps-parser";
 import {
   findWorkflowRegions,
   type WorkflowMatch,
 } from "../message-workflow-parser";
 import { BackgroundWidget } from "./background-widget";
 import { ChoiceWidget } from "./ChoiceWidget";
+import { ConnectorCardWidget } from "./connector-card";
 import { FollowupsWidget } from "./followups";
 import { FormRequest } from "./form-request";
 import { registerInlineWidget } from "./inline-registry";
+import { MapsCardWidget } from "./maps-card";
 import { ChecklistWidget } from "./task-pipeline";
 import { WorkflowSteps } from "./workflow-steps";
 
@@ -88,6 +99,23 @@ registerInlineWidget<BackgroundMatch>({
   parse: (text) => findBackgroundRegions(text).map((m) => ({ ...m, data: m })),
   keyFor: (m) => `background:${m.start}`,
   render: (_m, _ctx, key) => <BackgroundWidget key={key} />,
+});
+
+registerInlineWidget<MapsCardMatch>({
+  kind: "mapscard",
+  parse: (text) => findMapsCardRegions(text).map((m) => ({ ...m, data: m })),
+  keyFor: (m) => `mapscard:${m.card.kind}:${m.start}`,
+  render: (m, ctx, key) => <MapsCardWidget key={key} card={m.card} ctx={ctx} />,
+});
+
+registerInlineWidget<ConnectorCardMatch>({
+  kind: "connector",
+  parse: (text) =>
+    findConnectorCardRegions(text).map((m) => ({ ...m, data: m })),
+  keyFor: (m) => `connector:${m.pluginId}`,
+  render: (m, _ctx, key) => (
+    <ConnectorCardWidget key={key} pluginId={m.pluginId} />
+  ),
 });
 
 registerInlineWidget<ChecklistMatch>({

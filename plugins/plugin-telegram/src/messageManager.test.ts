@@ -9,7 +9,13 @@
  * carry `telegram-file:<file_id>`, the token-bearing Bot API URL stays inside
  * the fetch path, and model handlers receive bytes, never the URL.
  */
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type Content,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
 
@@ -54,6 +60,53 @@ function createManager() {
     sendChatAction,
     sendMessage,
   };
+}
+
+async function captureReactionCallback() {
+  const emitEvent = vi.fn();
+  let messageId = 99;
+  const sendMessage = vi.fn(async (chatId: number | string, text: string) => ({
+    message_id: ++messageId,
+    date: 1_700_000_000 + messageId,
+    text,
+    chat: { id: chatId, type: "private" },
+  }));
+  const manager = new MessageManager(
+    {} as never,
+    {
+      agentId: "agent-1",
+      emitEvent,
+      getSetting: () => undefined,
+    } as unknown as IAgentRuntime,
+  );
+
+  await manager.handleReaction({
+    from: { id: 42, first_name: "Ada", is_bot: false },
+    chat: { id: 123, type: "private" },
+    update: {
+      message_reaction: {
+        chat: { id: 123, type: "private" },
+        message_id: 99,
+        date: 1,
+        old_reaction: [],
+        new_reaction: [{ type: "emoji", emoji: "👍" }],
+      },
+    },
+    telegram: {
+      sendChatAction: vi.fn(async () => undefined),
+      sendMessage,
+    },
+  } as never);
+
+  expect(emitEvent).toHaveBeenCalledTimes(2);
+  const payload = emitEvent.mock.calls[0]?.[1] as
+    | { callback?: (content: Content) => Promise<Memory[]> }
+    | undefined;
+  expect(payload?.callback).toBeTypeOf("function");
+  if (!payload?.callback) {
+    throw new Error("expected the reaction event to expose its reply callback");
+  }
+  return { callback: payload.callback, sendMessage };
 }
 
 describe("MessageManager long message splitting", () => {
@@ -133,7 +186,7 @@ describe("MessageManager long message splitting", () => {
     expect(sentMessages.map((message) => message.text).join("")).toBe(text);
   });
 
-  it("prefers newline boundaries when they fit within Telegram's limit", async () => {
+  it("preserves newline boundaries across Telegram chunks", async () => {
     const { manager, sendMessage } = createManager();
     const firstLine = "x".repeat(4094);
     const text = `${firstLine}\ny\nz`;
@@ -151,8 +204,33 @@ describe("MessageManager long message splitting", () => {
 
     expect(sendMessage.mock.calls.map((call) => call[1])).toEqual([
       `${firstLine}\ny`,
-      "z",
+      "\nz",
     ]);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
+  });
+
+  it("cuts before the last newline in the window instead of mid-paragraph", async () => {
+    const { manager, sendMessage } = createManager();
+    const first = "a".repeat(3000);
+    const second = "b".repeat(3000);
+    const text = `${first}\n${second}`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    expect(sendMessage.mock.calls.map((call) => call[1])).toEqual([
+      first,
+      `\n${second}`,
+    ]);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
   });
 });
 
@@ -491,6 +569,45 @@ describe("MessageManager malformed payload handling", () => {
     expect(emitEvent).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["lone high surrogate", `before\ud800after`, "before�after"],
+    ["lone low surrogate", `before\udc00after`, "before�after"],
+    ["exact 4096-unit text", `${"a".repeat(4094)}🦊`, `${"a".repeat(4094)}🦊`],
+    ["4097-unit text", "a".repeat(4097), "a".repeat(4097)],
+    [
+      "astral character crossing the cap",
+      `${"a".repeat(4095)}🦊tail`,
+      `${"a".repeat(4095)}🦊tail`,
+    ],
+  ])(
+    "keeps the reaction callback wire reply and returned memory aligned for %s",
+    async (_label, input, expected) => {
+      const { callback, sendMessage } = await captureReactionCallback();
+
+      const memories = await callback({
+        text: input,
+        action: "REPLY",
+        data: { marker: "preserved" },
+      });
+
+      const wireChunks = sendMessage.mock.calls.map((call) => call[1]);
+      expect(wireChunks.join("")).toBe(expected);
+      expect(wireChunks.every((chunk) => chunk.length <= 4096)).toBe(true);
+      expect(wireChunks.every((chunk) => chunk.isWellFormed())).toBe(true);
+
+      expect(memories).toHaveLength(wireChunks.length);
+      expect(memories.map((item) => item.content.text).join("")).toBe(expected);
+      for (const memory of memories) {
+        expect(memory.content.text?.length).toBeLessThanOrEqual(4096);
+        expect(memory.content.text?.isWellFormed()).toBe(true);
+        expect(memory.content.action).toBe("REPLY");
+        expect(memory.content.data).toEqual({ marker: "preserved" });
+        expect(memory.content.inReplyTo).toBeDefined();
+        expect(memory.content.metadata).toEqual({ accountId: "default" });
+      }
+    },
+  );
+
   it("rejects missing chat context when sending media", async () => {
     const manager = new MessageManager(
       {
@@ -653,6 +770,57 @@ describe("MessageManager malformed payload handling", () => {
 
     expect(createMemory).not.toHaveBeenCalled();
     expect(runtime.setCache).not.toHaveBeenCalled();
+  });
+
+  it("uses a bound slash-command entity id instead of looking identity up again", async () => {
+    const boundEntityId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const getEntityById = vi.fn(async () => {
+      throw new Error("identity store must not be consulted for a bound actor");
+    });
+    const cache = new Map<string, unknown>();
+    const ensureConnection = vi.fn(async () => undefined);
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection,
+      createMemory,
+      getEntityById,
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager({ telegram: {} } as never, runtime);
+
+    await manager.handleMessage(
+      {
+        from: {
+          id: 42,
+          first_name: "Ada",
+          username: "ada",
+          is_bot: false,
+        },
+        chat: { id: 123, type: "private", first_name: "Ada" },
+        message: {
+          message_id: 99,
+          date: 1_700_000_000,
+          text: "/stop",
+          chat: { id: 123, type: "private", first_name: "Ada" },
+        },
+      } as never,
+      { entityId: boundEntityId },
+    );
+
+    expect(getEntityById).not.toHaveBeenCalled();
+    expect(ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: boundEntityId }),
+    );
+    expect(createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: boundEntityId }),
+      "messages",
+    );
   });
 
   it("fails observably when passive inbound persistence fails", async () => {
@@ -998,5 +1166,127 @@ describe("MessageManager typing-indicator resilience", () => {
     );
     expect(sent).toHaveLength(1);
     expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MessageManager.sendMessage transport failure", () => {
+  const corpus = [
+    "hello",
+    "Sure! Step 1 - done.",
+    "**bold** and _italic_",
+    "🦊",
+    "a".repeat(64),
+  ] as const;
+
+  function managerForSend(
+    sendMessage: ReturnType<typeof vi.fn>,
+    runtimeExtras: Record<string, unknown> = {},
+  ) {
+    return new MessageManager(
+      {
+        telegram: {
+          sendMessage,
+          sendChatAction: vi.fn(async () => undefined),
+        },
+      } as never,
+      {
+        agentId: "agent-1",
+        getSetting: () => undefined,
+        createMemory: vi.fn(async () => true),
+        emitEvent: vi.fn(),
+        ...runtimeExtras,
+      } as never,
+    );
+  }
+
+  it("throws instead of returning an empty array when Telegram rejects the send (403)", async () => {
+    const sendMessage = vi.fn(async () => {
+      throw {
+        response: {
+          error_code: 403,
+          description: "Forbidden: bot was blocked by the user",
+        },
+      };
+    });
+    const manager = managerForSend(sendMessage);
+
+    await expect(
+      manager.sendMessage(4242, { text: "hello from connector" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_OUTBOUND_SEND_FAILED",
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("still returns [] when there is nothing textual to send", async () => {
+    const sendMessage = vi.fn();
+    const manager = managerForSend(sendMessage);
+    const sent = await manager.sendMessage(4242, { text: "   " });
+    expect(sent).toEqual([]);
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps previously accepted corpus sends byte-identical on the wire", async () => {
+    const sentBodies: string[] = [];
+    const sendMessage = vi.fn(async (chatId: number | string, text: string) => {
+      sentBodies.push(text);
+      return {
+        message_id: sentBodies.length,
+        date: 1_700_000_000,
+        text,
+        chat: { id: chatId, type: "private" },
+      };
+    });
+    const manager = managerForSend(sendMessage);
+
+    for (const text of corpus) {
+      const sent = await manager.sendMessage(7, { text });
+      expect(sent.length).toBeGreaterThan(0);
+    }
+    expect(sentBodies).toHaveLength(corpus.length);
+  });
+
+  it("preserves provider ids when persistence throws an ElizaError after send", async () => {
+    const sendMessage = vi.fn(
+      async (chatId: number | string, text: string) => ({
+        message_id: 73,
+        date: 1_700_000_000,
+        text,
+        chat: { id: chatId, type: "private" },
+      }),
+    );
+    const persistenceError = new ElizaError("database unavailable", {
+      code: "DATABASE_UNAVAILABLE",
+    });
+    const manager = managerForSend(sendMessage, {
+      createMemory: vi.fn(async () => {
+        throw persistenceError;
+      }),
+    });
+
+    await expect(
+      manager.sendMessage(4242, { text: "accepted" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_OUTBOUND_PERSIST_FAILED",
+      cause: persistenceError,
+      context: {
+        chatId: "4242",
+        providerMessageIds: ["73"],
+      },
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MessageManager reaction reply transport failure", () => {
+  it("does not report an empty successful turn when ctx.reply fails", async () => {
+    const { callback, sendMessage } = await captureReactionCallback();
+    sendMessage.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
+
+    await expect(
+      callback({ text: "thanks for the reaction" }),
+    ).rejects.toMatchObject({
+      code: "TELEGRAM_REACTION_REPLY_FAILED",
+    });
   });
 });

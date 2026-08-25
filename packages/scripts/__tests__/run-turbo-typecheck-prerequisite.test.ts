@@ -46,7 +46,6 @@ const agentImageFilters = [
   "@elizaos/plugin-imessage",
   "@elizaos/plugin-local-inference",
   "@elizaos/plugin-mcp",
-  "@elizaos/plugin-signal",
   "@elizaos/plugin-telegram",
   "@elizaos/plugin-whatsapp",
   "@elizaos/plugin-wallet",

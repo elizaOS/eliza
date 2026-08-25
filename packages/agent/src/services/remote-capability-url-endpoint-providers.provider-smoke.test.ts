@@ -1,5 +1,5 @@
 /**
- * Live smoke test for the URL-backed endpoint providers (e2b, home-machine,
+ * Live smoke test for the URL-backed endpoint providers (home-machine,
  * mobile-companion, desktop-companion). Skipped unless
  * ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1 and the per-provider ...URL env is
  * set; when live it connects a real endpoint, treats its remote plugin as local
@@ -28,7 +28,6 @@ import {
 } from "./remote-capability-live-report.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
-  e2bCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
@@ -43,13 +42,6 @@ type ProviderLiveTarget = {
 };
 
 const providerTargets: ProviderLiveTarget[] = [
-  {
-    label: "e2b",
-    provider: e2bCapabilityEndpointProvider,
-    envPrefix: "E2B",
-    defaultEndpointId: "e2b-live-capability",
-    endpointRuntime: "e2b-sandbox",
-  },
   {
     label: "home-machine",
     provider: homeMachineCapabilityEndpointProvider,

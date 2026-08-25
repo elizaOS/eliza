@@ -14,12 +14,18 @@ import {
   type ActionResult,
   CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
+  type WorkspaceDeltaReceipt,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import {
+  consumeDestructiveChallenge,
+  issueDestructiveChallenge,
+} from "../lib/destructive-confirmation.js";
 import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
 import {
   capTranscriptForChat,
@@ -30,11 +36,26 @@ import {
   readNumberParam,
   readStringParam,
   successActionResult,
-  truncate,
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
+import {
+  readShellOutputArtifactPage,
+  type ShellOutputArtifactStream,
+} from "../lib/shell-output-artifact.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
-import type { BackgroundShellService } from "../services/background-shell-service.js";
+import {
+  beginLocalWorkspaceDeltaObservation,
+  finishLocalWorkspaceDeltaObservation,
+  indeterminateWorkspaceDeltaReceipt,
+  runtimeWorkspaceExecutionDomainId,
+  unattestedRemoteWorkspaceScope,
+  workspaceDeltaResultData,
+} from "../lib/workspace-delta.js";
+import {
+  type BackgroundShellService,
+  type BackgroundShellSessionSnapshot,
+  BackgroundShellStartError,
+} from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import { redactShellText } from "../shell/redaction.js";
@@ -50,13 +71,45 @@ import { summarizeShellCommand } from "./summaries.js";
 const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
-const STREAM_CAP_CHARS = 30_000;
 const USER_FACING_STDOUT_CAP_CHARS = 8_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 const COINGECKO_SIMPLE_PRICE_BASE =
   "https://api.coingecko.com/api/v3/simple/price";
+
+function redactedWorkspaceDeltaResultData(
+  runtime: IAgentRuntime,
+  receipt: WorkspaceDeltaReceipt | undefined,
+): Record<string, unknown> {
+  return workspaceDeltaResultData(
+    receipt
+      ? {
+          ...receipt,
+          scope: {
+            ...receipt.scope,
+            root: redactShellText(runtime, receipt.scope.root),
+          },
+        }
+      : undefined,
+  );
+}
+
+function redactedBackgroundSession(
+  runtime: IAgentRuntime,
+  session: BackgroundShellSessionSnapshot,
+): BackgroundShellSessionSnapshot {
+  const redactedReceipt = session.workspaceDeltaReceipt
+    ? (redactedWorkspaceDeltaResultData(runtime, session.workspaceDeltaReceipt)
+        .workspaceDeltaReceipt as WorkspaceDeltaReceipt)
+    : undefined;
+  return {
+    ...session,
+    command: redactShellText(runtime, session.command),
+    cwd: redactShellText(runtime, session.cwd),
+    ...(redactedReceipt ? { workspaceDeltaReceipt: redactedReceipt } : {}),
+  };
+}
 
 type ShellActionSubaction =
   | "run"
@@ -66,7 +119,8 @@ type ShellActionSubaction =
   | "poll_background"
   | "write_background"
   | "kill_background"
-  | "list_background";
+  | "list_background"
+  | "read_output_artifact";
 
 interface CryptoSpotAsset {
   symbol: string;
@@ -302,6 +356,10 @@ function normalizeShellSubaction(
     case "background_list":
     case "sessions":
       return "list_background";
+    case "artifact":
+    case "read_artifact":
+    case "read_output_artifact":
+      return "read_output_artifact";
     default:
       return "run";
   }
@@ -1130,16 +1188,14 @@ function formatStreams(
   stderr: string,
   options: { showEmptyStreams?: boolean } = {},
 ): string {
-  const sOut = truncate(stdout, STREAM_CAP_CHARS);
-  const sErr = truncate(stderr, STREAM_CAP_CHARS);
   const lines: string[] = [];
-  if (sOut.text.length > 0 || options.showEmptyStreams) {
+  if (stdout.length > 0 || options.showEmptyStreams) {
     lines.push("--- stdout ---");
-    lines.push(sOut.text.length > 0 ? sOut.text : "(empty)");
+    lines.push(stdout.length > 0 ? stdout : "(empty)");
   }
-  if (sErr.text.length > 0 || options.showEmptyStreams) {
+  if (stderr.length > 0 || options.showEmptyStreams) {
     lines.push("--- stderr ---");
-    lines.push(sErr.text.length > 0 ? sErr.text : "(empty)");
+    lines.push(stderr.length > 0 ? stderr : "(empty)");
   }
   return lines.join("\n");
 }
@@ -1151,19 +1207,20 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+    "Run shell commands with complete accepted redacted foreground output, retrieve unexpired scoped legacy output artifacts, manage per-conversation background shell sessions, or view/clear shell history. Each run starts a fresh shell, so prefix any required environment variables on every command. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
   descriptionCompressed:
-    "Run shell commands; start/poll/write/kill/list background sessions; clear/view history.",
+    "Run shell commands; page output artifacts; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
     {
       name: "action",
       description:
-        "Shell operation: run | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
+        "Shell operation: run | read_output_artifact | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
       required: false,
       schema: {
         type: "string",
         enum: [
           "run",
+          "read_output_artifact",
           "start_background",
           "poll_background",
           "write_background",
@@ -1177,7 +1234,7 @@ export const shellAction: Action = {
     {
       name: "command",
       description:
-        "For action=run: /bin/bash -c command. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
+        "For action=run: /bin/bash -c command in a fresh process; exported variables do not persist to later calls. Keep bounded; prefer jq/node for JSON and python3 if Python is needed. Include all requested paths in df/du checks.",
       required: false,
       schema: { type: "string" },
     },
@@ -1210,16 +1267,44 @@ export const shellAction: Action = {
     {
       name: "confirm",
       description:
-        "Set true ONLY after the user has explicitly confirmed THIS destructive bulk operation in chat (recursive delete, raw device overwrite, database drop). Never set it preemptively.",
+        "Set true only with the one-time confirmation_challenge returned for this exact command after the user replies `confirm <challenge>` in a later message.",
       required: false,
       schema: { type: "boolean" },
     },
     {
-      name: "handle",
+      name: "confirmation_challenge",
       description:
-        "Stable background shell handle returned by action=start_background.",
+        "Opaque one-time challenge returned by a prior needs_confirmation result for this exact command, requester, and room.",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "handle",
+      description:
+        "Opaque handle returned by action=start_background or by a truncated foreground output artifact.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "artifact_stream",
+      description:
+        "For action=read_output_artifact: redacted stream to retrieve.",
+      required: false,
+      schema: { type: "string", enum: ["stdout", "stderr"] },
+    },
+    {
+      name: "artifact_offset",
+      description:
+        "For action=read_output_artifact: next character offset returned by the prior page; defaults to 0.",
+      required: false,
+      schema: { type: "number", minimum: 0 },
+    },
+    {
+      name: "artifact_limit",
+      description:
+        "For action=read_output_artifact: page size in characters, capped at 20000.",
+      required: false,
+      schema: { type: "number", minimum: 2, maximum: 20000 },
     },
     {
       name: "stdin",
@@ -1256,7 +1341,7 @@ export const shellAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state?: State,
+    state?: State,
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
@@ -1267,6 +1352,63 @@ export const shellAction: Action = {
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)
       : "run";
+
+    if (subaction === "read_output_artifact") {
+      if (!message.roomId) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "no roomId",
+        });
+      }
+      const handle = readStringParam(options, "handle");
+      if (!handle) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "read_output_artifact requires 'handle'",
+        });
+      }
+      const requestedStream = readStringParam(options, "artifact_stream");
+      if (requestedStream !== "stdout" && requestedStream !== "stderr") {
+        return failureToActionResult({
+          reason: "invalid_param",
+          message:
+            "read_output_artifact requires artifact_stream=stdout or stderr",
+        });
+      }
+      const page = await readShellOutputArtifactPage({
+        handle,
+        stream: requestedStream as ShellOutputArtifactStream,
+        offset: readNonNegativeOffset(options, "artifact_offset"),
+        limit: readNumberParam(options, "artifact_limit"),
+        requesterAgentId: String(runtime.agentId),
+        requesterConversationId: String(message.roomId),
+      });
+      if (!page.ok) {
+        return failureToActionResult({
+          reason:
+            page.reason === "invalid_handle" ? "invalid_param" : "path_blocked",
+          message: page.message,
+        });
+      }
+      const value = page.value;
+      const text = [
+        `Shell artifact ${value.handle} ${value.stream} characters ${value.startOffset}..${value.endOffset} of ${value.totalCharacters} complete=${value.complete}`,
+        value.text
+          ? `--- ${value.stream} ---\n${value.text}`
+          : `--- ${value.stream} ---\n(empty)`,
+      ].join("\n");
+      if (callback) {
+        await callback({
+          text: fencePreformatted(capTranscriptForChat(text)),
+          source: "coding-tools",
+        });
+      }
+      return successActionResult(text, {
+        actionName: "SHELL",
+        [CANONICAL_SUBACTION_KEY]: "read_output_artifact",
+        ...value,
+      });
+    }
 
     if (subaction === "clear_history" || subaction === "view_history") {
       const shellHistoryService = getShellHistoryService(runtime);
@@ -1357,7 +1499,9 @@ export const shellAction: Action = {
       }
       try {
         if (subaction === "list_background") {
-          const sessions = backgroundShell.list(conversationId);
+          const sessions = backgroundShell
+            .list(conversationId)
+            .map((session) => redactedBackgroundSession(runtime, session));
           const lines = sessions.length
             ? sessions
                 .map((session) =>
@@ -1411,7 +1555,13 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "write_background",
-            session,
+            handle: session.handle,
+            status: session.status,
+            session: redactedBackgroundSession(runtime, session),
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              session.workspaceDeltaReceipt,
+            ),
           });
         }
 
@@ -1428,11 +1578,17 @@ export const shellAction: Action = {
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "kill_background",
-            session,
+            handle: session.handle,
+            status: session.status,
+            session: redactedBackgroundSession(runtime, session),
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              session.workspaceDeltaReceipt,
+            ),
           });
         }
 
-        const poll = backgroundShell.poll({
+        const poll = await backgroundShell.poll({
           conversationId,
           handle,
           stdoutOffset: readNonNegativeOffset(options, "stdout_offset"),
@@ -1469,15 +1625,54 @@ export const shellAction: Action = {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "poll_background",
           ...poll,
+          command: redactShellText(runtime, poll.command),
+          cwd: redactShellText(runtime, poll.cwd),
+          ...redactedWorkspaceDeltaResultData(
+            runtime,
+            poll.workspaceDeltaReceipt,
+          ),
         });
       } catch (err) {
         // error-policy:J1 SHELL action boundary; background session lookup and
         // process-control failures are returned to the planner as structured
         // tool failures.
-        return failureToActionResult({
-          reason: "internal",
-          message: redactShellText(runtime, (err as Error).message),
-        });
+        const failedHandle = readStringParam(options, "handle");
+        let latest: BackgroundShellSessionSnapshot | undefined;
+        if (failedHandle) {
+          try {
+            latest = await backgroundShell.inspect({
+              conversationId,
+              handle: failedHandle,
+            });
+          } catch (inspectionError) {
+            // error-policy:J1 Secondary inspection enriches the original
+            // boundary failure; inability to inspect cannot replace it.
+            coreLogger.warn(
+              `${CODING_TOOLS_LOG_PREFIX} failed to inspect background SHELL ${failedHandle}: ${redactShellText(runtime, inspectionError instanceof Error ? inspectionError.message : String(inspectionError))}`,
+            );
+          }
+        }
+        return failureToActionResult(
+          {
+            reason: "internal",
+            message: redactShellText(runtime, (err as Error).message),
+          },
+          {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: subaction,
+            ...(failedHandle ? { handle: failedHandle } : {}),
+            ...(latest
+              ? {
+                  status: latest.status,
+                  session: redactedBackgroundSession(runtime, latest),
+                }
+              : {}),
+            ...redactedWorkspaceDeltaResultData(
+              runtime,
+              latest?.workspaceDeltaReceipt,
+            ),
+          },
+        );
       }
     }
 
@@ -1627,49 +1822,18 @@ export const shellAction: Action = {
     // of real output and inflating a 30s build past 90s. Skip all
     // message-text-keyed rewrites for the coding sub-agent; its commands run
     // verbatim.
-    const codingSubAgentShell = ((): boolean => {
-      const v =
-        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-      return v === "1" || v === "true" || v === "yes" || v === "on";
-    })();
-    // Destructive bulk operations on the CHAT path require an explicit
-    // in-chat confirmation before they run (a confirmation gate, not a
-    // refusal — the planner re-issues the same command with confirm=true
-    // after the user says yes). Coding sub-agents execute explicit task
-    // briefs, which carry their own confirmation upstream, so they are
-    // exempt. Opt out with ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
+    const codingSubAgentShell =
+      state?.data?.elizaTrustedCodingMode === true ||
+      ((): boolean => {
+        const v =
+          process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
+        return v === "1" || v === "true" || v === "yes" || v === "on";
+      })();
     const destructiveGateEnabled = ((): boolean => {
       const v =
         process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
       return !(v === "0" || v === "false" || v === "off");
     })();
-    if (!codingSubAgentShell && destructiveGateEnabled) {
-      const verdict = classifyDestructiveCommand(command);
-      const confirmed = readBoolParam(options, "confirm") === true;
-      if (verdict.destructive && !confirmed) {
-        const redactedReason = verdict.reason
-          ? redactShellText(runtime, verdict.reason)
-          : undefined;
-        const redactedTargets = verdict.targets.map((target) =>
-          redactShellText(runtime, target),
-        );
-        const targetList =
-          redactedTargets.filter(Boolean).join(", ") || "its targets";
-        return failureToActionResult(
-          {
-            reason: "needs_confirmation",
-            message:
-              `this ${redactedReason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
-              "ask the user to confirm the exact operation, then re-run with confirm=true.",
-          },
-          {
-            command: redactShellText(runtime, command),
-            destructive_reason: redactedReason,
-            targets: redactedTargets,
-          },
-        );
-      }
-    }
     if (!codingSubAgentShell) {
       const localStatusCommand = resolveLocalStatusCommand({
         command,
@@ -1713,6 +1877,65 @@ export const shellAction: Action = {
       }
     }
 
+    // Classify only after every CHAT rewrite so the challenge digest and
+    // verdict describe the exact command that can reach dispatch. A blocked
+    // operation is authorized only when the same requester replies in a later
+    // message with `confirm <challenge>` and the planner returns that challenge
+    // alongside confirm=true. ELIZA_PLANNER_FULL_ACTION_SURFACE changes planner
+    // tool exposure and CHAT presentation behavior; it is process-global and
+    // therefore cannot prove authority for an individual invocation. Operators
+    // may explicitly disable this chat gate with
+    // ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
+    if (destructiveGateEnabled) {
+      const verdict = classifyDestructiveCommand(
+        command,
+        resolveCommandPlatform() === "windows" ? "powershell" : "posix",
+      );
+      const confirmationRequested = readBoolParam(options, "confirm") === true;
+      const confirmation = confirmationRequested
+        ? consumeDestructiveChallenge({
+            runtime,
+            token: readStringParam(options, "confirmation_challenge"),
+            command,
+            executionDirectory: cwd,
+            message,
+          })
+        : ({ authorized: false, reason: "missing" } as const);
+      if (verdict.destructive && !confirmation.authorized) {
+        const challenge = issueDestructiveChallenge({
+          runtime,
+          command,
+          executionDirectory: cwd,
+          message,
+        });
+        const redactedReason = verdict.reason
+          ? redactShellText(runtime, verdict.reason)
+          : undefined;
+        const redactedTargets = verdict.targets.map((target) =>
+          redactShellText(runtime, target),
+        );
+        const targetList =
+          redactedTargets.filter(Boolean).join(", ") || "its targets";
+        return failureToActionResult(
+          {
+            reason: "needs_confirmation",
+            message:
+              `this ${redactedReason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
+              `ask the user to reply exactly \`confirm ${challenge ?? "<challenge>"}\`; then re-run in that later user turn with confirm=true and the returned confirmation_challenge.`,
+          },
+          {
+            command: redactShellText(runtime, command),
+            destructive_reason: redactedReason,
+            targets: redactedTargets,
+            confirmation_challenge: challenge,
+            confirmation_failure: confirmationRequested
+              ? confirmation.reason
+              : undefined,
+          },
+        );
+      }
+    }
+
     // Validate the operator timeout before any action can create a child.
     const timeoutSetting = readBoundedIntSetting(
       runtime,
@@ -1736,12 +1959,21 @@ export const shellAction: Action = {
           message: "Background shell service unavailable.",
         });
       }
+      const backgroundObservation = await beginLocalWorkspaceDeltaObservation(
+        cwd,
+        { executionDomainId: runtimeWorkspaceExecutionDomainId(runtime) },
+      );
+      let startedSession:
+        | ReturnType<BackgroundShellService["startSession"]>
+        | undefined;
       try {
         const session = backgroundShell.startSession({
           conversationId,
           command,
           cwd,
+          workspaceObservation: backgroundObservation,
         });
+        startedSession = session;
         const redactedCommand = redactShellText(runtime, command);
         const text = [
           `$ ${redactedCommand}`,
@@ -1761,22 +1993,57 @@ export const shellAction: Action = {
           command: redactedCommand,
           cwd: redactedCwd,
           handle: session.handle,
-          session,
+          session: redactedBackgroundSession(runtime, session),
           execution_route: session.sandbox === "host" ? "host" : "sandbox",
           sandbox_backend: session.sandbox,
+          ...redactedWorkspaceDeltaResultData(
+            runtime,
+            session.workspaceDeltaReceipt,
+          ),
         });
       } catch (err) {
         // error-policy:J1 SHELL action boundary; unsupported execution backends
         // and spawn failures must be visible to the planner instead of falling
         // back to a host-spawned process.
+        const failedHandle =
+          startedSession?.handle ??
+          (err instanceof BackgroundShellStartError ? err.handle : undefined);
+        let latest = startedSession;
+        if (failedHandle) {
+          try {
+            latest = await backgroundShell.inspect({
+              conversationId,
+              handle: failedHandle,
+            });
+          } catch (inspectionError) {
+            // error-policy:J1 Secondary inspection enriches the original
+            // boundary failure; the retained start snapshot remains authority.
+            coreLogger.warn(
+              `${CODING_TOOLS_LOG_PREFIX} failed to inspect background SHELL ${failedHandle}: ${redactShellText(runtime, inspectionError instanceof Error ? inspectionError.message : String(inspectionError))}`,
+            );
+          }
+        }
+        const workspaceDelta =
+          latest?.workspaceDeltaReceipt ??
+          (await finishLocalWorkspaceDeltaObservation(backgroundObservation));
         return failureToActionResult(
           {
             reason: "internal",
             message: redactShellText(runtime, (err as Error).message),
           },
           {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: "start_background",
             command: redactShellText(runtime, command),
             cwd: redactedCwd,
+            ...(latest
+              ? {
+                  handle: latest.handle,
+                  status: latest.status,
+                  session: redactedBackgroundSession(runtime, latest),
+                }
+              : {}),
+            ...redactedWorkspaceDeltaResultData(runtime, workspaceDelta),
           },
         );
       }
@@ -1793,6 +2060,17 @@ export const shellAction: Action = {
       `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
+    // Capture a local baseline even when a router is registered because the
+    // router may explicitly fall back to the host. A command that actually ran
+    // remotely receives an indeterminate receipt instead of pairing remote
+    // execution with this local snapshot.
+    const capabilityRouterPresent = getCapabilityRouter(runtime) !== null;
+    const workspaceObservation = await beginLocalWorkspaceDeltaObservation(
+      cwd,
+      {
+        executionDomainId: runtimeWorkspaceExecutionDomainId(runtime),
+      },
+    );
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
     coreLogger.info(
@@ -1811,13 +2089,49 @@ export const shellAction: Action = {
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
+      const workspaceDelta = capabilityRouterPresent
+        ? indeterminateWorkspaceDeltaReceipt(
+            unattestedRemoteWorkspaceScope(cwd),
+            "REMOTE_EXECUTION_UNOBSERVED",
+          )
+        : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
       return failureToActionResult(
         { reason: "internal", message },
-        { cwd: redactedCwd },
+        {
+          cwd: redactedCwd,
+          ...redactedWorkspaceDeltaResultData(runtime, workspaceDelta),
+        },
       );
     }
 
+    const workspaceDelta =
+      result.sandbox === "capability-router"
+        ? (result.workspaceDeltaReceipt ??
+          indeterminateWorkspaceDeltaReceipt(
+            result.workspaceExecution ?? unattestedRemoteWorkspaceScope(cwd),
+            "REMOTE_EXECUTION_UNOBSERVED",
+          ))
+        : await finishLocalWorkspaceDeltaObservation(workspaceObservation);
+    const workspaceDeltaData = redactedWorkspaceDeltaResultData(
+      runtime,
+      workspaceDelta,
+    );
+
     const took = Date.now() - startedAt;
+    if (result.outputLimitExceeded) {
+      return failureToActionResult(
+        {
+          reason: "internal",
+          message:
+            "command output exceeded the 1,000,000-character complete-capture safety limit; no partial output is available",
+        },
+        {
+          command: redactShellText(runtime, command),
+          cwd: redactedCwd,
+          ...workspaceDeltaData,
+        },
+      );
+    }
     const timedOut = result.timedOut;
     const signal = result.signal;
     const redactedCommand = redactShellText(runtime, command);
@@ -1829,20 +2143,51 @@ export const shellAction: Action = {
     const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
+    // `runShell` rejects above the explicit complete-capture ceiling before
+    // this boundary. Every accepted result therefore remains complete after
+    // redaction; the planner must never receive a preview or optional handle
+    // in place of stdout/stderr it would otherwise reason over.
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     const echoTranscript =
       process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
-    if (callback && (echoTranscript === "1" || echoTranscript === "true"))
-      await callback({
-        text: fencePreformatted(capTranscriptForChat(text)),
-        source: "coding-tools",
-      });
+    if (callback && (echoTranscript === "1" || echoTranscript === "true")) {
+      try {
+        await callback({
+          text: fencePreformatted(capTranscriptForChat(text)),
+          source: "coding-tools",
+        });
+      } catch (error) {
+        // error-policy:J1 the command has already executed; preserve its delta
+        // receipt even when transcript delivery fails at the action boundary.
+        return failureToActionResult(
+          {
+            reason: "internal",
+            message: `shell transcript callback failed: ${redactShellText(runtime, (error as Error).message)}`,
+          },
+          {
+            command: redactedCommand,
+            cwd: redactedCwd,
+            output: text,
+            signal,
+            output_truncated: false,
+            ...workspaceDeltaData,
+          },
+        );
+      }
+    }
 
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command: redactedCommand, cwd: redactedCwd, output: text },
+        {
+          command: redactedCommand,
+          cwd: redactedCwd,
+          output: text,
+          signal,
+          output_truncated: false,
+          ...workspaceDeltaData,
+        },
       );
     }
     if (result.exitCode !== 0) {
@@ -1856,6 +2201,9 @@ export const shellAction: Action = {
           exit_code: result.exitCode,
           cwd: redactedCwd,
           output: text,
+          signal,
+          output_truncated: false,
+          ...workspaceDeltaData,
         },
       );
     }
@@ -1866,6 +2214,8 @@ export const shellAction: Action = {
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
+      output_truncated: false,
+      ...workspaceDeltaData,
     });
     // The crypto / disk / memory / status projections are CHAT conveniences
     // keyed on the *message text*, and the coding sub-agent's message text is

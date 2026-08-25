@@ -4,11 +4,14 @@
  * malformed limits before invoking their service collaborators.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { PLATFORM_MCP_TOOL_PRICING } from "../../../billing/mcp-pricing";
 import type { RetrieveMemoriesInput } from "../../services/memory";
 import type { A2AContext } from "./types";
 
 const usageLimits: number[] = [];
 const memoryInputs: RetrieveMemoriesInput[] = [];
+const memoryReservations: number[] = [];
+const memoryReconciliations: number[] = [];
 const listByOrganization = mock(async () =>
   Array.from({ length: 60 }, (_, index) => ({
     id: `agent-${index}`,
@@ -36,7 +39,21 @@ mock.module("../../services/memory", () => ({
       memoryInputs.push(input);
       return [];
     },
+    saveMemory: async () => ({ memoryId: "memory-1", storage: "database" }),
   },
+}));
+mock.module("../../services/credits", () => ({
+  creditsService: {
+    reserve: async ({ amount }: { amount: number }) => {
+      memoryReservations.push(amount);
+      return {
+        reconcile: async (actual: number) => {
+          memoryReconciliations.push(actual);
+        },
+      };
+    },
+  },
+  InsufficientCreditsError: class extends Error {},
 }));
 
 const context = {
@@ -52,6 +69,8 @@ const context = {
 beforeEach(() => {
   usageLimits.length = 0;
   memoryInputs.length = 0;
+  memoryReservations.length = 0;
+  memoryReconciliations.length = 0;
   listByOrganization.mockClear();
 });
 
@@ -64,6 +83,16 @@ describe("A2A skill limit boundary", () => {
     await executeSkillGetUsage({ limit: 80 }, context);
 
     expect(usageLimits).toEqual([0, 10, 50]);
+  });
+
+  test("save_memory reserves and reconciles the canonical advertised USD price", async () => {
+    const { executeSkillSaveMemory } = await import("./skills");
+
+    const result = await executeSkillSaveMemory("remember this", { roomId: "room-1" }, context);
+
+    expect(memoryReservations).toEqual([PLATFORM_MCP_TOOL_PRICING.save_memory.priceUsd]);
+    expect(memoryReconciliations).toEqual([PLATFORM_MCP_TOOL_PRICING.save_memory.priceUsd]);
+    expect(result.cost).toBe(PLATFORM_MCP_TOOL_PRICING.save_memory.priceUsd);
   });
 
   test("list_agents preserves zero, defaults omitted, and caps positive limits", async () => {

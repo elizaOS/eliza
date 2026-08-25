@@ -17,8 +17,13 @@
  * default).
  */
 
-import type { Content } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import {
+  type Content,
+  type ElizaError,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   type ComputerUseAgentReport,
   type ComputerUseAgentStepProgress,
@@ -26,6 +31,7 @@ import {
   runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
 import { Brain } from "../actor/brain.js";
+import { makeComputerInterface } from "../actor/computer-interface.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
@@ -132,6 +138,106 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       actionKind: "finish",
       success: true,
     });
+  });
+
+  it("emits complete desktop step text through the shared structured contract", async () => {
+    const complete = `${"desktop trajectory ".repeat(300)}🧠 tail`;
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: { kind: "finish", rationale: complete },
+        }),
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await runComputerUseAgentLoop(null, { goal: complete }, fakeService(), {
+        brain,
+        captureAll,
+      });
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(stepLog).toMatchObject({
+        goal: complete,
+        rationale: complete,
+        success: true,
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rejects malformed desktop goals before work or structured logging", async () => {
+    let brainCalls = 0;
+    const brain = new Brain(null, {
+      invokeModel: async () => {
+        brainCalls += 1;
+        return "{}";
+      },
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await expect(
+        runComputerUseAgentLoop(
+          null,
+          { goal: "save\ud800document" },
+          fakeService(),
+          { brain, captureAll },
+        ),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+        context: { field: "goal" },
+      } satisfies Partial<ElizaError>);
+      expect(brainCalls).toBe(0);
+      expect(
+        spy.mock.calls.some(
+          ([entry]) =>
+            (entry as Record<string, unknown>).evt === "computeruse.agent.step",
+        ),
+      ).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("rejects malformed desktop rationales before dispatch or structured logging", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "done",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "finish",
+            rationale: "finish\udc00now",
+          },
+        }),
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      await expect(
+        runComputerUseAgentLoop(null, { goal: "save" }, fakeService(), {
+          brain,
+          captureAll,
+        }),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+        context: { field: "rationale" },
+      } satisfies Partial<ElizaError>);
+      expect(
+        spy.mock.calls.some(
+          ([entry]) =>
+            (entry as Record<string, unknown>).evt === "computeruse.agent.step",
+        ),
+      ).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("aborts on the wall-clock budget before any step (#9170 M11)", async () => {
@@ -273,6 +379,64 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.steps.length).toBe(3);
   });
 
+  it("blocks a repeated consequential action when the screen is unchanged", async () => {
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "unchanged fixture",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click save",
+          },
+        }),
+    });
+    let clicks = 0;
+    const computerInterface = makeComputerInterface({
+      listDisplays: () => [display()],
+      driver: {
+        click: async () => {
+          clicks += 1;
+        },
+      },
+    });
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "save", maxSteps: 3 },
+      fakeService(),
+      { brain, captureAll, computerInterface },
+    );
+    expect(report).toMatchObject({
+      reason: "repeated_action",
+      error: expect.stringContaining("unchanged screen"),
+    });
+    expect(clicks).toBe(1);
+  });
+
+  it("honors owner cancellation before observation or dispatch", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let captures = 0;
+    const report = await runComputerUseAgentLoop(
+      null,
+      { goal: "save", signal: controller.signal },
+      fakeService(),
+      {
+        captureAll: async () => {
+          captures += 1;
+          return captureAll();
+        },
+      },
+    );
+    expect(report).toMatchObject({
+      reason: "cancelled",
+      error: expect.stringContaining("cancelled by its owner"),
+    });
+    expect(captures).toBe(0);
+  });
+
   it("emits a per-step progress callback when streamProgress is set (#8912)", async () => {
     const brain = new Brain(null, {
       invokeModel: async () =>
@@ -346,6 +510,27 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(report.error).toContain('agent loop "local-grounder" failed');
   });
 
+  it("fails closed with a clear report when IMAGE_DESCRIPTION is unavailable", async () => {
+    const runtime = {
+      useModel: async () => {
+        throw new Error("No model registered for IMAGE_DESCRIPTION");
+      },
+    } as unknown as IAgentRuntime;
+    const report = await runComputerUseAgentLoop(
+      runtime,
+      { goal: "inspect fixture" },
+      fakeService(),
+      { brain: new Brain(runtime), captureAll },
+    );
+    expect(report).toMatchObject({
+      reason: "error",
+      error: expect.stringContaining(
+        "No model registered for IMAGE_DESCRIPTION",
+      ),
+    });
+    expect(report.steps).toHaveLength(0);
+  });
+
   it("aborts on dispatch error (out-of-bounds)", async () => {
     const brain = new Brain(null, {
       invokeModel: async () =>
@@ -362,17 +547,126 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
           proposed_action: { kind: "click", rationale: "click out-of-bounds" },
         }),
     });
-    const report = await runComputerUseAgentLoop(
-      null,
-      { goal: "g" },
-      fakeService(),
-      { brain, captureAll },
-    );
-    expect(report.reason).toBe("error");
-    expect(report.steps.length).toBe(1);
-    expect(report.steps[0]?.result.success).toBe(false);
-    expect(report.error).toMatch(/outside display/);
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const report = await runComputerUseAgentLoop(
+        null,
+        { goal: "g" },
+        fakeService(),
+        { brain, captureAll },
+      );
+      expect(report.reason).toBe("error");
+      expect(report.steps.length).toBe(1);
+      expect(report.steps[0]?.result.success).toBe(false);
+      expect(report.error).toMatch(/outside display/);
+
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(stepLog).toMatchObject({
+        success: false,
+        error: report.error,
+        errorCode: "out_of_bounds",
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
+
+  it("preserves complete long and astral desktop dispatch errors", async () => {
+    const complete = `${"desktop driver failure ".repeat(300)}🧠 tail`;
+    const brain = new Brain(null, {
+      invokeModel: async () =>
+        JSON.stringify({
+          scene_summary: "S",
+          target_display_id: 0,
+          roi: [],
+          proposed_action: {
+            kind: "click",
+            ref: "t0-1",
+            rationale: "click save",
+          },
+        }),
+    });
+    const computerInterface = makeComputerInterface({
+      listDisplays: () => [display()],
+      driver: {
+        click: async () => {
+          throw new Error(complete);
+        },
+      },
+    });
+    const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+    try {
+      const report = await runComputerUseAgentLoop(
+        null,
+        { goal: "save" },
+        fakeService(),
+        { brain, captureAll, computerInterface },
+      );
+      const stepLog = spy.mock.calls
+        .map(([entry]) => entry as Record<string, unknown>)
+        .find((entry) => entry.evt === "computeruse.agent.step");
+      expect(report.error).toBe(complete);
+      expect(stepLog).toMatchObject({
+        success: false,
+        error: complete,
+        errorCode: "driver_error",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it.each(["before\ud800after", "before\udc00after"])(
+    "rejects malformed desktop dispatch error %s before trajectory logging",
+    async (malformed) => {
+      const brain = new Brain(null, {
+        invokeModel: async () =>
+          JSON.stringify({
+            scene_summary: "S",
+            target_display_id: 0,
+            roi: [],
+            proposed_action: {
+              kind: "click",
+              ref: "t0-1",
+              rationale: "click save",
+            },
+          }),
+      });
+      const computerInterface = makeComputerInterface({
+        listDisplays: () => [display()],
+        driver: {
+          click: async () => {
+            throw new Error(malformed);
+          },
+        },
+      });
+      const spy = vi.spyOn(logger, "info").mockImplementation(() => logger);
+      try {
+        await expect(
+          runComputerUseAgentLoop(null, { goal: "save" }, fakeService(), {
+            brain,
+            captureAll,
+            computerInterface,
+          }),
+        ).rejects.toMatchObject({
+          name: "ElizaError",
+          code: "COMPUTERUSE_TRAJECTORY_MALFORMED_UNICODE",
+          context: { field: "error" },
+        } satisfies Partial<ElizaError>);
+        expect(
+          spy.mock.calls.some(
+            ([entry]) =>
+              (entry as Record<string, unknown>).evt ===
+              "computeruse.agent.step",
+          ),
+        ).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    },
+  );
 
   it("aborts on scene refresh error", async () => {
     const brain = new Brain(null, {
@@ -530,5 +824,97 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(formatComputerUseAgentProgress(firstProgress)).toContain(
       "failed: Coordinates",
     );
+  });
+
+  it("preserves complete progress rationale without tearing UTF-16 surrogate pairs", () => {
+    const rationale = `${"r".repeat(176)}\u{1F98A}zzzz`;
+    const stepProgress: ComputerUseAgentStepProgress = {
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale,
+      result: { success: true },
+    };
+
+    const formatted = formatComputerUseAgentProgress(stepProgress);
+    expect(formatted.isWellFormed()).toBe(true);
+    expect(formatted).toContain(rationale);
+    expect(formatted).not.toContain("...");
+  });
+
+  it("preserves well-formed progress rationale at and below the 180-code-unit limit", () => {
+    for (const rationale of ["ready 🦊", "r".repeat(180)]) {
+      const formatted = formatComputerUseAgentProgress({
+        step: 1,
+        maxSteps: 5,
+        actionKind: "click",
+        rationale,
+        result: { success: true },
+      });
+
+      expect(formatted).toContain(rationale);
+      expect(formatted).not.toContain("...");
+      expect(formatted.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("normalizes lone surrogates while preserving complete failure status", () => {
+    const formatted = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "inspect\ud800status",
+      result: {
+        success: false,
+        error: `${"e".repeat(176)}\udc00tail`,
+      },
+    });
+
+    expect(formatted.isWellFormed()).toBe(true);
+    expect(formatted).toContain("inspect�status");
+    expect(formatted).toContain(`${"e".repeat(176)}�tail`);
+    expect(formatted).not.toContain("...");
+  });
+
+  it("normalizes either lone-surrogate half before status retention or clipping", () => {
+    for (const rationale of [
+      "inspect\ud800status",
+      "inspect\udc00status",
+      `${"h".repeat(176)}\ud800tail`,
+      `${"l".repeat(176)}\udc00tail`,
+    ]) {
+      const formatted = formatComputerUseAgentProgress({
+        step: 1,
+        maxSteps: 5,
+        actionKind: "click",
+        rationale,
+        result: { success: true },
+      });
+
+      expect(formatted.isWellFormed()).toBe(true);
+      expect(formatted).toContain("�");
+    }
+  });
+
+  it("preserves complete rationale beyond the former 180-code-unit boundary", () => {
+    const atLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "m".repeat(180),
+      result: { success: true },
+    });
+    const overLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "n".repeat(181),
+      result: { success: true },
+    });
+
+    expect(atLimit).toContain("m".repeat(180));
+    expect(atLimit).not.toContain("...");
+    expect(overLimit).toContain("n".repeat(181));
+    expect(overLimit).not.toContain("...");
   });
 });

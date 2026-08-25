@@ -212,7 +212,7 @@ function executionContext(): ExecutionContext {
 
 const port = Number.parseInt(process.env.API_DEV_PORT || "8787", 10);
 const hostname = process.env.API_DEV_HOST || "127.0.0.1";
-const app = createApp();
+const app = await createApp();
 const env = {
   ...process.env,
   BLOB: blobBinding,

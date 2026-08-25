@@ -26,10 +26,6 @@ import {
 } from "../ui/dropdown-menu";
 import { WidgetSection } from "./widgets/shared";
 
-function getRunRingClass(_run: AppRunSummary): string {
-  return "";
-}
-
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
   return isOverlayApp(app.name) || app.launchType === "overlay";
 }
@@ -291,7 +287,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   return (
     <WidgetSection
       title={t("nav.apps", { defaultValue: "Apps" })}
-      icon={<LayoutGrid className="h-4 w-4" />}
+      icon={<LayoutGrid className="size-4" />}
       action={headerAction}
       testId="chat-widget-apps-section"
     >
@@ -300,7 +296,6 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           {orderedApps.map((app) => {
             const run = runByName.get(app.name);
             const displayName = app.displayName ?? getAppShortName(app);
-            const ringClass = run ? getRunRingClass(run) : "";
             const isRunning = Boolean(run);
             return (
               <div
@@ -314,8 +309,8 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                     defaultValue: `Launch ${displayName}`,
                     name: displayName,
                   })}
-                  variant="ghost"
-                  className={`h-auto rounded-sm p-0 transition-transform hover:bg-transparent hover:scale-105 ${ringClass}`}
+                  variant={isRunning ? "outlineAccent" : "transparent"}
+                  size="content"
                   onClick={() => void handleLaunch(app)}
                 >
                   <AppIdentityTile
@@ -333,9 +328,9 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
                       onClick={(event) => event.stopPropagation()}
                       variant="ghost"
                       size="icon-sm"
-                      className="absolute -right-1 -top-1 h-5 w-5 rounded-full border border-border bg-bg text-muted opacity-0 transition-opacity hover:bg-bg hover:text-txt group-hover:opacity-100"
+                      className="absolute -right-1 -top-1 opacity-0 transition-opacity group-hover:opacity-100"
                     >
-                      <MoreHorizontal className="h-3 w-3" aria-hidden />
+                      <MoreHorizontal className="size-3" aria-hidden />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent

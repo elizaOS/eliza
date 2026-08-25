@@ -4,6 +4,16 @@
 
 `@elizaos/core` is the runtime and contract layer of elizaOS. It defines the `AgentRuntime` and the plugin abstractions (actions, providers, evaluators, services, models, routes, events), the canonical type system, and the supporting subsystems (memory, search, settings, scheduling, prompts). It is consumed by `@elizaos/agent` (which also hosts the HTTP API server), `@elizaos/app-core` (the API + dashboard host), and every `@elizaos/*` plugin.
 
+Document authorization treats a document's `roomId` as its single room
+entitlement and evaluates it against current requester membership inside the
+adapter before rows, counts, fragments, or ranking are produced. Explicit
+`directGrantEntityIds` are independent of room membership for reads; they
+cannot expose `agent-private` documents or confer mutation authority. They can
+only be replaced through the dedicated storage-enforced CAS operation by OWNER,
+or by a current room ADMIN for global and user-private documents. Every grantee
+must be an entity in the current agent tenant. Invalid or duplicate grant arrays
+fail closed.
+
 ## Key concepts
 
 - **AgentRuntime:** Central orchestrator for the agent lifecycle, plugin loading, and the message loop.
@@ -164,6 +174,8 @@ The following environment variables are used by `@elizaos/core`. Configure them 
 - `LOG_FILE`: When set to `true`/`1` or a path, enables file logging: `output.log`, `prompts.log`, and `chat.log` (in cwd or at the given path). **Why:** Lets you inspect full prompts and chat flow without scraping console; ANSI is stripped so files stay grep-friendly.
 - `BASIC_CAPABILITIES_KEEP_RESP`: When `true`, the message service does not discard a response when a newer message is being processed (avoids "stale reply" race). **Why:** Some deployments want to keep or display every response; this is the config equivalent of passing `keepExistingResponses: true` in options.
 - `SHOULD_RESPOND_MODEL`: Which model size to use for the "should I respond?" decision (`small` or `large`, read in `src/services/message.ts`). Defaults from runtime settings if not set in options.
+- `AUTONOMY_INTERVAL_MS`: Autonomy loop cadence as a canonical positive decimal integer in milliseconds. Values are clamped to 5,000–600,000; malformed or unset values use 30,000.
+- `AUTONOMY_MODEL_SIZE`: Model tier for autonomy background reasoning, exactly `small` or `large`. Malformed or unset values use `large`.
 - `ELIZA_TRAJECTORY_LOGGING`: Canonical trajectory persistence knob. Truthy values (`1`, `true`, `yes`, `on`) enable file and DB trajectory recording; non-empty falsey values disable it; blank is treated as unset. When unset, recording is on for local/dev and unset `NODE_ENV`, but off for `NODE_ENV=test` and `NODE_ENV=production` unless explicitly enabled.
 - `ELIZA_TRAJECTORY_RECORDING`: Legacy alias honored only when `ELIZA_TRAJECTORY_LOGGING` is unset.
 - `ELIZA_DISABLE_TRAJECTORY_LOGGING=1`: Hard opt-out that wins over both trajectory enable knobs.
@@ -319,6 +331,14 @@ Actions define specific tasks or capabilities the agent can perform. Each action
 - A `handler` function that executes the action's logic.
 
 Actions enable the agent to respond intelligently and perform operations based on user input or internal triggers.
+
+Model-facing action, provider, and analytics results preserve complete records.
+For example, detailed `TRUST action=evaluate` results return every evidence
+record, follow-up suggestions return every qualifying contact, relationship
+analytics page through all shared messages before returning every distinct
+topic, and channel-topic search returns every matching room. Large inventories
+must use an explicit, lossless page or reference contract when they cannot be
+returned in one result.
 
 **Private actions.** Set `private: true` on an action to reserve it for the agent's own autonomous loop. A private action is never exposed to the planner — and is rejected by the executor as a defense-in-depth backstop — on user-driven turns; it can only be selected and run when the triggering message is an autonomous self-prompt (`content.metadata.isAutonomous === true`, the marker the autonomy service stamps). Use this for self-initiated capabilities the agent should decide to invoke on its own — e.g. minting a coin or opening a position — rather than ones a user can trigger on demand. The gate lives in `src/runtime/private-action-gate.ts`.
 

@@ -9,26 +9,6 @@
 import { logger } from "../utils/logger";
 import { charactersService } from "./characters/characters";
 
-/**
- * Fisher-Yates shuffle algorithm for unbiased random sampling.
- * Returns a new shuffled array without modifying the original.
- */
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
-
-/**
- * Get random sample from array using Fisher-Yates shuffle.
- */
-function getRandomSample<T>(array: T[], count: number): T[] {
-  return shuffleArray(array).slice(0, count);
-}
-
 export interface CharacterPromptContext {
   name: string;
   bio: string;
@@ -103,24 +83,22 @@ export function buildCharacterSystemPrompt(context: CharacterPromptContext): str
   }
 
   if (context.adjectives.length > 0) {
-    const selectedAdjectives = getRandomSample(context.adjectives, 5);
-    parts.push(`Your personality: ${selectedAdjectives.join(", ")}`);
+    parts.push(`Your personality: ${context.adjectives.join(", ")}`);
   }
 
   if (context.topics.length > 0) {
-    const selectedTopics = getRandomSample(context.topics, 5);
-    parts.push(`Topics you enjoy: ${selectedTopics.join(", ")}`);
+    parts.push(`Topics you enjoy: ${context.topics.join(", ")}`);
   }
 
   const styleGuidelines = [...context.postStyle, ...context.allStyle];
   if (styleGuidelines.length > 0) {
-    const selectedStyles = getRandomSample(styleGuidelines, 5);
-    parts.push(`Your writing style: ${selectedStyles.join("; ")}`);
+    parts.push(`Your writing style: ${styleGuidelines.join("; ")}`);
   }
 
   if (context.postExamples.length > 0) {
-    const examples = getRandomSample(context.postExamples, 3);
-    parts.push(`Example posts you've written:\n${examples.map((ex) => `- "${ex}"`).join("\n")}`);
+    parts.push(
+      `Example posts you've written:\n${context.postExamples.map((ex) => `- "${ex}"`).join("\n")}`,
+    );
   }
 
   const prompt = parts.join("\n\n");

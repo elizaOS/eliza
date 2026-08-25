@@ -40,24 +40,24 @@ function SourceStatusIcon({ source }: { source: CalendarSourceHealthRow }) {
     case "fresh":
       return (
         <CheckCircle2
-          className={`h-3.5 w-3.5 shrink-0 ${className}`}
+          className={`size-3.5 shrink-0 ${className}`}
           aria-hidden
         />
       );
     case "stale":
       return (
-        <Clock3 className={`h-3.5 w-3.5 shrink-0 ${className}`} aria-hidden />
+        <Clock3 className={`size-3.5 shrink-0 ${className}`} aria-hidden />
       );
     case "error":
       return (
         <TriangleAlert
-          className={`h-3.5 w-3.5 shrink-0 ${className}`}
+          className={`size-3.5 shrink-0 ${className}`}
           aria-hidden
         />
       );
     case "disconnected":
       return (
-        <Unplug className={`h-3.5 w-3.5 shrink-0 ${className}`} aria-hidden />
+        <Unplug className={`size-3.5 shrink-0 ${className}`} aria-hidden />
       );
   }
 }
@@ -95,9 +95,10 @@ export function CalendarSourceHealth({
           {headline}
         </p>
         <Button
-          unstyled
+          variant="ghostMuted"
+          size="tiny"
           type="button"
-          className="flex h-7 shrink-0 items-center gap-1 px-1.5 text-xs font-medium text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="shrink-0"
           onClick={onRefresh}
           disabled={refreshing}
           aria-label={
@@ -111,7 +112,7 @@ export function CalendarSourceHealth({
           }
         >
           <RefreshCw
-            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+            className={`size-3.5 ${refreshing ? "animate-spin" : ""}`}
             aria-hidden
           />
           <span className="hidden sm:inline">

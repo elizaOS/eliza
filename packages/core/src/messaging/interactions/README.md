@@ -64,10 +64,8 @@ a malformed block is left as plain text, never a broken control.
 - `toPlainTextFallback(block, { resolveUrl })` → concise prose for text-only
   transports such as SMS/iMessage, where there is no native control surface.
 - `encodeReplyCallback(value, { maxBytes })` / `decodeCallback(data)` —
-  callback codec that defaults to Telegram's 64-byte `callback_data` limit.
-  Connectors with a larger native budget, such as Discord custom IDs, pass their
-  own limit. Returns null when the answer is too big → caller links out or
-  accepts a free-text reply.
+  legacy presentation codec. Its decoded value is untrusted input and grants no
+  authority. New state-changing controls use the durable session protocol below.
 - `normalizeContentInteractions(content)` — attach parsed blocks to
   `Content.interactions` **without** mutating `text` (so the dashboard's own
   segment renderer keeps interleaving). `stripInteractionMarkers(text)` for prose.
@@ -75,6 +73,82 @@ a malformed block is left as plain text, never a broken control.
 Types: `InteractionBlock` (`FormInteraction | ChoiceInteraction |
 FollowupsInteraction | TaskInteraction | SecretInteraction`) in
 `@elizaos/core` `types/interactions`. `Content.interactions?: InteractionBlock[]`.
+
+## Negotiated delivery and durable callbacks
+
+`ConnectorInteractionCapabilityProfile` is the canonical, versioned capability
+description for one connector account and one target. `MessageConnector`
+implementations resolve it from `(target, delivery context)`; renderers select
+native, signed-hosted, conversational, or sensitive-request delivery from the
+profile rather than branching on a provider name. Every block kind is required,
+unsupported primitives use zero limits, and supported primitives use positive
+limits. `negotiateInteractionDelivery` enforces counts, UTF-8 byte budgets,
+callback size, attachment MIME and byte limits, edit windows, threads, and URL
+limits before selecting a mode. Conversational delivery rejects a canonical
+payload that cannot fit intact; it never delegates truncation to a renderer.
+Signed-hosted delivery additionally requires a host-owned verifier to approve
+the HTTPS URL's authority and signature. The generated `CAPABILITY_MATRIX.md` is the
+reviewable golden contract and its test fails when a registered first-party
+message connector is omitted.
+
+State-changing controls use `MessageInteractionSessionAuthority`. The wire value
+is only `is1:<128-bit opaque reference>`; it contains no answer, identity,
+authorization, credential, or signature. The durable record binds the actor,
+audience, agent, connector account, room, source message, response schema,
+authorization decision, expiry, effect, and stable replay key. A store performs
+atomic `pending → claimed → committed → completed` transitions and retains the
+effect receipt. Reservation claims may expire before commitment. Once committed,
+the host may cross the external effect boundary, but an outcome lost to a crash
+remains ambiguous: it is never transferred, retried, or revoked as if
+cancellation succeeded. Stores expose committed rows and accept verified
+reconciliation receipts without re-executing the effect; bounded adapters may
+expire unreconciled records after their documented operator window. Revocation after render, expiry,
+mismatched context, response tampering, stale claims, and a different replay key
+all fail closed.
+
+Connector plugins access that authority through the registered
+`MessageInteractionHost` service. `prepare` accepts the resolved profile plus
+trusted bindings, authorization, and effect, but returns only the block,
+negotiated delivery, opaque callback, expiry, and profile id needed to render.
+`consume` accepts connector-authenticated bindings and the provider's inbound
+event id, then dispatches through a host-registered effect handler using that id
+as the idempotency key. Its retained receipt carries the provider receipt,
+canonical inbound event id, audit id, and app-state result. Connectors must not
+construct their own authority, store, or effect dispatcher.
+
+`InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
+processes. The agent host's `FileMessageInteractionSessionStore` is durable and
+cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
+commit and a boot/process-generation-qualified stale-owner lock whose atomic,
+shared transition marker prevents retirement from detaching a fresh successor.
+Complete owner inodes publish through a no-replace hardlink; malformed owners
+have an absolute recovery ceiling and unqualified live PIDs fail closed. An
+abandoned transition marker reports `INTERACTION_STORE_RECOVERY_REQUIRED` and
+requires operator recovery after stopping every store user and verifying that
+no host process owns the store; it is never reclaimed through a racy pathname
+unlink and has no bounded automatic recovery. The typed error reports the exact
+marker in `context.markerPath`. Offline recovery is: stop every store user,
+verify no process owns the adjacent `.lock` file, remove exactly the reported
+`.transition` path, fsync its parent directory, then restart.
+Cleanup failures distinguish pre-operation recovery (`committed: false`) from
+post-commit release (`committed: true`) with separate error codes so a caller
+never retries an already committed mutation. All other post-write release
+errors also report `committed: true`; combined operation/release errors preserve
+the structured release code and recovery context. A publisher that finds a
+transition marker after linking its owner performs no mutation and reports both
+paths plus the owner token/inode: offline recovery must remove the verified
+marker and owner while all users are stopped, fsync the parent, then restart.
+Post-rename directory sync or close failures are non-retryable commit outcomes:
+the former reports `committed: "unknown"`, while a failure after successful
+sync reports `committed: true`; callers reconcile by reading the persisted
+session rather than repeating the transition. Dual lock-unlink/marker-cleanup
+failure preserves both errors and the exact owner/marker recovery authority.
+Multi-host deployments must implement the
+same store interface with a transactional database and idempotent effect/outbox
+boundary; the JSON store does not claim distributed exactly-once semantics.
+
+Secrets and OAuth values never enter these response records. A `secret` block
+can only negotiate `sensitive-request`, and ordinary forms reject secret fields.
 
 ## Per-surface rendering matrix
 
@@ -152,9 +226,12 @@ mounts `SensitiveRequestBlock` itself for the secret/OAuth card.
 
 ## Adding a new surface
 
-Implement one function: `parseInteractionBlocks(content.text)` → for each block
-`toNeutralLayout(block, { resolveUrl })` → map `NeutralButton.callbackData`/`.url`
-to the platform's button primitive; send `cleanedText` as the body. For the
-round-trip, decode the platform's callback payload with `decodeCallback` and
-re-inject `value` as an inbound user message. ~60 lines; see
-`plugin-telegram/src/interactions.ts` and `plugin-discord/interactions.ts`.
+Register the connector's mechanically verified capability template, resolve a
+concrete profile for each account/target, and ask the registered
+`MessageInteractionHost` to prepare the delivery. Place only its opaque callback
+reference in the native control. On receipt, pass the connector-authenticated
+actor/account/room/message context and provider event receipt back to the host;
+the host owns authorization, replay, effect dispatch, and durable receipts.
+Conversational fallback must explain the accepted reply shape; signed-hosted
+fallback must use a short-lived authenticated URL; secret/OAuth input must use
+the sensitive-request service.

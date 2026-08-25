@@ -159,6 +159,32 @@ afterEach(() => {
 });
 
 describe("dedicated Cloud account boundary on trusted app shells", () => {
+  it("routes account reads from a local Shared agent to the configured loopback control plane", async () => {
+    setPageLocation("127.0.0.1");
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "http://127.0.0.1:18787",
+    });
+    localStorage.setItem(STEWARD_TOKEN_KEY, "local-test-api-key");
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse({ id: "user-local", organization_id: "org-local" }),
+      );
+    const client = new ElizaClient(
+      "http://127.0.0.1:18787/api/v1/eliza/agents/personal%3Aagent-id",
+    );
+
+    await expect(client.getCloudStatus()).resolves.toMatchObject({
+      connected: true,
+      userId: "user-local",
+      organizationId: "org-local",
+    });
+    expect(String(fetchSpy.mock.calls[0]?.[0])).toBe(
+      "http://127.0.0.1:18787/api/v1/user",
+    );
+  });
+
   it.each(TRUSTED_SHELL_CASES)(
     "preserves a healthy $label Steward session when the dedicated client mirrors the same token",
     async (shell) => {

@@ -336,6 +336,7 @@ app.get("/", async (c) => {
   ): Promise<void> => {
     if (session || starting || closed) return;
     starting = true;
+    const bootstrapStartedAt = Date.now();
     if (event.streamSid !== event.start.streamSid) {
       closeBootstrapBoundary(1008, "stream identity mismatch");
       return;
@@ -366,6 +367,7 @@ app.get("/", async (c) => {
       closeBootstrapBoundary(1008, "invalid stream bootstrap");
       return;
     }
+    const tokenVerifiedAt = Date.now();
     const claim = await awaitTwilioBootstrapPhase(
       claimVoiceSessionToken(claims.jti, claims.exp, rawRedis ?? undefined),
       () => closed,
@@ -376,6 +378,7 @@ app.get("/", async (c) => {
       closeBootstrapBoundary(1008, "stream bootstrap already used");
       return;
     }
+    const tokenClaimedAt = Date.now();
     if (
       event.start.callSid !== claims.callSid ||
       event.start.accountSid !== claims.accountSid
@@ -390,16 +393,22 @@ app.get("/", async (c) => {
       organizationId: claims.organizationId,
       userId: claims.userId,
     });
+    const callConnectedAt = Date.now();
+    const callContextAt = claims.callStartedAt ?? callConnectedAt;
     const callExpSeconds =
-      Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
+      Math.floor(callConnectedAt / 1_000) + resolveMaxCallSeconds(env);
     const prewarmAndRecordCallStart = () =>
       prewarmAndRecordVoiceCallStart(
         () => elizaFetch.prewarm?.(),
         () =>
           elizaFetch.recordLifecycleEvent({
             id: `twilio-call:${claims.callSid}:started`,
-            content: callStartedEvent(claims.previousInteractionAt),
-            createdAt: Date.now(),
+            content: callStartedEvent(
+              claims.returningCaller,
+              claims.previousInteractionAt,
+              callContextAt,
+            ),
+            createdAt: callConnectedAt,
           }),
       );
     session = new VoiceSession({
@@ -426,6 +435,9 @@ app.get("/", async (c) => {
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
       prewarmElizaContext: prewarmAndRecordCallStart,
+      // Speak immediately while prewarmAndRecordCallStart hydrates runtime,
+      // history, admission, and pricing in parallel. The previous generated
+      // opener serialized a complete model turn ahead of first audio.
       openingGreeting: callOpeningGreeting(claims.returningCaller),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
@@ -447,11 +459,16 @@ app.get("/", async (c) => {
       downlink,
     });
     session.start();
+    const sessionStartedAt = Date.now();
     for (const frame of pendingMedia.splice(0)) session.pushUplinkAudio(frame);
     logger.info("[twilio-media] realtime call connected", {
       callSid: event.start.callSid,
       streamSid,
       agentId: claims.agentId,
+      tokenVerificationMs: tokenVerifiedAt - bootstrapStartedAt,
+      tokenClaimMs: tokenClaimedAt - tokenVerifiedAt,
+      sessionConstructionMs: sessionStartedAt - tokenClaimedAt,
+      bootstrapTotalMs: sessionStartedAt - bootstrapStartedAt,
     });
   };
 

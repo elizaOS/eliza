@@ -49,7 +49,9 @@ export function SqlEditorPanel({
           }}
           placeholder={t("databaseview.SELECTFROMMemori")}
           rows={6}
-          className="w-full bg-bg/95 border-border/50 text-txt text-sm font-mono resize-y leading-relaxed rounded-sm custom-scrollbar"
+          variant="documentEditor"
+          density="relaxed"
+          className="custom-scrollbar"
           spellCheck={false}
         />
         <div className="flex items-center gap-3 mt-3">
@@ -89,9 +91,8 @@ export function SqlEditorPanel({
           </div>
           {queryHistory.slice(0, 5).map((q) => (
             <Button
-              variant="ghost"
+              variant="queryHistory"
               key={q}
-              className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono text-muted-strong hover:text-txt"
               onClick={() => setQueryText(q)}
             >
               <span className="truncate">{q}</span>
@@ -117,7 +118,7 @@ export function SqlEditorPanel({
         <PagePanel.Empty
           variant="inset"
           className="mt-4 min-h-[12rem]"
-          icon={<SearchX className="h-6 w-6" aria-hidden />}
+          icon={<SearchX className="size-6" aria-hidden />}
           title={t("databaseview.QueryReturnedNoRo")}
         />
       ) : null}

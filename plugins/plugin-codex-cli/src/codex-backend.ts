@@ -12,7 +12,16 @@
  * Function-call `arguments` JSON is type-checked by the bounded walker in
  * `codex-json-value.ts`.
  */
-import { ElizaError, logger, type ChatMessage, type JsonValue, type ToolCall, type ToolDefinition } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+  type ChatMessage,
+  type JsonValue,
+  type ToolCall,
+  type ToolDefinition,
+} from "@elizaos/core";
 import { CODEX_JSON_UNBOUNDED, isJsonRecord } from "./codex-json-value";
 import { parseSSE } from "./sse-parser";
 import { toOpenAITool, type OpenAITool } from "./tool-format-openai";
@@ -180,7 +189,7 @@ export class CodexBackend {
     }
     if (!res.ok) {
       const errText = await safeReadText(res);
-      throw new Error(`codex /responses returned ${res.status} ${res.statusText} :: ${errText.slice(0, 512)}`);
+      throw new Error(`codex /responses returned ${res.status} ${res.statusText} :: ${truncateWellFormed(toWellFormedUnicode(errText), 512)}`);
     }
     if (!res.body) throw new Error("codex /responses returned no body");
     return consumeResponseStream(res.body, params.abortSignal, params.onTextDelta);
@@ -530,7 +539,9 @@ async function consumeResponseStream(
 }
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
 }
 
 function validateBaseUrl(value: string): string {

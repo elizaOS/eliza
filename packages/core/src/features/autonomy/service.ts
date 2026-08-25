@@ -29,7 +29,10 @@ import {
 } from "../../types";
 import { Service } from "../../types/service";
 import { stringToUuid } from "../../utils";
-import { truncateWellFormed } from "../../utils/well-formed";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed";
 import { runAutonomyPostResponse } from "./execution-facade";
 import type { AutonomyStatus } from "./types";
 
@@ -49,8 +52,7 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
 export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
 const AUTONOMY_RECENT_THOUGHT_LIMIT = 10;
-const AUTONOMY_CONTEXT_MEMORY_LIMIT = 80;
-const AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
+const _AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
 const AUTONOMY_INCLUDE_ALL_ROOMS_SETTING = "AUTONOMY_INCLUDE_ALL_ROOMS";
 
 interface AutonomyCompactionCacheEntry {
@@ -68,6 +70,35 @@ interface AutonomyCompactionCacheEntry {
  * When enableAutonomy is true, a recurring section is registered;
  * the batcher's background tick and minCycleMs drive when it drains.
  */
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+function compareMemoryByCreatedAtDesc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
+export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export class AutonomyService extends Service {
 	static serviceType = AUTONOMY_SERVICE_TYPE;
 	static serviceName = "Autonomy";
@@ -77,6 +108,7 @@ export class AutonomyService extends Service {
 	protected autonomousRoomId: UUID;
 	protected autonomousWorldId: UUID;
 	private isThinking = false;
+	private warnedInvalidAutonomyModelSize = false;
 	protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
 	private releaseInternalActorRegistration?: () => void;
 	private autonomyCompactionStats = {
@@ -91,6 +123,65 @@ export class AutonomyService extends Service {
 		const raw = this.runtime.getSetting("AUTONOMY_MODE");
 		if (raw === "task") return "task";
 		return "continuous";
+	}
+
+	/**
+	 * Operator override for the autonomy loop interval (`AUTONOMY_INTERVAL_MS`).
+	 * The 30s default fires ~2,900 background drains/day on an idle agent (live
+	 * sol-dev: 2,248 no-op drains in 29h, each a full large-model call), so a
+	 * deployment can widen the cadence without a code change. Clamped to the
+	 * same [5s, 600s] range as `setLoopInterval`; unset or malformed values keep
+	 * the default.
+	 */
+	private resolveConfiguredIntervalMs(): number | null {
+		const raw = this.runtime.getSetting("AUTONOMY_INTERVAL_MS");
+		if (raw === null || raw === undefined || raw === "") return null;
+		const value =
+			typeof raw === "number" && Number.isSafeInteger(raw)
+				? raw
+				: typeof raw === "string" && /^(?:0|[1-9]\d*)$/u.test(raw.trim())
+					? Number(raw.trim())
+					: Number.NaN;
+		if (!Number.isSafeInteger(value) || value <= 0) {
+			this.runtime.logger.warn(
+				{
+					src: "autonomy",
+					agentId: this.runtime.agentId,
+					setting: "AUTONOMY_INTERVAL_MS",
+				},
+				"Ignoring invalid AUTONOMY_INTERVAL_MS; using the 30000ms default",
+			);
+			return null;
+		}
+		return Math.min(600_000, Math.max(5_000, value));
+	}
+
+	/**
+	 * Model size preference for autonomy background thinks
+	 * (`AUTONOMY_MODEL_SIZE`: "small" | "large", default "large"). Background
+	 * autonomy is deferred reasoning — an idle tick mostly re-affirms a frozen
+	 * plan — so an operator can route it to the small/cheap model tier while
+	 * interactive turns keep the large one.
+	 */
+	private resolveAutonomyModelSize(): "small" | "large" {
+		const raw = this.runtime.getSetting("AUTONOMY_MODEL_SIZE");
+		if (raw === null || raw === undefined || raw === "") return "large";
+		if (typeof raw === "string") {
+			const normalized = raw.trim().toLowerCase();
+			if (normalized === "small" || normalized === "large") return normalized;
+		}
+		if (!this.warnedInvalidAutonomyModelSize) {
+			this.warnedInvalidAutonomyModelSize = true;
+			this.runtime.logger.warn(
+				{
+					src: "autonomy",
+					agentId: this.runtime.agentId,
+					setting: "AUTONOMY_MODEL_SIZE",
+				},
+				"Ignoring invalid AUTONOMY_MODEL_SIZE; using the large model tier",
+			);
+		}
+		return "large";
 	}
 
 	private getTargetRoomId(): UUID | null {
@@ -134,7 +225,6 @@ export class AutonomyService extends Service {
 
 		const autonomyMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: AUTONOMY_CONTEXT_MEMORY_LIMIT,
 			tableName: "memories",
 		});
 		const autonomySection =
@@ -160,13 +250,11 @@ export class AutonomyService extends Service {
 		const messageRoomIds = orderedRoomIds.filter(
 			(roomId) => roomId !== this.autonomousRoomId,
 		);
-		const perRoomLimit = 10;
 		const messages =
 			messageRoomIds.length > 0
 				? await this.runtime.getMemoriesByRoomIds({
 						tableName: "messages",
 						roomIds: messageRoomIds,
-						limit: perRoomLimit * messageRoomIds.length,
 					})
 				: [];
 
@@ -180,17 +268,12 @@ export class AutonomyService extends Service {
 		const entityNames = await this.buildEntityNameLookup(entityIds);
 
 		const messagesByRoom = new Map<UUID, Memory[]>();
-		const sortedMessages = [...messages].sort(
-			(a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
-		);
+		const sortedMessages = [...messages].sort(compareMemoryByCreatedAtDesc);
 		for (const memory of sortedMessages) {
 			if (memory.entityId === this.runtime.agentId) {
 				continue;
 			}
 			const bucket = messagesByRoom.get(memory.roomId) ?? [];
-			if (bucket.length >= perRoomLimit) {
-				continue;
-			}
 			bucket.push(memory);
 			messagesByRoom.set(memory.roomId, bucket);
 		}
@@ -223,7 +306,7 @@ export class AutonomyService extends Service {
 	): Promise<string> {
 		const autonomyThoughtMemories = autonomyMemories
 			.filter((memory) => this.isAutonomousResponseMemory(memory))
-			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+			.sort(compareMemoryByCreatedAtAsc);
 
 		if (autonomyThoughtMemories.length === 0) {
 			return "Autonomous thoughts: (none)";
@@ -348,40 +431,23 @@ export class AutonomyService extends Service {
 
 	private compactAutonomyThoughtsDeterministically(memories: Memory[]): string {
 		const importantLines: string[] = [];
-		const seen = new Set<string>();
 		for (const memory of memories) {
-			const text = this.readMemoryText(memory).replace(/\s+/g, " ").trim();
+			const text = toWellFormedUnicode(this.readMemoryText(memory)).trim();
 			if (!text) {
 				continue;
 			}
-			const normalized = text.toLowerCase();
-			if (seen.has(normalized)) {
-				continue;
-			}
-			seen.add(normalized);
 			const marker = new Date(memory.createdAt ?? Date.now()).toISOString();
-			importantLines.push(`- ${marker}: ${truncateWellFormed(text, 500)}`);
+			importantLines.push(`- ${marker}: ${text}`);
 		}
 
-		const header = `Compacted ${memories.length} prior autonomous thoughts. Preserve standing goals, unresolved blockers, commitments, and recently discovered facts:`;
-		let summary = [header, ...importantLines].join("\n");
-		if (summary.length > AUTONOMY_COMPACTED_MAX_CHARS) {
-			const tailBudget = Math.max(
-				0,
-				AUTONOMY_COMPACTED_MAX_CHARS - header.length - 16,
-			);
-			const tail = importantLines
-				.join("\n")
-				.slice(-tailBudget)
-				.replace(/^[^\n]*\n?/, "");
-			summary = [header, "...", tail].filter(Boolean).join("\n");
-		}
-		return summary;
+		const header = `${memories.length} prior autonomous thoughts:`;
+		return [header, ...importantLines].join("\n");
 	}
 
 	constructor() {
 		super();
-		// Default interval of 30 seconds
+		// Default interval of 30 seconds (see resolveConfiguredIntervalMs for the
+		// AUTONOMY_INTERVAL_MS override applied at start()).
 		this.intervalMs = 30000;
 		// Generate unique room ID for autonomous thoughts
 		this.autonomousRoomId = stringToUuid(uuidv4());
@@ -401,6 +467,16 @@ export class AutonomyService extends Service {
 	static async start(runtime: IAgentRuntime): Promise<AutonomyService> {
 		const service = new AutonomyService();
 		service.runtime = runtime;
+		// Apply the operator interval override before the batcher section is
+		// registered so minCycleMs is correct from the first drain.
+		const configuredInterval = service.resolveConfiguredIntervalMs();
+		if (configuredInterval !== null) {
+			service.intervalMs = configuredInterval;
+			runtime.logger.info(
+				{ src: "autonomy", agentId: runtime.agentId },
+				`Autonomy interval overridden via AUTONOMY_INTERVAL_MS: ${configuredInterval}ms`,
+			);
+		}
 		service.releaseInternalActorRegistration =
 			registerRuntimeManagedInternalActor(runtime, service.autonomyEntityId);
 		try {
@@ -638,7 +714,6 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: 3,
 			tableName: "memories",
 		});
 
@@ -744,7 +819,7 @@ export class AutonomyService extends Service {
 		const callback = async (content: Content): Promise<Memory[]> => {
 			this.runtime.logger.debug(
 				{ src: "autonomy", agentId: this.runtime.agentId },
-				`Response generated: ${content.text?.substring(0, 100)}...`,
+				`Response generated: ${truncateWellFormed(toWellFormedUnicode(content.text ?? ""), 100)}...`,
 			);
 			// Persist response text for UI log views.
 			if (typeof content.text === "string" && content.text.trim().length > 0) {
@@ -906,7 +981,6 @@ export class AutonomyService extends Service {
 
 		const recentMemories = await this.runtime.getMemories({
 			roomId: this.autonomousRoomId,
-			limit: 3,
 			tableName: "memories",
 		});
 
@@ -1061,7 +1135,7 @@ export class AutonomyService extends Service {
 				const callback = async (content: Content): Promise<Memory[]> => {
 					this.runtime.logger.debug(
 						{ src: "autonomy", agentId: this.runtime.agentId },
-						`Autonomy response: ${content.text?.substring(0, 100)}...`,
+						`Autonomy response: ${truncateWellFormed(toWellFormedUnicode(content.text ?? ""), 100)}...`,
 					);
 					if (
 						typeof content.text === "string" &&
@@ -1118,10 +1192,13 @@ export class AutonomyService extends Service {
 				text: "",
 				providers: [],
 			},
-			model: "large",
+			// Background autonomy thinks default to the large tier; operators can
+			// route them to the small/cheap tier via AUTONOMY_MODEL_SIZE=small
+			// (idle ticks mostly re-affirm a frozen plan and don't need the
+			// flagship model).
+			model: this.resolveAutonomyModelSize(),
 			execOptions: {
 				temperature: 0.2,
-				maxTokens: 512,
 			},
 		});
 		this.runtime.logger.debug(

@@ -37,7 +37,11 @@ import macosAlarmPlugin from "@elizaos/macosalarm";
 bun run --cwd plugins/plugin-native-macosalarm build
 ```
 
-This runs `tsc --noCheck` and then `swiftc swift-helper/main.swift -O -o bin/macosalarm-helper`.
+This runs `tsc --noCheck` and then ensures `bin/macosalarm-helper` contains a
+Mach-O slice compatible with the current Node architecture. The tracked helper
+is reused only when both its source-and-flags stamp and target architecture
+match; otherwise `swiftc swift-helper/main.swift -O -o bin/macosalarm-helper`
+rebuilds it.
 
 ## Configuration
 
@@ -78,5 +82,7 @@ The `ALARM` action requires the agent's user to have at minimum the `ADMIN` role
 ## Limitations
 
 - macOS only — no Windows or Linux support.
-- The Swift binary must be compiled locally; pre-built binaries are not bundled in the npm package.
+- The npm package includes the tracked helper under `bin/`. Package and release
+  builds validate its Mach-O architecture and rebuild it locally with `swiftc`
+  when it is incompatible with the current macOS target.
 - `UNUserNotificationCenter` requires the helper to run from a signed app bundle. Invoked as a bare CLI it throws an `NSInternalInconsistencyException` (`bundleProxyForCurrentProcess is nil`); packaging/signing is owned downstream.

@@ -99,22 +99,13 @@ export function HomeWidgetCard({
 }: HomeWidgetCardProps): React.JSX.Element {
   return (
     <Button
-      variant="ghost"
+      variant="surface"
+      size="card"
+      align="start"
       data-testid={testId}
       aria-label={ariaLabel}
       title={label}
       onClick={onActivate}
-      className={cn(
-        // A solid token tile. The old translucent black-opacity + per-card blur
-        // stacked a new backdrop-filter for every resident. The card surface is
-        // now genuinely opaque at the recipe level; tone is keyed by the rail,
-        // chip, and badge instead of another glass layer.
-        HOME_WIDGET_SOLID_TILE_CLASS,
-        "items-center gap-3 whitespace-normal px-3.5 py-3 text-[var(--brand-white)]",
-        "transition-[transform,border-color,background-color] duration-150",
-        "hover:border-[color:color-mix(in_srgb,var(--brand-white)_34%,var(--brand-black))] hover:bg-[var(--brand-black)]",
-        "active:scale-[0.985] motion-reduce:active:scale-100",
-      )}
     >
       {/* Left accent rail: a quiet ember stripe at rest, brightening on hover,
           a deliberate edge detail, not a generic one-sided border. */}
@@ -131,7 +122,7 @@ export function HomeWidgetCard({
       />
       <span
         className={cn(
-          "relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
+          "relative inline-flex size-9 shrink-0 items-center justify-center rounded-xl border [&>svg]:h-[18px] [&>svg]:w-[18px]",
           TONE_CHIP_CLASS[tone],
         )}
       >
@@ -142,7 +133,7 @@ export function HomeWidgetCard({
           read as a real dashboard), with the single high-priority datum below
           it. When a widget supplies no datum, the label carries the row alone. */}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-xs-tight font-medium uppercase tracking-[0.08em] text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)]">
+        <span className="truncate text-xs-tight font-medium uppercase tracking-wider text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)]">
           {label}
         </span>
         {value != null ? (

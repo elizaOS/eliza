@@ -186,6 +186,11 @@ function expectApprovalFlow(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "deterministic-computeruse-progress-approvals",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Computer-use approval relay buttons",
   domain: "computeruse",
   tags: ["pr", "deterministic", "zero-cost", "computeruse", "approvals"],

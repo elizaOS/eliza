@@ -1197,7 +1197,10 @@ type TaggedMemory = Memory & { _table: string };
 
 /** Ordering key — `Memory.createdAt` is optional; rows without one sort oldest. */
 function memoryCreatedAt(memory: { createdAt?: number }): number {
-	return memory.createdAt ?? 0;
+	return typeof memory.createdAt === "number" &&
+		Number.isFinite(memory.createdAt)
+		? memory.createdAt
+		: 0;
 }
 
 /** Newest-first comparator shared by the browse/feed list routes. */
@@ -2596,10 +2599,20 @@ function resolveAssignedModel(slot: string): InstalledModelEntry | null {
 	}
 	return (
 		installed.sort((left, right) => {
-			const leftUsed = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
-			const rightUsed = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+			const leftTime = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
+			const rightTime = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+			const leftUsed = Number.isFinite(leftTime) ? leftTime : 0;
+			const rightUsed = Number.isFinite(rightTime) ? rightTime : 0;
 			if (rightUsed !== leftUsed) return rightUsed - leftUsed;
-			return (right.sizeBytes ?? 0) - (left.sizeBytes ?? 0);
+			const rightBytes =
+				typeof right.sizeBytes === "number" && Number.isFinite(right.sizeBytes)
+					? right.sizeBytes
+					: 0;
+			const leftBytes =
+				typeof left.sizeBytes === "number" && Number.isFinite(left.sizeBytes)
+					? left.sizeBytes
+					: 0;
+			return rightBytes - leftBytes;
 		})[0] ?? null
 	);
 }
@@ -2884,9 +2897,7 @@ function cleanIosNativeConversationReply(raw: string): string {
 		.replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
 		.trim();
 	const compact = withoutTokens.replace(/\s+/g, " ").trim();
-	if (!compact) return "";
-	const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
-	return (firstSentence ?? compact).trim();
+	return compact;
 }
 
 async function maybeGenerateIosNativeConversationReply(
@@ -2910,7 +2921,6 @@ async function maybeGenerateIosNativeConversationReply(
 				},
 				{ role: "user", content: prompt },
 			],
-			maxTokens: 32,
 			temperature: 0,
 			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
 			// When the caller is streaming, forward incremental model tokens so the
@@ -2962,8 +2972,8 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		}
 		const prompt = flattenChatParamsForPrompt(params);
 		const structuredSlot = isStructuredGenerationSlot(slot);
-		const requestedMaxTokens = positiveInteger(params.maxTokens) ?? 256;
-		const maxTokens = Math.min(requestedMaxTokens, structuredSlot ? 256 : 128);
+		const maxTokens =
+			positiveInteger(params.maxTokens) ?? nativeLlamaContextSize();
 		const result = await callIosHost(
 			"llama_generate",
 			{
@@ -2989,6 +2999,24 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 		const text =
 			typeof record.text === "string" ? record.text : String(result ?? "");
 		const cleanedText = stripReasoningBlocks(text);
+		if (record.incomplete === true) {
+			throw new ElizaError(
+				"The iOS local model exhausted its generation boundary before completing the response",
+				{
+					code: "MODEL_INCOMPLETE_OUTPUT",
+					context: {
+						provider: IOS_NATIVE_LLAMA_PROVIDER,
+						modelId: nativeLlamaState.modelId,
+						promptTokens: record.promptTokens ?? record.prompt_tokens,
+						outputTokens: record.outputTokens ?? record.output_tokens,
+						reason:
+							record.finishReason ??
+							record.finish_reason ??
+							"generation_boundary",
+					},
+				},
+			);
+		}
 		if (params.onStreamChunk && cleanedText) {
 			await params.onStreamChunk(cleanedText, crypto.randomUUID(), cleanedText);
 		}
@@ -4583,10 +4611,15 @@ export async function handleDirectCoreRoute(
 
 	if (method === "GET" && pathname === "/api/conversations") {
 		return jsonResponse(200, {
-			conversations: Array.from(backend.conversations.values()).sort(
-				(a, b) =>
-					new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-			),
+			conversations: Array.from(backend.conversations.values()).sort((a, b) => {
+				const bTime = Number.isFinite(new Date(b.updatedAt).getTime())
+					? new Date(b.updatedAt).getTime()
+					: 0;
+				const aTime = Number.isFinite(new Date(a.updatedAt).getTime())
+					? new Date(a.updatedAt).getTime()
+					: 0;
+				return bTime - aTime;
+			}),
 		});
 	}
 

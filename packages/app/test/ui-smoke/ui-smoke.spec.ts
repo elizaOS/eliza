@@ -39,9 +39,10 @@ test("chat, apps, and settings routes render through the real shell", async ({
 
   await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
-  // My Apps is the canonical bare /apps destination; the launcher grid lives
-  // at /views.
-  await expect(page.getByRole("heading", { name: "My Apps" })).toBeVisible({
+  // Bare /apps is a retired My Apps deep link (#17031): it lands on the
+  // consolidated Projects surface with its Apps segment pre-selected; the
+  // launcher grid lives at /views.
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible({
     timeout: 30_000,
   });
   await expect(page.getByText("Install, create, and run")).toBeVisible();

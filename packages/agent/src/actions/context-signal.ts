@@ -111,10 +111,9 @@ export function hasContextSignalSync(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
 ): boolean {
   const texts = [
-    ...recentConversationTextsFromState(state, contextLimit),
+    ...recentConversationTextsFromState(state),
     messageText(message).trim(),
   ].filter((t) => t.length > 0);
 
@@ -142,7 +141,6 @@ export function hasContextSignalSyncForKey(
   state: State | undefined,
   key: ContextSignalKey,
   options?: {
-    contextLimit?: number;
     includeAllLocales?: boolean;
     locale?: unknown;
   },
@@ -151,13 +149,7 @@ export function hasContextSignalSyncForKey(
   const spec = resolveContextSignalSpec(key, locale, {
     includeAllLocales: options?.includeAllLocales ?? true,
   });
-  return hasContextSignalSync(
-    message,
-    state,
-    spec.strongTerms,
-    spec.weakTerms,
-    options?.contextLimit ?? spec.contextLimit,
-  );
+  return hasContextSignalSync(message, state, spec.strongTerms, spec.weakTerms);
 }
 
 export function hasSelectedActionContext(
@@ -187,18 +179,11 @@ export function hasSelectedContextOrSignalSync(
   actionContexts: readonly AgentContext[],
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
 ): boolean {
   if (hasSelectedActionContext(message, state, actionContexts)) {
     return true;
   }
-  return hasContextSignalSync(
-    message,
-    state,
-    strongTerms,
-    weakTerms,
-    contextLimit,
-  );
+  return hasContextSignalSync(message, state, strongTerms, weakTerms);
 }
 
 /**
@@ -211,21 +196,12 @@ export async function hasContextSignal(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = 8,
 ): Promise<boolean> {
-  const stateTexts = recentConversationTextsFromState(state, contextLimit);
-  let texts: string[];
-
-  if (stateTexts.length >= contextLimit) {
-    texts = stateTexts;
-  } else {
-    texts = await collectRecentConversationTexts({
-      runtime,
-      message,
-      state,
-      limit: contextLimit,
-    });
-  }
+  let texts = await collectRecentConversationTexts({
+    runtime,
+    message,
+    state,
+  });
 
   texts = [...texts, messageText(message).trim()].filter((t) => t.length > 0);
 

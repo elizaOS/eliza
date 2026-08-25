@@ -18,8 +18,12 @@
  * Each test states whether it reproduces the pre-fix bug (RED against the old
  * race-without-abort behavior).
  */
+import { TurnAbortedError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { runGenerationWithAbortableTimeout } from "../messages.ts";
+import {
+	designedTurnAbortReason,
+	runGenerationWithAbortableTimeout,
+} from "../messages.ts";
 
 /** Deferred promise helper — lets a test control exactly when generation settles. */
 function deferred<T>() {
@@ -233,5 +237,27 @@ describe("runGenerationWithAbortableTimeout", () => {
 		expect(secondSignal).toBeDefined();
 		expect(secondSignal).not.toBe(firstSignal);
 		expect(secondSignal?.aborted).toBe(false);
+	});
+});
+
+describe("designedTurnAbortReason", () => {
+	it("requires core's TURN_ABORTED code and explicit reason", () => {
+		const aborted = new TurnAbortedError("user-requested");
+		expect(designedTurnAbortReason(aborted)).toBe("user-requested");
+		expect(designedTurnAbortReason(new TurnAbortedError("runtime-stop"))).toBe(
+			"runtime-stop",
+		);
+		expect(designedTurnAbortReason({ code: "TURN_ABORTED" })).toBeNull();
+		expect(
+			designedTurnAbortReason({
+				code: "TURN_ABORTED",
+				reason: "forged-provider-error",
+			}),
+		).toBeNull();
+		expect(
+			designedTurnAbortReason(new Error("Turn aborted: anything")),
+		).toBeNull();
+		expect(designedTurnAbortReason(new Error("Bad Request"))).toBeNull();
+		expect(designedTurnAbortReason(undefined)).toBeNull();
 	});
 });

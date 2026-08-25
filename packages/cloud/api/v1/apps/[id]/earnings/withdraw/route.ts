@@ -10,8 +10,8 @@ import {
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { isAppKeyOutOfScope } from "@/lib/auth/app-key-scope";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appEarningsService } from "@/lib/services/app-earnings";
 import { appsService } from "@/lib/services/apps";
@@ -203,7 +203,7 @@ async function handlePOST(
 
 const ROUTE_PARAM_SPEC = [{ name: "id", splat: false }] as const;
 const honoRouter = new Hono<AppEnv>();
-honoRouter.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
+honoRouter.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     return await handlePOST(c.req.raw, nextStyleParams(c, ROUTE_PARAM_SPEC));
   } catch (error) {

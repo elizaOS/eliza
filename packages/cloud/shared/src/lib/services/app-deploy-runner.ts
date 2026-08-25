@@ -197,10 +197,13 @@ export async function resolveImageRef(
   return image;
 }
 
-/** A stable, DNS/Docker-safe container name for an app: `app-<first 12 of id>`. */
-export function containerNameForApp(appId: string): string {
+/** A DNS/Docker-safe name isolated to one deployment generation when supplied. */
+export function containerNameForApp(appId: string, deploymentGeneration?: string): string {
   const slug = appId.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return `app-${slug.slice(0, 12)}`;
+  const base = `app-${slug.slice(0, 12)}`;
+  if (!deploymentGeneration) return base;
+  const generationSlug = deploymentGeneration.toLowerCase().replace(/[^a-f0-9]/g, "");
+  return `${base}-g${generationSlug.slice(0, 8)}`;
 }
 
 export class DefaultAppDeployRunner implements AppDeployRunner {
@@ -210,10 +213,23 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     this.deps = deps;
   }
 
-  async run(appId: string, options: AppDeployRunOptions = {}): Promise<void> {
-    const app = await appsService.getById(appId);
+  async run(
+    appId: string,
+    deploymentGeneration: string,
+    options: AppDeployRunOptions = {},
+  ): Promise<void> {
+    const app = await appsService.updateDeploymentGeneration(
+      appId,
+      deploymentGeneration,
+      { deployment_status: "deploying" },
+      ["building"],
+    );
     if (!app) {
-      throw new Error(`App ${appId} not found`);
+      logger.info("[AppDeployRunner] ignored stale deployment generation", {
+        appId,
+        deploymentGeneration,
+      });
+      return;
     }
 
     const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
@@ -230,7 +246,7 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
       repoUrl: app.github_repo ?? undefined,
       organizationId: app.organization_id,
     });
-    const containerName = containerNameForApp(appId);
+    const containerName = containerNameForApp(appId, deploymentGeneration);
 
     const enqueuer = new ContainerJobEnqueuer(this.deps.jobsWriter);
 
@@ -268,16 +284,22 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
         // derivation as the agent path), so the deploy-status poll can surface
         // it immediately. Skipped when no public base domain is configured.
         const endpoint = deriveAppPublicUrl(containerId);
-        await appsService.update(id, {
-          metadata: { ...existingMeta, containerId },
-          ...(endpoint ? { production_url: endpoint.url } : {}),
-        });
+        await appsService.updateDeploymentGeneration(
+          id,
+          deploymentGeneration,
+          {
+            metadata: { ...existingMeta, containerId },
+            ...(endpoint ? { production_url: endpoint.url } : {}),
+          },
+          ["deploying"],
+        );
       },
     };
 
     const result = await deployApp(
       {
         appId,
+        deploymentGeneration,
         organizationId: app.organization_id,
         userId: app.created_by_user_id,
         containerName,

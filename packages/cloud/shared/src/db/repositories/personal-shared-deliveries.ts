@@ -55,6 +55,10 @@ export async function findReusablePersonalDelivery(
         discordUsername: string;
         discordGlobalName?: string | null;
         discordAvatarUrl?: string | null;
+      }
+    | {
+        platform: "phone";
+        phoneNumber: string;
       },
 ): Promise<ReusablePersonalDelivery | null> {
   const canonicalIdentity =
@@ -72,7 +76,8 @@ export async function findReusablePersonalDelivery(
             OR canonical.telegram_first_name = ${params.telegramFirstName ?? null}
           )
         `
-      : sql`
+      : params.platform === "discord"
+        ? sql`
           canonical.discord_id = ${params.discordId}
           AND canonical.discord_username IS NOT DISTINCT FROM projection.discord_username
           AND canonical.discord_global_name IS NOT DISTINCT FROM projection.discord_global_name
@@ -86,11 +91,19 @@ export async function findReusablePersonalDelivery(
             ${params.discordAvatarUrl === undefined}
             OR canonical.discord_avatar_url IS NOT DISTINCT FROM ${params.discordAvatarUrl ?? null}
           )
+        `
+        : sql`
+          canonical.phone_number = ${params.phoneNumber}
+          AND canonical.phone_verified = TRUE
+          AND canonical.phone_number IS NOT DISTINCT FROM projection.phone_number
+          AND projection.phone_verified = TRUE
         `;
   const projectedIdentity =
     params.platform === "telegram"
       ? sql`projection.telegram_id = ${params.telegramId}`
-      : sql`projection.discord_id = ${params.discordId}`;
+      : params.platform === "discord"
+        ? sql`projection.discord_id = ${params.discordId}`
+        : sql`projection.phone_number = ${params.phoneNumber}`;
 
   const [row] = await sqlRows<ReusablePersonalDeliveryRow>(
     dbWrite,

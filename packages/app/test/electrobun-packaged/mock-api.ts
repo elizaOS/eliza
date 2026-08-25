@@ -9,6 +9,7 @@ import { WebSocket, WebSocketServer } from "ws";
 
 export interface MockApiServerOptions {
   port?: number;
+  host?: string;
   firstRunComplete?: boolean;
   assistantReplyText?: string;
   auth?: {
@@ -30,6 +31,9 @@ export interface MockApiServerOptions {
 export interface MockApiServer {
   baseUrl: string;
   requests: string[];
+  authStatusResponses: JsonObject[];
+  authMeChallenges: JsonObject[];
+  authMeResponses: JsonObject[];
   broadcastAgentEvent: (payload: JsonObject) => void;
   waitForWebSocketClients: (
     count?: number,
@@ -346,6 +350,9 @@ export async function startMockApiServer(
   options: MockApiServerOptions = {},
 ): Promise<MockApiServer> {
   const requests: string[] = [];
+  const authStatusResponses: JsonObject[] = [];
+  const authMeChallenges: JsonObject[] = [];
+  const authMeResponses: JsonObject[] = [];
   let firstRunComplete = Boolean(options.firstRunComplete);
   let agentState: AgentState = firstRunComplete ? "running" : "not_started";
   let permissionStates = mergePermissionsState(
@@ -549,11 +556,17 @@ export async function startMockApiServer(
     }
 
     if (method === "GET" && pathname === "/api/auth/status") {
-      json(res, 200, {
+      const authenticated =
+        Boolean(requiredAuthToken) &&
+        req.headers.authorization === `Bearer ${requiredAuthToken}`;
+      const payload = {
         required: Boolean(requiredAuthToken),
+        authenticated,
         pairingEnabled,
         expiresAt: pairingExpiresAt,
-      });
+      };
+      authStatusResponses.push(payload);
+      json(res, 200, payload);
       return;
     }
     if (method === "POST" && pathname === "/api/auth/pair") {
@@ -575,6 +588,26 @@ export async function startMockApiServer(
       return;
     }
 
+    if (
+      method === "GET" &&
+      pathname === "/api/auth/me" &&
+      requiredAuthToken &&
+      req.headers.authorization !== `Bearer ${requiredAuthToken}`
+    ) {
+      const payload = {
+        reason: "remote_auth_required",
+        access: {
+          mode: "remote",
+          passwordConfigured: true,
+          ownerConfigured: false,
+          role: "GUEST",
+        },
+      };
+      authMeChallenges.push(payload);
+      json(res, 401, payload);
+      return;
+    }
+
     if (requiredAuthToken) {
       const authHeader = req.headers.authorization ?? "";
       if (authHeader !== `Bearer ${requiredAuthToken}`) {
@@ -584,19 +617,27 @@ export async function startMockApiServer(
     }
 
     if (method === "GET" && pathname === "/api/auth/me") {
-      json(res, 200, {
+      const localAccess = !requiredAuthToken;
+      const payload = {
         identity: {
-          id: "local-agent",
-          displayName: "Local Agent",
+          id: localAccess ? "local-agent" : "bearer-agent",
+          displayName: localAccess ? "Local Agent" : "API User",
           kind: "machine",
         },
-        session: { id: "local", kind: "local", expiresAt: null },
-        access: {
-          mode: "local",
-          passwordConfigured: false,
-          ownerConfigured: false,
+        session: {
+          id: localAccess ? "local" : "bearer",
+          kind: localAccess ? "local" : "machine",
+          expiresAt: null,
         },
-      });
+        access: {
+          mode: localAccess ? "local" : "bearer",
+          passwordConfigured: !localAccess,
+          ownerConfigured: false,
+          role: "OWNER",
+        },
+      };
+      authMeResponses.push(payload);
+      json(res, 200, payload);
       return;
     }
 
@@ -1789,16 +1830,20 @@ export async function startMockApiServer(
     );
   };
 
+  const host = options.host?.trim() || "127.0.0.1";
   await new Promise<void>((resolve) => {
-    server.listen(options.port ?? 2138, "127.0.0.1", resolve);
+    server.listen(options.port ?? 2138, host, resolve);
   });
 
   const address = server.address() as AddressInfo;
-  const baseUrl = `http://127.0.0.1:${address.port}`;
+  const baseUrl = `http://${host}:${address.port}`;
 
   return {
     baseUrl,
     requests,
+    authStatusResponses,
+    authMeChallenges,
+    authMeResponses,
     broadcastAgentEvent,
     waitForWebSocketClients,
     close: async () => {

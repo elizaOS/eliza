@@ -11,9 +11,9 @@ import { Button } from "../../../components/ui/button";
 export function DashboardRouteError({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-white">
-      <div className="flex items-center justify-center w-16 h-16 rounded-sm border border-red-500/25 bg-red-500/10">
+      <div className="flex items-center justify-center size-16 rounded-sm border border-destructive/25 bg-destructive-subtle">
         <svg
-          className="h-8 w-8 text-red-400"
+          className="size-8 text-destructive"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -33,10 +33,9 @@ export function DashboardRouteError({ message }: { message: string }) {
       </div>
       <div className="flex gap-3">
         <Button
-          variant="ghost"
+          variant="warningOutline"
           type="button"
           onClick={() => window.location.reload()}
-          className="rounded-sm px-4 py-2 text-sm border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
           Try again
         </Button>

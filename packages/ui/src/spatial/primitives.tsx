@@ -404,6 +404,12 @@ function agentDataProps(
   agent: SpatialAgentMeta | undefined,
 ): Record<string, string> {
   if (!agent) return {};
+  if (agent.authority === "human") {
+    return {
+      "data-agent-authority": "human",
+      "data-agent-human-id": agent.id,
+    };
+  }
   const out: Record<string, string> = { "data-agent-id": agent.id };
   if (agent.role) out["data-agent-role"] = agent.role;
   if (agent.label) out["data-agent-label"] = agent.label;
@@ -577,6 +583,9 @@ export const Field = brand<FieldProps>("field", function Field(props) {
     width: "100%",
     boxSizing: "border-box",
   };
+  const fieldTextStyle: CSSProperties = {
+    fontSize: modality === "xr" ? "1.1rem" : "0.9rem",
+  };
   const wrap: CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -592,9 +601,10 @@ export const Field = brand<FieldProps>("field", function Field(props) {
       ) : null}
       {spec.kind === "textarea" ? (
         <Textarea
+          variant="default"
           id={fieldId}
           aria-label={spec.label ?? spec.agent?.label}
-          style={inputCss}
+          style={fieldTextStyle}
           placeholder={spec.placeholder}
           defaultValue={spec.value}
           disabled={spec.disabled}
@@ -632,6 +642,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
         </Select>
       ) : (
         <Input
+          variant="default"
           id={fieldId}
           aria-label={spec.label ?? spec.agent?.label}
           type={
@@ -641,7 +652,7 @@ export const Field = brand<FieldProps>("field", function Field(props) {
                 ? "number"
                 : "text"
           }
-          style={inputCss}
+          style={fieldTextStyle}
           placeholder={spec.placeholder}
           defaultValue={spec.value}
           disabled={spec.disabled}

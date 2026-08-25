@@ -6,18 +6,13 @@
  * sub-agent the moment it returns to an idle state. This keeps a working
  * sub-agent from being derailed mid-turn while guaranteeing the human's message
  * is still delivered — the "continue without interruption unless required"
- * contract. Overflow past the cap drops the oldest entries; the drop is
- * surfaced through {@link SubAgentInbox.setOverflowObserver} (wired to the
- * runtime logger + reportError in index.ts) because a silently vanished user
- * message reads as a healthy pipeline when it is not.
+ * contract. The queue is lossless: a delayed message may wait, but is never
+ * evicted before delivery.
  */
 
 const DEFAULT_CAP = 16;
 
-/**
- * Called when enqueue drops entries past the cap. `droppedNow` is the count
- * dropped by this enqueue; `droppedTotal` the session's cumulative drops.
- */
+/** Legacy observer shape retained for callers while the inbox is lossless. */
 export type InboxOverflowObserver = (
   sessionId: string,
   droppedNow: number,
@@ -27,40 +22,23 @@ export type InboxOverflowObserver = (
 export class SubAgentInbox {
   private readonly pending = new Map<string, string[]>();
   private readonly droppedTotals = new Map<string, number>();
-  private readonly cap: number;
-  private onOverflow: InboxOverflowObserver | undefined;
 
   constructor(cap: number = DEFAULT_CAP) {
-    this.cap = Math.max(1, cap);
+    void cap;
   }
 
-  /**
-   * Register the overflow observer. The inbox is constructed at plugin-factory
-   * scope before any runtime exists, so the runtime-bound warn/reportError
-   * hookup happens later, in plugin init.
-   */
+  /** Compatibility no-op: a lossless queue cannot overflow. */
   setOverflowObserver(observer: InboxOverflowObserver | undefined): void {
-    this.onOverflow = observer;
+    void observer;
   }
 
-  /** Queue a message for a session. Oldest entries drop past the cap. */
+  /** Queue a message for a session without evicting earlier input. */
   enqueue(sessionId: string, text: string): void {
     const trimmed = text.trim();
     if (!trimmed) return;
     const queue = this.pending.get(sessionId) ?? [];
     queue.push(trimmed);
-    let droppedNow = 0;
-    while (queue.length > this.cap) {
-      queue.shift();
-      droppedNow += 1;
-    }
     this.pending.set(sessionId, queue);
-    if (droppedNow > 0) {
-      const droppedTotal =
-        (this.droppedTotals.get(sessionId) ?? 0) + droppedNow;
-      this.droppedTotals.set(sessionId, droppedTotal);
-      this.onOverflow?.(sessionId, droppedNow, droppedTotal);
-    }
   }
 
   size(sessionId: string): number {

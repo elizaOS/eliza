@@ -191,6 +191,41 @@ afterEach(() => {
   resetTx();
 });
 
+test("rejects an invalid execution tier before idempotency or persistence work", async () => {
+  const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+  const svc = new ElizaSandboxService();
+  const uncheckedCreateAgent = svc.createAgent.bind(svc) as unknown as (
+    params: Record<string, unknown>,
+  ) => Promise<unknown>;
+  const uncheckedCreateCodingContainerAgent = svc.createCodingContainerAgent.bind(
+    svc,
+  ) as unknown as (params: Record<string, unknown>) => Promise<unknown>;
+
+  existingRows = [baseRow()];
+  const base = {
+    organizationId: ORG_A,
+    userId: USER,
+    agentName: "invalid-placement",
+    reuseExistingNonTerminal: true,
+  };
+
+  await expect(uncheckedCreateAgent(base)).rejects.toThrow(
+    "createAgent requires an explicit valid executionTier",
+  );
+  await expect(
+    uncheckedCreateCodingContainerAgent({
+      ...base,
+      dockerImage: "ghcr.io/elizaos/tool:v1",
+      executionTier: "future-unclassified-tier",
+    }),
+  ).rejects.toThrow("createAgent requires an explicit valid executionTier");
+
+  expect(transaction).not.toHaveBeenCalled();
+  expect(txSelect).not.toHaveBeenCalled();
+  expect(txInsert).not.toHaveBeenCalled();
+  expect(txExecute).not.toHaveBeenCalled();
+});
+
 describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
   test("(a) two reuse-flagged creates for one org collapse to the same agent — 2nd is idempotent, no 2nd insert", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -202,6 +237,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "alpha",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
@@ -216,6 +252,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "alpha-retry",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
@@ -236,6 +273,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_B,
       userId: USER,
       agentName: "beta",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
@@ -255,6 +293,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "gamma",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: true,
     });
@@ -285,6 +324,7 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
         organizationId: ORG_A,
         userId: USER,
         agentName: "no-reuse",
+        executionTier: "custom",
         dockerImage: "ghcr.io/elizaos/agent:latest",
       });
       expect(res.idempotent).toBe(false);
@@ -310,6 +350,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
       organizationId: ORG_A,
       userId: USER,
       agentName: "forced-under-cap",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: false,
       maxNonTerminalAgents: 5,
@@ -347,6 +388,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
         organizationId: ORG_A,
         userId: USER,
         agentName: "forced-at-cap",
+        executionTier: "custom",
         dockerImage: "ghcr.io/elizaos/agent:latest",
         reuseExistingNonTerminal: false,
         maxNonTerminalAgents: 5,
@@ -374,6 +416,7 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
         organizationId: ORG_A,
         userId: USER,
         agentName: "waifu-launch",
+        executionTier: "custom",
         dockerImage: "ghcr.io/elizaos/agent:latest",
         reuseExistingNonTerminal: false,
         // maxNonTerminalAgents intentionally unset
@@ -401,6 +444,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
       organizationId: ORG_A,
       userId: USER,
       agentName: "cc-under-cap",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/tool:v1",
       maxNonTerminalAgents: 5,
     });
@@ -436,6 +480,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
         organizationId: ORG_A,
         userId: USER,
         agentName: "cc-at-cap",
+        executionTier: "custom",
         dockerImage: "ghcr.io/elizaos/tool:v6",
         maxNonTerminalAgents: 5,
       }),
@@ -456,6 +501,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
       organizationId: ORG_A,
       userId: USER,
       agentName: "cc-retry",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/tool:v1",
       maxNonTerminalAgents: 5,
     });
@@ -474,6 +520,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
       organizationId: ORG_A,
       userId: USER,
       agentName: "cc-uncapped",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/tool:v9",
       // maxNonTerminalAgents intentionally unset
     });
@@ -501,6 +548,7 @@ describe("buildAgentSandboxInsertValues — the canonical insert builder (#15943
       environmentVars: { MY_FLAG: "on" },
       characterId: "55555555-5555-4555-8555-555555555555",
       dockerImage: "ghcr.io/elizaos/agent:latest",
+      executionTier: "custom" as const,
       reuseExistingNonTerminal: true,
     };
     existingRows = [];
@@ -530,9 +578,29 @@ describe("buildAgentSandboxInsertValues — the canonical insert builder (#15943
       organizationId: ORG_A,
       userId: USER,
       agentName: "shared-agent",
+      executionTier: "shared",
     });
     expect(shared.status).toBe("running");
     expect(shared.execution_tier).toBe("shared");
+  });
+
+  test("refuses a missing or unknown execution tier instead of defaulting to Shared", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+    const uncheckedBuilder = buildAgentSandboxInsertValues as unknown as (
+      params: Record<string, unknown>,
+    ) => unknown;
+    const base = {
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "placement-must-be-explicit",
+    };
+
+    expect(() => uncheckedBuilder(base)).toThrow(
+      "createAgent requires an explicit valid executionTier",
+    );
+    expect(() => uncheckedBuilder({ ...base, executionTier: "future-unclassified-tier" })).toThrow(
+      "createAgent requires an explicit valid executionTier",
+    );
   });
 
   test("reserved `__agent` config keys are stripped and characterId marks reuse-existing ownership", async () => {
@@ -542,6 +610,7 @@ describe("buildAgentSandboxInsertValues — the canonical insert builder (#15943
       organizationId: ORG_A,
       userId: USER,
       agentName: "sanitized",
+      executionTier: "shared",
       // A caller can never plant reattach/ownership markers — the builder
       // strips the whole reserved namespace; servers re-apply their own.
       agentConfig: { __agentUpgradedFrom: "forged", __agentManagedGithub: {}, keep: 1 },
@@ -567,6 +636,7 @@ describe("assertOrgAgentQuota — boundary at the cap (#15943)", () => {
       organizationId: ORG_A,
       userId: USER,
       agentName: "last-slot",
+      executionTier: "custom",
       dockerImage: "ghcr.io/elizaos/agent:latest",
       reuseExistingNonTerminal: false,
       maxNonTerminalAgents: 5,

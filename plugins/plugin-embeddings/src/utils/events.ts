@@ -1,12 +1,10 @@
 /**
  * Emits MODEL_USED events for embedding calls so usage accounting sees the
- * provider, model type, token counts, and a truncated prompt (capped at
- * MAX_PROMPT_LENGTH). Consumed by the embedding handlers in ../models/embedding.
+ * provider, model type, token counts, and the complete prompt. Consumed by the
+ * embedding handlers in ../models/embedding.
  */
 import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
-
-const MAX_PROMPT_LENGTH = 200;
 
 interface ModelUsageEventPayload {
   runtime: IAgentRuntime;
@@ -27,19 +25,6 @@ interface EmbeddingUsage {
   totalTokens?: number;
 }
 
-function truncatePrompt(prompt: string): string {
-  if (prompt.length <= MAX_PROMPT_LENGTH) {
-    return prompt;
-  }
-  const suffix = "…";
-  let truncated = prompt.slice(0, MAX_PROMPT_LENGTH - suffix.length);
-  // Avoid splitting a surrogate pair at the truncation boundary.
-  if (/[\uD800-\uDBFF]$/.test(truncated)) {
-    truncated = truncated.slice(0, -1);
-  }
-  return `${truncated}${suffix}`;
-}
-
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
   type: ModelTypeName,
@@ -53,7 +38,7 @@ export function emitModelUsageEvent(
     source: "embeddings",
     provider: "embeddings",
     type,
-    prompt: truncatePrompt(prompt),
+    prompt,
     tokens: {
       prompt: promptTokens,
       completion: completionTokens,

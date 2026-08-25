@@ -3,7 +3,7 @@
  * text/actions vs plain). Pure function, no live TTS.
  */
 import { describe, expect, it } from "vitest";
-import { extractVoiceText } from "./voice-chat-playback";
+import { extractVoiceText, toSpeakableText } from "./voice-chat-playback";
 
 describe("extractVoiceText", () => {
   it("extracts text from JSON assistant payloads", () => {
@@ -16,5 +16,13 @@ describe("extractVoiceText", () => {
     expect(
       extractVoiceText('{"actions":["BENCHMARK_ACTION"],"params":{"foo":1}}'),
     ).toBe("");
+  });
+});
+
+describe("toSpeakableText", () => {
+  it("preserves speakable content beyond the former 4k character boundary", () => {
+    const longSpeech = `${"complete sentence. ".repeat(400)}final sentence.`;
+    expect(longSpeech.length).toBeGreaterThan(4_000);
+    expect(toSpeakableText(longSpeech)).toBe(longSpeech);
   });
 });

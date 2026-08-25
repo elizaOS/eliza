@@ -12,7 +12,6 @@ import {
   getSentimentEmoji,
   isValidTokenAddress,
   stripHtml,
-  truncateText,
 } from "./formatters.js";
 
 describe("formatCurrency", () => {
@@ -33,9 +32,7 @@ describe("formatPercentage", () => {
 });
 
 describe("text helpers", () => {
-  it("truncateText, getSentimentEmoji, formatNumber, extractTokenSymbol, stripHtml", () => {
-    expect(truncateText("short", 200)).toBe("short");
-    expect(truncateText("abcdef", 3)).toBe("abc...");
+  it("formats sentiment, numbers, symbols, and HTML text", () => {
     expect(getSentimentEmoji("positive")).toBe("😊");
     expect(getSentimentEmoji("negative")).toBe("😟");
     expect(getSentimentEmoji(undefined)).toBe("😐");

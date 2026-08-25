@@ -22,6 +22,20 @@ function arg(name: string, fallback: string): string {
   return fallback;
 }
 
+/** Strict env int: rejects trailing garbage (parseInt("5junk")===5). */
+function strictEnvInt(name: string, fallback: number): number | null {
+  const raw = (process.env[name] ?? "").trim();
+  if (raw === "") return fallback;
+  return /^\+?\d+$/.test(raw) ? Number(raw) : null;
+}
+
+/** Strict env float: rejects trailing garbage. */
+function strictEnvFloat(name: string, fallback: number): number | null {
+  const raw = (process.env[name] ?? "").trim();
+  if (raw === "") return fallback;
+  return /^\+?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : null;
+}
+
 function intArg(name: string, fallback: number): number {
   const value = arg(name, String(fallback));
   const n = Number.parseInt(value, 10);
@@ -135,17 +149,15 @@ if (chunkThresholdSec > 0) {
 const effectiveMaskgitSteps =
   maskgitSteps > 0
     ? maskgitSteps
-    : Number.parseInt(process.env.ELIZA_TTS_MASKGIT_STEPS || "0", 10) || null;
+    : (strictEnvInt("ELIZA_TTS_MASKGIT_STEPS", 0) ?? null);
 const effectiveChunkDurationSec =
   chunkDurationSec > 0
     ? chunkDurationSec
-    : Number.parseFloat(process.env.ELIZA_TTS_CHUNK_DURATION_SEC || "0") ||
-      null;
+    : (strictEnvFloat("ELIZA_TTS_CHUNK_DURATION_SEC", 0) ?? null);
 const effectiveChunkThresholdSec =
   chunkThresholdSec > 0
     ? chunkThresholdSec
-    : Number.parseFloat(process.env.ELIZA_TTS_CHUNK_THRESHOLD_SEC || "0") ||
-      null;
+    : (strictEnvFloat("ELIZA_TTS_CHUNK_THRESHOLD_SEC", 0) ?? null);
 const ffi = loadElizaInferenceFfi(dylib);
 const ctx = ffi.create(bundle);
 const started = performance.now();

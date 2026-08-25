@@ -10,6 +10,8 @@
  * - Organization-scoped task isolation
  */
 
+import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import {
   buildRedisClient,
   type CompatibleRedis,
@@ -39,6 +41,27 @@ const TASK_TTL_SECONDS = 3600; // 1 hour
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 const TASK_KEY_PREFIX = `${ENV_PREFIX}:a2a:task:`;
 const TASK_ORG_INDEX_PREFIX = "a2a:org:";
+const TASK_LOCK_KEY_PREFIX = `${ENV_PREFIX}:a2a:task-lock:`;
+
+// update() serializes each task's read-modify-write behind a SET-NX-PX lock so
+// concurrent mutations (artifact/history appends, cancel) can't silently clobber
+// each other last-writer-wins. This must work on the in-memory mock backend as
+// well as real Redis (no `eval`/Lua CAS — see supportsRedisEval), and must not
+// be an in-process mutex: this store's whole point is coordinating across
+// serverless instances, where an in-process lock coordinates nothing.
+const LOCK_TTL_MS = 5000;
+// The retry window must outlive the lease it is waiting on. At 10 attempts the
+// backoff sums to 1425ms worst case (~1.07s after jitter) — under a third of
+// LOCK_TTL_MS — so a holder that legitimately took longer than that turned
+// every concurrent mutator into a hard timeout on calls that succeed today.
+// 40 attempts sums to 7425ms, which clears the 5s lease with margin.
+const LOCK_MAX_ATTEMPTS = 40;
+const LOCK_RETRY_BASE_MS = 15;
+const LOCK_RETRY_MAX_MS = 200;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // ============================================================================
 // Redis Client
@@ -124,6 +147,58 @@ class A2ATaskStoreService {
   }
 
   /**
+   * Acquire the per-task update lock, retrying with capped exponential
+   * backoff on contention. Throws rather than letting a caller proceed
+   * unlocked, since an unlocked read-modify-write is exactly the lost-update
+   * bug this lock exists to close.
+   */
+  private async acquireUpdateLock(taskId: string): Promise<string> {
+    const client = getRedisClient();
+    const lockKey = `${TASK_LOCK_KEY_PREFIX}${taskId}`;
+    const token = randomUUID();
+
+    for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt++) {
+      const result = await client.set(lockKey, token, { nx: true, px: LOCK_TTL_MS });
+      if (result === "OK") return token;
+
+      const backoffMs = Math.min(LOCK_RETRY_BASE_MS * 2 ** attempt, LOCK_RETRY_MAX_MS);
+      await sleep(backoffMs * (0.5 + Math.random() * 0.5));
+    }
+
+    throw new ElizaError(`[A2A TaskStore] Timed out acquiring update lock for task ${taskId}`, {
+      code: "A2A_TASK_STORE_LOCK_TIMEOUT",
+      context: { taskId, attempts: LOCK_MAX_ATTEMPTS },
+    });
+  }
+
+  /**
+   * Release the lock only if it's still ours. A GET-then-DEL isn't atomic,
+   * but the only case it can release the wrong lock is a token collision
+   * (cryptographically negligible with randomUUID) — if our TTL already
+   * expired and another instance re-acquired with a different token, the
+   * GET returns their token and this correctly no-ops instead of deleting it.
+   */
+  private async releaseUpdateLock(taskId: string, token: string): Promise<void> {
+    const client = getRedisClient();
+    const lockKey = `${TASK_LOCK_KEY_PREFIX}${taskId}`;
+
+    try {
+      const current = await client.get(lockKey);
+      if (current === token) {
+        await client.del(lockKey);
+      }
+    } catch (error) {
+      // error-policy:J6 best-effort teardown: the lock still expires via its
+      // own PX TTL, so a failed release degrades to a short contention delay
+      // for the next writer rather than a correctness issue.
+      logger.warn("[A2A TaskStore] Update lock release failed", {
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Update a task
    */
   async update(
@@ -131,16 +206,21 @@ class A2ATaskStoreService {
     organizationId: string,
     updater: (entry: TaskStoreEntry) => TaskStoreEntry,
   ): Promise<TaskStoreEntry | null> {
-    const existing = await this.get(taskId, organizationId);
-    if (!existing) return null;
+    const lockToken = await this.acquireUpdateLock(taskId);
+    try {
+      const existing = await this.get(taskId, organizationId);
+      if (!existing) return null;
 
-    const updated = updater({
-      ...existing,
-      updatedAt: new Date().toISOString(),
-    });
+      const updated = updater({
+        ...existing,
+        updatedAt: new Date().toISOString(),
+      });
 
-    await this.set(taskId, updated);
-    return updated;
+      await this.set(taskId, updated);
+      return updated;
+    } finally {
+      await this.releaseUpdateLock(taskId, lockToken);
+    }
   }
 
   /**

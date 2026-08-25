@@ -1,10 +1,14 @@
 /** Deterministic unit proofs for the bounded backup catalogue runtime tick. */
 
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import type { AgentBackupOperationClaim } from "../../db/repositories/agent-backup-catalog";
 import type { AgentBackupGcClaim } from "../../db/repositories/agent-backup-gc";
 import type { AgentBackupObjectStoreRegistry } from "../storage/agent-backup-object-store";
-import { normalizeAgentBackupCaptureV2TerminalFailure } from "./agent-backup-capture-v2-failure-disposition";
+import {
+  createAgentBackupCaptureV2ExecutorError,
+  normalizeAgentBackupCaptureV2TerminalFailure,
+} from "./agent-backup-capture-v2-failure-disposition";
 import { AgentBackupCaptureV2PipelineError } from "./agent-backup-capture-v2-pipeline";
 import type { AgentBackupCaptureV3TerminalSpoolCleanupAuthority } from "./agent-backup-capture-v3-spool-cleanup";
 import {
@@ -43,7 +47,7 @@ const ENABLED_CONFIG: Extract<AgentBackupCatalogRuntimeConfig, { enabled: true }
   scheduleBatchSize: 32,
   scheduleLeaseMs: 120_000,
   scheduleRetryMs: 30_000,
-  operationBatchSize: 8,
+  operationBatchSize: 1,
   gcBatchSize: 32,
   deletionBatchSize: 32,
   operationLeaseMs: 240_000,
@@ -120,6 +124,9 @@ function dependencies(
     countOverdueSchedules: async () => 0,
     claimOperations: async () => [],
     heartbeatOperation: async () => undefined,
+    handoffCapturedOperation: async () => {
+      throw new Error("unexpected captured-operation handoff");
+    },
     transitionOperation: async () => {
       throw new Error("unexpected transition");
     },
@@ -137,6 +144,17 @@ function dependencies(
       throw new Error("unexpected deletion finalization");
     },
     ...overrides,
+  };
+}
+
+function claimOperationsInOrder(
+  ...claims: AgentBackupOperationClaim[]
+): AgentBackupCatalogRuntimeDependencies["claimOperations"] {
+  const pending = [...claims];
+  return async ({ limit }) => {
+    if (limit !== 1) throw new Error(`Expected a single-slot claim, received ${limit}`);
+    const claim = pending.shift();
+    return claim ? [claim] : [];
   };
 }
 
@@ -200,7 +218,16 @@ describe("agent backup catalogue runtime config", () => {
     ).rejects.toThrow("AGENT_BACKUP_R2_ENDPOINT_ALIAS");
   });
 
-  test("starts the operation dispatcher at one claim unless explicitly raised", () => {
+  test("rejects control characters in the worker identity before claiming", () => {
+    expect(() =>
+      readAgentBackupCatalogRuntimeConfig({
+        AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "1",
+        AGENT_BACKUP_CATALOG_WORKER_ID: "worker\tshadow",
+      }),
+    ).toThrow("AGENT_BACKUP_CATALOG_WORKER_ID");
+  });
+
+  test("fixes the operation dispatcher to one claim until cross-tick fairness is durable", () => {
     const config = readAgentBackupCatalogRuntimeConfig({
       AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "1",
       AGENT_BACKUP_CATALOG_WORKER_ID: "worker-1",
@@ -211,6 +238,13 @@ describe("agent backup catalogue runtime config", () => {
       scheduleBatchSize: 32,
       operationBatchSize: 1,
     });
+    expect(() =>
+      readAgentBackupCatalogRuntimeConfig({
+        AGENT_BACKUP_CATALOG_RUNTIME_ENABLED: "1",
+        AGENT_BACKUP_CATALOG_WORKER_ID: "worker-1",
+        AGENT_BACKUP_OPERATION_BATCH_SIZE: "2",
+      }),
+    ).toThrow("AGENT_BACKUP_OPERATION_BATCH_SIZE must be between 1 and 1");
   });
 
   test("keeps periodic admission off by default and rejects an orphaned schedule gate", () => {
@@ -490,10 +524,14 @@ describe("agent backup catalogue runtime scheduling", () => {
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => {
           calls.push(`${params.expectedState}->${params.to}`);
           return { ...claim.backup, catalog_state: params.to };
+        },
+        handoffCapturedOperation: async (params) => {
+          calls.push(`handoff:${params.operationId}:${params.execution.generation}`);
+          return { ...claim.backup, catalog_state: "captured" };
         },
       }),
       captureExecutor: {
@@ -504,7 +542,11 @@ describe("agent backup catalogue runtime scheduling", () => {
       },
     });
 
-    expect(calls).toEqual(["scheduled->capturing", "capture:capturing:240000"]);
+    expect(calls).toEqual([
+      "scheduled->capturing",
+      "capture:capturing:240000",
+      `handoff:${OPERATION_ID}:${CLAIM_GENERATION}`,
+    ]);
     expect(summary).toMatchObject({
       operationClaimed: 1,
       operationCaptured: 1,
@@ -512,6 +554,226 @@ describe("agent backup catalogue runtime scheduling", () => {
       operationDeferred: 0,
       operationIndeterminate: 0,
     });
+  });
+
+  test("reclaims captured work after a lost handoff response while preserving indeterminate evidence", async () => {
+    const claim = operationClaim();
+    const reclaimed = publicationClaim("captured");
+    reclaimed.generation = "00000000-0000-4000-8000-000000000006";
+    let failureWrites = 0;
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: { ...ENABLED_CONFIG, operationBatchSize: 2 },
+      registry: UNUSED_REGISTRY,
+      dependencies: dependencies({
+        claimOperations: claimOperationsInOrder(claim, reclaimed),
+        transitionOperation: async (params) => ({
+          ...claim.backup,
+          catalog_state: params.to,
+        }),
+        handoffCapturedOperation: async () => {
+          throw new Error("release committed but response was lost");
+        },
+        failOperation: async () => {
+          failureWrites += 1;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          return { state: "captured-upload-pending" };
+        },
+      },
+      publicationExecutor: {
+        async execute({ claim: publication }) {
+          expect(publication.generation).toBe(reclaimed.generation);
+          return { state: "protected" };
+        },
+      },
+    });
+
+    expect(failureWrites).toBe(0);
+    expect(summary).toMatchObject({
+      operationClaimed: 2,
+      operationCaptured: 0,
+      operationProtected: 1,
+      operationIndeterminate: 1,
+    });
+    expect(summary.alertCodes).toContain("BACKUP_OPERATION_RECONCILE_REQUIRED");
+  });
+
+  test("claims one operation immediately before each serial processing slot", async () => {
+    const first = publicationClaim("captured");
+    const second = publicationClaim("secondary_pending");
+    second.backup.id = "00000000-0000-4000-8000-000000000008";
+    const pending = [first, second];
+    const events: string[] = [];
+    let leasedButNotStarted = 0;
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: { ...ENABLED_CONFIG, operationBatchSize: 2 },
+      registry: UNUSED_REGISTRY,
+      dependencies: dependencies({
+        claimOperations: async ({ limit }) => {
+          events.push(`claim:${limit}`);
+          expect(leasedButNotStarted).toBe(0);
+          const claim = pending.shift();
+          if (claim) leasedButNotStarted += 1;
+          return claim ? [claim] : [];
+        },
+      }),
+      publicationExecutor: {
+        async execute({ claim }) {
+          leasedButNotStarted -= 1;
+          events.push(`execute:${claim.backup.id}`);
+          return { state: "protected" };
+        },
+      },
+    });
+
+    expect(events).toEqual([
+      "claim:1",
+      `execute:${first.backup.id}`,
+      "claim:1",
+      `execute:${second.backup.id}`,
+    ]);
+    expect(leasedButNotStarted).toBe(0);
+    expect(summary).toMatchObject({ operationClaimed: 2, operationProtected: 2 });
+  });
+
+  test("does not acquire another operation after the cycle is aborted", async () => {
+    const controller = new AbortController();
+    const claim = publicationClaim("captured");
+    let claimCalls = 0;
+    let failureWrites = 0;
+    const cycle = runAgentBackupCatalogRuntimeCycle({
+      config: { ...ENABLED_CONFIG, operationBatchSize: 2 },
+      registry: UNUSED_REGISTRY,
+      signal: controller.signal,
+      dependencies: dependencies({
+        claimOperations: async ({ limit }) => {
+          expect(limit).toBe(1);
+          claimCalls += 1;
+          return [claim];
+        },
+        failOperation: async () => {
+          failureWrites += 1;
+          return claim.backup;
+        },
+      }),
+      publicationExecutor: {
+        async execute() {
+          controller.abort(new Error("stop after the first processing slot"));
+          return { state: "protected" };
+        },
+      },
+    });
+
+    await expect(cycle).rejects.toThrow("stop after the first processing slot");
+    expect(claimCalls).toBe(1);
+    expect(failureWrites).toBe(0);
+  });
+
+  test("stops immediately when cancellation lands after the DB claim", async () => {
+    const controller = new AbortController();
+    const claim = operationClaim();
+    let transitions = 0;
+    let executions = 0;
+    const cycle = runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      signal: controller.signal,
+      dependencies: dependencies({
+        claimOperations: async () => {
+          controller.abort(new Error("shutdown after DB claim"));
+          return [claim];
+        },
+        transitionOperation: async () => {
+          transitions += 1;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          executions += 1;
+          return { state: "captured-upload-pending" };
+        },
+      },
+    });
+
+    await expect(cycle).rejects.toThrow("shutdown after DB claim");
+    expect(transitions).toBe(0);
+    expect(executions).toBe(0);
+  });
+
+  test("stops after normalization CAS before executor or handoff", async () => {
+    const controller = new AbortController();
+    const claim = operationClaim();
+    let executions = 0;
+    let handoffs = 0;
+    const cycle = runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      signal: controller.signal,
+      dependencies: dependencies({
+        claimOperations: claimOperationsInOrder(claim),
+        transitionOperation: async (params) => {
+          controller.abort(new Error("shutdown after normalization CAS"));
+          return { ...claim.backup, catalog_state: params.to };
+        },
+        handoffCapturedOperation: async () => {
+          handoffs += 1;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          executions += 1;
+          return { state: "captured-upload-pending" };
+        },
+      },
+    });
+
+    await expect(cycle).rejects.toThrow("shutdown after normalization CAS");
+    expect(executions).toBe(0);
+    expect(handoffs).toBe(0);
+  });
+
+  test("stops after handoff response without claiming or transitioning further work", async () => {
+    const controller = new AbortController();
+    const claim = operationClaim();
+    let claimCalls = 0;
+    let failureWrites = 0;
+    const cycle = runAgentBackupCatalogRuntimeCycle({
+      config: { ...ENABLED_CONFIG, operationBatchSize: 2 },
+      registry: UNUSED_REGISTRY,
+      signal: controller.signal,
+      dependencies: dependencies({
+        claimOperations: async () => {
+          claimCalls += 1;
+          return [claim];
+        },
+        transitionOperation: async (params) => ({
+          ...claim.backup,
+          catalog_state: params.to,
+        }),
+        handoffCapturedOperation: async () => {
+          controller.abort(new Error("shutdown after captured handoff"));
+          return { ...claim.backup, catalog_state: "captured" };
+        },
+        failOperation: async () => {
+          failureWrites += 1;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          return { state: "captured-upload-pending" };
+        },
+      },
+    });
+
+    await expect(cycle).rejects.toThrow("shutdown after captured handoff");
+    expect(claimCalls).toBe(1);
+    expect(failureWrites).toBe(0);
   });
 
   test("records a bounded retry when capture fails before recordCaptured is confirmed", async () => {
@@ -522,7 +784,7 @@ describe("agent backup catalogue runtime scheduling", () => {
       registry: UNUSED_REGISTRY,
       random: () => 0.5,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => ({
           ...claim.backup,
           catalog_state: params.to,
@@ -574,7 +836,7 @@ describe("agent backup catalogue runtime scheduling", () => {
         config: ENABLED_CONFIG,
         registry: UNUSED_REGISTRY,
         dependencies: dependencies({
-          claimOperations: async () => [claim],
+          claimOperations: claimOperationsInOrder(claim),
           transitionOperation: async (params) => ({
             ...claim.backup,
             catalog_state: params.to,
@@ -613,6 +875,41 @@ describe("agent backup catalogue runtime scheduling", () => {
     });
   }
 
+  test("keeps an injected stale ElizaError retryable without exact spool cleanup", async () => {
+    const claim = operationClaim();
+    let terminal: boolean | undefined;
+    const summary = await runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      dependencies: dependencies({
+        claimOperations: claimOperationsInOrder(claim),
+        transitionOperation: async (params) => ({
+          ...claim.backup,
+          catalog_state: params.to,
+        }),
+        failOperation: async (params) => {
+          terminal = params.terminal;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          throw new ElizaError("Reserved source generation changed", {
+            code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+            severity: "fatal",
+          });
+        },
+      },
+    });
+
+    expect(terminal).toBe(false);
+    expect(summary).toMatchObject({
+      operationCaptureTerminal: 0,
+      operationCaptureRetryScheduled: 1,
+      operationIndeterminate: 0,
+    });
+  });
+
   test("rejects forged and nested terminal dispositions from an injected executor", async () => {
     const forgedCleanup = {
       organizationId: ORG_ID,
@@ -623,6 +920,7 @@ describe("agent backup catalogue runtime scheduling", () => {
       lifecycleRevision: "7",
       requestSha256: "a".repeat(64),
       authoritySha256: "b".repeat(64),
+      runtimePrincipalSha256: "c".repeat(64),
     };
     const forgedErrors: unknown[] = [
       Object.assign(new Error("forged boolean"), {
@@ -631,6 +929,22 @@ describe("agent backup catalogue runtime scheduling", () => {
       }),
       Object.assign(new Error("forged code"), {
         code: "AGENT_BACKUP_V2_SPOOL_REPLAY_CONFLICT",
+      }),
+      Object.assign(new Error("forged stale authority"), {
+        code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+        severity: "fatal",
+      }),
+      new ElizaError("typed forged stale authority", {
+        code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+        severity: "fatal",
+      }),
+      createAgentBackupCaptureV2ExecutorError(
+        "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+        "generic executor factory cannot attest resolver staleness",
+      ),
+      new ElizaError("non-fatal stale authority", {
+        code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+        severity: "ephemeral",
       }),
       Object.assign(new Error("forged remote code"), {
         code: "AGENT_BACKUP_V2_HTTP_STATUS",
@@ -658,7 +972,7 @@ describe("agent backup catalogue runtime scheduling", () => {
         config: ENABLED_CONFIG,
         registry: UNUSED_REGISTRY,
         dependencies: dependencies({
-          claimOperations: async () => [claim],
+          claimOperations: claimOperationsInOrder(claim),
           transitionOperation: async (params) => ({
             ...claim.backup,
             catalog_state: params.to,
@@ -717,7 +1031,7 @@ describe("agent backup catalogue runtime scheduling", () => {
         registry: UNUSED_REGISTRY,
         random: () => 0.5,
         dependencies: dependencies({
-          claimOperations: async () => [claim],
+          claimOperations: claimOperationsInOrder(claim),
           transitionOperation: async (params) => ({
             ...claim.backup,
             catalog_state: params.to,
@@ -763,12 +1077,13 @@ describe("agent backup catalogue runtime scheduling", () => {
       lifecycleRevision: "7",
       requestSha256: "a".repeat(64),
       authoritySha256: "b".repeat(64),
+      runtimePrincipalSha256: "c".repeat(64),
     };
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => ({
           ...claim.backup,
           catalog_state: params.to,
@@ -839,12 +1154,13 @@ describe("agent backup catalogue runtime scheduling", () => {
       lifecycleRevision: "7",
       requestSha256: "a".repeat(64),
       authoritySha256: "b".repeat(64),
+      runtimePrincipalSha256: "c".repeat(64),
     };
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => ({
           ...claim.backup,
           catalog_state: params.to,
@@ -889,6 +1205,75 @@ describe("agent backup catalogue runtime scheduling", () => {
     expect(summary.alertCodes).toContain("BACKUP_SPOOL_CLEANUP_RECONCILE_REQUIRED");
   });
 
+  test("does not settle terminal when cancellation lands during cleanup staging", async () => {
+    const claim = operationClaim();
+    const controller = new AbortController();
+    const reason = new Error("shutdown during terminal cleanup staging");
+    let failureWrites = 0;
+    let releaseStage!: () => void;
+    let markStageStarted!: () => void;
+    const stageStarted = new Promise<void>((resolve) => {
+      markStageStarted = resolve;
+    });
+    const stageRelease = new Promise<void>((resolve) => {
+      releaseStage = resolve;
+    });
+    const terminalSpoolCleanup = {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      activationGeneration: LIFECYCLE_GENERATION,
+      lifecycleRevision: "7",
+      requestSha256: "a".repeat(64),
+      authoritySha256: "b".repeat(64),
+      runtimePrincipalSha256: "c".repeat(64),
+    };
+    const cycle = runAgentBackupCatalogRuntimeCycle({
+      config: ENABLED_CONFIG,
+      registry: UNUSED_REGISTRY,
+      signal: controller.signal,
+      dependencies: dependencies({
+        claimOperations: claimOperationsInOrder(claim),
+        transitionOperation: async (params) => ({
+          ...claim.backup,
+          catalog_state: params.to,
+        }),
+        failOperation: async () => {
+          failureWrites += 1;
+          return claim.backup;
+        },
+      }),
+      captureExecutor: {
+        async execute() {
+          throw trustedTerminalCaptureFailure(
+            "AGENT_BACKUP_V2_SPOOL_REPLAY_CONFLICT",
+            terminalSpoolCleanup,
+          );
+        },
+      },
+      spoolCleanupJanitor: {
+        async enqueueProtectedBackup() {
+          return "pending";
+        },
+        async stageTerminalFailure() {
+          markStageStarted();
+          await stageRelease;
+          return "pending";
+        },
+        async runCycle() {
+          throw new Error("aborted cycle must not run cleanup reconciliation");
+        },
+      },
+    });
+
+    await stageStarted;
+    controller.abort(reason);
+    releaseStage();
+    await expect(cycle).rejects.toBe(reason);
+    expect(failureWrites).toBe(0);
+  });
+
   test("stages terminal cleanup before a settlement response can be lost", async () => {
     const claim = operationClaim();
     let terminalStages = 0;
@@ -901,12 +1286,13 @@ describe("agent backup catalogue runtime scheduling", () => {
       lifecycleRevision: "7",
       requestSha256: "a".repeat(64),
       authoritySha256: "b".repeat(64),
+      runtimePrincipalSha256: "c".repeat(64),
     };
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => ({
           ...claim.backup,
           catalog_state: params.to,
@@ -976,7 +1362,7 @@ describe("agent backup catalogue runtime scheduling", () => {
     });
 
     expect(calls).toEqual([
-      "claim:8",
+      "claim:1",
       "heartbeat",
       "defer:scheduled:BACKUP_PIPELINE_STAGE_UNAVAILABLE",
     ]);
@@ -993,7 +1379,7 @@ describe("agent backup catalogue runtime scheduling", () => {
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [claim],
+        claimOperations: claimOperationsInOrder(claim),
         transitionOperation: async (params) => {
           transitions.push(`${params.expectedState}->${params.to}`);
           return { ...claim.backup, catalog_state: params.to };
@@ -1015,7 +1401,7 @@ describe("agent backup catalogue runtime scheduling", () => {
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
-      dependencies: dependencies({ claimOperations: async () => [owned] }),
+      dependencies: dependencies({ claimOperations: claimOperationsInOrder(owned) }),
       publicationExecutor: {
         async execute({ claim, leaseMs }) {
           calls.push(`${claim.backup.catalog_state}:${leaseMs}`);
@@ -1045,7 +1431,7 @@ describe("agent backup catalogue runtime scheduling", () => {
       registry: UNUSED_REGISTRY,
       random: () => 0.5,
       dependencies: dependencies({
-        claimOperations: async () => [retryable, healthy],
+        claimOperations: claimOperationsInOrder(retryable, healthy),
         failOperation: async (input) => {
           failures.push(`${input.expectedState}:${input.error.code}:${input.retryDelayMs}`);
           return retryable.backup;
@@ -1088,7 +1474,7 @@ describe("agent backup catalogue runtime scheduling", () => {
       config: { ...ENABLED_CONFIG, operationBatchSize: 2 },
       registry: UNUSED_REGISTRY,
       dependencies: dependencies({
-        claimOperations: async () => [responseLost, healthy],
+        claimOperations: claimOperationsInOrder(responseLost, healthy),
       }),
       publicationExecutor: {
         async execute({ claim }) {
@@ -1111,11 +1497,13 @@ describe("agent backup catalogue runtime scheduling", () => {
 
   test("runs protected spool reconciliation even after a lost publication response", async () => {
     const responseLost = publicationClaim("secondary_pending");
+    const controller = new AbortController();
     let cleanupCycles = 0;
     const summary = await runAgentBackupCatalogRuntimeCycle({
       config: ENABLED_CONFIG,
       registry: UNUSED_REGISTRY,
-      dependencies: dependencies({ claimOperations: async () => [responseLost] }),
+      signal: controller.signal,
+      dependencies: dependencies({ claimOperations: claimOperationsInOrder(responseLost) }),
       publicationExecutor: {
         async execute() {
           throw new Error("protected committed but transition response was lost");
@@ -1128,7 +1516,8 @@ describe("agent backup catalogue runtime scheduling", () => {
         async stageTerminalFailure() {
           return "pending";
         },
-        async runCycle() {
+        async runCycle(signal) {
+          expect(signal).toBe(controller.signal);
           cleanupCycles += 1;
           return {
             discovered: 1,

@@ -31,6 +31,14 @@ import {
   SelectValue,
 } from "../../ui/select";
 import { SettingsSelectTrigger } from "../../ui/settings-controls";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../ui/table";
 import { SettingsSelectRow } from "../settings-agent-rows";
 import type {
   AgentSummary,
@@ -355,14 +363,14 @@ export function RoutingTab(props: RoutingTabProps) {
             {...addRuleToggleAgentProps}
             variant="outline"
             size="sm"
-            className="h-8 shrink-0 gap-1 rounded-sm px-2"
+            className="shrink-0"
             onClick={() => setShowAdd((v) => !v)}
             disabled={saving}
             aria-label={t("routing.addRule", {
               defaultValue: "Add routing rule",
             })}
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />{" "}
+            <Plus className="size-3.5" aria-hidden />{" "}
             {t("routing.addRuleShort", { defaultValue: "Add rule" })}
           </Button>
         </div>
@@ -381,12 +389,12 @@ export function RoutingTab(props: RoutingTabProps) {
           <Input
             ref={filterRef}
             {...filterAgentProps}
+            density="compact"
             value={rulesFilter}
             onChange={(e) => setRulesFilter(e.target.value)}
             placeholder={t("routing.filterPlaceholder", {
               defaultValue: "Filter rules by key, scope, or profile",
             })}
-            className="h-8 text-xs"
             autoComplete="off"
             data-testid="routing-rules-filter"
           />
@@ -407,10 +415,11 @@ export function RoutingTab(props: RoutingTabProps) {
               <Input
                 ref={keyPatternRef}
                 {...keyPatternAgentProps}
+                variant="config"
+                density="compact"
                 value={keyPattern}
                 onChange={(e) => setKeyPattern(e.target.value)}
                 placeholder="OPENROUTER_API_KEY or OPENROUTER_*"
-                className="h-8 font-mono text-xs"
                 autoComplete="off"
                 list="routing-key-suggestions"
                 required
@@ -545,7 +554,6 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
               >
@@ -557,7 +565,6 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="submit"
                 variant="default"
                 size="sm"
-                className="h-7 rounded-sm px-3 text-xs"
                 disabled={saving || !keyPattern.trim() || !profileId}
               >
                 {saving
@@ -571,7 +578,7 @@ export function RoutingTab(props: RoutingTabProps) {
         {config.rules.length === 0 ? (
           <div
             data-testid="routing-rules-empty"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
           >
             {t("routing.empty", {
               defaultValue:
@@ -581,7 +588,7 @@ export function RoutingTab(props: RoutingTabProps) {
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
-            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 p-3 text-center text-xs text-muted"
           >
             {t("routing.noMatch", {
               filter: rulesFilter,
@@ -589,27 +596,28 @@ export function RoutingTab(props: RoutingTabProps) {
             })}
           </div>
         ) : (
-          <table
+          <Table
             data-testid="routing-rules-table"
-            className="w-full table-fixed border-collapse rounded-sm border border-border/40 bg-card/30 text-xs"
+            density="compact"
+            layout="fixed"
           >
-            <thead>
-              <tr className="text-left text-muted">
-                <th className="px-2 py-1 font-medium">
+            <TableHeader>
+              <TableRow className="text-left text-muted">
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.key", { defaultValue: "Key" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
+                </TableHead>
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.scope", { defaultValue: "Scope" })}
-                </th>
-                <th className="px-2 py-1 font-medium">
+                </TableHead>
+                <TableHead className="px-2 py-1 font-medium">
                   {t("routing.table.profile", { defaultValue: "Profile" })}
-                </th>
-                <th className="w-16 px-2 py-1 font-medium text-right">
+                </TableHead>
+                <TableHead className="w-16 px-2 py-1 font-medium text-right">
                   {t("routing.table.actions", { defaultValue: "Actions" })}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visibleRules.map((rule, idx) => {
                 const targetId =
                   rule.scope.agentId ??
@@ -645,13 +653,14 @@ export function RoutingTab(props: RoutingTabProps) {
                   />
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
 
         {saving && (
           <div className="flex items-center gap-2 px-1 text-2xs text-muted">
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />{" "}
+            <Loader2 className="size-3 animate-spin" aria-hidden />
+            {""}
             {t("routing.saving", { defaultValue: "Saving…" })}
           </div>
         )}
@@ -701,60 +710,58 @@ const RoutingRuleRow = memo(
         onActivate: onDelete,
       });
     return (
-      <tr
+      <TableRow
         data-testid={`routing-rule-row-${ruleKey}`}
         className="border-t border-border/30"
       >
-        <td className="px-2 py-1.5 align-top">
+        <TableCell className="px-2 py-1.5 align-top">
           {keyExists ? (
             <Button
               ref={chipRef}
               {...chipAgentProps}
               onClick={onOpenInSecrets}
               data-testid={`routing-key-chip-${ruleKey}`}
-              variant="ghost"
-              size="sm"
-              className="h-auto gap-1 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-2xs font-medium text-accent hover:bg-accent/20"
+              variant="selection"
+              size="content"
               aria-label={t("routing.openInSecrets", {
                 keyPattern,
                 defaultValue: "Open {{keyPattern}} in Secrets tab",
               })}
             >
               {keyPattern}
-              <ArrowRight className="h-3 w-3" aria-hidden />
+              <ArrowRight className="size-3" aria-hidden />
             </Button>
           ) : (
             <span className="font-mono text-2xs text-muted">{keyPattern}</span>
           )}
-        </td>
-        <td className="px-2 py-1.5 align-top">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
           <span className="rounded-full border border-border/40 bg-bg/40 px-1.5 py-0.5 text-2xs text-muted">
             {scopeKind}
           </span>
           <span className="ml-1.5 text-2xs text-txt">{targetLabel}</span>
-        </td>
-        <td className="px-2 py-1.5 align-top">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top">
           <span className="rounded-full border border-accent/40 bg-accent/10 px-1.5 py-0.5 text-2xs font-medium text-accent">
             {profileId}
           </span>
-        </td>
-        <td className="px-2 py-1.5 align-top text-right">
+        </TableCell>
+        <TableCell className="px-2 py-1.5 align-top text-right">
           <Button
             ref={deleteRef}
             {...deleteAgentProps}
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
+            variant="destructive"
+            size="icon-sm"
             onClick={onDelete}
             aria-label={t("routing.deleteRule", {
               keyPattern,
               defaultValue: "Delete rule for {{keyPattern}}",
             })}
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
           </Button>
-        </td>
-      </tr>
+        </TableCell>
+      </TableRow>
     );
   },
   // Include handlers in the memo check so rows pick up changed navigation or

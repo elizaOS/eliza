@@ -2,8 +2,9 @@
  * Drawer variant of PtyConsoleBase — wraps the PTY console with a session
  * switcher and a new-session control for the bottom-drawer surface.
  */
+
+import { Button } from "@elizaos/ui";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { Plus, Terminal } from "lucide-react";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
@@ -30,13 +31,13 @@ export function PtyConsoleDrawer({
 
   return (
     <section
-      className="flex h-[min(76vh,44rem)] w-full min-w-0 overflow-hidden rounded-t-lg border border-border/70 bg-bg shadow-xl"
+      className="flex h-[min(76vh,44rem)] w-full min-w-0 overflow-hidden rounded-t-lg border border-border/70 bg-bg"
       aria-label="Agent terminal drawer"
       data-testid="pty-console-drawer"
     >
       <aside className="flex w-64 shrink-0 flex-col border-r border-border/60 bg-muted/10">
         <header className="flex h-10 items-center gap-2 border-b border-border/60 px-3">
-          <Terminal className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          <Terminal className="size-4 shrink-0 text-muted" aria-hidden />
           <div className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
             Terminals
           </div>
@@ -47,16 +48,17 @@ export function PtyConsoleDrawer({
             title="New terminal"
             aria-label="New terminal"
           >
-            <Plus className="h-4 w-4" aria-hidden />
+            <Plus className="size-4" aria-hidden />
           </Button>
         </header>
         <div className="min-h-0 flex-1 overflow-auto p-2">
           {sessions.length === 0 ? (
             <Button
-              unstyled
+              variant="outline"
+              size="row"
+              align="start"
               type="button"
               onClick={onNewSession}
-              className="w-full rounded-md border border-dashed border-border/70 px-3 py-2 text-left text-xs text-muted hover:border-accent hover:text-txt"
             >
               Start terminal
             </Button>
@@ -65,15 +67,14 @@ export function PtyConsoleDrawer({
               const selected = session.sessionId === resolvedSessionId;
               return (
                 <Button
-                  unstyled
+                  variant="selection"
+                  size="eventRow"
+                  align="start"
+                  data-state={selected ? "on" : "off"}
                   key={session.sessionId}
                   type="button"
                   onClick={() => onSessionClick(session.sessionId)}
-                  className={`mb-1 w-full rounded-md px-2 py-2 text-left text-xs transition ${
-                    selected
-                      ? "bg-accent/15 text-txt"
-                      : "text-muted hover:bg-muted/20 hover:text-txt"
-                  }`}
+                  className="mb-1"
                 >
                   <div className="truncate font-medium">
                     {session.label ?? "Terminal"}

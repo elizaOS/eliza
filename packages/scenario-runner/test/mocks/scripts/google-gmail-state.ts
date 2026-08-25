@@ -95,7 +95,7 @@ interface GmailMockAccount {
   grantId: string;
 }
 
-type GmailFixtureMessage = MessageResponse & {
+export type GmailFixtureMessage = MessageResponse & {
   accountId?: string;
   snippet: string;
   internalDateOffsetMs: number;
@@ -141,6 +141,14 @@ const GMAIL_MOCK_ACCOUNTS: GmailMockAccount[] = [
     grantId: "mock-google-home-grant",
   },
 ];
+
+/**
+ * Account ids this mock can host messages under. Fixtures naming anything else
+ * fall back to the default account, so corpus adapters check membership here
+ * instead of duplicating the list.
+ */
+export const GMAIL_MOCK_ACCOUNT_IDS: readonly string[] =
+  GMAIL_MOCK_ACCOUNTS.map((account) => account.id);
 
 const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
   {

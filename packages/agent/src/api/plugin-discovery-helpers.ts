@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.ts";
 import { getBundledRuntimePluginIds } from "../runtime/release-plugin-policy.ts";
@@ -27,7 +27,7 @@ export {
 const require = createRequire(import.meta.url);
 
 // Pure-disk override helpers — inlined here to avoid module-scope dynamic
-// imports of @elizaos/plugin-signal and @elizaos/plugin-whatsapp. The plugin
+// imports of @elizaos/plugin-whatsapp. The plugin
 // versions still exist for external callers; these copies are scoped to the
 // agent's plugin-discovery surface and only walk the workspace directory.
 type QrOverrideEntry = {
@@ -36,38 +36,6 @@ type QrOverrideEntry = {
   configured: boolean;
   qrConnected?: boolean;
 };
-
-function signalAuthExists(
-  workspaceDir: string,
-  accountId = "default",
-): boolean {
-  const authDir = path.join(workspaceDir, "signal-auth", accountId);
-  if (!fs.existsSync(authDir)) return false;
-
-  const accountsPath = path.join(authDir, "data", "accounts.json");
-  if (!fs.existsSync(accountsPath)) return false;
-
-  try {
-    const parsed = JSON.parse(fs.readFileSync(accountsPath, "utf8")) as {
-      accounts?: unknown;
-    };
-    return Array.isArray(parsed.accounts) && parsed.accounts.length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function applySignalQrOverride(
-  entries: QrOverrideEntry[],
-  workspaceDir: string,
-): void {
-  if (!signalAuthExists(workspaceDir, "default")) return;
-  const sigPlugin = entries.find((plugin) => plugin.id === "signal");
-  if (!sigPlugin) return;
-  sigPlugin.validationErrors = [];
-  sigPlugin.configured = true;
-  sigPlugin.qrConnected = true;
-}
 
 function applyWhatsAppQrOverride(
   entries: QrOverrideEntry[],
@@ -542,8 +510,21 @@ function mergeWorkspacePluginEntries(
 }
 
 export function maskValue(value: string): string {
-  if (value.length <= 8) return "****";
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 8) return "****";
+  const head = truncateWellFormed(wellFormed, 4);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
 }
 
 export function buildParamDefs(
@@ -636,7 +617,10 @@ export function inferDescription(key: string): string {
 
 /** Extract the plugin/service prefix label from a key by removing a known suffix. */
 export function prefixLabel(key: string, suffix: string): string {
-  const raw = key.replace(new RegExp(`${suffix}$`, "i"), "").replace(/_+$/, "");
+  const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const raw = key
+    .replace(new RegExp(`${escapedSuffix}$`, "i"), "")
+    .replace(/_+$/, "");
   if (!raw) return key;
   return raw
     .split("_")
@@ -1118,8 +1102,6 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
       );
 
       applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-      applySignalQrOverride(entries, resolveDefaultAgentWorkspaceDir());
-
       return entries;
     } catch (err) {
       logger.debug(
@@ -1162,7 +1144,6 @@ export function categorizePlugin(
     "slack",
     "twitter",
     "whatsapp",
-    "signal",
     "imessage",
     "farcaster",
     "bluesky",
@@ -1212,7 +1193,6 @@ const SOCIAL_CHAT_CONNECTOR_IDS = new Set([
   "discord",
   "slack",
   "whatsapp",
-  "signal",
   "imessage",
   "matrix",
   "mattermost",
@@ -1245,7 +1225,6 @@ const PLUGIN_METADATA_CATEGORY_TAGS: Record<string, string[]> = {
 };
 const PLUGIN_DESCRIPTION_OVERRIDES: Record<string, string> = {
   slack: "Slack workspace connector for chatting with your agent",
-  signal: "Signal connector for secure chats with your agent",
   mattermost: "Mattermost connector for team chat with your agent",
   msteams: "Microsoft Teams connector for chatting with your agent",
   "nextcloud-talk": "Nextcloud Talk connector for chatting with your agent",
@@ -1280,7 +1259,6 @@ const PLUGIN_SETUP_GUIDE_ANCHORS: Record<string, string> = {
   matrix: "#matrix",
   msteams: "#microsoft-teams",
   "google-chat": "#google-chat",
-  signal: "#signal",
   imessage: "#imessage-macos-only",
   blooio: "#blooio-sms-via-api",
   nostr: "#nostr",

@@ -2,8 +2,9 @@
  * Unit coverage for the memory watchdog: env enable-flag parsing, config
  * defaults/floors, and the tick/start/stop state machine that requests a clean
  * restart after sustained over-threshold RSS (debounced on transient dips,
- * one-shot, never process.exit). Deterministic — RSS is read from a mutable
- * holder, timers are faked, and restart/log are spies.
+ * single-flight with failure recovery, one-shot after success, never
+ * process.exit). Deterministic — RSS is read from a mutable holder, timers are
+ * faked, and restart/log are spies.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +16,25 @@ import {
 } from "../memory-watchdog.ts";
 
 const MB = 1024 * 1024;
+
+function deferredRestart(): {
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+} {
+  let resolve!: () => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
 
 /** Build watchdog deps whose RSS is read from a mutable holder, with spy log/restart. */
 function makeDeps(rssMbHolder: { value: number }): {
@@ -160,6 +180,128 @@ describe("createMemoryWatchdog.tick", () => {
     expect(wd.tick()).toBe(true);
     for (let i = 0; i < 5; i += 1) expect(wd.tick()).toBe(false);
     expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms immediately when the restart handler throws synchronously", () => {
+    const rss = { value: 2000 };
+    const { deps, restart, warn } = makeDeps(rss);
+    const failure = new Error("restart bootstrap failed");
+    restart
+      .mockImplementationOnce(() => {
+        throw failure;
+      })
+      .mockImplementationOnce(() => undefined);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 1 }), deps);
+
+    expect(wd.tick()).toBe(true);
+    expect(wd.tick()).toBe(true);
+    expect(restart).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: failure }),
+      expect.stringMatching(/\[MemoryWatchdog].*failed.*re-armed/i),
+    );
+  });
+
+  it("stays latched until an asynchronous restart rejection is observed", async () => {
+    const rss = { value: 2000 };
+    const { deps, restart, warn } = makeDeps(rss);
+    const pending = deferredRestart();
+    const failure = new Error("restart rejected");
+    restart
+      .mockReturnValueOnce(pending.promise)
+      .mockImplementationOnce(() => undefined);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 1 }), deps);
+
+    expect(wd.tick()).toBe(true);
+    expect(wd.tick()).toBe(false);
+    expect(restart).toHaveBeenCalledTimes(1);
+
+    pending.reject(failure);
+    await flushMicrotasks();
+
+    expect(wd.tick()).toBe(true);
+    expect(restart).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ error: failure }),
+      expect.stringMatching(/\[MemoryWatchdog].*failed.*re-armed/i),
+    );
+  });
+
+  it("retries after rejection without rebuilding the sustained window", async () => {
+    const rss = { value: 2000 };
+    const { deps, restart } = makeDeps(rss);
+    const pending = deferredRestart();
+    restart
+      .mockReturnValueOnce(pending.promise)
+      .mockImplementationOnce(() => undefined);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 3 }), deps);
+
+    expect(wd.tick()).toBe(false);
+    expect(wd.tick()).toBe(false);
+    expect(wd.tick()).toBe(true);
+
+    pending.reject(new Error("restart rejected"));
+    await flushMicrotasks();
+
+    expect(wd.tick()).toBe(true);
+    expect(restart).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps at most one restart request in flight", async () => {
+    const rss = { value: 2000 };
+    const { deps, restart } = makeDeps(rss);
+    const pending = deferredRestart();
+    restart.mockReturnValue(pending.promise);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 1 }), deps);
+
+    expect(wd.tick()).toBe(true);
+    for (let index = 0; index < 5; index += 1) {
+      expect(wd.tick()).toBe(false);
+    }
+    expect(restart).toHaveBeenCalledTimes(1);
+
+    pending.resolve();
+    await flushMicrotasks();
+    expect(wd.tick()).toBe(false);
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("remains one-shot after an asynchronous restart request fulfills", async () => {
+    const rss = { value: 2000 };
+    const { deps, restart } = makeDeps(rss);
+    restart.mockResolvedValue(undefined);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 1 }), deps);
+
+    expect(wd.tick()).toBe(true);
+    await flushMicrotasks();
+
+    for (let index = 0; index < 5; index += 1) {
+      expect(wd.tick()).toBe(false);
+    }
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("consumes rejected restart promises without leaking unhandledRejection", async () => {
+    const rss = { value: 2000 };
+    const { deps, restart } = makeDeps(rss);
+    const pending = deferredRestart();
+    restart.mockReturnValue(pending.promise);
+    const wd = createMemoryWatchdog(config({ rss: 1000, sustained: 1 }), deps);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      expect(wd.tick()).toBe(true);
+      pending.reject(new Error("restart rejected"));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 });
 

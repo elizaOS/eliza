@@ -2,12 +2,11 @@
 # Reproducible Railway deploy for gateway-discord.
 #
 # WHY THIS EXISTS
-# The in-repo Dockerfile does `bun install --frozen-lockfile` against this
-# package's own context, which can't resolve the `@elizaos/cloud-services-common`
-# workspace:* dependency when `railway up` uploads only the package directory
-# (no monorepo). `bun build` (the `build` script) DOES resolve + inline that dep
-# from the monorepo, producing a self-contained bundle — so we build the bundle
-# here and ship a runtime-only image.
+# The tracked Dockerfile builds from the repository root, but the operator-owned
+# Railway upload stages a self-contained bundle so it can ship without uploading
+# the monorepo. Native dependency selection in the staged Dockerfile must use the
+# same verified helper as the tracked image; `--container-build-only` exercises
+# that exact staged boundary without contacting Railway.
 #
 # The Railway service currently has no connected repository source. Until a
 # protected deploy workflow owns exact-source uploads, an authorized operator
@@ -20,16 +19,18 @@
 # WS lib (lazy require -> graceful fallback to no compression).
 set -euo pipefail
 BUILD_ONLY=0
+CONTAINER_BUILD_ONLY=0
 case "${1:-}" in
   "") ;;
   --build-only) BUILD_ONLY=1 ;;
+  --container-build-only) CONTAINER_BUILD_ONLY=1 ;;
   *)
-    echo "usage: $0 [--build-only]" >&2
+    echo "usage: $0 [--build-only|--container-build-only]" >&2
     exit 2
     ;;
 esac
 if [ "$#" -gt 1 ]; then
-  echo "usage: $0 [--build-only]" >&2
+  echo "usage: $0 [--build-only|--container-build-only]" >&2
   exit 2
 fi
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,7 +57,7 @@ cat > "$STAGE/package.json" <<'JSON'
   "private": true,
   "type": "module",
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
+    "@discordjs/opus": "0.10.0",
     "@discordjs/voice": "^0.19.2",
     "libsodium-wrappers": "^0.8.0",
     "prism-media": "1.3.5"
@@ -64,12 +65,18 @@ cat > "$STAGE/package.json" <<'JSON'
 }
 JSON
 
+cp "$HERE/scripts/select-opus-prebuild.ts" "$STAGE/select-opus-prebuild.ts"
+
 cat > "$STAGE/Dockerfile" <<'DOCKER'
 FROM oven/bun:1.3.14-alpine AS deps
 WORKDIR /app
+ARG OPUS_PREBUILD_NODE_TARGET=18.4.0
+ARG TARGETARCH
 RUN apk add --no-cache python3 make g++ pkgconf opus-dev
 COPY package.json ./
-RUN bun install --production
+COPY select-opus-prebuild.ts ./
+RUN npm_config_target="${OPUS_PREBUILD_NODE_TARGET}" bun install --production \
+    && bun ./select-opus-prebuild.ts . "${TARGETARCH}"
 
 FROM oven/bun:1.3.14-alpine
 WORKDIR /app
@@ -87,6 +94,17 @@ CMD ["bun", "run", "dist/index.js"]
 DOCKER
 
 cp "$HERE/railway.toml" "$STAGE/railway.toml" 2>/dev/null || true
+
+if [ "$CONTAINER_BUILD_ONLY" = "1" ]; then
+  GATEWAY_DISCORD_BUILD_PLATFORM="${GATEWAY_DISCORD_BUILD_PLATFORM:-linux/amd64}"
+  GATEWAY_DISCORD_BUILD_TAG="${GATEWAY_DISCORD_BUILD_TAG:-gateway-discord:build-only}"
+  docker build \
+    --platform "$GATEWAY_DISCORD_BUILD_PLATFORM" \
+    --tag "$GATEWAY_DISCORD_BUILD_TAG" \
+    "$STAGE"
+  echo "[deploy] container build-only proof passed: $GATEWAY_DISCORD_BUILD_TAG ($GATEWAY_DISCORD_BUILD_PLATFORM)"
+  exit 0
+fi
 
 if [ "$BUILD_ONLY" = "1" ]; then
   echo "[deploy] build-only proof passed"

@@ -13,7 +13,11 @@ function makeEmbeddedService() {
     executeWorkflow: mock(
       async (
         workflowId: string,
-        options: { triggerData: Record<string, unknown>; idempotencyKey?: string }
+        options: {
+          triggerData: Record<string, unknown>;
+          idempotencyKey?: string;
+          triggerChainDepth?: number;
+        }
       ) => ({ id: `${workflowId}:${options.idempotencyKey ?? 'fresh'}` })
     ),
     findExecutionByIdempotencyKey: mock(async () => null as { id?: string } | null),
@@ -49,13 +53,18 @@ describe('workflow dispatch service', () => {
     const dispatch = createWorkflowDispatchService(makeRuntime(embedded) as never);
 
     await expect(
-      dispatch.execute(' workflow-1 ', { source: 'schedule' }, { idempotencyKey: 'tick-1' })
+      dispatch.execute(
+        ' workflow-1 ',
+        { source: 'schedule' },
+        { idempotencyKey: 'tick-1', triggerChainDepth: 3 }
+      )
     ).resolves.toEqual({ ok: true, executionId: 'workflow-1:tick-1' });
     expect(embedded.findExecutionByIdempotencyKey).toHaveBeenCalledWith('workflow-1', 'tick-1');
     expect(embedded.executeWorkflow).toHaveBeenCalledWith('workflow-1', {
       mode: 'trigger',
       triggerData: { source: 'schedule' },
       idempotencyKey: 'tick-1',
+      triggerChainDepth: 3,
     });
   });
 

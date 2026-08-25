@@ -11,7 +11,15 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
-import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import {
+  CODING_AGENT_BACKEND_PREFLIGHTS,
+  CODING_AGENT_BACKENDS,
+} from "@elizaos/shared";
+import {
+  captureHostExecutionBaseline,
+  getHostExecutionBaseline,
+  HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS,
+} from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The ACP implementation runs every workdir through `path.resolve`, which on
@@ -77,62 +85,74 @@ function getNativeMockState(): NativeMockState {
 
 const nativeClientMock = getNativeMockState();
 
-vi.mock("../../src/services/acp-native-transport.js", () => {
-  const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient
-    implements MockNativeClient
-  {
-    opts: NativeOptions;
-    eventHandler?: NativeEventHandler;
-    start = vi.fn(async () => {
-      await getNativeMockState().startImplementation?.(this);
-    });
-    createSession = vi.fn(async (workdir: string, _claim?: unknown) =>
-      getNativeMockState().createSessionImplementation
-        ? await getNativeMockState().createSessionImplementation(this, workdir)
-        : {
-            sessionId: "protocol-session",
-            agentSessionId: "agent-session",
-          },
-    );
-    prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
-    cancel = vi.fn(async () => undefined);
-    closeSession = vi.fn(async () => undefined);
-    close = vi.fn(async () => undefined);
-    // Mirrors the real transport's auto-approve decision. Defaults to true to
-    // match the default `autonomous` preset (every op approved); individual
-    // tests override it to exercise the restrictive / cancel paths.
-    approvesPermissionRequest = vi.fn((_params: unknown) => true);
+vi.mock(
+  "../../src/services/acp-native-transport.js",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../../src/services/acp-native-transport.js")
+      >();
+    const state = getNativeMockState();
+    state.NativeAcpClient = class MockNativeAcpClient
+      implements MockNativeClient
+    {
+      opts: NativeOptions;
+      eventHandler?: NativeEventHandler;
+      start = vi.fn(async () => {
+        await getNativeMockState().startImplementation?.(this);
+      });
+      createSession = vi.fn(async (workdir: string, _claim?: unknown) =>
+        getNativeMockState().createSessionImplementation
+          ? await getNativeMockState().createSessionImplementation(
+              this,
+              workdir,
+            )
+          : {
+              sessionId: "protocol-session",
+              agentSessionId: "agent-session",
+            },
+      );
+      prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
+      cancel = vi.fn(async () => undefined);
+      closeSession = vi.fn(async () => undefined);
+      close = vi.fn(async () => undefined);
+      // Mirrors the real transport's auto-approve decision. Defaults to true to
+      // match the default `autonomous` preset (every op approved); individual
+      // tests override it to exercise the restrictive / cancel paths.
+      approvesPermissionRequest = vi.fn((_params: unknown) => true);
 
-    constructor(opts: NativeOptions) {
-      this.opts = opts;
-      this.eventHandler = opts.onEvent;
-      getNativeMockState().instances.push(this);
-    }
+      constructor(opts: NativeOptions) {
+        this.opts = opts;
+        this.eventHandler = opts.onEvent;
+        getNativeMockState().instances.push(this);
+      }
 
-    setEventHandler(handler: NativeEventHandler | undefined) {
-      this.eventHandler = handler;
-      this.opts.onEvent = handler;
-    }
+      setEventHandler(handler: NativeEventHandler | undefined) {
+        this.eventHandler = handler;
+        this.opts.onEvent = handler;
+      }
 
-    setTimeoutMs(timeoutMs: number | undefined) {
-      this.opts.timeoutMs = timeoutMs;
-    }
+      setTimeoutMs(timeoutMs: number | undefined) {
+        this.opts.timeoutMs = timeoutMs;
+      }
 
-    configureClaimedSession(opts: NativeOptions) {
-      this.opts = { ...this.opts, ...opts };
-      this.eventHandler = opts.onEvent;
-    }
+      configureClaimedSession(opts: NativeOptions) {
+        this.opts = { ...this.opts, ...opts };
+        this.eventHandler = opts.onEvent;
+      }
 
-    emit(event: AcpJsonRpcMessage, sessionId?: string) {
-      this.eventHandler?.(event, sessionId);
-    }
-  };
-  return { NativeAcpClient: state.NativeAcpClient };
-});
+      emit(event: AcpJsonRpcMessage, sessionId?: string) {
+        this.eventHandler?.(event, sessionId);
+      }
+    };
+    return { ...actual, NativeAcpClient: state.NativeAcpClient };
+  },
+);
 
+import { splitCommandLine } from "../../src/services/acp-native-transport.js";
 import {
   AcpService,
+  defaultCodexAcpCommand,
   normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
@@ -328,6 +348,33 @@ async function waitForNativeClients(count: number): Promise<void> {
   );
 }
 
+async function waitForMockCalls(
+  mock: ReturnType<typeof vi.fn>,
+  count: number,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    if (mock.mock.calls.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(
+    `expected ${count} mock calls, got ${mock.mock.calls.length}`,
+  );
+}
+
+async function waitForWarmClientReady(service: AcpService): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    const internal = service as AcpService & {
+      warmNativeClient?: unknown;
+    };
+    if (internal.warmNativeClient) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("expected warm native client to become ready");
+}
+
 beforeEach(() => {
   spawnMock.mockReset();
   nativeClientMock.instances.length = 0;
@@ -358,6 +405,225 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
+  it("reports every canonical backend unavailable when the transport is missing", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "/no/acpx" }),
+    );
+
+    const availability = await service.checkAvailableAgents();
+
+    expect(availability.map((entry) => entry.agentType)).toEqual(
+      CODING_AGENT_BACKENDS,
+    );
+    expect(availability.every((entry) => entry.installed === false)).toBe(true);
+    expect(
+      availability.every((entry) => Boolean(entry.unavailableReason)),
+    ).toBe(true);
+  });
+
+  it("requires each configured native command to resolve to an executable", async () => {
+    const configured = Object.fromEntries(
+      CODING_AGENT_BACKENDS.map((backend) => [
+        CODING_AGENT_BACKEND_PREFLIGHTS[backend].commandConfigKey,
+        process.execPath,
+      ]),
+    );
+    const available = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "native", ...configured }),
+    );
+    expect(
+      (await available.checkAvailableAgents()).every(
+        (entry) => entry.installed,
+      ),
+    ).toBe(true);
+
+    const missing = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ...configured,
+        ELIZA_PI_AGENT_ACP_COMMAND: "/missing/pi-agent",
+      }),
+    );
+    const pi = (await missing.checkAvailableAgents()).find(
+      (entry) => entry.agentType === "pi-agent",
+    );
+    expect(pi).toMatchObject({ installed: false });
+    expect(pi?.unavailableReason).toMatch(/missing or not executable/i);
+  });
+
+  it("fails closed for an unknown adapter", () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const inspect = service as unknown as {
+      agentCommandAvailability(agentType: string): {
+        available: boolean;
+        reason?: string;
+      };
+    };
+
+    expect(inspect.agentCommandAvailability("unknown-adapter")).toMatchObject({
+      available: false,
+      reason: expect.stringMatching(/No verified ACP backend/),
+    });
+  });
+
+  it("accepts built-in acpx profiles without shadow profile executables", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "acpx-profile-preflight-"));
+    const cliPath = join(dir, "acpx");
+    const previousPath = process.env.PATH;
+    try {
+      await fs.writeFile(cliPath, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(cliPath, 0o755);
+      process.env.PATH = dir;
+      const service = new AcpService(
+        runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: cliPath }),
+      );
+
+      const availability = await service.checkAvailableAgents();
+
+      for (const agentType of ["pi-agent", "claude", "codex"] as const) {
+        expect(
+          availability.find((entry) => entry.agentType === agentType),
+        ).toMatchObject({ installed: true });
+      }
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a composed ELIZA_ACP_CLI command before spawn", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "npx -y acpx" }),
+    );
+
+    expect(
+      (await service.checkAvailableAgents()).every(
+        (entry) => entry.installed === false,
+      ),
+    ).toBe(true);
+    expect(
+      (await service.checkAvailableAgents())[0]?.unavailableReason,
+    ).toMatch(/must name one executable path/i);
+  });
+
+  it("anchors a relative native executable before the session changes cwd", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relative-native-command-"));
+    const executable = join(dir, "agent-acp");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_PI_AGENT_ACP_COMMAND: `${relative} --stdio`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      expect(inspect.nativeAgentCommand("pi-agent")).toBe(
+        `${executable} --stdio`,
+      );
+      expect(inspect.agentCommandAvailability("pi-agent")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("anchors a relative ELIZA_CODEX_ACP_COMMAND before the session changes cwd (#24683)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "relative-codex-command-"));
+    const executable = join(dir, "codex-acp");
+    try {
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CODEX_ACP_COMMAND: `${relative} --stdio`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      // The managed-codex branch previously returned the configured value
+      // unanchored, so availability resolved it against the service cwd while
+      // the native client spawns with cwd: session.workdir.
+      expect(inspect.nativeAgentCommand("codex")).toBe(`${executable} --stdio`);
+      expect(inspect.agentCommandAvailability("codex")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("anchors a relative executable path containing spaces losslessly (#24683)", async () => {
+    // anchor -> split must round-trip byte-for-byte. quoteCommandPart()
+    // previously used JSON.stringify, which escapes backslashes, while
+    // splitCommandLine() only strips the surrounding quote pair — so a Windows
+    // path containing spaces re-parsed with doubled separators and the native
+    // transport spawned an executable that does not exist.
+    const dir = mkdtempSync(join(tmpdir(), "relative codex spaces-"));
+    const nested = join(dir, "my bin");
+    const executable = join(nested, "codex-acp");
+    try {
+      await fs.mkdir(nested, { recursive: true });
+      await fs.writeFile(executable, "#!/bin/sh\nexit 0\n");
+      await fs.chmod(executable, 0o755);
+      const relative = path.relative(process.cwd(), executable);
+      // Guard the fixture actually exercises the reported shape.
+      expect(relative).toContain(" ");
+
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CODEX_ACP_COMMAND: `"${relative}" --stdio ""`,
+        }),
+      );
+      const inspect = service as unknown as {
+        nativeAgentCommand(agentType: string): string;
+        agentCommandAvailability(agentType: string): { available: boolean };
+      };
+
+      // Re-parsing the anchored command must recover the exact absolute path
+      // and the original argv tail — no doubled separators, no lost args.
+      const anchored = inspect.nativeAgentCommand("codex");
+      expect(splitCommandLine(anchored)).toEqual({
+        command: executable,
+        args: ["--stdio", ""],
+      });
+      expect(inspect.agentCommandAvailability("codex")).toEqual({
+        available: true,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the managed default Codex command unanchored (#24683)", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const inspect = service as unknown as {
+      nativeAgentCommand(agentType: string): string;
+    };
+
+    // Anchoring must be identity on the managed default: its executable is the
+    // bare `npx`, and the DEFAULT_CODEX_ACP_COMMAND identity comparisons that
+    // drive managed-mode validation, landlock retry, and INITIAL_AGENT_MODE
+    // all depend on this value being returned unchanged.
+    const command = inspect.nativeAgentCommand("codex");
+    expect(command).toBe(defaultCodexAcpCommand());
+    expect(command.startsWith("npx ")).toBe(true);
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
@@ -396,6 +662,53 @@ describe("AcpService", () => {
 
     const store = Reflect.get(service, "store") as { backend: string };
     expect(store.backend).toBe("runtime-db");
+    await service.stop();
+  });
+
+  it("spawns a quoted single-token ELIZA_ACP_CLI as the parsed executable (#24684)", async () => {
+    const reg = nextProc();
+    // A quoted single token is quote-stripped by the availability walker and by
+    // missingCliMessage(), but cliPath previously kept the raw literal, so
+    // spawn() received `"acpx"` with the quotes and ENOENTed (there is no shell
+    // to strip them). Asserting the spawn argv pins the actual defect site:
+    // restoring the old normalization makes this expectation see '"acpx"'.
+    const service = new AcpService(runtime({ ELIZA_ACP_CLI: '"acpx"' }));
+    await service.start();
+
+    const promise = service.spawnSession({
+      name: "quoted",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(reg);
+    reg.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","method":"session_started","params":{"sessionId":"quoted"}}\n',
+      ),
+    );
+    closeOk(reg);
+    await promise;
+
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("acpx");
+    await service.stop();
+  });
+
+  it("rejects a whitespace-only ELIZA_ACP_CLI instead of spawning the empty string (#24684)", async () => {
+    // An empty parsed command previously fell through to spawn() as a PATH
+    // lookup of "" instead of failing closed.
+    const service = new AcpService(runtime({ ELIZA_ACP_CLI: "   " }));
+    await service.start();
+
+    await expect(
+      service.spawnSession({
+        name: "empty-cli",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      }),
+    ).rejects.toThrow(/No executable command is configured/);
+
+    expect(spawnMock).not.toHaveBeenCalled();
     await service.stop();
   });
 
@@ -757,6 +1070,7 @@ describe("AcpService", () => {
   });
 
   it("uses the native TypeScript transport by default", async () => {
+    const baseline = getHostExecutionBaseline();
     const service = new AcpService(
       runtime({
         ELIZA_ACP_TRANSPORT: undefined,
@@ -769,6 +1083,16 @@ describe("AcpService", () => {
       name: "default-native",
       agentType: "codex",
       workdir: "/tmp/acp-test",
+      env: {
+        gopath: "/caller/go",
+        GOMODCACHE: "/caller/go-mod",
+        ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
+      },
+      customCredentials: {
+        GoCache: "/caller/go-build",
+        eliza_host_execution_baseline_gopath: "/caller/go-mirror",
+        ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+      },
     });
 
     expect(spawned.status).toBe("ready");
@@ -780,9 +1104,21 @@ describe("AcpService", () => {
     expect(
       nativeClientMock.instances[0]?.opts.env?.ORCHESTRATOR_SESSION_ID,
     ).toBe(spawned.sessionId);
+    expect(nativeClientMock.instances[0]?.opts.env).toMatchObject({
+      GOPATH: baseline.goPath,
+      GOMODCACHE: baseline.goModCache,
+      GOCACHE: baseline.goCache,
+      ELIZA_HOST_EXECUTION_BASELINE_PATH: baseline.path,
+      ELIZA_HOST_EXECUTION_BASELINE_GOPATH: baseline.goPath,
+      ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: baseline.goModCache,
+      ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: baseline.goCache,
+    });
+    expect(nativeClientMock.instances[0]?.opts.env?.gopath).toBeUndefined();
+    expect(nativeClientMock.instances[0]?.opts.env?.GoCache).toBeUndefined();
   });
 
   it("single-claims warm elizaos children without credentials at process spawn", async () => {
+    captureHostExecutionBaseline();
     const previous = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = "host-credential-must-not-reach-warm-child";
     const service = new AcpService(
@@ -790,11 +1126,13 @@ describe("AcpService", () => {
         ELIZA_ACP_TRANSPORT: "native",
         ELIZA_ACP_DEFAULT_AGENT: "elizaos",
         ELIZA_ACP_WARM_SPAWN: "1",
+        ELIZA_ELIZAOS_ACP_COMMAND: process.execPath,
       }),
     );
     try {
       await service.start();
       await waitForNativeClients(1);
+      await waitForWarmClientReady(service);
       const firstWarm = nativeClientMock.instances[0];
       const firstToken = firstWarm?.opts.env?.ELIZA_ACP_WARM_CLAIM_TOKEN;
       expect(firstToken).toMatch(/^[a-f0-9]{64}$/);
@@ -809,6 +1147,12 @@ describe("AcpService", () => {
           OPENAI_API_KEY: "lease-a",
           ELIZA_ACP_WARM_CLAIM_TOKEN: "caller-injected-token",
           PATH: "/caller-controlled/bin",
+          GOPATH: "/caller/go",
+          GOMODCACHE: "/caller/go-mod",
+          GOCACHE: "/caller/go-build",
+          ELIZA_HOST_EXECUTION_BASELINE_GOPATH: "/caller/go-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOMODCACHE: "/caller/go-mod-mirror",
+          ELIZA_HOST_EXECUTION_BASELINE_GOCACHE: "/caller/go-build-mirror",
         },
       });
       expect(firstWarm?.createSession).toHaveBeenCalledTimes(1);
@@ -825,9 +1169,14 @@ describe("AcpService", () => {
       const firstClaim = firstWarm?.createSession.mock.calls[0]?.[1];
       expect(firstClaim?.env?.ELIZA_ACP_WARM_CLAIM_TOKEN).toBeUndefined();
       expect(firstClaim?.env?.PATH).toBeUndefined();
-      expect(
-        firstClaim?.env?.ELIZA_HOST_EXECUTION_BASELINE_PATH,
-      ).toBeUndefined();
+      for (const key of HOST_EXECUTION_BASELINE_ENV_MIRROR_KEYS) {
+        expect(firstClaim?.env?.[key]).toBeUndefined();
+      }
+      expect(firstClaim?.env).toMatchObject({
+        GOPATH: getHostExecutionBaseline().goPath,
+        GOMODCACHE: getHostExecutionBaseline().goModCache,
+        GOCACHE: getHostExecutionBaseline().goCache,
+      });
       expect(firstClaim?.executionPath).toBe(getHostExecutionBaseline().path);
 
       await waitForNativeClients(2);
@@ -1306,63 +1655,6 @@ describe("AcpService", () => {
     expect(events).not.toContain("task_complete");
   });
 
-  it("prepares OpenCode ACP environment for Cerebras", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_BASE_URL: "https://api.cerebras.ai/v1",
-        ELIZA_OPENCODE_API_KEY: "csk_test",
-        ELIZA_OPENCODE_MODEL_POWERFUL: "gpt-oss-120b",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-cerebras",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    // The shim script lives at `<plugin>/bin/opencode*` and is referenced
-    // with platform-native path separators (`\` on Windows, `/` on POSIX).
-    // On Windows the spawn target is wrapped in double quotes (paths can
-    // contain spaces) and uses the `.cmd` shim, so accept either
-    // separator after `plugin-agent-orchestrator`, any extension on the
-    // opencode shim, and tolerate surrounding quotes / trailing tokens
-    // around the trailing `acp` subcommand.
-    const shimArg = args?.[agentArgIndex + 1];
-    expect(shimArg).toBeDefined();
-    expect(shimArg).toContain("plugin-agent-orchestrator");
-    expect(shimArg).toContain("opencode");
-    expect(shimArg).toMatch(/\sacp(\s|$)/);
-    expect(args).not.toContain("opencode");
-
-    const env = spawnMock.mock.calls[0]?.[2]?.env as
-      | Record<string, string>
-      | undefined;
-    const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
-      provider?: Record<
-        string,
-        { npm?: string; options?: { baseURL?: string; apiKey?: string } }
-      >;
-      model?: string;
-    };
-    expect(env?.OPENCODE_MODEL).toBe("cerebras/gpt-oss-120b");
-    expect(env?.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
-    expect(config.model).toBe("cerebras/gpt-oss-120b");
-    expect(config.provider?.cerebras?.options?.baseURL).toBe(
-      "https://api.cerebras.ai/v1",
-    );
-    expect(config.provider?.cerebras?.npm).toBe("@ai-sdk/cerebras");
-    expect(config.provider?.cerebras?.options?.apiKey).toBe("csk_test");
-  });
-
   it("keeps BENCHMARK_TASK_AGENT=elizaos as the native default adapter", async () => {
     const reg = nextProc();
     const service = new AcpService(
@@ -1384,13 +1676,11 @@ describe("AcpService", () => {
 
     expect(session.agentType).toBe("elizaos");
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    expect(args).toContain("elizaos");
-    expect(args).not.toContain("opencode");
-
+    expect(args).toContain("--agent");
+    expect(args).toContain("eliza-code-acp");
     const env = spawnMock.mock.calls[0]?.[2]?.env as
       | Record<string, string>
       | undefined;
-    expect(env?.OPENCODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
   });
 
@@ -1695,51 +1985,6 @@ describe("AcpService", () => {
     }
   });
 
-  it("uses an explicit OpenCode ACP command override when configured", async () => {
-    const reg = nextProc();
-    const service = new AcpService(
-      runtime({
-        ELIZA_OPENCODE_ACP_COMMAND: "/opt/opencode/bin/opencode acp",
-      }),
-    );
-    await service.start();
-
-    const spawned = service.spawnSession({
-      name: "opencode-command",
-      agentType: "opencode",
-      workdir: "/tmp/acp-test",
-    });
-    await waitForSpawn(reg);
-    closeOk(reg);
-    const { sessionId } = await spawned;
-
-    const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
-    const agentArgIndex = args?.indexOf("--agent") ?? -1;
-    expect(agentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(args?.[agentArgIndex + 1]).toBe("/opt/opencode/bin/opencode acp");
-    expect(args).not.toContain("opencode");
-
-    const prompt = nextProc();
-    const sent = service.sendPrompt(sessionId, "write a tiny static page");
-    await waitForSpawn(prompt);
-    prompt.proc.stdout.emit(
-      "data",
-      Buffer.from(
-        '{"jsonrpc":"2.0","id":"prompt","result":{"stopReason":"end_turn"},"sessionId":"protocol-session"}\n',
-      ),
-    );
-    closeOk(prompt);
-    await sent;
-
-    const promptArgs = spawnMock.mock.calls[1]?.[1] as string[] | undefined;
-    const promptAgentArgIndex = promptArgs?.indexOf("--agent") ?? -1;
-    expect(promptAgentArgIndex).toBeGreaterThanOrEqual(0);
-    expect(promptArgs?.[promptAgentArgIndex + 1]).toBe(
-      "/opt/opencode/bin/opencode acp",
-    );
-    expect(promptArgs).not.toContain("opencode");
-  });
-
   it("sendPrompt emits message, tool_running, task_complete and resolves PromptResult", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
@@ -1897,6 +2142,273 @@ describe("AcpService", () => {
     expect(events).not.toContain("stopped");
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
+
+  it("CLI sendPrompt preserves the untyped error-with-deliverable completion heuristic", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-untyped-error-with-output",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "build it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-untyped-error",
+          result: {
+            stopReason: "error",
+            content: [{ type: "text", text: "Verified deliverable." }],
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    closeOk(prompt);
+
+    const result = await sent;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: "Verified deliverable.",
+    });
+    expect(result.error).toBeUndefined();
+    expect(events).toEqual(["task_complete"]);
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
+
+  it("CLI typed failure suppresses generic auth/crash handling on nonzero exit", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-typed-terminal-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Files changed, but verification did not complete.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-typed-failure",
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: terminalFailure.message }],
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    prompt.proc.stderr.emit(
+      "data",
+      Buffer.from("401 Unauthorized token expired"),
+    );
+    prompt.proc.emit("close", 1, null);
+
+    const result = await sent;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: terminalFailure.message,
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect(await service.getSession(sessionId)).toMatchObject({
+      status: "errored",
+      lastError: terminalFailure.message,
+    });
+  });
+
+  it("CLI protocol failure suppresses generic crash persistence on nonzero exit", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cli-malformed-terminal-failure",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    expect(() =>
+      prompt.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: "req-malformed-failure",
+            result: {
+              stopReason: "end_turn",
+              content: [{ type: "text", text: "Unverified prose." }],
+              _meta: {
+                terminalFailure: {
+                  kind: "coding_mutation_unverified",
+                  transient: "no",
+                  message: "Unverified prose.",
+                },
+              },
+            },
+            sessionId,
+          })}\n`,
+        ),
+      ),
+    ).not.toThrow();
+    prompt.proc.stderr.emit("data", Buffer.from("subprocess crashed"));
+    prompt.proc.emit("close", 2, null);
+
+    const result = await sent;
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toMatchObject({
+      failureKind: "protocol_error",
+      stopReason: "error",
+    });
+    expect(await service.getSession(sessionId)).toMatchObject({
+      status: "errored",
+      lastError: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+  });
+
+  it.each([
+    {
+      label: "typed terminal failure",
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        transient: false,
+        message: "Typed failure remains authoritative.",
+      },
+      expectedFailureKind: "coding_mutation_unverified",
+      expectedLastError: "Typed failure remains authoritative.",
+    },
+    {
+      label: "malformed terminal receipt",
+      terminalFailure: {
+        kind: "coding_mutation_unverified",
+        transient: "no",
+        message: "Malformed failure receipt.",
+      },
+      expectedFailureKind: "protocol_error",
+      expectedLastError:
+        "ACP terminalFailure requires kind, message, transient",
+    },
+  ])(
+    "keeps $label exactly once across an auth-like nonzero exit",
+    async ({
+      label,
+      terminalFailure,
+      expectedFailureKind,
+      expectedLastError,
+    }) => {
+      const create = nextProc();
+      const service = new AcpService(runtime());
+      const events: Array<{ event: string; payload: unknown }> = [];
+      service.onSessionEvent((_sid, event, payload) => {
+        events.push({ event, payload });
+      });
+      await service.start();
+      const spawned = service.spawnSession({
+        name: `exactly-once-${label.replaceAll(" ", "-")}`,
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(create);
+      closeOk(create);
+      const { sessionId } = await spawned;
+      events.length = 0;
+
+      const prompt = nextProc();
+      const sent = service.sendPrompt(sessionId, "verify it");
+      await waitForSpawn(prompt);
+      prompt.proc.stdout.emit(
+        "data",
+        Buffer.from(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: `req-${label}`,
+            result: {
+              stopReason: "end_turn",
+              _meta: { terminalFailure },
+            },
+            sessionId,
+          })}\n`,
+        ),
+      );
+      prompt.proc.stderr.emit(
+        "data",
+        Buffer.from("401 Unauthorized token expired"),
+      );
+      prompt.proc.emit("close", 3, null);
+
+      const result = await sent;
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(result.stopReason).toBe("error");
+      expect(events.map(({ event }) => event)).toEqual(["error"]);
+      expect(events[0]?.payload).toMatchObject({
+        failureKind: expectedFailureKind,
+      });
+      expect(await service.getSession(sessionId)).toMatchObject({
+        status: "errored",
+        lastError: expect.stringContaining(expectedLastError),
+      });
+    },
+  );
 
   it("flushes raw stdout before advertising stdoutLogPath on task_complete", async () => {
     const priorTrajDir = process.env.ELIZA_TRAJECTORY_DIR;
@@ -2137,6 +2649,59 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).not.toBe("errored");
   });
 
+  it("native sendPrompt never promotes a typed terminal failure with prose to task_complete", async () => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: "native-typed-error-with-output",
+      agentType: "elizaos",
+      workdir: "/tmp/acp-test",
+    });
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Files changed, but verification did not complete.",
+    };
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason: "error",
+          content: [{ type: "text", text: terminalFailure.message }],
+          _meta: { terminalFailure },
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason: "end_turn", terminalFailure };
+    });
+
+    const result = await service.sendPrompt(sessionId, "build it");
+
+    expect(result).toMatchObject({
+      stopReason: "error",
+      finalText: terminalFailure.message,
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map((event) => event.event)).toContain("error");
+    expect(events.map((event) => event.event)).not.toContain("task_complete");
+    expect(events.find((event) => event.event === "error")?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
   // The other half of Fix #2: a true failure (stopReason error AND no captured
   // output) still surfaces as a user-facing `error` and marks the store errored.
   it("native sendPrompt surfaces a stopReason=error with EMPTY deliverable as error", async () => {
@@ -2216,7 +2781,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-reasoning",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2273,7 +2838,7 @@ describe("AcpService", () => {
     await service.start();
     const { sessionId } = await service.spawnSession({
       name: "native-plan",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     const client = firstNativeClient();
@@ -2376,8 +2941,8 @@ describe("AcpService", () => {
     await new Promise((resolve) => setImmediate(resolve));
     const cancelled = service.cancelSession(sessionId);
     resolvePrompt({ stopReason: "cancelled" });
-    await cancelled;
     const result = await sent;
+    await cancelled;
 
     expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(result.stopReason).toBe("cancelled");
@@ -2571,7 +3136,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "route-prefixed",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2602,7 +3167,7 @@ describe("AcpService", () => {
     await service.start();
     const spawned = service.spawnSession({
       name: "ignore-echo",
-      agentType: "opencode",
+      agentType: "codex",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(create);
@@ -2717,6 +3282,57 @@ describe("AcpService", () => {
     );
   });
 
+  it("cancels a CLI prompt during credential setup without spawning a prompt process", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "cancel-during-credentials",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    let markCredentialsStarted: () => void = () => undefined;
+    const credentialsStarted = new Promise<void>((resolve) => {
+      markCredentialsStarted = resolve;
+    });
+    let releaseCredentials: (value: Record<string, string>) => void = () =>
+      undefined;
+    const delayedCredentials = new Promise<Record<string, string>>(
+      (resolve) => {
+        releaseCredentials = resolve;
+      },
+    );
+    const internal = service as unknown as {
+      accountCredentialsForSession(
+        session: unknown,
+      ): Promise<Record<string, string> | undefined>;
+    };
+    vi.spyOn(internal, "accountCredentialsForSession").mockImplementationOnce(
+      async () => {
+        markCredentialsStarted();
+        return delayedCredentials;
+      },
+    );
+    const spawnCountBeforePrompt = spawnMock.mock.calls.length;
+    const sent = service.sendPrompt(sessionId, "start slowly");
+    await credentialsStarted;
+    const cancelled = service.cancelSession(sessionId);
+
+    const [result] = await Promise.all([sent, cancelled.then(() => undefined)]);
+    releaseCredentials({});
+    expect(result).toMatchObject({ stopReason: "cancelled" });
+    expect(spawnMock.mock.calls).toHaveLength(spawnCountBeforePrompt);
+    expect(events).toEqual(["cancelled"]);
+    expect((await service.getSession(sessionId))?.status).toBe("cancelled");
+  });
+
   it("cancelSession sends SIGTERM then SIGKILL after grace", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
@@ -2771,6 +3387,253 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("cancelled");
     expect(events).toContain("cancelled");
     expect(events).not.toContain("error");
+  });
+
+  it("keeps a typed CLI terminal failure authoritative over a later cancellation", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "typed-failure-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const internalStore = (
+      service as unknown as {
+        store: {
+          updateStatus(
+            id: string,
+            status: string,
+            error?: string,
+          ): Promise<unknown>;
+        };
+      }
+    ).store;
+    const originalUpdateStatus = internalStore.updateStatus.bind(internalStore);
+    const statusWrites: string[] = [];
+    let releaseDelayedCancelledWrite: () => void = () => undefined;
+    const delayedCancelledWrite = new Promise<void>((resolve) => {
+      releaseDelayedCancelledWrite = resolve;
+    });
+    vi.spyOn(internalStore, "updateStatus").mockImplementation(
+      async (id, status, error) => {
+        statusWrites.push(status);
+        if (status === "cancelled") await delayedCancelledWrite;
+        return originalUpdateStatus(id, status, error);
+      },
+    );
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      code: "VERIFY_REQUIRED",
+      transient: false,
+      message: "Verification failed before cancellation arrived.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-typed-cancel-race",
+          result: {
+            stopReason: "end_turn",
+            content: [{ type: "text", text: terminalFailure.message }],
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    prompt.proc.emit("close", 130, "SIGTERM");
+
+    const result = await sent;
+    // If cancelSession started its own durable write, release it only after the
+    // prompt's errored write has landed. The old two-writer implementation then
+    // finished as cancelled and failed the assertions below.
+    releaseDelayedCancelledWrite();
+    await cancelled;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toEqual({
+      message: terminalFailure.message,
+      failureKind: terminalFailure.kind,
+      failureCode: terminalFailure.code,
+      transient: false,
+      stopReason: "error",
+    });
+    expect(statusWrites).not.toContain("cancelled");
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
+  it("keeps prompt ownership after process close until delayed error persistence settles", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "post-close-persistence-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const internalStore = (
+      service as unknown as {
+        store: {
+          updateStatus(
+            id: string,
+            status: string,
+            error?: string,
+          ): Promise<unknown>;
+        };
+      }
+    ).store;
+    const originalUpdateStatus = internalStore.updateStatus.bind(internalStore);
+    const statusWrites: string[] = [];
+    let markErroredWriteStarted: () => void = () => undefined;
+    const erroredWriteStarted = new Promise<void>((resolve) => {
+      markErroredWriteStarted = resolve;
+    });
+    let releaseErroredWrite: () => void = () => undefined;
+    const delayedErroredWrite = new Promise<void>((resolve) => {
+      releaseErroredWrite = resolve;
+    });
+    vi.spyOn(internalStore, "updateStatus").mockImplementation(
+      async (id, status, error) => {
+        statusWrites.push(status);
+        if (status === "errored") {
+          markErroredWriteStarted();
+          await delayedErroredWrite;
+        }
+        return originalUpdateStatus(id, status, error);
+      },
+    );
+
+    const terminalFailure = {
+      kind: "coding_mutation_unverified",
+      transient: false,
+      message: "The terminal receipt owns settlement.",
+    };
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "finish");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-post-close-race",
+          result: {
+            stopReason: "end_turn",
+            _meta: { terminalFailure },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    prompt.proc.emit("close", 0, null);
+    await erroredWriteStarted;
+    const spawnCountAtClose = spawnMock.mock.calls.length;
+    const fallbackCancel = nextProc();
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    if (spawnMock.mock.calls.length > spawnCountAtClose)
+      closeOk(fallbackCancel);
+    releaseErroredWrite();
+
+    const [result] = await Promise.all([sent, cancelled.then(() => undefined)]);
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: terminalFailure.message,
+      terminalFailure,
+    });
+    expect(spawnMock.mock.calls).toHaveLength(spawnCountAtClose);
+    expect(statusWrites).not.toContain("cancelled");
+    expect(events).toEqual(["error"]);
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
+  });
+
+  it("keeps a malformed CLI receipt error authoritative over a later cancellation", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    const events: Array<{ event: string; payload: unknown }> = [];
+    service.onSessionEvent((_sid, event, payload) => {
+      events.push({ event, payload });
+    });
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "protocol-error-cancel-race",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+    events.length = 0;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "change and verify it");
+    await waitForSpawn(prompt);
+    prompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        `${JSON.stringify({
+          jsonrpc: "2.0",
+          id: "req-malformed-cancel-race",
+          result: {
+            stopReason: "end_turn",
+            _meta: {
+              terminalFailure: {
+                kind: "coding_mutation_unverified",
+                transient: "no",
+                message: "Malformed receipt.",
+              },
+            },
+          },
+          sessionId,
+        })}\n`,
+      ),
+    );
+    const cancelled = service.cancelSession(sessionId);
+    await new Promise((resolve) => setImmediate(resolve));
+    prompt.proc.emit("close", 130, "SIGTERM");
+
+    await cancelled;
+    const result = await sent;
+    expect(result).toMatchObject({
+      stopReason: "error",
+      error: expect.stringContaining(
+        "ACP terminalFailure requires kind, message, transient",
+      ),
+    });
+    expect(events.map(({ event }) => event)).toEqual(["error"]);
+    expect(events[0]?.payload).toMatchObject({
+      failureKind: "protocol_error",
+      stopReason: "error",
+    });
+    expect((await service.getSession(sessionId))?.status).toBe("errored");
   });
 
   it("ignores malformed NDJSON without crashing", async () => {
@@ -2856,6 +3719,29 @@ describe("AcpService", () => {
         expect.objectContaining({ failureKind: "auth" }),
       ]),
     );
+  });
+
+  it("preserves complete subprocess stderr in a failed prompt result", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "complete-stderr",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    const completeStderr = `STDERR-BEGIN-${"x".repeat(100_000)}-STDERR-END`;
+    prompt.proc.stderr.emit("data", Buffer.from(completeStderr));
+    prompt.proc.emit("close", 2, null);
+
+    await expect(sent).resolves.toMatchObject({ error: completeStderr });
   });
 
   it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
@@ -2970,7 +3856,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     return {
       id: over.id ?? "00000000-0000-0000-0000-0000000000aa",
       name: "hc",
-      agentType: "opencode" as const,
+      agentType: "codex" as const,
       workdir: "/tmp/acp-test",
       status: "ready" as const,
       approvalPreset: "standard" as const,
@@ -3075,6 +3961,32 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     expect(await service.getSession(id)).toBeUndefined();
     expect(turnOutputBuffers.has(id)).toBe(false);
+  });
+
+  it("retains complete session and turn output beyond the former event ceiling", async () => {
+    const service = new AcpService(runtime());
+    const sessionId = "00000000-0000-0000-0000-0000000000a4";
+    const turnOutputBuffers = Reflect.get(service, "turnOutputBuffers") as Map<
+      string,
+      string[]
+    >;
+    turnOutputBuffers.set(sessionId, []);
+    const appendOutput = Reflect.get(service, "appendOutput").bind(service) as (
+      id: string,
+      text: string,
+    ) => void;
+
+    for (let index = 0; index < 2_001; index += 1) {
+      appendOutput(sessionId, `${index}\n`);
+    }
+
+    const complete = Array.from(
+      { length: 2_001 },
+      (_, index) => `${index}\n`,
+    ).join("");
+    expect(await service.getSessionOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionTurnOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionOutput(sessionId, 2)).toBe("1999\n2000\n");
   });
 
   it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {
@@ -3306,7 +4218,7 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
     );
 
     const promptA = service.sendPrompt(sessionId, "task A");
-    await vi.waitFor(() => expect(client.prompt).toHaveBeenCalledTimes(1));
+    await waitForMockCalls(client.prompt, 1);
     await service.updateSessionMetadata(sessionId, { taskId: "task-b" });
     await expect(service.sendPrompt(sessionId, "task B")).rejects.toThrow(
       /already busy/,

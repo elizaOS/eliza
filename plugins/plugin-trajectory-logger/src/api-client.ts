@@ -65,6 +65,51 @@ export interface TrajectoryDetail {
   evaluationEvents?: UIEvaluationEvent[];
 }
 
+function toWellFormedUnicodeLocal(text: string): string {
+  const maybe = text as unknown as {
+    toWellFormed?: () => string;
+    isWellFormed?: () => boolean;
+  };
+  if (typeof maybe.toWellFormed === "function") return maybe.toWellFormed();
+  if (typeof maybe.isWellFormed === "function" && maybe.isWellFormed())
+    return text;
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    const isHigh = code >= 0xd800 && code <= 0xdbff;
+    const isLow = code >= 0xdc00 && code <= 0xdfff;
+    if (isHigh) {
+      if (i + 1 < text.length) {
+        const next = text.charCodeAt(i + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          out += text[i] + text[i + 1];
+          i++;
+          continue;
+        }
+      }
+      out += "�";
+    } else if (isLow) {
+      out += "�";
+    } else {
+      out += text[i];
+    }
+  }
+  return out;
+}
+
+function truncateWellFormedLocal(text: string, maxLength: number): string {
+  if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
+  if (text.length <= maxLength) return text;
+  const end =
+    text.charCodeAt(maxLength - 1) >= 0xd800 &&
+    text.charCodeAt(maxLength - 1) <= 0xdbff &&
+    text.charCodeAt(maxLength) >= 0xdc00 &&
+    text.charCodeAt(maxLength) <= 0xdfff
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+}
+
 /**
  * HTTP error from a trajectory route, carrying the response status so callers
  * can distinguish a "service not mounted" surface (404/503 — the training
@@ -74,8 +119,11 @@ export class TrajectoryHttpError extends Error {
   readonly status: number;
 
   constructor(status: number, statusText: string, body: string) {
+    const errorBodyPreview = body
+      ? truncateWellFormedLocal(toWellFormedUnicodeLocal(body), 200)
+      : "";
     super(
-      `[trajectory-logger] ${status} ${statusText}${body ? `: ${body.slice(0, 200)}` : ""}`,
+      `[trajectory-logger] ${status} ${statusText}${errorBodyPreview ? `: ${errorBodyPreview}` : ""}`,
     );
     this.name = "TrajectoryHttpError";
     this.status = status;
@@ -92,8 +140,15 @@ export class TrajectoryHttpError extends Error {
 
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new TrajectoryHttpError(res.status, res.statusText, body);
+    let errorBodyPreview: string;
+    try {
+      const body = await res.text();
+      errorBodyPreview = body;
+    } catch {
+      // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
+      errorBodyPreview = "[unreadable]";
+    }
+    throw new TrajectoryHttpError(res.status, res.statusText, errorBodyPreview);
   }
   return (await res.json()) as T;
 }

@@ -13,6 +13,7 @@ import path from "node:path";
 import type { Action, ActionResult } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveToolDescriptor } from "./tool-call-cache/registry.ts";
+import type { ToolOutput } from "./tool-call-cache/types.ts";
 import {
   createToolCallCacheFromConfig,
   wrapActionWithCache,
@@ -176,8 +177,72 @@ describe("wrapActionWithCache", () => {
     expect(calls()).toBe(2);
   });
 
+  it("does not cache a proxied field or run its reflection traps", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const { action, calls } = makeFakeAction("web_search", () => ({
+      success: true,
+      data: new Proxy(
+        { payload: "value" },
+        {
+          get() {
+            trapCalls.get += 1;
+            throw new TypeError("hostile get trap");
+          },
+          getOwnPropertyDescriptor() {
+            trapCalls.getOwnPropertyDescriptor += 1;
+            throw new TypeError("hostile descriptor trap");
+          },
+          getPrototypeOf() {
+            trapCalls.getPrototypeOf += 1;
+            throw new TypeError("hostile prototype trap");
+          },
+          ownKeys() {
+            trapCalls.ownKeys += 1;
+            throw new TypeError("hostile ownKeys trap");
+          },
+        },
+      ),
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    const options = { parameters: { q: "hostile-proxy" } };
+
+    await wrapped.handler({} as never, {} as never, undefined, options);
+    await wrapped.handler({} as never, {} as never, undefined, options);
+
+    expect(calls()).toBe(2);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
+  });
+
   it("createToolCallCacheFromConfig returns null when disabled", () => {
     const cache = createToolCallCacheFromConfig({ enabled: false });
     expect(cache).toBeNull();
+  });
+  it("returns a deep-but-legal ActionResult without rejecting", async () => {
+    const cache = createToolCallCacheFromConfig({ diskRoot: tempRoot });
+    if (!cache) throw new Error("cache must be enabled");
+    let deep: ToolOutput = { v: 1 };
+    for (let i = 0; i < 64; i++) deep = { child: deep };
+    const { action } = makeFakeAction("web_search", () => ({
+      success: true,
+      data: deep,
+    }));
+    const wrapped = wrapActionWithCache(action, cache, { diskRoot: tempRoot });
+    await expect(
+      wrapped.handler({} as never, {} as never, undefined, {
+        parameters: { q: "deep" },
+      }),
+    ).resolves.toEqual({ success: true, data: deep });
   });
 });

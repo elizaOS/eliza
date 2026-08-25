@@ -69,6 +69,58 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     expect(persisted?.lastAccessedAt?.toISOString()).toBe(lastAccessedAt.toISOString());
   });
 
+  it("names the long-term room with the complete entity UUID", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+    const ensureRoomExists = vi.spyOn(runtime, "ensureRoomExists");
+
+    await service.storeLongTermMemory({
+      agentId,
+      entityId,
+      category: "semantic",
+      content: "Remember the complete room identity",
+    });
+
+    expect(ensureRoomExists).toHaveBeenCalledWith(
+      expect.objectContaining({ name: `Advanced Memory ${entityId}` })
+    );
+  });
+
+  it("returns every long-term memory when no explicit limit is requested", async () => {
+    const agentId = uuidv4() as UUID;
+    const entityId = uuidv4() as UUID;
+    const { runtime, cleanup } = await createTestDatabase(agentId);
+    cleanups.push(cleanup);
+    await runtime.createEntities([
+      { id: entityId, agentId, names: ["Test Entity"], metadata: {} } as Entity,
+    ]);
+    const service = new AdvancedMemoryStorageService();
+    await service.initialize(runtime);
+
+    for (let index = 0; index < 25; index += 1) {
+      await service.storeLongTermMemory({
+        agentId,
+        entityId,
+        category: "semantic",
+        content: `Complete memory ${index}`,
+      });
+    }
+
+    const complete = await service.getLongTermMemories(agentId, entityId);
+    expect(complete).toHaveLength(25);
+    expect(complete.map((memory) => memory.content)).toContain("Complete memory 0");
+    await expect(
+      service.getLongTermMemories(agentId, entityId, { limit: 3 })
+    ).resolves.toHaveLength(3);
+  });
+
   it("replaces the creation access timestamp with an explicit older value", async () => {
     const agentId = uuidv4() as UUID;
     const entityId = uuidv4() as UUID;
@@ -180,5 +232,27 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
 
     const [updated] = await service.getLongTermMemories(agentId, entityId);
     expect(updated?.lastAccessedAt?.toISOString()).toBe(older.toISOString());
+  });
+
+  it("maintains strict total ordering when updatedAt or createdAt contain invalid dates", async () => {
+    const service = new AdvancedMemoryStorageService();
+    const sorted = (service as any).sortLongTermMemories([
+      {
+        id: "mem-valid",
+        updatedAt: new Date("2026-08-01T00:00:00.000Z"),
+        createdAt: new Date("2026-08-01T00:00:00.000Z"),
+        confidence: 0.9,
+      },
+      {
+        id: "mem-invalid",
+        updatedAt: new Date("invalid-date"),
+        createdAt: new Date("invalid-date"),
+        confidence: 0.5,
+      },
+    ]);
+
+    expect(sorted).toHaveLength(2);
+    expect(sorted[0]?.id).toBe("mem-valid");
+    expect(sorted[1]?.id).toBe("mem-invalid");
   });
 });

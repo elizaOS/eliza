@@ -61,7 +61,7 @@ function SegmentRow({
   return (
     <article
       className={cn(
-        "border-b border-border px-4 py-4",
+        "border-b border-border p-4",
         pending && "text-muted",
         failed && "text-muted/80",
       )}
@@ -331,7 +331,7 @@ export function PendantTranscriptView(): React.ReactElement {
   return (
     <ShellViewAgentSurface viewId="pendant-transcript">
       <div className="flex h-full min-h-0 w-full flex-col bg-bg text-txt">
-        <header className="border-b border-border px-4 py-4">
+        <header className="border-b border-border p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-lg font-semibold text-txt-strong">

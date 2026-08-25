@@ -17,6 +17,10 @@ const STAGING_RESTORE_OPERATION = {
   idx: 250,
   tag: "0251_agent_backup_restore_operations",
 } as const;
+const IMMUTABLE_USAGE_QUOTAS_DROP = {
+  hash: "a74657d9b678c1501472e15f27588d4fefbd3848e9fea5ef634c384680a280c7",
+  tag: "0282_drop_unused_usage_quotas_table",
+} as const;
 const MIGRATIONS_DIR = path.resolve(
   import.meta.dir,
   "../../shared/src/db/migrations",
@@ -99,6 +103,17 @@ describe("migration ledger checkpoint completeness", () => {
     );
     expect(createHash("sha256").update(sql).digest("hex")).toBe(
       STAGING_RESTORE_OPERATION.hash,
+    );
+  });
+
+  test("retains 0282 byte-for-byte while compatibility is restored forward", async () => {
+    const sql = await readFile(
+      path.join(MIGRATIONS_DIR, `${IMMUTABLE_USAGE_QUOTAS_DROP.tag}.sql`),
+      "utf8",
+    );
+
+    expect(createHash("sha256").update(sql).digest("hex")).toBe(
+      IMMUTABLE_USAGE_QUOTAS_DROP.hash,
     );
   });
 });

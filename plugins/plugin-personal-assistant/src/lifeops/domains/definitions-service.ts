@@ -4,6 +4,8 @@
  * later fires), including reminder-plan normalization and definition-performance
  * scoring.
  */
+
+import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -14,6 +16,8 @@ import type {
   LifeOpsReminderPlan,
   LifeOpsReminderStep,
   LifeOpsTaskDefinition,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
 } from "../../contracts/index.js";
@@ -44,9 +48,13 @@ import { normalizeWindowPolicyInput } from "../service-normalize-connector.js";
 import {
   normalizeCadence,
   normalizeProgressionRule,
+  normalizeQuotaCheckInPolicy,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
-import { callerDefinitionScopes } from "./definition-authorization.js";
+import {
+  listCallerDefinitions,
+  nextMutationRevision,
+} from "./definition-authorization.js";
 
 // Routine seeding is a FIRST_RUN customize-path concern — see
 // `src/lifeops/first-run/service.ts`. The migrator at
@@ -117,19 +125,10 @@ export class DefinitionsDomain {
   ) {}
 
   async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
-    const definitions = (
-      await Promise.all(
-        callerDefinitionScopes(this.ctx).map((scope) =>
-          this.ctx.repository.listDefinitions(this.ctx.agentId(), scope),
-        ),
-      )
-    )
-      .flat()
-      .sort(
-        (left, right) =>
-          left.createdAt.localeCompare(right.createdAt) ||
-          left.id.localeCompare(right.id),
-      );
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+    );
     const plans = await this.ctx.repository.listReminderPlansForOwners(
       this.ctx.agentId(),
       "definition",
@@ -190,6 +189,11 @@ export class DefinitionsDomain {
       fail(400, "unscheduled cadence is only valid for task definitions");
     }
     const progressionRule = normalizeProgressionRule(request.progressionRule);
+    const checkInPolicy = normalizeQuotaCheckInPolicy(
+      request.checkInPolicy,
+      cadence,
+      windowPolicy,
+    );
     const reminderPlanDraft = normalizeReminderPlanDraft(
       request.reminderPlan,
       "create",
@@ -211,6 +215,7 @@ export class DefinitionsDomain {
       cadence,
       windowPolicy,
       progressionRule,
+      checkInPolicy,
       websiteAccess:
         normalizeWebsiteAccessPolicy(request.websiteAccess, "websiteAccess") ??
         null,
@@ -236,15 +241,20 @@ export class DefinitionsDomain {
       reminderPlanDraft,
     );
     if (definition.reminderPlanId !== null) {
-      await this.ctx.repository.updateDefinition(definition);
+      await this.ctx.repository.updateDefinition(definition, {
+        expectedUpdatedAt: definition.updatedAt,
+      });
     }
     await this.deps.syncGoalLink(definition);
     await this.deps.refreshDefinitionOccurrences(definition);
+    const persistedUpdatedAt = definition.updatedAt;
     definition =
       (await this.deps.syncNativeAppleReminderForDefinition({
         definition,
       })) ?? definition;
-    await this.ctx.repository.updateDefinition(definition);
+    await this.ctx.repository.updateDefinition(definition, {
+      expectedUpdatedAt: persistedUpdatedAt,
+    });
     await this.ctx.recordAudit(
       "definition_created",
       "definition",
@@ -308,6 +318,37 @@ export class DefinitionsDomain {
       nextWindowPolicy,
     );
     if (
+      current.definition.cadence.kind === "count_per_day" &&
+      (nextTimezone !== current.definition.timezone ||
+        JSON.stringify(nextCadence) !==
+          JSON.stringify(current.definition.cadence))
+    ) {
+      const occurrences =
+        await this.ctx.repository.listOccurrencesForDefinition(
+          this.ctx.agentId(),
+          current.definition.id,
+        );
+      for (const occurrence of occurrences) {
+        if (
+          ["completed", "skipped", "expired", "muted"].includes(
+            occurrence.state,
+          )
+        ) {
+          continue;
+        }
+        const progress = await this.ctx.repository.sumProgressEvents(
+          this.ctx.agentId(),
+          occurrence.id,
+        );
+        if (progress > 0) {
+          fail(
+            409,
+            "quota cadence or timezone cannot change during an in-progress active day",
+          );
+        }
+      }
+    }
+    if (
       nextCadence.kind === "unscheduled" &&
       current.definition.kind !== "task"
     ) {
@@ -349,6 +390,20 @@ export class DefinitionsDomain {
         request.progressionRule !== undefined
           ? normalizeProgressionRule(request.progressionRule)
           : current.definition.progressionRule,
+      checkInPolicy:
+        request.checkInPolicy !== undefined
+          ? normalizeQuotaCheckInPolicy(
+              request.checkInPolicy,
+              nextCadence,
+              nextWindowPolicy,
+            )
+          : nextCadence.kind === "count_per_day"
+            ? normalizeQuotaCheckInPolicy(
+                current.definition.checkInPolicy,
+                nextCadence,
+                nextWindowPolicy,
+              )
+            : null,
       websiteAccess:
         request.websiteAccess !== undefined
           ? (normalizeWebsiteAccessPolicy(
@@ -367,7 +422,7 @@ export class DefinitionsDomain {
               normalizeOptionalRecord(request.metadata, "metadata"),
             )
           : current.definition.metadata,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nextMutationRevision(current.definition.updatedAt),
     };
     const reminderPlanDraft = normalizeReminderPlanDraft(
       request.reminderPlan,
@@ -378,22 +433,39 @@ export class DefinitionsDomain {
     // surfaces as a typed LIFEOPS_DEFINITION_CONFLICT for re-resolution.
     await this.ctx.repository.updateDefinition(nextDefinition, {
       expectedUpdatedAt: current.definition.updatedAt,
+      expectedScope: {
+        domain: current.definition.domain,
+        subjectType: current.definition.subjectType,
+        subjectId: current.definition.subjectId,
+      },
     });
     const reminderPlan = await this.deps.syncReminderPlan(
       nextDefinition,
       reminderPlanDraft,
     );
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    const updatedScope = {
+      domain: nextDefinition.domain,
+      subjectType: nextDefinition.subjectType,
+      subjectId: nextDefinition.subjectId,
+    };
+    await this.ctx.repository.updateDefinition(nextDefinition, {
+      expectedUpdatedAt: nextDefinition.updatedAt,
+      expectedScope: updatedScope,
+    });
     await this.deps.syncGoalLink(nextDefinition);
     if (nextDefinition.status === "active") {
       await this.deps.refreshDefinitionOccurrences(nextDefinition);
     }
+    const persistedUpdatedAt = nextDefinition.updatedAt;
     nextDefinition =
       (await this.deps.syncNativeAppleReminderForDefinition({
         definition: nextDefinition,
         previousDefinition: current.definition,
       })) ?? nextDefinition;
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    await this.ctx.repository.updateDefinition(nextDefinition, {
+      expectedUpdatedAt: persistedUpdatedAt,
+      expectedScope: updatedScope,
+    });
     await this.ctx.recordAudit(
       "definition_updated",
       "definition",
@@ -430,10 +502,6 @@ export class DefinitionsDomain {
     // database side effects. An immutable ID for another domain/owner is
     // indistinguishable from a missing definition.
     const { definition } = await this.deps.getDefinitionRecord(definitionId);
-    await this.deps.syncNativeAppleReminderForDefinition({
-      definition: null,
-      previousDefinition: definition,
-    });
     await this.ctx.repository.deleteDefinition(
       this.ctx.agentId(),
       definitionId,
@@ -446,6 +514,10 @@ export class DefinitionsDomain {
         expectedUpdatedAt: definition.updatedAt,
       },
     );
+    await this.deps.syncNativeAppleReminderForDefinition({
+      definition: null,
+      previousDefinition: definition,
+    });
     await this.ctx.recordAudit(
       "definition_deleted",
       "definition",
@@ -457,6 +529,126 @@ export class DefinitionsDomain {
     await this.deps.syncWebsiteAccessState();
   }
 
+  /**
+   * Records one increment toward a count-per-day quota occurrence. The write
+   * is a transactionally serialized append keyed by the caller's idempotency
+   * key, and the day's completed count is always re-derived from the
+   * append-only event table so concurrent increments can neither lose nor
+   * exceed the target: when the derived count reaches the target the
+   * occurrence is terminal-completed through the ordinary (retry-idempotent)
+   * completion path, and further increments are refused.
+   */
+  async recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now = new Date(),
+  ): Promise<RecordLifeOpsProgressResult> {
+    const { definition, occurrence } = await this.deps.getFreshOccurrence(
+      occurrenceId,
+      now,
+    );
+    const cadence = definition.cadence;
+    if (cadence.kind !== "count_per_day") {
+      fail(409, "occurrence does not track count-per-day progress");
+    }
+    const idempotencyKey = requireNonEmptyString(
+      request.idempotencyKey,
+      "idempotencyKey",
+    );
+    const rawQuantity = request.quantity ?? 1;
+    if (
+      typeof rawQuantity !== "number" ||
+      !Number.isFinite(rawQuantity) ||
+      Math.trunc(rawQuantity) <= 0
+    ) {
+      fail(400, "quantity must be a positive integer");
+    }
+    const quantity = Math.trunc(rawQuantity);
+    if (["skipped", "expired", "muted"].includes(occurrence.state)) {
+      fail(409, `progress cannot be recorded from state ${occurrence.state}`);
+    }
+    const localDateKey = occurrence.metadata.localDateKey;
+    if (typeof localDateKey !== "string" || localDateKey.length === 0) {
+      fail(500, "quota occurrence is missing its localDateKey");
+    }
+
+    const note = normalizeOptionalString(request.note ?? undefined) ?? null;
+    let applied = false;
+    let progressEventId: string | null = null;
+    const alreadyComplete = occurrence.state === "completed";
+    if (!alreadyComplete) {
+      const eventId = crypto.randomUUID();
+      const appliedQuantity =
+        await this.ctx.repository.appendProgressEventIfNew(
+          {
+            id: eventId,
+            agentId: this.ctx.agentId(),
+            definitionId: definition.id,
+            occurrenceId: occurrence.id,
+            localDateKey,
+            idempotencyKey,
+            quantity,
+            unit: cadence.unit,
+            note,
+            actor: "owner",
+            createdAt: now.toISOString(),
+          },
+          cadence.targetCount,
+        );
+      applied = appliedQuantity !== null;
+      if (applied) {
+        progressEventId = eventId;
+        await this.ctx.recordAudit(
+          "occurrence_progress_recorded",
+          "occurrence",
+          occurrence.id,
+          "quota progress increment recorded",
+          { idempotencyKey, quantity: appliedQuantity, note },
+          {
+            definitionId: definition.id,
+            occurrenceKey: occurrence.occurrenceKey,
+          },
+        );
+      }
+    }
+
+    const rawCount = await this.ctx.repository.sumProgressEvents(
+      this.ctx.agentId(),
+      occurrence.id,
+    );
+    const completedCount = Math.min(rawCount, cadence.targetCount);
+    const reachedTarget = rawCount >= cadence.targetCount;
+    if (reachedTarget && !alreadyComplete) {
+      // completeOccurrence is retry-idempotent, so a concurrent increment
+      // that also crossed the target results in one terminal completion.
+      await this.completeOccurrence(
+        occurrence.id,
+        { note: note ?? undefined },
+        now,
+      );
+    }
+    const view = await this.ctx.repository.getOccurrenceView(
+      this.ctx.agentId(),
+      occurrence.id,
+    );
+    if (!view) {
+      fail(404, "life-ops occurrence not found after progress record");
+    }
+    return {
+      occurrence: view,
+      progress: {
+        completedCount,
+        targetCount: cadence.targetCount,
+        remainingCount: Math.max(cadence.targetCount - completedCount, 0),
+        unit: cadence.unit,
+        perOccurrenceWork: cadence.perOccurrenceWork,
+      },
+      applied,
+      completed: reachedTarget || alreadyComplete,
+      progressEventId,
+    };
+  }
+
   async completeOccurrence(
     occurrenceId: string,
     request: CompleteLifeOpsOccurrenceRequest,
@@ -466,10 +658,16 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (occurrence.state === "completed") {
       const current = await this.ctx.repository.getOccurrenceView(
         this.ctx.agentId(),
         occurrence.id,
+        definitionScope,
       );
       if (!current) {
         fail(404, "life-ops occurrence not found");
@@ -493,9 +691,42 @@ export class DefinitionsDomain {
         metadata: cloneRecord(request.metadata),
         previousState: occurrence.state,
       },
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    // Concurrent quota increments may race to complete the same day, so the
+    // completion write is a state-guarded atomic transition (not a
+    // revision-guarded full-row update): exactly one caller wins and runs the
+    // completion side effects; losers observe the completed row.
+    const wonCompletion =
+      await this.ctx.repository.completeOccurrenceIfNonTerminal(
+        updatedOccurrence,
+        { definitionScope },
+      );
+    if (!wonCompletion) {
+      const current = await this.ctx.repository.getOccurrenceView(
+        this.ctx.agentId(),
+        occurrence.id,
+        definitionScope,
+      );
+      if (current?.state === "completed") return current;
+      if (!current) {
+        // The scoped re-read found nothing: the definition moved to another
+        // owner between the authorized read and the write. Surface the same
+        // typed conflict updateOccurrence raises for a stale scoped mutation.
+        throw new ElizaError(
+          "[DefinitionsDomain] occurrence completion matched no row for this definition scope",
+          {
+            code: "LIFEOPS_OCCURRENCE_CONFLICT",
+            context: {
+              occurrenceId: occurrence.id,
+              definitionId: occurrence.definitionId,
+              agentId: occurrence.agentId,
+            },
+          },
+        );
+      }
+      fail(409, `occurrence cannot be completed from state ${current.state}`);
+    }
     await this.ctx.recordAudit(
       "occurrence_completed",
       "occurrence",
@@ -526,6 +757,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after completion");
@@ -574,10 +806,16 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (occurrence.state === "skipped") {
       const current = await this.ctx.repository.getOccurrenceView(
         this.ctx.agentId(),
         occurrence.id,
+        definitionScope,
       );
       if (!current) {
         fail(404, "life-ops occurrence not found");
@@ -595,9 +833,13 @@ export class DefinitionsDomain {
         skippedAt: now.toISOString(),
         previousState: occurrence.state,
       },
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    await this.ctx.repository.updateOccurrence(updatedOccurrence, {
+      definitionScope,
+      expectedUpdatedAt: occurrence.updatedAt,
+      expectedDefinitionUpdatedAt: definition.updatedAt,
+    });
     await this.ctx.recordAudit(
       "occurrence_skipped",
       "occurrence",
@@ -619,6 +861,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after skip");
@@ -635,6 +878,11 @@ export class DefinitionsDomain {
       occurrenceId,
       now,
     );
+    const definitionScope = {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     if (
       ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
     ) {
@@ -648,14 +896,18 @@ export class DefinitionsDomain {
       ...occurrence,
       state: "snoozed",
       snoozedUntil: snoozedUntil.toISOString(),
-      updatedAt: now.toISOString(),
+      updatedAt: nextMutationRevision(occurrence.updatedAt, now),
       metadata: {
         ...occurrence.metadata,
         snoozedAt: now.toISOString(),
         snoozePreset: request.preset ?? null,
       },
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    await this.ctx.repository.updateOccurrence(updatedOccurrence, {
+      definitionScope,
+      expectedUpdatedAt: occurrence.updatedAt,
+      expectedDefinitionUpdatedAt: definition.updatedAt,
+    });
     await this.ctx.recordAudit(
       "occurrence_snoozed",
       "occurrence",
@@ -677,6 +929,7 @@ export class DefinitionsDomain {
     const view = await this.ctx.repository.getOccurrenceView(
       this.ctx.agentId(),
       updatedOccurrence.id,
+      definitionScope,
     );
     if (!view) {
       fail(404, "life-ops occurrence not found after snooze");

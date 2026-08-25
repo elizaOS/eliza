@@ -31,7 +31,6 @@ import type {
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsHealthSummaryRequest,
   GetLifeOpsIMessageMessagesRequest,
-  GetLifeOpsSignalMessagesResponse,
   IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
@@ -74,8 +73,6 @@ import type {
   SendLifeOpsDiscordMessageResponse,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
-  SendLifeOpsSignalMessageRequest,
-  SendLifeOpsSignalMessageResponse,
   SendLifeOpsWhatsAppMessageRequest,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
@@ -417,14 +414,6 @@ export interface LifeOpsElizaClientMethods {
   sendLifeOpsIMessage(
     data: SendLifeOpsIMessageRequest,
   ): Promise<{ ok: true; messageId?: string }>;
-
-  // --- Signal connector ---
-  getSignalConnectorMessages(options?: {
-    limit?: number;
-  }): Promise<GetLifeOpsSignalMessagesResponse>;
-  sendSignalConnectorMessage(
-    data: SendLifeOpsSignalMessageRequest,
-  ): Promise<SendLifeOpsSignalMessageResponse>;
 
   // --- Discord connector ---
   sendDiscordConnectorMessage(
@@ -1405,34 +1394,6 @@ lifeOpsClientPrototype.sendLifeOpsIMessage = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/connectors/imessage/send", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-// ---------------------------------------------------------------------------
-// Signal connector
-// ---------------------------------------------------------------------------
-
-lifeOpsClientPrototype.getSignalConnectorMessages = async function (
-  this: ElizaClient,
-  options = {},
-): Promise<GetLifeOpsSignalMessagesResponse> {
-  const params = new URLSearchParams();
-  if (options.limit !== undefined) {
-    params.set("limit", String(options.limit));
-  }
-  const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch<GetLifeOpsSignalMessagesResponse>(
-    `/api/lifeops/connectors/signal/messages${query}`,
-  );
-};
-
-lifeOpsClientPrototype.sendSignalConnectorMessage = async function (
-  this: ElizaClient,
-  data,
-) {
-  return this.fetch("/api/lifeops/connectors/signal/send", {
     method: "POST",
     body: JSON.stringify(data),
   });

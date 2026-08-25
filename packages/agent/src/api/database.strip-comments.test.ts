@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
 describe("stripSqlBlockComments", () => {
@@ -54,6 +55,23 @@ describe("stripSqlBlockComments", () => {
     // No closing "*/" anywhere, so nothing is stripped.
     expect(out).toBe(evil);
     expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+describe("stripSqlLineComments", () => {
+  it.each(["\n", "\r", "\r\n", "\u2028", "\u2029"])(
+    "preserves the %j line terminator and resumes scanning executable SQL",
+    (terminator) => {
+      expect(
+        stripSqlLineComments(`SELECT 1 -- harmless${terminator}DELETE FROM t`),
+      ).toBe(`SELECT 1 ${terminator}DELETE FROM t`);
+    },
+  );
+
+  it("removes a 100k-character line comment without backtracking", () => {
+    expect(
+      stripSqlLineComments(`SELECT 1 --${"-".repeat(100_000)}\nSELECT 2`),
+    ).toBe("SELECT 1 \nSELECT 2");
   });
 });
 

@@ -1,13 +1,9 @@
 /**
  * Transport types for the billing domain.
  *
- * Copied verbatim from the canonical cloud DTOs in
- * `@elizaos/cloud-shared/lib/types/{cloud-api,crypto-status}` — duplicated here
- * (not imported) because `@elizaos/cloud-shared` is not yet a dependency of
- * `@elizaos/ui`. FOLLOW-UP: once the Scaffold wave adds `@elizaos/cloud-shared`
- * to `packages/ui/package.json`, replace these local copies with
- * `import type { ... } from "@elizaos/cloud-shared/lib/types/cloud-api"` and
- * `".../crypto-status"` so the contract stays single-sourced.
+ * Legacy checkout/invoice/crypto DTOs remain local for now. New billing
+ * snapshot code imports its canonical versioned contract directly from
+ * `@elizaos/cloud-sdk`; do not add another local snapshot copy here.
  */
 
 export type IsoDateString = string;
@@ -127,19 +123,18 @@ export interface CryptoStatusResponse {
   isTestnet: boolean;
 }
 
-/** Minimal user/org shape the billing surface consumes (GET /api/v1/user). */
+/** Minimal confirmed membership shape the billing surface consumes. */
 export interface BillingUser {
+  id: string;
   organization_id: string;
   wallet_address?: string | null;
-  organization: {
-    credit_balance: string | number;
-  };
 }
 
 /** Envelope returned by GET /api/v1/user. */
 export interface CurrentUserResponse {
   success: true;
   data: {
+    id: string;
     organization_id: string | null;
     wallet_address: string | null;
     organization: {

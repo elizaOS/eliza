@@ -15,6 +15,7 @@
 
 import { getCookie } from "hono/cookie";
 import type { UserWithOrganization } from "../../db/repositories/users";
+import type { ApiKey } from "../../db/schemas/api-keys";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
@@ -147,6 +148,40 @@ async function validateApiKeyOrServiceUnavailable(
   }
 }
 
+/**
+ * Resolves one explicitly presented API key and records its exact database ID.
+ * Session cookies and JWTs are excluded, while two credential headers are
+ * rejected so self-revocation can never select an ambiguous credential.
+ */
+export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  const bearerKey = bearerMatch?.[1]?.trim() || null;
+
+  if (headerKey && bearerKey) {
+    throw AuthenticationError("Present exactly one API key credential");
+  }
+  const presented = headerKey ?? bearerKey;
+  if (!presented?.startsWith("eliza_")) {
+    throw AuthenticationError("An API key credential is required");
+  }
+
+  const validated = await validateApiKeyOrServiceUnavailable(presented);
+  if (!validated) throw AuthenticationError("Invalid or expired API key");
+  if (!validated.is_active) throw ForbiddenError("API key is inactive");
+  if (validated.expires_at && new Date(validated.expires_at) <= new Date()) {
+    throw AuthenticationError("API key has expired");
+  }
+  if (!validated.id) {
+    throw AuthenticationError("Validated API key has no credential identity");
+  }
+
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", validated.id);
+  return validated;
+}
+
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
     NODE_ENV: typeof env.NODE_ENV === "string" ? env.NODE_ENV : undefined,
@@ -272,10 +307,121 @@ export async function requireUserWithOrg(c: AppContext): Promise<
   };
 }
 
+/** API-key lifecycle management always requires an interactive user session. */
+export async function requireSessionUserWithOrg(c: AppContext): Promise<
+  AuthedUser & {
+    organization_id: string;
+    organization: NonNullable<AuthedUser["organization"]>;
+  }
+> {
+  const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
+  const bearer = readBearer(c);
+  if (apiKeyHeader || bearer?.startsWith("eliza_")) {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+
+  const user = await requireUserWithOrg(c);
+  if (c.get("authMethod") !== "session") {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+  return user;
+}
+
 type AuthedUserWithOrg = AuthedUser & {
   organization_id: string;
   organization: NonNullable<AuthedUser["organization"]>;
 };
+
+export type CurrentBillingManager = AuthedUserWithOrg & {
+  role: "owner" | "admin";
+};
+
+async function revalidateBillingManagerCredential(
+  c: AppContext,
+  user: AuthedUserWithOrg,
+): Promise<void> {
+  const playwrightToken = getCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME);
+  if (playwrightToken && isPlaywrightTestAuthEnabled(testAuthEnv(c.env))) {
+    const claims = verifyPlaywrightTestSessionToken(playwrightToken, testAuthEnv(c.env));
+    if (!claims || claims.userId !== user.id || claims.organizationId !== user.organization_id) {
+      throw AuthenticationError("The signed-in session is no longer valid");
+    }
+    return;
+  }
+
+  if (
+    !user.steward_id ||
+    !(await revalidateSessionScope(c, user.steward_id, user.organization_id))
+  ) {
+    throw AuthenticationError("The signed-in session is no longer valid");
+  }
+}
+
+/**
+ * Rechecks session, tenant, and current primary-storage role immediately before
+ * an organization billing mutation can reach a provider or cancellation job.
+ */
+export async function requireCurrentBillingManagerSession(
+  c: AppContext,
+): Promise<CurrentBillingManager> {
+  const resolved = await requireSessionUserWithOrg(c);
+  await revalidateBillingManagerCredential(c, resolved);
+
+  let current: UserWithOrganization | undefined;
+  try {
+    const { usersRepository } = await import("../../db/repositories/users");
+    current = await usersRepository.findWithOrganizationForWrite(resolved.id);
+  } catch (error) {
+    // error-policy:J1 the authorization boundary must distinguish an
+    // unavailable primary membership read from an ordinary access denial.
+    logger.error("[Billing Mutation Authority] Primary membership lookup failed", {
+      userId: resolved.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new ApiError(
+      503,
+      "service_unavailable",
+      "Billing authorization is temporarily unavailable. Please retry.",
+    );
+  }
+
+  if (!current || current.id !== resolved.id || current.steward_user_id !== resolved.steward_id) {
+    throw AuthenticationError("The signed-in session is no longer valid");
+  }
+  if (
+    !current.is_active ||
+    current.is_anonymous ||
+    current.deleted_at !== null ||
+    (current.expires_at !== null && current.expires_at <= new Date())
+  ) {
+    throw ForbiddenError("User account is not eligible for billing management");
+  }
+  if (
+    !current.organization_id ||
+    !current.organization ||
+    current.organization_id !== resolved.organization_id ||
+    current.organization.id !== current.organization_id ||
+    !current.organization.is_active
+  ) {
+    throw ForbiddenError("Organization billing authority changed");
+  }
+  if (current.role !== "owner" && current.role !== "admin") {
+    throw ForbiddenError("Only organization owners and admins can cancel billable resources");
+  }
+
+  const authorized = toAuthedUser(current) as CurrentBillingManager;
+  c.set("user", authorized);
+  c.set("authMethod", "session");
+  return authorized;
+}
 
 async function authenticateApiKeyWithOrg<T>(
   c: AppContext,

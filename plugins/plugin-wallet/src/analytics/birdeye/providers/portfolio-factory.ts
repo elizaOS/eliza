@@ -131,7 +131,7 @@ function formatPortfolioProviderText({
     `  totalUsd: ${formatJsonScalar(normalized.totalUsd ?? 0)}`,
     formatJsonTable(
       "  holdings",
-      holdings.slice(0, 20).map((item) => ({
+      holdings.map((item) => ({
         symbol: sanitizeWalletDisplayLabel(item.symbol || "unknown"),
         address: item.address || "unknown",
         amount:
@@ -157,7 +157,7 @@ function formatPortfolioProviderText({
     lines.push(
       formatJsonTable(
         "  trades",
-        tradeRows.slice(0, 10).map((trade) => ({
+        tradeRows.map((trade) => ({
           txHash: trade.txHash ?? "unknown",
           action: trade.mainAction ?? "unknown",
           status: trade.status ?? "unknown",

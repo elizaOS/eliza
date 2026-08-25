@@ -27,3 +27,6 @@ bun run --cwd plugins/plugin-fish-audio build
   Fish receives submitted text and the reference ID, so credentials and the
   feature flag alone must never authorize provider egress.
 - Keep live tests skipped unless a caller explicitly provides `FISH_AUDIO_API_KEY` and a consented `FISH_AUDIO_REFERENCE_ID`/`FISH_AUDIO_VOICE_ID`.
+- Classify authentication, rate limit, timeout, cancellation, transport,
+  malformed response, and provider failures explicitly so caller-owned retry
+  policy never retries permanent failures.

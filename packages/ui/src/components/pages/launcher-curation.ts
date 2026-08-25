@@ -49,7 +49,6 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "simple-calendar",
   "notes",
   "automations",
-  "my-apps",
   "browser",
   // Cloud account app — gated to cloud-signed-in sessions below.
   "cloud",
@@ -128,10 +127,10 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   // would open a broken route and push real tiles below the mobile fold.
   "device-control",
   // The Eliza Cloud Applications studio (`cloud-apps`, registered by
-  // `@elizaos/app` on native shells). My Apps is the ONE apps destination in
-  // the launcher: the studio is reached from the My Apps view's Eliza Cloud
-  // row and by the /cloud-apps deep link, so a second tile next to My Apps
-  // would double one destination.
+  // `@elizaos/app` on native shells). Projects is the ONE apps destination in
+  // the launcher: the studio is reached from the Projects view's Apps-segment
+  // Eliza Cloud row and by the /cloud-apps deep link, so a second tile next to
+  // Projects would double one destination.
   "cloud-apps",
   "companion",
   "model-tester",
@@ -162,6 +161,11 @@ const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
   // The task-coordinator plugin view + the builtin Tasks tab are the one Tasks
   // orchestrator surface (/apps/tasks); collapse to a single tile.
   ["task-coordinator", "tasks"],
+  // My Apps folded into the consolidated Projects surface (#17031): the app
+  // inventory is the Apps segment of /apps/tasks, so a stale `my-apps`
+  // registration collapses onto the Projects tile instead of resurrecting the
+  // retired standalone view.
+  ["my-apps", "tasks"],
   ["knowledge", "documents"],
   // Transcripts fold into the one Knowledge multimedia hub (#13594): transcript
   // records surface as the hub's Transcripts media-format facet over the shared

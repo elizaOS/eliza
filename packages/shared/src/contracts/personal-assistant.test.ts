@@ -8,17 +8,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   capabilitiesForSide,
+  LIFEOPS_BROWSER_KINDS,
   LIFEOPS_CONNECTOR_DEGRADATION_AXES,
   LIFEOPS_DISCORD_CAPABILITIES,
   LIFEOPS_GOOGLE_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
-  LIFEOPS_SIGNAL_CAPABILITIES,
   LIFEOPS_TELEGRAM_CAPABILITIES,
   LIFEOPS_X_CAPABILITIES,
 } from "./personal-assistant";
 
 describe("LifeOps shared contracts", () => {
+  it("supports every shipped browser-bridge companion", () => {
+    expect(LIFEOPS_BROWSER_KINDS).toEqual(["chrome", "firefox", "safari"]);
+  });
+
   it("keeps owner-side capabilities read-only", () => {
     expect(capabilitiesForSide(LIFEOPS_GOOGLE_CAPABILITIES, "owner")).toEqual([
       "google.calendar.read",
@@ -26,9 +30,6 @@ describe("LifeOps shared contracts", () => {
     expect(capabilitiesForSide(LIFEOPS_X_CAPABILITIES, "owner")).toEqual([
       "x.read",
       "x.dm.read",
-    ]);
-    expect(capabilitiesForSide(LIFEOPS_SIGNAL_CAPABILITIES, "owner")).toEqual([
-      "signal.read",
     ]);
     expect(capabilitiesForSide(LIFEOPS_DISCORD_CAPABILITIES, "owner")).toEqual([
       "discord.read",

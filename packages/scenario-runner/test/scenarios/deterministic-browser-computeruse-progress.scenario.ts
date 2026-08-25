@@ -292,6 +292,11 @@ async function seedScenario(ctx: {
 export default scenario({
   id: "deterministic-browser-computeruse-progress",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Browser and computer-use progress streaming",
   domain: "scenario-runner",
   tags: [
@@ -303,6 +308,14 @@ export default scenario({
     "progress",
   ],
   isolation: "shared-runtime",
+  // The seed registers `browserPlugin` directly, which silently no-ops when a
+  // batch peer already registered the same package — leaving this scenario
+  // dependent on batch composition for its own actions. Declaring the package
+  // states the dependency the seed only implies, so per-scenario action
+  // scoping keeps BROWSER visible here whoever else is in the run.
+  requires: {
+    plugins: ["@elizaos/plugin-browser"],
+  },
   seed: [
     {
       type: "custom",

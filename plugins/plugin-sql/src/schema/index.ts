@@ -34,8 +34,21 @@ export {
   entityMergeCandidateTable,
   factCandidateTable,
 } from "./entityIdentity";
+export {
+  identityAuthorityStateTable,
+  identityCanonicalRedirectTable,
+  identityClaimTable,
+  identityMergeConfirmationTable,
+  identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
+} from "./identityAuthority";
 export { logTable } from "./log";
 export { longTermMemories } from "./longTermMemories";
+export {
+  membershipAuthorityJournalTable,
+  membershipAuthorityScopeTable,
+  membershipAuthorityTable,
+} from "./membershipAuthority";
 export { memoryTable } from "./memory";
 export { memoryAccessLogs } from "./memoryAccessLogs";
 export { messageTable } from "./message";
@@ -47,6 +60,5 @@ export { participantTable } from "./participant";
 export { relationshipTable } from "./relationship";
 export { roomTable } from "./room";
 export { serverTable } from "./server";
-export { sessionSummaries } from "./sessionSummaries";
 export { taskTable } from "./tasks";
 export { worldTable } from "./world";

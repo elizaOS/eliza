@@ -2,7 +2,7 @@
  * Pins the flag-gated semantic recall skeleton for the Shared edge runtime:
  * the sidecar embedding call's request/response contract and typed failures,
  * and the miss-only orchestration (flag off / keyword hit / blank query never
- * embed; K-cap, char-cap, and recent-window dedupe bound the block). The
+ * embed; complete ranked recall and recent-window dedupe shape the block). The
  * harness is deterministic — the global fetch is stubbed and restored, and the
  * orchestrator's collaborators are injected fakes.
  */
@@ -13,8 +13,6 @@ import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
   embedTextViaSidecar,
-  SHARED_RECALL_DEFAULT_MAX_CHARS,
-  SHARED_RECALL_DEFAULT_TOP_K,
   SHARED_RECALL_EDGE_COMPATIBILITY,
   SHARED_RECALL_EMBED_TIMEOUT_MS,
   SHARED_RECALL_EMBEDDING_DIMENSIONS,
@@ -400,7 +398,7 @@ describe("buildSharedRecallContext — gating", () => {
   });
 });
 
-describe("buildSharedRecallContext — output bounds", () => {
+describe("buildSharedRecallContext — complete output", () => {
   function rows(count: number): SharedRecallRow[] {
     return Array.from({ length: count }, (_, index) => ({
       id: `row-${index}`,
@@ -417,7 +415,7 @@ describe("buildSharedRecallContext — output bounds", () => {
     embed: async () => vectorOf(SHARED_RECALL_EMBEDDING_DIMENSIONS),
   };
 
-  test("caps rendered rows at topK, preserving the store's ranking order", async () => {
+  test("ignores the legacy topK option and preserves every ranked row", async () => {
     const block = await buildSharedRecallContext({
       ...base,
       storeSearch: async () => rows(8),
@@ -427,59 +425,51 @@ describe("buildSharedRecallContext — output bounds", () => {
     expect(block).toContain("fact number 0");
     expect(block).toContain("fact number 1");
     expect(block).toContain("fact number 2");
-    expect(block).not.toContain("fact number 3");
+    expect(block).toContain("fact number 7");
     expect(block?.indexOf("fact number 0")).toBeLessThan(block?.indexOf("fact number 2") ?? -1);
   });
 
-  test("defaults cap at SHARED_RECALL_DEFAULT_TOP_K rows", async () => {
-    const block = await buildSharedRecallContext({
-      ...base,
-      storeSearch: async () => rows(SHARED_RECALL_DEFAULT_TOP_K + 4),
-    });
-
-    expect(block).toContain(`fact number ${SHARED_RECALL_DEFAULT_TOP_K - 1}`);
-    expect(block).not.toContain(`fact number ${SHARED_RECALL_DEFAULT_TOP_K}`);
-  });
-
-  test("caps total block characters and drops rows that would overflow", async () => {
-    const maxChars = 220;
+  test("ignores the legacy character option and retains every row", async () => {
     const block = await buildSharedRecallContext({
       ...base,
       storeSearch: async () => rows(8),
-      maxChars,
+      maxChars: 220,
     });
 
     expect(block).not.toBeNull();
-    expect((block as string).length).toBeLessThanOrEqual(maxChars);
     expect(block).toContain("fact number 0");
-    expect(block).not.toContain("fact number 7");
+    expect(block).toContain("fact number 7");
   });
 
-  test("stays within the default char cap even with maximal rows", async () => {
-    const long = "x".repeat(5_000);
-    const block = await buildSharedRecallContext({
-      ...base,
-      storeSearch: async () =>
-        Array.from({ length: 10 }, (_, index) => ({
-          id: `long-${index}`,
-          content: `${long} ${index}`,
-        })),
-    });
+  test("retains complete million-character recalled rows", async () => {
+    const long = "x".repeat(110_000);
+    const block = await buildSharedRecallContext(
+      {
+        ...base,
+        storeSearch: async () =>
+          Array.from({ length: 10 }, (_, index) => ({
+            id: `long-${index}`,
+            content: `${long} ${index}`,
+          })),
+      },
+      20_000,
+    );
 
     expect(block).not.toBeNull();
-    expect((block as string).length).toBeLessThanOrEqual(SHARED_RECALL_DEFAULT_MAX_CHARS);
-    // Per-row clipping keeps one huge row from starving every later match.
-    expect(block).toContain("…");
+    expect(block).toContain(`${long} 0`);
+    expect(block).toContain(`${long} 9`);
+    expect(block).not.toContain("…");
   });
 
-  test("returns null when the cap cannot fit a single row", async () => {
+  test("renders rows even when the legacy cap could not fit one", async () => {
     const block = await buildSharedRecallContext({
       ...base,
       storeSearch: async () => rows(2),
       maxChars: 10,
     });
 
-    expect(block).toBeNull();
+    expect(block).toContain("fact number 0");
+    expect(block).toContain("fact number 1");
   });
 });
 

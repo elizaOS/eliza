@@ -1,0 +1,32 @@
+/** Runs the Linear domain and provider-contract suites in a Node environment. */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const root = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
+
+export default defineConfig({
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+  },
+  resolve: {
+    conditions: ["node"],
+    alias: [
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(root, "packages/core/src/index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(root, "packages/core/src/$1"),
+      },
+    ],
+  },
+  ssr: {
+    resolve: { conditions: ["node"] },
+  },
+});

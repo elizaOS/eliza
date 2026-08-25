@@ -25,8 +25,18 @@ function handlerKey(viewId: string, viewType: ViewType): string {
   return `${viewType}:${viewId}`;
 }
 
-/** viewType:viewId → handler registered by the mounted DynamicViewLoader. */
-const handlers = new Map<string, InteractHandler>();
+interface HandlerRegistration {
+  handler: InteractHandler;
+  token: symbol;
+}
+
+/**
+ * viewType:viewId → mounted handlers in ownership order. Overlapping
+ * providers intentionally share one agent registry; the newest visible owner
+ * answers container-scoped capabilities, and removing it restores the still-
+ * mounted predecessor instead of leaving the shared registry unreachable.
+ */
+const handlers = new Map<string, HandlerRegistration[]>();
 const handledRequestIds = new Map<string, ReturnType<typeof setTimeout>>();
 const HANDLED_REQUEST_TTL_MS = 60_000;
 
@@ -36,12 +46,29 @@ export function registerViewInteractHandler(
   handler: InteractHandler,
 ): () => void {
   const key = handlerKey(viewId, viewType);
-  handlers.set(key, handler);
+  const registration = { handler, token: Symbol(key) };
+  const registrations = handlers.get(key) ?? [];
+  registrations.push(registration);
+  handlers.set(key, registrations);
   return () => {
-    if (handlers.get(key) === handler) {
+    const current = handlers.get(key);
+    if (!current) return;
+    const index = current.findIndex(
+      ({ token }) => token === registration.token,
+    );
+    if (index === -1) return;
+    current.splice(index, 1);
+    if (current.length === 0) {
       handlers.delete(key);
     }
   };
+}
+
+function currentHandler(
+  viewId: string,
+  viewType: ViewType,
+): InteractHandler | undefined {
+  return handlers.get(handlerKey(viewId, viewType))?.at(-1)?.handler;
 }
 
 /**
@@ -56,7 +83,7 @@ export async function dispatchViewInteract(
   requestId: string,
 ): Promise<void> {
   const resolvedViewType = viewType ?? "gui";
-  const handler = handlers.get(handlerKey(viewId, resolvedViewType));
+  const handler = currentHandler(viewId, resolvedViewType);
 
   if (!handler) {
     // The API broadcasts view-interact requests to every connected shell.
@@ -105,7 +132,7 @@ export async function invokeViewInteract(
   capability: string,
   params?: Record<string, unknown>,
 ): Promise<unknown> {
-  const handler = handlers.get(handlerKey(viewId, viewType ?? "gui"));
+  const handler = currentHandler(viewId, viewType ?? "gui");
   if (!handler) {
     throw new Error(
       `No interact handler mounted for ${viewType ?? "gui"}:${viewId}`,

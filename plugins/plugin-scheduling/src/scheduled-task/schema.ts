@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import type { ScheduledTask } from "./types.js";
+import { type ScheduledTask, TASK_EXECUTION_PROFILES } from "./types.js";
 
 const isoString = z
   .string()
@@ -215,6 +215,10 @@ const scheduledTaskInputBaseSchema = z.object({
   createdBy: z.string().min(1),
   ownerVisible: z.boolean(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  // `ScheduledTaskInput` carries this field, `validation.ts` checks it and the
+  // store persists it to `execution_profile` — the Zod layer was the only one
+  // that dropped it, so a caller's requested profile was silently discarded.
+  executionProfile: z.enum(TASK_EXECUTION_PROFILES).optional(),
 });
 
 export const scheduledTaskInputSchema = scheduledTaskInputBaseSchema;
@@ -269,6 +273,25 @@ export const scheduledTaskSnoozePayloadSchema = z
     (v) => typeof v.minutes === "number" || typeof v.untilIso === "string",
     "snooze: provide minutes or untilIso",
   );
+
+/**
+ * Payload accepted by `apply("edit")` at the REST boundary.
+ *
+ * `applyEdit` does `Object.assign(task, payload)` onto the live domain object,
+ * so the body has to be validated the same way the sibling `snooze` verb's is
+ * — an unvalidated body writes wrong-typed fields straight into a persisted
+ * `ScheduledTask` (which the create path rejects with 400), and a
+ * `JSON.parse`-produced own `"__proto__"` key re-parents the object because
+ * `Object.assign` assigns through `[[Set]]`.
+ *
+ * Every field of `ScheduledTaskInput` stays settable — this is the create
+ * schema made partial, nothing narrower. It is `.strict()` so a key that is
+ * not part of the task contract is reported to the caller instead of being
+ * silently dropped.
+ */
+export const scheduledTaskEditPayloadSchema = scheduledTaskInputBaseSchema
+  .partial()
+  .strict();
 
 export const scheduledTaskFilterSchema = z.object({
   kind: scheduledTaskKindSchema.optional(),

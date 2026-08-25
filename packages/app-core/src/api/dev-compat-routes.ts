@@ -8,6 +8,11 @@
  */
 import type http from "node:http";
 import type { InferenceTurnSummary, Log } from "@elizaos/core";
+import {
+  INFERENCE_TRACE_ID_PATTERN,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { parseCanonicalInteger } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
@@ -34,6 +39,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function formatScreenshotErrorDetail(text: string): string {
+  return truncateWellFormed(toWellFormedUnicode(text), 200);
 }
 
 function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
@@ -106,6 +115,14 @@ function parseInferenceTimingLog(log: Log): InferenceTurnSummary | null {
 
   return {
     turnId,
+    // Persisted metadata is replayed from storage, so the id is re-validated
+    // rather than trusted: anything that is not a well-formed trace id (including
+    // logs written before correlation existed) rehydrates as an explicit null.
+    traceId:
+      typeof metadata.traceId === "string" &&
+      INFERENCE_TRACE_ID_PATTERN.test(metadata.traceId)
+        ? metadata.traceId
+        : null,
     label,
     roomId: typeof body.roomId === "string" ? body.roomId : null,
     modelProvider:
@@ -242,7 +259,7 @@ export async function handleDevCompatRoutes(
           {
             error: "upstream screenshot failed",
             status: r.status,
-            detail: text.slice(0, 200),
+            detail: formatScreenshotErrorDetail(text),
           },
         );
         return true;

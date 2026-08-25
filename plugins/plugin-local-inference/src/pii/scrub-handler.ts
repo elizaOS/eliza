@@ -26,6 +26,7 @@ import type {
 	PiiScrubParams,
 	PiiScrubVerdict,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Build the constrained judgment prompt for one escalation call. */
 export function buildPiiScrubPrompt(params: PiiScrubParams): string {
@@ -85,7 +86,7 @@ export function parseScrubCompletion(
 	const end = completion.lastIndexOf("]");
 	if (start === -1 || end === -1 || end < start) {
 		throw new Error(
-			`[local-inference] PII_SCRUB output contains no JSON array: ${JSON.stringify(completion.slice(0, 200))}`,
+			`[local-inference] PII_SCRUB output contains no JSON array: ${JSON.stringify(truncateWellFormed(toWellFormedUnicode(completion), 200))}`,
 		);
 	}
 	let parsed: unknown;

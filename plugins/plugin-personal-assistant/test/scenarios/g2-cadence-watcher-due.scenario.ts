@@ -55,6 +55,11 @@ function expectStaleEdgeFollowup() {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "g2-cadence-watcher-due",
   title:
     "G2 cadence watcher emits a relationship follow-up for stale friend edge",

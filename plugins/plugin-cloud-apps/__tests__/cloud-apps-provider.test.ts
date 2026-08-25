@@ -53,6 +53,22 @@ describe("CLOUD_APPS provider", () => {
     expect(result.values?.cloudAppCount).toBe(2);
   });
 
+  it("preserves every app beyond the former ten-app provider cap", async () => {
+    const apps = Array.from({ length: 14 }, (_, index) =>
+      makeApp({ name: `Complete App ${index + 1}` }),
+    );
+    setListApps(() => Promise.resolve({ success: true, apps }));
+
+    const result = await cloudAppsProvider.get(
+      keyedRuntime(),
+      makeMessage("my apps"),
+      STATE,
+    );
+
+    expect(result.text).toContain("Complete App 14");
+    expect(result.data?.apps).toHaveLength(apps.length);
+  });
+
   it("returns EMPTY when no Cloud API key is configured", async () => {
     let called = false;
     setListApps(() => {

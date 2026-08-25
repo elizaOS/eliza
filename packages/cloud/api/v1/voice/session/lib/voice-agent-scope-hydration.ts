@@ -90,11 +90,11 @@ export async function hydrateVoiceSharedAgentScope(
           );
         };
 
-        // Publish the authorization gate as soon as the authoritative agent
-        // lookup succeeds. Character and admission prefills are latency hints;
-        // keeping this write behind either one turns a slow optional dependency
-        // into the full 503/backoff staircase on the caller's first response.
-        await cache.set(
+        // Start every independent warmup immediately after authoritative scope
+        // validation. In particular, the exact conversation Durable Object now
+        // loads history and the AgentRuntime kernel while the Redis scope write
+        // is in flight instead of waiting behind that network round trip.
+        const scopeWrite = cache.set(
           CacheKeys.sharedAgentScope.voice(
             claims.organizationId,
             claims.userId,
@@ -103,11 +103,10 @@ export async function hydrateVoiceSharedAgentScope(
           agent,
           CacheTTL.sharedAgentScope.resolve,
         );
-
-        // error-policy:J7 a failed character prefill leaves the next turn on
-        // its existing retryable warming path rather than failing hydration.
         const optionalWarmups: Promise<unknown>[] = [
           hydrateCharacter().catch((error) => {
+            // error-policy:J7 character hydration is latency-only; the next
+            // turn retains the canonical typed cache-warming retry fallback.
             logger.warn("[voice-scope-hydration] character prefill failed", {
               agentId: claims.agentId,
               characterId,
@@ -181,6 +180,11 @@ export async function hydrateVoiceSharedAgentScope(
             }),
           );
         }
+
+        // Publish the authorization gate as soon as its own write completes.
+        // Optional warmups are latency hints and never delay this gate; their
+        // failures remain contained on the existing retryable turn path.
+        await scopeWrite;
         await Promise.all(optionalWarmups);
       }),
   );

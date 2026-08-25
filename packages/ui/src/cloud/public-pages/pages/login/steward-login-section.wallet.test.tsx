@@ -8,10 +8,10 @@
  * serve `siwe`/`siws` (the bounded port from `cloud-frontend@4056e0e868`).
  * These tests pin the gate in both directions:
  *  - flags on  → the "Continue with a wallet" toggle renders collapsed; the
- *    "or sign in with a wallet" divider + per-chain intent buttons appear only
- *    after expanding (EVM for `siwe`, Solana for `siws`), WITHOUT loading the
- *    wallet libs (they lazy-mount on click).
- *  - flags off → no wallet UI at all (no toggle, no divider, no buttons).
+ *    per-chain intent buttons appear only after expanding (EVM for `siwe`,
+ *    Solana for `siws`), WITHOUT loading the wallet libs (they lazy-mount on
+ *    click).
+ *  - flags off → no wallet UI at all (no toggle or buttons).
  */
 
 import {
@@ -121,7 +121,7 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     vi.clearAllMocks();
   });
 
-  it("renders the wallet toggle collapsed, then the divider + both chain intent buttons when siwe AND siws are served and expanded", async () => {
+  it("renders the wallet toggle collapsed, then both chain intent buttons without a repeated divider", async () => {
     providerFlags.siwe = true;
     providerFlags.siws = true;
 
@@ -135,11 +135,13 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
 
-    // Expanding reveals the divider and per-chain buttons.
+    // Expanding updates the disclosure label and reveals the chain buttons
+    // without repeating the sign-in divider.
     fireEvent.click(walletToggle);
-    await waitFor(() =>
-      expect(screen.getByText("or sign in with a wallet")).toBeTruthy(),
-    );
+    expect(
+      await screen.findByRole("button", { name: /Collapse wallet options/i }),
+    ).toBeTruthy();
+    expect(screen.queryByText("or sign in with a wallet")).toBeNull();
     expect(screen.getByRole("button", { name: /EVM wallet/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Solana wallet/i })).toBeTruthy();
   });

@@ -23,6 +23,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
+
 from .format_validator import validate_response_format
 from .quality_scorer import score_response
 from .scenario_pool import Scenario, ScenarioPool, ScenarioPoolConfig
@@ -337,7 +342,6 @@ class ABTestRunner:
                 json={
                     "model": model_name,
                     "messages": messages,
-                    "max_tokens": 512,
                     "temperature": 0.7,
                 },
                 timeout=aiohttp.ClientTimeout(total=60),
@@ -347,7 +351,12 @@ class ABTestRunner:
                     response_text = ""
                 else:
                     data = await resp.json()
-                    response_text = data["choices"][0]["message"]["content"] or ""
+                    choice = require_complete_generation(
+                        data["choices"][0], source="ab_testing.evaluate_model"
+                    )
+                    response_text = choice["message"]["content"] or ""
+        except IncompleteGenerationError:
+            raise
         except Exception as e:
             logger.error(f"Error calling vLLM: {e}")
             response_text = ""

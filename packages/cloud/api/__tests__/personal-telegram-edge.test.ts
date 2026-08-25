@@ -4,6 +4,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import {
+  dispatchPersonalTelegramReminder,
   handlePersonalTelegramEdge,
   type TelegramEdgeDeps,
 } from "../eliza-app/webhook/_telegram-edge";
@@ -17,6 +18,8 @@ interface LedgerValue {
   processing?: boolean;
   plan?: string[];
   chunks?: Map<number, "uncertain" | "delivered">;
+  acceptedAt?: string;
+  providerMessageIds?: string[];
 }
 
 type RunTurn = NonNullable<
@@ -44,11 +47,18 @@ function namespace(): {
               chunkDigests?: string[];
               chunkIndex?: number;
               chunkDigest?: string;
+              providerMessageId?: string;
             };
             const key = `${name}:${body.messageId}`;
             const value = values.get(key) ?? {};
             if (body.operation === "read") {
               return Response.json({ state: value.delivery ?? null });
+            }
+            if (body.operation === "read_receipt") {
+              return Response.json({
+                acceptedAt: value.acceptedAt ?? null,
+                providerMessageIds: value.providerMessageIds ?? [],
+              });
             }
             if (body.operation === "claim_processing") {
               if (value.processing) return Response.json({ claimed: false });
@@ -94,6 +104,15 @@ function namespace(): {
             }
             if (body.operation === "mark_chunk_delivered") {
               value.chunks.set(chunkIndex, "delivered");
+              if (body.providerMessageId) {
+                value.acceptedAt ??= new Date().toISOString();
+                value.providerMessageIds = Array.from(
+                  new Set([
+                    ...(value.providerMessageIds ?? []),
+                    body.providerMessageId,
+                  ]),
+                );
+              }
               values.set(key, value);
               return Response.json({ delivered: true });
             }
@@ -171,6 +190,32 @@ afterEach(() => {
 });
 
 describe("Personal Shared Telegram edge", () => {
+  test("delivers reminders with the edge bot and returns a durable duplicate receipt", async () => {
+    const ledger = namespace();
+    let sends = 0;
+    globalThis.fetch = mock(async (input) => {
+      if (String(input).endsWith("/sendMessage")) sends += 1;
+      return Response.json({ ok: true, result: { message_id: 9010 } });
+    }) as unknown as typeof fetch;
+    const env = {
+      ELIZA_APP_TELEGRAM_BOT_TOKEN: "123:test-token",
+      PERSONAL_TELEGRAM_DELIVERIES: ledger.binding,
+    } as AppEnv["Bindings"];
+    const input = {
+      project: "eliza-app",
+      chatId: "123456",
+      text: "time to stretch",
+      idempotencyKey: "reminder-1:2026-08-20T19:30:00.000Z",
+    };
+
+    const delivered = await dispatchPersonalTelegramReminder(env, input);
+    const duplicate = await dispatchPersonalTelegramReminder(env, input);
+
+    expect(delivered).toMatchObject({ ok: true, providerMessageIds: ["9010"] });
+    expect(duplicate).toEqual(delivered);
+    expect(sends).toBe(1);
+  });
+
   test("runs the canonical turn and Telegram egress once without a Railway hop", async () => {
     const ledger = namespace();
     const turn = mock(async () =>

@@ -45,6 +45,9 @@ export function shouldKeepConversationMessage(
   if (message.attachments?.length) return true;
   if (message.blocks?.length) return true;
   if (isLegacyViewsInventory(message)) return false;
+  // A zero-token interrupted receipt carries no text but is the turn's durable
+  // terminal state; hiding it would leave its user turn visually unanswered.
+  if (message.interrupted === true) return true;
   return message.text.trim().length > 0;
 }
 

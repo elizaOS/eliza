@@ -258,6 +258,49 @@ export function failureResponse(c: Context, error: unknown): Response {
       400,
     );
   }
+  if (
+    error instanceof Error &&
+    (error as { code?: unknown }).code === "CHARACTER_ORGANIZATION_NOT_FOUND"
+  ) {
+    return c.json(
+      {
+        success: false,
+        error: "Organization not found",
+        code: "resource_not_found" as const,
+      },
+      404,
+    );
+  }
+  if (
+    error instanceof Error &&
+    (error as { code?: unknown }).code === "CLOUD_CHARACTER_QUOTA_EXCEEDED"
+  ) {
+    const context = (error as { context?: Record<string, unknown> }).context;
+    const current = context?.current;
+    const limit = context?.limit;
+    if (
+      typeof current === "number" &&
+      Number.isSafeInteger(current) &&
+      current >= 0 &&
+      typeof limit === "number" &&
+      Number.isSafeInteger(limit) &&
+      limit > 0
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: `Agent quota exceeded. Your organization has reached the maximum of ${limit} agents.`,
+          code: "agent_quota_exceeded" as const,
+          details: {
+            current,
+            max: limit,
+            upgrade_hint: "Add credits to your account to increase your agent limit.",
+          },
+        },
+        403,
+      );
+    }
+  }
   if (error instanceof ApiError) {
     return c.json(error.toJSON(), error.status as 400);
   }

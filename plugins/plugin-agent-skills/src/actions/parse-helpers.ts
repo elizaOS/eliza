@@ -3,6 +3,7 @@
  *
  * Extracts skill slugs and intent from natural language messages.
  */
+import { toWellFormedUnicode } from "@elizaos/core";
 
 /** Words to strip when extracting a skill slug from a message. */
 const FILLER_WORDS =
@@ -57,13 +58,13 @@ export function describeSkillReference(
 }
 
 /**
- * Log/machine-facing render of a skill reference. A blob must still never
- * travel whole — a weak planner echoes tool text verbatim and a multi-KB blob
- * bloats context — so collapse whitespace to one line and clamp to 120 chars.
+ * Machine-facing render of a complete skill reference with normalized
+ * whitespace and Unicode.
  */
 export function skillReferenceLogView(reference: string): string {
 	const collapsed = reference.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+	const wellFormed = toWellFormedUnicode(collapsed);
+	return wellFormed;
 }
 
 /**

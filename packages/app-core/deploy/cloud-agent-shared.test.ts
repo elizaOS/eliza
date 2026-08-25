@@ -4,13 +4,32 @@
  * discriminators across the native JSON-RPC bridge.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   appendBridgeCallbackContent,
   type BridgeMessageResult,
   bridgeResultText,
   checkRuntimeDatabaseLiveness,
+  publicDatabaseLiveness,
+  warnGeneratedBridgeSecret,
 } from "./cloud-agent-shared";
+
+describe("cloud-agent generated bridge credentials", () => {
+  it("warns without accepting or printing the generated secret", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    warnGeneratedBridgeSecret();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls.flat().join(" ")).toContain(
+      "generated ephemeral secret",
+    );
+    expect(warn.mock.calls.flat().join(" ")).not.toContain(
+      "Generated BRIDGE_SECRET:",
+    );
+    warn.mockRestore();
+  });
+});
 
 describe("cloud-agent bridge callback results", () => {
   it("accumulates text while preserving the runtime failure discriminator", () => {
@@ -43,6 +62,65 @@ describe("cloud-agent bridge callback results", () => {
 });
 
 describe("cloud-agent database liveness", () => {
+  it("omits exception detail from the public health projection", () => {
+    const marker = "password=secret at /srv/database.ts:42";
+
+    expect(
+      publicDatabaseLiveness({
+        ok: false,
+        status: "terminal_error",
+        terminal: true,
+        message: marker,
+      }),
+    ).toEqual({
+      ok: false,
+      status: "terminal_error",
+      terminal: true,
+    });
+  });
+
+  it("contains hostile probe values and bounds internal diagnostic state", async () => {
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    const result = await checkRuntimeDatabaseLiveness({
+      checkDatabaseLiveness: async () => {
+        throw hostile;
+      },
+    });
+
+    expect(result).toEqual({
+      status: "transient_error",
+      ok: false,
+      terminal: false,
+      message: "[uninspectable thrown value]",
+    });
+    expect(publicDatabaseLiveness(result)).toEqual({
+      status: "transient_error",
+      ok: false,
+      terminal: false,
+    });
+  });
+
+  it("escapes controls and truncates oversized private probe diagnostics", async () => {
+    const result = await checkRuntimeDatabaseLiveness({
+      checkDatabaseLiveness: async () => {
+        throw new Error(`prefix\n\u202esecret-${"x".repeat(10_000)}`);
+      },
+    });
+
+    expect(result.message).toContain("prefix\\u{a}\\u{202e}secret-");
+    expect(result.message).toContain("…[truncated]");
+    expect(result.message?.length).toBeLessThan(4_200);
+    expect(result.message).not.toContain("\n");
+    expect(result.message).not.toContain("\u202e");
+  });
+
   it("classifies a real queryable closed-PGlite error as terminal", async () => {
     await expect(
       checkRuntimeDatabaseLiveness({

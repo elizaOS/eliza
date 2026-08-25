@@ -74,5 +74,7 @@ test("sends personal Shared turns through platform funding", async () => {
     namespace,
     "client-1",
     "platform",
+    undefined,
+    "hello",
   );
 });

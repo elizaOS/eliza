@@ -68,14 +68,11 @@ describe("assertDeployable", () => {
     }
   });
 
-  test("does not throw for draft / deployed / failed / deploying", () => {
+  test("allows terminal states but rejects the deploying state", () => {
     expect(() => assertDeployable({ deployment_status: "draft" })).not.toThrow();
     expect(() => assertDeployable({ deployment_status: "deployed" })).not.toThrow();
     expect(() => assertDeployable({ deployment_status: "failed" })).not.toThrow();
-    // `deploying` is the immediate-after-build state — callers may want to
-    // retry from a fresh deploy after a deploy-side failure during upload,
-    // so we don't reject it here.
-    expect(() => assertDeployable({ deployment_status: "deploying" })).not.toThrow();
+    expect(() => assertDeployable({ deployment_status: "deploying" })).toThrow(ApiError);
   });
 });
 

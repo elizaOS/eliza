@@ -30,6 +30,8 @@ import {
   fetchWithSsrfGuard,
   type IAgentRuntime,
   ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   RedactionTranscribeInput,
@@ -166,7 +168,7 @@ export function openAiCompatSttTranscriber(
         const textBody = await readResponseTextLimited(response, 1024 * 1024);
         if (!response.ok) {
           throw new ElizaError(
-            `STT verifier answered HTTP ${response.status}: ${textBody.slice(0, 300)}`,
+            `STT verifier answered HTTP ${response.status}: ${truncateWellFormed(toWellFormedUnicode(textBody), 300)}`,
             {
               code: "AUDIO_REDACTION_VERIFY_REQUEST_FAILED",
               context: { host: endpoint.host, status: response.status },

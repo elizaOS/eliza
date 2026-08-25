@@ -55,6 +55,19 @@ export type StrictActionRouteFixture = {
 	messageToUser?: string;
 };
 
+export type StrictMultiToolRouteFixture = {
+	input: string;
+	tools: readonly { actionName: string; args: JsonRecord }[];
+	contextIds?: readonly string[];
+	messageToUser?: string;
+};
+
+export type StrictTerminalRouteFixture = {
+	input: string;
+	text: string;
+	contextIds?: readonly string[];
+};
+
 /**
  * Strip the prompt envelope (`message:user:`, the external-content wrapper, and
  * any trailing provider/event boundary) so a fixture matches the exact user
@@ -156,6 +169,147 @@ export function strictActionRouteFixtures(
 			times: 1,
 		},
 	];
+}
+
+/** Declare one Stage-1 decision followed by an ordered parallel tool plan. */
+export function strictMultiToolRouteFixtures(
+	spec: StrictMultiToolRouteFixture,
+): DeterministicModelFixture[] {
+	if (spec.tools.length < 2) {
+		throw new Error("strict multi-tool route requires at least two tools");
+	}
+	const candidateActionNames = spec.tools.map((tool) => tool.actionName);
+	const replyText = spec.messageToUser ?? "On it.";
+	return [
+		{
+			name: `route-multi-stage1-${actionSlug(spec.input)}`,
+			match: {
+				modelType: ModelType.RESPONSE_HANDLER,
+				input: matchesScenarioInput(spec.input),
+				toolName: "HANDLE_RESPONSE",
+			},
+			response: {
+				contexts: [...(spec.contextIds ?? ["general"])],
+				intents: [spec.input.toLowerCase()],
+				replyText,
+				threadOps: [],
+				candidateActionNames,
+			},
+			times: 1,
+		},
+		{
+			name: `route-multi-planner-${actionSlug(spec.input)}`,
+			match: {
+				modelType: ModelType.ACTION_PLANNER,
+				input: matchesScenarioInput(spec.input),
+				toolNames: candidateActionNames,
+			},
+			response: {
+				text: "",
+				thought: `Call ${candidateActionNames.join(", ")}.`,
+				messageToUser: replyText,
+				completed: true,
+				finishReason: "tool-calls",
+				toolCalls: spec.tools.map((tool, index) => ({
+					id: `call-${index + 1}-${actionSlug(tool.actionName)}`,
+					name: tool.actionName,
+					type: "function",
+					arguments: tool.args,
+				})),
+			},
+			times: 1,
+		},
+	];
+}
+
+/** Stage-1 asks the user for missing information and terminates without tools. */
+export function strictClarificationFixture(
+	spec: StrictTerminalRouteFixture,
+): DeterministicModelFixture {
+	return {
+		name: `route-clarification-${actionSlug(spec.input)}`,
+		match: {
+			modelType: ModelType.RESPONSE_HANDLER,
+			input: matchesScenarioInput(spec.input),
+			toolName: "HANDLE_RESPONSE",
+		},
+		response: {
+			contexts: [...(spec.contextIds ?? ["general"])],
+			intents: [spec.input.toLowerCase()],
+			replyText: spec.text,
+			threadOps: [],
+			candidateActionNames: [],
+			needsClarification: true,
+		},
+		times: 1,
+	};
+}
+
+/** Stage-1 emits a terminal conversational response with no planner call. */
+export function strictTerminalReplyFixture(
+	spec: StrictTerminalRouteFixture,
+): DeterministicModelFixture {
+	return {
+		name: `route-terminal-reply-${actionSlug(spec.input)}`,
+		match: {
+			modelType: ModelType.RESPONSE_HANDLER,
+			input: matchesScenarioInput(spec.input),
+			toolName: "HANDLE_RESPONSE",
+		},
+		response: {
+			contexts: [...(spec.contextIds ?? ["general"])],
+			intents: [spec.input.toLowerCase()],
+			replyText: spec.text,
+			threadOps: [],
+			candidateActionNames: ["REPLY"],
+		},
+		times: 1,
+	};
+}
+
+/** Declare an exact evaluator/judge-style structured generation call. */
+export function strictEvaluatorFixture(options: {
+	name: string;
+	modelType?: string;
+	promptIncludes: string;
+	responseSchema?: JsonRecord;
+	response: JsonRecord;
+	times?: number;
+}): DeterministicModelFixture {
+	return {
+		name: options.name,
+		match: {
+			modelType: options.modelType ?? ModelType.TEXT_LARGE,
+			prompt: (prompt) => prompt.includes(options.promptIncludes),
+			...(options.responseSchema
+				? { responseSchema: options.responseSchema }
+				: {}),
+		},
+		response: options.response,
+		times: options.times ?? 1,
+	};
+}
+
+/** Declare deterministic scheduled body/title rendering without a global resolver. */
+export function strictScheduledRenderFixture(options: {
+	name: string;
+	promptPrefix: string;
+	response: string;
+	modelType?: string | string[];
+	times?: number;
+}): DeterministicModelFixture {
+	return {
+		name: options.name,
+		match: {
+			modelType: options.modelType ?? [
+				ModelType.TEXT_SMALL,
+				ModelType.TEXT_LARGE,
+			],
+			prompt: (prompt) => prompt.startsWith(options.promptPrefix),
+		},
+		response: options.response,
+		times: options.times ?? 1,
+	};
 }
 
 /** Register strict action-route fixtures onto a scenario-style runtime bridge. */

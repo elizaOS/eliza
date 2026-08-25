@@ -28,6 +28,24 @@ import {
 import { apiKeys } from "./api-keys";
 import { creditTransactions } from "./credit-transactions";
 import { organizations } from "./organizations";
+
+/**
+ * The one HARD-terminal value of `containers.status`.
+ *
+ * `app-container-orphan-reconciler.ts` documents `deleted` as "the hard-terminal
+ * state"; `ContainerRepoAppContainerStore.markDeleted` drives a row here
+ * precisely so it stops counting toward the per-organization container quota
+ * (`checkQuota` excludes only `deleting`/`deleted`), and no deploy ever reuses a
+ * deleted row — each deploy creates a fresh one. Every other status, including
+ * `stopped` and `failed`, is re-entrant by design. Lifecycle writers therefore
+ * compare-and-set against THIS value only; see `containersRepository.updateStatus`.
+ *
+ * Lives in the schema module so the repository and the app-container store can
+ * both spell the predicate from one source without the store taking a runtime
+ * dependency on database-repository concerns.
+ */
+export const TERMINAL_CONTAINER_STATUS = "deleted" as const;
+
 import { userCharacters } from "./user-characters";
 import { users } from "./users";
 

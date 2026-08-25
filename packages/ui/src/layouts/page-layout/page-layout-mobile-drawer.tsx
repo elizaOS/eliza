@@ -58,15 +58,15 @@ export function PageLayoutMobileDrawer({
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="pageDrawerTrigger"
             className={cn(
-              "h-[2.375rem] max-w-[min(11rem,100%)] rounded-sm border-border bg-card px-3 text-sm font-semibold text-txt ",
+              "max-w-[min(11rem,100%)]",
               mobileSidebarTriggerClassName,
             )}
             data-testid="page-layout-mobile-sidebar-trigger"
             onClick={() => onMobileSidebarOpenChange(true)}
           >
-            <PanelLeftOpen className="h-4 w-4 shrink-0" />
+            <PanelLeftOpen className="size-4 shrink-0" />
             <span className="truncate">{drawerLabel}</span>
           </Button>
         </div>

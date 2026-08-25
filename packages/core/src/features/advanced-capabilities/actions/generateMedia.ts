@@ -31,6 +31,10 @@ import type {
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { resolveSetting } from "../../../utils/resolve-setting.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -194,6 +198,8 @@ function buildRequest(
 		seed: readNumberParam(params, "seed"),
 		duration: readNumberParam(params, "duration"),
 		aspectRatio: readStringParam(params, "aspectRatio"),
+		resolution: readStringParam(params, "resolution"),
+		audio: readBooleanParam(params, "audio"),
 		imageUrl: readStringParam(params, "imageUrl"),
 		instrumental: readBooleanParam(params, "instrumental"),
 		genre: readStringParam(params, "genre"),
@@ -318,15 +324,16 @@ async function fallbackGenerateVideo(
 	runtime: IAgentRuntime,
 	request: MediaGenerationRequest,
 ): Promise<MediaGenerationResponse> {
-	// Duration and aspect ratio are deliberately NOT forwarded: providers
-	// hard-reject out-of-range or mistyped values (fal veo3 422s on
-	// durationSeconds outside its fixed clip length AND on "16:9" arriving in
-	// its resolution field — both observed live), and a default-shaped video
-	// beats a failed request for the whole ask. The bare prompt (+ optional
-	// reference image) is the proven-working request shape.
 	const videoResponse = (await runtime.useModel(ModelType.VIDEO, {
 		prompt: request.prompt,
 		...(request.imageUrl ? { imageUrl: request.imageUrl } : {}),
+		...(request.duration !== undefined
+			? { duration: request.duration, durationSeconds: request.duration }
+			: {}),
+		...(request.aspectRatio ? { aspectRatio: request.aspectRatio } : {}),
+		...(request.resolution ? { resolution: request.resolution } : {}),
+		...(request.audio !== undefined ? { audio: request.audio } : {}),
+		...(request.seed !== undefined ? { seed: request.seed } : {}),
 	})) as { url?: string; videoUrl?: string } | string | undefined;
 	const videoUrl =
 		typeof videoResponse === "string"
@@ -398,7 +405,7 @@ async function generateWithService(
 }
 
 const GENERATE_MEDIA_ROUTING_HINT =
-	"When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If ATTACHMENT already described a source image, use that description as the video/image prompt — do not refuse, do not offer to 'craft a prompt for another tool', and do not tell the user you lack a video generator when this action validates.";
+	"When the user asks to create/generate/make a video, animation, clip, image, music, sfx, or speech: call GENERATE_MEDIA with the matching mediaType (video/image/audio). If the turn includes an exact trusted attached image URL, pass it unchanged as imageUrl for image-to-video or image editing and use the attachment description to inform the prompt. Do not refuse, offer to 'craft a prompt for another tool', or claim there is no video generator when this action validates.";
 
 export const generateMediaAction = {
 	name: spec.name,
@@ -515,24 +522,25 @@ export const generateMediaAction = {
 					src: "plugin:advanced-capabilities:action:generate_media",
 					agentId: runtime.agentId,
 					mediaType: request.mediaType,
-					promptPreview: request.prompt.slice(0, 120),
+					promptPreview: truncateWellFormed(
+						toWellFormedUnicode(request.prompt),
+						120,
+					),
 					hasImageUrl: Boolean(request.imageUrl),
 				},
 				"GENERATE_MEDIA handler invoking media service",
 			);
 			result = await generateWithService(runtime, request);
 		} catch (firstError) {
-			// Provider param constraints (fal veo3 422s on durationSeconds and on
-			// aspect-ratio-as-resolution — observed live) fail the WHOLE ask over
-			// planner-supplied extras the user never insisted on. Retry once with
-			// the bare proven shape (prompt + optional reference image) before
-			// giving up: a default-shaped result beats a failed request. The
-			// rejected attempt is not billed.
+			// Legacy image and audio providers may reject optional shaping hints.
+			// Video controls are user-visible contract fields, so a video failure
+			// is returned rather than silently retrying with those controls removed.
 			const hadShapingExtras =
-				request.duration !== undefined ||
-				request.aspectRatio !== undefined ||
-				request.size !== undefined ||
-				request.seed !== undefined;
+				request.mediaType !== "video" &&
+				(request.duration !== undefined ||
+					request.aspectRatio !== undefined ||
+					request.size !== undefined ||
+					request.seed !== undefined);
 			if (hadShapingExtras) {
 				logger.warn(
 					{
@@ -702,19 +710,52 @@ export const generateMediaAction = {
 		},
 		{
 			name: "duration",
-			description: "Target duration seconds for video/audio.",
+			description:
+				"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 			required: false,
 			schema: { type: "number" as const },
 		},
 		{
 			name: "aspectRatio",
-			description: "Video aspect ratio, e.g. 16:9, 9:16, 1:1.",
+			description:
+				"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 			required: false,
-			schema: { type: "string" as const },
+			schema: {
+				type: "string" as const,
+				enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+			},
+		},
+		{
+			name: "resolution",
+			description:
+				"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+			required: false,
+			schema: { type: "string" as const, enum: ["480p", "720p"] },
+		},
+		{
+			name: "audio",
+			description:
+				"Whether video generation should include synchronized audio. Omit it to include audio.",
+			required: false,
+			schema: { type: "boolean" as const },
+		},
+		{
+			name: "seed",
+			description:
+				"Optional non-negative integer seed for reproducible media generation.",
+			required: false,
+			schema: { type: "number" as const },
 		},
 		{
 			name: "size",
 			description: "Image size/provider preset.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "imageUrl",
+			description:
+				"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 			required: false,
 			schema: { type: "string" as const },
 		},

@@ -16,6 +16,7 @@ import { RESERVED_PLATFORM_ENV_KEYS, stripReservedEnvKeys } from "./reserved-env
 
 export interface DeployAppRequest {
   appId: string;
+  deploymentGeneration: string;
   organizationId: string;
   userId: string;
   containerName: string;
@@ -44,6 +45,7 @@ export interface AppDeployRunOptions {
 
 export interface NewAppContainerRow {
   appId: string;
+  deploymentGeneration: string;
   organizationId: string;
   userId: string;
   containerName: string;
@@ -62,6 +64,7 @@ export interface AppDeployDeps {
     containerId: string;
     organizationId: string;
     userId: string;
+    deploymentGeneration: string;
   }) => Promise<{ id: string }>;
   /** Record the container id on the app (e.g. apps.metadata.containerId). */
   linkContainerToApp: (appId: string, containerId: string) => Promise<void>;
@@ -79,7 +82,7 @@ export interface DeployAppResult {
  * `AppDeploymentsService` invokes it after marking the app `building`.
  */
 export interface AppDeployRunner {
-  run(appId: string, options?: AppDeployRunOptions): Promise<void>;
+  run(appId: string, deploymentGeneration: string, options?: AppDeployRunOptions): Promise<void>;
 }
 
 /**
@@ -123,6 +126,7 @@ export async function deployApp(
 
   const { containerId } = await deps.createContainerRow({
     appId: req.appId,
+    deploymentGeneration: req.deploymentGeneration,
     organizationId: req.organizationId,
     userId: req.userId,
     containerName: req.containerName,
@@ -141,6 +145,7 @@ export async function deployApp(
     containerId,
     organizationId: req.organizationId,
     userId: req.userId,
+    deploymentGeneration: req.deploymentGeneration,
   });
 
   await deps.linkContainerToApp(req.appId, containerId);

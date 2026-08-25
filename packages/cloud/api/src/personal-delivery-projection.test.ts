@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { PersonalDeliveryInput } from "@/lib/services/eliza-app/user-service";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
+  PersonalDeliveryAccountResolutionError,
   PersonalDeliveryProjection,
   resolvePersonalDeliveryProjection,
 } from "./personal-delivery-projection";
@@ -41,8 +42,15 @@ const TELEGRAM: PersonalDeliveryInput = {
   username: "nubs",
   displayName: "Nubs",
 };
+const PHONE: PersonalDeliveryInput = {
+  platform: "phone",
+  phoneNumber: "+15551234567",
+};
 
-function request(path: "/resolve" | "/invalidate", body?: unknown): Request {
+function request(
+  path: "/resolve" | "/invalidate" | "/fence" | "/release",
+  body?: unknown,
+): Request {
   return new Request(`https://personal-delivery-projection${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -81,6 +89,25 @@ describe("PersonalDeliveryProjection", () => {
       dedicatedTarget: null,
       isNew: false,
       resolution: "sender-projection-hit",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("shares one verified-phone projection across Blooio and Twilio", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+
+    const cold = await object.fetch(request("/resolve", PHONE));
+    const warm = await object.fetch(request("/resolve", PHONE));
+
+    expect(cold.status).toBe(200);
+    expect(await warm.json()).toMatchObject({
+      resolution: "sender-projection-hit",
+      userId: "user-1",
+      organizationId: "org-1",
     });
     expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
   });
@@ -188,6 +215,130 @@ describe("PersonalDeliveryProjection", () => {
     expect(resolvePersonalDelivery).toHaveBeenCalledTimes(2);
   });
 
+  test("a durable mutation fence survives process death and prevents stale cache acceptance", async () => {
+    const memory = state();
+    let organizationId = "org-1";
+    const firstResolver = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const first = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery: firstResolver,
+    });
+    await first.fetch(request("/resolve", PHONE));
+    expect(
+      (await (
+        await first.fetch(request("/fence", { token: "mutation-1" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: true });
+
+    // Simulate the lifecycle DB commit followed by process death before release.
+    organizationId = "org-2";
+    const afterCrashResolver = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const afterCrash = new PersonalDeliveryProjection(
+      memory.durableState,
+      ENV,
+      { resolvePersonalDelivery: afterCrashResolver },
+    );
+    const firstFenced = await afterCrash.fetch(request("/resolve", PHONE));
+    const secondFenced = await afterCrash.fetch(request("/resolve", PHONE));
+
+    expect(await firstFenced.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await secondFenced.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(afterCrashResolver).toHaveBeenCalledTimes(2);
+    expect(memory.storage.values.has("shared-account")).toBe(false);
+  });
+
+  test("a resolve racing the lifecycle commit cannot repopulate stale durable state", async () => {
+    const memory = state();
+    let organizationId = "org-1";
+    const resolvePersonalDelivery = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+    await object.fetch(request("/resolve", PHONE));
+    await object.fetch(request("/fence", { token: "move-1" }));
+
+    const beforeCommit = await object.fetch(request("/resolve", PHONE));
+    organizationId = "org-2";
+    const afterCommit = await object.fetch(request("/resolve", PHONE));
+    await object.fetch(request("/release", { token: "move-1" }));
+    const afterRelease = await object.fetch(request("/resolve", PHONE));
+    const warmNewOrganization = await object.fetch(request("/resolve", PHONE));
+
+    expect(await beforeCommit.json()).toMatchObject({
+      organizationId: "org-1",
+      resolution: "single-query-repeat",
+    });
+    expect(await afterCommit.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await afterRelease.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await warmNewOrganization.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "sender-projection-hit",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(4);
+  });
+
+  test("overlapping mutation tokens keep the object fenced until every writer releases", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+    await object.fetch(request("/fence", { token: "writer-a" }));
+    await object.fetch(request("/fence", { token: "writer-b" }));
+    expect(
+      (await (
+        await object.fetch(request("/release", { token: "writer-a" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: true });
+
+    await object.fetch(request("/resolve", TELEGRAM));
+    await object.fetch(request("/resolve", TELEGRAM));
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(2);
+    expect(memory.storage.values.has("shared-account")).toBe(false);
+
+    expect(
+      (await (
+        await object.fetch(request("/release", { token: "writer-b" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: false });
+    await object.fetch(request("/resolve", TELEGRAM));
+    await object.fetch(request("/resolve", TELEGRAM));
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(3);
+  });
+
+  test("rejects malformed mutation fence tokens", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+
+    expect(
+      (await object.fetch(request("/fence", { token: "bad token" }))).status,
+    ).toBe(400);
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
   test("serializes concurrent cold turns into one database hydration", async () => {
     const memory = state();
     const resolvePersonalDelivery = mock(async () => {
@@ -278,22 +429,159 @@ describe("resolvePersonalDeliveryProjection", () => {
     expect(getByName).not.toHaveBeenCalled();
   });
 
-  test("fails closed when a bound projection returns malformed state", async () => {
+  test("bounds the projection read with an abort signal", async () => {
+    let signal: unknown;
+    const namespace = {
+      getByName: () => ({
+        fetch: async (_url: string, init: RequestInit) => {
+          signal = init.signal;
+          return Response.json({
+            ...sharedResult(),
+            resolution: "sender-projection-hit",
+          });
+        },
+      }),
+    };
+
+    await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery: async () => sharedResult() },
+    );
+
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("degrades a malformed projection result to the canonical resolver", async () => {
     const namespace = {
       getByName: () => ({
         fetch: async () => Response.json({ success: true }),
       }),
     };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
 
-    await expect(
-      resolvePersonalDeliveryProjection(
-        {
-          PERSONAL_DELIVERY_PROJECTIONS: namespace,
-          PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
-        } as unknown as AppEnv["Bindings"],
-        TELEGRAM,
-        { resolvePersonalDelivery: async () => sharedResult() },
-      ),
-    ).rejects.toThrow("Personal delivery projection failed with status 200");
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("degrades a projection 502 to the canonical resolver in one attempt", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Personal delivery resolution failed",
+              failureName: "TypeError",
+            },
+            { status: 502 },
+          ),
+      }),
+    };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("degrades a projection transport failure to the canonical resolver", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => {
+          throw new DOMException("The operation timed out.", "TimeoutError");
+        },
+      }),
+    };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("throws typed classification only after both paths fail", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Personal delivery resolution failed",
+              failureName: "TypeError",
+            },
+            { status: 502 },
+          ),
+      }),
+    };
+    const databaseFailure = new Error("connection reset");
+
+    const attempt = resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      {
+        resolvePersonalDelivery: async () => {
+          throw databaseFailure;
+        },
+      },
+    );
+
+    const caught: unknown = await attempt.then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    expect(caught).toBeInstanceOf(PersonalDeliveryAccountResolutionError);
+    const error = caught as PersonalDeliveryAccountResolutionError;
+    expect(error.name).toBe("PersonalDeliveryAccountResolutionError");
+    expect(error.projectionFailure).toBe("status-502:TypeError");
+    expect(error.cause).toBe(databaseFailure);
+    expect(error.message).not.toContain("connection reset");
+  });
+
+  test("reports a tenant-safe failure name from the projection boundary", async () => {
+    const memory = state();
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery: async () => {
+        throw new TypeError(
+          "secret column list must never reach the connector",
+        );
+      },
+    });
+
+    const response = await object.fetch(request("/resolve", TELEGRAM));
+
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.failureName).toBe("TypeError");
+    expect(JSON.stringify(body)).not.toContain("secret column list");
   });
 });

@@ -1,4 +1,4 @@
-// Defines cloud shared cloud api behavior for backend service consumers.
+/** Defines cloud transport DTOs shared by backend producers and API consumers. */
 export type IsoDateString = string;
 export type DateLike = Date | IsoDateString;
 
@@ -102,6 +102,39 @@ export interface InvoiceDto {
   updated_at: DateLike;
   due_date: DateLike | null;
   paid_at: DateLike | null;
+}
+
+/** Payment rails represented by the unified payment-request transport. */
+export type PaymentRequestProviderDto = "stripe" | "oxapay" | "x402" | "wallet_native";
+
+/** Persisted payment-request lifecycle states exposed to creators. */
+export type PaymentRequestStatusDto =
+  | "pending"
+  | "delivered"
+  | "settled"
+  | "failed"
+  | "expired"
+  | "canceled";
+
+/**
+ * Creator-facing payment-request projection. Provider payloads, callback
+ * credentials, payer identities, settlement proof, and arbitrary metadata
+ * never cross this transport boundary.
+ */
+export interface PaymentRequestDto {
+  id: string;
+  agentId: string | null;
+  appId: string | null;
+  provider: PaymentRequestProviderDto;
+  amountCents: number;
+  currency: string;
+  reason: string | null;
+  status: PaymentRequestStatusDto;
+  hostedUrl: string | null;
+  settledAt: IsoDateString | null;
+  expiresAt: IsoDateString;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
 }
 
 export type AppDeploymentStatus = "draft" | "building" | "deploying" | "deployed" | "failed";
@@ -373,6 +406,83 @@ export interface CreditBalanceResponse {
   balance: number;
 }
 
+// ---------------------------------------------------------------------------
+// Recurring subscription catalog and lifecycle DTOs
+// Provider identifiers remain server-only and are deliberately absent here.
+// ---------------------------------------------------------------------------
+
+export type SubscriptionCatalogVersion = "v1";
+export type SubscriptionPlanKey = "plus_monthly" | "pro_monthly";
+export type SubscriptionBillingInterval = "month";
+export type SubscriptionCurrency = "usd";
+export type SubscriptionFundingClass = "allowance_eligible" | "cash_only";
+
+export interface SubscriptionRateEnvelopeDto {
+  completionsRpm: number;
+  embeddingsRpm: number;
+  standardRpm: number;
+  strictRpm: number;
+}
+
+export interface SubscriptionResourceCeilingsDto {
+  cloudCharacters: number;
+  agentSandboxes: number;
+  containers: number;
+  storageGiB: number;
+  apps: number;
+}
+
+export interface SubscriptionAllowanceDto {
+  /** Canonical six-decimal USD amount; never a purchased-credit ledger grant. */
+  amountUsd: string;
+  fundingClass: "allowance_eligible";
+  rollover: false;
+  expiresAt: "billing_period_end";
+}
+
+export interface SubscriptionPlanDto {
+  key: SubscriptionPlanKey;
+  name: "Plus" | "Pro";
+  catalogVersion: SubscriptionCatalogVersion;
+  active: true;
+  interval: SubscriptionBillingInterval;
+  intervalCount: 1;
+  currency: SubscriptionCurrency;
+  amountCents: number;
+  allowance: SubscriptionAllowanceDto;
+  fundingClasses: readonly SubscriptionFundingClass[];
+  rateLimits: SubscriptionRateEnvelopeDto;
+  /** Unavailable until the resource-enforcement policy is ratified. */
+  resourceCeilings: null;
+}
+
+export interface SubscriptionPlansDto {
+  catalogVersion: SubscriptionCatalogVersion;
+  plans: readonly SubscriptionPlanDto[];
+}
+
+export type SubscriptionPublicState = "active" | "grace" | "past_due" | "unpaid" | "canceled";
+
+/**
+ * Public lifecycle projection for later subscription APIs. Provider object,
+ * product, price, invoice, and payment identifiers never cross this boundary.
+ */
+export interface SubscriptionDto {
+  catalogVersion: SubscriptionCatalogVersion;
+  planKey: SubscriptionPlanKey;
+  state: SubscriptionPublicState;
+  currentPeriodStartsAt: IsoDateString;
+  currentPeriodEndsAt: IsoDateString;
+  cancelAtPeriodEnd: boolean;
+  pendingPlanKey: SubscriptionPlanKey | null;
+  allowanceGrantedUsd: string;
+  allowanceRemainingUsd: string;
+  allowanceExpiresAt: IsoDateString;
+  rateLimits: SubscriptionRateEnvelopeDto;
+  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
+  resourceCeilings: SubscriptionResourceCeilingsDto | null;
+}
+
 // Transport mirror of the DB `AgentSandboxStatus` in
 // db/schemas/agent-sandboxes.ts — keep the two unions in sync.
 export type AgentSandboxStatus =
@@ -388,6 +498,20 @@ export type AgentSandboxStatus =
 
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+
+/** The server-owned lifecycle job a management client can resume polling after reload. */
+export interface AgentActiveJobDto {
+  id: string;
+  type: string;
+  status: "pending" | "in_progress";
+  attempts: number;
+  maxAttempts: number;
+  estimatedCompletionAt: IsoDateString | null;
+  scheduledFor: IsoDateString;
+  startedAt: IsoDateString | null;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
+}
 
 export interface AgentListItemDto {
   id: string;
@@ -406,6 +530,7 @@ export interface AgentListItemDto {
   dockerImage: string | null;
   executionTier: AgentExecutionTier;
   webUiUrl: string | null;
+  activeJob: AgentActiveJobDto | null;
 }
 
 export interface AgentAdminDetailsDto {
@@ -694,33 +819,12 @@ export interface OrgInviteDto {
 }
 
 // ---------------------------------------------------------------------------
-// Session and quota usage DTOs
-// Shapes returned by GET /api/sessions/current and /api/quotas/usage
+// Session usage DTOs
+// Shapes returned by GET /api/sessions/current
 // ---------------------------------------------------------------------------
 
 export interface SessionStatsDto {
   credits_used: number;
   requests_made: number;
   tokens_consumed: number;
-}
-
-export interface QuotaGlobalDto {
-  used: number;
-  limit: number | null;
-  periodEnd: string | null;
-  usedPercent: number | null;
-  usedPercentClamped: number;
-}
-
-export interface QuotaModelDto {
-  used: number;
-  limit: number;
-  periodEnd: string;
-  usedPercent: number;
-  usedPercentClamped: number;
-}
-
-export interface QuotaUsageDto {
-  global: QuotaGlobalDto;
-  modelSpecific: Record<string, QuotaModelDto>;
 }

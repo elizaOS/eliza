@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
+	type AccessContext,
 	type Character,
 	type Memory,
 	MemoryType,
@@ -101,6 +102,33 @@ function userMessage(): Memory {
 }
 
 describe("DocumentService list semantics", () => {
+	it("excludes room documents immediately after membership revocation", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		const revocationUserId = "00000000-0000-0000-0000-00000000cafe" as UUID;
+		const revocationRoomId = "00000000-0000-0000-0000-00000000da7a" as UUID;
+		await adapter.createRoomParticipants(
+			[AGENT_ID, revocationUserId],
+			revocationRoomId,
+		);
+		const roomDocument = documentMemory(700, { roomId: revocationRoomId });
+		await seedDocuments(runtime, [roomDocument]);
+		const accessContext = {
+			requesterEntityId: revocationUserId,
+			role: "USER",
+			isOwner: false,
+		} satisfies AccessContext;
+
+		await expect(
+			service.listAllDocumentsWithAccessContext(accessContext),
+		).resolves.toMatchObject([{ id: roomDocument.id }]);
+		await adapter.deleteParticipants([
+			{ entityId: revocationUserId, roomId: revocationRoomId },
+		]);
+		await expect(
+			service.listAllDocumentsWithAccessContext(accessContext),
+		).resolves.toEqual([]);
+	});
+
 	it("adds and updates keyword-searchable documents without an embedding model", async () => {
 		const { runtime, service } = await makeHarness();
 		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
@@ -312,6 +340,25 @@ describe("DocumentService list semantics", () => {
 		expect(getWorld).toHaveBeenCalledTimes(1);
 	});
 
+	it("returns every visible document when pagination was not requested", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(
+			runtime,
+			Array.from({ length: 501 }, (_, index) => documentMemory(index)),
+		);
+		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
+
+		const result = await service.listDocumentsDetailed();
+
+		expect(result.documents).toHaveLength(501);
+		expect(new Set(result.documents.map((document) => document.id)).size).toBe(
+			501,
+		);
+		expect(result.hasMore).toBe(false);
+		expect(result.nextCursor).toBeUndefined();
+		expect(queryDocuments).toHaveBeenCalledTimes(6);
+	});
+
 	it("composes visible pinned documents beyond the recent page without leaking private pins", async () => {
 		const { runtime, service } = await makeHarness();
 		const documents = Array.from({ length: 126 }, (_, index) =>
@@ -322,13 +369,26 @@ describe("DocumentService list semantics", () => {
 			metadata: { pinned: true, scope: "owner-private" },
 		});
 		await seedDocuments(runtime, [...documents, privatePinned]);
+		// The requester role must resolve to a real tier: an unresolvable world
+		// leaves the requester UNRESOLVED, which the storage authorization
+		// boundary denies outright (#24255).
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
 
-		const composed = await service.composeProviderDocuments(userMessage(), {
-			limit: 25,
-		});
+		const composed = await service.composeProviderDocuments(userMessage());
 
-		expect(composed.documents).toHaveLength(25);
-		expect(composed.documents).not.toContainEqual(documents[0]);
+		expect(composed.documents).toHaveLength(126);
+		expect(composed.documents.map((document) => document.id)).toContain(
+			documents[0]?.id,
+		);
 		expect(composed.pinnedDocuments.map((document) => document.id)).toEqual([
 			documents[0]?.id,
 		]);
@@ -481,10 +541,10 @@ describe("DocumentService list semantics", () => {
 			metadata: { roles: { [USER_ID]: "USER" } },
 		} as World);
 
-		await expect(
-			service.deleteDocument(hiddenDocument.id as UUID, userMessage()),
-		).rejects.toMatchObject({ code: "DOCUMENT_MUTATION_FORBIDDEN" });
-		for (const memory of [foreignDocument, nonDocument]) {
+		// A document this requester cannot see is indistinguishable from a missing
+		// UUID: the delete path reports DOCUMENT_NOT_FOUND rather than confirming
+		// the row exists through a forbidden-mutation error (#24272).
+		for (const memory of [hiddenDocument, foreignDocument, nonDocument]) {
 			await expect(
 				service.deleteDocument(memory.id as UUID, userMessage()),
 			).rejects.toMatchObject({ code: "DOCUMENT_NOT_FOUND" });
@@ -590,6 +650,19 @@ describe("DocumentService list semantics", () => {
 				},
 			}),
 		]);
+		// Same requirement as the pinned-composition case: without a resolvable
+		// world the requester stays UNRESOLVED and nothing is visible, so the
+		// visibility-before-filter classification could never be exercised.
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
 
 		const result = await service.listDocumentsDetailed(userMessage(), {
 			tags: ["missing-tag"],

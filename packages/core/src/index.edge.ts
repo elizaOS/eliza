@@ -10,6 +10,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./account-pool-bridge";
 export * from "./action-names";
@@ -37,6 +39,7 @@ export {
 } from "./constants";
 export * from "./contracts/computer-use";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -51,6 +54,9 @@ export * from "./markdown";
 export * from "./memory";
 export * from "./messaging/interactions";
 export * from "./name-tokens";
+// Literal-host SSRF policy helpers are pure and safe in Workers; DNS pinning
+// remains outside the edge barrel.
+export { isBlockedHostname, isPrivateIpAddress } from "./network/ssrf";
 export * from "./plugin";
 export * from "./prompts";
 export * from "./providers/recent-errors";
@@ -110,6 +116,8 @@ export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
 export { stableStringify } from "./utils/deterministic";
 export * from "./utils/environment";
+export * from "./utils/html-raw-text";
+export * from "./utils/model-errors";
 export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";

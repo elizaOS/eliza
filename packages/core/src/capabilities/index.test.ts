@@ -166,6 +166,101 @@ describe("capability router", () => {
 		]);
 	});
 
+	it("strictly decodes opaque workspace execution attestations", async () => {
+		const workspaceExecution = {
+			root: "/remote/repo",
+			rootId: "a".repeat(64),
+			executionDomainId: "b".repeat(64),
+		};
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				output: "ok",
+				exitCode: 0,
+				timedOut: false,
+				workspaceExecution,
+			}),
+		});
+		await expect(
+			router.pty.runCommand({ command: "npm test" }),
+		).resolves.toMatchObject({ workspaceExecution });
+
+		for (const malformed of [
+			{ ...workspaceExecution, rootId: "short" },
+			{ ...workspaceExecution, extra: true },
+		]) {
+			const invalid = new RuntimeBrokerCapabilityRouter({
+				invokeRuntime: async () => ({
+					output: "ok",
+					exitCode: 0,
+					timedOut: false,
+					workspaceExecution: malformed,
+				}),
+			});
+			await expect(
+				invalid.pty.runCommand({ command: "npm test" }),
+			).rejects.toMatchObject({ code: "CAPABILITY_DECODE_FAILED" });
+		}
+	});
+
+	it("accepts only full workspace receipts bound to the attested routed scope", async () => {
+		const workspaceExecution = {
+			root: "/remote/repo",
+			rootId: "a".repeat(64),
+			executionDomainId: "b".repeat(64),
+		};
+		const workspaceDeltaReceipt = {
+			version: 1,
+			kind: "workspace_delta",
+			scope: {
+				kind: "git_worktree",
+				...workspaceExecution,
+				coverage: "tracked_and_untracked_nonignored",
+			},
+			outcome: "unchanged",
+			beforeFingerprint: "c".repeat(64),
+			afterFingerprint: "c".repeat(64),
+			observedAt: "2026-08-23T12:00:00.000Z",
+		};
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				output: "ok",
+				exitCode: 0,
+				timedOut: false,
+				workspaceExecution,
+				workspaceDeltaReceipt,
+			}),
+		});
+		await expect(
+			router.pty.runCommand({ command: "npm test" }),
+		).resolves.toMatchObject({
+			workspaceExecution,
+			workspaceDeltaReceipt,
+		});
+
+		for (const invalidReceipt of [
+			{ ...workspaceDeltaReceipt, extra: true },
+			{
+				...workspaceDeltaReceipt,
+				scope: { ...workspaceDeltaReceipt.scope, rootId: "d".repeat(64) },
+			},
+		]) {
+			const invalid = new RuntimeBrokerCapabilityRouter({
+				invokeRuntime: async () => ({
+					output: "ok",
+					exitCode: 0,
+					timedOut: false,
+					workspaceExecution,
+					workspaceDeltaReceipt: invalidReceipt,
+				}),
+			});
+			await expect(
+				invalid.pty.runCommand({ command: "npm test" }),
+			).rejects.toMatchObject({
+				code: "CAPABILITY_DECODE_FAILED",
+			});
+		}
+	});
+
 	it("wraps broker failures as capability request failures", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => {

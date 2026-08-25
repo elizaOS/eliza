@@ -233,6 +233,10 @@ function finalCommandsCheck(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "deterministic-slash-commands",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Direct API turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic slash-command catalog coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "commands", "routes"],

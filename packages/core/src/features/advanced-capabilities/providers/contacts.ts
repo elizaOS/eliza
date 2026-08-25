@@ -17,7 +17,6 @@ import type {
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("CONTACTS");
-const MAX_CONTACTS = 50;
 
 export const advancedContactsProvider: Provider = {
 	name: spec.name,
@@ -45,10 +44,7 @@ export const advancedContactsProvider: Provider = {
 			}
 
 			// Get all contacts
-			const contacts = (await relationshipsService.searchContacts({})).slice(
-				0,
-				MAX_CONTACTS,
-			);
+			const contacts = await relationshipsService.searchContacts({});
 
 			if (contacts.length === 0) {
 				return {

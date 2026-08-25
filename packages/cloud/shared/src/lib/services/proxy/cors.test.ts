@@ -75,6 +75,8 @@ describe("getCorsHeaders", () => {
     expect(allow).toContain("x-elizaos-client-id");
     expect(allow).toContain("x-eliza-client-id");
     expect(allow).toContain("x-elizaos-ui-language");
+    expect(allow).toContain("x-elizaos-turn-correlation");
+    expect(allow).toContain("x-elizaos-turn-attempt");
   });
 
   test("non-app origin → wildcard, NO credentials", () => {

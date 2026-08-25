@@ -2,8 +2,11 @@
  * Defines shell reducer state for overlays, launcher mode, notifications, and
  * surface coordination.
  */
+
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 import type {
   ChatFailureKind,
+  ChatTerminalFailure,
   ConversationSecretRequest,
   MessageAttachment,
   NativeToolCallEvent,
@@ -51,6 +54,8 @@ export interface ShellMessage {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  /** True when the assistant stream ended before a completed turn. */
+  interrupted?: boolean;
   /**
    * Message origin (e.g. "client_chat", "proactive-interaction"). Assistant
    * turns with source "proactive-interaction" render as dismissible/acceptable
@@ -59,6 +64,8 @@ export interface ShellMessage {
   source?: string;
   /** Set on assistant turns the server flagged as failed (e.g. no provider). */
   failureKind?: ChatFailureKind;
+  /** Complete typed terminal failure used for truthful transient retry state. */
+  terminalFailure?: ChatTerminalFailure;
   /** Agent reasoning/thought for this turn, rendered as a collapsed block. */
   reasoning?: string;
   /** Inline tool-call rows for this turn, streamed live from the chat SSE `tool`
@@ -68,10 +75,9 @@ export interface ShellMessage {
   attachments?: MessageAttachment[];
   /** Pending secret / OAuth request (rendered as an actionable block). */
   secretRequest?: ConversationSecretRequest;
-  /**
-   * Short topic labels for this turn (Stage-1 `topics`). Drives the transcript
-   * topic grouping + chips bar (#8928). Absent when the turn had no topic.
-   */
+  /** Validated personal-workspace setup receipt for this assistant turn. */
+  capabilityHandoff?: CapabilityHandoffRequest;
+  /** Short topic labels retained for search and memory semantics. */
   topics?: string[];
 }
 
@@ -124,6 +130,7 @@ export function filterRenderableShellMessages(
       m.content.trim() ||
       (m.attachments?.length ?? 0) > 0 ||
       m.secretRequest !== undefined ||
+      m.capabilityHandoff !== undefined ||
       m.failureKind !== undefined ||
       (m.role === "assistant" && phase === "responding"),
   );

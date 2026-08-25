@@ -71,44 +71,29 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleNativeShare}
-        className="gap-2"
-      >
-        <Share2 className="h-4 w-4" />
+      <Button variant="outline" size="labeledSm" onClick={handleNativeShare}>
+        <Share2 className="size-4" />
         Share
       </Button>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleCopyLink}
-        className="gap-2"
-      >
+      <Button variant="outline" size="labeledSm" onClick={handleCopyLink}>
         {copied ? (
           <>
-            <Check className="h-4 w-4" />
+            <Check className="size-4" />
             Copied!
           </>
         ) : (
           <>
-            <Copy className="h-4 w-4" />
+            <Copy className="size-4" />
             Copy Link
           </>
         )}
       </Button>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={shareOnTwitter}
-        className="gap-2"
-      >
+      <Button variant="outline" size="labeledSm" onClick={shareOnTwitter}>
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
@@ -117,15 +102,10 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         Twitter
       </Button>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={shareOnLinkedIn}
-        className="gap-2"
-      >
+      <Button variant="outline" size="labeledSm" onClick={shareOnLinkedIn}>
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
@@ -134,15 +114,10 @@ export function ShareButtons({ url, title, description }: ShareButtonsProps) {
         LinkedIn
       </Button>
 
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={shareOnTelegram}
-        className="gap-2"
-      >
+      <Button variant="outline" size="labeledSm" onClick={shareOnTelegram}>
         <svg
           aria-hidden="true"
-          className="h-4 w-4"
+          className="size-4"
           viewBox="0 0 24 24"
           fill="currentColor"
         >

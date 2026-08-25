@@ -11,8 +11,10 @@
  * LifeOps activity-signal requests into the canonical typed
  * capability-unavailable response. Generated routing mounts the specific
  * conversation, health, identity, and wallet siblings first; unknown catch-all
- * paths remain 404. Dedicated agents use their own subdomain and never enter
- * this adapter.
+ * paths remain 404. Production Dedicated agents use their own subdomain and
+ * never enter this adapter; only the local harness's loopback Dedicated
+ * runtime does, through the owner-scoped proxy middleware registered before
+ * every handler here and on each sibling.
  */
 import { type Context, Hono } from "hono";
 import { MAX_MOBILE_PUSH_TOKEN_CHARACTERS } from "@/lib/mobile-push/types";
@@ -30,6 +32,7 @@ import {
   sharedRestAgentEvents,
   sharedRestAgentStart,
   sharedRestAuthMe,
+  sharedRestAuthStatus,
   sharedRestCharacter,
   sharedRestCommands,
   sharedRestConfig,
@@ -47,11 +50,14 @@ import {
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { workflowRuntimeUnavailableResponse } from "../../workflows/_shared";
+import { proxyLocalDedicatedOrNext } from "../_local-dedicated-proxy";
 
 const CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS";
 const MAX_PUSH_REGISTRATION_BODY_BYTES = 8_192;
 
 const app = new Hono<AppEnv>();
+
+app.use("*", proxyLocalDedicatedOrNext);
 
 function json(
   c: Context<AppEnv>,
@@ -286,6 +292,8 @@ app.get("/", async (c) => {
       // key (resolveSharedAgent validated it), so report the authed machine
       // identity instead of 404'ing into "server_unavailable".
       return json(c, sharedRestAuthMe(r.agentId, r.agentName));
+    case "auth/status":
+      return json(c, sharedRestAuthStatus());
     case "runtime/mode":
       return json(c, sharedRestRuntimeMode());
     case "commands":

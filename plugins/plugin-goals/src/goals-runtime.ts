@@ -18,7 +18,10 @@
  */
 
 import crypto from "node:crypto";
-import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  resolveOwnerEntityIdOrDefault,
+} from "@elizaos/core";
 import type { LifeOpsOwnership } from "@elizaos/shared";
 import { GoalsRepository } from "./db/goals-repository.ts";
 import { requireAgentId } from "./goal-normalize.ts";
@@ -29,9 +32,15 @@ import {
 } from "./goals-service.ts";
 import { getGoalsCheckinService } from "./services/checkin.ts";
 
-/** Owner-entity id PA derives for the admin/owner entity of an agent. */
+/**
+ * Owner-entity id for the admin/owner entity of an agent — the same derivation
+ * PA's `defaultOwnerEntityId` uses (configured canonical owner, else core's
+ * agent-id seed), so goals written from the PA-free topology stay visible to
+ * the PA-loaded one.
+ */
 export function ownerEntityIdFor(runtime: IAgentRuntime): string {
-  return stringToUuid(`${requireAgentId(runtime)}-admin-entity`);
+  requireAgentId(runtime);
+  return resolveOwnerEntityIdOrDefault(runtime);
 }
 
 /**

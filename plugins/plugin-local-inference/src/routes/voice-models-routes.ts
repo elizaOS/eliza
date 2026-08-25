@@ -585,7 +585,15 @@ export async function handleVoiceModelsRoutes(
 				)
 			: null;
 	if (idActionMatch) {
-		const rawId = decodeURIComponent(idActionMatch[1] ?? "");
+		let rawId: string;
+		try {
+			rawId = decodeURIComponent(idActionMatch[1] ?? "");
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — malformed percent-encoding
+			// is an invalid voice-model id, not a route/server failure.
+			sendJsonError(res, "Invalid voice model id encoding", 400);
+			return true;
+		}
 		const action = idActionMatch[2] as "update" | "pin";
 		if (!KNOWN_VOICE_MODEL_IDS.has(rawId)) {
 			sendJsonError(res, `unknown voice model id: ${rawId}`, 404);

@@ -112,7 +112,12 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
         "X-Eliza-Organization-Id": ORGANIZATION_ID,
         "X-Eliza-User-Id": USER_ID,
       },
-      body: JSON.stringify({ text: "prove the hot path" }),
+      body: JSON.stringify({
+        text: "prove the hot path",
+        messageRole: "user",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+      }),
     },
   );
 
@@ -130,7 +135,8 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     roomId: CONVERSATION_ID,
     startEmpty: false,
   });
-  expect(JSON.parse(String(coordinatorCalls[1]?.init?.body))).toMatchObject({
+  const turnEnvelope = JSON.parse(String(coordinatorCalls[1]?.init?.body));
+  expect(turnEnvelope).toMatchObject({
     operation: "stream",
     agent: cachedAgent,
     channel: {
@@ -147,6 +153,150 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
       },
     },
   });
+  expect(turnEnvelope).not.toHaveProperty("trustedHistoryCutoffAt");
+  expect(turnEnvelope).not.toHaveProperty("transientInput");
+});
+
+test("authenticated lifecycle controls cross the real adapter outside RPC params", async () => {
+  const coordinatorCalls: Array<{
+    input: RequestInfo | URL;
+    init?: RequestInit;
+  }> = [];
+  const namespace = {
+    getByName() {
+      return {
+        async fetch(input: RequestInfo | URL, init?: RequestInit) {
+          coordinatorCalls.push({ input, init });
+          return new Response("event: done\ndata: {}\n\n", {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      };
+    },
+  };
+  const env = {
+    CACHE_ENABLED: "true",
+    DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+    VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+    BLOB: blobBinding,
+    SHARED_RUNTIME_CONVERSATIONS: namespace,
+  };
+  await runWithCloudBindingsAsync(env, () =>
+    cache.set(CACHE_KEY, cachedAgent, 60),
+  );
+
+  const fetchImpl = createInternalElizaConversationFetch(
+    env as Parameters<typeof createInternalElizaConversationFetch>[0],
+    {
+      agentId: AGENT_ID,
+      conversationId: CONVERSATION_ID,
+      organizationId: ORGANIZATION_ID,
+      userId: USER_ID,
+    },
+    { waitUntil: () => undefined },
+  );
+  const cutoff = 1_725_000_000_000;
+  const response = await fetchImpl(
+    `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": AGENT_ID,
+        "X-Eliza-Conversation-Id": CONVERSATION_ID,
+        "X-Eliza-Organization-Id": ORGANIZATION_ID,
+        "X-Eliza-User-Id": USER_ID,
+      },
+      body: JSON.stringify({
+        text: "generate the call opener",
+        messageRole: "system",
+        historyCutoffAt: cutoff,
+        transientInput: true,
+      }),
+    },
+  );
+
+  expect(response.status).toBe(200);
+  expect(coordinatorCalls).toHaveLength(1);
+  const envelope = JSON.parse(String(coordinatorCalls[0]?.init?.body));
+  expect(envelope).toMatchObject({
+    operation: "stream",
+    trustedMessageRole: "system",
+    trustedHistoryCutoffAt: cutoff,
+    transientInput: true,
+    rpc: {
+      params: {
+        text: "generate the call opener",
+        roomId: CONVERSATION_ID,
+        userId: USER_ID,
+        source: "voice",
+      },
+    },
+  });
+  expect(envelope.rpc.params).not.toHaveProperty("messageRole");
+  expect(envelope.rpc.params).not.toHaveProperty("historyCutoffAt");
+  expect(envelope.rpc.params).not.toHaveProperty("transientInput");
+});
+
+test("malformed lifecycle cutoff is denied before coordinator dispatch", async () => {
+  let coordinatorCalls = 0;
+  const env = {
+    CACHE_ENABLED: "true",
+    DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
+    VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+    BLOB: blobBinding,
+    SHARED_RUNTIME_CONVERSATIONS: {
+      getByName() {
+        return {
+          async fetch() {
+            coordinatorCalls += 1;
+            return new Response();
+          },
+        };
+      },
+    },
+  };
+  await runWithCloudBindingsAsync(env, () =>
+    cache.set(CACHE_KEY, cachedAgent, 60),
+  );
+  const fetchImpl = createInternalElizaConversationFetch(
+    env as Parameters<typeof createInternalElizaConversationFetch>[0],
+    {
+      agentId: AGENT_ID,
+      conversationId: CONVERSATION_ID,
+      organizationId: ORGANIZATION_ID,
+      userId: USER_ID,
+    },
+    { waitUntil: () => undefined },
+  );
+
+  const response = await fetchImpl(
+    `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations/${CONVERSATION_ID}/messages/stream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": AGENT_ID,
+        "X-Eliza-Conversation-Id": CONVERSATION_ID,
+        "X-Eliza-Organization-Id": ORGANIZATION_ID,
+        "X-Eliza-User-Id": USER_ID,
+      },
+      body: JSON.stringify({
+        text: "generate the call opener",
+        messageRole: "system",
+        historyCutoffAt: "1725000000000",
+      }),
+    },
+  );
+
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toEqual({
+    success: false,
+    error: "historyCutoffAt must be a positive safe integer",
+  });
+  expect(coordinatorCalls).toBe(0);
 });
 
 test("rejects conversation-creation routes instead of creating per-turn conversations", async () => {

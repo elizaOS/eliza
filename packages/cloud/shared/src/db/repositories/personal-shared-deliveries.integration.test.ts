@@ -51,6 +51,13 @@ function discordInput(discordId: string) {
   };
 }
 
+function phoneInput(phoneNumber: string) {
+  return {
+    platform: "phone" as const,
+    phoneNumber,
+  };
+}
+
 function cutoverFor(sourceAgentId: string) {
   return {
     mode: "dedicated" as const,
@@ -306,6 +313,70 @@ describe("Telegram personal Shared repeat delivery", () => {
     expect(projections).toEqual([{ userId: first.userId }]);
     expect(organization).toHaveLength(1);
     expect(Number(organization[0]?.credit_balance)).toBe(0);
+  });
+});
+
+describe("Phone personal Shared repeat delivery", () => {
+  test("reuses one canonical Blooio/Twilio account in one statement", async () => {
+    const input = phoneInput("+15557147001");
+    const created = await elizaAppUserService.resolvePersonalDelivery(input);
+    const [userBefore] = await dbWrite.select().from(users).where(eq(users.id, created.userId));
+    const [projectionBefore] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, created.userId));
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockRestore();
+
+    const [userAfter] = await dbWrite.select().from(users).where(eq(users.id, created.userId));
+    const [projectionAfter] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, created.userId));
+    expect(replayed).toMatchObject({
+      userId: created.userId,
+      organizationId: created.organizationId,
+      dedicatedTarget: null,
+      isNew: false,
+      resolution: "single-query-repeat",
+    });
+    expect(userAfter.updated_at).toEqual(userBefore.updated_at);
+    expect(projectionAfter.updated_at).toEqual(projectionBefore.updated_at);
+  });
+
+  test("returns the exact authoritative Dedicated target for phone transports", async () => {
+    const input = phoneInput("+15557147002");
+    const account = await elizaAppUserService.resolvePersonalDelivery(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    const [target] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: account.organizationId,
+        user_id: account.userId,
+        execution_tier: "dedicated-always",
+        status: "running",
+        bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+        agent_config: {
+          [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+          [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+        },
+      })
+      .returning();
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockRestore();
+    expect(replayed.dedicatedTarget).toMatchObject({
+      id: target.id,
+      status: "running",
+    });
   });
 });
 

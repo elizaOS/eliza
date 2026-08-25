@@ -16,9 +16,11 @@ import type {
 } from "@elizaos/core";
 import {
   MemoryType as CoreMemoryType,
+  ElizaError,
   getRelatedEntityIds,
   logger,
   ModelType,
+  toWellFormedUnicode,
   validateUuid,
 } from "@elizaos/core";
 
@@ -42,7 +44,6 @@ interface MemoryParams {
   entityId?: string;
   roomId?: string;
   query?: string;
-  limit?: number;
   memoryId?: string;
   confirm?: boolean;
 }
@@ -94,11 +95,6 @@ function normalizeMemoryOp(params: MemoryParams): MemoryOp | undefined {
   return candidate && MEMORY_OPS.includes(candidate) ? candidate : undefined;
 }
 
-function clampLimit(value: number | undefined, fallback: number): number {
-  if (value == null) return fallback;
-  return Math.max(1, Math.min(200, Math.floor(value)));
-}
-
 function scoreText(text: string, query: string): number {
   const t = text.toLowerCase();
   const q = query.toLowerCase();
@@ -114,12 +110,23 @@ function scoreText(text: string, query: string): number {
   return whole + matches / terms.length;
 }
 
+function searchableMemoryText(memory: Memory): string {
+  const text = memory.content.text ?? "";
+  const attachments = (memory.content.attachments ?? []).map((attachment) => {
+    const label =
+      attachment.filename ?? attachment.title ?? attachment.id ?? "attachment";
+    const mediaType = attachment.mimeType ?? attachment.contentType;
+    const readableContent = attachment.text ?? attachment.description;
+    return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
+  });
+  return [text, ...attachments].filter(Boolean).join(" ");
+}
+
 function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
-  const content = memory.content as Record<string, unknown> | undefined;
   return {
     id: memory.id ?? "",
     type,
-    text: (content?.text as string) ?? "",
+    text: searchableMemoryText(memory),
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
@@ -206,23 +213,161 @@ interface MemoryCandidate {
   type: MemoryType;
 }
 
-/**
- * A candidate set plus the shape of the window it was read from. The read is
- * always windowed — `perTable` most-recent rows per memory table — and the
- * query/entity filters run in memory over that window, so the surviving count
- * is a count of matches INSIDE the window and never a total.
- *
- * Saturation is MEASURED by reading one row past the window: a table holding
- * exactly `perTable` rows fills it without hiding anything, and is
- * indistinguishable from a truncated one by row count alone. Treating a merely
- * full page as saturated tells the reader older rows went unscanned when none
- * exist — a fabricated scope claim in the sentence meant to prevent them.
- */
 interface CandidateScan {
   matches: MemoryCandidate[];
-  perTable: number;
   tables: readonly MemoryType[];
-  saturatedTables: MemoryType[];
+  scanned: number;
+}
+
+const COMPLETE_MEMORY_PAGE_SIZE = 500;
+
+function traversalError(
+  code: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(
+    "Memory traversal could not prove a complete snapshot",
+    {
+      code,
+      context,
+    },
+  );
+}
+
+function compareMemoryTuple(left: Memory, right: Memory): number {
+  const leftCreatedAt = left.createdAt;
+  const rightCreatedAt = right.createdAt;
+  if (
+    typeof leftCreatedAt !== "number" ||
+    typeof rightCreatedAt !== "number" ||
+    !Number.isSafeInteger(leftCreatedAt) ||
+    !Number.isSafeInteger(rightCreatedAt)
+  ) {
+    throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", {
+      leftId: left.id,
+      rightId: right.id,
+    });
+  }
+  if (leftCreatedAt !== rightCreatedAt) return rightCreatedAt - leftCreatedAt;
+  return String(right.id)
+    .toLowerCase()
+    .localeCompare(String(left.id).toLowerCase());
+}
+
+async function scanCompleteMemoryTable(
+  runtime: IAgentRuntime,
+  tableName: MemoryType,
+  roomId: UUID | undefined,
+): Promise<Memory[]> {
+  const memories: Memory[] = [];
+  const seen = new Set<string>();
+  let cursor: { createdAt: number; id: UUID } | undefined;
+  let previous: Memory | undefined;
+
+  while (true) {
+    const page = await runtime.getMemories({
+      agentId: runtime.agentId as UUID,
+      roomId,
+      tableName,
+      limit: COMPLETE_MEMORY_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+      orderBy: "createdAt",
+      orderDirection: "desc",
+      includeEmbedding: false,
+    });
+    if (page.length > COMPLETE_MEMORY_PAGE_SIZE) {
+      throw traversalError("MEMORY_TRAVERSAL_PAGE_INVALID", {
+        tableName,
+        pageLength: page.length,
+      });
+    }
+    if (page.length === 0) break;
+
+    for (const memory of page) {
+      const id = validateUuid(memory.id);
+      if (!id || !Number.isSafeInteger(memory.createdAt)) {
+        throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", {
+          tableName,
+          memoryId: memory.id,
+          createdAt: memory.createdAt,
+        });
+      }
+      if (seen.has(id)) {
+        throw traversalError("MEMORY_TRAVERSAL_REPEATED_ROW", {
+          tableName,
+          memoryId: id,
+        });
+      }
+      if (previous && compareMemoryTuple(previous, memory) >= 0) {
+        throw traversalError("MEMORY_TRAVERSAL_ORDER_INVALID", {
+          tableName,
+          previousId: previous.id,
+          memoryId: id,
+        });
+      }
+      seen.add(id);
+      memories.push(memory);
+      previous = memory;
+    }
+
+    if (page.length < COMPLETE_MEMORY_PAGE_SIZE) break;
+    const last = page.at(-1);
+    const lastId = validateUuid(last?.id);
+    if (!last || !lastId || !Number.isSafeInteger(last.createdAt)) {
+      throw traversalError("MEMORY_TRAVERSAL_CURSOR_INVALID", { tableName });
+    }
+    const nextCursor = { createdAt: last.createdAt as number, id: lastId };
+    if (
+      cursor &&
+      cursor.createdAt === nextCursor.createdAt &&
+      cursor.id === nextCursor.id
+    ) {
+      throw traversalError("MEMORY_TRAVERSAL_CURSOR_STALLED", {
+        tableName,
+        cursor,
+      });
+    }
+    cursor = nextCursor;
+  }
+  return memories;
+}
+
+async function readStableCompleteMemoryTable(
+  runtime: IAgentRuntime,
+  tableName: MemoryType,
+  roomId: UUID | undefined,
+): Promise<Memory[]> {
+  const countParams = {
+    agentId: runtime.agentId as UUID,
+    ...(roomId ? { roomId } : {}),
+    tableName,
+  };
+  const before = await runtime.countMemories(countParams);
+  const first = await scanCompleteMemoryTable(runtime, tableName, roomId);
+  const between = await runtime.countMemories(countParams);
+  const second = await scanCompleteMemoryTable(runtime, tableName, roomId);
+  const after = await runtime.countMemories(countParams);
+  const firstIds = first.map((memory) => memory.id);
+  const secondIds = second.map((memory) => memory.id);
+  if (
+    !Number.isSafeInteger(before) ||
+    before < 0 ||
+    before !== between ||
+    before !== after ||
+    first.length !== before ||
+    second.length !== before ||
+    firstIds.some((id, index) => id !== secondIds[index])
+  ) {
+    throw traversalError("MEMORY_TRAVERSAL_INVENTORY_CHANGED", {
+      tableName,
+      before,
+      between,
+      after,
+      firstLength: first.length,
+      secondLength: second.length,
+    });
+  }
+  return second;
 }
 
 const RECALL_TERMINAL_SETTING = "ELIZA_RECALL_SHORT_CIRCUIT";
@@ -248,34 +393,24 @@ async function collectCandidates(
     entityId?: UUID;
     roomId?: UUID;
     query?: string;
-    limit: number;
   },
 ): Promise<CandidateScan> {
   const tables: readonly MemoryType[] = scope.type
     ? [scope.type]
     : MEMORY_TYPES;
-  const perTable = Math.max(scope.limit * 2, 200);
   const collected: MemoryCandidate[] = [];
-  const saturatedTables: MemoryType[] = [];
 
   for (const tableName of tables) {
-    // One row past the window, so "older rows exist" is observed rather than
-    // assumed from a page that happened to fill.
-    const page = await runtime.getMemories({
-      agentId: runtime.agentId as UUID,
-      roomId: scope.roomId,
+    const memories = await readStableCompleteMemoryTable(
+      runtime,
       tableName,
-      limit: perTable + 1,
-    });
-    const overflowed = page.length > perTable;
-    if (overflowed) saturatedTables.push(tableName);
-    const memories = overflowed ? page.slice(0, perTable) : page;
+      scope.roomId,
+    );
     for (const m of memories) collected.push({ memory: m, type: tableName });
   }
 
   let filtered = collected.filter((c) => {
-    const text = (c.memory.content as { text?: string } | undefined)?.text;
-    return typeof text === "string" && text.trim().length > 0;
+    return searchableMemoryText(c.memory).trim().length > 0;
   });
 
   if (scope.entityId) {
@@ -290,16 +425,21 @@ async function collectCandidates(
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
-      const text =
-        (c.memory.content as { text?: string } | undefined)?.text ?? "";
-      return scoreText(text, query) > 0;
+      return scoreText(searchableMemoryText(c.memory), query) > 0;
     });
   }
 
-  filtered.sort(
-    (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
-  );
-  return { matches: filtered, perTable, tables, saturatedTables };
+  filtered.sort((a, b) => {
+    if (scope.query) {
+      const leftText = searchableMemoryText(a.memory);
+      const rightText = searchableMemoryText(b.memory);
+      const relevance =
+        scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
+      if (relevance !== 0) return relevance;
+    }
+    return (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0);
+  });
+  return { matches: filtered, tables, scanned: collected.length };
 }
 
 /** Names every narrowing that was applied, so an empty result can say why. */
@@ -317,21 +457,9 @@ function describeSearchScope(scope: {
   return parts.length > 0 ? parts.join(", ") : "none";
 }
 
-/**
- * The sentence that keeps a windowed count from being read as a total. The
- * scan reads only the most recent `perTable` rows per table, so "0 matches"
- * means "no match in the window", not "nothing is stored" — the difference
- * between answering "what do you remember about my sister" with a fact and
- * with "I have nothing stored about her".
- */
-function describeScanWindow(scan: CandidateScan): string {
-  const base = `Scanned only the ${scan.perTable} most recent row(s) of each table (${scan.tables.join(", ")}) before filtering.`;
-  if (scan.saturatedTables.length === 0) {
-    // "overflowed", not "filled": a table holding exactly `perTable` rows fills
-    // the window and still had every row considered. Only overflow hides rows.
-    return `${base} No table overflowed that window, so every stored row in the scanned tables was considered.`;
-  }
-  return `${base} ${scan.saturatedTables.join(", ")} filled that window, so older rows were NOT scanned and this is a windowed match count, not a total — widen with type, entityId, roomId, or a higher limit (the window is max(limit*2, 200) rows per table).`;
+/** States the complete storage scope proven before applying caller filters. */
+function describeCompleteScan(scan: CandidateScan): string {
+  return `Scanned all ${scan.scanned} stored row(s) across ${scan.tables.join(", ")} before filtering.`;
 }
 
 async function doSearch(
@@ -360,7 +488,6 @@ async function doSearch(
     );
   }
   const query = params.query?.trim();
-  const limit = clampLimit(params.limit, 50);
 
   const scope = {
     type,
@@ -368,33 +495,27 @@ async function doSearch(
     roomId: roomParam.ok ? roomParam.id : undefined,
     query,
   };
-  const scan = await collectCandidates(runtime, { ...scope, limit });
+  const scan = await collectCandidates(runtime, scope);
 
-  const matchedInWindow = scan.matches.length;
-  const items = scan.matches
-    .slice(0, limit)
-    .map((c) => toListItem(c.memory, c.type));
+  const totalMatches = scan.matches.length;
+  const items = scan.matches.map((c) => toListItem(c.memory, c.type));
   // The text projection carries enough of each hit for model reasoning; the
   // complete records remain machine data for state and trajectory consumers.
-  const lines = items
-    .slice(0, 25)
-    .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 300)}`);
+  const lines = items.map(
+    (m) =>
+      `- [${m.type}] ${m.id} at ${new Date(m.createdAt).toISOString()}: ${toWellFormedUnicode(m.text)}`,
+  );
   const userFacingText = items.length
     ? [
         `I found ${items.length} matching memory record(s):`,
-        ...items
-          .slice(0, 25)
-          .map((item) => `- [${item.type}] ${item.text.slice(0, 300)}`),
+        ...items.map(
+          (item) =>
+            `- [${item.type}] at ${new Date(item.createdAt).toISOString()}: ${toWellFormedUnicode(item.text)}`,
+        ),
       ].join("\n")
     : undefined;
 
-  // Report what was actually rendered, not what was collected: the previous
-  // header claimed up to 50 items while printing 25 lines, and printed the
-  // in-window match count under the label "total".
-  const renderNote =
-    lines.length < matchedInWindow
-      ? `Showing ${lines.length} of ${matchedInWindow} match(es) in the scanned window`
-      : `Showing all ${lines.length} match(es) found in the scanned window`;
+  const renderNote = `Showing all ${lines.length} match(es) found in the complete scan`;
 
   return {
     success: true,
@@ -403,7 +524,7 @@ async function doSearch(
       ...(ignoredIdNotes.length > 0
         ? [`Note: ${ignoredIdNotes.join("; ")}.`]
         : []),
-      describeScanWindow(scan),
+      describeCompleteScan(scan),
       ...lines,
     ].join("\n"),
     ...(userFacingText && recallTerminalEnabled(runtime)
@@ -416,40 +537,39 @@ async function doSearch(
     values: {
       count: items.length,
       rendered: lines.length,
-      matchedInWindow,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturated: scan.saturatedTables.length > 0,
+      totalMatches,
+      scanned: scan.scanned,
     },
     data: {
       actionName: "MEMORY",
       op: "search" as const,
       memories: items,
-      matchedInWindow,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturatedTables: scan.saturatedTables,
-      limit,
+      totalMatches,
+      scanned: scan.scanned,
     },
     promptData: {
       actionName: "MEMORY",
       op: "search" as const,
-      matchedInWindow,
+      totalMatches,
       rendered: lines.length,
-      scanWindowPerTable: scan.perTable,
-      scanWindowSaturatedTables: scan.saturatedTables,
-      limit,
+      scanned: scan.scanned,
     },
   };
 }
 
 async function doUpdate(
   runtime: IAgentRuntime,
+  message: Memory,
   params: MemoryParams,
 ): Promise<ActionResult> {
   const memoryParam = parseUuidParam(params.memoryId, "memoryId");
   if (!memoryParam.ok) return memoryParam.result;
   const memoryId = memoryParam.id;
+  const query = params.query?.trim();
   const text = typeof params.text === "string" ? params.text.trim() : "";
-  if (!memoryId) return fail("memoryId is required.", "MEMORY_MISSING_ID");
+  if (!memoryId && !query) {
+    return fail("memoryId or query is required.", "MEMORY_MISSING_ID");
+  }
   if (!text) return fail("text is required.", "MEMORY_MISSING_TEXT");
   if (params.confirm !== true) {
     return fail(
@@ -458,38 +578,101 @@ async function doUpdate(
     );
   }
 
-  const existing = await runtime.getMemoryById(memoryId);
-  if (!existing) {
-    return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
-  }
-
-  const existingContent =
-    (existing.content as Record<string, unknown> | undefined) ?? {};
-  const nextContent = { ...existingContent, text };
-
-  const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
-  if (!Array.isArray(embedding) || embedding.length === 0) {
-    return fail(
-      "Embedding model returned no vector.",
-      "MEMORY_EMBEDDING_FAILED",
+  let existingMemories: Memory[];
+  if (memoryId) {
+    const existing = await runtime.getMemoryById(memoryId);
+    if (!existing) {
+      return fail(`Memory ${memoryId} was not found.`, "MEMORY_NOT_FOUND");
+    }
+    existingMemories = [existing];
+  } else {
+    const scan = await collectCandidates(runtime, {
+      type:
+        params.type && MEMORY_TYPES.includes(params.type)
+          ? params.type
+          : undefined,
+      entityId: message.entityId,
+      query,
+    });
+    const matched = scan.matches.filter((candidate) => {
+      const candidateText =
+        (candidate.memory.content as { text?: string } | undefined)?.text ?? "";
+      return scoreText(candidateText, query ?? "") >= 1;
+    });
+    if (matched.length === 0) {
+      return fail(
+        `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
+        "MEMORY_NOT_FOUND",
+      );
+    }
+    const distinctTexts = new Set(
+      matched.map((candidate) =>
+        (
+          (candidate.memory.content as { text?: string } | undefined)?.text ??
+          ""
+        )
+          .trim()
+          .toLowerCase(),
+      ),
     );
+    if (distinctTexts.size > 1) {
+      const lines = matched.map((candidate) => {
+        const item = toListItem(candidate.memory, candidate.type);
+        return `- [${item.type}] ${item.id}: ${toWellFormedUnicode(item.text)}`;
+      });
+      return {
+        success: false,
+        text: [
+          `Query "${query}" matches ${distinctTexts.size} distinct memories. Update by memoryId instead:`,
+          ...lines,
+        ].join("\n"),
+        data: { error: "MEMORY_AMBIGUOUS_QUERY" },
+      };
+    }
+    existingMemories = matched.map((candidate) => candidate.memory);
   }
 
-  await runtime.updateMemory({
-    id: memoryId,
-    content: nextContent,
-    embedding,
-  });
+  const updatedIds: UUID[] = [];
+  for (const existing of existingMemories) {
+    if (!existing.id) continue;
+    const existingContent =
+      (existing.content as Record<string, unknown> | undefined) ?? {};
+    const nextContent = { ...existingContent, text };
+    let embedding: number[] | undefined;
+    if (Array.isArray(existing.embedding) && existing.embedding.length > 0) {
+      const regenerated = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text,
+      });
+      if (!Array.isArray(regenerated) || regenerated.length === 0) {
+        return fail(
+          "Embedding model returned no vector.",
+          "MEMORY_EMBEDDING_FAILED",
+        );
+      }
+      embedding = regenerated;
+    }
 
-  const updated = await runtime.getMemoryById(memoryId);
+    await runtime.updateMemory({
+      id: existing.id,
+      content: nextContent,
+      ...(embedding ? { embedding } : {}),
+    });
+    updatedIds.push(existing.id);
+  }
+
+  const primaryMemoryId = updatedIds[0];
+  const updated = primaryMemoryId
+    ? await runtime.getMemoryById(primaryMemoryId)
+    : null;
   return {
     success: true,
-    text: `Updated memory ${memoryId}.`,
-    values: { memoryId },
+    text: `Updated ${updatedIds.length} memory record(s).`,
+    values: { memoryId: primaryMemoryId, updatedCount: updatedIds.length },
     data: {
       actionName: "MEMORY",
       op: "update" as const,
-      memoryId,
+      memoryId: primaryMemoryId,
+      memoryIds: updatedIds,
       memory: updated ?? null,
     },
   };
@@ -567,13 +750,11 @@ async function doDeleteByQuery(
   // that carry no entity (internal maintenance invocations).
   const scopeEntityId = message.entityId ?? entityParam.id;
 
-  const limit = clampLimit(params.limit, 50);
   const scan = await collectCandidates(runtime, {
     type,
     entityId: scopeEntityId,
     roomId: roomParam.id,
     query,
-    limit,
   });
 
   // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
@@ -586,7 +767,7 @@ async function doDeleteByQuery(
 
   if (matched.length === 0) {
     return fail(
-      `No stored memory matches "${query}". ${describeScanWindow(scan)}`,
+      `No stored memory matches "${query}". ${describeCompleteScan(scan)}`,
       "MEMORY_NOT_FOUND",
     );
   }
@@ -598,9 +779,8 @@ async function doDeleteByQuery(
   const distinctTexts = new Set(matched.map(normalize));
   if (distinctTexts.size > 1) {
     const lines = matched
-      .slice(0, 10)
       .map((c) => toListItem(c.memory, c.type))
-      .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
+      .map((m) => `- [${m.type}] ${m.id}: ${toWellFormedUnicode(m.text)}`);
     return {
       success: false,
       text: [
@@ -621,9 +801,7 @@ async function doDeleteByQuery(
 
   return {
     success: true,
-    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${
-      deleted[0]?.text.slice(0, 120) ?? ""
-    }`,
+    text: `Forgot ${deleted.length} memory record(s) matching "${query}": ${toWellFormedUnicode(deleted[0]?.text ?? "")}`,
     values: { deletedCount: deleted.length },
     data: {
       actionName: "MEMORY",
@@ -667,9 +845,9 @@ export const memoryAction: Action = {
     "MODIFY_MEMORY",
   ],
   description:
-    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
+    "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits by memoryId or a unique requester-scoped query match (requires confirm:true); op:delete removes by memoryId or requester-scoped query match (requires confirm:true).",
   descriptionCompressed:
-    "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
+    "manage agent memory create search update delete; update/delete by memoryId or query; update/delete require confirm:true",
   routingHint:
     "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
@@ -695,7 +873,7 @@ export const memoryAction: Action = {
         case "search":
           return await doSearch(runtime, params);
         case "update":
-          return await doUpdate(runtime, params);
+          return await doUpdate(runtime, message, params);
         case "delete":
           return await doDelete(runtime, message, params);
       }
@@ -705,7 +883,12 @@ export const memoryAction: Action = {
       return {
         success: false,
         text: `Failed to ${op} memory: ${msg}`,
-        data: { error: `MEMORY_${op.toUpperCase()}_FAILED` },
+        data: {
+          error:
+            err instanceof ElizaError
+              ? err.code
+              : `MEMORY_${op.toUpperCase()}_FAILED`,
+        },
       };
     }
   },
@@ -766,20 +949,14 @@ export const memoryAction: Action = {
     {
       name: "query",
       description:
-        "search/delete: case-insensitive text match against memory content. delete: resolves the memory to remove when memoryId is unknown; scoped to the requesting user's own memories.",
+        "search/update/delete: case-insensitive text match against memory content. update/delete: resolves the memory to mutate when memoryId is unknown; scoped to the requesting user's own memories.",
       required: false,
       schema: { type: "string" as const },
     },
     {
-      name: "limit",
-      description: "search: maximum results to return (1-200).",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
       name: "memoryId",
       description:
-        "update/delete: id of the memory to mutate. delete: optional when query is provided.",
+        "update/delete: id of the memory to mutate; optional when query is provided.",
       required: false,
       schema: { type: "string" as const, pattern: UUID_SCHEMA_PATTERN },
     },
@@ -810,7 +987,7 @@ export const memoryAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Showing N of M match(es) in the scanned window...",
+          text: "Showing all N match(es) found in the complete scan...",
           action: "MEMORY",
         },
       },

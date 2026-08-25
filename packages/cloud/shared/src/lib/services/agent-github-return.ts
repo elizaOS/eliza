@@ -1,5 +1,5 @@
-// Coordinates cloud service agent github return behavior behind route handlers.
-import { escapeHtml } from "../utils/html";
+/** Coordinates Cloud agent GitHub return behavior behind route handlers. */
+import { escapeHtml, serializeInlineScriptValue } from "../utils/html";
 import type { ManagedAgentGithubMode } from "./eliza-agent-config";
 
 export const LIFEOPS_GITHUB_POST_MESSAGE_TYPE = "agent-lifeops-github-complete";
@@ -13,10 +13,6 @@ export interface LifeOpsGithubReturnDetail {
   bindingMode?: ManagedAgentGithubMode | null;
   message?: string | null;
   restarted?: boolean;
-}
-
-function serializeInlineScriptValue(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 export function normalizePostMessageTargetOrigin(value: string | null | undefined): string | null {

@@ -12,8 +12,6 @@ import {
   WalletBackendNotConfiguredError,
 } from "../wallet/errors.js";
 
-const MAX_WALLET_TEXT_CHARS = 1000;
-
 /**
  * Injects live addresses into planner context. Always-on (200-token budget in spec).
  */
@@ -49,10 +47,7 @@ export const walletProvider: Provider = {
       const solLine = solana
         ? `- Solana: ${solana.toBase58()}`
         : "- Solana: (not configured)";
-      const text = `## Wallet\n${evmLine}\n${solLine}`.slice(
-        0,
-        MAX_WALLET_TEXT_CHARS,
-      );
+      const text = `## Wallet\n${evmLine}\n${solLine}`;
       return {
         text,
         values: {

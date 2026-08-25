@@ -317,7 +317,6 @@ type BrowserSignalProbe = {
   detail: string | null;
 };
 
-const MAX_AUDIT_MESSAGES = 80;
 const DEFAULT_AUDIT_WINDOW_DAYS = 180;
 
 function normalizeSubscriptionLookup(value: string): string {
@@ -330,11 +329,15 @@ function normalizeSubscriptionLookup(value: string): string {
 }
 
 function slugifySubscriptionValue(value: string): string {
-  return value
+  const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+    .replace(/[^a-z0-9]+/g, "_");
+  let start = 0;
+  let end = slug.length;
+  while (start < end && slug.charCodeAt(start) === 95) start += 1;
+  while (end > start && slug.charCodeAt(end - 1) === 95) end -= 1;
+  return slug.slice(start, end);
 }
 
 function guessCadence(
@@ -605,7 +608,7 @@ function summarizeCancellationStatus(
 function extractEvidenceMessages(
   messages: LifeOpsGmailMessageSummary[],
 ): Array<Record<string, unknown>> {
-  return messages.slice(0, 5).map((message) => ({
+  return messages.map((message) => ({
     messageId: message.id,
     subject: message.subject,
     from: message.from,
@@ -806,7 +809,6 @@ export class SubscriptionsService {
     try {
       const found = await this.gmail.searchSubscriptionMessages({
         windowDays: queryWindowDays,
-        maxResults: MAX_AUDIT_MESSAGES,
       });
       const sinceMs = Date.now() - queryWindowDays * 86_400_000;
       messages = found.filter((message) => {
@@ -1319,7 +1321,7 @@ export class SubscriptionsService {
     }
     return [
       summary.audit.summary,
-      ...summary.candidates.slice(0, 5).map((candidate) => {
+      ...summary.candidates.map((candidate) => {
         const annual =
           candidate.annualCostEstimateUsd === null
             ? ""

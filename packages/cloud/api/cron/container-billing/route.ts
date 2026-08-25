@@ -58,7 +58,13 @@ async function findEarningsSourceUserId(
   if (members.length === 0) return null;
   const owner = members.find((m) => m.role === "owner");
   if (owner) return owner.id;
-  return members
+  const validMembers = members.filter(
+    (member) =>
+      member.created_at instanceof Date &&
+      Number.isFinite(member.created_at.getTime()),
+  );
+  if (validMembers.length === 0) return null;
+  return validMembers
     .slice()
     .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())[0].id;
 }

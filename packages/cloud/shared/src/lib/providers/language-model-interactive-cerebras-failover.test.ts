@@ -101,22 +101,27 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
   });
 
   test("happy path serves directly via cerebras (no failover)", async () => {
+    const selections: unknown[] = [];
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       hosts.push(hostOf(url));
       return completion("gemma-4-31b", "from-cerebras");
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getInteractiveCerebrasLanguageModel("gemma-4-31b"),
+      model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) =>
+        selections.push(selection),
+      ),
       prompt: "hi",
       maxRetries: 0,
     });
 
     expect(result.text).toBe("from-cerebras");
     expect(hosts).toEqual(["cerebras"]);
+    expect(selections).toEqual([{ provider: "cerebras", fallback: false }]);
   });
 
   test("a transient 5xx fails over to OpenRouter WITHOUT retrying cerebras", async () => {
+    const selections: unknown[] = [];
     // The whole point of the fix: on a 5xx we do NOT sleep-then-retry the same
     // dead cerebras upstream; we fail over to a healthy provider immediately.
     // maxRetries:0 mirrors the interactive turn's config — the ONLY retry is the
@@ -133,7 +138,9 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getInteractiveCerebrasLanguageModel("gemma-4-31b"),
+      model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) =>
+        selections.push(selection),
+      ),
       prompt: "hi",
       maxRetries: 0,
     });
@@ -142,6 +149,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // Exactly one cerebras attempt (no SDK backoff loop) then the failover.
     expect(hosts).toEqual(["cerebras", "openrouter"]);
     expect(models).toEqual(["gemma-4-31b", "google/gemma-4-31b-it"]);
+    expect(selections).toEqual([{ provider: "openrouter", fallback: true }]);
   });
 
   test("a decorated cerebras id (:nitro) also fails over on 5xx", async () => {

@@ -215,8 +215,9 @@ describe("PdfService", () => {
 					Keywords: "pdf,unit",
 					Creator: "suite",
 					Producer: "vitest",
-					CreationDate: "2024-01-02T03:04:05.000Z",
-					ModDate: "2024-02-03T04:05:06.000Z",
+					// pdf.js/unpdf surface PDF-spec `D:` strings, not ISO-8601.
+					CreationDate: "D:20240102030405Z",
+					ModDate: "D:20240203040506Z",
 				}
 			)
 		);
@@ -382,7 +383,7 @@ describe("PdfService", () => {
 		getDocumentProxyMock.mockResolvedValue(
 			makePdf([{ items: [{ str: "content" }] }], {
 				CreationDate: "not-a-date",
-				ModDate: "2024-02-03T04:05:06.000Z",
+				ModDate: "D:20240203040506Z",
 			})
 		);
 
@@ -390,6 +391,91 @@ describe("PdfService", () => {
 
 		expect(info.metadata.creationDate).toBeUndefined();
 		expect(info.metadata.modificationDate).toEqual(new Date("2024-02-03T04:05:06.000Z"));
+	});
+
+	it("parses PDF-spec `D:` dates and applies the declared UT offset", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "content" }] }], {
+				// Full UTC form and an offset form with the apostrophe separators.
+				CreationDate: "D:20240102030405Z",
+				ModDate: "D:20200610093121-05'00'",
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+
+		expect(info.metadata.creationDate).toBeInstanceOf(Date);
+		expect(info.metadata.creationDate?.toISOString()).toBe("2024-01-02T03:04:05.000Z");
+		// Local 09:31:21 at UTC-05:00 becomes 14:31:21Z.
+		expect(info.metadata.modificationDate?.toISOString()).toBe("2020-06-10T14:31:21.000Z");
+	});
+
+	it("defaults omitted `D:` date components and clamps out-of-range parts", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "content" }] }], {
+				// Year only with an explicit UTC relation: month/day default to 1,
+				// time to 00:00:00Z.
+				CreationDate: "D:2024Z",
+				// Out-of-range month (13) and day (40) clamp to defaults, not overflow.
+				ModDate: "D:20241340Z",
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+
+		expect(info.metadata.creationDate?.toISOString()).toBe("2024-01-01T00:00:00.000Z");
+		expect(info.metadata.modificationDate?.toISOString()).toBe("2024-01-01T00:00:00.000Z");
+	});
+
+	it("treats a `D:` date with an omitted UT relation as local time, not UTC", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "content" }] }], {
+				// No trailing UT relation: PDF Reference 3.8.3 leaves the zone unknown
+				// and the components are local time. The parser must not fabricate a
+				// `Z` UTC claim, so the wall-clock is read back through local getters
+				// (time-zone independent) rather than asserting an absolute UTC instant.
+				CreationDate: "D:20240102030405",
+				ModDate: "D:20200610093121",
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+
+		const creation = info.metadata.creationDate;
+		expect(creation).toBeInstanceOf(Date);
+		expect(creation?.getFullYear()).toBe(2024);
+		expect(creation?.getMonth()).toBe(0);
+		expect(creation?.getDate()).toBe(2);
+		expect(creation?.getHours()).toBe(3);
+		expect(creation?.getMinutes()).toBe(4);
+		expect(creation?.getSeconds()).toBe(5);
+		// The wall-clock is preserved as local time; it is not silently pinned to
+		// the same numbers in UTC unless the host itself runs in UTC.
+		if (creation && creation.getTimezoneOffset() !== 0) {
+			expect(creation.toISOString()).not.toBe("2024-01-02T03:04:05.000Z");
+		}
+
+		const modification = info.metadata.modificationDate;
+		expect(modification?.getFullYear()).toBe(2020);
+		expect(modification?.getMonth()).toBe(5);
+		expect(modification?.getDate()).toBe(10);
+		expect(modification?.getHours()).toBe(9);
+		expect(modification?.getMinutes()).toBe(31);
+		expect(modification?.getSeconds()).toBe(21);
+	});
+
+	it("omits an unparseable `D:` string rather than surfacing an Invalid Date", async () => {
+		getDocumentProxyMock.mockResolvedValue(
+			makePdf([{ items: [{ str: "content" }] }], {
+				CreationDate: "D:notadate",
+				ModDate: "D:",
+			})
+		);
+
+		const info = await service().getDocumentInfo(validPdfBuffer());
+
+		expect(info.metadata.creationDate).toBeUndefined();
+		expect(info.metadata.modificationDate).toBeUndefined();
 	});
 
 	it("accepts PDF headers after leading transport bytes within the scan window", async () => {

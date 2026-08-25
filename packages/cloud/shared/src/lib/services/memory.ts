@@ -1,6 +1,6 @@
 // Coordinates cloud service memory behavior behind route handlers.
 import type { AgentRuntime, Content, Memory, UUID } from "@elizaos/core";
-import { ChannelType, stringToUuid } from "@elizaos/core";
+import { assertModelOutputComplete, ChannelType, stringToUuid } from "@elizaos/core";
 import { streamText } from "ai";
 import { createHash } from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -283,21 +283,21 @@ export class MemoryService {
         memories = await runtime.searchMemories({
           embedding,
           tableName: "memories",
-          limit: input.limit ?? 10,
+          ...(input.limit === undefined ? {} : { limit: input.limit }),
           roomId: input.roomId as UUID,
           match_threshold: 0.7,
         });
       } else {
         logger.info(`[Memory Service] Querying database directly for roomId: ${input.roomId}`);
 
-        const results = await dbRead
+        const query = dbRead
           .select()
           .from(memoryTable)
           .where(
             and(eq(memoryTable.roomId, input.roomId), eq(memoryTable.agentId, runtime.agentId)),
           )
-          .orderBy(desc(memoryTable.createdAt))
-          .limit(input.limit ?? 10);
+          .orderBy(desc(memoryTable.createdAt));
+        const results = input.limit === undefined ? await query : await query.limit(input.limit);
 
         memories = results.map(
           (row) =>
@@ -329,19 +329,18 @@ export class MemoryService {
         return [];
       }
 
-      const limit = input.limit ?? 10;
       const roomIdArray = Array.from(allowedRoomIds);
 
       // PERFORMANCE FIX: Use single batched query with IN clause instead of N+1 queries
       // This reduces N database round-trips to just 1
-      const results = await dbRead
+      const query = dbRead
         .select()
         .from(memoryTable)
         .where(
           and(inArray(memoryTable.roomId, roomIdArray), eq(memoryTable.agentId, runtime.agentId)),
         )
-        .orderBy(desc(memoryTable.createdAt))
-        .limit(limit);
+        .orderBy(desc(memoryTable.createdAt));
+      const results = input.limit === undefined ? await query : await query.limit(input.limit);
 
       memories = results.map(
         (row) =>
@@ -405,10 +404,10 @@ export class MemoryService {
   async getRoomContext(
     roomId: string,
     organizationId: string,
-    depth: number = 20,
+    depth?: number,
   ): Promise<MemoryRoomContext> {
     const cached = await memoryCache.getRoomContext(roomId, organizationId);
-    if (cached && cached.depth >= depth) {
+    if (cached && depth !== undefined && cached.depth >= depth) {
       logger.debug(`[Memory Service] Cache HIT for room context: ${roomId}`);
       return cached;
     }
@@ -418,7 +417,7 @@ export class MemoryService {
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: [roomId as UUID],
-      limit: depth,
+      ...(depth !== undefined ? { limit: depth } : {}),
     });
 
     const participants = await runtime.getParticipantsForRoom(roomId as UUID);
@@ -431,7 +430,7 @@ export class MemoryService {
       messages: memories,
       participants,
       metadata: room?.metadata || {},
-      depth,
+      depth: depth ?? memories.length,
       timestamp: new Date(),
     };
 
@@ -463,11 +462,7 @@ export class MemoryService {
       // If cached content doesn't match expected structure, continue to generate new summary
     }
 
-    const context = await this.getRoomContext(
-      input.roomId,
-      input.organizationId,
-      input.lastN || 50,
-    );
+    const context = await this.getRoomContext(input.roomId, input.organizationId, input.lastN);
 
     const summaryPrompt = this.buildSummaryPrompt(context, input.style || "brief");
 
@@ -480,6 +475,11 @@ export class MemoryService {
     for await (const delta of result.textStream) {
       fullText += delta;
     }
+    assertModelOutputComplete({
+      finishReason: await result.finishReason,
+      provider: "openai",
+      model: "gpt-5-mini",
+    });
 
     const usage = await result.usage;
 
@@ -525,10 +525,7 @@ export class MemoryService {
   }
 
   private buildSummaryPrompt(context: MemoryRoomContext, style: string): string {
-    const messages = context.messages
-      .slice(0, 50)
-      .map((m) => `${m.entityId}: ${m.content.text}`)
-      .join("\n");
+    const messages = context.messages.map((m) => `${m.entityId}: ${m.content.text}`).join("\n");
 
     const styleInstructions = {
       brief: "Provide a concise 2-3 sentence summary.",
@@ -557,83 +554,7 @@ Summary:`;
 
     return Array.from(wordCounts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
       .map((e) => e[0]);
-  }
-
-  async estimateTokenCount(messages: Memory[]): Promise<number> {
-    const totalText = messages.map((m) => m.content.text || "").join(" ");
-    return Math.ceil(totalText.length / 4);
-  }
-
-  async optimizeContextWindow(
-    roomId: string,
-    organizationId: string,
-    maxTokens: number,
-    query?: string,
-    preserveRecent: number = 5,
-  ): Promise<{
-    messages: Memory[];
-    totalTokens: number;
-    messageCount: number;
-    relevanceScores: Array<{ messageId: string; score: number }>;
-  }> {
-    const context = await this.getRoomContext(roomId, organizationId, 100);
-
-    const recentMessages = context.messages.slice(0, preserveRecent);
-    const olderMessages = context.messages.slice(preserveRecent);
-
-    const selectedMessages = [...recentMessages];
-    let currentTokens = await this.estimateTokenCount(recentMessages);
-
-    const relevanceScores: Array<{ messageId: string; score: number }> = [];
-
-    if (query) {
-      for (const msg of olderMessages) {
-        const msgText = msg.content.text || "";
-        const score = this.calculateRelevanceScore(msgText, query);
-        relevanceScores.push({
-          messageId: msg.id?.toString() || "",
-          score,
-        });
-      }
-
-      relevanceScores.sort((a, b) => b.score - a.score);
-
-      for (const scoreItem of relevanceScores) {
-        const msg = olderMessages.find((m) => m.id?.toString() === scoreItem.messageId);
-        if (msg) {
-          const msgTokens = await this.estimateTokenCount([msg]);
-          if (currentTokens + msgTokens <= maxTokens) {
-            selectedMessages.push(msg);
-            currentTokens += msgTokens;
-          } else {
-            break;
-          }
-        }
-      }
-    } else {
-      for (const msg of olderMessages) {
-        const msgTokens = await this.estimateTokenCount([msg]);
-        if (currentTokens + msgTokens <= maxTokens) {
-          selectedMessages.push(msg);
-          currentTokens += msgTokens;
-        } else {
-          break;
-        }
-      }
-    }
-
-    logger.info(
-      `[Memory Service] Optimized context: ${selectedMessages.length}/${context.messages.length} messages, ${currentTokens}/${maxTokens} tokens`,
-    );
-
-    return {
-      messages: selectedMessages,
-      totalTokens: currentTokens,
-      messageCount: selectedMessages.length,
-      relevanceScores,
-    };
   }
 
   async exportConversation(
@@ -784,7 +705,6 @@ Summary:`;
   }> {
     const memories = await this.retrieveMemories({
       organizationId,
-      limit: 100,
     });
 
     const memoriesText = memories.map((m) => m.memory.content.text || "").join("\n");
@@ -798,7 +718,7 @@ Summary:`;
         const topics = this.extractTopics(memoriesText);
         insights = [
           `Identified ${topics.length} key topics from ${memories.length} memories`,
-          `Most frequent: ${topics.slice(0, 3).join(", ")}`,
+          `Topics by frequency: ${topics.join(", ")}`,
         ];
         data = { topics };
         chartData = topics.map((topic, idx) => ({
@@ -840,9 +760,7 @@ Summary:`;
           wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
         }
 
-        const topEntities = Array.from(wordCounts.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 10);
+        const topEntities = Array.from(wordCounts.entries()).sort((a, b) => b[1] - a[1]);
 
         chartData = topEntities.map(([label, value]) => ({ label, value }));
         insights = [

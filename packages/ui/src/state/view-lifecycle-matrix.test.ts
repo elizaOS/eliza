@@ -40,9 +40,6 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   stream: "system",
   "pendant-transcript": "system",
   apps: "system",
-  // "My Apps" (the user's installed/registered apps, routed at /apps) — a
-  // user-facing surface, added to TAB_PATHS in navigation/index.ts.
-  "my-apps": "system",
   views: "system",
   character: "system",
   "character-select": "system",
@@ -55,6 +52,7 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   rolodex: "system",
   desktop: "system",
   settings: "system",
+  vault: "system",
   background: "system",
   // Developer / advanced surfaces.
   plugins: "developer",

@@ -94,7 +94,7 @@ store (tag `"transcript"`, `clientDocumentId` = transcript id, `textBacked`).
 `meeting-transcript` throttled to ≤2/s per session with a trailing flush) are
 broadcast through the always-registered `connector-setup` service, whose
 `broadcastWs` the agent API server injects at startup — the same relay
-Signal/WhatsApp pairing events use. No changes in `packages/agent` were needed.
+WhatsApp pairing events use. No changes in `packages/agent` were needed.
 
 ## Config / env vars
 

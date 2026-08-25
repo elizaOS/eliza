@@ -26,21 +26,6 @@ const CREDIT_COLUMN_HINTS = ["credit", "deposit", "amount credit"];
 // pure debit column).
 const DEBIT_DIRECTION_WORDS = ["debit", "withdrawal"];
 const CREDIT_DIRECTION_WORDS = ["credit", "deposit"];
-// Narrowly reviewed compound descriptors where a direction word is part of a
-// noun phrase, not an actual debit/credit direction. "Credit Card Amount" is a
-// signed statement amount, not a credit-only column; the same holds for a debit
-// card. These phrases are neutralized before direction words are counted so the
-// residual header carries no false direction signal.
-const NON_DIRECTIONAL_DESCRIPTORS = [
-  // Order matters: consume the elliptical shared-card phrases before their
-  // shorter suffixes, otherwise "Debit/Credit Card Amount" would retain the
-  // leading "debit" and be misclassified as a debit-only column. Exporters use
-  // slash, hyphen, ampersand, "and", and whitespace-only variants for the same
-  // shared card descriptor, so recognize the complete grammar in either order.
-  /\b(?:debit\s*(?:[/&_-]|\band\b|\s+)\s*credit|credit\s*(?:[/&_-]|\band\b|\s+)\s*debit)[\s_-]+card\b/g,
-  /\bcredit[\s_-]+card\b/g,
-  /\bdebit[\s_-]+card\b/g,
-] as const;
 const MERCHANT_COLUMN_HINTS = [
   "merchant",
   "payee",
@@ -132,11 +117,21 @@ type DirectionColumnKind = "debit" | "credit" | "signed";
  * direction. Arbitrary extra words ("transaction") never imply signedness.
  */
 function classifyDirectionColumn(headerCell: string): DirectionColumnKind {
-  let normalized = headerCell.toLowerCase();
-  for (const descriptor of NON_DIRECTIONAL_DESCRIPTORS) {
-    normalized = normalized.replace(descriptor, " ");
-  }
-  const tokens = normalized.split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+  const rawTokens = headerCell
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0);
+  const tokens = rawTokens.filter((token, index) => {
+    if (token !== "debit" && token !== "credit") return true;
+    if (rawTokens[index + 1] === "card") return false;
+    const peerIndex = rawTokens[index + 1] === "and" ? index + 2 : index + 1;
+    const peer = rawTokens[peerIndex];
+    return !(
+      peer !== token &&
+      (peer === "debit" || peer === "credit") &&
+      rawTokens[peerIndex + 1] === "card"
+    );
+  });
   let debitWords = 0;
   let creditWords = 0;
   for (const token of tokens) {

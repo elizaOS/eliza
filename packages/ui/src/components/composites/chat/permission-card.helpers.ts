@@ -212,19 +212,18 @@ export function parsePermissionRequestFromText(text: string): {
   payload: PermissionCardPayload;
 } | null {
   if (!text) return null;
-  const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
-  const fenced = safeText.match(
-    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?\})\s{0,32}\n?```/,
+  const fenced = text.match(
+    /```(?:json)?\s{0,32}\n?(\{[\s\S]*?\})\s{0,32}\n?```/,
   );
   let jsonStr: string | undefined = fenced?.[1];
-  let display = safeText;
+  let display = text;
   if (fenced) {
-    display = safeText.replace(fenced[0], "").trim();
+    display = text.replace(fenced[0], "").trim();
   } else {
-    const lastBrace = safeText.lastIndexOf("{");
+    const lastBrace = text.lastIndexOf("{");
     if (lastBrace < 0) return null;
-    jsonStr = safeText.slice(lastBrace);
-    display = safeText.slice(0, lastBrace).trim();
+    jsonStr = text.slice(lastBrace);
+    display = text.slice(0, lastBrace).trim();
   }
   if (!jsonStr) return null;
   let parsed: unknown;

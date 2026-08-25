@@ -49,4 +49,37 @@ describe("memory keyset ordering", () => {
     });
     expect(second.map((memory) => memory.id)).toEqual([ids[1], ids[0]]);
   });
+
+  it("sorts memories safely when createdAt contains NaN", async () => {
+    const storage = new MemoryStorage();
+    await storage.init();
+    const adapter = new InMemoryDatabaseAdapter(storage, agentId);
+    await adapter.init();
+
+    const memNan: Memory = {
+      id: "00000000-0000-0000-0000-000000000001" as UUID,
+      agentId,
+      entityId,
+      roomId,
+      createdAt: NaN as unknown as number,
+      content: { text: "nan" },
+    };
+    const memValid: Memory = {
+      id: "00000000-0000-0000-0000-000000000002" as UUID,
+      agentId,
+      entityId,
+      roomId,
+      createdAt: 2000,
+      content: { text: "valid" },
+    };
+
+    await adapter.createMemories([
+      { memory: memNan, tableName: "messages" },
+      { memory: memValid, tableName: "messages" },
+    ]);
+
+    const results = await adapter.getMemories({ roomId, tableName: "messages" });
+    expect(results[0]?.id).toBe(memValid.id);
+    expect(results[1]?.id).toBe(memNan.id);
+  });
 });

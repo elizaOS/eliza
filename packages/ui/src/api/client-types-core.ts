@@ -74,7 +74,7 @@ export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
 
 export type TradePermissionMode = SharedTradePermissionMode;
 
-export type SignalPairingStatus =
+export type WhatsAppPairingStatus =
   | "idle"
   | "initializing"
   | "waiting_for_qr"
@@ -82,8 +82,6 @@ export type SignalPairingStatus =
   | "disconnected"
   | "timeout"
   | "error";
-
-export type WhatsAppPairingStatus = SignalPairingStatus;
 
 export interface DatabaseConfigResponse {
   config: {
@@ -320,11 +318,7 @@ export type ModelsConfigTarget = "small" | "large" | "coding";
  * in-house backend is spelled `eliza-code` on the wire (the server persists it
  * as `ELIZA_DEFAULT_AGENT_TYPE=elizaos`).
  */
-export type ModelsConfigCodingBackend =
-  | "codex"
-  | "claude"
-  | "opencode"
-  | "eliza-code";
+export type ModelsConfigCodingBackend = "codex" | "claude" | "eliza-code";
 
 /** Which config seam won for a key reported by `GET /api/models/config`. */
 export type ModelsConfigSource =

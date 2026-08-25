@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     const pushCiDir = join(workspace, "push-ci");
     const providerOnlyDir = join(workspace, "provider-only");
     const requiredProvidersDir = join(workspace, "required-providers");
-    const fourProvidersDir = join(workspace, "four-providers");
+    const threeProvidersDir = join(workspace, "three-providers");
     const expectedCountDir = join(workspace, "expected-count");
     const unknownProviderDir = join(workspace, "unknown-provider");
     const freshDir = join(workspace, "fresh");
@@ -213,7 +213,7 @@ async function main(): Promise<void> {
     await mkdir(pushCiDir, { recursive: true });
     await mkdir(providerOnlyDir, { recursive: true });
     await mkdir(requiredProvidersDir, { recursive: true });
-    await mkdir(fourProvidersDir, { recursive: true });
+    await mkdir(threeProvidersDir, { recursive: true });
     await mkdir(expectedCountDir, { recursive: true });
     await mkdir(unknownProviderDir, { recursive: true });
     await mkdir(freshDir, { recursive: true });
@@ -352,11 +352,6 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
-      join(requiredProvidersDir, "e2b.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "required-e2b-endpoint", "e2b"), null, 2)}\n`,
-      "utf8",
-    );
-    await writeFile(
       join(requiredProvidersDir, "home-machine.json"),
       `${JSON.stringify(makeCompleteReport("provider", "required-home-endpoint", "home-machine"), null, 2)}\n`,
       "utf8",
@@ -367,23 +362,18 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
-      join(fourProvidersDir, "e2b.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "four-e2b-endpoint", "e2b"), null, 2)}\n`,
+      join(threeProvidersDir, "home-machine.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "three-home-endpoint", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
-      join(fourProvidersDir, "home-machine.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "four-home-endpoint", "home-machine"), null, 2)}\n`,
+      join(threeProvidersDir, "mobile-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "three-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
-      join(fourProvidersDir, "mobile-companion.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "four-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
-      "utf8",
-    );
-    await writeFile(
-      join(fourProvidersDir, "desktop-companion.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "four-desktop-endpoint", "desktop-companion"), null, 2)}\n`,
+      join(threeProvidersDir, "desktop-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "three-desktop-endpoint", "desktop-companion"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -403,7 +393,7 @@ async function main(): Promise<void> {
     );
     await writeFile(
       join(freshDir, "provider.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "fresh-endpoint", "e2b", new Date().toISOString()), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "fresh-endpoint", "home-machine", new Date().toISOString()), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -413,17 +403,17 @@ async function main(): Promise<void> {
     );
     await writeFile(
       join(nearFutureDir, "provider.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "near-future-endpoint", "e2b", new Date(Date.now() + 60_000).toISOString()), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "near-future-endpoint", "home-machine", new Date(Date.now() + 60_000).toISOString()), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
       join(farFutureDir, "provider.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "far-future-endpoint", "e2b", new Date(Date.now() + 10 * 60_000).toISOString()), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "far-future-endpoint", "home-machine", new Date(Date.now() + 10 * 60_000).toISOString()), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
       join(malformedObservedAtDir, "provider.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "malformed-observed-at-endpoint", "e2b", "not-a-timestamp"), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "malformed-observed-at-endpoint", "home-machine", "not-a-timestamp"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -587,13 +577,13 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
-      join(matchingFileIdentityDir, "e2b.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "matching-file-endpoint", "e2b"), null, 2)}\n`,
+      join(matchingFileIdentityDir, "home-machine.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "matching-file-endpoint", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
       join(mismatchedFileIdentityDir, "home-machine.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "mismatched-file-endpoint", "e2b"), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "mismatched-file-endpoint", "mobile-companion"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -603,27 +593,27 @@ async function main(): Promise<void> {
     );
     await writeFile(
       join(duplicateEndpointDir, "provider-a.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "shared-endpoint", "e2b"), null, 2)}\n`,
-      "utf8",
-    );
-    await writeFile(
-      join(duplicateEndpointDir, "provider-b.json"),
       `${JSON.stringify(makeCompleteReport("provider", "shared-endpoint", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
+      join(duplicateEndpointDir, "provider-b.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "shared-endpoint", "mobile-companion"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(duplicateProviderDir, "provider-a.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "provider-endpoint-a", "e2b"), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "provider-endpoint-a", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
       join(duplicateProviderDir, "provider-b.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "provider-endpoint-b", "e2b"), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "provider-endpoint-b", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
       join(duplicateEndpointUrlFingerprintDir, "provider-a.json"),
-      `${JSON.stringify(makeCompleteReport("provider", "fingerprint-endpoint-a", "e2b"), null, 2)}\n`,
+      `${JSON.stringify(makeCompleteReport("provider", "fingerprint-endpoint-a", "home-machine"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -637,7 +627,7 @@ async function main(): Promise<void> {
           ),
           endpointUrlSha256: makeEndpointUrlSha256(
             "fingerprint-endpoint-a",
-            "e2b",
+            "home-machine",
           ),
         },
         null,
@@ -1084,31 +1074,31 @@ async function main(): Promise<void> {
     const requiredProviders = await runValidator(
       requiredProvidersDir,
       "--kind=provider",
-      "--expect-count=3..4",
+      "--expect-count=2..3",
       "--require-providers",
-      "e2b,home-machine,mobile-companion",
+      "home-machine,mobile-companion",
     );
     if (requiredProviders.exitCode !== 0) {
       throw new Error(
         `required provider reports should validate, got ${requiredProviders.exitCode}: ${requiredProviders.output}`,
       );
     }
-    const fourProviders = await runValidator(
-      fourProvidersDir,
+    const threeProviders = await runValidator(
+      threeProvidersDir,
       "--kind=provider",
-      "--expect-count=3..4",
-      "--allowed-providers=e2b,home-machine,mobile-companion,desktop-companion",
-      "--require-providers=e2b,home-machine,mobile-companion",
+      "--expect-count=2..3",
+      "--allowed-providers=home-machine,mobile-companion,desktop-companion",
+      "--require-providers=home-machine,mobile-companion",
     );
-    if (fourProviders.exitCode !== 0) {
+    if (threeProviders.exitCode !== 0) {
       throw new Error(
-        `four provider reports should validate, got ${fourProviders.exitCode}: ${fourProviders.output}`,
+        `three provider reports should validate, got ${threeProviders.exitCode}: ${threeProviders.output}`,
       );
     }
     const missingRequiredProvider = await runValidator(
       providerOnlyDir,
       "--kind=provider",
-      "--require-providers=e2b,home-machine",
+      "--require-providers=home-machine,mobile-companion",
     );
     if (missingRequiredProvider.exitCode === 0) {
       throw new Error(
@@ -1117,7 +1107,7 @@ async function main(): Promise<void> {
     }
     if (
       !missingRequiredProvider.output.includes(
-        'required provider "home-machine" was not observed',
+        'required provider "mobile-companion" was not observed',
       )
     ) {
       throw new Error(
@@ -1127,7 +1117,7 @@ async function main(): Promise<void> {
     const unknownProvider = await runValidator(
       unknownProviderDir,
       "--kind=provider",
-      "--allowed-providers=e2b,home-machine,mobile-companion,desktop-companion",
+      "--allowed-providers=home-machine,mobile-companion,desktop-companion",
     );
     if (unknownProvider.exitCode === 0) {
       throw new Error(
@@ -2331,7 +2321,7 @@ async function main(): Promise<void> {
 function makeCompleteReport(
   kind: "cloud" | "provider",
   endpointId = "sample-endpoint",
-  provider = "e2b",
+  provider = "home-machine",
   observedAt = new Date(0).toISOString(),
 ) {
   const conformance = makeCompleteConformance(endpointId);
@@ -2713,10 +2703,13 @@ function makePartialReport() {
   return {
     schemaVersion: 1,
     kind: "provider",
-    provider: "e2b",
-    providerId: "e2b",
-    providerEvidence: makeProviderEvidence("e2b"),
-    endpointUrlSha256: makeEndpointUrlSha256("partial-endpoint", "e2b"),
+    provider: "home-machine",
+    providerId: "home-machine",
+    providerEvidence: makeProviderEvidence("home-machine"),
+    endpointUrlSha256: makeEndpointUrlSha256(
+      "partial-endpoint",
+      "home-machine",
+    ),
     endpointId: "partial-endpoint",
     observedAt: new Date(0).toISOString(),
     conformance: {
@@ -3111,13 +3104,17 @@ function makeMalformedCloudApiBaseReport() {
 function makeCloudProviderFieldReport() {
   return {
     ...makeCompleteReport("cloud", "cloud-provider-field-endpoint"),
-    provider: "e2b",
+    provider: "home-machine",
   };
 }
 
 function makeProviderCloudFieldReport() {
   return {
-    ...makeCompleteReport("provider", "provider-cloud-field-endpoint", "e2b"),
+    ...makeCompleteReport(
+      "provider",
+      "provider-cloud-field-endpoint",
+      "home-machine",
+    ),
     cloudApiBase: "https://api.example.test",
   };
 }
@@ -3138,7 +3135,11 @@ function makeCloudApiBaseFragmentReport() {
 
 function makeMissingEndpointUrlFingerprintReport() {
   const report = {
-    ...makeCompleteReport("provider", "missing-fingerprint-endpoint", "e2b"),
+    ...makeCompleteReport(
+      "provider",
+      "missing-fingerprint-endpoint",
+      "home-machine",
+    ),
   } as Record<string, unknown>;
   delete report.endpointUrlSha256;
   return report;
@@ -3146,7 +3147,11 @@ function makeMissingEndpointUrlFingerprintReport() {
 
 function makeMissingProviderIdReport() {
   const report = {
-    ...makeCompleteReport("provider", "missing-provider-id-endpoint", "e2b"),
+    ...makeCompleteReport(
+      "provider",
+      "missing-provider-id-endpoint",
+      "home-machine",
+    ),
   } as Record<string, unknown>;
   delete report.providerId;
   return report;
@@ -3154,8 +3159,12 @@ function makeMissingProviderIdReport() {
 
 function makeMismatchedProviderIdReport() {
   return {
-    ...makeCompleteReport("provider", "mismatched-provider-id-endpoint", "e2b"),
-    providerId: "home-machine",
+    ...makeCompleteReport(
+      "provider",
+      "mismatched-provider-id-endpoint",
+      "home-machine",
+    ),
+    providerId: "mobile-companion",
   };
 }
 
@@ -3164,7 +3173,7 @@ function makeMissingProviderEvidenceReport() {
     ...makeCompleteReport(
       "provider",
       "missing-provider-evidence-endpoint",
-      "e2b",
+      "home-machine",
     ),
   } as Record<string, unknown>;
   delete report.providerEvidence;
@@ -3198,8 +3207,6 @@ function makeProviderEvidence(provider: string) {
 
 function providerEndpointRuntime(provider: string): string {
   switch (provider) {
-    case "e2b":
-      return "e2b-sandbox";
     case "home-machine":
       return "home-machine";
     case "mobile-companion":
@@ -3213,7 +3220,11 @@ function providerEndpointRuntime(provider: string): string {
 
 function makeMalformedEndpointUrlFingerprintReport() {
   return {
-    ...makeCompleteReport("provider", "malformed-fingerprint-endpoint", "e2b"),
+    ...makeCompleteReport(
+      "provider",
+      "malformed-fingerprint-endpoint",
+      "home-machine",
+    ),
     endpointUrlSha256: "not-a-sha256-digest",
   };
 }

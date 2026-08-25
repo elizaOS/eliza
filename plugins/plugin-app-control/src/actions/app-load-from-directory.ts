@@ -54,9 +54,14 @@ async function readPackageJson(
 	const pkgPath = path.join(dir, "package.json");
 	const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
 	if (raw === null) return null;
-	const parsed = JSON.parse(raw) as unknown;
-	if (!parsed || typeof parsed !== "object") return null;
-	return parsed as Record<string, unknown>;
+	try {
+		const parsed = JSON.parse(raw) as unknown;
+		if (!parsed || typeof parsed !== "object") return null;
+		return parsed as Record<string, unknown>;
+	} catch {
+		// error-policy:J4 Malformed package.json yields null rather than throwing SyntaxError
+		return null;
+	}
 }
 
 function readString(value: unknown): string | null {

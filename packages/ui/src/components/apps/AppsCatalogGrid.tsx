@@ -265,7 +265,7 @@ function CatalogSkeletonSection({
   return (
     <section className="space-y-3" aria-hidden="true">
       <div className="flex items-center gap-3">
-        <Skeleton className="h-3 w-28 rounded-full bg-bg-accent/80" />
+        <Skeleton className="h-3 w-28 rounded-full" />
         <div className="h-px flex-1 bg-border/30" />
       </div>
 
@@ -283,9 +283,9 @@ function CatalogSkeletonSection({
                 key={cardKey}
                 className="overflow-hidden rounded-sm border border-border/35 bg-card/72"
               >
-                <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
-                <div className="space-y-2 px-3 py-3">
-                  <Skeleton className="h-3 w-2/3 rounded-full bg-bg-accent/80" />
+                <Skeleton className="aspect-[4/3] w-full rounded-none" />
+                <div className="space-y-2 p-3">
+                  <Skeleton className="h-3 w-2/3 rounded-full" />
                 </div>
               </div>
             ))}
@@ -319,11 +319,12 @@ const AppCard = memo(function AppCard({
       }`}
     >
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         data-testid={`app-card-${app.name.replace(/[^a-z0-9]+/gi, "-")}`}
         title={displayName}
         aria-label={displayName}
-        className="block h-auto w-full rounded-none p-0 text-left font-normal whitespace-normal hover:bg-transparent"
+        className="block"
         onClick={() => onLaunch(app)}
       >
         <AppHero
@@ -336,13 +337,13 @@ const AppCard = memo(function AppCard({
             title={provenanceLabels.title}
           >
             {provenanceLabels.originLabel ? (
-              <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
+              <span className="rounded-sm border border-white/20 bg-black/40 px-1.5 py-0.5 text-2xs font-semibold uppercase text-white">
                 {provenanceLabels.originLabel}
               </span>
             ) : null}
             {provenanceLabels.supportLabel ? (
               <span
-                className={`rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                className={`rounded-sm border px-1.5 py-0.5 text-2xs font-semibold uppercase ${
                   provenanceLabels.supportLabel === "Community"
                     ? "border-warn/45 bg-black/40 text-warn"
                     : "border-accent/45 bg-black/40 text-white"
@@ -364,25 +365,21 @@ const AppCard = memo(function AppCard({
       {isActive ? (
         <span
           title="Running"
-          className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok "
+          className="pointer-events-none absolute right-4 top-4 size-2.5 rounded-full bg-ok "
         />
       ) : null}
       <Button
-        variant="ghost"
+        variant="transparent"
         size="icon-sm"
         aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        className={`absolute bottom-3 right-3 h-8 w-8 rounded-full p-0 text-white transition-all ${
-          isFavorite
-            ? "bg-black/70 text-warn"
-            : "bg-black/70 text-white/70 hover:text-warn "
-        }`}
+        className="absolute bottom-3 right-3"
         onClick={(event: MouseEvent<HTMLButtonElement>) => {
           event.stopPropagation();
           onToggleFavorite(app.name);
         }}
       >
         <Star
-          className="h-3.5 w-3.5"
+          className="size-3.5"
           fill={isFavorite ? "currentColor" : "none"}
           aria-hidden
         />
@@ -451,9 +448,9 @@ export function AppsCatalogGrid({
           <span>{error}</span>
           {onRetry ? (
             <Button
-              variant="ghost"
-              size="sm"
-              className="h-auto self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-danger transition-colors hover:bg-danger/10 sm:self-auto"
+              variant="dangerOutline"
+              size="badge"
+              className="self-start sm:self-auto"
               onClick={onRetry}
             >
               Retry

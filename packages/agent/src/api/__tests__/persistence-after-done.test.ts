@@ -526,14 +526,21 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(record.ended).toBe(true);
   });
 
-  it("ends the stream without fallback generation when the turn is aborted externally", async () => {
+  it("settles an aborted turn with an interrupted receipt instead of fallback generation", async () => {
     generateThrowsTurnAbort = true;
     const { ctx, record } = createCtx();
 
     await handleConversationRoutes(ctx);
 
     expect(record.ended).toBe(true);
-    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
+    // No fallback reply is generated or persisted through the normal
+    // assistant-persistence seam; the terminal state is the interrupted
+    // receipt (#17216), delivered as a done frame because the transport is
+    // still connected.
+    const doneFrame = record.writes.find((w) => w.includes('"type":"done"'));
+    expect(doneFrame).toBeDefined();
+    expect(doneFrame).toContain('"interrupted":true');
+    expect(doneFrame).toContain('"fullText":""');
     expect(record.writes.some((w) => w.includes('"type":"error"'))).toBe(false);
     expect(persistCalledAt).toBeNull();
   });

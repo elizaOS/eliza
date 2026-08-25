@@ -202,6 +202,20 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/cloud/sdk/src/redemption-contract.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/cloud-sdk\/browser-contracts$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/cloud/sdk/src/browser-contracts/index.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
         replacement: resolve(
           monorepoRoot,
@@ -279,7 +293,7 @@ export default defineConfig({
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       // Pure-logic unit tests for the story-gate audit scripts (e.g. the
-      // console/a11y baseline-allowlist ratchet) run in the standard suite.
+      // console/a11y baseline-allowlist guard) run in the standard suite.
       "test/**/*.test.mjs",
     ],
     exclude: [

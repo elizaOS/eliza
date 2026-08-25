@@ -34,6 +34,7 @@ import {
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -352,8 +353,7 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
 }
 
 function cleanBundledCounterparty(value: string): string {
-  return value
-    .slice(0, 1024)
+  return toWellFormedUnicode(value)
     .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
     .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
     .replace(/[.?!,;:]+$/u, "")
@@ -363,7 +363,7 @@ function cleanBundledCounterparty(value: string): string {
 export function extractBundledMeetingCounterparties(
   messageText: string,
 ): string[] {
-  const trimmed = messageText.trim().slice(0, 4096);
+  const trimmed = toWellFormedUnicode(messageText.trim());
   if (trimmed.length === 0) {
     return [];
   }
@@ -381,12 +381,11 @@ export function extractBundledMeetingCounterparties(
       continue;
     }
     const counterparties = raw
-      .slice(0, 2048)
       .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
       .map(cleanBundledCounterparty)
       .filter((value) => value.length > 0);
     if (counterparties.length >= 2) {
-      return counterparties.slice(0, 4);
+      return counterparties;
     }
   }
 
@@ -881,7 +880,6 @@ function approvalChannelForDraft(
     case "email":
     case "telegram":
     case "discord":
-    case "signal":
     case "whatsapp":
     case "imessage":
     case "sms":
@@ -1106,7 +1104,6 @@ async function resolveSchedulingPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage =
@@ -1614,7 +1611,7 @@ export async function runSchedulingNegotiationHandler(
     }
 
     // list_active
-    const active = await service.listActiveNegotiations({ limit: 20 });
+    const active = await service.listActiveNegotiations();
     const fallback = active.length
       ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
       : "No active scheduling negotiations.";

@@ -11,6 +11,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "../dm-policy";
@@ -92,14 +94,24 @@ function getTelegramChannelType(chatType: string | undefined): ChannelType {
   }
 }
 
-function splitTelegramText(text: string): string[] {
-  const maxLength = 4096;
-  if (text.length <= maxLength) {
-    return [text];
+export const TELEGRAM_MESSAGE_MAX_LENGTH = 4096;
+
+export function splitTelegramText(text: string): string[] {
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= TELEGRAM_MESSAGE_MAX_LENGTH) {
+    return [wellFormed];
   }
   const chunks: string[] = [];
-  for (let start = 0; start < text.length; start += maxLength) {
-    chunks.push(text.slice(start, start + maxLength));
+  let remaining = wellFormed;
+  while (remaining.length > 0) {
+    if (remaining.length <= TELEGRAM_MESSAGE_MAX_LENGTH) {
+      chunks.push(remaining);
+      break;
+    }
+    const head = truncateWellFormed(remaining, TELEGRAM_MESSAGE_MAX_LENGTH);
+    const cut = head.length > 0 ? head.length : 1;
+    chunks.push(remaining.slice(0, cut));
+    remaining = remaining.slice(cut);
   }
   return chunks;
 }

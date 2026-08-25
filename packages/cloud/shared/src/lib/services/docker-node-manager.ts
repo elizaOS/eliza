@@ -8,6 +8,7 @@
  */
 
 import crypto from "node:crypto";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { parseLinuxBootId } from "../../db/repositories/agent-backup-source-authority";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode, DockerNodeStatus } from "../../db/schemas/docker-nodes";
@@ -1135,7 +1136,7 @@ export class DockerNodeManager {
     const status = parseEmbeddingSidecarProbe(output);
     if (status === null) {
       logger.warn("[docker-node-manager] Embedding sidecar probe returned no status token", {
-        output: output.slice(0, 200),
+        output: truncateWellFormed(toWellFormedUnicode(output), 200),
       });
     }
     return status;

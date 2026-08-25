@@ -8,7 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { messageAction } from "../../features/advanced-capabilities/actions/message.ts";
 import type { Action, ActionParameterSchema } from "../../types";
-import { testSchemaPattern, validateToolArgs } from "../validate-tool-args.ts";
+import {
+	testSchemaPattern,
+	validateSchema,
+	validateToolArgs,
+} from "../validate-tool-args.ts";
 
 function makeAction(overrides: Partial<Action>): Action {
 	return {
@@ -137,6 +141,58 @@ describe("validateToolArgs", () => {
 				"Argument 'config.mode' value 'daily' is not one of: once, repeat",
 			]),
 		);
+	});
+
+	it("canonicalizes transport whitespace around a string enum", () => {
+		const errors: string[] = [];
+		const result = validateSchema(
+			{ type: "string", enum: ["utf8", "base64"] },
+			"\nutf8  ",
+			"encoding",
+			errors,
+		);
+
+		expect(errors).toEqual([]);
+		expect(result).toBe("utf8");
+	});
+
+	it("returns canonicalized enum values through validateToolArgs", () => {
+		const result = validateToolArgs(nestedAction, {
+			title: "Follow up",
+			config: { window: { days: 2 }, mode: "\nrepeat " },
+		});
+
+		expect(result.valid).toBe(true);
+		expect(result.errors).toEqual([]);
+		expect(result.args?.config).toMatchObject({ mode: "repeat" });
+	});
+
+	it("preserves an exact enum whose declared value contains whitespace", () => {
+		const errors: string[] = [];
+		const result = validateSchema(
+			{ type: "string", enum: [" utf8 "] },
+			" utf8 ",
+			"encoding",
+			errors,
+		);
+
+		expect(errors).toEqual([]);
+		expect(result).toBe(" utf8 ");
+	});
+
+	it("still rejects strings that do not trim to a declared enum", () => {
+		const errors: string[] = [];
+		const result = validateSchema(
+			{ type: "string", enum: ["utf8", "base64"] },
+			" utf-8 ",
+			"encoding",
+			errors,
+		);
+
+		expect(result).toBe(" utf-8 ");
+		expect(errors).toEqual([
+			"Argument 'encoding' value ' utf-8 ' is not one of: utf8, base64",
+		]);
 	});
 
 	it("rejects non-object tool args", () => {

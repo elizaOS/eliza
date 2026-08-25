@@ -59,12 +59,11 @@ export function WidgetSection({
       <div className="flex items-center justify-between gap-2 pr-1">
         {onTitleClick ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant={isHome ? "weatherPrompt" : "transparent"}
+            size="content"
+            align="start"
             onClick={onTitleClick}
-            className={`h-auto min-w-0 flex-1 justify-start gap-1.5 rounded-sm bg-transparent px-0.5 py-1 text-left transition-colors hover:bg-transparent ${
-              isHome ? "text-white/75 hover:text-white" : "hover:text-txt"
-            }`}
+            className="min-w-0 flex-1"
           >
             {titleContent}
           </Button>
@@ -94,7 +93,7 @@ export function EmptyWidgetState({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col items-center justify-center gap-2 py-5 text-center">
-        <span className="text-muted/50">{icon}</span>
+        <span className="text-muted">{icon}</span>
         <p className="text-2xs text-muted">{title}</p>
         {description ? (
           <p className="text-3xs text-muted">{description}</p>

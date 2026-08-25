@@ -26,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from scripts.lib.generation_integrity import require_complete_generation
+
 CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 POOL_DIR = ROOT / "scripts" / "harness" / "scenario_pool"
 LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
@@ -155,7 +157,7 @@ def parse_scenarios(text: str) -> list[dict[str, Any]]:
             "language": sc.get("language") or "en",
             "persona": sc.get("persona") or "casual",
             "user_message": msg.strip(),
-            "notes": (sc.get("notes") or "")[:200],
+            "notes": sc.get("notes") or "",
         })
     return out
 
@@ -180,7 +182,6 @@ async def generate_for_action(
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.8,
-        "max_tokens": 5000,
     }
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
@@ -220,7 +221,10 @@ async def generate_for_action(
             continue
         try:
             data = r.json()
-            content = (data["choices"][0]["message"].get("content") or "").strip()
+            choice = require_complete_generation(
+                data["choices"][0], source="harness.scenarios"
+            )
+            content = (choice["message"].get("content") or "").strip()
         except (KeyError, ValueError, IndexError):
             await asyncio.sleep(backoff)
             backoff = min(backoff * 1.5, 30)
@@ -228,7 +232,7 @@ async def generate_for_action(
         if not content:
             # try reasoning fallback
             try:
-                content = (data["choices"][0]["message"].get("reasoning") or "").strip()
+                content = (choice["message"].get("reasoning") or "").strip()
             except (KeyError, IndexError):
                 content = ""
         scenarios = parse_scenarios(content)

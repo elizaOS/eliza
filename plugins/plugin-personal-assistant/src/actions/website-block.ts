@@ -18,6 +18,7 @@ import {
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   formatWebsiteList,
@@ -144,7 +145,6 @@ function memoryLikeToConversationTurn(
 function collectProviderBackedConversationTurns(args: {
   state: State | undefined;
   agentId: string;
-  limit: number;
 }): WebsiteBlockConversationTurn[] {
   const providers = asRecord(asRecord(args.state?.data)?.providers);
   const recentMessagesProvider = asRecord(providers?.RECENT_MESSAGES);
@@ -155,21 +155,20 @@ function collectProviderBackedConversationTurns(args: {
     .filter(
       (turn): turn is WebsiteBlockConversationTurn =>
         turn !== null && turn.text.length > 0,
-    )
-    .slice(-args.limit);
+    );
 }
 
 function normalizeWebsiteCandidates(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,|\n/)
+      ? value.split(/\s{0,256}\|\|\s{0,256}|,|\n/)
       : [];
   return [
     ...new Set(
       values
         .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim().slice(0, 1024))
+        .map((item) => toWellFormedUnicode(item.trim()))
         .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
         .filter((item) => item.length > 0),
     ),
@@ -303,11 +302,29 @@ function shouldTrustExplicitWebsites(
   );
 }
 
+function createdAtSortKey(memory: { createdAt?: number }): number {
+  const value = memory.createdAt;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareConversationTurnByCreatedAtAsc(
+  a: { createdAt?: number; id?: string },
+  b: { createdAt?: number; id?: string },
+): number {
+  const aSafe = createdAtSortKey(a);
+  const bSafe = createdAtSortKey(b);
+  if (aSafe !== bSafe) return aSafe - bSafe;
+  return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+export const __testCompareConversationTurnByCreatedAtAsc =
+  compareConversationTurnByCreatedAtAsc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 async function collectWebsiteBlockConversationTurns(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
-  limit: number;
 }): Promise<WebsiteBlockConversationTurn[]> {
   const roomId =
     typeof args.message.roomId === "string" ? args.message.roomId : "";
@@ -315,7 +332,6 @@ async function collectWebsiteBlockConversationTurns(args: {
     return collectProviderBackedConversationTurns({
       state: args.state,
       agentId: String(args.runtime.agentId),
-      limit: args.limit,
     });
   }
 
@@ -323,13 +339,12 @@ async function collectWebsiteBlockConversationTurns(args: {
     const memories = await args.runtime.getMemories({
       roomId,
       tableName: "messages",
-      limit: Math.max(args.limit * 2, args.limit),
     });
     if (!Array.isArray(memories)) return [];
 
     return memories
       .slice()
-      .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
+      .sort(compareConversationTurnByCreatedAtAsc)
       .map((memory) => {
         const text =
           typeof memory.content.text === "string"
@@ -345,13 +360,11 @@ async function collectWebsiteBlockConversationTurns(args: {
       .filter(
         (turn): turn is WebsiteBlockConversationTurn =>
           turn !== null && turn.text.length > 0,
-      )
-      .slice(-args.limit);
+      );
   } catch {
     return collectProviderBackedConversationTurns({
       state: args.state,
       agentId: String(args.runtime.agentId),
-      limit: args.limit,
     });
   }
 }
@@ -365,7 +378,6 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 10,
   });
   const currentMessage = getMessageText(args.message).trim();
   const prompt = [
@@ -436,7 +448,6 @@ async function recoverWebsiteContextWithLlm(args: {
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
 
   if (recentTurns.length === 0) return [];

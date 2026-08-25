@@ -4,7 +4,7 @@
  */
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   ready: true,
   authenticated: true,
   appModeHost: false,
+  user: { id: "u1", email: "nubs@example.com" } as {
+    id: string;
+    email: string;
+  } | null,
 }));
 
 vi.mock("../app-mode/app-mode", () => ({
@@ -31,7 +35,14 @@ vi.mock("../lib/use-session-auth", () => ({
   useSessionAuth: () => ({
     ready: mocks.ready,
     authenticated: mocks.authenticated,
+    user: mocks.user,
   }),
+}));
+
+vi.mock("./CloudAccountMenu", () => ({
+  CloudAccountMenu: ({ email }: { email: string | null }) => (
+    <button type="button">Account menu for {email}</button>
+  ),
 }));
 
 vi.mock("./CloudRouteErrorBoundary", () => ({
@@ -47,6 +58,14 @@ vi.mock("./cloud-route-registry", async () => {
   return {
     getCloudRouteGate: () => undefined,
     listCloudRoutes: () => [
+      {
+        path: "cloud",
+        group: "cloud",
+        element: () => {
+          useSetPageHeader({ title: "Overview" });
+          return <div data-testid="cloud-overview" />;
+        },
+      },
       {
         path: "cloud/billing",
         group: "cloud",
@@ -83,8 +102,9 @@ function LocationProbe(): React.JSX.Element {
 function renderPage(path: string): void {
   render(
     <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
       <Routes>
-        <Route path="/login" element={<LocationProbe />} />
+        <Route path="/login" element={<div data-testid="login-page" />} />
         <Route path="*" element={<ManagedCloudPage />} />
       </Routes>
     </MemoryRouter>,
@@ -97,9 +117,21 @@ afterEach(() => {
   mocks.ready = true;
   mocks.authenticated = true;
   mocks.appModeHost = false;
+  mocks.user = { id: "u1", email: "nubs@example.com" };
 });
 
 describe("ManagedCloudPage", () => {
+  it("returns nested Cloud routes to the Cloud overview", () => {
+    renderPage("/cloud/billing");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to Cloud overview" }),
+    );
+
+    expect(screen.getByTestId("location").textContent).toBe("/cloud");
+    expect(screen.getByTestId("cloud-overview")).toBeTruthy();
+  });
+
   it("renders a registered /cloud route inside the app for cloud-managed agents", () => {
     renderPage("/cloud/billing");
     expect(screen.getByTestId("billing-page")).toBeTruthy();
@@ -107,6 +139,11 @@ describe("ManagedCloudPage", () => {
       screen.getByRole("heading", { name: "Cloud Billing", level: 1 }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Add credits" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: "Account menu for nubs@example.com",
+      }),
+    ).toBeTruthy();
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
 

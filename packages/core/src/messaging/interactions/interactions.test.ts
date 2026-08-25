@@ -40,6 +40,20 @@ import {
 import { appendInteractionBlock, serializeInteractionBlock } from "./serialize";
 
 describe("parse", () => {
+	it("scans a 100k-character unterminated block without backtracking", () => {
+		const text = `[FORM]\n${"[FORM]a".repeat(12_500)}`;
+		expect(findInteractionRegions(text)).toEqual([]);
+	});
+
+	it("skips an invalid opener without hiding a later valid block", () => {
+		const text = `[FORM extra]\nignored\n[FORM]\n${JSON.stringify({
+			fields: [{ name: "ok", type: "text" }],
+		})}\n[/FORM]`;
+		expect(parseInteractionBlocks(text).blocks).toMatchObject([
+			{ kind: "form", fields: [{ name: "ok", type: "text" }] },
+		]);
+	});
+
 	it("parses a choice block with scope and id", () => {
 		const text =
 			"Pick one:\n[CHOICE:approve id=abc]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]";
@@ -175,6 +189,13 @@ describe("parse", () => {
 		const { blocks, cleanedText } = parseInteractionBlocks(text);
 		expect(blocks).toHaveLength(0);
 		expect(cleanedText).toContain("[FORM]");
+	});
+
+	it("rejects a form whose closing marker is not on a new line", () => {
+		const text = '[FORM]\n{"title":"Login","fields":[]}[/FORM]';
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(0);
+		expect(cleanedText).toBe(text);
 	});
 
 	it("parses a task block and validates the threadId shape", () => {
@@ -673,11 +694,14 @@ describe("renderInteractionsAsPlainText", () => {
 
 	it("strips dashboard markers contributed by parsed block fallbacks", () => {
 		const taskId = "abc12345-def6-7890-abcd-ef1234567890";
+		// A URL-less task widget contributes NOTHING to plain text — its bare
+		// title read as a dangling duplicate line under the ack on chat
+		// transports (2026-08-19). hadBlocks still reports the widget.
 		expect(
 			renderInteractionsAsPlainText(
 				`[TASK:${taskId}]Ship it [CONFIG:@elizaos/plugin-gmail][/TASK]`,
 			),
-		).toEqual({ text: "Ship it", hadBlocks: true });
+		).toEqual({ text: "", hadBlocks: true });
 
 		const form = JSON.stringify({
 			title: "Configure account [CONFIG:@elizaos/plugin-gmail]",
@@ -725,7 +749,7 @@ describe("renderContentInteractionsAsPlainText", () => {
 			],
 		});
 
-		expect(rendered).toEqual({ text: "Review:\n\nShip it", hadBlocks: true });
+		expect(rendered).toEqual({ text: "Review:", hadBlocks: true });
 	});
 });
 
@@ -961,11 +985,24 @@ describe("unclaimed interaction markers never ship as prose", () => {
 });
 
 describe("stripDashboardOnlyMarkers", () => {
+	it("scans a 100k-character unterminated widget without backtracking", () => {
+		const input = `[CHECKLIST]\n${"[CHECKLIST]a".repeat(8_334)}`;
+		expect(stripDashboardOnlyMarkers(input)).toBe(input);
+	});
+
 	it("removes CONFIG plugin-card markers and tidies the gap they leave", () => {
 		const input =
 			"You'll need to connect Google Calendar first.\n\n[CONFIG:google_calendars]\n\nThen I can list your events.";
 		expect(stripDashboardOnlyMarkers(input)).toBe(
 			"You'll need to connect Google Calendar first.\n\nThen I can list your events.",
+		);
+	});
+
+	it("removes CONNECTOR card markers so non-dashboard channels never leak them", () => {
+		const input =
+			"Adding Gmail now.\n\n[CONNECTOR:@elizaos/plugin-google-workspace]\n\nTap the card to sign in.";
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"Adding Gmail now.\n\nTap the card to sign in.",
 		);
 	});
 

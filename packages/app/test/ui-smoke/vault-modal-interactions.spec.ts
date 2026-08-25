@@ -1,4 +1,4 @@
-// Deep vault secrets round-trip against the REAL live stack.
+// Deep Vault page secrets round-trip against the REAL live stack.
 //
 // The keyless ui-smoke stub (playwright-ui-smoke-api-stub.mjs) cannot honor this
 // flow: its `GET /api/secrets/inventory` always returns `[]` and its PUT does not
@@ -7,13 +7,13 @@
 // and is classified LIVE_ONLY. It NEVER stubs the route under test — the secrets
 // inventory PUT/GET/DELETE hit the real backend, which is the whole point.
 //
-// Flow: open the Vault modal → Secrets tab → add E2E_SMOKE_KEY → assert the real
-// PUT 200 → row appears → reveal (real GET) shows the value → close+reopen →
+// Flow: open the first-class Vault page → Secrets tab → add E2E_SMOKE_KEY →
+// assert the real PUT 200 → row appears → reveal (real GET) shows the value → leave+reopen →
 // row persists → delete (real DELETE) → row gone. The unique E2E_* key namespace
 // keeps the run isolated and the trailing delete cleans up the created secret.
 
 import { expect, type Page, test } from "@playwright/test";
-import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
+import { openAppPath, seedAppStorage } from "./helpers";
 
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
@@ -32,11 +32,28 @@ function countSecretWrites(page: Page): () => number {
   return () => n;
 }
 
-async function openVaultModal(page: Page): Promise<void> {
-  await openAppPath(page, "/settings");
-  await openSettingsSection(page, /^Vault$/);
-  await page.locator('[data-agent-id="secrets-manage"]').click();
-  await expect(page.getByTestId("vault-tab-overview")).toBeVisible({
+async function completeFirstRunForRealLocalStack(page: Page): Promise<void> {
+  const status = await page.request.get("/api/first-run/status");
+  expect(status.ok()).toBe(true);
+  const body = (await status.json()) as { complete?: boolean };
+  if (body.complete) return;
+
+  const completed = await page.request.post("/api/first-run", {
+    data: { name: "Vault E2E" },
+  });
+  expect(completed.ok()).toBe(true);
+}
+
+async function openVaultPage(page: Page): Promise<void> {
+  await openAppPath(page, "/vault");
+  const overviewTab = page.getByTestId("vault-tab-overview");
+  // A direct deep link can preserve an already-expanded chat sheet. The Vault
+  // deliberately keeps sensitive controls out of that occluded interaction
+  // layer, so collapse the sheet exactly as a keyboard user would.
+  if (!(await overviewTab.isVisible().catch(() => false))) {
+    await page.keyboard.press("Escape");
+  }
+  await expect(overviewTab).toBeVisible({
     timeout: 20_000,
   });
   await page.getByTestId("vault-tab-secrets").click();
@@ -45,14 +62,14 @@ async function openVaultModal(page: Page): Promise<void> {
   });
 }
 
-async function closeVaultModal(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
+async function leaveVaultPage(page: Page): Promise<void> {
+  await openAppPath(page, "/settings");
   await expect(page.getByTestId("vault-tab-overview")).toHaveCount(0, {
     timeout: 10_000,
   });
 }
 
-test.describe("vault modal deep secret round-trip", () => {
+test.describe("vault page deep secret round-trip", () => {
   test.skip(
     !LIVE_STACK,
     "needs the real on-disk vault (ELIZA_UI_SMOKE_LIVE_STACK=1); the keyless " +
@@ -60,14 +77,17 @@ test.describe("vault modal deep secret round-trip", () => {
   );
 
   test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
+    await seedAppStorage(page, {
+      "app-workspace-chrome:chat-collapsed": "true",
+    });
+    await completeFirstRunForRealLocalStack(page);
   });
 
   test("adds, reveals, persists, and deletes a vault secret end to end", async ({
     page,
   }) => {
     const secretWrites = countSecretWrites(page);
-    await openVaultModal(page);
+    await openVaultPage(page);
 
     // Best-effort cleanup of any leftover from a prior aborted run so the add
     // round-trip starts from a known-absent state.
@@ -97,7 +117,7 @@ test.describe("vault modal deep secret round-trip", () => {
       .first()
       .click();
 
-    // Real PUT /api/secrets/inventory/E2E_SMOKE_KEY → 200, then the modal
+    // Real PUT /api/secrets/inventory/E2E_SMOKE_KEY → 200, then the page
     // re-fetches the inventory and the new row shows up.
     await expect.poll(secretWrites).toBeGreaterThan(0);
     const row = page.getByTestId(`vault-entry-row-${SECRET_KEY}`);
@@ -110,15 +130,15 @@ test.describe("vault modal deep secret round-trip", () => {
     await expect(revealed).toBeVisible({ timeout: 10_000 });
     await expect(revealed).toContainText(SECRET_VALUE);
 
-    // Persistence: close + reopen the modal; the row survives because the value
+    // Persistence: leave + reopen the page; the row survives because the value
     // is on the real backend, not in component state.
-    await closeVaultModal(page);
-    await openVaultModal(page);
+    await leaveVaultPage(page);
+    await openVaultPage(page);
     const persistedRow = page.getByTestId(`vault-entry-row-${SECRET_KEY}`);
     await expect(persistedRow).toBeVisible({ timeout: 15_000 });
 
     // Delete goes through the real DELETE /api/secrets/inventory/:key and the row
-    // disappears after the modal re-fetches.
+    // disappears after the page re-fetches.
     page.once("dialog", (dialog) => void dialog.accept());
     await persistedRow
       .getByRole("button", { name: `Delete ${SECRET_KEY}` })
@@ -126,8 +146,8 @@ test.describe("vault modal deep secret round-trip", () => {
     await expect(persistedRow).toHaveCount(0, { timeout: 15_000 });
 
     // Read-back after delete: reopen once more, confirm the key is truly gone.
-    await closeVaultModal(page);
-    await openVaultModal(page);
+    await leaveVaultPage(page);
+    await openVaultPage(page);
     await expect(page.getByTestId(`vault-entry-row-${SECRET_KEY}`)).toHaveCount(
       0,
       { timeout: 15_000 },

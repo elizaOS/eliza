@@ -34,6 +34,7 @@ export interface ListTasksOptions {
   mode?: TaskmarketMode;
   sort?: TaskmarketSort;
   limit?: number;
+  cursor?: string;
   minRewardBaseUnits?: string;
   deadlineHours?: number;
 }
@@ -61,20 +62,6 @@ const TASKMARKET_SORTS = new Set<TaskmarketSort>([
   "reward_asc",
   "deadline_asc",
 ]);
-const TASK_TEXT_LIMITS = {
-  id: 128,
-  description: 180,
-  status: 32,
-  mode: 32,
-  expiryTime: 64,
-  tag: 64,
-  cursor: 256,
-} as const;
-const MAX_TASK_TAGS = 10;
-const REMOTE_TEXT_SEGMENTER = new Intl.Segmenter(undefined, {
-  granularity: "grapheme",
-});
-
 function requireRecord(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`Taskmarket returned an invalid ${label}`);
@@ -88,41 +75,6 @@ function requireString(record: Record<string, unknown>, key: string): string {
     throw new TypeError(`Taskmarket task is missing ${key}`);
   }
   return value;
-}
-
-function sanitizeRemoteText(value: string, maxLength: number): string {
-  const normalized = Array.from(value, (character) => {
-    const codePoint = character.codePointAt(0) ?? 0;
-    if (codePoint >= 0xd800 && codePoint <= 0xdfff) return "\uFFFD";
-    return codePoint < 32 || codePoint === 127 ? " " : character;
-  })
-    .join("")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  let result = "";
-  let codePointCount = 0;
-  // Keep the hard code-point budget, but never spend a partial grapheme: a
-  // combining or ZWJ cluster that does not fit is omitted as one unit.
-  for (const { segment } of REMOTE_TEXT_SEGMENTER.segment(normalized)) {
-    const segmentLength = Array.from(segment).length;
-    if (codePointCount + segmentLength > maxLength) break;
-    result += segment;
-    codePointCount += segmentLength;
-  }
-  return result;
-}
-
-function requireSanitizedString(
-  record: Record<string, unknown>,
-  key: keyof typeof TASK_TEXT_LIMITS,
-): string {
-  const sanitized = sanitizeRemoteText(
-    requireString(record, key),
-    TASK_TEXT_LIMITS[key],
-  );
-  if (!sanitized) throw new TypeError(`Taskmarket task is missing ${key}`);
-  return sanitized;
 }
 
 function requireNonNegativeInteger(
@@ -188,19 +140,16 @@ function parseTask(value: unknown): TaskmarketTask {
     throw new TypeError("Taskmarket task has invalid tags");
   }
   return {
-    id: requireSanitizedString(task, "id"),
-    description: requireSanitizedString(task, "description"),
+    id: requireString(task, "id"),
+    description: requireString(task, "description"),
     rewardBaseUnits,
     rewardUsdc: formatUsdc(rewardBaseUnits),
     netRewardBaseUnits,
     netRewardUsdc: formatUsdc(netRewardBaseUnits),
-    status: requireSanitizedString(task, "status"),
-    mode: requireSanitizedString(task, "mode"),
-    expiryTime: requireSanitizedString(task, "expiryTime"),
-    tags: tags
-      .slice(0, MAX_TASK_TAGS)
-      .map((tag) => sanitizeRemoteText(tag, TASK_TEXT_LIMITS.tag))
-      .filter(Boolean),
+    status: requireString(task, "status"),
+    mode: requireString(task, "mode"),
+    expiryTime: requireString(task, "expiryTime"),
+    tags,
     submissionCount: requireNonNegativeInteger(task, "submissionCount"),
   };
 }
@@ -212,7 +161,7 @@ export class TaskmarketClient {
   ) {}
 
   async listTasks(options: ListTasksOptions = {}): Promise<TaskmarketTaskPage> {
-    const limit = options.limit ?? 10;
+    const limit = options.limit ?? 50;
     if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
       throw new RangeError("Taskmarket result limit must be between 1 and 50");
     }
@@ -237,6 +186,7 @@ export class TaskmarketClient {
     url.searchParams.set("status", requestedStatus);
     url.searchParams.set("sort", options.sort ?? "reward_desc");
     url.searchParams.set("limit", String(limit));
+    if (options.cursor) url.searchParams.set("cursor", options.cursor);
     if (options.mode) url.searchParams.set("mode", options.mode);
     if (options.minRewardBaseUnits)
       url.searchParams.set("minReward", options.minRewardBaseUnits);
@@ -278,6 +228,11 @@ export class TaskmarketClient {
       ) {
         throw new TypeError("Taskmarket returned an invalid cursor");
       }
+      if (payload.hasMore && !payload.nextCursor) {
+        throw new TypeError(
+          "Taskmarket reported more tasks without a continuation cursor",
+        );
+      }
       const tasks = payload.tasks.map(parseTask);
       if (tasks.some((task) => task.status !== requestedStatus)) {
         throw new TypeError(
@@ -293,9 +248,7 @@ export class TaskmarketClient {
         tasks,
         hasMore: payload.hasMore,
         nextCursor:
-          typeof payload.nextCursor === "string"
-            ? sanitizeRemoteText(payload.nextCursor, TASK_TEXT_LIMITS.cursor)
-            : null,
+          typeof payload.nextCursor === "string" ? payload.nextCursor : null,
       };
     } finally {
       await guarded.release();

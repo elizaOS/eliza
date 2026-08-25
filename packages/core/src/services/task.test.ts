@@ -1,7 +1,7 @@
 /**
  * Tests for TaskService tick re-arm, repeat-task backoff/auto-pause, and
- * self-queue suppression, driven by fake timers over an in-memory task store,
- * plus the AgentRuntime task mutations that mark the local service dirty.
+ * self-queue suppression, and injected-clock ordering and teardown over an
+ * in-memory task store, plus runtime mutations that mark the service dirty.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
@@ -9,7 +9,11 @@ import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { ServiceType } from "../types/service";
 import type { Task, TaskWorker } from "../types/task";
-import { TaskService } from "./task.ts";
+import {
+	TaskService,
+	type TaskServiceClock,
+	type TaskServiceTimerHandle,
+} from "./task.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000bb" as UUID;
 const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
@@ -20,7 +24,12 @@ const T0 = new Date("2026-01-01T00:00:00.000Z").getTime();
  * Deliberately does NOT auto-markDirty on mutation — the tests below exercise
  * exactly when the tick re-queries without external nudges.
  */
-function makeTaskRuntime() {
+function makeTaskRuntime(options?: {
+	getTasks?: (params: {
+		tags?: string[];
+		agentIds?: UUID[];
+	}) => Promise<Task[]>;
+}) {
 	const tasks = new Map<string, Task>();
 	const workers = new Map<string, TaskWorker>();
 	const noop = () => undefined;
@@ -33,8 +42,10 @@ function makeTaskRuntime() {
 			workers.set(worker.name, worker);
 		},
 		getTaskWorker: (name: string) => workers.get(name),
-		getTasks: async (_params: { tags?: string[]; agentIds?: UUID[] }) =>
-			Array.from(tasks.values()),
+		getTasks:
+			options?.getTasks ??
+			(async (_params: { tags?: string[]; agentIds?: UUID[] }) =>
+				Array.from(tasks.values())),
 		getTask: async (id: UUID) => tasks.get(id) ?? null,
 		getTasksByName: async (name: string) =>
 			Array.from(tasks.values()).filter((t) => t.name === name),
@@ -54,6 +65,168 @@ function makeTaskRuntime() {
 	} as unknown as IAgentRuntime;
 	return { runtime, tasks, workers };
 }
+
+class DeterministicTaskClock implements TaskServiceClock {
+	private nextTimerId = 1;
+	private timers = new Map<
+		number,
+		{ callback: () => Promise<void>; intervalMs: number; nextAt: number }
+	>();
+
+	constructor(private currentTime: number) {}
+
+	now(): number {
+		return this.currentTime;
+	}
+
+	setInterval(
+		callback: () => Promise<void>,
+		intervalMs: number,
+	): TaskServiceTimerHandle {
+		const id = this.nextTimerId++;
+		this.timers.set(id, {
+			callback,
+			intervalMs,
+			nextAt: this.currentTime + intervalMs,
+		});
+		return id;
+	}
+
+	clearInterval(handle: TaskServiceTimerHandle): void {
+		this.timers.delete(handle as number);
+	}
+
+	async advanceBy(durationMs: number): Promise<void> {
+		const target = this.currentTime + durationMs;
+		while (true) {
+			const due = Array.from(this.timers.entries())
+				.filter(([, timer]) => timer.nextAt <= target)
+				.sort(
+					([leftId, left], [rightId, right]) =>
+						left.nextAt - right.nextAt || leftId - rightId,
+				)[0];
+			if (!due) break;
+			const [id, timer] = due;
+			this.currentTime = timer.nextAt;
+			timer.nextAt += timer.intervalMs;
+			await timer.callback();
+			if (!this.timers.has(id)) continue;
+		}
+		this.currentTime = target;
+	}
+
+	reset(now: number): void {
+		this.currentTime = now;
+		this.nextTimerId = 1;
+		this.timers.clear();
+	}
+}
+
+describe("TaskService injected clock", () => {
+	it("runs same-deadline tasks deterministically at the injected boundary", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const order: string[] = [];
+		for (const name of ["FIRST", "SECOND"]) {
+			workers.set(name, {
+				name,
+				execute: async () => {
+					order.push(name);
+				},
+			});
+			tasks.set(name, {
+				id: name as UUID,
+				name,
+				agentId: AGENT_ID,
+				tags: ["queue"],
+				dueAt: T0 + 1_000,
+			});
+		}
+		const clock = new DeterministicTaskClock(T0);
+		const service = new TaskService(runtime, clock);
+		service.startTimer();
+
+		await clock.advanceBy(999);
+		expect(order).toEqual([]);
+		await clock.advanceBy(1);
+		expect(order).toEqual(["FIRST", "SECOND"]);
+		await service.stop();
+	});
+
+	it("cancels polling on stop", async () => {
+		const { runtime } = makeTaskRuntime();
+		const getTasks = vi.spyOn(runtime, "getTasks");
+		const clock = new DeterministicTaskClock(T0);
+		const service = new TaskService(runtime, clock);
+		service.startTimer();
+		await service.stop();
+
+		await clock.advanceBy(10_000);
+		expect(getTasks).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["null", null],
+		["zero", 0],
+	] as const)("clears a %s timer handle", async (_label, handle) => {
+		const { runtime } = makeTaskRuntime();
+		const clock: TaskServiceClock = {
+			now: () => T0,
+			setInterval: () => handle,
+			clearInterval: vi.fn(),
+		};
+		const service = new TaskService(runtime, clock);
+
+		service.startTimer();
+		await service.stop();
+
+		expect(clock.clearInterval).toHaveBeenCalledOnce();
+		expect(clock.clearInterval).toHaveBeenCalledWith(handle);
+	});
+
+	it("does not leak callbacks across an exact clock reset", async () => {
+		const first = makeTaskRuntime();
+		const second = makeTaskRuntime();
+		const firstQuery = vi.spyOn(first.runtime, "getTasks");
+		const secondQuery = vi.spyOn(second.runtime, "getTasks");
+		const clock = new DeterministicTaskClock(T0);
+		const firstService = new TaskService(first.runtime, clock);
+		firstService.startTimer();
+
+		await firstService.stop();
+		clock.reset(T0);
+		const secondService = new TaskService(second.runtime, clock);
+		secondService.startTimer();
+		await clock.advanceBy(1_000);
+
+		expect(firstQuery).not.toHaveBeenCalled();
+		expect(secondQuery).toHaveBeenCalledTimes(1);
+		await secondService.stop();
+	});
+
+	it("keeps system time and timer APIs as the default boundary", async () => {
+		const { runtime } = makeTaskRuntime();
+		const timerHandle = { kind: "system-timer" };
+		const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+		const set = vi
+			.spyOn(globalThis, "setInterval")
+			.mockReturnValue(
+				timerHandle as unknown as ReturnType<typeof setInterval>,
+			);
+		const clear = vi
+			.spyOn(globalThis, "clearInterval")
+			.mockImplementation(() => {});
+		const service = new TaskService(runtime);
+
+		service.startTimer();
+		expect(now).toHaveBeenCalled();
+		expect(set).toHaveBeenCalledWith(expect.any(Function), 1_000);
+		await service.stop();
+		expect(clear).toHaveBeenCalledWith(timerHandle);
+		now.mockRestore();
+		set.mockRestore();
+		clear.mockRestore();
+	});
+});
 
 describe("TaskService tick re-arm", () => {
 	let service: TaskService | null = null;
@@ -738,5 +911,115 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		await vi.advanceTimersByTimeAsync(30_000);
 		expect(tasks.get("op-paused")?.metadata?.paused).toBe(true);
 		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("runs at most one already-selected execution when pauseTask lands mid-tick", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("mid-tick-pause", {
+			id: "mid-tick-pause" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 - 1,
+		});
+
+		// Gate the FIRST getTasks (the in-flight tick) so pauseTask can land
+		// while the tick holds a stale, pre-pause snapshot — the production
+		// interleaving the already-selected-work semantics describe.
+		let releaseTick: ((snapshot: Task[]) => void) | null = null;
+		const tickSnapshot = new Promise<Task[]>((resolve) => {
+			releaseTick = resolve;
+		});
+		let firstCall = true;
+		(runtime as unknown as { getTasks: unknown }).getTasks = async () => {
+			if (!firstCall) return Array.from(tasks.values());
+			firstCall = false;
+			return await tickSnapshot;
+		};
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		// Stale snapshot captured BEFORE the pause persists.
+		const stale = Array.from(tasks.values());
+		await service.pauseTask("mid-tick-pause" as UUID);
+		expect(tasks.get("mid-tick-pause")?.metadata?.paused).toBe(true);
+
+		releaseTick?.(stale);
+		await vi.advanceTimersByTimeAsync(2_000);
+		// The already-selected execution completes its lifecycle exactly once…
+		expect(execute).toHaveBeenCalledTimes(1);
+		// …including the normal one-shot delete (documented semantics).
+		expect(tasks.has("mid-tick-pause")).toBe(false);
+
+		// Every subsequent tick observes the pause state and selects nothing.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not execute a paused one-shot task when it becomes due, and keeps the row", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("paused-one-shot", {
+			id: "paused-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 + 5_000,
+			metadata: { paused: true },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// Well past the due time: the scheduler must honor the operator pause
+		// exactly as it does for repeat tasks — no execution, no delete.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(execute).not.toHaveBeenCalled();
+		const row = tasks.get("paused-one-shot");
+		expect(row).toBeDefined();
+		expect(row?.metadata?.paused).toBe(true);
+	});
+
+	it("executes a one-shot task that was never paused once it is due", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("due-one-shot", {
+			id: "due-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 + 5_000,
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(tasks.has("due-one-shot")).toBe(false);
+	});
+
+	it("resumeTask with runImmediately executes a paused one-shot exactly once", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("resumed-one-shot", {
+			id: "resumed-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			metadata: { paused: true },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(execute).not.toHaveBeenCalled();
+
+		// Explicit operator resume: unpause + immediate manual run override.
+		await service.resumeTask("resumed-one-shot" as UUID, true);
+		expect(execute).toHaveBeenCalledTimes(1);
 	});
 });

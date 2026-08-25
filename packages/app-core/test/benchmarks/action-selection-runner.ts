@@ -13,6 +13,7 @@ import path from "node:path";
 import {
   type AgentRuntime,
   ChannelType,
+  deterministicOwnerEntityId,
   type Memory,
   parseJSONObjectFromText,
   stringToUuid,
@@ -373,7 +374,7 @@ function resolveBenchmarkOwnerEntityId(runtime: AgentRuntime): UUID {
   if (typeof configured === "string" && configured.trim().length > 0) {
     return configured as UUID;
   }
-  return stringToUuid(`${runtime.agentId}-admin-entity`);
+  return deterministicOwnerEntityId(runtime.agentId);
 }
 
 function makeBenchmarkConnectorMemory(args: {

@@ -116,7 +116,17 @@ describe("desktop Cloud login session warm-up", () => {
     expect(duplicate).toBe(prepared);
     await expect(prepared).resolves.toEqual(response);
     expect(start).toHaveBeenCalledTimes(1);
-    expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBe(prepared);
+    await expect(
+      takePreparedDesktopCloudLoginSession(cloudApiBase),
+    ).resolves.toEqual(response);
+    expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBeNull();
+  });
+
+  it("never lets a pending warm-up block the deliberate click", () => {
+    windowWithElectrobun.__electrobunWindowId = 1;
+    const start = vi.fn(() => new Promise<typeof response>(() => undefined));
+
+    expect(prepareDesktopCloudLoginSession(cloudApiBase, start)).not.toBeNull();
     expect(takePreparedDesktopCloudLoginSession(cloudApiBase)).toBeNull();
   });
 

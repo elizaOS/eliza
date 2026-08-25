@@ -1,7 +1,7 @@
 /** Unit tests for the operation-summary string helpers. */
 import { describe, expect, it } from "vitest";
 import {
-  compactSummaryText,
+  preserveSummaryText,
   summarizeFileOperation,
   summarizeShellCommand,
 } from "./summaries.js";
@@ -28,13 +28,18 @@ describe("coding tool planner summaries", () => {
     ).toBeUndefined();
   });
 
-  it("summarizes shell commands with bounded text", () => {
+  it("summarizes shell commands without shortening them", () => {
     expect(summarizeShellCommand("bun test")).toBe("ran `bun test`");
-    expect(
-      compactSummaryText(
-        "bun run test --filter very-long-package-name -- --reporter verbose",
-        20,
-      ),
-    ).toBe("bun run test --filt…");
+    const command =
+      "bun run test --filter very-long-package-name -- --reporter verbose";
+    expect(preserveSummaryText(command)).toBe(command);
+    expect(summarizeShellCommand(command)).toBe(`ran \`${command}\``);
+  });
+  it("sanitizes either lone surrogate half without shortening content", () => {
+    for (const s of ["a\ud800bc", "a\udc00bc"]) {
+      const out = preserveSummaryText(s);
+      expect(out).toBe("a\ufffdbc");
+      expect(out.isWellFormed()).toBe(true);
+    }
   });
 });

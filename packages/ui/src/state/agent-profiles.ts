@@ -207,12 +207,12 @@ export function persistAgentProfileSelection(
 
 export function addAgentProfile(
   profile: Omit<AgentProfile, "id" | "createdAt">,
-  options: { activate?: boolean } = {},
+  options: { activate?: boolean; id?: string } = {},
 ): AgentProfile {
   const registry = loadAgentProfileRegistry();
   const full: AgentProfile = {
     ...profile,
-    id: generateId(),
+    id: options.id ?? generateId(),
     createdAt: new Date().toISOString(),
   };
   registry.profiles.push(full);

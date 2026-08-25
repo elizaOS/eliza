@@ -1,6 +1,7 @@
 # `@elizaos/prompts`
 
-Single source of truth for the LLM prompt templates the elizaOS runtime uses, plus the action/provider spec + docs codegen that derives compressed action descriptions from those templates.
+Single source of truth for the LLM prompt templates the elizaOS runtime uses,
+plus action/provider spec and docs codegen that preserves authored descriptions.
 
 Repository-wide engineering and evidence requirements are inherited from the
 root [`CLAUDE.md`](../../CLAUDE.md).
@@ -12,11 +13,17 @@ root [`CLAUDE.md`](../../CLAUDE.md).
   `packages/core/src/features/autonomy/service.ts` consumes the autonomy
   templates. The runtime fills `{{...}}` placeholders with `composePrompt` from
   core.
-- Owns `compressPromptDescription` in `src/prompt-compression.ts`; core
-  re-exports it for backward compatibility. This keeps prompts tooling from
-  depending back on core.
+- Retains `compressPromptDescription` as a deprecated identity alias for
+  backward compatibility. Runtime and codegen paths use complete authored
+  descriptions directly; the alias must never rewrite text.
 - Also owns the action/provider **specs** under `specs/` and the generators in `scripts/` that build a merged plugin action spec and emit `packages/core/src/generated/action-docs.ts`.
-- This package ships no compiled JS for `src/` — `main`/`exports['.']` point at `src/index.ts` directly (consumed by TS tooling / bundlers in the monorepo). The `dist/` subpath mappings in `exports` (`./*.css` and `./*`) exist for potential subpath consumers; no codegen script in this package writes to `dist/`.
+- Bun and `eliza-source` workspace consumers load the maintained TypeScript
+  source directly, and workspace TypeScript consumers resolve source types
+  before `dist/` exists. The generated publish manifest rewrites those type
+  paths so native Node and published-package consumers load compiled `dist/`
+  JavaScript and declarations. Both manifests expose only the package root.
+  Internal source imports use explicit `.js` specifiers so NodeNext typechecking
+  and emitted native ESM resolve the same sibling modules.
 
 ## Layout
 
@@ -24,7 +31,7 @@ root [`CLAUDE.md`](../../CLAUDE.md).
 packages/prompts/
   src/index.ts        Shared prompt templates; each exported twice:
                       camelCaseTemplate + UPPER_SNAKE_CASE_TEMPLATE alias.
-                      Also re-exports compressPromptDescription.
+                      Also re-exports the lossless compatibility alias.
   src/prompt-compression.ts  deterministic action/provider description compressor
   specs/
     actions/core.json            hand-maintained core action spec
@@ -34,32 +41,40 @@ packages/prompts/
     generate-plugin-action-spec.js  scans plugins/**/*.ts for `export const …: Action`,
                                      merges with core.json → specs/actions/plugins.generated.json
     generate-action-docs.js         reads specs/* → writes packages/core/src/generated/action-docs.ts
-                                     (imports compressPromptDescription from this package)
+                                     (preserves complete descriptions)
     registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
-  test/prompts.test.js  regression assertions on template wording (bun test)
+  test/prompts.test.js  rendered composition, injection, and lossless-context contracts (bun test)
 ```
 
 ## Key exports / surface
 
-`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), `BOOLEAN_FOOTER`, and `compressPromptDescription`. Import templates from `@elizaos/core` in runtime code; prompts package tooling and tests import directly from `@elizaos/prompts` / `src/index.ts`.
+`src/index.ts` only. Each template is exported under two names — the camelCase form and an UPPER_SNAKE_CASE alias (e.g. `replyTemplate` / `REPLY_TEMPLATE`). Notable ones: `MESSAGE_HANDLER_TEMPLATE`, `REPLY_TEMPLATE`, `SHOULD_RESPOND_TEMPLATE`, `SHOULD_RESPOND_WITH_CONTEXT_TEMPLATE`, `PLANNER_TEMPLATE`, `REFLECTION_TEMPLATE`, `FACT_EXTRACTION_TEMPLATE`, `DEFAULT_CHARACTER_SYSTEM_TEMPLATE`, the `AUTONOMY_*` family, the `SHOULD_(FOLLOW|MUTE|UNFOLLOW|UNMUTE)_ROOM_TEMPLATE` set, the contact templates (`ADD_/REMOVE_/UPDATE_CONTACTS` / `SEARCH_CONTACTS`), and `BOOLEAN_FOOTER`. Import templates from `@elizaos/core` in runtime code; prompts package tooling and tests import directly from `@elizaos/prompts` / `src/index.ts`.
 
 ## Commands
 
 ```bash
 bun run --cwd packages/prompts build                    # gen plugin spec, format it, gen action-docs
+bun run --cwd packages/prompts build:package            # compile the native-Node publish artifact
 bun run --cwd packages/prompts build:plugin-action-spec # only regen specs/actions/plugins.generated.json
 bun run --cwd packages/prompts build:action-docs        # only regen packages/core/src/generated/action-docs.ts
 bun run --cwd packages/prompts check:secrets            # scan prompt files for secrets/PII
 bun run --cwd packages/prompts test                     # bun test ./test
+bun run --cwd packages/prompts typecheck                # typecheck both maintained TypeScript modules
 bun run --cwd packages/prompts lint                     # biome check --write
 bun run --cwd packages/prompts lint:check               # biome check (no write)
 bun run --cwd packages/prompts format:check             # biome format check
 bun run --cwd packages/prompts clean                    # rm -rf dist
 ```
 
-`typecheck` only prints its status because this package has no standalone TypeScript program beyond the prompt string module.
+`typecheck` uses the package-owned NodeNext `tsconfig.json` over the two
+maintained source modules. The package test lane builds and packs `dist/`
+exactly as the release path does, verifies that the tarball contains the
+compiled `dist/` contract rather than TypeScript runtime source, installs it
+into an isolated native Node consumer, separately exercises Bun's workspace
+package resolution, and emits the core prompt declarations after removing
+`dist/`; either path failing is a package-contract error.
 
 ## Config / env vars
 
@@ -72,7 +87,7 @@ No required configuration. The generators resolve repo paths from `import.meta.u
 Add a prompt template:
 1. In `src/index.ts`, add `export const fooTemplate = \`...\`;` then `export const FOO_TEMPLATE = fooTemplate;` (always export both names).
 2. Use `{{camelCaseVar}}` placeholders, `{{#each}}` / `{{#if}}`, and end with the JSON-only output instruction other templates use.
-3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add/adjust a wording assertion in `test/prompts.test.js`.
+3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add or adjust a regression test for an observable composition, injection, lossless-context, or code-generation boundary. Do not add tests whose material assertion only pins prompt prose.
 
 Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Run `build:plugin-action-spec`. It scans `plugins/**/*.ts`; never hand-edit `specs/actions/plugins.generated.json`. Actions intentionally excluded from the public surface live in the `RETIRED_IMPLEMENTATION_ONLY_ACTIONS` set in `scripts/generate-plugin-action-spec.js`.
@@ -84,13 +99,20 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - The doc generator writes OUTSIDE this package, into `packages/core/src/generated/action-docs.ts`. That is intentional codegen, not a layering break — `build:action-docs` owns it.
 - Plugin-local `prompts/*.json` (e.g. `actions.json`) under `plugins/**` are hand-edited inputs to each plugin's own codegen and are NOT read by `generate-plugin-action-spec.js`, which only scans `*.ts`.
 - Never embed secrets or PII in templates (they are source-controlled); use placeholders. `check:secrets` enforces this over prompt `.ts` files — see the path/regex list in `scripts/check-secrets.js`.
+- Never cap, condense, summarize, abbreviate, or otherwise rewrite model-facing
+  prompt content. Provider limits reject before dispatch; explicit pagination
+  must be lossless and caller requested.
+- Test observable rendered contracts rather than prompt wording. Prose-only
+  regex and substring assertions create copy-edit churn without proving model-facing behavior.
 - The generated action inventory is a public-surface audit, not a substitute
   for runtime action-registration tests.
 
 ## Package completion evidence
 
 Follow the repository-wide definition of done in the root guide. For prompt or
-spec changes, regenerate every owned artifact, inspect the diff, run prompt and
-secret tests, and execute affected behavior against a live model. Review the
-full trajectory—including rendered prompt, raw output, validation, action
-selection, and result—rather than approving a string diff alone.
+spec changes, regenerate every owned artifact, inspect the diff, and run prompt
+and secret tests. A deterministic test or guide change that does not alter a
+model-facing prompt needs rendered-contract evidence, not a live-model run.
+When prompt behavior changes, execute the affected behavior against a live model
+and review the full trajectory—including rendered prompt, raw output,
+validation, action selection, and result.

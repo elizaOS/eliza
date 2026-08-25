@@ -29,14 +29,10 @@ import {
 	ModelType,
 } from "../../types/model";
 import type { IAgentRuntime } from "../../types/runtime";
-import { truncateWellFormed } from "../../utils/well-formed";
+import { toWellFormedUnicode } from "../../utils/well-formed";
 import { stripReasoningBlocks } from "./fallback-reply";
 import { getV5ModelText } from "./generate-text-result";
 import { isUnaddressedTextGroupTurn } from "./stage1-prompt-tier";
-
-const MAX_HISTORY_MESSAGES = 8;
-const MAX_HISTORY_LINE_CHARS = 160;
-const MAX_CURRENT_TEXT_CHARS = 1200;
 
 export interface BotNoiseTriageArgs {
 	runtime: IAgentRuntime;
@@ -113,11 +109,22 @@ function senderNameOf(message: Memory): string {
 	return "bot";
 }
 
-function clip(text: string, maxChars: number): string {
-	const collapsed = text.replace(/\s+/g, " ").trim();
-	return collapsed.length > maxChars
-		? `${truncateWellFormed(collapsed, maxChars)}…`
-		: collapsed;
+/**
+ * Chronological (oldest-first) ordering for the triage history block.
+ *
+ * The result is rendered straight into a model prompt, so the order is
+ * load-bearing: newest-first would present the conversation backwards. A
+ * missing or non-finite `createdAt` (a corrupted row, or a `Number(...)`
+ * conversion that produced `NaN`) is normalised to `0` so the comparator never
+ * returns `NaN` — a `NaN` comparator result makes `Array#sort` leave the pair
+ * in an engine-defined order. Equal timestamps fall back to the id so a batch
+ * written in the same millisecond still renders deterministically.
+ */
+export function compareMemoryByCreatedAt(a: Memory, b: Memory): number {
+	const aSafe = Number.isFinite(a.createdAt) ? (a.createdAt as number) : 0;
+	const bSafe = Number.isFinite(b.createdAt) ? (b.createdAt as number) : 0;
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
 }
 
 function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
@@ -128,7 +135,7 @@ function historyLine(runtime: IAgentRuntime, memory: Memory): string | null {
 		memory.entityId === runtime.agentId
 			? (runtime.character?.name ?? "agent")
 			: senderNameOf(memory);
-	return `${name}: ${clip(text, MAX_HISTORY_LINE_CHARS)}`;
+	return `${name}: ${toWellFormedUnicode(text)}`;
 }
 
 export function buildBotNoiseTriagePrompt(args: {
@@ -147,7 +154,7 @@ export function buildBotNoiseTriagePrompt(args: {
 		history,
 		"",
 		`Newest message, from ${args.senderName} (bot/webhook):`,
-		clip(args.messageText, MAX_CURRENT_TEXT_CHARS) || "(empty)",
+		toWellFormedUnicode(args.messageText) || "(empty)",
 		"",
 		`Automated status feeds, embeds, queue/system updates, notifications, and bot-to-bot chatter not involving ${args.agentName} should be ignored.`,
 		`Answer RESPOND only if the message clearly asks ${args.agentName} something or requires ${args.agentName} to act.`,
@@ -182,11 +189,10 @@ export async function runBotNoiseTriage(
 		const recent = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			count: MAX_HISTORY_MESSAGES,
 		});
 		historyLines = recent
 			.filter((memory) => memory.id !== message.id)
-			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+			.sort(compareMemoryByCreatedAt)
 			.map((memory) => historyLine(runtime, memory))
 			.filter((line): line is string => line !== null);
 	} catch (error) {
@@ -208,10 +214,8 @@ export async function runBotNoiseTriage(
 	try {
 		const params: GenerateTextParams = {
 			prompt,
-			// One word is the contract, but reasoning-style small models may spend
-			// budget before the visible answer — leave headroom so the verdict is
-			// never truncated into a fail-open.
-			maxTokens: 64,
+			// One word is the requested shape, but the provider owns its complete
+			// generation budget. A local cap can cut reasoning before the verdict.
 			temperature: 0,
 			voiceOutput: "internal",
 		};

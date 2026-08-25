@@ -84,6 +84,16 @@ describe("navigateDeepLink", () => {
     expect(types).not.toContain("eliza:navigate:view");
   });
 
+  it("opens the Home notification center for /notifications", () => {
+    navigateDeepLink("/notifications");
+    const types = dispatchSpy.mock.calls
+      .map((c: unknown[]) => c[0])
+      .filter((e: unknown): e is CustomEvent => e instanceof CustomEvent)
+      .map((e: CustomEvent) => e.type);
+    expect(types).toContain("eliza:notifications:open");
+    expect(types).not.toContain("eliza:navigate:view");
+  });
+
   it("prefills the chat composer for /chat?prefill=<text> (never auto-sends)", () => {
     navigateDeepLink("/chat?prefill=Connect%20my%20calendar");
     const evt = dispatchSpy.mock.calls

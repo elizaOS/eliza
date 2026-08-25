@@ -1,9 +1,16 @@
+/**
+ * Integration-backed tests for the loopback real-voice harness transport,
+ * session mint scope, provider seams, and shutdown behavior. Provider sockets
+ * are deterministic mocks while the HTTP and WebSocket servers are real.
+ */
+
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const calls: string[] = [];
+const CONVERSATION_ID = "legacy-channel";
 
 class FakeSocket {
   addEventListener() {}
@@ -90,7 +97,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           organizationId: "org",
           userId: "user",
           agentId: "agent",
-          conversationId: "conversation",
+          conversationId: CONVERSATION_ID,
         },
         jti: "jti",
         tokenExpSeconds: 123,
@@ -157,7 +164,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         organizationId: "org",
         userId: "user",
         agentId: "agent",
-        conversationId: "conversation",
+        conversationId: CONVERSATION_ID,
         fetchImpl: fetch,
         hooks: { log: (_level, message) => logs.push(message) },
       });
@@ -180,6 +187,24 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       const consentBody = (await consent.json()) as { consentNonce: string };
       expect(consentBody.consentNonce).toBe("consent");
 
+      const mismatchedMint = await fetch(
+        `${server.httpUrl}/api/v1/voice/session`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: "other-legacy-channel",
+            consentNonce: consentBody.consentNonce,
+            transport: "websocket",
+          }),
+        },
+      );
+      expect(mismatchedMint.status).toBe(403);
+      expect((await mismatchedMint.json()) as unknown).toEqual({
+        code: "conversation_scope_mismatch",
+      });
+      expect(calls).not.toContain("recorded");
+
       const browserMint = await fetch(
         `${server.httpUrl}/api/v1/voice/session`,
         {
@@ -191,7 +216,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           },
           body: JSON.stringify({
             agentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-            conversationId: "11111111-1111-4111-8111-111111111111",
+            conversationId: CONVERSATION_ID,
             consentNonce: consentBody.consentNonce,
             transport: "websocket",
           }),
@@ -270,5 +295,5 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
         `isolated harness failed:\n${result.stdout ?? ""}${result.stderr ?? ""}`,
       );
     }
-  });
+  }, 120_000);
 }

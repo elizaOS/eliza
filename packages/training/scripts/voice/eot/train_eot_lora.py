@@ -53,6 +53,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from training.model_registry import get as get_model_entry  # noqa: E402
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Target tier registry
@@ -372,11 +373,11 @@ def _iter_batches(records, batch_size, tokenizer, seq_len):
 
     for start in range(0, len(records), batch_size):
         chunk = records[start : start + batch_size]
-        encodings = tokenizer(
+        encodings = tokenize_with_explicit_limit(
+            tokenizer,
             [r["text"] for r in chunk],
+            max_tokens=seq_len,
             padding=True,
-            truncation=True,
-            max_length=seq_len,
             return_tensors="pt",
         )
         # last_token_idx is the index of the final non-pad token per row.

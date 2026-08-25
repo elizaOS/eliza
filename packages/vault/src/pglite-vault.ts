@@ -13,7 +13,12 @@ import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AuditLog } from "./audit.js";
 import { decrypt, encrypt } from "./crypto.js";
-import { assertKey, optsCaller } from "./internal-utils.js";
+import {
+  assertKey,
+  optsCaller,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "./internal-utils.js";
 import type { MasterKeyResolver } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import { readStore, type StoreData } from "./store.js";
@@ -350,7 +355,7 @@ export class PgliteVaultImpl implements Vault {
           row.ref_path,
           row.last_modified,
           Date.now(),
-          normalizedReason.slice(0, 500),
+          truncateWellFormed(toWellFormedUnicode(normalizedReason), 500),
         ],
       );
       await db.query(`DELETE FROM vault_entries WHERE key = $1`, [key]);

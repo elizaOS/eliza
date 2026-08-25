@@ -62,11 +62,10 @@ export class RoomsService {
    * Automatically filters out:
    * - Hidden messages (metadata.visibility === 'hidden')
    * - Action result messages (internal system messages)
-   * - Duplicate messages (same text within 5 second window)
    */
   async getRoomWithMessages(
     roomId: string,
-    limit = 50,
+    limit?: number,
     afterTimestamp?: number,
   ): Promise<RoomWithMessages | null> {
     const room = await roomsRepository.findById(roomId);
@@ -74,7 +73,10 @@ export class RoomsService {
       return null;
     }
 
-    const rawMessages = await memoriesRepository.findMessages(roomId, { limit, afterTimestamp });
+    const rawMessages = await memoriesRepository.findMessages(roomId, {
+      ...(limit === undefined ? {} : { limit }),
+      afterTimestamp,
+    });
     const participantIds = await participantsRepository.getEntityIdsByRoomId(roomId);
 
     // Reverse to get chronological order
@@ -91,75 +93,9 @@ export class RoomsService {
       return isVisible;
     });
 
-    // Deduplicate messages: Remove duplicate agent responses that might have been
-    // stored twice (once by action callback, once by handler). Keep the one with
-    // attachments or the first one if both/neither have attachments.
-    const seenTexts = new Map<
-      string,
-      {
-        index: number;
-        hasAttachments: boolean;
-        isAgent: boolean;
-        message: Memory;
-      }
-    >();
-    const indicesToRemove = new Set<number>();
-
-    visibleMessages.forEach((msg, index) => {
-      const content = parseMessageContent(msg.content);
-      const text = content?.text?.trim();
-      if (!text) return;
-
-      // Create a key based on text and approximate timestamp (within 5 seconds)
-      const createdAt = msg.createdAt || Date.now();
-      const timeWindow = Math.floor(createdAt / 5000);
-      const key = `${text}:${timeWindow}`;
-
-      const existing = seenTexts.get(key);
-      if (existing) {
-        const currentHasAttachments =
-          Array.isArray(content?.attachments) && content.attachments.length > 0;
-        const isAgentBySource = content?.source === "agent";
-        const isAgentByEntityId = msg.entityId === msg.agentId;
-        const isAgent = content?.source ? isAgentBySource : isAgentByEntityId;
-
-        if (currentHasAttachments && !existing.hasAttachments) {
-          // Current has attachments, existing doesn't - keep current
-          indicesToRemove.add(existing.index);
-          seenTexts.set(key, {
-            index,
-            hasAttachments: currentHasAttachments,
-            isAgent,
-            message: msg,
-          });
-        } else if (isAgent && !existing.isAgent) {
-          // Current is from agent, existing isn't - keep current
-          indicesToRemove.add(existing.index);
-          seenTexts.set(key, {
-            index,
-            hasAttachments: currentHasAttachments,
-            isAgent,
-            message: msg,
-          });
-        } else {
-          // Keep existing, remove current
-          indicesToRemove.add(index);
-        }
-      } else {
-        const hasAttachments =
-          Array.isArray(content?.attachments) && content.attachments.length > 0;
-        const isAgentBySource = content?.source === "agent";
-        const isAgentByEntityId = msg.entityId === msg.agentId;
-        const isAgent = content?.source ? isAgentBySource : isAgentByEntityId;
-        seenTexts.set(key, { index, hasAttachments, isAgent, message: msg });
-      }
-    });
-
-    const cleanMessages = visibleMessages.filter((_, index) => !indicesToRemove.has(index));
-
     return {
       room,
-      messages: cleanMessages,
+      messages: visibleMessages,
       participants: participantIds,
     };
   }

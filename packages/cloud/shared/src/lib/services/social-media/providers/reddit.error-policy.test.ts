@@ -37,7 +37,7 @@ mock.module("../rate-limit", () => ({
   isRateLimitResponse: (r: Response) => r.status === 429,
 }));
 
-const { redditProvider } = await import("./reddit");
+const { redditProvider, redditFetch } = await import("./reddit");
 
 const creds = {
   apiKey: "client-id",
@@ -150,5 +150,40 @@ describe("redditProvider.getAccountAnalytics — fail closed", () => {
 
     const err = await rejects(redditProvider.getAccountAnalytics!(creds));
     expect(err.message).toContain("503");
+  });
+});
+
+describe("redditFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Reddit API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(redditFetch("https://oauth.reddit.com/api/v1/me", undefined, 100)).rejects.toThrow(
+      /aborted/i,
+    );
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await redditFetch("https://oauth.reddit.com/api/v1/me", {
+      signal: controller.signal,
+    });
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
   });
 });

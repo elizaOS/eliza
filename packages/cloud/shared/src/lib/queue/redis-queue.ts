@@ -12,6 +12,7 @@
  * Wadis locally) and circuit-breaker behavior.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
 
@@ -97,7 +98,7 @@ export async function drain<T>(
     } catch (parseError) {
       logger.error(`[Queue] Dropping unparseable envelope from ${queueKey}`, {
         error: parseError instanceof Error ? parseError.message : String(parseError),
-        sample: raw.slice(0, 200),
+        sample: truncateWellFormed(toWellFormedUnicode(raw), 200),
       });
       stats.failed++;
       continue;

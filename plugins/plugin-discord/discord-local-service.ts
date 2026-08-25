@@ -52,6 +52,12 @@ const IPC_OP_CLOSE = 2;
 const IPC_OP_PING = 3;
 const IPC_OP_PONG = 4;
 
+// Discord's local RPC frames carry a JSON payload; real ones are a few KB at
+// most. The reader below buffers until a declared frame is complete, so an
+// unbounded length lets a peer on the IPC socket hold the buffer open and grow
+// it without limit. Cap it far above any legitimate payload.
+const IPC_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
+
 type DiscordLocalConfig = {
 	enabled: boolean;
 	clientId: string;
@@ -529,10 +535,19 @@ export class DiscordLocalService extends Service {
 		}
 		this.connected = false;
 		this.authenticated = false;
+		// Same connection-scoped invariant as the socket "close" handler: the
+		// subscriptions do not survive the socket we are about to destroy.
+		this.subscribedChannelIds.clear();
 		this.connectedIpcPath = null;
-		this.rejectPendingRequests(new Error("Discord local service stopped"));
-		this.socket?.destroy();
+		const error = new Error("Discord local service stopped");
+		this.rejectPendingRequests(error);
+		this.readyReject?.(error);
+		this.readyReject = null;
+		this.readyResolve = null;
+		this.readyPromise = null;
+		const socket = this.socket;
 		this.socket = null;
+		socket?.destroy();
 	}
 
 	isConnected(): boolean {
@@ -913,6 +928,7 @@ export class DiscordLocalService extends Service {
 		this.readBuffer = Buffer.alloc(0);
 
 		socket.on("connect", () => {
+			if (this.socket !== socket) return;
 			this.connectedIpcPath = ipcPath;
 			this.writeFrame(IPC_OP_HANDSHAKE, {
 				v: 1,
@@ -921,26 +937,41 @@ export class DiscordLocalService extends Service {
 		});
 
 		socket.on("data", (chunk: Buffer) => {
+			if (this.socket !== socket) return;
 			this.handleSocketData(chunk);
 		});
 
 		socket.on("close", () => {
+			if (this.socket !== socket) return;
 			const error = new Error("Discord local RPC connection closed");
 			this.connected = false;
 			this.authenticated = false;
+			// Discord RPC subscriptions are bound to the IPC connection, so they die
+			// with the socket exactly like the AUTHENTICATE above. Keeping the
+			// channel ids latched here made subscribeConfiguredChannels() skip every
+			// channel after a reconnect -- the connection came back authenticated and
+			// reported the channels as subscribed, but no SUBSCRIBE frame was ever
+			// re-sent and no MESSAGE_CREATE arrived again.
+			this.subscribedChannelIds.clear();
 			this.connectedIpcPath = null;
-			this.socket = null;
 			this.rejectPendingRequests(error);
 			this.readyReject?.(error);
 			this.readyReject = null;
 			this.readyResolve = null;
 			this.readyPromise = null;
 			if (this.session?.accessToken) {
-				this.scheduleReconnect();
+				// Leave this.socket pointing at the dead socket until the reconnect
+				// timer's own identity check (scheduleReconnect) either fires or is
+				// superseded by a genuinely new connection -- nulling it here would
+				// make that check compare against null and never reconnect.
+				this.scheduleReconnect(socket);
+			} else {
+				this.socket = null;
 			}
 		});
 
 		socket.on("error", (error) => {
+			if (this.socket !== socket) return;
 			this.lastError = error.message;
 			this.connectedIpcPath = null;
 			this.readyReject?.(error);
@@ -953,16 +984,20 @@ export class DiscordLocalService extends Service {
 		await this.readyPromise;
 	}
 
-	private scheduleReconnect(): void {
+	private scheduleReconnect(expectedSocket: net.Socket): void {
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
 		}
-		this.reconnectTimer = setTimeout(() => {
+		const timer = setTimeout(() => {
+			if (this.reconnectTimer !== timer) return;
 			this.reconnectTimer = null;
+			if (this.socket !== expectedSocket) return;
+			this.socket = null;
 			void this.ensureAuthenticated().catch((error) => {
 				this.lastError = error instanceof Error ? error.message : String(error);
 			});
 		}, 3_000);
+		this.reconnectTimer = timer;
 	}
 
 	private handleSocketData(chunk: Buffer): void {
@@ -973,6 +1008,13 @@ export class DiscordLocalService extends Service {
 			if (length < 0) {
 				logger.warn(
 					"[discord-local] Discarding malformed IPC frame with negative payload length",
+				);
+				this.readBuffer = Buffer.alloc(0);
+				return;
+			}
+			if (length > IPC_MAX_PAYLOAD_BYTES) {
+				logger.warn(
+					`[discord-local] Discarding IPC frame declaring ${length} bytes, above the ${IPC_MAX_PAYLOAD_BYTES}-byte payload cap`,
 				);
 				this.readBuffer = Buffer.alloc(0);
 				return;
@@ -1167,6 +1209,7 @@ export class DiscordLocalService extends Service {
 			source: DISCORD_LOCAL_SERVICE_NAME,
 			type: roomType,
 			channelId,
+			serverId: serverKey,
 			messageServerId: stringToUuid(
 				`discord-local-server:${serverKey}`,
 			) as UUID,

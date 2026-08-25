@@ -25,6 +25,13 @@ type InternalWebhookDelivery =
       phoneNumber: string;
       text: string;
       idempotencyKey: string;
+    }
+  | {
+      platform: "blooio";
+      project: string;
+      chatId: string;
+      text: string;
+      idempotencyKey: string;
     };
 
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
@@ -106,6 +113,21 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
       platform: "blooio",
       project: input.project,
       phoneNumber: input.phoneNumber,
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+  // A `chat_*` id addresses a provider-owned Blooio group thread; the adapter
+  // sends it through `/v4/chats/{id}/messages` with no `to`/`from` pair.
+  if (
+    input.platform === "blooio" &&
+    typeof input.chatId === "string" &&
+    /^chat_[A-Za-z0-9_-]{1,120}$/i.test(input.chatId)
+  ) {
+    return {
+      platform: "blooio",
+      project: input.project,
+      chatId: input.chatId,
       text: input.text.trim(),
       idempotencyKey: input.idempotencyKey,
     };
@@ -213,18 +235,17 @@ export async function deliverInternalMessage(
       delivery.platform,
       delivery.project,
     );
+    const recipientId =
+      "chatId" in delivery ? delivery.chatId : delivery.phoneNumber;
     const event: ChatEvent = {
       platform: delivery.platform,
       messageId: delivery.idempotencyKey,
-      chatId:
-        delivery.platform === "telegram"
-          ? delivery.chatId
-          : delivery.phoneNumber,
-      chatType: "private",
-      senderId:
-        delivery.platform === "telegram"
-          ? delivery.chatId
-          : delivery.phoneNumber,
+      chatId: recipientId,
+      chatType:
+        delivery.platform === "blooio" && "chatId" in delivery
+          ? "group"
+          : "private",
+      senderId: recipientId,
       text: delivery.text,
       rawPayload: { source: "shared-reminder" },
     };
@@ -233,13 +254,12 @@ export async function deliverInternalMessage(
     if (!adapter.sendReplyWithReceipt) {
       throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
-    if (delivery.platform === "telegram") {
-      // Telegram has no provider idempotency key. Persist an indeterminate
-      // tombstone before dispatch so a process death can never duplicate it.
-      await dependencies.redis.set(dedupeKey, "indeterminate", {
-        ex: DELIVERY_RECEIPT_TTL_SECONDS,
-      });
-    }
+    // Provider dispatch may succeed before any transport error becomes visible.
+    // Persist the tombstone first for every connector; only a proven rejection
+    // or a validated receipt may replace it with retryable/complete state.
+    await dependencies.redis.set(dedupeKey, "indeterminate", {
+      ex: DELIVERY_RECEIPT_TTL_SECONDS,
+    });
     connectorAttempted = true;
     const receipt = await adapter.sendReplyWithReceipt(
       config,
@@ -274,7 +294,8 @@ export async function deliverInternalMessage(
   } catch (error) {
     if (
       error instanceof TelegramApiResponseError ||
-      error instanceof BlooioApiResponseError
+      (error instanceof BlooioApiResponseError &&
+        error.deliveryStatus === "failed")
     ) {
       let claimReleased = true;
       try {
@@ -327,9 +348,7 @@ export async function deliverInternalMessage(
     }
     // error-policy:J1 once connector dispatch starts, the provider may have
     // accepted the message even if its response or our receipt write failed.
-    if (!connectorAttempted || delivery.platform === "blooio") {
-      // Blooio enforces the stable provider idempotency key, so clearing this
-      // process-local claim permits a safe operator retry after an unknown response.
+    if (!connectorAttempted) {
       try {
         await dependencies.redis.del(dedupeKey);
       } catch {

@@ -27,6 +27,16 @@
       "import": "./dist/plugin.js",
       "default": "./dist/plugin.js"
     },
+    "./ui": {
+      "types": "./dist/components/maps-view-bundle.d.ts",
+      "eliza-source": {
+        "types": "./src/components/maps-view-bundle.ts",
+        "import": "./src/components/maps-view-bundle.ts",
+        "default": "./src/components/maps-view-bundle.ts"
+      },
+      "import": "./dist/components/maps-view-bundle.js",
+      "default": "./dist/components/maps-view-bundle.js"
+    },
     "./*": {
       "types": "./dist/*.d.ts",
       "eliza-source": {
@@ -42,8 +52,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "bun run build:js && bun run build:types",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc6 --noCheck -p tsconfig.build.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run --config vitest.config.ts",
@@ -55,6 +66,9 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0",
+    "react": "^19.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -62,11 +76,19 @@
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/scenario-runner": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^25.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
+    "vite": "^8.0.0",
     "vitest": "^4.0.17"
+  },
+  "peerDependencies": {
+    "react-dom": "^19.0.0"
   },
   "publishConfig": {
     "access": "public"
@@ -76,6 +98,7 @@
     "pluginParameters": {}
   },
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "displayName": "Maps",
       "category": "productivity"

@@ -14,6 +14,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import * as workerCoreStub from "../../../../src/stubs/elizaos-core";
 import * as coreTestContract from "../../../../src/stubs/elizaos-core-test-contract";
 
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
@@ -151,6 +152,8 @@ mock.module("@elizaos/core", () => ({
   normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactSensitiveText: (text: string) => text,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: workerCoreStub.toWellFormedUnicode,
+  truncateWellFormed: workerCoreStub.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:

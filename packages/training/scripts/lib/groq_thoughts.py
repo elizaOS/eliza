@@ -37,6 +37,8 @@ from typing import Iterable, TypedDict
 
 import httpx
 
+from .generation_integrity import require_complete_generation
+
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "openai/gpt-oss-120b"
 
@@ -69,7 +71,6 @@ class HTTPPolicy:
     temperature_step: float = 0.1
     temperature_floor: float | None = None  # None = step UP toward 0.9
     temperature_cap: float = 0.9
-    max_tokens: int = 250
     extra_headers: dict[str, str] = field(default_factory=dict)
 
 
@@ -115,12 +116,6 @@ def make_is_clean(cfg: RoundConfig) -> "callable[[str], bool]":
     return is_clean
 
 
-def truncate(text: str, n: int) -> str:
-    if len(text) <= n:
-        return text
-    return text[: n - 3] + "..."
-
-
 def _adjust_temperature(current: float, http: HTTPPolicy) -> float:
     if http.temperature_floor is None:
         return min(http.temperature_cap, current + http.temperature_step)
@@ -153,7 +148,6 @@ async def synth_one(
             {"role": "system", "content": cfg.system_prompt},
             {"role": "user", "content": user_text},
         ],
-        "max_tokens": cfg.http.max_tokens,
         "temperature": cfg.http.initial_temperature,
         "reasoning_effort": "low",
     }
@@ -192,14 +186,16 @@ async def synth_one(
             continue
         data = r.json()
         try:
-            content = data["choices"][0]["message"].get("content", "").strip()
+            choice = require_complete_generation(
+                data["choices"][0], source="groq_thoughts.synth_one"
+            )
+            content = choice["message"].get("content", "").strip()
         except (KeyError, IndexError):
             return last_content
         if not content:
-            # gpt-oss occasionally puts the answer in `reasoning` when
-            # max_tokens was hit.
+            # Some reasoning models return the visible answer in `reasoning`.
             try:
-                rs = (data["choices"][0]["message"].get("reasoning") or "").strip()
+                rs = (choice["message"].get("reasoning") or "").strip()
                 if rs:
                     last = rs.rsplit(".", 2)
                     content = (last[-2] + ".").strip() if len(last) >= 2 else rs
@@ -261,7 +257,6 @@ async def _worker(
     api_key: str,
     sem: asyncio.Semaphore,
     stats: _Stats,
-    max_input_chars: int,
     cfg: RoundConfig,
     is_clean: "callable[[str], bool]",
 ) -> None:
@@ -271,8 +266,8 @@ async def _worker(
             queue.task_done()
             return
         try:
-            user_msg = truncate(item["currentMessage"], max_input_chars)
-            resp = truncate(item["response_text"], max_input_chars // 2)
+            user_msg = item["currentMessage"]
+            resp = item["response_text"]
             thought = await synth_one(
                 client=client, api_key=api_key, user_msg=user_msg,
                 response_text=resp, sem=sem, cfg=cfg, is_clean=is_clean,
@@ -314,7 +309,6 @@ async def run_round(
     cfg: RoundConfig,
     items: Iterable[WorkItem],
     concurrency: int,
-    max_input_chars: int,
     progress_label: str,
     progress_every_s: float = 15.0,
 ) -> dict[str, int]:
@@ -349,7 +343,7 @@ async def run_round(
         asyncio.create_task(_worker(
             queue=queue, out_lock=out_lock, out_handle=out_handle,
             client=client, api_key=api_key, sem=sem, stats=stats,
-            max_input_chars=max_input_chars, cfg=cfg, is_clean=is_clean,
+            cfg=cfg, is_clean=is_clean,
         ))
         for _ in range(concurrency)
     ]

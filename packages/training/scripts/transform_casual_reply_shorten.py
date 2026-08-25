@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Casual-reply diversification + tighter length cap.
+"""Casual-reply diversification without changing substantive content.
 
 For reply task_types where the user message is a short greeting / thanks /
 acknowledgement / personality question:
@@ -7,8 +7,7 @@ acknowledgement / personality question:
      with paraphrase variants chosen by deterministic hash.
   2. Strip trailing "If you have any other questions..." / "Let me know if..."
      follow-up offers (40+ ending bigrams "me know", "to help", etc.).
-  3. Cap casual replies at 250 chars (vs 1200 deslop cap), at sentence boundary.
-  4. Drop "I'm sorry, but" / "I'd be happy to" / "Of course!" leading hedges.
+  3. Drop "I'm sorry, but" / "I'd be happy to" / "Of course!" leading hedges.
 
 Operates in-place on data/final/train_final.jsonl via temp-file swap.
 """
@@ -111,21 +110,11 @@ TAIL_FOLLOWUP_RE = re.compile(
     re.IGNORECASE,
 )
 
-CASUAL_CAP_CHARS = 250
-SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'\(])")
 
 
 def stable_choice(seed_key: str, choices: list[str]) -> str:
     h = int(hashlib.md5(seed_key.encode("utf-8")).hexdigest()[:8], 16)
     return choices[h % len(choices)]
-
-
-def split_sentences(text: str) -> list[str]:
-    text = text.strip()
-    if not text:
-        return []
-    parts = SENTENCE_RE.split(text)
-    return [p.strip() for p in parts if p.strip()]
 
 
 def shorten_casual(text: str, *, idx: int, stats: dict) -> str:
@@ -163,23 +152,6 @@ def shorten_casual(text: str, *, idx: int, stats: dict) -> str:
                 new_text = new_text[0].upper() + new_text[1:]
             text = new_text
             fired.append("lead_hedge")
-
-    # 4. cap at 250 chars (sentence boundary)
-    if len(text) > CASUAL_CAP_CHARS:
-        truncated = []
-        running = 0
-        for s in split_sentences(text):
-            if running + len(s) + 1 > CASUAL_CAP_CHARS:
-                break
-            truncated.append(s)
-            running += len(s) + 1
-        if truncated:
-            text = " ".join(truncated)
-            fired.append("cap250")
-        # if still over (e.g. one sentence is >250 chars), hard truncate
-        if len(text) > CASUAL_CAP_CHARS:
-            text = text[:CASUAL_CAP_CHARS].rsplit(" ", 1)[0] + "..."
-            fired.append("hard_truncate")
 
     if not text:
         return original

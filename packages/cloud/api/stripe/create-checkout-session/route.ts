@@ -12,8 +12,8 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
@@ -23,6 +23,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
+const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
   .object({
@@ -41,7 +42,20 @@ const checkoutRequestSchema = z
       .optional(),
     hardwareSku: z.enum(HARDWARE_SKUS).optional(),
     hardwareColor: z.string().min(1).max(32).optional(),
+    expectedUserId: z.string().trim().min(1).max(128).optional(),
+    expectedOrganizationId: z.string().trim().min(1).max(128).optional(),
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
+  })
+  .superRefine((data, context) => {
+    const hasExpectedUser = data.expectedUserId !== undefined;
+    const hasExpectedOrganization = data.expectedOrganizationId !== undefined;
+    if (hasExpectedUser !== hasExpectedOrganization) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "expectedUserId and expectedOrganizationId must be provided together",
+      });
+    }
   })
   .refine((data) => data.creditPackId || data.amount || data.hardwareSku, {
     message: "Either creditPackId, amount, or hardwareSku must be provided",
@@ -49,9 +63,47 @@ const checkoutRequestSchema = z
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
+    const body = await c.req.json();
+    const validationResult = checkoutRequestSchema.safeParse(body);
+    if (!validationResult.success) {
+      const flatErrors = validationResult.error.flatten();
+      const fieldErrors = Object.values(flatErrors.fieldErrors).flat();
+      const formErrors = flatErrors.formErrors;
+      const firstError = fieldErrors[0] || formErrors[0] || "Invalid request";
+      return c.json({ error: firstError }, 400);
+    }
+
+    const {
+      creditPackId,
+      amount,
+      expectedOrganizationId,
+      expectedUserId,
+      hardwareColor,
+      hardwareSku,
+      returnUrl,
+    } = validationResult.data;
+
+    // Credit checkout callers may pin the principal they rendered. Compare
+    // that precondition to the live authenticated principal before catalog,
+    // order, customer-authority, or Stripe work. Hardware callers omit it and
+    // retain their existing shared endpoint contract.
+    if (
+      !hardwareSku &&
+      expectedUserId !== undefined &&
+      (expectedUserId !== user.id ||
+        expectedOrganizationId !== user.organization_id)
+    ) {
+      return c.json(
+        {
+          code: "CHECKOUT_PRINCIPAL_CHANGED",
+          error: "Checkout identity changed; refresh before retrying",
+        },
+        409,
+      );
+    }
 
     const stripeCurrency = (c.env.STRIPE_CURRENCY || "usd")
       .trim()
@@ -72,19 +124,6 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       "https://eliza.ai",
       "https://www.eliza.ai",
     ].filter(Boolean) as string[];
-
-    const body = await c.req.json();
-    const validationResult = checkoutRequestSchema.safeParse(body);
-    if (!validationResult.success) {
-      const flatErrors = validationResult.error.flatten();
-      const fieldErrors = Object.values(flatErrors.fieldErrors).flat();
-      const formErrors = flatErrors.formErrors;
-      const firstError = fieldErrors[0] || formErrors[0] || "Invalid request";
-      return c.json({ error: firstError }, 400);
-    }
-
-    const { creditPackId, amount, hardwareColor, hardwareSku, returnUrl } =
-      validationResult.data;
     const clientRequestKey = c.req.header("idempotency-key")?.trim();
     if (!hardwareSku && !clientRequestKey) {
       return c.json(
@@ -423,20 +462,28 @@ function canonicalCredits(value: string | number): string {
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
 }
 
-async function findCheckoutSessionForOrder(
+export async function findCheckoutSessionForOrder(
   stripe: Stripe,
   order: {
     id: string;
     stripe_customer_id: string | null;
     updated_at: Date;
   },
+  now: () => number = Date.now,
 ): Promise<Stripe.Checkout.Session | null> {
   if (!order.stripe_customer_id) {
     throw new Error("Checkout order has no pinned Stripe customer");
   }
   const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
+  const deadlineAt = now() + CHECKOUT_RECONCILIATION_TIMEOUT_MS;
   let startingAfter: string | undefined;
-  for (let page = 0; page < 10; page += 1) {
+  const seenCursors = new Set<string>();
+  while (true) {
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const sessions = await stripe.checkout.sessions.list({
       customer: order.stripe_customer_id,
       created: {
@@ -446,16 +493,30 @@ async function findCheckoutSessionForOrder(
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const match = sessions.data.find(
       (session) =>
         session.client_reference_id === order.id &&
         session.metadata?.checkout_order_id === order.id,
     );
     if (match) return match;
-    if (!sessions.has_more || sessions.data.length === 0) return null;
-    startingAfter = sessions.data.at(-1)?.id;
+    if (!sessions.has_more) return null;
+    if (sessions.data.length === 0) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned an empty continuation page",
+      );
+    }
+    const nextCursor = sessions.data.at(-1)?.id;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned invalid pagination",
+      );
+    }
+    seenCursors.add(nextCursor);
+    startingAfter = nextCursor;
   }
-  throw new Error(
-    "Stripe Checkout reconciliation exceeded its safe search bound",
-  );
 }

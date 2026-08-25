@@ -3,7 +3,8 @@
  *
  * Part of the reply vocabulary is rendered exclusively by the dashboard chat
  * surface and means nothing anywhere else: the single-line `[CONFIG:<pluginId>]`
- * plugin-card and `[BACKGROUND]` wallpaper-picker markers, and the JSON-bodied
+ * plugin-card, `[CONNECTOR:<pluginId>]` connector-card, and `[BACKGROUND]`
+ * wallpaper-picker markers, and the JSON-bodied
  * `[CHECKLIST]`/`[WORKFLOW]` widget blocks (see packages/ui
  * message-parser-helpers and the per-widget parsers it collects). None of these
  * are part of the interaction-block grammar, so `parseInteractionBlocks`
@@ -28,15 +29,11 @@
 /** Matches `[CONFIG:<pluginId>]` — keep in lockstep with the dashboard's CONFIG_RE. */
 const DASHBOARD_CONFIG_MARKER_RE = /\[CONFIG:([@\w][\w@./:-]*)\]/g;
 
+/** Matches `[CONNECTOR:<pluginId>]` — lockstep with the dashboard's CONNECTOR_RE. */
+const DASHBOARD_CONNECTOR_MARKER_RE = /\[CONNECTOR:([@\w][\w@./:-]*)\]/g;
+
 /** Matches the bare `[BACKGROUND]` picker marker — lockstep with BACKGROUND_RE. */
 const DASHBOARD_BACKGROUND_MARKER_RE = /\[BACKGROUND\]/g;
-
-/** Matches `[CHECKLIST]\n{json}\n[/CHECKLIST]` — lockstep with the dashboard's CHECKLIST_RE. */
-const DASHBOARD_CHECKLIST_BLOCK_RE =
-	/\[CHECKLIST\]\n([\s\S]*?)\n\[\/CHECKLIST\]/g;
-
-/** Matches `[WORKFLOW]\n{json}\n[/WORKFLOW]` — lockstep with the dashboard's WORKFLOW_RE. */
-const DASHBOARD_WORKFLOW_BLOCK_RE = /\[WORKFLOW\]\n([\s\S]*?)\n\[\/WORKFLOW\]/g;
 
 /** Marker glyphs for checklist item statuses (`- [x]` renders as a task list on markdown surfaces). */
 const CHECKLIST_STATUS_GLYPHS: Record<string, string> = {
@@ -118,15 +115,40 @@ function workflowBodyToPlainText(body: string): string | null {
 }
 
 function degradeWidgetBlocks(text: string): string {
-	return text
-		.replace(
-			DASHBOARD_CHECKLIST_BLOCK_RE,
-			(_match, body: string) => checklistBodyToPlainText(body) ?? body.trim(),
-		)
-		.replace(
-			DASHBOARD_WORKFLOW_BLOCK_RE,
-			(_match, body: string) => workflowBodyToPlainText(body) ?? body.trim(),
+	return replaceDashboardBlocks(
+		replaceDashboardBlocks(
+			text,
+			"CHECKLIST",
+			(body) => checklistBodyToPlainText(body) ?? body.trim(),
+		),
+		"WORKFLOW",
+		(body) => workflowBodyToPlainText(body) ?? body.trim(),
+	);
+}
+
+function replaceDashboardBlocks(
+	text: string,
+	kind: "CHECKLIST" | "WORKFLOW",
+	render: (body: string) => string,
+): string {
+	const opening = `[${kind}]\n`;
+	const closing = `\n[/${kind}]`;
+	const chunks: string[] = [];
+	let cursor = 0;
+	while (cursor < text.length) {
+		const start = text.indexOf(opening, cursor);
+		if (start < 0) break;
+		const end = text.indexOf(closing, start + opening.length);
+		if (end < 0) break;
+		chunks.push(
+			text.slice(cursor, start),
+			render(text.slice(start + opening.length, end)),
 		);
+		cursor = end + closing.length;
+	}
+	if (chunks.length === 0) return text;
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
 }
 
 /**
@@ -137,6 +159,7 @@ function degradeWidgetBlocks(text: string): string {
 export function stripDashboardOnlyMarkers(text: string): string {
 	if (
 		!text.includes("[CONFIG:") &&
+		!text.includes("[CONNECTOR:") &&
 		!text.includes("[BACKGROUND]") &&
 		!text.includes("[CHECKLIST]") &&
 		!text.includes("[WORKFLOW]")
@@ -145,6 +168,7 @@ export function stripDashboardOnlyMarkers(text: string): string {
 	}
 	return degradeWidgetBlocks(text)
 		.replace(DASHBOARD_CONFIG_MARKER_RE, "")
+		.replace(DASHBOARD_CONNECTOR_MARKER_RE, "")
 		.replace(DASHBOARD_BACKGROUND_MARKER_RE, "")
 		.replace(/[ \t]+\n/g, "\n")
 		.replace(/\n{3,}/g, "\n\n")

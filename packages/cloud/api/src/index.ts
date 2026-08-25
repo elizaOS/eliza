@@ -20,7 +20,10 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
+import {
+  cloneRequestWithScheduledCronMetadata,
+  makeCronHandler,
+} from "@/lib/cron/cloudflare-cron";
 import {
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
@@ -29,25 +32,44 @@ import {
 import { shouldDecorateHttpTelemetryStatus } from "@/lib/observability/http-telemetry-hono";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
+import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
-import { isThinStewardPublicPath } from "./steward/public-paths";
+import { knownRouteShardKey } from "./router-shards";
+import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { isThinCliSessionPath } from "./cli-session-paths";
+export { DoorDashCheckoutGate } from "./doordash-checkout-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
-export { isThinStewardPublicPath } from "./steward/public-paths";
+export {
+  isThinStewardEmailAuthPath,
+  isThinStewardPasskeyLoginOptionsPath,
+  isThinStewardPath,
+  isThinStewardPublicPath,
+} from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
-let appPromise: Promise<Hono<AppEnv>> | undefined;
+/**
+ * Full-app promises memoised per route shard (issue #22550). Each entry is a
+ * complete middleware stack whose generated routes are limited to the shard
+ * that can match the request path, so a cold isolate serving one path family
+ * does not evaluate the other ~600 route modules.
+ */
+const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
+const knownRouteShards = new Set(KNOWN_ROUTE_SHARD_KEYS);
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
-/** Lazy thin shell for login-critical Steward GETs (#18049). */
+/** Lazy thin shell for login-critical Steward pre-auth requests (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Lazy thin shell for the CLI-session login hot path (#22948). */
+let cliSessionThinAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy provider-webhook shell that avoids the generated application router. */
 let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
 /** Lazy authenticated Discord shell that avoids the generated application router. */
@@ -184,9 +206,23 @@ type AgentDomainBindings = Pick<
   "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
 >;
 
-async function getApp(): Promise<Hono<AppEnv>> {
-  appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
-  return appPromise;
+function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
+  const shard = knownRouteShardKey(pathname, knownRouteShards);
+  let promise = fullAppPromises.get(shard);
+  if (!promise) {
+    promise = import("./bootstrap-app").then((m) =>
+      m.createApp({ requestPath: pathname }),
+    );
+    fullAppPromises.set(shard, promise);
+    // error-policy:J5 The dispatch caller observes this same rejection. Evict
+    // only the failed generation so a transient import/init error can retry.
+    void promise.catch(() => {
+      if (fullAppPromises.get(shard) === promise) {
+        fullAppPromises.delete(shard);
+      }
+    });
+  }
+  return promise;
 }
 
 /** Preserve Workerd upgrade responses; rebuilding one drops its `webSocket` extension. */
@@ -201,6 +237,16 @@ export function decorateFullAppDispatchResponse(
   const responseHeaders = new Headers(response.headers);
   setHttpTelemetryHeaders(responseHeaders, traceId, [
     { name: "full_app_dispatch", durationMs: dispatchMs },
+    // Cold/warm marker on every decorated response: `full_app_module_init`
+    // alone cannot distinguish "warm isolate" from "header stripped", and its
+    // duration under-reports cold bootstrap because workerd freezes the clock
+    // across pure CPU — the cost lands in full_app_dispatch at the first I/O
+    // (#22948).
+    {
+      name: "full_app_isolate",
+      durationMs: 0,
+      description: moduleInitMs === null ? "warm" : "cold",
+    },
     ...(moduleInitMs === null
       ? []
       : [{ name: "full_app_module_init", durationMs: moduleInitMs }]),
@@ -212,22 +258,31 @@ export function decorateFullAppDispatchResponse(
   });
 }
 
-async function dispatchFullApp(
+export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext | HonoExecutionContext,
+  loadFullApp?: () => Promise<Hono<AppEnv>>,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const moduleWasInitialized = appPromise !== undefined;
+  const requestPathname = new URL(request.url).pathname;
+  const moduleWasInitialized = loadFullApp
+    ? true
+    : fullAppPromises.has(
+        knownRouteShardKey(requestPathname, knownRouteShards),
+      );
+  const loadApp = loadFullApp ?? (() => getAppForPath(requestPathname));
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
-  const tracedRequest = new Request(request, { headers });
+  const tracedRequest = cloneRequestWithScheduledCronMetadata(request, {
+    headers,
+  });
   let moduleInitMs: number | null = null;
   let status: number | null = null;
 
   try {
-    const app = await getApp();
+    const app = await loadApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;
@@ -269,6 +324,13 @@ async function getStewardThinApp(): Promise<Hono<AppEnv>> {
     m.createStewardThinApp(),
   );
   return stewardThinAppPromise;
+}
+
+async function getCliSessionThinApp(): Promise<Hono<AppEnv>> {
+  cliSessionThinAppPromise ??= import("./cli-session-app").then((m) =>
+    m.createCliSessionThinApp(),
+  );
+  return cliSessionThinAppPromise;
 }
 
 const ELIZA_APP_WEBHOOK_PATH =
@@ -401,17 +463,47 @@ async function dispatchDiscordGateway(
   });
 }
 
+async function dispatchCliSession(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (!isThinCliSessionPath(request.method, pathname)) return null;
+
+  const dispatchStartedAt = performance.now();
+  const moduleWasInitialized = cliSessionThinAppPromise !== undefined;
+  const app = await getCliSessionThinApp();
+  const moduleInitMs = performance.now() - dispatchStartedAt;
+  const response = await app.fetch(request, env, ctx);
+  const dispatchMs = performance.now() - dispatchStartedAt;
+
+  const headers = new Headers(response.headers);
+  headers.set("X-Eliza-Cli-Session-Path", "thin");
+  headers.append(
+    "Server-Timing",
+    `entry_dispatch;dur=${dispatchMs.toFixed(1)}`,
+  );
+  if (!moduleWasInitialized) {
+    headers.append(
+      "Server-Timing",
+      `cli_session_module_init;dur=${moduleInitMs.toFixed(1)}`,
+    );
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 async function dispatchThinSteward(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  const method = request.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    return null;
-  }
   const pathname = new URL(request.url).pathname;
-  if (!isThinStewardPublicPath(pathname)) return null;
+  if (!isThinStewardPath(request.method, pathname)) return null;
 
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = stewardThinAppPromise !== undefined;
@@ -529,12 +621,17 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     hasExactStagingSessionUuidList(
       env.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
     );
+  const e2eRunReceipt =
+    env.NODE_ENV === "test" && env.CLOUD_E2E === "1"
+      ? env.CLOUD_E2E_RUN_RECEIPT?.trim() || null
+      : null;
   return Response.json(
     {
       status: "ok",
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
+      ...(e2eRunReceipt ? { e2eRunReceipt } : {}),
       // Self-identify which deployment env answered. Production and staging
       // share the eliza.app zone. Staging claims its
       // exact control-plane names and `*.cloud-staging.eliza.app` before the
@@ -551,6 +648,12 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // a provider-side mutation has an ambiguous result.
       personalSharedTelegramEdge: {
         enabled: personalSharedTelegramEdgeEnabled,
+      },
+      // Value-free schema compatibility beacon. The release workflow checks
+      // the currently served Worker for this marker before the later quota
+      // table drop is allowed to run.
+      schemaCompatibility: {
+        usageQuotasTombstone: true,
       },
       // Value-free cutover receipt for the default-off staging QA bridge. The
       // deploy workflow proves exact code first, flips the secret last, then
@@ -573,7 +676,11 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
 }
 
 function normalizeHostname(hostname: string | undefined): string | null {
-  const normalized = hostname?.trim().toLowerCase().replace(/\.+$/, "");
+  const value = hostname?.trim().toLowerCase();
+  if (!value) return null;
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 46) end--;
+  const normalized = value.slice(0, end);
   return normalized || null;
 }
 
@@ -891,6 +998,12 @@ export default {
         ctx,
       );
       if (discordGatewayResponse) return discordGatewayResponse;
+      const cliSessionThinResponse = await dispatchCliSession(
+        apiRequest,
+        env,
+        ctx,
+      );
+      if (cliSessionThinResponse) return cliSessionThinResponse;
       const stewardThinResponse = await dispatchThinSteward(
         apiRequest,
         env,
@@ -937,6 +1050,10 @@ export default {
       ctx,
     );
     if (discordGatewayResponse) return discordGatewayResponse;
+
+    // CLI-session login hot path before full-app bootstrap (#22948).
+    const cliSessionThinResponse = await dispatchCliSession(request, env, ctx);
+    if (cliSessionThinResponse) return cliSessionThinResponse;
 
     // Login-critical Steward GETs before full-app bootstrap (#18049).
     const stewardThinResponse = await dispatchThinSteward(request, env, ctx);

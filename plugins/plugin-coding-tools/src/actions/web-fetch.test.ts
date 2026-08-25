@@ -170,7 +170,7 @@ describe("coding-tools WEB_FETCH", () => {
     }
   });
 
-  it("caps large text responses and marks metadata as truncated", async () => {
+  it("rejects a response beyond the complete-capture ceiling without partial text", async () => {
     usePinnedRoutes({
       "https://public.example.test/large.txt": new Response(
         "x".repeat(300_000),
@@ -182,14 +182,58 @@ describe("coding-tools WEB_FETCH", () => {
       url: "https://public.example.test/large.txt",
     });
 
-    expect(result.success).toBe(true);
-    expect((result.text ?? "").length).toBeLessThanOrEqual(8_012);
-    expect(result.data).toMatchObject({
-      action: "WEB_FETCH",
-      status: 200,
-      kind: "text",
-      truncated: true,
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("safety ceiling");
+    expect(result.text).not.toContain("x".repeat(100));
+  });
+
+  it("preserves the complete response and surrogate pairs", async () => {
+    const text = `${"a".repeat(7_999)}🦊${"b".repeat(100)}`;
+    usePinnedRoutes({
+      "https://public.example.test/emoji.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
     });
+    const result = await runFetch({
+      url: "https://public.example.test/emoji.txt",
+    });
+    expect(result.success).toBe(true);
+    const complete = result.text ?? "";
+    expect(complete.isWellFormed()).toBe(true);
+    expect(complete).toBe(text);
+  });
+
+  it("preserves an emoji in a complete response", async () => {
+    const text = `${"a".repeat(100)}🦊`;
+    usePinnedRoutes({
+      "https://public.example.test/fitting.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/fitting.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe(text);
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes lone surrogates in fetched text", async () => {
+    const text = "a\ud800bc";
+    usePinnedRoutes({
+      "https://public.example.test/lone.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/lone.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("a\ufffdbc");
+    expect(result.text?.isWellFormed()).toBe(true);
   });
 
   it("surfaces timeout-style fetch errors honestly", async () => {
@@ -284,6 +328,14 @@ describe("coding-tools WEB_FETCH", () => {
     expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
   });
 
+  it("removes browser-tokenized and unclosed script/style blocks", () => {
+    expect(
+      htmlToReadableText(
+        "<p>visible</p><script>steal()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>after</p><script>unclosed",
+      ),
+    ).toBe("visible\n\nafter");
+  });
+
   it("degrades invalid numeric entities without throwing and keeps surrounding text", () => {
     // Invalid scalar values must remain literal instead of hard-failing the
     // fetch or introducing an unpaired UTF-16 surrogate into readable text.
@@ -346,5 +398,153 @@ describe("coding-tools WEB_FETCH", () => {
     // needs instead of the turn dying on an io_error.
     expect(result.success).toBe(true);
     expect(result.text).toContain('"price":42');
+  });
+});
+
+describe("coding-tools WEB_FETCH extract bounds", () => {
+  afterEach(() => {
+    __resetWebHttpTestOverrides();
+  });
+
+  it("extracts a valid nested path", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bounded": new Response(
+        JSON.stringify({ a: { b: { c: 123 } } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/bounded",
+      extract: "a.b.c",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("123");
+  });
+
+  it("falls back to full JSON on missing path", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/bounded2": new Response(
+        JSON.stringify({ a: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/bounded2",
+      extract: "a.missing",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
+  });
+
+  it("falls back on empty segment", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/empty-seg": new Response(
+        JSON.stringify({ a: { b: 1 } }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/empty-seg",
+      extract: "a..b",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a"');
+  });
+
+  it("falls back on depth >16", async () => {
+    const deep = Array.from({ length: 17 }, (_, i) => `k${i}`).join(".");
+    usePinnedRoutes({
+      "https://public.example.test/deep": new Response(
+        JSON.stringify({ k0: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/deep",
+      extract: deep,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"k0"');
+  });
+
+  it("falls back on segment >256", async () => {
+    const longSeg = "x".repeat(257);
+    usePinnedRoutes({
+      "https://public.example.test/long-seg": new Response(
+        JSON.stringify({ [longSeg]: 1, a: 1 }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/long-seg",
+      extract: longSeg,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
+  });
+
+  it("falls back on path >1024", async () => {
+    const longPath = "a.".repeat(513);
+    usePinnedRoutes({
+      "https://public.example.test/long-path": new Response(
+        JSON.stringify({ a: 1 }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/long-path",
+      extract: longPath,
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain('"a":1');
+  });
+
+  it("gracefully falls back to raw text on malformed JSON responses without throwing", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/malformed-json": new Response(
+        '{"error": unclosed json string',
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/malformed-json",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe('{"error": unclosed json string');
+  });
+
+  it("gracefully falls back to raw text on non-JSON text starting with brace", async () => {
+    usePinnedRoutes({
+      "https://public.example.test/brace-text": new Response(
+        "{ plain text starting with curly brace",
+        {
+          status: 200,
+          headers: { "content-type": "text/plain" },
+        },
+      ),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/brace-text",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("{ plain text starting with curly brace");
   });
 });

@@ -4,15 +4,19 @@
 
 import type { Service, UUID } from "@elizaos/core";
 import type {
-  BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionBeginRequest,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
   CreateBrowserBridgeCompanionPairingRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
@@ -56,15 +60,14 @@ export interface BrowserBridgeRouteService extends Service {
     request: CreateBrowserBridgeCompanionPairingRequest,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionPairingResponse>;
-  autoPairBrowserCompanion(
-    request: CreateBrowserBridgeCompanionAutoPairRequest,
-    apiBaseUrl: string,
-    ownerEntityId?: UUID | null,
-  ): Promise<BrowserBridgeCompanionAutoPairResponse>;
   revokeBrowserCompanion(
     companionId: string,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionRevokeResponse>;
+  resetBrowserCompanionRevocation(
+    companionId: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
   revokeBrowserCompanionFromCompanion(
     companionId: string,
     pairingToken: string,
@@ -73,9 +76,15 @@ export interface BrowserBridgeRouteService extends Service {
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionSyncResponse>;
+  preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionPreflightResponse>;
   listBrowserSessions(
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession[]>;
@@ -106,7 +115,14 @@ export interface BrowserBridgeRouteService extends Service {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateBrowserBridgeSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
+    ownerEntityId?: UUID | null,
+  ): Promise<LifeOpsBrowserSession>;
+  beginBrowserSessionActionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: BrowserBridgeCompanionSessionBeginRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession>;
   completeBrowserSessionFromCompanion(

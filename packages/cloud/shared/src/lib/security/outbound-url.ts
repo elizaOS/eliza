@@ -2,6 +2,9 @@
  * SSRF guard for cloud-shared outbound fetches and registration-time URL
  * screening: rejects credentials, localhost, and private/reserved IP literals,
  * and resolves+pins DNS at fetch time so rebinding cannot bypass the check.
+ * Hostname lookups ignore AbortSignal, so the DNS await is raced against the
+ * caller's signal and must return on deadline or cancellation rather than
+ * waiting for `lookup()` to settle.
  */
 import type { LookupAddress } from "node:dns";
 import { lookup } from "node:dns/promises";
@@ -184,6 +187,40 @@ function isForbiddenIpv6(address: string): boolean {
   return false;
 }
 
+/** Abort control for fetch-time DNS. `lookup()` itself cannot be cancelled. */
+export interface OutboundUrlResolveOptions {
+  readonly signal?: AbortSignal;
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new DOMException("Aborted", "AbortError");
+}
+
+/**
+ * `node:dns` lookup cannot be cancelled. Race the await so a never-settling
+ * resolution still returns when the caller or hop deadline aborts.
+ */
+function raceWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 export function isForbiddenIpAddress(address: string): boolean {
   const normalized = normalizeHostname(address);
   const family = isIP(normalized);
@@ -270,7 +307,10 @@ export function isSafeRegistrationUrl(value: string | null | undefined): boolean
  * set if any record points at a private/reserved range. Returns every resolved
  * address so callers can both validate and pin a single connection target.
  */
-async function resolveValidatedAddresses(hostname: string): Promise<LookupAddress[]> {
+async function resolveValidatedAddresses(
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<LookupAddress[]> {
   const literalFamily = isIP(hostname);
   if (literalFamily) {
     // IP literals are already screened by validateUrlSyntax (isForbiddenIpAddress),
@@ -280,9 +320,12 @@ async function resolveValidatedAddresses(hostname: string): Promise<LookupAddres
 
   let records: LookupAddress[];
   try {
-    records = await lookup(hostname, { all: true, verbatim: true });
-  } catch {
-    throw new Error("Unable to resolve endpoint hostname");
+    records = await raceWithAbort(lookup(hostname, { all: true, verbatim: true }), signal);
+  } catch (error) {
+    if (signal?.aborted) {
+      throw abortReason(signal);
+    }
+    throw new Error("Unable to resolve endpoint hostname", { cause: error });
   }
 
   if (!records.length) {
@@ -303,13 +346,18 @@ async function resolveValidatedAddresses(hostname: string): Promise<LookupAddres
  * For hostnames, DNS is resolved at call time so rebinding to private ranges
  * cannot bypass creation-time validation.
  */
-export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
+export async function assertSafeOutboundUrl(
+  rawUrl: string,
+  options?: OutboundUrlResolveOptions,
+): Promise<URL> {
+  options?.signal?.throwIfAborted();
   const parsed = validateUrlSyntax(rawUrl);
   const hostname = normalizeHostname(parsed.hostname);
 
   if (!isIP(hostname)) {
-    await resolveValidatedAddresses(hostname);
+    await resolveValidatedAddresses(hostname, options?.signal);
   }
+  options?.signal?.throwIfAborted();
 
   return parsed;
 }
@@ -324,10 +372,13 @@ export async function assertSafeOutboundUrl(rawUrl: string): Promise<URL> {
  */
 export async function resolveSafeOutboundTarget(
   rawUrl: string,
+  options?: OutboundUrlResolveOptions,
 ): Promise<{ url: URL; address: string; family: number }> {
+  options?.signal?.throwIfAborted();
   const parsed = validateUrlSyntax(rawUrl);
   const hostname = normalizeHostname(parsed.hostname);
-  const [pinned] = await resolveValidatedAddresses(hostname);
+  const [pinned] = await resolveValidatedAddresses(hostname, options?.signal);
+  options?.signal?.throwIfAborted();
 
   return { url: parsed, address: pinned.address, family: pinned.family };
 }

@@ -18,9 +18,15 @@ function git(args) {
   return execFileSync("git", args, { encoding: "utf8", maxBuffer: 1 << 30 });
 }
 
+function gitBuffer(args) {
+  return execFileSync("git", args, { maxBuffer: 1 << 30 });
+}
+
 function guideFiles() {
   return git([
     "ls-files",
+    "-t",
+    "--stage",
     "-z",
     "AGENTS.md",
     "CLAUDE.md",
@@ -29,8 +35,16 @@ function guideFiles() {
   ])
     .split("\0")
     .filter(Boolean)
-    .filter((file) => existsSync(file))
-    .filter(shouldCheckGuideFile);
+    .map((entry) => {
+      const match = /^([A-Z?]) \d+ ([0-9a-f]+) \d+\t([\s\S]+)$/.exec(entry);
+      if (!match) throw new Error(`unexpected git ls-files entry: ${entry}`);
+      return {
+        file: match[3],
+        objectId: match[2],
+        skipWorktree: match[1] === "S",
+      };
+    })
+    .filter(({ file }) => shouldCheckGuideFile(file));
 }
 
 export function shouldCheckGuideFile(file) {
@@ -47,15 +61,35 @@ function directoryFor(file) {
   return dir === "." ? "." : dir;
 }
 
+function readGuide(entry) {
+  if (existsSync(entry.file)) return readFileSync(entry.file);
+  if (entry.skipWorktree) return gitBuffer(["show", `:${entry.file}`]);
+  return null;
+}
+
+function guidesEqual(left, right) {
+  const leftExists = existsSync(left.file);
+  const rightExists = existsSync(right.file);
+
+  if (!leftExists && left.skipWorktree && !rightExists && right.skipWorktree) {
+    return left.objectId === right.objectId;
+  }
+
+  const leftBytes = readGuide(left);
+  const rightBytes = readGuide(right);
+  return leftBytes && rightBytes ? leftBytes.equals(rightBytes) : null;
+}
+
 function main() {
   const byDirectory = new Map();
 
-  for (const file of guideFiles()) {
+  for (const guideEntry of guideFiles()) {
+    const { file } = guideEntry;
     const directory = directoryFor(file);
     const entry = byDirectory.get(directory) ?? {};
 
-    if (file.endsWith("AGENTS.md")) entry.agents = file;
-    if (file.endsWith("CLAUDE.md")) entry.claude = file;
+    if (file.endsWith("AGENTS.md")) entry.agents = guideEntry;
+    if (file.endsWith("CLAUDE.md")) entry.claude = guideEntry;
 
     byDirectory.set(directory, entry);
   }
@@ -76,10 +110,24 @@ function main() {
     }
 
     pairs += 1;
-    const agents = readFileSync(entry.agents);
-    const claude = readFileSync(entry.claude);
+    const equal = guidesEqual(entry.agents, entry.claude);
 
-    if (!agents.equals(claude)) {
+    if (equal === null) {
+      const missing = [
+        !existsSync(entry.agents.file) && !entry.agents.skipWorktree
+          ? entry.agents.file
+          : null,
+        !existsSync(entry.claude.file) && !entry.claude.skipWorktree
+          ? entry.claude.file
+          : null,
+      ].filter(Boolean);
+      failures.push(
+        `${directory}: tracked guide missing from working tree: ${missing.join(", ")}`,
+      );
+      continue;
+    }
+
+    if (!equal) {
       failures.push(
         `${directory}: CLAUDE.md and AGENTS.md differ; author CLAUDE.md, then copy it to AGENTS.md`,
       );

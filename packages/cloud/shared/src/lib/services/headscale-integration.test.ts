@@ -114,7 +114,7 @@ describe("Headscale container credentials", () => {
     const fake = {
       getNodeByNameStrict: async (name: string) => {
         calls.push(`lookup:${name}`);
-        return { id: "stale-node-70", name, ipAddresses: ["100.64.0.56"] };
+        return { id: "70", name, ipAddresses: ["100.64.0.56"] };
       },
       deleteNode: async (id: string) => {
         calls.push(`delete:${id}`);
@@ -130,7 +130,7 @@ describe("Headscale container credentials", () => {
       agentName: "Eliza",
     });
 
-    expect(calls).toEqual(["lookup:eliza-11111111-111", "delete:stale-node-70", "create-key"]);
+    expect(calls).toEqual(["lookup:eliza-11111111-111", "delete:70", "create-key"]);
   });
 
   test("reclaimStaleNode=false records the live node instead of deleting it (#16565)", async () => {
@@ -140,7 +140,7 @@ describe("Headscale container credentials", () => {
     const fake = {
       getNodeByNameStrict: async (name: string) => {
         calls.push(`lookup:${name}`);
-        return { id: "live-node-4", name, ipAddresses: ["100.64.0.56"] };
+        return { id: "4", name, ipAddresses: ["100.64.0.56"] };
       },
       deleteNode: async (id: string) => {
         calls.push(`delete:${id}`);
@@ -158,7 +158,71 @@ describe("Headscale container credentials", () => {
     });
 
     expect(calls).toEqual(["lookup:eliza-11111111-111", "create-key"]);
-    expect(prepared.previousNodeId).toBe("live-node-4");
+    expect(prepared.previousNodeId).toBe("4");
+  });
+
+  test("exact preparation proves a stale 1404 node absent before minting a key", async () => {
+    const calls: string[] = [];
+    const fake = {
+      getNodeByNameStrict: async (name: string) => {
+        calls.push(`lookup:${name}`);
+        return { id: "1404", name, ipAddresses: ["100.64.0.56"] };
+      },
+      deleteNode: async (id: string) => {
+        calls.push(`delete:${id}`);
+      },
+      listNodesStrict: async () => {
+        calls.push("list");
+        return [];
+      },
+      createPreAuthKey: async () => {
+        calls.push("create-key");
+        return { key: "replacement-key" };
+      },
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).prepareContainerVPN({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        agentName: "Eliza",
+        requireExactNodeRetirement: true,
+      }),
+    ).resolves.toMatchObject({ preAuthKey: "replacement-key" });
+    expect(calls).toEqual(["lookup:eliza-11111111-111", "delete:1404", "list", "create-key"]);
+  });
+
+  test("exact preparation rejects a swallowed deletion even when the node was concurrently renamed", async () => {
+    let createKeyCalled = false;
+    const fake = {
+      getNodeByNameStrict: async (name: string) => ({
+        id: "1404",
+        name,
+        ipAddresses: ["100.64.0.56"],
+      }),
+      // Models the current client bug where a 500 message containing route id
+      // 1404 is misclassified as an already-gone 404.
+      deleteNode: async () => {},
+      listNodesStrict: async () => [
+        {
+          id: "1404",
+          name: "renamed-after-delete",
+          ipAddresses: ["100.64.0.56"],
+        },
+      ],
+      createPreAuthKey: async () => {
+        createKeyCalled = true;
+        return { key: "must-not-be-created" };
+      },
+    } as unknown as HeadscaleClient;
+
+    await expect(
+      new HeadscaleIntegration(fake).prepareContainerVPN({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        agentName: "Eliza",
+        requireExactNodeRetirement: true,
+      }),
+    ).rejects.toThrow("cannot prove stale Headscale node 1404 retired");
+    expect(createKeyCalled).toBe(false);
   });
 });
 
@@ -177,7 +241,7 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     const fake = {
       getNodeByNameOrSuffixed: async (name: string) => {
         lookups.push(name);
-        return { id: "node-1", name, ipAddresses: ["100.64.0.7"] };
+        return { id: "1", name, ipAddresses: ["100.64.0.7"] };
       },
     } as unknown as HeadscaleClient;
 
@@ -187,9 +251,34 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     );
 
     expect(registration?.ip).toBe("100.64.0.7");
-    expect(registration?.nodeId).toBe("node-1");
+    expect(registration?.nodeId).toBe("1");
+    expect(registration?.rename).toEqual({ outcome: "not-needed" });
     expect(lookups).toEqual([nodeName]);
     expect(nodeName).not.toBe("11111111-1111-4111-8111-111111111111");
+  });
+
+  test("waitForVPNRegistration rejects malformed runtime node identity", async () => {
+    for (const malformedNode of [
+      { id: "", name: nodeName, ipAddresses: ["100.64.0.7"] },
+      { id: "01", name: nodeName, ipAddresses: ["100.64.0.7"] },
+      { id: "18446744073709551616", name: nodeName, ipAddresses: ["100.64.0.7"] },
+      { id: "1", name: nodeName, ipAddresses: ["   "] },
+      { id: "1", name: nodeName, ipAddresses: ["256.64.0.7"] },
+      { id: "1", name: nodeName, ipAddresses: ["127.0.0.1"] },
+      { id: "1", name: nodeName, ipAddresses: ["8.8.8.8"] },
+      { id: "1", name: nodeName, ipAddresses: ["1.64.0.7"] },
+      { id: "1", name: nodeName, ipAddresses: ["192.100.0.7"] },
+      { id: "1", name: nodeName, ipAddresses: ["100.128.0.7"] },
+      { id: "1", name: nodeName, ipAddresses: [42] },
+    ]) {
+      const fake = {
+        getNodeByNameOrSuffixed: async () => malformedNode,
+      } as unknown as HeadscaleClient;
+
+      await expect(
+        new HeadscaleIntegration(fake).waitForVPNRegistration(nodeName, 25),
+      ).resolves.toBeNull();
+    }
   });
 
   test("cleanupContainerVPN deletes the node found by the node name", async () => {
@@ -198,7 +287,7 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     const fake = {
       getNodeByNameStrict: async (name: string) => {
         lookups.push(name);
-        return { id: "node-9", name, ipAddresses: ["100.64.0.7"] };
+        return { id: "9", name, ipAddresses: ["100.64.0.7"] };
       },
       deleteNode: async (id: string) => {
         deletedId = id;
@@ -208,7 +297,7 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
     await new HeadscaleIntegration(fake).cleanupContainerVPN(nodeName);
 
     expect(lookups).toEqual([nodeName]);
-    expect(deletedId).toBe("node-9");
+    expect(deletedId).toBe("9");
   });
 
   test("waitForVPNRegistration skips the excluded live node until its replacement appears (#16565)", async () => {
@@ -226,22 +315,23 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
         polls += 1;
         seenOptions.push(options);
         return polls < 3
-          ? { id: "old-live-node", name, ipAddresses: ["100.64.0.7"] }
-          : { id: "blue-node", name, ipAddresses: ["100.64.0.8"] };
+          ? { id: "41", name, ipAddresses: ["100.64.0.7"] }
+          : { id: "42", name, ipAddresses: ["100.64.0.8"] };
       },
     } as unknown as HeadscaleClient;
 
     const registration = await new HeadscaleIntegration(fake).waitForVPNRegistration(
       nodeName,
       5_000,
-      { excludeNodeId: "old-live-node" },
+      { excludeNodeId: "41" },
     );
 
-    expect(registration?.nodeId).toBe("blue-node");
+    expect(registration?.nodeId).toBe("42");
     expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename).toEqual({ outcome: "not-needed" });
     expect(polls).toBeGreaterThanOrEqual(3);
     // The client lookup must receive the exclusion and the poll-start gate.
-    expect(seenOptions[0]?.excludeNodeId).toBe("old-live-node");
+    expect(seenOptions[0]?.excludeNodeId).toBe("41");
     expect(seenOptions[0]?.createdAfter).toBeInstanceOf(Date);
   });
 
@@ -272,8 +362,8 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
         deleted.push(id);
       },
     } as unknown as HeadscaleClient;
-    await new HeadscaleIntegration(ok).removeVpnNodeById("node-42");
-    expect(deleted).toEqual(["node-42"]);
+    await new HeadscaleIntegration(ok).removeVpnNodeById("42");
+    expect(deleted).toEqual(["42"]);
 
     const failing = {
       deleteNode: async () => {
@@ -281,7 +371,7 @@ describe("Headscale node lookup is keyed on the node name (not the agentId)", ()
       },
     } as unknown as HeadscaleClient;
     await expect(
-      new HeadscaleIntegration(failing).removeVpnNodeById("node-43"),
+      new HeadscaleIntegration(failing).removeVpnNodeById("43"),
     ).resolves.toBeUndefined();
   });
 });
@@ -354,10 +444,11 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
 
     expect(registration?.nodeId).toBe("8");
     expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename).toEqual({ outcome: "succeeded" });
     expect(renames).toEqual([`https://headscale.example/api/v1/node/8/rename/${baseName}`]);
   });
 
-  test("a rejected rename-back never fails the adoption", async () => {
+  test("a 5xx rename-back remains explicitly unresolved without losing adoption", async () => {
     // While the green node still holds the base name Headscale rejects the
     // rename; registration is already secured and must succeed regardless.
     const renames = stubHeadscale(
@@ -374,7 +465,53 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
 
     expect(registration?.nodeId).toBe("8");
     expect(registration?.ip).toBe("100.64.0.8");
+    expect(registration?.rename.outcome).toBe("unresolved");
+    if (registration?.rename.outcome === "unresolved") {
+      expect(registration.rename.cause).toBeInstanceOf(Error);
+      expect((registration.rename.cause as Error).message).toContain("500");
+    }
     expect(renames.length).toBe(1);
+  });
+
+  test("only an observed HTTP 409 proves the expected rename conflict", async () => {
+    const renames = stubHeadscale(
+      [
+        makeNode("3", baseName, "100.64.0.56", new Date(Date.now() - 60 * 60 * 1000)),
+        makeNode("8", `${baseName}-cnpx9uop`, "100.64.0.8", new Date(Date.now() + 60_000)),
+      ],
+      { renameStatus: 409 },
+    );
+
+    const registration = await integration().waitForVPNRegistration(baseName, 5_000, {
+      excludeNodeId: "3",
+    });
+
+    expect(registration?.rename.outcome).toBe("conflict-proven");
+    expect(renames).toHaveLength(1);
+  });
+
+  test("a transport-like rename failure remains unresolved", async () => {
+    const transportFailure = new Error("socket timed out after request write");
+    const fake = {
+      getNodeByNameOrSuffixed: async () => ({
+        id: "8",
+        name: `${baseName}-cnpx9uop`,
+        ipAddresses: ["100.64.0.8"],
+      }),
+      renameNode: async () => {
+        throw transportFailure;
+      },
+    } as unknown as HeadscaleClient;
+
+    const registration = await new HeadscaleIntegration(fake).waitForVPNRegistration(
+      baseName,
+      5_000,
+    );
+
+    expect(registration?.rename).toEqual({
+      outcome: "unresolved",
+      cause: transportFailure,
+    });
   });
 
   test("does not attempt a rename when the node registered under the exact name", async () => {
@@ -383,6 +520,7 @@ describe("waitForVPNRegistration adopts Headscale collision-renamed nodes (real 
     const registration = await integration().waitForVPNRegistration(baseName, 5_000);
 
     expect(registration?.nodeId).toBe("4");
+    expect(registration?.rename).toEqual({ outcome: "not-needed" });
     expect(renames).toEqual([]);
   });
 

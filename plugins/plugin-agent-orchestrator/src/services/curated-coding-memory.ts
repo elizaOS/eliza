@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import { getDefaultRedactPatterns, type IAgentRuntime } from "@elizaos/core";
 import type {
   OrchestratorTaskDocument,
   OrchestratorTaskMessage,
@@ -28,11 +28,6 @@ import type {
 
 export const CURATED_CODING_MEMORY_FILENAME = "NOTES.eliza.md";
 
-const MAX_NOTE_TEXT_CHARS = 280;
-const MAX_NOTE_COUNT_DEFAULT = 40;
-const MAX_FILE_BYTES_DEFAULT = 24_000;
-const MAX_INJECTED_NOTES_DEFAULT = 6;
-const MAX_INJECTED_TOKENS_DEFAULT = 500;
 const LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
 const LOCK_STALE_MS = 10_000;
 const MIN_TOKEN_LENGTH = 3;
@@ -58,10 +53,6 @@ export interface CuratedCodingMemoryNote {
 export interface CuratedCodingMemoryPolicy {
   enabled: boolean;
   injectEnabled: boolean;
-  maxNotes: number;
-  maxFileBytes: number;
-  maxInjectedNotes: number;
-  maxInjectedTokens: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -79,21 +70,6 @@ function settingEnabled(
   return defaultValue;
 }
 
-function numericSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  defaultValue: number,
-): number {
-  const raw = runtime.getSetting?.(key);
-  const parsed =
-    typeof raw === "number"
-      ? raw
-      : typeof raw === "string"
-        ? Number.parseInt(raw, 10)
-        : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
-}
-
 export function curatedCodingMemoryPolicy(
   runtime: IAgentRuntime,
 ): CuratedCodingMemoryPolicy {
@@ -103,26 +79,6 @@ export function curatedCodingMemoryPolicy(
       runtime,
       "ELIZA_CURATED_CODING_MEMORY_INJECT",
       true,
-    ),
-    maxNotes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_NOTES",
-      MAX_NOTE_COUNT_DEFAULT,
-    ),
-    maxFileBytes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_FILE_BYTES",
-      MAX_FILE_BYTES_DEFAULT,
-    ),
-    maxInjectedNotes: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_MAX_INJECTED",
-      MAX_INJECTED_NOTES_DEFAULT,
-    ),
-    maxInjectedTokens: numericSetting(
-      runtime,
-      "ELIZA_CURATED_CODING_MEMORY_TOKEN_BUDGET",
-      MAX_INJECTED_TOKENS_DEFAULT,
     ),
   };
 }
@@ -150,7 +106,11 @@ function latestWorkdir(doc: OrchestratorTaskDocument): string | undefined {
   return (
     doc.task.boundWorkdir ??
     [...doc.sessions]
-      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .sort(
+        (a, b) =>
+          (Number.isFinite(b.lastActivityAt) ? b.lastActivityAt : 0) -
+          (Number.isFinite(a.lastActivityAt) ? a.lastActivityAt : 0),
+      )
       .find((session) => session.workdir)?.workdir
   );
 }
@@ -245,29 +205,70 @@ function provenanceFor(doc: OrchestratorTaskDocument): string[] {
   return values.filter((value): value is string => Boolean(value));
 }
 
-const SECRET_PATTERNS: RegExp[] = [
-  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g,
-  /\bsk-[A-Za-z0-9_-]{20,}\b/g,
-  /\bAKIA[A-Z0-9]{16}\b/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credential)\s*[:=]\s*["']?[^"'\s,;]+/gi,
+/**
+ * Credential shapes come from `@elizaos/core`'s canonical set rather than a
+ * local copy. A second hand-maintained denylist drifts the moment a provider
+ * introduces a format, and a miss here writes a live credential into a notes
+ * file that is later injected as coding context. Unlike core's diagnostic
+ * masking, the whole match is removed: a persisted read-model has no use for
+ * the surviving affixes that make a log line debuggable.
+ */
+const CREDENTIAL_PATTERNS: readonly RegExp[] = getDefaultRedactPatterns()
+  .map((raw) => {
+    const wrapped = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (wrapped) {
+      const flags = wrapped[2].includes("g") ? wrapped[2] : `${wrapped[2]}g`;
+      return new RegExp(wrapped[1], flags);
+    }
+    return new RegExp(raw, "gi");
+  })
+  .filter((pattern): pattern is RegExp => Boolean(pattern));
+
+/** Contact details that are personal data rather than credential shapes. */
+const CONTACT_PATTERNS: readonly RegExp[] = [
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
   /\b(?:\+?\d[\d .()-]{8,}\d)\b/g,
 ];
 
+function redactPrivateKeys(input: string): string {
+  const begin = "-----BEGIN ";
+  const end = "-----END ";
+  const keySuffix = "PRIVATE KEY-----";
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const blockStart = input.indexOf(begin, cursor);
+    if (blockStart < 0) break;
+    const headerEnd = input.indexOf(keySuffix, blockStart + begin.length);
+    if (headerEnd < 0) break;
+    const blockFooter = input.indexOf(end, headerEnd + keySuffix.length);
+    if (blockFooter < 0) break;
+    const footerEnd = input.indexOf(keySuffix, blockFooter + end.length);
+    if (footerEnd < 0) break;
+    fragments.push(input.slice(cursor, blockStart), "[REDACTED]");
+    cursor = footerEnd + keySuffix.length;
+  }
+  fragments.push(input.slice(cursor));
+  return fragments.join("");
+}
+
 export function redactCodingMemoryText(input: string): string {
-  let text = input;
-  for (const pattern of SECRET_PATTERNS) {
+  // Private keys are stripped by index-based scanning, not a `[\s\S]+?`
+  // regex, so an unterminated/huge PEM block can't push this onto the
+  // ReDoS-hardening backlog's radar (core's equivalent pattern is still run
+  // below as a defense-in-depth backstop, but it never sees a real block).
+  let text = redactPrivateKeys(input);
+  for (const pattern of CREDENTIAL_PATTERNS) {
+    text = text.replace(pattern, "[REDACTED]");
+  }
+  for (const pattern of CONTACT_PATTERNS) {
     text = text.replace(pattern, "[REDACTED]");
   }
   return text.replace(/\s+/g, " ").trim();
 }
 
 function boundedNoteText(input: string): string {
-  const redacted = redactCodingMemoryText(input);
-  if (redacted.length <= MAX_NOTE_TEXT_CHARS) return redacted;
-  return `${redacted.slice(0, MAX_NOTE_TEXT_CHARS - 1).trimEnd()}…`;
+  return redactCodingMemoryText(input);
 }
 
 function normalizeNoteKey(text: string): string {
@@ -338,7 +339,7 @@ function extractCandidateText(message: OrchestratorTaskMessage): Array<{
     return [];
   }
   const out: Array<{ source: CodingMemorySource; text: string }> = [];
-  for (const line of message.content.split(/\r?\n/)) {
+  for (const line of (message.content ?? "").split(/\r?\n/)) {
     for (const candidate of CANDIDATE_PATTERNS) {
       // A worker cannot declare a user decision or reviewer finding on
       // someone else's behalf. Reviewer findings must arrive through a user or
@@ -391,7 +392,11 @@ export function harvestCodingMemoryCandidates(
       (message) =>
         message.senderKind === "sub_agent" && message.direction === "stdout",
     )
-    .sort((a, b) => b.timestamp - a.timestamp)[0]?.id;
+    .sort(
+      (a, b) =>
+        (Number.isFinite(b.timestamp) ? b.timestamp : 0) -
+        (Number.isFinite(a.timestamp) ? a.timestamp : 0),
+    )[0]?.id;
   const candidates = doc.messages.flatMap((message) =>
     extractCandidateText(message).filter((candidate) => {
       const workerCompletionOnly =
@@ -509,9 +514,9 @@ function mergeNotes(
     }
     merged.push(note);
   }
+  void policy;
   return merged
     .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-    .slice(-policy.maxNotes)
     .reverse();
 }
 
@@ -519,14 +524,8 @@ function enforceByteBound(
   notes: CuratedCodingMemoryNote[],
   policy: CuratedCodingMemoryPolicy,
 ): CuratedCodingMemoryNote[] {
-  let bounded = [...notes];
-  while (
-    bounded.length > 0 &&
-    Buffer.byteLength(renderNotes(bounded), "utf8") > policy.maxFileBytes
-  ) {
-    bounded = bounded.slice(0, -1);
-  }
-  return bounded;
+  void policy;
+  return notes;
 }
 
 async function readExistingNotes(
@@ -713,26 +712,23 @@ export class CuratedCodingMemoryService {
         score: jaccard(tokens(note.text), queryTokens),
       }))
       .filter((entry) => entry.score > 0)
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          b.note.confidence - a.note.confidence ||
-          b.note.timestamp.localeCompare(a.note.timestamp),
-      );
-    const selected: CuratedCodingMemoryNote[] = [];
-    let tokenEstimate = 0;
-    for (const { note } of ranked) {
-      if (selected.length >= policy.maxInjectedNotes) break;
-      // A conservative character-based estimate avoids pulling in a tokenizer
-      // dependency while still enforcing an explicit prompt token budget.
-      const noteTokens = Math.ceil(
-        (note.text.length + note.provenance.join(", ").length + 32) / 3,
-      );
-      if (tokenEstimate + noteTokens > policy.maxInjectedTokens) continue;
-      selected.push(note);
-      tokenEstimate += noteTokens;
-    }
-    return selected;
+      .sort((a, b) => {
+        const aScore = Number.isFinite(a.score) ? a.score : 0;
+        const bScore = Number.isFinite(b.score) ? b.score : 0;
+        const scoreDiff = bScore - aScore;
+        if (scoreDiff !== 0) return scoreDiff;
+        const aConf = Number.isFinite(a.note.confidence)
+          ? a.note.confidence
+          : 0;
+        const bConf = Number.isFinite(b.note.confidence)
+          ? b.note.confidence
+          : 0;
+        const confDiff = bConf - aConf;
+        if (confDiff !== 0) return confDiff;
+        return b.note.timestamp.localeCompare(a.note.timestamp);
+      });
+    void policy;
+    return ranked.map(({ note }) => note);
   }
 
   private enqueueWrite(

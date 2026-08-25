@@ -21,14 +21,14 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
   const chipLabel = hardware.appleSilicon ? "Apple Silicon" : hardware.arch;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-sm border border-border bg-card/60 px-2 py-1.5 text-xs">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-sm border border-border bg-card/60 p-2  text-xs">
       <div
-        className="flex min-w-0 items-center gap-1.5 rounded-sm bg-bg/60 px-2 py-1"
+        className="flex min-w-0 items-center gap-1.5 rounded-sm bg-bg/60 p-2"
         title={t("hardwarebadge.cpuMemoryTitle", {
           defaultValue: "CPU and memory",
         })}
       >
-        <Cpu className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+        <Cpu className="size-3.5 shrink-0 text-muted" aria-hidden />
         <span className="truncate font-medium">
           {hardware.totalRamGb.toFixed(0)} GB · {hardware.cpuCores}c ·{" "}
           {chipLabel}
@@ -38,7 +38,7 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
         className="flex min-w-0 items-center gap-1.5 rounded-sm bg-bg/60 px-2 py-1"
         title={t("hardwarebadge.gpuTitle", { defaultValue: "GPU" })}
       >
-        <HardDrive className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+        <HardDrive className="size-3.5 shrink-0 text-muted" aria-hidden />
         <span className="truncate font-medium">{gpuText}</span>
       </div>
       <div
@@ -47,7 +47,7 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
           defaultValue: "Recommended preset",
         })}
       >
-        <Gauge className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
+        <Gauge className="size-3.5 shrink-0 text-muted" aria-hidden />
         <span className="font-medium">
           {bucketLabel(hardware.recommendedBucket)}
         </span>
@@ -59,7 +59,7 @@ export function HardwareBadge({ hardware }: HardwareBadgeProps) {
             defaultValue: "Install plugin-local-ai for full GPU detection",
           })}
         >
-          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+          <AlertTriangle className="size-3.5" aria-hidden />
           <span>
             {t("hardwarebadge.gpuProbeLimited", {
               defaultValue: "GPU probe limited",

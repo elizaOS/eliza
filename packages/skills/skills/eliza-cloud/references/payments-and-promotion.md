@@ -267,12 +267,15 @@ Payout requests use redemptions:
   "appId": "app_uuid",
   "pointsAmount": 500,
   "network": "base",
+  "asset": "eliza",
   "payoutAddress": "0x0000000000000000000000000000000000000001",
   "idempotencyKey": "3f9a1c2e-4b5d-4789-abcd-ef0123456789"
 }
 ```
 
 Supported payout networks are `base`, `bsc`/`bnb`, `ethereum`, and `solana`.
+Send `asset: "eliza"` explicitly for the elizaOS-token quote shown above.
+Legacy raw omission defaults to USDC and must not be paired with that quote.
 The quote fixes the USD value at request time; admin review and settlement send
 the equivalent elizaOS token amount for that fixed USD value.
 

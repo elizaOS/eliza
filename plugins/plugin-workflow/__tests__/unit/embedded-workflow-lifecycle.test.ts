@@ -73,8 +73,18 @@ async function harness() {
       idempotency_key text,
       PRIMARY KEY (agent_id, id)
     );
+    CREATE TABLE workflow.embedded_tags (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      name text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      PRIMARY KEY (agent_id, id),
+      UNIQUE (agent_id, name)
+    );
   `);
   const tasks: Task[] = [];
+  const emittedEvents: Array<{ type: string; payload: unknown }> = [];
   const runtime = {
     agentId: '00000000-0000-4000-8000-000000000001' as UUID,
     db: drizzle(client, { schema }),
@@ -90,13 +100,16 @@ async function harness() {
       const index = tasks.findIndex((task) => task.id === id);
       if (index >= 0) tasks.splice(index, 1);
     },
-    emitEvent: async () => {},
+    emitEvent: async (type: string, payload: unknown) => {
+      emittedEvents.push({ type, payload });
+    },
   } as unknown as IAgentRuntime;
   return {
     service: await EmbeddedWorkflowService.start(runtime),
     tasks,
     client,
     runtime,
+    emittedEvents,
   };
 }
 
@@ -105,6 +118,29 @@ afterEach(async () => {
 });
 
 describe('embedded native workflow lifecycle', () => {
+  test('gets or creates one durable tenant tag across duplicates and restart', async () => {
+    const { service, runtime } = await harness();
+
+    await expect(service.getOrCreateTag('   ')).rejects.toMatchObject({ statusCode: 400 });
+
+    const [first, duplicate] = await Promise.all([
+      service.getOrCreateTag(' scenario-owner '),
+      service.getOrCreateTag('scenario-owner'),
+    ]);
+    expect(duplicate).toEqual(first);
+    expect((await service.listTags()).data).toEqual([first]);
+
+    const restarted = new EmbeddedWorkflowService(runtime);
+    expect(await restarted.getOrCreateTag('scenario-owner')).toEqual(first);
+
+    const workflow = await service.createWorkflow({ ...definition('Tagged'), id: 'tagged' });
+    await expect(service.updateWorkflowTags(workflow.id, ['missing-tag'])).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(await service.updateWorkflowTags(workflow.id, [first.id])).toEqual([first]);
+    expect((await service.getWorkflow(workflow.id)).tags).toEqual([first]);
+  });
+
   test('snapshots required fields before reads or persistence', async () => {
     const { service } = await harness();
     await expect(
@@ -342,7 +378,7 @@ describe('embedded native workflow lifecycle', () => {
   }, 15_000);
 
   test('persists authoritative pending approval details from Smithers events', async () => {
-    const { service, client, runtime } = await harness();
+    const { service, client, runtime, emittedEvents } = await harness();
     const workflow = await service.createWorkflow({
       ...definition('Approval'),
       id: 'approval',
@@ -360,6 +396,7 @@ describe('embedded native workflow lifecycle', () => {
       input: {},
       events: [],
       approvals: [],
+      triggerChainDepth: 3,
     };
     await client.query(
       `INSERT INTO workflow.embedded_executions
@@ -418,5 +455,9 @@ describe('embedded native workflow lifecycle', () => {
         requestedAt: '2026-08-16T00:00:01.000Z',
       },
     ]);
+    expect(emittedEvents.at(-1)).toMatchObject({
+      type: 'workflow_run_event',
+      payload: { triggerChainDepth: 3 },
+    });
   }, 15_000);
 });

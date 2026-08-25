@@ -111,6 +111,7 @@ function reminderRecord(id: string, title: string): LifeOpsDefinitionRecord {
     cadence: { kind: "unscheduled" },
     windowPolicy: { timezone: "UTC", windows: [] },
     progressionRule: { kind: "manual" },
+    checkInPolicy: null,
     websiteAccess: null,
     reminderPlanId: null,
     goalId: null,

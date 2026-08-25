@@ -136,7 +136,7 @@ export function MyRuntimesSection({
                       data-testid={`runtime-${rt.id}-active`}
                       className="flex shrink-0 items-center gap-1 text-xs font-semibold text-accent"
                     >
-                      <Check className="h-3.5 w-3.5" aria-hidden /> Active
+                      <Check className="size-3.5" aria-hidden /> Active
                     </span>
                   ) : (
                     <Button

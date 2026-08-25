@@ -100,7 +100,7 @@ function normalizePackageNames(
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,/)
+      ? value.split(/\s{0,256}\|\|\s{0,256}|,/)
       : [];
   const normalized = values
     .filter((item): item is string => typeof item === "string")
@@ -188,7 +188,6 @@ async function resolveAppBlockPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage = getMessageText(args.message).trim();

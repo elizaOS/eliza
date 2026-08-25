@@ -60,6 +60,11 @@ function notesService(ctx: ScenarioContext): NotesService | null {
 export default scenario({
   id: "deterministic-notes-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic Notes CRUD through the shared durable service",
   domain: "notes",
   status: "active",

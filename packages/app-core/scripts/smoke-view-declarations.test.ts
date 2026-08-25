@@ -43,9 +43,18 @@ describe("smoke view declaration parity (#15791)", () => {
     }
   });
 
-  it("declares the canonical Notes and Calendar views used by the visual audit", () => {
+  it("declares the canonical Cloud, Notes, and Calendar views used by the visual audit", () => {
     expect(smokeViewDeclarations).toEqual(
       expect.arrayContaining([
+        [
+          "cloud",
+          "Cloud",
+          "plugin-elizacloud",
+          "/cloud",
+          "CloudView",
+          "gui",
+          { capabilities: ["agent-surface"] },
+        ],
         ["notes", "Notes", "plugin-notes", "/notes", "NotesView"],
         [
           "calendar",

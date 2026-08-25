@@ -50,6 +50,8 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
     CRITICAL: {},
   },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 
 mock.module("@/lib/auth/app-key-scope", () => ({

@@ -13,6 +13,7 @@ import {
   releaseTelegramPollerToken,
 } from "./poller-lock";
 import { TelegramService } from "./service";
+import { compareMessageConnectorTargets } from "./service.js";
 
 function createRuntime() {
   const runtime = {
@@ -160,6 +161,34 @@ describe("Telegram message connector adapter", () => {
       undefined,
       undefined,
     );
+  });
+
+  it("rejects sends to an unrecognized accountId instead of falling back to the default bot", async () => {
+    const runtime = createRuntime();
+    const managerA = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const managerB = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const service = createTelegramService({
+      bot: {},
+      messageManager: managerA,
+      defaultAccountId: "acct-a",
+      accountStates: new Map([
+        ["acct-a", { accountId: "acct-a", messageManager: managerA, bot: {} }],
+        ["acct-b", { accountId: "acct-b", messageManager: managerB, bot: {} }],
+      ]),
+    });
+
+    await expect(
+      service.handleSendMessage(
+        runtime,
+        { source: "telegram", accountId: "acct-ghost", channelId: "-100123" },
+        { text: "hello" },
+      ),
+    ).rejects.toThrow(
+      "Telegram account acct-ghost is not configured or active",
+    );
+
+    expect(managerA.sendMessage).not.toHaveBeenCalled();
+    expect(managerB.sendMessage).not.toHaveBeenCalled();
   });
 
   it("rejects sends without a resolvable Telegram target", async () => {
@@ -443,28 +472,36 @@ describe("Telegram message connector adapter", () => {
           account,
           bot: fakeBot,
           messageManager: { sendMessage: vi.fn() },
+          wiring: {
+            commands: false,
+            poller: false,
+            handlers: false,
+            shutdownHooks: false,
+          },
         };
       });
 
-    const service = await TelegramService.start(runtime);
+    try {
+      const service = await TelegramService.start(runtime);
 
-    expect(createAccountRuntime).toHaveBeenCalledTimes(1);
-    expect(createAccountRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({ accountId: "acct-b", botToken: "token-b" }),
-    );
-    expect(initializeBot).toHaveBeenCalledTimes(1);
-    expect(
-      Array.from(
-        (
-          service as TelegramService & {
-            accountStates: Map<string, unknown>;
-          }
-        ).accountStates.keys(),
-      ),
-    ).toEqual(["acct-b"]);
-
-    initializeBot.mockRestore();
-    createAccountRuntime.mockRestore();
+      expect(createAccountRuntime).toHaveBeenCalledTimes(1);
+      expect(createAccountRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: "acct-b", botToken: "token-b" }),
+      );
+      expect(initializeBot).toHaveBeenCalledTimes(1);
+      expect(
+        Array.from(
+          (
+            service as TelegramService & {
+              accountStates: Map<string, unknown>;
+            }
+          ).accountStates.keys(),
+        ),
+      ).toEqual(["acct-b"]);
+    } finally {
+      initializeBot.mockRestore();
+      createAccountRuntime.mockRestore();
+    }
   });
 
   it("does not launch the full poller when standalone mode owns Telegram", async () => {
@@ -573,5 +610,45 @@ describe("Telegram message connector adapter", () => {
     await service.stop();
 
     expect(getTelegramPollerClaim("teardown-token")).toBeUndefined();
+  });
+
+  it("sorts deduplicated connector targets safely when score contains NaN", () => {
+    const targets = [
+      {
+        label: "t-nan",
+        score: NaN,
+        target: { source: "telegram", channelId: "123" },
+      },
+      {
+        label: "t-valid",
+        score: 0.9,
+        target: { source: "telegram", channelId: "456" },
+      },
+    ] as unknown as import("@elizaos/core").MessageConnectorTarget[];
+
+    targets.sort(compareMessageConnectorTargets);
+
+    expect((targets[0] as unknown as { label: string }).label).toBe("t-valid");
+    expect((targets[1] as unknown as { label: string }).label).toBe("t-nan");
+  });
+
+  it("tie-breaks equal-score connector targets by label deterministically", () => {
+    const targets = [
+      {
+        label: "z-label",
+        score: 0.5,
+        target: { source: "telegram", channelId: "123" },
+      },
+      {
+        label: "a-label",
+        score: 0.5,
+        target: { source: "telegram", channelId: "456" },
+      },
+    ] as unknown as import("@elizaos/core").MessageConnectorTarget[];
+
+    targets.sort(compareMessageConnectorTargets);
+
+    expect((targets[0] as unknown as { label: string }).label).toBe("a-label");
+    expect((targets[1] as unknown as { label: string }).label).toBe("z-label");
   });
 });

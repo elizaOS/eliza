@@ -34,9 +34,9 @@ const LEGACY_WORKER_BODY_RE = new RegExp(
   ["not_yet_migrated", ["Not", "implemented on Workers"].join(" ")].join("|"),
 );
 const routerSrc = readFileSync(ROUTER, "utf8");
-const generatedRoutes = [
-  ...routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g),
-].map((m) => m[1]);
+const generatedRoutes = [...routerSrc.matchAll(/^ {4}path: "([^"]+)",$/gm)].map(
+  (m) => m[1],
+);
 const { files, entries } = await collectRouteEntries(API_ROOT);
 const expectedMountedRoutes = entries.map((entry) => entry.path);
 

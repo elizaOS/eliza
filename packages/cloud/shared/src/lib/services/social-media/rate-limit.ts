@@ -39,6 +39,45 @@ const PLATFORM_RATE_LIMITS: Record<
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Upper bound on how long a single `withRetry` attempt will hold the caller
+ * waiting on a provider-supplied `Retry-After`. Both bounds are load-bearing,
+ * and both are reachable from a response header we do not control:
+ *
+ * - **No upper bound** parks the publishing worker for as long as the provider
+ *   asks. `Retry-After: 86400` is legal HTTP and pins one attempt for 24h; with
+ *   the default `maxRetries = 3` that is four days on one open request.
+ * - **`setTimeout` coerces any delay above 2^31-1 ms to 1ms** (Node/Bun emit
+ *   `TimeoutOverflowWarning`), so an unclamped wait *inverts* the backoff: the
+ *   larger the pause the provider asks for, the faster we retry it.
+ *   `Retry-After: 999999999` exhausts the whole retry ladder in milliseconds.
+ *   This cap is well below 2^31-1, so no wait computed here can reach that
+ *   coercion.
+ * - **No lower bound** lets `Retry-After: -1` reach `setTimeout` as a negative
+ *   delay (`TimeoutNegativeWarning`), which it also coerces to 1ms.
+ *
+ * Not reusing `PROVIDER_MAX_BACKOFF_DELAY_MS` (8s, `lib/providers/_http.ts`):
+ * that constant is exported so the stale-reservation sweep can derive its grace
+ * window from the *LLM provider* ladder, and 8s is far below what social
+ * platforms legitimately ask for. The clamp shape here is the same as that
+ * module's `computeBackoffMs`.
+ */
+export const MAX_RATE_LIMIT_WAIT_MS = 60_000;
+
+/**
+ * Keep a retry wait inside `[0, MAX_RATE_LIMIT_WAIT_MS]` before it reaches
+ * `setTimeout`. A non-finite wait clamps to the maximum rather than to zero, so
+ * a malformed value slows us down instead of turning into a retry storm.
+ *
+ * The value parsed off the header is deliberately NOT clamped at the source: it
+ * is still reported verbatim on the typed `RateLimitError` so callers can
+ * schedule against what the provider actually said (see #20116).
+ */
+export function clampRateLimitWaitMs(waitMs: number): number {
+  if (!Number.isFinite(waitMs)) return MAX_RATE_LIMIT_WAIT_MS;
+  return Math.min(Math.max(waitMs, 0), MAX_RATE_LIMIT_WAIT_MS);
+}
+
 function parseRetryAfter(response: Response): number | undefined {
   const header = response.headers.get("retry-after");
   if (!header) return undefined;
@@ -77,7 +116,7 @@ export async function withRetry<T>(
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
-        const waitMs = retryAfter ?? baseDelayMs * 2 ** attempt;
+        const waitMs = clampRateLimitWaitMs(retryAfter ?? baseDelayMs * 2 ** attempt);
 
         if (attempt < maxRetries) {
           logger.warn(
@@ -110,7 +149,7 @@ export async function withRetry<T>(
       if ((error as RateLimitError).rateLimited) throw error;
 
       if (attempt < maxRetries) {
-        const delayMs = baseDelayMs * 2 ** attempt;
+        const delayMs = clampRateLimitWaitMs(baseDelayMs * 2 ** attempt);
         logger.warn(`[${platform}] Request failed, retrying in ${delayMs}ms: ${lastError.message}`);
         await sleep(delayMs);
       }

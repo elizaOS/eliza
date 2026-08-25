@@ -349,6 +349,23 @@ describe("parseTransactionsCsv", () => {
     }
   });
 
+  it("classifies a card descriptor with adversarial separator whitespace", () => {
+    const headerCell = `Credit${"\t".repeat(100_000)}Card Amount`;
+    const result = parseTransactionsCsv(
+      `Date,Payee,${headerCell}\n2026-01-15,Coffee,-4.50\n2026-01-16,Refund,10.00\n`,
+    );
+    expect(result.errors).toEqual([]);
+    expect(
+      result.transactions.map(({ direction, amountUsd }) => ({
+        direction,
+        amountUsd,
+      })),
+    ).toEqual([
+      { direction: "debit", amountUsd: 4.5 },
+      { direction: "credit", amountUsd: 10 },
+    ]);
+  });
+
   it("preserves an explicit direction outside a card descriptor", () => {
     const cases = [
       ["Credit Card Debit Amount", "debit"],

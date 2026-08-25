@@ -1,3 +1,4 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
@@ -9,6 +10,12 @@ import type {
 } from "./lifeops-schedule-sync-contracts.js";
 
 const LIFEOPS_SCHEDULE_REQUEST_TIMEOUT_MS = 20_000;
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
 
 export class LifeOpsScheduleSyncClientError extends Error {
   constructor(
@@ -70,7 +77,7 @@ export function resolveLifeOpsScheduleSyncConfig(
     return {
       configured: true,
       mode: "remote",
-      baseUrl: remoteApiBase.replace(/\/+$/, ""),
+      baseUrl: stripTrailingSlashes(remoteApiBase),
       accessToken:
         normalizeLifeOpsScheduleSyncSecret(config.remoteAccessToken) ??
         normalizeLifeOpsScheduleSyncSecret(process.env.ELIZA_REMOTE_ACCESS_TOKEN),
@@ -118,7 +125,7 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
         };
         detail = parsed.message ?? parsed.error ?? trimmed;
       } catch {
-        detail = trimmed.slice(0, 200);
+        detail = truncateWellFormed(toWellFormedUnicode(trimmed), 200);
       }
     }
     throw new LifeOpsScheduleSyncClientError(response.status, detail);

@@ -9,7 +9,13 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  type AcpJsonRpcMessage,
+  type AcpTerminalFailure,
+  type ApprovalPreset,
+  readAcpTerminalFailure,
+} from "./types.js";
 
 export type NativeAcpEventCallback = (
   event: AcpJsonRpcMessage,
@@ -98,6 +104,7 @@ export type NativeAcpSessionClaim = {
 
 export type NativeAcpPromptResult = {
   stopReason: string;
+  terminalFailure?: AcpTerminalFailure;
 };
 
 type JsonRpcId = string | number | null;
@@ -283,6 +290,30 @@ export class NativeAcpClient {
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
+    const modes = asRecord(result?.modes);
+    const advertisedModes = modes?.availableModes;
+    const availableModes = Array.isArray(advertisedModes)
+      ? advertisedModes
+          .map((mode) =>
+            mode && typeof mode === "object"
+              ? stringValue((mode as Record<string, unknown>).id)
+              : undefined,
+          )
+          .filter((mode): mode is string => Boolean(mode))
+      : [];
+    const requestedMode =
+      this.opts.approvalPreset === "autonomous" ||
+      this.opts.approvalPreset === "permissive"
+        ? "bypassPermissions"
+        : this.opts.approvalPreset === "readonly"
+          ? "plan"
+          : "dontAsk";
+    if (availableModes.includes(requestedMode)) {
+      await this.request("session/set_mode", {
+        sessionId,
+        modeId: requestedMode,
+      });
+    }
     return {
       sessionId,
       agentSessionId: extractAgentSessionId(result?._meta),
@@ -307,8 +338,10 @@ export class NativeAcpClient {
       },
     ).then((value) => {
       const result = asRecord(value);
+      const terminalFailure = readAcpTerminalFailure(result);
       return {
         stopReason: stringValue(result?.stopReason) ?? "end_turn",
+        ...(terminalFailure ? { terminalFailure } : {}),
       };
     });
     this.activePrompts.set(sessionId, prompt);
@@ -658,18 +691,12 @@ export class NativeAcpClient {
       });
     });
     const capture = (chunk: Buffer) => {
+      if (record.truncated) return;
       record.output += chunk.toString("utf8");
       if (Buffer.byteLength(record.output, "utf8") > record.limit) {
         record.truncated = true;
-        // Keep the last `limit` BYTES, not characters. `String.slice(-limit)`
-        // keeps `limit` CHARACTERS, so multi-byte UTF-8 output could exceed the
-        // byte budget by up to 4×. Slice the encoded buffer to the last `limit`
-        // bytes, then drop any leading UTF-8 continuation bytes so we decode on
-        // a character boundary.
-        const tail = Buffer.from(record.output, "utf8").subarray(-record.limit);
-        let start = 0;
-        while (start < tail.length && (tail[start] & 0xc0) === 0x80) start += 1;
-        record.output = tail.subarray(start).toString("utf8");
+        // Never expose a prefix or tail as if it were the complete command result.
+        record.output = "";
       }
     };
     proc.stdout.on("data", capture);
@@ -681,9 +708,14 @@ export class NativeAcpClient {
 
   private terminalOutput(params: Record<string, unknown> | undefined) {
     const terminal = this.requireTerminal(stringValue(params?.terminalId));
+    if (terminal.truncated) {
+      throw new Error(
+        `Terminal output exceeded the ${terminal.limit}-byte complete-capture safety limit; no partial result is available`,
+      );
+    }
     return {
       output: terminal.output,
-      truncated: terminal.truncated,
+      truncated: false,
       ...(terminal.exitCode !== undefined || terminal.signal !== undefined
         ? {
             exitStatus: {
@@ -985,15 +1017,16 @@ function jsonRpcError(error: unknown): Error {
   return new AcpRequestError(message, code, data);
 }
 
-function compactJson(value: unknown): string | undefined {
+export function compactJson(value: unknown): string | undefined {
   try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) {
+    const raw = JSON.stringify(value);
+    if (raw === undefined) {
       return undefined;
     }
+    const serialized = toWellFormedUnicode(raw);
     const limit = 2000;
     return serialized.length > limit
-      ? `${serialized.slice(0, limit)}…`
+      ? `${truncateWellFormed(serialized, limit)}…`
       : serialized;
   } catch {
     // error-policy:J3 untrusted-input sanitizing — an unserializable diagnostic

@@ -30,6 +30,7 @@ class MockStripeCustomers implements StripeCustomerProvider {
   retrieveCalls = 0;
   createDelayMs = 0;
   failSearchOnce = false;
+  searchFailureReason = "search unavailable";
   throwAfterCreate = false;
   searchOverride?: (
     attemptId: string,
@@ -41,7 +42,7 @@ class MockStripeCustomers implements StripeCustomerProvider {
   async searchByAttemptId(attemptId: string): Promise<StripeCustomerCandidate[]> {
     if (this.failSearchOnce) {
       this.failSearchOnce = false;
-      throw new Error("search unavailable");
+      throw new Error(this.searchFailureReason);
     }
     if (this.searchOverride) return await this.searchOverride(attemptId);
     return this.candidates.filter(
@@ -213,6 +214,28 @@ describe("Stripe Customer durable authority", () => {
     const recovered = await service.ensure({ organizationId, callerIntent: "credit_checkout" });
     expect(recovered).toBe(provider.candidates[0]?.id);
     expect(provider.createCalls).toBe(1);
+  });
+
+  test("bounds and sanitizes persisted provider ambiguity reasons", async () => {
+    const fittingPair = `${"a".repeat(498)}💀`;
+    const cases = [
+      { reason: fittingPair, expected: fittingPair },
+      { reason: `${"b".repeat(499)}💀`, expected: "b".repeat(499) },
+      { reason: `${"c".repeat(499)}\uD83D`, expected: `${"c".repeat(499)}\uFFFD` },
+    ];
+
+    for (const { reason, expected } of cases) {
+      const organizationId = await organization();
+      const provider = new MockStripeCustomers();
+      provider.failSearchOnce = true;
+      provider.searchFailureReason = reason;
+      const service = new AuthorityService(provider);
+
+      await expect(
+        service.ensure({ organizationId, callerIntent: "payment_method" }),
+      ).rejects.toThrow();
+      expect((await rows(organizationId))[0]?.ambiguous_reason).toBe(expected);
+    }
   });
 
   test("reclaims a stale lease but not a live lease", async () => {

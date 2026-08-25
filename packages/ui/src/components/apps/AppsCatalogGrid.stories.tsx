@@ -1,13 +1,12 @@
 /**
- * Storybook stories for `AppsCatalogGrid`, wrapped in a stub `AppContext`, across
- * populated, loading, error, and search-filtered states.
+ * Storybook stories for `AppsCatalogGrid`, wrapped in the shared
+ * MockAppProvider, across populated, loading, error, and search-filtered
+ * states.
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { ReactNode } from "react";
 import type { RegistryAppInfo } from "../../api";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { AppsCatalogGrid } from "./AppsCatalogGrid";
 
 function makeApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
@@ -83,20 +82,6 @@ const sampleApps: RegistryAppInfo[] = [
   }),
 ];
 
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") return (k: string) => k;
-    if (prop === "uiLanguage") return "en";
-    return () => {};
-  },
-});
-
-function AppContextDecorator({ children }: { children: ReactNode }) {
-  return (
-    <AppContext.Provider value={mockAppContext}>{children}</AppContext.Provider>
-  );
-}
-
 const meta = {
   title: "Apps/AppsCatalogGrid",
   component: AppsCatalogGrid,
@@ -104,11 +89,11 @@ const meta = {
   parameters: { layout: "padded" },
   decorators: [
     (Story) => (
-      <AppContextDecorator>
+      <MockAppProvider>
         <div style={{ minWidth: 960 }}>
           <Story />
         </div>
-      </AppContextDecorator>
+      </MockAppProvider>
     ),
   ],
   args: {

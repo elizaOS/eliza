@@ -11,11 +11,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
 const PROCESSING_TTL_MS = 120_000;
 const DELIVERY_TTL_MS = 30 * 24 * 60 * 60_000;
-const MESSAGE_ID_RE = /^\d{1,32}$/;
+const MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/;
+const PROVIDER_MESSAGE_ID_RE = /^\d{1,32}$/;
 
 type DeliveryState = "uncertain" | "delivered";
 type DeliveryOperation =
   | "read"
+  | "read_receipt"
   | "claim_processing"
   | "release_processing"
   | "prepare_plan"
@@ -37,6 +39,12 @@ interface DeliveryRequest {
   chunkDigests?: string[];
   chunkIndex?: number;
   chunkDigest?: string;
+  providerMessageId?: string;
+}
+
+interface DeliveryReceipt {
+  acceptedAt: string;
+  providerMessageIds: string[];
 }
 
 const CHUNK_DIGEST_RE = /^[0-9a-f]{64}$/;
@@ -54,6 +62,7 @@ function isDeliveryRequest(value: unknown): value is DeliveryRequest {
   const operation = candidate.operation;
   if (
     operation === "read" ||
+    operation === "read_receipt" ||
     operation === "claim_processing" ||
     operation === "release_processing" ||
     operation === "mark_uncertain" ||
@@ -70,7 +79,7 @@ function isDeliveryRequest(value: unknown): value is DeliveryRequest {
       )
     );
   }
-  return (
+  const validChunkOperation =
     (operation === "read_chunk" ||
       operation === "claim_chunk" ||
       operation === "release_chunk" ||
@@ -80,7 +89,13 @@ function isDeliveryRequest(value: unknown): value is DeliveryRequest {
     candidate.chunkIndex >= 0 &&
     candidate.chunkIndex < MAX_REPLY_CHUNKS &&
     typeof candidate.chunkDigest === "string" &&
-    CHUNK_DIGEST_RE.test(candidate.chunkDigest)
+    CHUNK_DIGEST_RE.test(candidate.chunkDigest);
+  if (!validChunkOperation) return false;
+  return (
+    operation !== "mark_chunk_delivered" ||
+    candidate.providerMessageId === undefined ||
+    (typeof candidate.providerMessageId === "string" &&
+      PROVIDER_MESSAGE_ID_RE.test(candidate.providerMessageId))
   );
 }
 
@@ -90,6 +105,10 @@ function processingKey(messageId: string): string {
 
 function deliveryKey(messageId: string): string {
   return `delivery:${messageId}`;
+}
+
+function receiptKey(messageId: string): string {
+  return `receipt:${messageId}`;
 }
 
 function planKey(messageId: string): string {
@@ -153,6 +172,14 @@ export class PersonalTelegramDelivery {
     if (input.operation === "read") {
       const state = await this.readExpiring<DeliveryState>(deliveryStorageKey);
       return Response.json({ state });
+    }
+    if (input.operation === "read_receipt") {
+      const receipt = await this.readExpiring<DeliveryReceipt>(
+        receiptKey(input.messageId),
+      );
+      return Response.json(
+        receipt ?? { acceptedAt: null, providerMessageIds: [] },
+      );
     }
     if (input.operation === "claim_processing") {
       const existing = await this.readExpiring<boolean>(processingStorageKey);
@@ -222,10 +249,33 @@ export class PersonalTelegramDelivery {
         return Response.json({ claimed: true });
       }
       const expiresAt = Date.now() + DELIVERY_TTL_MS;
-      await this.state.storage.put(storageKey, {
+      const delivered = {
         value: "delivered",
         expiresAt,
-      } satisfies ExpiringState<DeliveryState>);
+      } satisfies ExpiringState<DeliveryState>;
+      if (input.providerMessageId) {
+        const receiptStorageKey = receiptKey(input.messageId);
+        const existingReceipt =
+          await this.readExpiring<DeliveryReceipt>(receiptStorageKey);
+        const receipt = {
+          value: {
+            acceptedAt: existingReceipt?.acceptedAt ?? new Date().toISOString(),
+            providerMessageIds: Array.from(
+              new Set([
+                ...(existingReceipt?.providerMessageIds ?? []),
+                input.providerMessageId,
+              ]),
+            ),
+          },
+          expiresAt,
+        } satisfies ExpiringState<DeliveryReceipt>;
+        await this.state.storage.put({
+          [storageKey]: delivered,
+          [receiptStorageKey]: receipt,
+        });
+      } else {
+        await this.state.storage.put(storageKey, delivered);
+      }
       await this.scheduleCleanup(expiresAt);
       return Response.json({ delivered: true });
     }

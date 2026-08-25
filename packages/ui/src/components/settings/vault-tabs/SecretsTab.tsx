@@ -7,10 +7,15 @@
 
 import { useCallback } from "react";
 import { VaultInventoryPanel } from "../VaultInventoryPanel";
-import type { VaultEntryMeta, VaultTabNavigate } from "./types";
+import type {
+  ConnectorSecretFinding,
+  VaultEntryMeta,
+  VaultTabNavigate,
+} from "./types";
 
 export interface SecretsTabProps {
   entries: VaultEntryMeta[];
+  securityFindings: ConnectorSecretFinding[];
   onChanged: () => void;
   navigate: VaultTabNavigate;
   focusKey: string | null;
@@ -20,6 +25,7 @@ export interface SecretsTabProps {
 
 export function SecretsTab({
   entries,
+  securityFindings,
   onChanged,
   navigate,
   focusKey,
@@ -33,6 +39,7 @@ export function SecretsTab({
   return (
     <VaultInventoryPanel
       entries={entries}
+      securityFindings={securityFindings}
       onChanged={onChanged}
       onJumpToRouting={onJumpToRouting}
       focusKey={focusKey}

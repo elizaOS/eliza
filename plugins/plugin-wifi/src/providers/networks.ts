@@ -16,8 +16,6 @@ import type {
   State,
 } from "@elizaos/core";
 
-const WIFI_NETWORKS_LIMIT = 25;
-
 interface WifiNetworkEntry {
   ssid: string;
   bssid: string;
@@ -44,9 +42,7 @@ export const wifiNetworksProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const { networks } = await WiFi.listAvailableNetworks({
-        limit: WIFI_NETWORKS_LIMIT,
-      });
+      const { networks } = await WiFi.listAvailableNetworks();
       const entries: WifiNetworkEntry[] = networks.map((n: WiFiNetwork) => ({
         ssid: n.ssid,
         bssid: n.bssid,
@@ -69,7 +65,6 @@ export const wifiNetworksProvider: Provider = {
         data: {
           networks: entries,
           count: entries.length,
-          limit: WIFI_NETWORKS_LIMIT,
         },
       };
     } catch (error) {
@@ -84,7 +79,6 @@ export const wifiNetworksProvider: Provider = {
         data: {
           networks: [],
           count: 0,
-          limit: WIFI_NETWORKS_LIMIT,
           error: message,
         },
       };

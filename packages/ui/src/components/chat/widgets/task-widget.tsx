@@ -156,7 +156,7 @@ function PrChip({ pr }: { pr: TaskPullRequest }) {
       }
       className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-accent transition-colors hover:border-accent hover:text-accent-hover"
     >
-      <GitPullRequest className="h-3 w-3" aria-hidden="true" />
+      <GitPullRequest className="size-3" aria-hidden="true" />
       <span className="tabular-nums">#{pr.number}</span>
     </a>
   );
@@ -281,18 +281,20 @@ export const TaskWidget = memo(function TaskWidget({
         <Button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          variant="ghost"
+          variant="sectionToggle"
+          size="content"
+          align="start"
           aria-expanded={expanded}
-          className="flex h-auto min-w-0 flex-1 items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
+          className="-mx-2 min-w-0 flex-1"
         >
           <span
-            className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
+            className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
             role="img"
             aria-label={STATUS_LABEL[status]}
             title={STATUS_LABEL[status]}
           >
             <StatusIcon
-              className={`h-3.5 w-3.5 ${
+              className={`size-3.5 ${
                 STATUS_PULSE.has(status) ? "animate-pulse" : ""
               }`}
             />
@@ -310,7 +312,7 @@ export const TaskWidget = memo(function TaskWidget({
               </span>
               {sessionCount > 0 ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span>
                     {activeSessionCount}/{sessionCount} agents
                   </span>
@@ -318,20 +320,20 @@ export const TaskWidget = memo(function TaskWidget({
               ) : null}
               {relative ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span>{relative}</span>
                 </>
               ) : null}
               {tokens ? (
                 <>
-                  <span className="text-muted/40">·</span>
+                  <span className="text-muted">·</span>
                   <span className="tabular-nums">{tokens}</span>
                 </>
               ) : null}
             </span>
           </span>
           <ChevronDown
-            className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition-transform ${
+            className={`mt-0.5 size-4 shrink-0 text-muted transition-transform ${
               expanded ? "rotate-180" : ""
             }`}
           />
@@ -363,8 +365,9 @@ export const TaskWidget = memo(function TaskWidget({
           <Button
             type="button"
             onClick={handleOpenWorkbench}
-            variant="ghost"
-            className="h-auto w-fit self-start px-2 py-1 text-xs text-accent hover:text-accent-hover"
+            variant="externalLink"
+            size="content"
+            className="self-start"
           >
             Open in workbench →
           </Button>

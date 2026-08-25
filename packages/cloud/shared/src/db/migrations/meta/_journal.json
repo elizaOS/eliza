@@ -1877,6 +1877,202 @@
       "when": 1792612800000,
       "tag": "0268_app_reservation_settlement_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 268,
+      "version": "7",
+      "when": 1792699200000,
+      "tag": "0274_agent_billing_run_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792900000000,
+      "tag": "0275_remote_sessions_first_class_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1792986400000,
+      "tag": "0276_account_deletion_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1793072800000,
+      "tag": "0277_mobile_app_auth_pkce_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1793072800001,
+      "tag": "0278_mobile_auth_source_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1793072800002,
+      "tag": "0279_mobile_app_auth_device_name",
+      "breakpoints": true
+    },
+    {
+      "idx": 274,
+      "version": "7",
+      "when": 1793072800003,
+      "tag": "0280_mobile_app_auth_credential_tombstone_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1793072800004,
+      "tag": "0281_twilio_call_opening_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 276,
+      "version": "7",
+      "when": 1793072900000,
+      "tag": "0282_drop_unused_usage_quotas_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793072900001,
+      "tag": "0282_01_restore_usage_quotas_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 278,
+      "version": "7",
+      "when": 1793736000001,
+      "tag": "0295_phone_message_payload_jsonb",
+      "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1793822400000,
+      "tag": "0296_mcp_usage_canonical_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1793908800000,
+      "tag": "0297_personal_shared_group_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1793995200000,
+      "tag": "0298_warm_pool_rate_segment_exemption",
+      "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1793995200001,
+      "tag": "0299_synthetic_environment_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 283,
+      "version": "7",
+      "when": 1793995200002,
+      "tag": "0300_agent_node_occurrence_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1793995200003,
+      "tag": "0301_agent_node_occurrence_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1793995200004,
+      "tag": "0302_agent_restore_target_occurrence",
+      "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1794081600000,
+      "tag": "0303_personal_shared_group_authority_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1794168000000,
+      "tag": "0304_personal_shared_group_delivery_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 288,
+      "version": "7",
+      "when": 1794168000001,
+      "tag": "0305_secure_remote_hosts",
+      "breakpoints": true
+    },
+    {
+      "idx": 289,
+      "version": "7",
+      "when": 1794168000002,
+      "tag": "0306_secure_remote_command_relay",
+      "breakpoints": true
+    },
+    {
+      "idx": 290,
+      "version": "7",
+      "when": 1794168000003,
+      "tag": "0307_twilio_outbound_call_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 291,
+      "version": "7",
+      "when": 1794168000004,
+      "tag": "0308_remove_conversation_token_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 292,
+      "version": "7",
+      "when": 1794254400000,
+      "tag": "0309_retire_legacy_bluebubbles_gateways",
+      "breakpoints": true
+    },
+    {
+      "idx": 293,
+      "version": "7",
+      "when": 1794254400001,
+      "tag": "0310_personal_shared_inbound_media_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 294,
+      "version": "7",
+      "when": 1794254400002,
+      "tag": "0311_personal_shared_group_participants",
+      "breakpoints": true
+    },
+    {
+      "idx": 295,
+      "version": "7",
+      "when": 1794254400003,
+      "tag": "0312_personal_shared_group_delivery_attempts",
+      "breakpoints": true
     }
   ]
 }

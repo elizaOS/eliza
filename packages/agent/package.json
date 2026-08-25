@@ -29,7 +29,7 @@
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist dist-mobile dist-mobile-ios dist-mobile-ios-jsc && node ../scripts/clean-stray-dts.mjs",
-    "start": "bun run src/bin.ts",
+    "start": "bun --no-install --conditions=eliza-source src/bin.ts",
     "dev": "bun --hot src/bin.ts",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
@@ -42,7 +42,7 @@
     "verify:mobile-workspace-resolution": "bun run scripts/build-mobile-bundle.mjs --verify-workspace-resolution",
     "build:docker-dist": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build:dist": "node scripts/assert-package-boundary-imports.mjs && node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent src/api/dynamic-view-host-external.mjs src/api/dynamic-view-host-external.d.mts src/api/public-route-audit.baseline.json",
+    "build:dist": "node scripts/assert-package-boundary-imports.mjs && node ../scripts/rm-path-recursive.mjs dist && tsc6 --noCheck -p tsconfig.build.json && node ../scripts/prepare-package-dist.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent assets && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/agent && node ../scripts/copy-package-assets.mjs packages/agent src/api/dynamic-view-host-external.mjs src/api/dynamic-view-host-external.d.mts",
     "test:sandbox-live": "bun run scripts/live-sandbox-smoke.ts",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
@@ -138,6 +138,7 @@
       "import": "./dist/runtime/index.js",
       "default": "./dist/runtime/index.js"
     },
+    "./runtime/runtime-installation-id": null,
     "./runtime/*": {
       "types": "./src/runtime/*.ts",
       "eliza-source": {
@@ -354,7 +355,6 @@
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-pty": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
-    "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-notes": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
@@ -385,7 +385,6 @@
     "@elizaos/auth": "workspace:*"
   },
   "peerDependencies": {
-    "@elizaos/plugin-e2b-sandbox": "*",
     "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-documents": "workspace:*",
     "@elizaos/plugin-inbox": "workspace:*",
@@ -393,9 +392,6 @@
     "@elizaos/plugin-x402": "*"
   },
   "peerDependenciesMeta": {
-    "@elizaos/plugin-e2b-sandbox": {
-      "optional": true
-    },
     "@elizaos/plugin-calendar": {
       "optional": true
     },

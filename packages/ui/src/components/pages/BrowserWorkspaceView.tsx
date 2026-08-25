@@ -1,6 +1,8 @@
 /**
  * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * whose tabs fold into a switcher sheet, with companion-bridge status.
+ * whose tabs fold into a switcher sheet, with companion-bridge status and the
+ * policy-controlled agent browser session panel (takeover, domain modes,
+ * receipts) when the bridge plugin is available.
  *
  * The builtin registry declares this view `header: "fullscreen"`, so the shell
  * mounts it edge-to-edge and the view owns its chrome: a floating glass
@@ -13,19 +15,10 @@
  * companion bridge. Mounted in `App.tsx` under the `browser` route key.
  */
 import { Capacitor } from "@capacitor/core";
-import {
-  ExternalLink,
-  FolderOpen,
-  Globe,
-  Plus,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { ExternalLink, Globe, Plus, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import {
-  type BrowserBridgeCompanionPackageStatus,
-  type BrowserBridgeCompanionStatus,
   type BrowserWorkspaceSnapshot,
   type BrowserWorkspaceTab,
   client,
@@ -41,10 +34,12 @@ import { deriveSurfacePlacement } from "../../surface/native-surface-shell";
 import { useMobileNativeTabSurfaces } from "../../surface/use-mobile-native-tab-surfaces";
 import { resolveBrowserTabRenderPath } from "../../surface-embedding";
 import { openExternalUrl } from "../../utils";
+import { resolveApiUrl } from "../../utils/asset-url";
 import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
 import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -77,7 +72,6 @@ import {
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
-const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
 const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 // Concrete partition for a client-side "user" tab on the native mobile shell,
@@ -306,17 +300,26 @@ function isBrowserWorkspaceSessionMode(
   return mode === "cloud";
 }
 
-function normalizeBrowserWorkspaceInputUrl(
+export function normalizeBrowserWorkspaceInputUrl(
   rawUrl: string,
   t: TranslateFn,
 ): string | null {
   const trimmed = rawUrl.trim();
   if (!trimmed) return null;
   if (trimmed === "about:blank") return trimmed;
+  if (/^\/[\\/]/.test(trimmed)) {
+    throw new Error(
+      t("browserworkspace.InvalidUrl", {
+        defaultValue: "Enter a valid http or https URL.",
+      }),
+    );
+  }
 
-  const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const candidate = trimmed.startsWith("/")
+    ? new URL(resolveApiUrl(trimmed), window.location.origin).toString()
+    : /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
 
   let parsed: URL;
   try {
@@ -573,13 +576,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // this one switcher instead of a permanent sidebar strip, so this is the only
   // multi-tab surface — opened from the toolbar's fold control.
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
-  const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
-  const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
-    BrowserBridgeCompanionStatus[]
-  >([]);
-  const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
-    useState<BrowserBridgeCompanionPackageStatus | null>(null);
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
@@ -698,18 +694,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // leak into a user tab. The address bar remains the explicit path for opening
   // a chosen URL.
   const newBrowserWorkspaceTabSeedUrl = BROWSER_WORKSPACE_DEFAULT_HOME_URL;
-  const primaryBrowserBridgeCompanion = useMemo(
-    () =>
-      browserBridgeCompanions.find(
-        (companion) => companion.connectionState === "connected",
-      ) ??
-      browserBridgeCompanions[0] ??
-      null,
-    [browserBridgeCompanions],
-  );
-  const browserBridgeConnected =
-    primaryBrowserBridgeCompanion?.connectionState === "connected";
-
   const browserBridgeSupported = useMemo(
     () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
     [plugins],
@@ -806,47 +790,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     walletState: browserWalletState,
     loadWalletState: loadBrowserWalletState,
   });
-
-  const loadBrowserBridgeState = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (browserBridgeUnsupportedInNativeLocalMode) {
-        setBrowserBridgeCompanions([]);
-        setBrowserBridgePackageStatus(null);
-        setBrowserBridgeAvailable(false);
-        setBrowserBridgeLoading(false);
-        return;
-      }
-      if (!options?.silent) {
-        setBrowserBridgeLoading(true);
-      }
-      const [companionsResult, packageResult] = await Promise.allSettled([
-        client.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
-          "/api/browser-bridge/companions",
-        ),
-        client.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
-          "/api/browser-bridge/packages",
-        ),
-      ]);
-      if (companionsResult.status === "fulfilled") {
-        setBrowserBridgeCompanions(companionsResult.value.companions);
-      } else {
-        setBrowserBridgeCompanions([]);
-      }
-      if (packageResult.status === "fulfilled") {
-        setBrowserBridgePackageStatus(packageResult.value.status);
-      } else {
-        setBrowserBridgePackageStatus(null);
-      }
-      setBrowserBridgeAvailable(
-        companionsResult.status === "fulfilled" ||
-          packageResult.status === "fulfilled",
-      );
-      if (!options?.silent) {
-        setBrowserBridgeLoading(false);
-      }
-    },
-    [browserBridgeUnsupportedInNativeLocalMode],
-  );
 
   const readBrowserWorkspaceFocusReturnTarget = useCallback(() => {
     if (typeof document === "undefined") return null;
@@ -2250,17 +2193,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     void loadBrowserWalletState();
   }, [loadBrowserWalletState]);
 
-  useEffect(() => {
-    if (workspace.mode !== "web" || !browserBridgeSupported) {
-      setBrowserBridgeAvailable(false);
-      setBrowserBridgeCompanions([]);
-      setBrowserBridgePackageStatus(null);
-      setBrowserBridgeLoading(false);
-      return;
-    }
-    void loadBrowserBridgeState();
-  }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
-
   useIntervalWhenDocumentVisible(() => {
     void refreshWorkspaceInBackground();
   }, POLL_INTERVAL_MS);
@@ -2287,14 +2219,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   useIntervalWhenDocumentVisible(() => {
     void loadBrowserWalletState();
   }, 5_000);
-
-  useIntervalWhenDocumentVisible(
-    () => {
-      void loadBrowserBridgeState({ silent: true });
-    },
-    BROWSER_BRIDGE_POLL_INTERVAL_MS,
-    workspace.mode === "web" && browserBridgeSupported,
-  );
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
@@ -2384,146 +2308,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     selectedTab,
     workspace.mode,
   ]);
-
-  const installBrowserBridgeExtension = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:install",
-      async () => {
-        let nextPackageStatus = browserBridgePackageStatus;
-        if (!nextPackageStatus?.chromeBuildPath) {
-          const buildResponse = await client.fetch<{
-            status: BrowserBridgeCompanionPackageStatus;
-          }>("/api/browser-bridge/packages/chrome/build", {
-            method: "POST",
-          });
-          nextPackageStatus = buildResponse.status;
-          setBrowserBridgePackageStatus(buildResponse.status);
-        }
-
-        const revealResponse = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
-
-        let openedManager = true;
-        try {
-          await client.fetch(
-            "/api/browser-bridge/packages/chrome/open-manager",
-            {
-              method: "POST",
-            },
-          );
-        } catch {
-          openedManager = false;
-        }
-
-        setActionNoticeRef.current(
-          openedManager
-            ? t("browserworkspace.BrowserBridgeChromeReady", {
-                defaultValue:
-                  "Chrome is ready. Click Load unpacked and choose {{path}}.",
-                path: revealResponse.path,
-              })
-            : t("browserworkspace.BrowserBridgeFolderReady", {
-                defaultValue:
-                  "The Agent Browser Bridge folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
-                path: revealResponse.path,
-              }),
-          "success",
-          6_000,
-        );
-        await loadBrowserBridgeState({ silent: true });
-      },
-      t("browserworkspace.InstallBrowserBridgeFailed", {
-        defaultValue: "Failed to prepare the Agent Browser Bridge extension.",
-      }),
-    );
-  }, [
-    browserBridgePackageStatus,
-    loadBrowserBridgeState,
-    runBrowserWorkspaceAction,
-    t,
-  ]);
-
-  const revealBrowserBridgeFolder = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:reveal-folder",
-      async () => {
-        const response = await client.fetch<{
-          path: string;
-          target: string;
-          revealOnly: boolean;
-        }>("/api/browser-bridge/packages/open-path", {
-          method: "POST",
-          body: JSON.stringify({
-            target: "chrome_build",
-            revealOnly: true,
-          }),
-        });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeFolderRevealed", {
-            defaultValue:
-              "Revealed the Agent Browser Bridge folder at {{path}}.",
-            path: response.path,
-          }),
-          "success",
-          4_000,
-        );
-      },
-      t("browserworkspace.OpenBrowserBridgeFolderFailed", {
-        defaultValue:
-          "Failed to reveal the Agent Browser Bridge extension folder.",
-      }),
-    );
-  }, [runBrowserWorkspaceAction, t]);
-
-  const openBrowserBridgeChromeExtensions = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:open-manager",
-      async () => {
-        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
-          method: "POST",
-        });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
-            defaultValue:
-              "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.",
-          }),
-          "success",
-          4_000,
-        );
-      },
-      t("browserworkspace.OpenBrowserBridgeManagerFailed", {
-        defaultValue: "Failed to open Chrome extensions.",
-      }),
-    );
-  }, [runBrowserWorkspaceAction, t]);
-
-  const refreshBrowserBridgeConnection = useCallback(async () => {
-    await runBrowserWorkspaceAction(
-      "browser-bridge:refresh",
-      async () => {
-        await loadBrowserBridgeState({ silent: true });
-        setActionNoticeRef.current(
-          t("browserworkspace.BrowserBridgeRefreshSuccess", {
-            defaultValue: "Refreshed Agent Browser Bridge connection status.",
-          }),
-          "success",
-          3_000,
-        );
-      },
-      t("browserworkspace.RefreshBrowserBridgeFailed", {
-        defaultValue: "Failed to refresh Agent Browser Bridge status.",
-      }),
-    );
-  }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
 
   const tabsLabel = t("browserworkspace.Tabs", {
     defaultValue: "Tabs",
@@ -2626,7 +2410,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11 shrink-0"
+        className="size-11 shrink-0"
         aria-label={newTabLabel}
         disabled={busyAction !== null}
         onClick={() =>
@@ -2639,7 +2423,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         data-testid="browser-workspace-nav-new-tab"
       >
-        <Plus className="h-4 w-4" />
+        <Plus className="size-4" />
       </BrowserNavButton>
       <BrowserNavButton
         agentId="reload"
@@ -2653,7 +2437,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("common.refresh", { defaultValue: "Refresh" })}
         disabled={!selectedTab || busyAction !== null}
         onClick={() =>
@@ -2662,7 +2446,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           })
         }
       >
-        <RefreshCw className="h-4 w-4" />
+        <RefreshCw className="size-4" />
       </BrowserNavButton>
       <BrowserNavButton
         agentId="close-all-tabs"
@@ -2678,7 +2462,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("browserworkspace.CloseAllTabs", {
           defaultValue: "Close all tabs",
         })}
@@ -2693,7 +2477,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         data-testid="browser-workspace-close-all-tabs"
       >
-        <X className="h-4 w-4" />
+        <X className="size-4" />
       </BrowserNavButton>
       <BrowserAddressInput
         agentLabel={t("browserworkspace.AddressPlaceholder", {
@@ -2771,7 +2555,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         }
         variant="ghost"
         size="icon"
-        className="h-11 w-11"
+        className="size-11"
         aria-label={t("browserworkspace.OpenExternal", {
           defaultValue: "Open external",
         })}
@@ -2783,7 +2567,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           })
         }
       >
-        <ExternalLink className="h-4 w-4" />
+        <ExternalLink className="size-4" />
       </BrowserNavButton>
     </div>
   );
@@ -2809,7 +2593,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         >
           <span
             aria-hidden
-            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent "
+            className="inline-block size-1.5 animate-pulse rounded-full bg-accent "
           />
           <span className="truncate">{watchBannerLabel}</span>
         </div>
@@ -2820,6 +2604,17 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           role="alert"
         >
           {loadError}
+        </div>
+      ) : null}
+
+      {browserBridgeSupported && !browserBridgeUnsupportedInNativeLocalMode ? (
+        <div
+          data-testid="browser-session-policy-dock"
+          className="pointer-events-none absolute inset-x-3 bottom-3 z-30 max-h-[min(40%,24rem)] overflow-y-auto"
+        >
+          <div className="pointer-events-auto mx-auto w-full max-w-xl rounded-sm bg-background/95 shadow-lg">
+            <BrowserSessionPolicyPanel api={client} hideWhenEmpty />
+          </div>
         </div>
       ) : null}
 
@@ -2842,109 +2637,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
               <PagePanel.Empty
                 variant="inset"
                 className="flex-none py-1 sm:py-2"
-                icon={<Globe className="h-6 w-6" aria-hidden />}
+                icon={<Globe className="size-6" aria-hidden />}
                 title={t("browserworkspace.EmptyTitle", {
                   defaultValue: "No page open",
                 })}
-                action={
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="min-h-11 gap-1.5"
-                    onClick={() =>
-                      void runBrowserWorkspaceAction("open:home", async () => {
-                        await openNewBrowserWorkspaceTab(
-                          BROWSER_WORKSPACE_DEFAULT_HOME_URL,
-                          "user",
-                        );
-                      })
-                    }
-                  >
-                    <Plus className="h-4 w-4" aria-hidden />
-                    {t("browserworkspace.OpenWebsite", {
-                      defaultValue: "Open a website",
-                    })}
-                  </Button>
-                }
               />
-              {/* Bottom + side chat clearance is reserved once, on the scroller
-                above — repeating it on this grid double-counted the inset in
-                short landscape and squeezed the column off-canvas. */}
-              {workspace.mode === "web" &&
-              browserBridgeSupported &&
-              !browserBridgeUnsupportedInNativeLocalMode ? (
-                <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 sm:grid-cols-3">
-                  <div className="text-center text-[11px] text-muted sm:col-span-3">
-                    {browserBridgeConnected
-                      ? t("browserworkspace.BrowserBridgeConnected", {
-                          defaultValue: "Browser Bridge connected",
-                        })
-                      : browserBridgeAvailable
-                        ? t("browserworkspace.BrowserBridgeAvailable", {
-                            defaultValue: "Browser Bridge available",
-                          })
-                        : t("browserworkspace.BrowserBridgeNotConnected", {
-                            defaultValue:
-                              "Let the agent drive your real Chrome tabs",
-                          })}
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busyAction !== null}
-                    onClick={() => void installBrowserBridgeExtension()}
-                    className="min-h-11 sm:col-span-3"
-                  >
-                    {t("browserworkspace.InstallBrowserBridge", {
-                      defaultValue: "Install Agent Browser Bridge",
-                    })}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={
-                      busyAction !== null ||
-                      !browserBridgePackageStatus?.chromeBuildPath
-                    }
-                    onClick={() => void revealBrowserBridgeFolder()}
-                    className="min-h-11 min-w-0"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                    <span className="truncate">
-                      {t("browserworkspace.OpenBrowserBridgeFolder", {
-                        defaultValue: "Open extension folder",
-                      })}
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busyAction !== null}
-                    onClick={() => void openBrowserBridgeChromeExtensions()}
-                    className="min-h-11 min-w-0"
-                  >
-                    <span className="truncate">
-                      {t("browserworkspace.OpenChromeExtensions", {
-                        defaultValue: "Open Chrome extensions",
-                      })}
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={browserBridgeLoading || busyAction !== null}
-                    onClick={() => void refreshBrowserBridgeConnection()}
-                    className="min-h-11 min-w-0"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    <span className="truncate">
-                      {t("browserworkspace.RefreshBrowserBridge", {
-                        defaultValue: "Refresh connection",
-                      })}
-                    </span>
-                  </Button>
-                </div>
-              ) : null}
             </div>
           </div>
         )
@@ -3021,7 +2718,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       )
                     }
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="size-4" />
                     {t("browserworkspace.OpenExternal", {
                       defaultValue: "Open external",
                     })}
@@ -3101,7 +2798,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       )
                     }
                   >
-                    <ExternalLink className="h-4 w-4" />
+                    <ExternalLink className="size-4" />
                     {t("browserworkspace.OpenExternal", {
                       defaultValue: "Open external",
                     })}
@@ -3167,9 +2864,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             ) : null}
             {selectedTabLiveViewUrl ? (
               <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto rounded-sm px-2 py-1 text-txt transition-colors hover:bg-card/60"
+                variant="surface"
+                size="tiny"
                 onClick={() =>
                   void runBrowserWorkspaceAction(
                     "open:live-session",
@@ -3206,6 +2902,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       })
                 }
                 src={`data:image/png;base64,${selectedTabSnapshot}`}
+                width={1280}
+                height={720}
                 className="h-full w-full object-contain"
               />
             ) : (
@@ -3269,7 +2967,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     >
       <div
         data-testid="browser-workspace-toolbar"
-        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(0,0,0,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
+        className="shrink-0 rounded-3xl bg-[color-mix(in_srgb,var(--card)_76%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.10),0_18px_48px_rgba(16,10,5,.20)] backdrop-blur-[24px] backdrop-saturate-[1.45]"
       >
         {navNode}
       </div>

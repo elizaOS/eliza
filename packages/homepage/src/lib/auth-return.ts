@@ -10,9 +10,11 @@ export function safeReturnTo(value: string | null | undefined): string | null {
 
   try {
     const url = new URL(value, "https://eliza.app");
-    return url.origin === "https://eliza.app"
-      ? `${url.pathname}${url.search}${url.hash}`
-      : null;
+    if (url.origin !== "https://eliza.app") return null;
+    const dest = `${url.pathname}${url.search}${url.hash}`;
+    // Dot-segment inputs like "/..//host" pass the raw "//" guard but normalize
+    // to a protocol-relative path that escapes the origin; reject the result too.
+    return dest.startsWith("//") ? null : dest;
   } catch {
     // error-policy:J3 Malformed navigation input is an explicit invalid value.
     return null;

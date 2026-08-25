@@ -7,8 +7,15 @@
  * `tools`, `toolChoice`, or `responseSchema`.
  */
 import type { IAgentRuntime, ModelTypeName, TextStreamResult } from "@elizaos/core";
-import { buildCanonicalSystemPrompt, ElizaError, logger } from "@elizaos/core";
+import {
+  buildCanonicalSystemPrompt,
+  ElizaError,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { emitModelUsageEvent } from "./events";
+import { assertCompleteAnthropicGeneration } from "./model-output";
 
 interface ClaudeCliModelUsage {
   inputTokens: number;
@@ -20,6 +27,7 @@ interface ClaudeCliResult {
   duration_ms: number;
   duration_api_ms: number;
   modelUsage: Record<string, ClaudeCliModelUsage>;
+  stop_reason?: string;
 }
 
 interface CliGenerateResult {
@@ -263,7 +271,9 @@ export async function generateViaCli(
   const { output, stderr, exitCode } = await collectClaudeCliOutput(proc);
 
   if (exitCode !== 0) {
-    throw new Error(`[Anthropic CLI] claude -p failed (exit ${exitCode}): ${stderr.slice(0, 500)}`);
+    throw new Error(
+      `[Anthropic CLI] claude -p failed (exit ${exitCode}): ${truncateWellFormed(toWellFormedUnicode(stderr), 500)}`
+    );
   }
 
   let data: ClaudeCliResult;
@@ -272,14 +282,18 @@ export async function generateViaCli(
   } catch (error) {
     // error-policy:J2 context-adding rethrow — surface the raw CLI output that
     // failed to parse, with the parse error as cause.
-    throw new Error(`[Anthropic CLI] Failed to parse JSON. Raw: ${output.slice(0, 500)}`, {
-      cause: error,
-    });
+    throw new Error(
+      `[Anthropic CLI] Failed to parse JSON. Raw: ${truncateWellFormed(toWellFormedUnicode(output), 500)}`,
+      {
+        cause: error,
+      }
+    );
   }
 
   logger.debug(
     `[Anthropic CLI] ${modelType} done in ${data.duration_ms}ms (API: ${data.duration_api_ms}ms)`
   );
+  assertCompleteAnthropicGeneration(data.stop_reason);
 
   const usage = parseUsage(data.modelUsage);
   if (usage) {
@@ -337,21 +351,31 @@ export function streamViaCli(
   let usageResolved = false;
   let finishResolved = false;
   let resolveText!: (v: string) => void;
+  let rejectText!: (reason?: unknown) => void;
   let resolveUsage!: (
     v: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined
   ) => void;
   let resolveFinish!: (v: string | undefined) => void;
+  let rejectFinish!: (reason?: unknown) => void;
 
-  const textPromise = new Promise<string>((r) => {
-    resolveText = r;
+  const textPromise = new Promise<string>((resolve, reject) => {
+    resolveText = resolve;
+    rejectText = reject;
   });
   const usagePromise = new Promise<
     { promptTokens: number; completionTokens: number; totalTokens: number } | undefined
   >((r) => {
     resolveUsage = r;
   });
-  const finishPromise = new Promise<string | undefined>((r) => {
-    resolveFinish = r;
+  const finishPromise = new Promise<string | undefined>((resolve, reject) => {
+    resolveFinish = resolve;
+    rejectFinish = reject;
+  });
+  textPromise.catch(() => {
+    // error-policy:J5 textStream rethrows the same supervised CLI failure.
+  });
+  finishPromise.catch(() => {
+    // error-policy:J5 textStream rethrows the same supervised CLI failure.
   });
 
   async function* createTextStream(): AsyncGenerator<string> {
@@ -359,6 +383,7 @@ export function streamViaCli(
     const decoder = new TextDecoder();
     let lineBuf = "";
     let streamFailed = false;
+    let streamFailure: unknown;
     let decodedBytes = 0;
     let processExited = false;
 
@@ -416,6 +441,7 @@ export function streamViaCli(
           }
 
           if (event.type === "result") {
+            assertCompleteAnthropicGeneration(event.stop_reason);
             const usage = parseUsage(event.modelUsage);
             if (usage) {
               emitModelUsageEvent(
@@ -456,18 +482,23 @@ export function streamViaCli(
         const settledStderr = await stderrOutcome;
         const stderrText = settledStderr.ok ? settledStderr.value : "";
         throw new Error(
-          `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${stderrText.slice(0, 500)}`
+          `[Anthropic CLI] claude -p stream failed (exit ${exitCode}): ${truncateWellFormed(toWellFormedUnicode(stderrText), 500)}`
         );
       }
     } catch (error) {
       streamFailed = true;
+      streamFailure = error;
       throw error;
     } finally {
       deadline.clear();
       if (!processExited) killClaudeCliProcess(proc);
-      resolveText(fullText);
+      if (streamFailed) rejectText(streamFailure);
+      else resolveText(fullText);
       if (!usageResolved) resolveUsage(undefined);
-      if (!finishResolved) resolveFinish(streamFailed ? "error" : "end_turn");
+      if (!finishResolved) {
+        if (streamFailed) rejectFinish(streamFailure);
+        else resolveFinish("end_turn");
+      }
     }
   }
 

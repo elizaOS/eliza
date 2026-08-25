@@ -14,7 +14,6 @@ import {
   normalizeCloudApiSendTarget,
   normalizeE164,
   normalizeWhatsAppTarget,
-  truncateText,
 } from "./normalize.ts";
 
 /**
@@ -111,11 +110,6 @@ describe("text chunking", () => {
     expect(chunks.join("\n").replace(/\s+/g, "")).toBe(text.replace(/\s+/g, ""));
   });
 
-  it("truncateText appends an ellipsis when over the limit", () => {
-    expect(truncateText("short", 20)).toBe("short");
-    expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
-  });
-
   it("chunkWhatsAppText keeps a surrogate pair (emoji) intact at the hard-break fallback", () => {
     // No whitespace/newlines/sentence breaks in range, so splitAtBreakPoint
     // falls through to the hard break at `limit`. A naive slice(0, 4096)
@@ -129,18 +123,6 @@ describe("text chunking", () => {
       expect(chunk.isWellFormed()).toBe(true);
     }
     expect(chunks.join("")).toBe(text);
-  });
-
-  it("truncateText keeps a surrogate pair (emoji) intact instead of splitting it", () => {
-    // maxLength - 3 (ellipsis reserve) lands right after the emoji's high
-    // surrogate; a naive slice(0, maxLength - 3) would strand it.
-    const text = `xxxx\u{1F600}zzzzz`;
-
-    const truncated = truncateText(text, 8);
-
-    expect(truncated.length).toBeLessThanOrEqual(8);
-    expect(truncated.isWellFormed()).toBe(true);
-    expect(truncated).toBe("xxxx...");
   });
 
   it("chunkWhatsAppText fails closed on a one-code-unit limit instead of looping forever", () => {

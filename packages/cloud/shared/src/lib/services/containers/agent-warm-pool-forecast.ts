@@ -100,6 +100,13 @@ export interface WarmPoolPolicy {
   /** Max pool entries created in a single replenish tick. */
   replenishBurstLimit: number;
   /**
+   * Node slots kept free for tenants on top of the queued tenant backlog.
+   * Replenish never dips schedulable cluster slack below
+   * `pendingTenantJobs + tenantReserveSlots`, so warm fill cannot starve a
+   * live tenant arrival of placement capacity between daemon polls.
+   */
+  tenantReserveSlots: number;
+  /**
    * Health probes per ready entry per sweep before it is declared dead. The
    * probe crosses the headscale mesh, which routinely has >5s transient
    * hiccups — the creator's own birth-polling observes several consecutive
@@ -121,6 +128,7 @@ export const DEFAULT_WARM_POOL_POLICY: WarmPoolPolicy = {
   stuckProvisioningMs: 10 * 60 * 1000,
   replenishCooldownMs: 60 * 1000,
   replenishBurstLimit: 3,
+  tenantReserveSlots: 2,
   // Retries run concurrently across failing rows, so the sweep's worst-case
   // extra time is (attempts - 1) × (delay + 5s probe timeout) = 18s — well
   // inside the provisioning worker's 60s phase budget.

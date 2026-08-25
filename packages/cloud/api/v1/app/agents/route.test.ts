@@ -1,5 +1,6 @@
 // Exercises cloud API v1 app agents route.test behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
@@ -14,16 +15,26 @@ const findLatestByCharacterId = mock(
   async (): Promise<{ id: string } | null> => null,
 );
 const createCharacter = mock(async (input: Record<string, unknown>) => ({
-  id: "character-1",
-  name: input.name,
-  username: "smoke-agent",
-  bio: input.bio,
-  created_at: new Date("2026-01-01T00:00:00.000Z"),
-  token_address: input.token_address ?? null,
-  token_chain: input.token_chain ?? null,
-  token_name: input.token_name ?? null,
-  token_ticker: input.token_ticker ?? null,
+  character: {
+    id: "character-1",
+    name: input.name,
+    username: "smoke-agent",
+    bio: input.bio,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    token_address: input.token_address ?? null,
+    token_chain: input.token_chain ?? null,
+    token_name: input.token_name ?? null,
+    token_ticker: input.token_ticker ?? null,
+  },
+  created: true,
+  quota: {
+    currentBefore: 2,
+    currentAfter: 3,
+    limit: 5,
+    limitSource: "organizations.credit_balance",
+  },
 }));
+const loggerInfo = mock(() => undefined);
 
 const findOrg = mock(async () => ({
   id: "org-1",
@@ -71,13 +82,13 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
 
 mock.module("@/lib/services/characters/characters", () => ({
   charactersService: {
-    create: createCharacter,
+    createWithReceipt: createCharacter,
   },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
   logger: {
-    info: mock(() => undefined),
+    info: loggerInfo,
     error: mock(() => undefined),
   },
 }));
@@ -91,6 +102,7 @@ describe("app agent creation route", () => {
     findLatestByCharacterId.mockClear();
     findLatestByCharacterId.mockResolvedValue(null);
     createCharacter.mockClear();
+    loggerInfo.mockClear();
     findOrg.mockClear();
     countAgents.mockClear();
     select.mockClear();
@@ -127,7 +139,73 @@ describe("app agent creation route", () => {
         token_address: "0x0000000000000000000000000000000000000009",
         token_chain: "bsc",
       }),
+      { policy: { mode: "metered" } },
     );
+    expect(findOrg).not.toHaveBeenCalled();
+    expect(countAgents).not.toHaveBeenCalled();
+    expect(loggerInfo).toHaveBeenCalledWith(
+      "[Agents API] Created agent: character-1",
+      expect.objectContaining({
+        agentCount: 3,
+        maxAgents: 5,
+      }),
+    );
+  });
+
+  test("maps the central typed quota rejection without consulting a replica preflight", async () => {
+    createCharacter.mockRejectedValueOnce(
+      new ElizaError("quota", {
+        code: "CLOUD_CHARACTER_QUOTA_EXCEEDED",
+        context: { current: 5, limit: 5 },
+      }),
+    );
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Capped Agent" }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error:
+        "Agent quota exceeded. Your organization has reached the maximum of 5 agents.",
+      code: "agent_quota_exceeded",
+      details: {
+        current: 5,
+        max: 5,
+        upgrade_hint:
+          "Add credits to your account to increase your agent limit.",
+      },
+    });
+    expect(findOrg).not.toHaveBeenCalled();
+    expect(countAgents).not.toHaveBeenCalled();
+  });
+
+  test("preserves the organization-not-found response at the central authority", async () => {
+    createCharacter.mockRejectedValueOnce(
+      new ElizaError("missing", {
+        code: "CHARACTER_ORGANIZATION_NOT_FOUND",
+      }),
+    );
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Missing Org Agent" }),
+      }),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Organization not found",
+      code: "resource_not_found",
+    });
   });
 
   test("duplicate token response uses linked sandbox id instead of character id", async () => {

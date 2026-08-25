@@ -20,8 +20,7 @@
   ],
   "files": [
     "dist",
-    "assets",
-    "assets-classic"
+    "assets"
   ],
   "engines": {
     "node": ">=24.0.0"
@@ -31,6 +30,7 @@
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs",
+    "generate:coding-provider-support-matrix": "bun scripts/generate-coding-provider-support-matrix.ts",
     "typecheck": "bun run build:i18n && tsc --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write src",
@@ -193,6 +193,16 @@
       "import": "./dist/platform/native-library-policy.js",
       "default": "./dist/platform/native-library-policy.js"
     },
+    "./canonical-json": {
+      "types": "./dist/canonical-json.d.ts",
+      "eliza-source": {
+        "types": "./src/canonical-json.ts",
+        "import": "./src/canonical-json.ts",
+        "default": "./src/canonical-json.ts"
+      },
+      "import": "./dist/canonical-json.js",
+      "default": "./dist/canonical-json.js"
+    },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
       "eliza-source": {
@@ -312,6 +322,16 @@
       },
       "import": "./dist/contracts/scheduled-task-execution.js",
       "default": "./dist/contracts/scheduled-task-execution.js"
+    },
+    "./contracts/synthetic-environment-lease": {
+      "types": "./dist/contracts/synthetic-environment-lease.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/synthetic-environment-lease.ts",
+        "import": "./src/contracts/synthetic-environment-lease.ts",
+        "default": "./src/contracts/synthetic-environment-lease.ts"
+      },
+      "import": "./dist/contracts/synthetic-environment-lease.js",
+      "default": "./dist/contracts/synthetic-environment-lease.js"
     },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
@@ -522,16 +542,11 @@
     "@elizaos/registry": "workspace:*",
     "chalk": "^6.0.0",
     "drizzle-orm": "0.45.2",
-    "phonemizer": "^1.2.1",
     "react": "^19.0.0",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
-  "optionalDependencies": {
-    "figlet": "^1.11.0"
-  },
   "devDependencies": {
-    "@types/figlet": "^1.7.0",
     "bun-types": "^1.3.12",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
@@ -542,6 +557,10 @@
   "elizaos": {
     "scripts": {
       "coreBuild": true,
+      "buildOnInstall": {
+        "sentinel": "dist/brand/index.js",
+        "order": 2
+      },
       "testLanes": [
         "server"
       ]

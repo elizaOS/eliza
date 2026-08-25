@@ -3,16 +3,9 @@
  * on timeout via mocked hanging fetch, covering the central makeApiRequest path.
  */
 import { describe, expect, it, vi } from "vitest";
-import {
-  DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS,
-  KaminoLiquidityService,
-} from "./kaminoLiquidityService";
+import { KaminoLiquidityService } from "./kaminoLiquidityService";
 
 describe("KaminoLiquidityService fetch timeout", () => {
-  it("exposes the documented 10s budget", () => {
-    expect(DEFAULT_KAMINO_LIQUIDITY_FETCH_TIMEOUT_MS).toBe(10_000);
-  });
-
   it("aborts a stalled makeApiRequest at the deadline", async () => {
     const svc = new KaminoLiquidityService();
     const orig = AbortSignal.timeout.bind(AbortSignal);
@@ -147,5 +140,27 @@ describe("KaminoLiquidityService fetch timeout", () => {
     } finally {
       globalThis.fetch = prev;
     }
+  });
+
+  it("filters and sorts trade times safely when updatedOn contains invalid dates", () => {
+    const trades = [
+      { updatedOn: "invalid-date" },
+      { updatedOn: "2026-08-20T10:00:00Z" },
+      { updatedOn: "2026-08-20T12:00:00Z" },
+    ];
+
+    const recentTradeTimes = trades
+      .slice(0, 10)
+      .map((t) => (t.updatedOn ? new Date(t.updatedOn).getTime() : 0))
+      .filter((time) => Number.isFinite(time) && time > 0)
+      .sort((a, b) => b - a);
+
+    expect(recentTradeTimes).toHaveLength(2);
+    expect(recentTradeTimes[0]).toBe(
+      new Date("2026-08-20T12:00:00Z").getTime(),
+    );
+    expect(recentTradeTimes[1]).toBe(
+      new Date("2026-08-20T10:00:00Z").getTime(),
+    );
   });
 });

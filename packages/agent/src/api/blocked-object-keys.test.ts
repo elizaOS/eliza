@@ -44,6 +44,39 @@ describe("blocked object key sanitization", () => {
     expect(hostile).toHaveProperty("prototype", "x");
   });
 
+  it("drops or redacts keys per the caller policy while still bounding the walk", () => {
+    const parsed = JSON.parse(
+      '{"keep":"yes","access_token":"sk-live","nested":{"drop_me":1,"keep":2},"__proto__":{"polluted":true}}',
+    ) as Record<string, unknown>;
+
+    const cleaned = cloneWithoutBlockedObjectKeys(parsed, {
+      keyAction: (key) =>
+        key === "access_token" || key === "drop_me" ? "drop" : "keep",
+    });
+    expect(cleaned).toEqual({ keep: "yes", nested: { keep: 2 } });
+
+    const redacted = cloneWithoutBlockedObjectKeys(parsed, {
+      keyAction: (key) => (key === "access_token" ? "redact" : "keep"),
+      redactedValue: "[REDACTED]",
+    });
+    expect(redacted).toEqual({
+      keep: "yes",
+      access_token: "[REDACTED]",
+      nested: { drop_me: 1, keep: 2 },
+    });
+
+    // The policy does not relax the bound.
+    let overDeep: unknown = "leaf";
+    for (let index = 0; index <= MAX_BLOCKED_OBJECT_DEPTH + 1; index += 1) {
+      overDeep = { a: overDeep };
+    }
+    expect(() =>
+      cloneWithoutBlockedObjectKeys(overDeep, { keyAction: () => "keep" }),
+    ).toThrowError(
+      expect.objectContaining({ code: BLOCKED_OBJECT_GRAPH_UNBOUNDED }),
+    );
+  });
+
   it("does not assign __proto__ while cloning hostile parsed JSON", () => {
     const hostile = JSON.parse(
       '{"__proto__":{"polluted":true},"nested":{"ok":true}}',

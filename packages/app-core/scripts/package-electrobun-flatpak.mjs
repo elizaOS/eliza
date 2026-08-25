@@ -22,6 +22,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import sharp from "sharp";
+import {
+  assertFinalizedFlatpakMetadata,
+  assertFlatpakPackagingSpace,
+  assertLinuxDistributionClaim,
+  LINUX_DISTRIBUTION_CLAIMS,
+} from "./linux-distribution-contract.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
@@ -68,6 +74,38 @@ export const FLATPAK_FINISH_ARGS = [
   "--socket=pulseaudio",
   "--device=dri",
 ];
+
+/** Resolve explicit full refs without silently changing the target architecture. */
+export function resolveFlatpakRefs({ arch, runtimeRef, sdkRef }) {
+  const resolvedRuntimeRef =
+    runtimeRef ??
+    `${FLATPAK_RUNTIME.platform}/${arch}/${FLATPAK_RUNTIME.version}`;
+  const resolvedSdkRef =
+    sdkRef ?? `${FLATPAK_RUNTIME.sdk}/${arch}/${FLATPAK_RUNTIME.version}`;
+  const runtimeMatch = resolvedRuntimeRef.match(
+    /^(org\.gnome\.Platform)\/(x86_64|aarch64)\/([^/]+)$/,
+  );
+  const sdkMatch = resolvedSdkRef.match(
+    /^(org\.gnome\.Sdk|org\.freedesktop\.Sdk)\/(x86_64|aarch64)\/([^/]+)$/,
+  );
+  if (!runtimeMatch) {
+    throw new Error(
+      `Flatpak runtime ref must be a full org.gnome.Platform ref: ${resolvedRuntimeRef}`,
+    );
+  }
+  if (!sdkMatch) {
+    throw new Error(
+      `Flatpak SDK ref must be a full GNOME or Freedesktop SDK ref: ${resolvedSdkRef}`,
+    );
+  }
+  if (runtimeMatch[2] !== arch || sdkMatch[2] !== arch) {
+    throw new Error(
+      `Flatpak runtime and SDK refs must target requested architecture ${arch}`,
+    );
+  }
+  return { runtimeRef: resolvedRuntimeRef, sdkRef: resolvedSdkRef };
+}
+
 const args = new Map(
   process.argv.slice(2).map((arg) => {
     const [key, ...rest] = arg.replace(/^--/, "").split("=");
@@ -79,6 +117,11 @@ const version =
   JSON.parse(readFileSync(path.join(electrobunRoot, "package.json"), "utf8"))
     .version;
 const arch = args.get("arch") ?? "x86_64";
+const flatpakRefs = resolveFlatpakRefs({
+  arch,
+  runtimeRef: args.get("runtime-ref"),
+  sdkRef: args.get("sdk-ref"),
+});
 const releaseDate =
   args.get("release-date") ??
   execFileSync("git", ["show", "-s", "--format=%cs", "HEAD"], {
@@ -162,6 +205,7 @@ export async function writeMetadata(filesDir, relativeLauncher) {
       `  <project_license>MIT</project_license>\n` +
       `  <name>Eliza</name>\n` +
       `  <summary>Your AI assistant, everywhere</summary>\n` +
+      `  <developer id="ai.elizaos"><name>elizaOS</name></developer>\n` +
       `  <description><p>Eliza is the elizaOS desktop application for chat, account setup, agents, and connected services.</p></description>\n` +
       `  <url type="homepage">https://elizaos.ai</url>\n` +
       `  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>\n` +
@@ -217,16 +261,34 @@ async function main() {
     );
   }
   if (!existsSync(iconPath)) throw new Error(`Missing app icon: ${iconPath}`);
-
-  const buildDir = latestLinuxBuildDir();
-  const relativeLauncher = requireLauncher(buildDir);
-  const tempRoot = mkdtempSync(path.join(os.tmpdir(), "eliza-flatpak-"));
-  const appDir = path.join(tempRoot, "app");
-  const repoDir = path.join(tempRoot, "repo");
   const output = path.join(
     artifactRoot,
     `Eliza-${version}-linux-${arch}.flatpak`,
   );
+  if (existsSync(output)) {
+    throw new Error(
+      `Refusing to overwrite existing Flatpak artifact: ${output}`,
+    );
+  }
+
+  const buildDir = latestLinuxBuildDir();
+  const relativeLauncher = requireLauncher(buildDir);
+  const inspection = assertLinuxDistributionClaim({
+    buildDir,
+    claim: LINUX_DISTRIBUTION_CLAIMS.FLATPAK_OUTER_SANDBOX,
+    finishArgs: FLATPAK_FINISH_ARGS,
+  });
+  // The output bundle lives with the Electrobun artifacts even when staging
+  // uses a separate tmpfs. Gate both filesystems before creating either copy.
+  const space = assertFlatpakPackagingSpace(
+    buildDir,
+    electrobunRoot,
+    inspection,
+  );
+  assertFlatpakPackagingSpace(buildDir, os.tmpdir(), inspection);
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), "eliza-flatpak-"));
+  const appDir = path.join(tempRoot, "app");
+  const repoDir = path.join(tempRoot, "repo");
 
   try {
     run("flatpak", [
@@ -235,9 +297,8 @@ async function main() {
       `--arch=${arch}`,
       appDir,
       APP_ID,
-      FLATPAK_RUNTIME.sdk,
-      FLATPAK_RUNTIME.platform,
-      FLATPAK_RUNTIME.version,
+      flatpakRefs.sdkRef,
+      flatpakRefs.runtimeRef,
     ]);
     await cp(buildDir, path.join(appDir, "files/opt/eliza"), {
       recursive: true,
@@ -247,6 +308,7 @@ async function main() {
     copyBundledLibraries(path.join(appDir, "files"));
     await writeMetadata(path.join(appDir, "files"), relativeLauncher);
     run("flatpak", ["build-finish", ...FLATPAK_FINISH_ARGS, appDir]);
+    assertFinalizedFlatpakMetadata(path.join(appDir, "metadata"), flatpakRefs);
     run("flatpak", [
       "build-export",
       `--arch=${arch}`,
@@ -263,7 +325,9 @@ async function main() {
       APP_ID,
       "stable",
     ]);
-    console.log(`Wrote ${path.relative(repoRoot, output)}`);
+    console.log(
+      `Wrote ${path.relative(repoRoot, output)} (outer Flatpak sandbox verified; ${inspection.glibcCompatibility.elfFileCount} ELF files at or below GLIBC_${inspection.glibcCompatibility.maxAllowedVersion}; Chromium renderer sandbox unavailable; preflight required ${space.requiredBytes} free bytes)`,
+    );
   } finally {
     run(process.execPath, [cleanupHelper, tempRoot]);
   }

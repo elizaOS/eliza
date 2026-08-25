@@ -90,7 +90,7 @@ function BallotCard({ ballot }: { ballot: Ballot }) {
     <div className="rounded-md border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Vote className="h-5 w-5 text-accent" />
+          <Vote className="size-5 text-accent" />
           <div>
             <p className="text-sm font-medium text-txt">{ballot.purpose}</p>
             <p className="text-xs text-muted">
@@ -161,9 +161,9 @@ function BallotCard({ ballot }: { ballot: Ballot }) {
               disabled={busy || !scopedToken.trim() || !value.trim()}
             >
               {vote.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <CheckCircle2 className="h-4 w-4" />
+                <CheckCircle2 className="size-4" />
               )}
               Submit vote
             </Button>
@@ -174,7 +174,7 @@ function BallotCard({ ballot }: { ballot: Ballot }) {
               disabled={busy}
             >
               {tally.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : null}
               Tally
             </Button>
@@ -199,7 +199,7 @@ export function BallotsTab() {
   if (query.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+        <Loader2 className="size-5 animate-spin text-muted" />
       </div>
     );
   }

@@ -329,14 +329,9 @@ function TileButton({
   download?: string;
   children: React.ReactNode;
 }): React.JSX.Element {
-  const cls = cn(
-    "inline-flex h-7 w-7 items-center justify-center rounded-full",
-    "bg-scrim text-white transition-colors",
-    "hover:bg-brand-black active:scale-[0.96] motion-reduce:active:scale-100",
-  );
   if (href) {
     return (
-      <Button asChild variant="ghost" size="icon-sm" className={cls}>
+      <Button asChild variant="surface" size="icon-sm" shape="circle">
         <a
           href={href}
           download={download}
@@ -353,11 +348,11 @@ function TileButton({
   }
   return (
     <Button
-      variant="ghost"
+      variant="surface"
       size="icon-sm"
+      shape="circle"
       aria-label={label}
       title={label}
-      className={cls}
       onClick={(e) => {
         e.stopPropagation();
         onClick?.();
@@ -383,9 +378,10 @@ function ImageTile({
   return (
     <div className="group relative inline-block max-w-[min(20rem,100%)] overflow-hidden rounded-lg border border-border bg-card">
       <Button
-        variant="ghost"
+        variant="publicRow"
+        size="content"
         onClick={onExpand}
-        className="block h-auto w-full cursor-zoom-in rounded-none bg-transparent p-0 hover:bg-transparent"
+        className="block cursor-zoom-in"
         aria-label={`Expand image ${label}`}
       >
         <img
@@ -403,7 +399,7 @@ function ImageTile({
       <div className="pointer-events-none absolute right-1.5 top-1.5 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
         <span className="pointer-events-auto">
           <TileButton label="Expand image" onClick={onExpand}>
-            <Maximize2 className="h-3.5 w-3.5" />
+            <Maximize2 className="size-3.5" />
           </TileButton>
         </span>
         <span className="pointer-events-auto">
@@ -412,7 +408,7 @@ function ImageTile({
             href={src}
             download={downloadName(att, "image")}
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="size-3.5" />
           </TileButton>
         </span>
       </div>
@@ -466,7 +462,7 @@ function FileTile({
         </a>
       </AttachmentTrigger>
       <AttachmentMedia className="bg-transparent text-muted">
-        <Icon className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
+        <Icon className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
         <AttachmentTitle>{label}</AttachmentTitle>
@@ -476,9 +472,9 @@ function FileTile({
       </AttachmentContent>
       <AttachmentActions className="pointer-events-none text-muted">
         {kind === "link" ? (
-          <LinkIcon className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+          <LinkIcon className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         ) : (
-          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+          <Download className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         )}
       </AttachmentActions>
     </Attachment>
@@ -524,11 +520,10 @@ function PdfTile({
     return (
       <Button
         asChild
-        variant="ghost"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}
@@ -537,16 +532,16 @@ function PdfTile({
           download={downloadName(att, "pdf")}
           data-testid="pdf-attachment-fallback"
         >
-          <FileText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
+          <FileText className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-2xs uppercase tracking-wide text-muted">
+            <span className="block text-2xs uppercase tracking-wider text-muted">
               {t("messageattachments.pdfLabel")}
             </span>
           </span>
-          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+          <Download className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         </a>
       </Button>
     );
@@ -559,29 +554,30 @@ function PdfTile({
       className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
       <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <FileText className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <FileText className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
         <span className="flex shrink-0 gap-1.5">
           <TileButton label={openLabel} href={src}>
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ExternalLink className="size-3.5" />
           </TileButton>
           <TileButton
             label={downloadLabel}
             href={src}
             download={downloadName(att, "pdf")}
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="size-3.5" />
           </TileButton>
         </span>
       </figcaption>
       <iframe
         src={src}
         title={frameTitle}
-        // Sandbox the embedded document: allow it to be treated as same-origin
-        // so the native viewer's resources load, but grant no script/forms/etc.
-        sandbox="allow-same-origin"
+        // Chromium's built-in PDF viewer requires scripts. Keep the document
+        // in an opaque origin and grant no forms, navigation, or same-origin
+        // access so PDF bytes cannot reach application state.
+        sandbox="allow-scripts"
         className="block h-[28rem] w-full border-0 bg-brand-white"
       />
     </figure>
@@ -730,7 +726,7 @@ function Model3dTile({
       className="m-0 w-full max-w-[min(28rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
       <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Box className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <Box className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
@@ -740,16 +736,12 @@ function Model3dTile({
             href={src}
             download={downloadName(att, "model3d")}
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="size-3.5" />
           </TileButton>
         </span>
       </figcaption>
       {showFallbackBody ? (
-        <Button
-          asChild
-          variant="ghost"
-          className="h-auto min-h-touch w-full justify-start gap-2.5 rounded-none px-3 py-3 text-txt transition-colors hover:bg-bg-hover"
-        >
+        <Button asChild variant="sectionToggle" size="content" align="start">
           <a
             href={src}
             target="_blank"
@@ -757,12 +749,12 @@ function Model3dTile({
             download={downloadName(att, "model3d")}
             data-testid="model3d-attachment-fallback"
           >
-            <Box className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
+            <Box className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
             <span className="min-w-0 flex-1 text-2xs text-muted">
               {t("messageattachments.model3dDownloadToView")}
             </span>
             <Download
-              className="h-4 w-4 shrink-0 text-muted"
+              className="size-4 shrink-0 text-muted"
               strokeWidth={1.5}
             />
           </a>
@@ -807,11 +799,10 @@ function CodeTile({
     return (
       <Button
         asChild
-        variant="ghost"
-        className={cn(
-          "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-          "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-        )}
+        variant="choice"
+        size="row"
+        align="start"
+        className="max-w-[min(20rem,100%)]"
       >
         <a
           href={src}
@@ -820,16 +811,16 @@ function CodeTile({
           download={downloadName(att, "code")}
           data-testid="code-attachment-fallback"
         >
-          <Code2 className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
+          <Code2 className="size-5 shrink-0 text-muted" strokeWidth={1.5} />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-xs-tight font-medium">
               {label}
             </span>
-            <span className="block text-2xs uppercase tracking-wide text-muted">
+            <span className="block text-2xs uppercase tracking-wider text-muted">
               {t("messageattachments.textLabel")}
             </span>
           </span>
-          <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+          <Download className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         </a>
       </Button>
     );
@@ -843,11 +834,11 @@ function CodeTile({
       className="m-0 w-full max-w-[min(36rem,100%)] overflow-hidden rounded-lg border border-border bg-card"
     >
       <figcaption className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <Code2 className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
+        <Code2 className="size-4 shrink-0 text-muted" strokeWidth={1.5} />
         <span className="min-w-0 flex-1 truncate text-xs-tight font-medium text-txt">
           {label}
         </span>
-        <span className="shrink-0 text-2xs uppercase tracking-wide text-muted">
+        <span className="shrink-0 text-2xs uppercase tracking-wider text-muted">
           {language}
         </span>
         <TileButton
@@ -855,7 +846,7 @@ function CodeTile({
           href={src}
           download={downloadName(att, "code")}
         >
-          <Download className="h-3.5 w-3.5" />
+          <Download className="size-3.5" />
         </TileButton>
       </figcaption>
       <CodeBlock
@@ -893,7 +884,7 @@ function UnsafeAttachmentTile({
       className="w-full max-w-[min(20rem,100%)] border-border bg-card text-txt"
     >
       <AttachmentMedia className="bg-transparent text-muted">
-        <FileText className="h-5 w-5" strokeWidth={1.5} />
+        <FileText className="size-5" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
         <AttachmentTitle>{label}</AttachmentTitle>
@@ -923,14 +914,14 @@ function TranscriptTile({
         aria-label={`Open transcript ${label}`}
       />
       <AttachmentMedia className="bg-transparent text-muted">
-        <ScrollText className="h-5 w-5" strokeWidth={1.5} />
+        <ScrollText className="size-5" strokeWidth={1.5} />
       </AttachmentMedia>
       <AttachmentContent>
         <AttachmentTitle>{label}</AttachmentTitle>
         <AttachmentDescription>Transcript · tap to open</AttachmentDescription>
       </AttachmentContent>
       <AttachmentActions className="pointer-events-none text-muted transition-colors group-hover:text-txt">
-        <Maximize2 className="h-4 w-4" strokeWidth={1.5} />
+        <Maximize2 className="size-4" strokeWidth={1.5} />
       </AttachmentActions>
     </Attachment>
   );
@@ -972,7 +963,7 @@ function Lightbox({
         variant="ghost"
         aria-label="Close preview"
         onClick={onClose}
-        className="absolute inset-0 h-auto w-auto cursor-zoom-out rounded-none bg-scrim p-0 hover:bg-scrim"
+        className="absolute inset-0 cursor-zoom-out"
       />
       <img
         src={src}
@@ -983,10 +974,10 @@ function Lightbox({
       />
       <div className="absolute right-4 top-4 flex gap-2">
         <TileButton label="Download image" href={src} download={downloadAs}>
-          <Download className="h-4 w-4" />
+          <Download className="size-4" />
         </TileButton>
         <TileButton label="Close" onClick={onClose}>
-          <X className="h-4 w-4" />
+          <X className="size-4" />
         </TileButton>
       </div>
     </div>,

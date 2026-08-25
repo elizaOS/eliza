@@ -55,6 +55,9 @@ const TermsOfServicePage = lazy(
 const PrivacyPolicyPage = lazy(
   () => import("./pages/legal/privacy-policy-page"),
 );
+const AccountDeletionPage = lazy(
+  () => import("./pages/legal/account-deletion-page"),
+);
 const BscPromoPage = lazy(() => import("./pages/bsc-page"));
 
 let registered = false;
@@ -199,6 +202,12 @@ export function registerPublicPages(): void {
   registerCloudRoute({
     path: "privacy-policy",
     element: PrivacyPolicyPage,
+    ...PUBLIC_ROUTE_ACCESS,
+    group: "legal",
+  });
+  registerCloudRoute({
+    path: "account-deletion",
+    element: AccountDeletionPage,
     ...PUBLIC_ROUTE_ACCESS,
     group: "legal",
   });

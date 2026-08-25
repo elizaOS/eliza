@@ -2,9 +2,10 @@
  * App-shell header chip showing the live coding-agent session count with a
  * stop-all control. Fills the `@elizaos/ui` control-chip slot.
  */
+
+import { Button } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelector } from "@elizaos/ui/state";
 import { Square, Terminal } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -43,12 +44,9 @@ export function CodingAgentControlChip() {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="mb-2 flex items-center justify-between gap-2 px-1 py-1">
+    <div className="mb-2 flex items-center justify-between gap-2 p-1">
       <div className="flex min-w-0 items-center gap-1.5 text-xs-tight text-muted">
-        <Terminal
-          className="h-3.5 w-3.5 shrink-0 text-muted-strong"
-          aria-hidden
-        />
+        <Terminal className="size-3.5 shrink-0 text-muted-strong" aria-hidden />
         <span className="truncate">
           {t("codingagentcontrolchip.ActiveSessions", {
             defaultValue: "{{count}} active coding session(s)",
@@ -59,14 +57,14 @@ export function CodingAgentControlChip() {
       <Button
         type="button"
         variant="outline"
-        size="sm"
-        className="h-7 shrink-0 gap-1 px-2 text-xs-tight"
+        size="tiny"
+        className="shrink-0"
         onClick={stopAll}
         title={t("codingagentcontrolchip.StopAllTitle", {
           defaultValue: "Stop all coding agent sessions",
         })}
       >
-        <Square className="h-3 w-3 fill-current" aria-hidden />
+        <Square className="size-3 fill-current" aria-hidden />
         {t("codingagentcontrolchip.StopAll", { defaultValue: "Stop all" })}
       </Button>
     </div>

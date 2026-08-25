@@ -9,7 +9,10 @@ import { type Browser, chromium } from "playwright-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { launchMeetingBrowser } from "./launch.js";
 
-vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true) }));
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
+  existsSync: vi.fn(() => true),
+}));
 
 /** Minimal Browser/context/page stubs so launch can run without a real browser. */
 function stubBrowser(): Browser {

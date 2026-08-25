@@ -75,6 +75,13 @@ function server(
   };
 }
 
+function serverListResponse(servers: Array<Record<string, unknown>>): Response {
+  return Response.json({
+    servers,
+    meta: { pagination: { next_page: null } },
+  });
+}
+
 beforeEach(() => {
   originalFetch = globalThis.fetch;
   originalConsoleError = console.error;
@@ -124,16 +131,14 @@ afterEach(() => {
 describe("Hetzner E2E provision HTTP boundary", () => {
   test("reaps only stale servers returned by the CI label selector", async () => {
     responseQueue.push(
-      Response.json({
-        servers: [
-          server(),
-          server({
-            id: 43,
-            name: "recent",
-            created: new Date().toISOString(),
-          }),
-        ],
-      }),
+      serverListResponse([
+        server(),
+        server({
+          id: 43,
+          name: "recent",
+          created: new Date().toISOString(),
+        }),
+      ]),
       new Response(null, { status: 204 }),
       Response.json({
         server: server({ id: 99, created: new Date().toISOString() }),
@@ -161,15 +166,12 @@ describe("Hetzner E2E provision HTTP boundary", () => {
     ]);
   });
 
-  test("does not reap incomplete or untagged inventory entries", async () => {
+  test("does not reap untagged or invalid-created inventory entries", async () => {
     responseQueue.push(
-      Response.json({
-        servers: [
-          server({ labels: {}, name: "untagged" }),
-          server({ id: null, name: "invalid-id" }),
-          server({ created: null, name: "invalid-created" }),
-        ],
-      }),
+      serverListResponse([
+        server({ id: 44, labels: {}, name: "untagged" }),
+        server({ id: 45, created: null, name: "invalid-created" }),
+      ]),
       Response.json({
         server: server({ id: 99, created: new Date().toISOString() }),
         root_password: null,
@@ -199,7 +201,7 @@ describe("Hetzner E2E provision HTTP boundary", () => {
 
   test("fails before create when reaping a stale labeled server fails", async () => {
     responseQueue.push(
-      Response.json({ servers: [server()] }),
+      serverListResponse([server()]),
       Response.json(
         { error: { code: "conflict", message: "server locked" } },
         { status: 409 },
@@ -218,25 +220,23 @@ describe("Hetzner E2E provision HTTP boundary", () => {
 
   test("limit_reached stops location retries and logs only sanitized capacity", async () => {
     responseQueue.push(
-      Response.json({ servers: [] }),
+      serverListResponse([]),
       Response.json(
         { error: { code: "limit_reached", message: "server limit reached" } },
         { status: 403 },
       ),
-      Response.json({
-        servers: [
-          server({
-            id: 700,
-            name: "private-production-name",
-            public_net: {
-              ipv4: { ip: "198.51.100.77", blocked: false },
-              ipv6: null,
-            },
-            labels: { owner: "secret-owner" },
-          }),
-          server({ id: 701 }),
-        ],
-      }),
+      serverListResponse([
+        server({
+          id: 700,
+          name: "private-production-name",
+          public_net: {
+            ipv4: { ip: "198.51.100.77", blocked: false },
+            ipv6: null,
+          },
+          labels: { owner: "secret-owner" },
+        }),
+        server({ id: 701 }),
+      ]),
     );
 
     const error = (await runHetznerE2eProvision().catch(
@@ -298,7 +298,7 @@ describe("Hetzner E2E provision HTTP boundary", () => {
 
   test("classifies a write-rejected token as authentication", async () => {
     responseQueue.push(
-      Response.json({ servers: [] }),
+      serverListResponse([]),
       Response.json(
         { error: { code: "unauthorized", message: "permission denied" } },
         { status: 403 },
@@ -323,22 +323,27 @@ describe("Hetzner E2E provision HTTP boundary", () => {
 
   test("sanitizes incomplete capacity inventory into unknown buckets", async () => {
     responseQueue.push(
-      Response.json({ servers: [] }),
+      serverListResponse([]),
       Response.json(
         { error: { code: "limit_reached", message: "server limit reached" } },
         { status: 403 },
       ),
-      Response.json({
-        servers: [
-          server({
-            status: null,
-            server_type: null,
-            datacenter: null,
-            labels: null,
-          }),
-          null,
-        ],
-      }),
+      serverListResponse([
+        server({
+          id: 700,
+          status: null,
+          server_type: null,
+          datacenter: null,
+          labels: null,
+        }),
+        server({
+          id: 701,
+          status: null,
+          server_type: null,
+          datacenter: null,
+          labels: null,
+        }),
+      ]),
     );
 
     const error = await runHetznerE2eProvision().catch((caught) => caught);
@@ -357,7 +362,7 @@ describe("Hetzner E2E provision HTTP boundary", () => {
 
   test("preserves quota classification when the diagnostic inventory fails", async () => {
     responseQueue.push(
-      Response.json({ servers: [] }),
+      serverListResponse([]),
       Response.json(
         { error: { code: "limit_reached", message: "server limit reached" } },
         { status: 403 },

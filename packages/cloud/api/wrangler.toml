@@ -58,6 +58,12 @@ __filename = '"/worker.js"'
 [observability]
 enabled = true
 
+# Querying these logs after the fact: the Observability query API silently caps
+# results (~50 events) with NO truncation signal — one wide query over a
+# multi-minute window can cover only its last seconds and look complete. Slice
+# the window (~5s slices) and aggregate before asserting absence or measuring a
+# rate (#22548). Same caveat is documented in scripts/admin/cf-tail.sh.
+
 # Logs and traces are configured separately. Keep logs complete for production
 # diagnostics while sampling distributed traces to bound storage volume.
 [observability.logs]
@@ -79,9 +85,10 @@ head_sampling_rate = 0.05
 [triggers]
 crons = [
   "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
+  "*/2 * * * *",    # pool-health-check
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
   "*/10 * * * *",   # cleanup-expired-crypto-payments
-  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
+  "*/15 * * * *",   # auto-top-up + agent-budgets + cleanup-mobile-app-auth + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
   "0 */6 * * *",  # cleanup-cli-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
   "0 0 * * *",      # container-billing
@@ -99,6 +106,9 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
+[browser]
+binding = "BROWSER"
+
 [[ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615301"
@@ -114,6 +124,11 @@ name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615303"
 simple = { limit = 60, period = 60 }
 
+[[ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615304"
+simple = { limit = 120, period = 60 }
+
 [[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
@@ -121,6 +136,10 @@ class_name = "SharedRuntimeConversation"
 [[durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
 
 [[durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
@@ -142,40 +161,47 @@ class_name = "PersonalDeliveryProjection"
 name = "PERSONAL_TELEGRAM_DELIVERIES"
 class_name = "PersonalTelegramDelivery"
 
-[[migrations]]
-tag = "shared-runtime-conversations-v1"
-new_sqlite_classes = ["SharedRuntimeConversation"]
+# Declarative exports preserve the existing namespaces without replaying the
+# Worker's historical migration tags. Do not mix this with `[[migrations]]`.
+[exports.SharedRuntimeConversation]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-admission-gates-v1"
-new_sqlite_classes = ["InferenceAdmissionGate"]
+[exports.InferenceAdmissionGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "anonymous-chat-gates-v1"
-new_sqlite_classes = ["AnonymousChatGate"]
+[exports.AnonymousChatGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "onboarding-session-coordinator-v1"
-new_sqlite_classes = ["OnboardingSessionCoordinator"]
+[exports.OnboardingSessionCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "twitter-oauth-refresh-coordinator-v1"
-new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
+[exports.TwitterOAuthRefreshCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-delivery-projection-v1"
-new_sqlite_classes = ["PersonalDeliveryProjection"]
+[exports.PersonalDeliveryProjection]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-telegram-delivery-v1"
-new_sqlite_classes = ["PersonalTelegramDelivery"]
+[exports.PersonalTelegramDelivery]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-rate-limit-v2-rollback-floor-v1"
-new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
+[exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
 
-# General API limits and queues may use Railway Redis via REDIS_URL. Inference
-# routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
+[exports.DoorDashCheckoutGate]
+type = "durable-object"
+storage = "sqlite"
+
+# General API limits and queues use the environment's Railway Redis. Worker
+# direct consumers reach it through redis-rest; non-Worker services use
+# REDIS_URL. Inference routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
 # Durable Objects serialize organization/anonymous quotas, and CACHE_KV serves
 # revisioned metadata. Local development can use embedded Wadis when configured.
 
@@ -185,8 +211,9 @@ new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
 # index_name = "eliza-cloud-embeddings"
 
 # -----------------------------------------------------------------------------
-# Queue: Stripe webhook fan-out runs on Redis (Railway TCP via REDIS_URL in
-# cloud, embedded Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
+# Queue: Stripe webhook fan-out runs on Redis (redis-rest in Workers, Railway
+# TCP in non-Worker cloud services, embedded Wadis locally), not Cloudflare
+# Queues. The webhook route LPUSHes a JSON
 # envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
 # which drains a bounded batch via the queue helper in
 # `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
@@ -326,7 +353,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   DATABASE_URL                       Railway Postgres (Worker reaches it via the HYPERDRIVE binding;
 #       DATABASE_URL is the origin string for the sidecar/scripts — public-proxy DSNs need
 #       ?sslmode=no-verify or DATABASE_SSL_NO_VERIFY=true for direct node-pg consumers)
-#   REDIS_URL                          Railway TCP Redis (primary cache/queue/rate-limit; rediss://...)
+#   REDIS_URL                          Railway TCP Redis for non-Worker consumers (rediss://...)
 #   STEWARD_API_URL                    Optional Steward base URL override;
 #       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
 #   STEWARD_JWT_SECRET                 Canonical HS256 secret for Steward JWT verify (jose); MUST match Steward host
@@ -358,12 +385,16 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_WEBHOOK_SECRET              Stripe webhook signing (main billing endpoint)
 #   STRIPE_CONNECT_WEBHOOK_SECRET      Stripe Connect endpoint webhook signing (payouts; distinct secret — the Connect payout webhook fail-closes without it)
 #   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   STRIPE_PLUS_MONTHLY_PRICE_ID       Approved recurring Plus Price binding
+#   STRIPE_PLUS_PRODUCT_ID             Approved Plus Product binding
+#   STRIPE_PRO_MONTHLY_PRICE_ID        Approved recurring Pro Price binding
+#   STRIPE_PRO_PRODUCT_ID              Approved Pro Product binding
 #   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
 #   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
 #   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override
-#   KV_REST_API_URL                    Upstash Redis REST (LEGACY fallback only; primary is REDIS_URL)
-#   KV_REST_API_TOKEN                  Upstash auth (legacy fallback)
-#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token (legacy fallback)
+#   KV_REST_API_URL                    Environment-local redis-rest adapter URL for Worker direct consumers
+#   KV_REST_API_TOKEN                  redis-rest bearer token
+#   KV_REST_API_READ_ONLY_TOKEN        Optional read-only token for compatible hosted Redis REST providers
 #   OPENROUTER_API_KEY                 OpenRouter BYOK key (backup for non-native models)
 #   ANTHROPIC_API_KEY                  Claude
 #   OPENAI_API_KEY                     OpenAI direct
@@ -371,7 +402,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
 #   FAL_KEY                            Fal.ai video gen
 #   FAL_API_KEY                        Alias for FAL_KEY used by image/video/music generation
-#   ATLASCLOUD_API_KEY                 AtlasCloud image generation billing key
+#   ATLASCLOUD_API_KEY                 AtlasCloud image and fallback video generation billing key
 #   ATLASCLOUD_BASE_URL                Optional AtlasCloud API base URL override
 #   BIRDEYE_API_KEY                    Birdeye defi/price proxy key
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
@@ -490,15 +521,23 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.browser]
+binding = "BROWSER"
+
 [env.staging.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api-staging.eliza.app"
 # Capture every staging turn while validating voice and cross-channel routing.
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "1"
-# Staging exercises the strongly invalidated sender projection while default
-# and production stay on canonical resolution until the live latency matrix passes.
-PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
+# Keep every environment on the indexed canonical resolver until every
+# identity/lifecycle writer participates in the durable mutation-fence protocol.
+# The bound Durable Object remains available for exact-head isolated proof.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
 # staging plaintext binding; either binding must be exactly true to opt in.
@@ -704,6 +743,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.staging.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[env.staging.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -737,6 +780,11 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615313"
 simple = { limit = 60, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615314"
+simple = { limit = 120, period = 60 }
 
 [env.production]
 name = "eliza-cloud-api-prod"
@@ -778,10 +826,20 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.production.browser]
+binding = "BROWSER"
+
 [env.production.vars]
 NODE_ENV = "production"
+# Signed Twilio callbacks and media-stream URLs must use the externally routed
+# HTTPS origin, never a request-derived host. Keep this committed so any
+# Wrangler deployment preserves inbound voice instead of failing closed.
+TWILIO_PUBLIC_URL = "https://api.eliza.app"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
+# Keep production on the indexed canonical resolver. The Durable Object cannot
+# be activated until every identity/lifecycle/cutover writer participates in
+# the durable mutation-fence protocol and adversarial staging proof is complete.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # The protected production cutover owns
@@ -869,6 +927,10 @@ CACHE_ENABLED = "true"
 # auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
 # Explicit "redis" / "redis-rest" overrides remain compatibility options.
 CACHE_BACKEND = "auto"
+# Direct Redis consumers (auth nonces, rate limits, voice replay protection,
+# relay state) use the environment-isolated Railway redis-rest proxy. Raw
+# Railway TCP is not reliable from production Workers.
+DIRECT_REDIS_BACKEND = "redis-rest"
 REDIS_RATE_LIMITING = "true"
 # Enables post-provider billing for cache-only Worker admission. Worker cache
 # misses warm and retry instead of joining an authoritative database fallback.
@@ -948,6 +1010,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.production.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -981,5 +1047,10 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615323"
 simple = { limit = 60, period = 60 }
+
+[[env.production.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615324"
+simple = { limit = 120, period = 60 }
 
 # deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

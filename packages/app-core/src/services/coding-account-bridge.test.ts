@@ -3,7 +3,7 @@
  * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
  * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
  * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
- * active-generation discovery, CEREBRAS_API_KEY), usage attribution, and rate-
+ * active-generation discovery), usage attribution, and rate-
  * limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
  * account storage — no mocked pool.
  */
@@ -556,20 +556,18 @@ describe("coding-account-bridge", () => {
     expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
-  it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
-    writeAccount("cerebras-api", "cb-busy", "cb-key-busy");
-    writeAccount("cerebras-api", "cb-idle", "cb-key-idle");
+  it("fails closed for direct API accounts and unknown adapters", async () => {
+    writeAccount("openai-api", "direct", "openai-direct-key");
+    writeAccount("cerebras-api", "cerebras", "cerebras-direct-key");
     getDefaultAccountPool();
-    await setUsage("cerebras-api", "cb-busy", 88);
-    await setUsage("cerebras-api", "cb-idle", 4);
-    const sel = await getCodingAgentSelectorBridge()?.select("opencode", {
-      strategy: "least-used",
-    });
-    expect(sel?.providerId).toBe("cerebras-api");
-    expect(sel?.accountId).toBe("cb-idle");
-    // buildOpencodeSpawnConfig reads CEREBRAS_API_KEY from the injected env.
-    expect(sel?.envPatch.CEREBRAS_API_KEY).toBe("cb-key-idle");
-    expect(sel?.source).toBe("api-key");
+    const bridge = getCodingAgentSelectorBridge();
+
+    expect(await bridge?.select("codex")).toBeNull();
+    expect(await bridge?.select("unknown-adapter")).toBeNull();
+    expect(Object.keys(bridge?.describe() ?? {}).sort()).toEqual([
+      "claude",
+      "codex",
+    ]);
   });
 
   it("attributes recorded usage to the serving account (per-account delta)", async () => {

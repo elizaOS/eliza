@@ -14,6 +14,20 @@ export {
   getAdapter,
   getAllAdapters,
 } from "./connection-adapters";
+// Credential broker (opaque-connection provider calls; no raw token egress)
+export {
+  BROKER_PLATFORM_POLICIES,
+  type BrokeredProviderCallParams,
+  type BrokeredProviderRequest,
+  type BrokeredProviderResponse,
+  type BrokeredTokenRefreshParams,
+  type BrokeredTokenRefreshResult,
+  type BrokerPlatformPolicy,
+  CredentialBroker,
+  type CredentialBrokerDeps,
+  createCredentialBroker,
+  credentialBroker,
+} from "./credential-broker";
 // Errors
 export {
   ERROR_STATUS_MAP,

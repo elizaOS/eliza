@@ -35,6 +35,7 @@ import { resolveApiUrl } from "../../../utils/asset-url";
 import { openEventSource } from "../../../utils/event-source";
 import { isSafeNavigationUrl } from "../../../utils/navigation-url";
 import { Button } from "../../ui/button";
+import { Checkbox } from "../../ui/checkbox";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import type {
@@ -43,6 +44,7 @@ import type {
   InstallableBackendId,
   InstallMethod,
   ManagerPreferences,
+  VaultProtectionStatus,
 } from "./types";
 
 const BACKEND_ORDER: BackendId[] = [
@@ -55,6 +57,7 @@ const BACKEND_ORDER: BackendId[] = [
 export interface OverviewTabProps {
   backends: BackendStatus[];
   preferences: ManagerPreferences;
+  protection: VaultProtectionStatus | null;
   installMethods: Record<InstallableBackendId, InstallMethod[]>;
   saving: boolean;
   savedAt: number | null;
@@ -70,6 +73,7 @@ export function OverviewTab(props: OverviewTabProps) {
   const {
     backends,
     preferences,
+    protection,
     installMethods,
     saving,
     savedAt,
@@ -161,6 +165,7 @@ export function OverviewTab(props: OverviewTabProps) {
 
   return (
     <div className="space-y-3">
+      {protection ? <ProtectionCard protection={protection} /> : null}
       <div className="flex items-center justify-between pb-1">
         <p className="text-2xs text-muted">
           {t("vault.overview.routeHint", {
@@ -172,8 +177,7 @@ export function OverviewTab(props: OverviewTabProps) {
           ref={redetectRef}
           {...redetectAgentProps}
           variant="ghost"
-          size="sm"
-          className="h-7 rounded-sm px-2"
+          size="icon-sm"
           onClick={onReload}
           aria-label={t("vault.overview.redetect", {
             defaultValue: "Re-detect backends",
@@ -182,7 +186,7 @@ export function OverviewTab(props: OverviewTabProps) {
             defaultValue: "Re-detect backends",
           })}
         >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          <RefreshCw className="size-3.5" aria-hidden />
         </Button>
       </div>
 
@@ -234,7 +238,6 @@ export function OverviewTab(props: OverviewTabProps) {
           {...saveAgentProps}
           variant="default"
           size="sm"
-          className="h-8 rounded-sm font-semibold"
           onClick={onSave}
           disabled={saving}
         >
@@ -248,6 +251,54 @@ export function OverviewTab(props: OverviewTabProps) {
         </Button>
       </div>
     </div>
+  );
+}
+
+export function ProtectionCard({
+  protection,
+}: {
+  protection: VaultProtectionStatus;
+}) {
+  const key = protection.localVault.masterKey;
+  const protectedLocally =
+    protection.localVault.encryptedAtRest && key.available;
+  return (
+    <section
+      data-testid="vault-protection-card"
+      className="rounded-sm border border-border/50 bg-surface/40 p-3"
+    >
+      <div className="flex items-start gap-2">
+        {protectedLocally ? (
+          <CheckCircle2
+            className="mt-0.5  size-4 shrink-0 text-success"
+            aria-hidden
+          />
+        ) : (
+          <AlertCircle
+            className="mt-0.5 size-4 shrink-0 text-warning"
+            aria-hidden
+          />
+        )}
+        <div className="min-w-0 space-y-1">
+          <p className="text-xs font-medium text-txt">
+            {protectedLocally
+              ? "Protected by this device"
+              : "Device key protection needs attention"}
+          </p>
+          <p className="text-2xs leading-relaxed text-muted">
+            Local Vault values use {protection.localVault.cipher}; the master
+            key is held by {key.backend.replaceAll("_", " ")}. Native app
+            session records require the platform protected store; sync and
+            plaintext fallback are off.
+          </p>
+          <p className="text-2xs leading-relaxed text-muted">
+            Eliza Cloud organization secrets remain in a separate KMS trust
+            domain. Telegram Personal session state is encrypted with the local
+            Vault master key.
+          </p>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -309,7 +360,7 @@ export function BackendRow(props: BackendRowProps) {
   } = props;
   const { t } = useTranslation();
   const { ref: enableRef, agentProps: enableAgentProps } =
-    useAgentElement<HTMLInputElement>({
+    useAgentElement<HTMLButtonElement>({
       id: `vault-backend-enable-${backend.id}`,
       role: "toggle",
       label: `Enable ${backend.label} backend`,
@@ -384,14 +435,12 @@ export function BackendRow(props: BackendRowProps) {
       }`}
     >
       <div className="flex items-center gap-3">
-        <Input
+        <Checkbox
           ref={enableRef}
           {...enableAgentProps}
-          type="checkbox"
           checked={enabled}
           disabled={lockedInHouse}
-          onChange={(e) => onToggle(e.target.checked)}
-          className="h-4 w-4 cursor-pointer border-border p-0 accent-accent disabled:cursor-not-allowed"
+          onCheckedChange={(checked) => onToggle(checked === true)}
           aria-label={t("vault.backend.enableLabel", {
             label: backend.label,
             defaultValue: "Enable {{label}}",
@@ -437,14 +486,13 @@ export function BackendRow(props: BackendRowProps) {
               {...installAgentProps}
               variant="outline"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenInstallSheet}
               aria-label={t("vault.backend.installLabel", {
                 label: backend.label,
                 defaultValue: "Install {{label}}",
               })}
             >
-              <Download className="h-3.5 w-3.5" aria-hidden />
+              <Download className="size-3.5" aria-hidden />
               {t("vault.backend.install", { defaultValue: "Install" })}
             </Button>
           )}
@@ -454,14 +502,13 @@ export function BackendRow(props: BackendRowProps) {
               {...signinAgentProps}
               variant="outline"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-2 text-xs"
               onClick={onOpenSigninSheet}
               aria-label={t("vault.backend.signInLabel", {
                 label: backend.label,
                 defaultValue: "Sign in to {{label}}",
               })}
             >
-              <LogIn className="h-3.5 w-3.5" aria-hidden />
+              <LogIn className="size-3.5" aria-hidden />
               {t("vault.backend.signIn", { defaultValue: "Sign in" })}
             </Button>
           )}
@@ -471,7 +518,6 @@ export function BackendRow(props: BackendRowProps) {
               {...signoutAgentProps}
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 rounded-sm px-2 text-xs text-muted"
               onClick={onSignout}
               aria-label={t("vault.backend.signOutLabel", {
                 label: backend.label,
@@ -479,7 +525,7 @@ export function BackendRow(props: BackendRowProps) {
               })}
               title={t("vault.backend.signOut", { defaultValue: "Sign out" })}
             >
-              <LogOut className="h-3.5 w-3.5" aria-hidden />
+              <LogOut className="size-3.5" aria-hidden />
               {t("vault.backend.signOut", { defaultValue: "Sign out" })}
             </Button>
           )}
@@ -489,8 +535,7 @@ export function BackendRow(props: BackendRowProps) {
                 ref={moveUpRef}
                 {...moveUpAgentProps}
                 variant="ghost"
-                size="sm"
-                className="h-7 w-7 rounded-sm p-0"
+                size="icon-sm"
                 onClick={onMoveUp}
                 disabled={position <= 0}
                 title={t("vault.backend.moveUp", { defaultValue: "Move up" })}
@@ -498,14 +543,13 @@ export function BackendRow(props: BackendRowProps) {
                   defaultValue: "Move up",
                 })}
               >
-                <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                <ChevronUp className="size-3.5" aria-hidden />
               </Button>
               <Button
                 ref={moveDownRef}
                 {...moveDownAgentProps}
                 variant="ghost"
-                size="sm"
-                className="h-7 w-7 rounded-sm p-0"
+                size="icon-sm"
                 onClick={onMoveDown}
                 disabled={position < 0 || position >= totalEnabled - 1}
                 title={t("vault.backend.moveDown", {
@@ -515,7 +559,7 @@ export function BackendRow(props: BackendRowProps) {
                   defaultValue: "Move down",
                 })}
               >
-                <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                <ChevronDown className="size-3.5" aria-hidden />
               </Button>
             </>
           )}
@@ -561,7 +605,7 @@ function StatusPill({
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium ${classes}`}
     >
-      <Icon className="h-3 w-3" aria-hidden />
+      <Icon className="size-3" aria-hidden />
       {text}
     </span>
   );
@@ -735,7 +779,6 @@ export function InstallSheet({
           {...closeAgentProps}
           variant="ghost"
           size="sm"
-          className="h-6 rounded-sm px-2 text-2xs"
           onClick={close}
           disabled={running}
         >
@@ -769,7 +812,7 @@ export function InstallSheet({
       {running && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-2 text-xs text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            <Loader2 className="size-3.5 animate-spin" aria-hidden />
             {t("vault.install.installing", { defaultValue: "Installing…" })}
           </div>
           {lastLog && (
@@ -781,9 +824,9 @@ export function InstallSheet({
       )}
 
       {done && !error && (
-        <div className="flex items-center justify-between gap-2 rounded-sm border border-ok/30 bg-ok/10 px-2 py-1.5 text-xs text-ok">
+        <div className="flex items-center justify-between gap-2 border-l-2 border-ok/50 bg-ok/10 px-2 py-1.5 text-xs text-ok">
           <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+            <CheckCircle2 className="size-3.5" aria-hidden />
             {t("vault.install.complete", { defaultValue: "Install complete." })}
           </span>
           <Button
@@ -791,7 +834,6 @@ export function InstallSheet({
             {...continueAgentProps}
             variant="ghost"
             size="sm"
-            className="h-6 rounded-sm px-2 text-2xs"
             onClick={onComplete}
           >
             {t("vault.install.continue", { defaultValue: "Continue" })}
@@ -800,7 +842,7 @@ export function InstallSheet({
       )}
 
       {error && (
-        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -853,13 +895,14 @@ function InstallMethodButton({
       {...agentProps}
       variant="outline"
       size="sm"
-      className="h-8 w-full justify-start gap-2 rounded-sm"
+      align="start"
+      className="w-full"
       onClick={onStart}
     >
       {method.kind === "manual" ? (
-        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+        <ExternalLink className="size-3.5" aria-hidden />
       ) : (
-        <Download className="h-3.5 w-3.5" aria-hidden />
+        <Download className="size-3.5" aria-hidden />
       )}
       <span className="truncate text-xs">{describeMethod(method)}</span>
     </Button>
@@ -1025,7 +1068,6 @@ export function SigninSheet({
           variant="ghost"
           size="sm"
           type="button"
-          className="h-6 rounded-sm px-2 text-2xs"
           onClick={onCancel}
           disabled={submitting}
         >
@@ -1045,10 +1087,10 @@ export function SigninSheet({
               id="op-email"
               type="email"
               autoComplete="username"
+              density="compact"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="h-8 text-xs"
             />
           </div>
           <div className="space-y-1">
@@ -1062,10 +1104,11 @@ export function SigninSheet({
               {...secretKeyAgentProps}
               id="op-secret-key"
               type="text"
+              variant="config"
+              density="compact"
               required
               value={secretKey}
               onChange={(e) => setSecretKey(e.target.value)}
-              className="h-8 font-mono text-xs"
             />
           </div>
           <div className="space-y-1">
@@ -1080,9 +1123,9 @@ export function SigninSheet({
               {...addressAgentProps}
               id="op-address"
               type="text"
+              density="compact"
               value={signInAddress}
               onChange={(e) => setSignInAddress(e.target.value)}
-              className="h-8 text-xs"
             />
           </div>
         </>
@@ -1107,10 +1150,11 @@ export function SigninSheet({
               {...clientIdAgentProps}
               id="bw-client-id"
               type="text"
+              variant="config"
+              density="compact"
               required
               value={bwClientId}
               onChange={(e) => setBwClientId(e.target.value)}
-              className="h-8 font-mono text-xs"
             />
           </div>
           <div className="space-y-1">
@@ -1124,11 +1168,12 @@ export function SigninSheet({
               {...clientSecretAgentProps}
               id="bw-client-secret"
               type="password"
+              variant="config"
+              density="compact"
               autoComplete="off"
               required
               value={bwClientSecret}
               onChange={(e) => setBwClientSecret(e.target.value)}
-              className="h-8 font-mono text-xs"
             />
           </div>
         </>
@@ -1154,16 +1199,16 @@ export function SigninSheet({
           {...masterPasswordAgentProps}
           id="master-password"
           type="password"
+          density="compact"
           autoComplete="current-password"
           required
           value={masterPassword}
           onChange={(e) => setMasterPassword(e.target.value)}
-          className="h-8 text-xs"
         />
       </div>
 
       {error && (
-        <div className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+        <div className="border-l-2 border-danger/60 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {error}
         </div>
       )}
@@ -1175,17 +1220,16 @@ export function SigninSheet({
           type="submit"
           variant="default"
           size="sm"
-          className="h-7 gap-1 rounded-sm px-3 text-xs"
           disabled={submitting || backendId === "protonpass"}
         >
           {submitting ? (
             <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <Loader2 className="size-3.5 animate-spin" aria-hidden />
               {t("vault.signin.signingIn", { defaultValue: "Signing in…" })}
             </>
           ) : (
             <>
-              <LogIn className="h-3.5 w-3.5" aria-hidden />
+              <LogIn className="size-3.5" aria-hidden />
               {t("vault.signin.signIn", { defaultValue: "Sign in" })}
             </>
           )}

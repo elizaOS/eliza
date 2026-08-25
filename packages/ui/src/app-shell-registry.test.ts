@@ -4,10 +4,13 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appShellAgentSurfaceDescriptor,
   appShellPageIsAvailable,
   appShellPageMatchesPath,
+  buildRegisteredAgentSurfaceInventory,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
+  overlayAgentSurfaceDescriptor,
   registerAppShellPage,
   subscribeAppShellPages,
 } from "./app-shell-registry";
@@ -94,5 +97,74 @@ describe("app-shell-registry", () => {
         { managedCloud: false },
       ),
     ).toBe(true);
+  });
+
+  it("derives the exhaustive app-shell and overlay agent-bridge inventory", () => {
+    const page = {
+      id: "wallet.inventory",
+      pluginId: "@elizaos/plugin-wallet",
+      label: "Wallet",
+      path: "/inventory",
+    };
+    const overlay = {
+      name: "@elizaos/plugin-native-settings",
+      displayName: "Device Settings",
+      description: "Device settings",
+      category: "system",
+      icon: null,
+    };
+
+    expect(appShellAgentSurfaceDescriptor(page)).toEqual({
+      kind: "app-shell",
+      viewId: "wallet.inventory",
+      ownerId: "@elizaos/plugin-wallet",
+      path: "/inventory",
+    });
+    expect(overlayAgentSurfaceDescriptor(overlay)).toEqual({
+      kind: "overlay",
+      viewId: "native-settings",
+      ownerId: "@elizaos/plugin-native-settings",
+      path: "/apps/native-settings",
+    });
+    expect(
+      buildRegisteredAgentSurfaceInventory([page], [overlay]).map(
+        ({ viewId }) => viewId,
+      ),
+    ).toEqual(["native-settings", "wallet.inventory"]);
+  });
+
+  it("fails closed when two registered renderers would own one handler key", () => {
+    expect(() =>
+      buildRegisteredAgentSurfaceInventory(
+        [
+          {
+            id: "contacts",
+            pluginId: "@elizaos/plugin-contacts-page",
+            label: "Contacts",
+            path: "/contacts",
+          },
+        ],
+        [
+          {
+            name: "@elizaos/plugin-contacts",
+            displayName: "Contacts",
+            description: "Contacts",
+            category: "system",
+            icon: null,
+          },
+        ],
+      ),
+    ).toThrow(/registered by both app-shell:.* and overlay:/);
+  });
+
+  it("rejects empty app-shell ids before they reach the bridge", () => {
+    expect(() =>
+      appShellAgentSurfaceDescriptor({
+        id: "  ",
+        pluginId: "test-plugin",
+        label: "Invalid",
+        path: "/invalid",
+      }),
+    ).toThrow(/empty agent view id/);
   });
 });

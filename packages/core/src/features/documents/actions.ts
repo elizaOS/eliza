@@ -9,6 +9,7 @@
  * write/mutation access, and registers the `documents` search category as a
  * side effect of validate/handler.
  */
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -24,14 +25,18 @@ import type {
 	ActionExample,
 	ActionResult,
 	Content,
+	ContentReference,
+	DocumentRangeReadResult,
 	HandlerCallback,
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	ReadView,
 	SearchCategoryRegistration,
 	State,
 	UUID,
 } from "../../types";
+import { buildContentReference, buildReadSlice } from "../../types";
 import { getActiveRoutingContextsForTurn } from "../../utils/context-routing.ts";
 import {
 	describeUserReference,
@@ -81,6 +86,8 @@ type DocumentActionParameters = {
 	tags?: string[];
 	limit?: number;
 	offset?: number;
+	unit?: string;
+	expectedRevision?: string;
 	searchMode?: string;
 	includeImageDescriptions?: boolean;
 	scope?: string;
@@ -135,10 +142,18 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 		],
 	},
 	read: {
-		description: "Read the full text of one stored document by id.",
-		descriptionCompressed: "read document by id",
+		description:
+			"Read an exact page of one stored document by id, with continuation metadata.",
+		descriptionCompressed: "read document page by id",
 		required: [],
-		optional: ["id", "documentId"],
+		optional: [
+			"id",
+			"documentId",
+			"offset",
+			"limit",
+			"unit",
+			"expectedRevision",
+		],
 	},
 	write: {
 		description: "Create a new text-backed document from supplied content.",
@@ -229,9 +244,47 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const DOCUMENT_PATH_PATTERN =
-	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
 const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+
+function isDocumentPathCharacter(char: string, windows: boolean): boolean {
+	const code = char.charCodeAt(0);
+	return (
+		(code >= 48 && code <= 57) ||
+		(code >= 65 && code <= 90) ||
+		(code >= 97 && code <= 122) ||
+		char === "_" ||
+		char === "." ||
+		char === "-" ||
+		char === " " ||
+		(windows && /\s/u.test(char))
+	);
+}
+
+function extractDocumentPath(text: string): string | null {
+	for (let start = 0; start < text.length; start += 1) {
+		const windows =
+			/[A-Za-z]/.test(text[start]) &&
+			text[start + 1] === ":" &&
+			(text[start + 2] === "/" || text[start + 2] === "\\");
+		if (text[start] !== "/" && !windows) continue;
+		let cursor = start + (windows ? 3 : 1);
+		let lastValidEnd = -1;
+		while (cursor < text.length) {
+			const segmentStart = cursor;
+			while (
+				cursor < text.length &&
+				isDocumentPathCharacter(text[cursor], windows)
+			)
+				cursor += 1;
+			if (cursor === segmentStart) break;
+			lastValidEnd = cursor;
+			if (text[cursor] !== "/" && (!windows || text[cursor] !== "\\")) break;
+			cursor += 1;
+		}
+		if (lastValidEnd >= 0) return text.slice(start, lastValidEnd);
+	}
+	return null;
+}
 
 const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "documents",
@@ -303,10 +356,18 @@ function getSearchMode(value: unknown): SearchMode | undefined {
 		: undefined;
 }
 
-function getLimit(value: unknown, fallback: number): number {
-	return typeof value === "number" && Number.isFinite(value) && value >= 1
-		? Math.min(100, Math.floor(value))
-		: fallback;
+function getLimit(value: unknown): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+		throw new ElizaError(
+			"Document result limit must be a positive safe integer",
+			{
+				code: "DOCUMENT_INVALID_LIMIT",
+				context: { limit: value },
+			},
+		);
+	}
+	return value;
 }
 
 function getScope(
@@ -350,7 +411,14 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	return (await resolveDocumentRequesterRole(runtime, message)).role;
+	const role = (await resolveDocumentRequesterRole(runtime, message)).role;
+	if (role === "UNRESOLVED") {
+		throw new ElizaError("Document writer role is unresolved", {
+			code: "DOCUMENT_WRITER_ROLE_UNRESOLVED",
+			context: { entityId: message.entityId },
+		});
+	}
+	return role;
 }
 
 async function ensureWriteAccess(
@@ -359,6 +427,11 @@ async function ensureWriteAccess(
 	scope: DocumentVisibilityScope,
 	scopedToEntityId?: UUID,
 ): Promise<string | null> {
+	const requesterRole = (await resolveDocumentRequesterRole(runtime, message))
+		.role;
+	if (requesterRole === "UNRESOLVED" || requesterRole === "GUEST") {
+		return "A verified user identity is required to write documents.";
+	}
 	if (scope === "global" || scope === "owner-private") {
 		return (await hasRoleAccess(runtime, message, "OWNER"))
 			? null
@@ -507,9 +580,7 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (
-		unwrapUserMessageText(message).match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
-	);
+	return extractDocumentPath(unwrapUserMessageText(message));
 }
 
 function getUrl(
@@ -621,16 +692,18 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit, 5);
+	const limit = getLimit(params.limit);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);
-	const hasMoreInWindow = filteredMatches.length > limit;
-	const visible = filteredMatches.slice(0, limit);
+	const hasMoreInWindow = limit !== undefined && filteredMatches.length > limit;
+	const visible =
+		limit === undefined ? filteredMatches : filteredMatches.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
 			...item,
+			reference: documentReference(item),
 			transcriptId:
 				typeof metadata?.transcriptId === "string"
 					? metadata.transcriptId
@@ -640,6 +713,16 @@ async function handleSearch(
 			endMs: typeof metadata?.endMs === "number" ? metadata.endMs : undefined,
 		};
 	});
+	const projectedData = projected.map((item) => ({
+		id: item.id,
+		...(item.reference
+			? { reference: item.reference }
+			: { coordinateUnavailable: true }),
+		similarity: item.similarity,
+		transcriptId: item.transcriptId,
+		startMs: item.startMs,
+		endMs: item.endMs,
+	}));
 	const retrievalScope = `Searched a bounded ranked retrieval window of ${matches.length} fragment(s); completeness beyond that window is unknown.`;
 	const text = `${
 		projected.length === 0
@@ -649,7 +732,7 @@ async function handleSearch(
 					.join("\n\n")}`
 	} ${retrievalScope}${
 		hasMoreInWindow
-			? ` More filtered matches exist within the retrieved window beyond the ${limit} shown.`
+			? ` More filtered matches exist within the retrieved window beyond the explicitly requested ${limit} shown.`
 			: ""
 	}`;
 	const filtersApplied = [
@@ -665,12 +748,12 @@ async function handleSearch(
 	return result(true, text, "search", {
 		values: {
 			query: queryLogView(query),
-			results: projected,
+			results: projectedData,
 			scope: {
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
@@ -678,18 +761,107 @@ async function handleSearch(
 		},
 		data: {
 			query: queryLogView(query),
-			results: projected,
+			results: projectedData,
 			scope: {
 				retrieved: matches.length,
 				matchedInWindow: filteredMatches.length,
 				shown: projected.length,
-				limit,
+				...(limit === undefined ? {} : { limit }),
 				hasMoreInWindow,
 				retrievalCompleteness: "unknown_beyond_ranked_window",
 				filtersApplied,
 			},
 		},
 	});
+}
+
+type DocumentReadUnit = "line" | "fragment";
+
+function opaqueDocumentRevision(metadata: Record<string, unknown>): string {
+	const declaredRevision =
+		typeof metadata.documentRevision === "number"
+			? String(metadata.documentRevision)
+			: "0";
+	const attempt =
+		typeof metadata.revisionAttemptId === "string"
+			? metadata.revisionAttemptId
+			: "initial";
+	const sourceFingerprint =
+		typeof metadata.sourceFingerprint === "string"
+			? metadata.sourceFingerprint
+			: "source-unknown";
+	return `rev:${createHash("sha256")
+		.update("elizaos:document-read-revision:v1\0")
+		.update(declaredRevision)
+		.update("\0")
+		.update(attempt)
+		.update("\0")
+		.update(sourceFingerprint)
+		.digest("hex")}`;
+}
+
+function documentReference(item: StoredDocument): ContentReference | null {
+	const metadata = (item.metadata ?? {}) as Record<string, unknown>;
+	if (typeof metadata.documentId !== "string") {
+		return null;
+	}
+	const documentId = metadata.documentId;
+	const revision = opaqueDocumentRevision(metadata);
+	return buildContentReference({
+		kind: "document",
+		ref: `document:${documentId}`,
+		revision,
+	});
+}
+
+function requiredReadInteger(
+	value: number | undefined,
+	label: "offset" | "limit",
+	fallback: number,
+): number {
+	if (value === undefined) return fallback;
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new ElizaError(`Document read ${label} must be a safe integer`, {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: label },
+		});
+	}
+	if (label === "limit" && value < 1) {
+		throw new ElizaError("Document read limit must be positive", {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: label },
+		});
+	}
+	return value;
+}
+
+function documentReadPage(
+	page: DocumentRangeReadResult,
+	documentId: UUID,
+	unit: DocumentReadUnit,
+): { text: string; view: ReadView } {
+	const revision = opaqueDocumentRevision({
+		documentRevision: page.documentRevision,
+		revisionAttemptId: page.revisionAttemptId,
+		sourceFingerprint: page.sourceFingerprint,
+	});
+	return {
+		text: page.text,
+		view: {
+			reference: buildContentReference({
+				kind: "document",
+				ref: `document:${documentId}`,
+				revision,
+			}),
+			slice: buildReadSlice({
+				range: { unit, start: page.start, end: page.end, total: page.total },
+				completeness:
+					page.end < page.total ? "partial-recoverable" : "complete",
+				revision,
+				sliceSha256: createHash("sha256").update(page.text).digest("hex"),
+			}),
+		},
+	};
 }
 
 async function handleRead(
@@ -705,18 +877,91 @@ async function handleRead(
 		return result(false, text, "read", { values: { error: "invalid_id" } });
 	}
 
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
+	const unit: DocumentReadUnit =
+		params.unit === "fragment" ? "fragment" : "line";
+	const offset = requiredReadInteger(params.offset, "offset", 0);
+	const limit =
+		params.limit === undefined
+			? undefined
+			: requiredReadInteger(params.limit, "limit", 1);
+	const documentRange = await service.readDocumentRange(
+		documentId,
+		{ unit, offset, ...(limit === undefined ? {} : { limit }) },
+		message,
+	);
+	if (!documentRange) {
 		const text = `Document ${documentId} was not found; tell the user it doesn't exist.`;
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
+	if (offset > documentRange.total) {
+		throw new ElizaError("Document read offset exceeds the source", {
+			code: "DOCUMENT_READ_INVALID_RANGE",
+			context: { field: "offset", total: documentRange.total },
+		});
+	}
+	const page = documentReadPage(documentRange, documentId, unit);
+	if (
+		page.view.slice.range.start > 0 &&
+		(typeof params.expectedRevision !== "string" ||
+			!params.expectedRevision.trim())
+	) {
+		return result(
+			false,
+			"A document revision is required to continue reading.",
+			"read",
+			{
+				values: { error: "expected_revision_required", documentId },
+				data: { documentId, error: "expected_revision_required" },
+				promptData: {
+					actionName: "DOCUMENT",
+					subaction: "read",
+					documentId,
+					error: "expected_revision_required",
+				},
+			},
+		);
+	}
+	if (
+		typeof params.expectedRevision === "string" &&
+		params.expectedRevision.trim() &&
+		params.expectedRevision.trim() !== page.view.slice.revision
+	) {
+		return result(
+			false,
+			"The document changed before this page could be read.",
+			"read",
+			{
+				values: { error: "stale_revision", documentId },
+				data: {
+					documentId,
+					error: "stale_revision",
+					currentRevision: page.view.slice.revision,
+				},
+				promptData: {
+					actionName: "DOCUMENT",
+					subaction: "read",
+					documentId,
+					error: "stale_revision",
+					currentRevision: page.view.slice.revision,
+				},
+			},
+		);
+	}
 
-	// No visible callback: dumping the raw document text as a chat bubble is
-	// not the answer — the planner presents the content in voice.
-	const text = document.content.text ?? "";
-	return result(true, text, "read", {
-		values: { documentId, textLength: text.length },
-		data: { document },
+	// The exact page has one carrier: ActionResult.text. Structured projections
+	// contain only identity and continuation metadata, never the document body.
+	return result(true, page.text, "read", {
+		values: {
+			documentId,
+			readView: page.view,
+		},
+		data: { documentId, readView: page.view },
+		promptData: {
+			actionName: "DOCUMENT",
+			subaction: "read",
+			documentId,
+			readView: page.view,
+		},
 	});
 }
 
@@ -975,8 +1220,9 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
+	const requestedLimit = getLimit(params.limit);
 	const listResult = await service.listDocumentsDetailed(message, {
-		limit: getLimit(params.limit, 25),
+		...(requestedLimit === undefined ? {} : { limit: requestedLimit }),
 		offset,
 		query,
 		scope,
@@ -1358,9 +1604,24 @@ export const documentAction: Action = {
 		},
 		{
 			name: "offset",
-			description: "Pagination offset for list.",
+			description:
+				"Pagination offset for list, or the zero-based line/fragment offset for read.",
 			required: false,
 			schema: { type: "number", minimum: 0 },
+		},
+		{
+			name: "unit",
+			description:
+				"Exact read unit for action=read: line or fragment. Defaults to line.",
+			required: false,
+			schema: { type: "string", enum: ["line", "fragment"] },
+		},
+		{
+			name: "expectedRevision",
+			description:
+				"Revision returned by the preceding read page. A changed document fails explicitly instead of shifting offsets.",
+			required: false,
+			schema: { type: "string" },
 		},
 		{
 			name: "includeImageDescriptions",

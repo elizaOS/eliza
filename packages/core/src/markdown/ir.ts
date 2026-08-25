@@ -1,7 +1,7 @@
 /** Converts Markdown into text, style spans, and links for platform-independent rendering. */
 
 import MarkdownIt from "markdown-it";
-import { chunkText } from "./chunk.js";
+import { assertValidMarkdownChunkLimit, chunkText } from "./chunk.js";
 
 // ============================================================================
 // Types
@@ -960,10 +960,11 @@ export function markdownToIRWithMeta(
  * @returns Array of IR chunks
  */
 export function chunkMarkdownIR(ir: MarkdownIR, limit: number): MarkdownIR[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!ir.text) {
 		return [];
 	}
-	if (limit <= 0 || ir.text.length <= limit) {
+	if (ir.text.length <= limit) {
 		return [ir];
 	}
 

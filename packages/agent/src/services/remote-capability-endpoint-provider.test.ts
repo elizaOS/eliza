@@ -3,11 +3,12 @@
  * capability-router `fetch`: trust-policy construction, adapting a
  * provider-specific provisioner into the canonical router + plugin-sync path,
  * allowlist gating (skip/unload of shared-endpoint modules), the uniform
- * endpoint contract across E2B/home-machine/mobile/direct providers, and
+ * endpoint contract across home-machine/mobile/direct providers, and
  * endpoint URL normalization/validation.
  */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
+  ElizaError,
   type IAgentRuntime,
   type Plugin,
   type UUID,
@@ -17,10 +18,11 @@ import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,
   directRemoteCapabilityEndpointProvider,
+  installRemoteCapabilityEndpoint,
+  REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import {
-  e2bCapabilityEndpointProvider,
   homeMachineCapabilityEndpointProvider,
   mobileCompanionCapabilityEndpointProvider,
 } from "./remote-capability-url-endpoint-providers.ts";
@@ -484,21 +486,16 @@ describe("remote capability endpoint providers", () => {
     ]);
   });
 
-  it("treats E2B, home-machine, and mobile companion providers as the same plugin endpoint contract", async () => {
+  it("treats home-machine and mobile companion providers as the same plugin endpoint contract", async () => {
     const runtime = makeRuntime();
     const families = [
-      { id: "e2b", provider: e2bCapabilityEndpointProvider },
       { id: "home", provider: homeMachineCapabilityEndpointProvider },
       { id: "mobile", provider: mobileCompanionCapabilityEndpointProvider },
     ] as const;
     const calls: Array<{ method?: string; endpointId: string }> = [];
     globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const href = String(url);
-      const endpointId = href.includes("e2b")
-        ? "e2b"
-        : href.includes("home")
-          ? "home"
-          : "mobile";
+      const endpointId = href.includes("home") ? "home" : "mobile";
       const body = init?.body
         ? (JSON.parse(String(init.body)) as {
             method?: string;
@@ -594,7 +591,6 @@ describe("remote capability endpoint providers", () => {
     }
 
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
-      "@remote/e2b",
       "@remote/home",
       "@remote/mobile",
     ]);
@@ -649,7 +645,7 @@ describe("remote capability endpoint providers", () => {
       calls
         .filter((call) => call.method === "plugin.modules.list")
         .map((call) => call.endpointId),
-    ).toEqual(["e2b", "home", "mobile"]);
+    ).toEqual(["home", "mobile"]);
   });
 
   it("keeps direct endpoints as one provider implementation, not a special runtime path", async () => {
@@ -673,24 +669,94 @@ describe("remote capability endpoint providers", () => {
     });
   });
 
-  it("normalizes and validates URL-backed provider endpoints before sync", async () => {
-    await expect(
-      e2bCapabilityEndpointProvider.provision({
-        baseUrl: " https://runner.example.test/root?token=leak#frag ",
-        endpointId: " e2b-runner ",
-        token: " secret ",
-        allowedModuleIds: [" runner-plugin ", "runner-plugin"],
-      }),
-    ).resolves.toEqual({
-      providerId: "e2b",
-      endpoint: {
-        id: "e2b-runner",
-        baseUrl: "https://runner.example.test/root",
-        token: "secret",
-      },
-      allowedModuleIds: ["runner-plugin"],
-    });
+  it("returns a typed direct-provider error for unknown and malformed baseUrl values", async () => {
+    const values: unknown[] = [
+      null,
+      42,
+      {},
+      "::::",
+      "not a url",
+      "http://[",
+      "   ",
+    ];
+    for (const baseUrl of values) {
+      try {
+        await directRemoteCapabilityEndpointProvider().provision({
+          endpoint: { id: "bad", baseUrl } as never,
+        });
+        throw new Error(`expected reject for ${JSON.stringify(baseUrl)}`);
+      } catch (err) {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect(err).not.toBeInstanceOf(TypeError);
+        expect(err).toMatchObject({
+          code: REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+          context: { field: "baseUrl" },
+        });
+        if (typeof baseUrl === "string" && baseUrl.trim()) {
+          expect((err as Error).cause).toBeInstanceOf(TypeError);
+        }
+      }
+    }
 
+    try {
+      await directRemoteCapabilityEndpointProvider().provision({
+        endpoint: { id: "file", baseUrl: "file:///tmp/capability" },
+      });
+      throw new Error("expected protocol rejection");
+    } catch (err) {
+      expect(err).toMatchObject({
+        code: REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+        context: { field: "baseUrl", protocol: "file:", reason: "protocol" },
+      });
+    }
+  });
+
+  it("fail-closes install and connect paths with the same typed URL error", async () => {
+    const runtime = makeRuntime();
+    for (const baseUrl of [null, "::::"] as unknown[]) {
+      try {
+        installRemoteCapabilityEndpoint(runtime, {
+          environment: "server",
+          endpoints: [{ id: "bad", baseUrl }] as never,
+        });
+        throw new Error("expected install rejection");
+      } catch (err) {
+        expect(err).toMatchObject({
+          code: REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+          context: { field: "baseUrl" },
+        });
+      }
+    }
+
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const provider: RemoteCapabilityEndpointProvider = {
+      id: "invalid-test",
+      provision: async () => ({
+        providerId: "invalid-test",
+        endpoint: { id: "bad", baseUrl: 42 } as never,
+      }),
+    };
+    await expect(
+      connectRemoteCapabilityEndpointProvider(runtime, {
+        provider,
+        provisionOptions: undefined,
+      }),
+    ).rejects.toMatchObject({
+      code: REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+      context: { field: "baseUrl", reason: "type", valueType: "number" },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    expect(() =>
+      installRemoteCapabilityEndpoint(runtime, {
+        environment: "server",
+        endpoints: [{ id: "bad", baseUrl: "::::" }],
+      }),
+    ).toThrow(ElizaError);
+  });
+
+  it("normalizes and validates URL-backed provider endpoints before sync", async () => {
     await expect(
       homeMachineCapabilityEndpointProvider.provision({
         baseUrl: "https://home.example.test/capability/",

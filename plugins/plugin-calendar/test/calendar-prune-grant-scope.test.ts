@@ -26,10 +26,7 @@ import type {
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  MAX_GOOGLE_CALENDAR_EVENTS,
-  MAX_GOOGLE_CALENDAR_PAGES,
-} from "../src/service/CalendarService.js";
+import { MAX_GOOGLE_CALENDAR_EVENTS } from "../src/service/CalendarService.js";
 import {
   type CalendarHostGate,
   CalendarRepository,
@@ -447,55 +444,7 @@ describe("CalendarService feed sync — two Google accounts, both named 'primary
     expect(grantsById.get("evt-b-1")).toBe(GRANT_B.id);
   });
 
-  it("rejects Google Calendar event sync pagination exceeding the maximum page limit", async () => {
-    await clearEvents();
-    let pageCount = 0;
-    const originalGoogleService = runtime.getService?.("google");
-    (runtime as { getService: (name: string) => unknown }).getService = (
-      name: string,
-    ) =>
-      name === "google"
-        ? {
-            listEventPage: async () => {
-              pageCount += 1;
-              return {
-                events: [],
-                nextPageToken: `page-token-${pageCount}`,
-                nextSyncToken: null,
-              };
-            },
-          }
-        : null;
-
-    try {
-      const feed = await calendar.getCalendarFeed(
-        INTERNAL_URL,
-        {
-          grantId: GRANT_A.id,
-          calendarId: "primary",
-          timeMin: WINDOW_MIN,
-          timeMax: WINDOW_MAX,
-          forceSync: true,
-        },
-        new Date("2026-06-02T12:00:00.000Z"),
-      );
-
-      expect(feed.state).toBe("partial");
-      expect(feed.sources[0]?.error).toMatchObject({
-        code: "GOOGLE_CALENDAR_PAGE_LIMIT_EXCEEDED",
-        message:
-          "Google Calendar event pagination exceeded maximum page limit.",
-      });
-      expect(pageCount).toBe(MAX_GOOGLE_CALENDAR_PAGES);
-    } finally {
-      (runtime as { getService: (name: string) => unknown }).getService = (
-        name: string,
-      ) => (name === "google" ? originalGoogleService : null);
-    }
-  });
-
-  it("accepts the final legal Google Calendar page and exact event limit", async () => {
-    expect(MAX_GOOGLE_CALENDAR_PAGES).toBe(1_000);
+  it("accepts a sync beyond the former page ceiling and exact event limit", async () => {
     expect(MAX_GOOGLE_CALENDAR_EVENTS).toBe(10_000);
     let pageCount = 0;
     const originalGoogleService = runtime.getService?.("google");
@@ -506,7 +455,7 @@ describe("CalendarService feed sync — two Google accounts, both named 'primary
         ? {
             listEventPage: async () => {
               pageCount += 1;
-              const isFinal = pageCount === MAX_GOOGLE_CALENDAR_PAGES;
+              const isFinal = pageCount === 1_001;
               return {
                 events:
                   pageCount <= 4
@@ -541,7 +490,7 @@ describe("CalendarService feed sync — two Google accounts, both named 'primary
         timeZone: "UTC",
       });
 
-      expect(pageCount).toBe(MAX_GOOGLE_CALENDAR_PAGES);
+      expect(pageCount).toBe(1_001);
       expect(batch.events).toHaveLength(MAX_GOOGLE_CALENDAR_EVENTS);
       expect(batch.nextSyncToken).toBe("sync-final");
     } finally {

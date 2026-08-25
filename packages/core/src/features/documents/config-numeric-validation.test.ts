@@ -15,7 +15,6 @@ const baseConfig = {
 
 const positiveIntegerFields = [
 	"MAX_INPUT_TOKENS",
-	"MAX_OUTPUT_TOKENS",
 	"EMBEDDING_DIMENSION",
 	"MAX_CONCURRENT_REQUESTS",
 	"REQUESTS_PER_MINUTE",
@@ -69,7 +68,6 @@ describe("ModelConfigSchema numeric settings", () => {
 		const result = ModelConfigSchema.parse({
 			...baseConfig,
 			MAX_INPUT_TOKENS: " 004000 ",
-			MAX_OUTPUT_TOKENS: 2048,
 			EMBEDDING_DIMENSION: "768",
 			MAX_CONCURRENT_REQUESTS: "2",
 			REQUESTS_PER_MINUTE: 60,
@@ -79,7 +77,6 @@ describe("ModelConfigSchema numeric settings", () => {
 
 		expect(result).toMatchObject({
 			MAX_INPUT_TOKENS: 4000,
-			MAX_OUTPUT_TOKENS: 2048,
 			EMBEDDING_DIMENSION: 768,
 			MAX_CONCURRENT_REQUESTS: 2,
 			REQUESTS_PER_MINUTE: 60,
@@ -89,7 +86,6 @@ describe("ModelConfigSchema numeric settings", () => {
 
 		const defaults = ModelConfigSchema.parse(baseConfig);
 		expect(defaults).toMatchObject({
-			MAX_OUTPUT_TOKENS: 4096,
 			EMBEDDING_DIMENSION: 1536,
 			MAX_CONCURRENT_REQUESTS: 150,
 			REQUESTS_PER_MINUTE: 300,
@@ -251,9 +247,9 @@ describe("validateModelConfig numeric boundary", () => {
 	it("preserves the real configuration-boundary defaults", () => {
 		vi.stubEnv("EMBEDDING_PROVIDER", "local");
 
-		expect(validateModelConfig()).toMatchObject({
+		const config = validateModelConfig();
+		expect(config).toMatchObject({
 			MAX_INPUT_TOKENS: 4000,
-			MAX_OUTPUT_TOKENS: 4096,
 			EMBEDDING_DIMENSION: 384,
 			MAX_CONCURRENT_REQUESTS: 100,
 			REQUESTS_PER_MINUTE: 500,

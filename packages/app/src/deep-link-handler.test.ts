@@ -9,7 +9,10 @@
  * untrusted or unconfigured hosts are ignored. Runs under jsdom with `window`,
  * `location.hash`, and event listeners; dispatch seams are `vi.fn()` spies.
  */
-import { CONNECT_EVENT, NAVIGATE_VIEW_EVENT } from "@elizaos/ui/events";
+import {
+  CONNECT_EVENT,
+  listenForNavigateViewRequests,
+} from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDeepLinkHandler,
@@ -83,6 +86,16 @@ describe("isTrustedAppLink", () => {
 });
 
 describe("createDeepLinkHandler — top-level-surface navigation intents", () => {
+  it("routes a trusted Cloudflare Live View into the built-in Browser", () => {
+    const liveView = "https://live.browser.run/session?token=secret";
+    const { handle, dispatchNavigationIntent } = makeHandler();
+    handle(`elizaos://browser?browse=${encodeURIComponent(liveView)}`);
+    expect(dispatchNavigationIntent).toHaveBeenCalledWith({
+      viewId: "browser",
+      viewPath: `/browser?browse=${encodeURIComponent(liveView)}`,
+    });
+  });
+
   it("routes wallet links (custom scheme AND universal) onto the navigation bus, not the hash", () => {
     const { handle, dispatchNavigationIntent } = makeHandler();
     handle("elizaos://wallet");
@@ -135,15 +148,28 @@ describe("createDeepLinkHandler — top-level-surface navigation intents", () =>
   it("dispatches on the eliza:navigate:view bus by default (no injected seam)", () => {
     const { handle } = makeHandler({ dispatchNavigationIntent: undefined });
     const seen: unknown[] = [];
-    const onNavigate = (event: Event) => {
-      seen.push((event as CustomEvent).detail);
-    };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const stop = listenForNavigateViewRequests((event) => {
+      seen.push(event.detail);
+    });
     try {
       handle("elizaos://apps/deploy");
     } finally {
-      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+      stop();
     }
+    expect(seen).toEqual([{ viewId: "cloud-apps", viewPath: "/cloud-apps" }]);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("replays a default native dispatch that arrives before shell registration", () => {
+    const { handle } = makeHandler({ dispatchNavigationIntent: undefined });
+    handle("elizaos://apps/deploy");
+
+    const seen: unknown[] = [];
+    const stop = listenForNavigateViewRequests((event) => {
+      seen.push(event.detail);
+    });
+    stop();
+
     expect(seen).toEqual([{ viewId: "cloud-apps", viewPath: "/cloud-apps" }]);
     expect(window.location.hash).toBe("");
   });

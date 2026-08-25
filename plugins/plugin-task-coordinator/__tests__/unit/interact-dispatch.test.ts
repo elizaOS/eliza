@@ -151,6 +151,17 @@ describe("interact: orchestrator delegation + unknown capability", () => {
     expect(out).toEqual({ taskCount: 0 });
   });
 
+  it("rejects a human-only typed mutation before any client effect", async () => {
+    await expect(
+      interact("orchestrator-validate-task", {
+        taskId: "task-1",
+        passed: true,
+        humanOverride: true,
+      }),
+    ).rejects.toThrow(/requires direct human interaction/);
+    expect(getOrchestratorStatus).not.toHaveBeenCalled();
+  });
+
   it("rejects an unrecognized capability with a descriptive error", async () => {
     await expect(interact("does-not-exist")).rejects.toThrow(
       /does not support/,

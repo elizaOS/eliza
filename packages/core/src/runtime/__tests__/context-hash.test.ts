@@ -56,3 +56,21 @@ describe("context hash helpers", () => {
 		expect(first[0]?.segmentHash).not.toBe(first[1]?.segmentHash);
 	});
 });
+
+describe("locale independence", () => {
+	// The prompt cache and trajectory prefix matching rely on the same context
+	// hashing identically on every host. ICU collation is locale-dependent, so
+	// sorting keys with localeCompare made the serialized bytes — and every
+	// hash derived from them — vary with the machine's locale.
+	it("orders keys by UTF-16 code units, not host collation", () => {
+		expect(stableJsonStringify({ z: 1, ä: 2, B: 3, a: 4 })).toBe(
+			'{"B":3,"a":4,"z":1,"ä":2}',
+		);
+	});
+
+	it("hashes identically to an explicitly code-unit-ordered object", () => {
+		expect(stableJsonStringify({ z: 1, ä: 2, B: 3, a: 4 })).toBe(
+			stableJsonStringify({ B: 3, a: 4, z: 1, ä: 2 }),
+		);
+	});
+});

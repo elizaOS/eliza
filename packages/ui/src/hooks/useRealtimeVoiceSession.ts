@@ -825,20 +825,26 @@ export function useRealtimeVoiceSession(
 /**
  * Read the VITE-side realtime-voice flag. Vite statically replaces
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
- * (not a dynamic key). Absent/blank/anything-but-truthy ⇒ off, so the realtime
- * path never arms unless a build explicitly opts in — the batch path stays the
- * default everywhere.
+ * (not a dynamic key).
+ *
+ * Realtime is opt-in on every runtime target so an unrelated build mode cannot
+ * silently replace the established batch voice path.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    if (typeof raw !== "string") return false;
-    const v = raw.trim().toLowerCase();
-    return v === "1" || v === "true" || v === "yes" || v === "on";
+    return parseRealtimeVoiceFlag(raw);
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;
   }
+}
+
+/** Parse the build-time realtime voice switch without accepting typos as opt-ins. */
+export function parseRealtimeVoiceFlag(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const value = raw.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 // Re-export the mint-error type so the barrel/consumers get it from one place.

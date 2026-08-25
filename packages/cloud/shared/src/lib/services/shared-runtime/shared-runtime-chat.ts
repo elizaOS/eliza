@@ -7,7 +7,14 @@
  */
 
 import crypto from "node:crypto";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import {
+  assertModelOutputComplete,
+  ChannelType,
+  ElizaError,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core/edge";
 import { parseSharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import { sharedTurnTracesRepository } from "../../../db/repositories/shared-turn-traces";
@@ -20,6 +27,10 @@ import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheTTL } from "../../cache/keys";
 import { enforceOrgRateLimit, OrgRateLimitCacheNotReadyError } from "../../middleware/rate-limit";
 import { getProviderFromModel } from "../../pricing";
+import {
+  collectVideoProviderApiKeys,
+  getConfiguredVideoProviderCandidates,
+} from "../../providers/video/registry";
 import { getCloudAwareEnv, getCloudBinding } from "../../runtime/cloud-bindings";
 import type { PublicObjectBindings } from "../../storage/r2-public-object";
 import { logger } from "../../utils/logger";
@@ -33,10 +44,12 @@ import {
   recordUsageAnalytics,
 } from "../ai-billing";
 import { aiBillingRecordsService } from "../ai-billing-records";
-import { DEFAULT_IMAGE_MODEL_ID } from "../ai-pricing-definitions";
+import { getSupportedVideoModelDefinition } from "../ai-pricing-definitions";
 import { chatSseFrame } from "../chat-sse-frames";
+import { contentSafetyService } from "../content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "../credits";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
+import { generationsService } from "../generations";
 import {
   executeImageGeneration,
   imageProviderKeysFromCloudEnvironment,
@@ -57,6 +70,12 @@ import {
 import { admitOrganizationInference } from "../organization-inference-admission";
 import { isCanonicalPersonalSharedAgent } from "./personal-shared-identity";
 import {
+  estimatePersonalSharedSeedanceCostUsd,
+  PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID,
+  PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID,
+  resolvePersonalSharedSeedanceOptions,
+} from "./personal-shared-seedance";
+import {
   type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
@@ -69,18 +88,28 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
+import {
+  buildSharedFactsContext,
+  extractSharedTurnFacts,
+  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
+  sharedFactsEnabled,
+} from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
   buildSharedRecallContext,
   embedTextsViaSidecar,
   embedTextViaSidecar,
-  SHARED_RECALL_DEFAULT_TOP_K,
   SHARED_RECALL_EMBEDDING_MODEL,
 } from "./shared-recall";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
-import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
-import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
+import { sharedRuntimeModelHistoryMessages } from "./shared-runtime-history-policy";
+import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+import {
+  replayedSharedProviderTiming,
+  type SharedProviderTimingReceipt,
+  type SharedRuntimeTimingReceipt,
+} from "./shared-runtime-timing";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
@@ -90,12 +119,32 @@ import {
   type SharedTurnSummaryResult,
 } from "./shared-turn-trace-recorder";
 
-export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+function retainedVoiceHistoryProvenance(
+  channelId: string,
+  history: readonly SharedTurnMessage[],
+  channel: SharedRuntimeChatOptions["channel"],
+) {
+  if (channel?.type !== ChannelType.VOICE_DM) return undefined;
+  return {
+    channelId,
+    channelType: String(channel.type),
+    channelSource: channel.source === undefined ? null : String(channel.source),
+    messages: history.map((message) => ({
+      id: message.id ?? null,
+      role: message.role,
+      createdAt: message.createdAt ?? null,
+      interrupted: message.interrupted === true,
+    })),
+  };
+}
+
 export { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
 
+const SSE_TRANSPORT_READY_COMMENT = ": ready\n\n";
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
+const PERSONAL_SHARED_IMAGE_MODEL_ID = "fal-ai/flux/schnell";
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 function elapsedTurnMs(startedAt: number): number {
@@ -122,6 +171,12 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
+  /**
+   * Makes a terminal turn visible to later room requests before asynchronous
+   * durability work finishes. Implementations that serialize on durable
+   * writes may omit this hook.
+   */
+  stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
   merge(
     agentId: string,
     channelId: string,
@@ -130,9 +185,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 /**
- * P5 sampled turn trace, recorded strictly off the response path. The recorder
- * self-gates on SHARED_TURN_TRACES_ENABLED + deterministic trace-id sampling
- * and never throws, so this adds zero turn latency and zero failure surface.
+ * Turn trace recorded strictly off the response path. The recorder self-gates
+ * on SHARED_TURN_TRACES_ENABLED, samples ordinary chat, and retains
+ * authenticated voice turns so incident diagnosis does not depend on sampling.
  */
 function recordTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
@@ -142,7 +197,10 @@ function recordTurnTraceOffPath(
   startedAt: number,
   result: SharedTurnSummaryResult,
   terminalTiming?: SharedRuntimeTimingReceipt,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
 ): void {
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const summary = buildTurnSummary({
       result,
@@ -159,21 +217,29 @@ function recordTurnTraceOffPath(
       {
         ...summary,
         ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: channel?.type === ChannelType.VOICE_DM },
     );
   });
 }
 
-/** Persist error/abort receipts through the same durable sampled trace row. */
+/** Persist error/abort receipts through the same durable turn trace row. */
 function recordFailedTurnTraceOffPath(
   executionCtx: BridgeExecutionContext | undefined,
   agent: SharedRuntimeAgent,
   channelId: string,
+  traceId: string,
   model: string,
   startedAt: number,
   terminalTiming: SharedRuntimeTimingReceipt | undefined,
+  history: readonly SharedTurnMessage[] = [],
+  channel?: SharedRuntimeChatOptions["channel"],
+  fallbackFinishReason: "aborted" | "error" = "error",
 ): void {
-  if (!terminalTiming) return;
+  const retainVoiceTrace = channel?.type === ChannelType.VOICE_DM;
+  if (!terminalTiming && !retainVoiceTrace) return;
+  const historyProvenance = retainedVoiceHistoryProvenance(channelId, history, channel);
   void settleOffResponsePath(executionCtx, async () => {
     const completedAt = Date.now();
     await recordSharedTurnTrace(
@@ -183,7 +249,7 @@ function recordFailedTurnTraceOffPath(
         userId: agent.user_id,
         agentId: agent.id,
         channelId,
-        traceId: terminalTiming.traceId,
+        traceId: terminalTiming?.traceId ?? traceId,
         startedAt,
         // The bounded runtime offset can be null when the measurement is
         // unavailable or rejected. The trace row still has an honest wall
@@ -191,10 +257,12 @@ function recordFailedTurnTraceOffPath(
         // failure.
         latencyMs: Math.max(0, Math.round(completedAt - startedAt)),
         model,
-        finishReason: terminalTiming.outcome === "aborted" ? "aborted" : "error",
+        finishReason: terminalTiming?.outcome === "aborted" ? "aborted" : fallbackFinishReason,
         stages: [{ name: "runtime" }],
-        terminalTiming,
+        ...(terminalTiming ? { terminalTiming } : {}),
+        ...(historyProvenance ? { historyProvenance } : {}),
       },
+      { forceRecord: retainVoiceTrace },
     );
   });
 }
@@ -204,17 +272,24 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
+  context: { agentId: string; originalIntent: string; clientMessageId?: string },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
-  if (turn.capabilityWall) results.push(capabilityWallActionResult(turn.capabilityWall));
+  if (turn.capabilityWall) {
+    results.push(capabilityWallActionResult(turn.capabilityWall, context));
+  }
   for (const wall of turn.blockedSecondaryCapabilities ?? []) {
-    results.push(capabilityWallActionResult(wall));
+    results.push(capabilityWallActionResult(wall, context));
   }
   return results.length ? results : undefined;
 }
 
-function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall">): boolean {
-  return Boolean(turn.capabilityWall);
+function isProviderFreeTurn(
+  turn: Pick<RunSharedAgentTurnResult, "capabilityWall" | "model">,
+): boolean {
+  // Capability refusals now run through the agent model so they stay in
+  // character. Retain compatibility for replayed legacy wall-only turns.
+  return Boolean(turn.capabilityWall && turn.model === "capability-wall");
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
@@ -230,6 +305,7 @@ export interface SharedTurnTerminalResult {
   runtime: "shared";
   transport: "shared-runtime";
   actionResults?: unknown[];
+  timing?: SharedProviderTimingReceipt;
 }
 
 export type SharedTurnClaimDecision =
@@ -268,6 +344,10 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Server-authenticated epoch-ms ceiling applied before admission and model use. */
+  trustedHistoryCutoffAt?: number;
+  /** Server-authenticated control input is modeled but omitted from durable user history. */
+  transientInput?: true;
   /** Server-authenticated raw utterance when the model message includes connector context. */
   trustedUserUtterance?: string;
   /** Server-resolved transport semantics; untrusted RPC params never populate this. */
@@ -306,11 +386,10 @@ function imageDimensionsFromMediaSize(size: string | undefined): {
   return { width, height };
 }
 
-function personalSharedImagePort(
+function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
-  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -320,44 +399,29 @@ function personalSharedImagePort(
     BLOB: blob,
     ...(cloudEnv.R2_PUBLIC_HOST ? { R2_PUBLIC_HOST: cloudEnv.R2_PUBLIC_HOST } : {}),
   };
-  if (!isImageGenerationConfigured(DEFAULT_IMAGE_MODEL_ID, bindings, providerKeys)) {
+  const videoKeys = collectVideoProviderApiKeys(cloudEnv as unknown as Record<string, unknown>);
+  const videoConfigured = Boolean(videoKeys.FAL_KEY || videoKeys.FAL_API_KEY);
+  const imageConfigured = isImageGenerationConfigured(
+    PERSONAL_SHARED_IMAGE_MODEL_ID,
+    bindings,
+    providerKeys,
+  );
+  if (!imageConfigured && !videoConfigured) {
     return undefined;
   }
 
   const turnIdentity = turnKey ?? crypto.randomUUID();
   let actionOrdinal = 0;
   return {
-    canGenerateMedia: ({ mediaType }) => mediaType === "image",
+    canGenerateMedia: ({ mediaType }) =>
+      mediaType === "image" ? imageConfigured : mediaType === "video" && videoConfigured,
     generateMedia: async (request) => {
-      if (request.mediaType !== "image") {
-        throw new Error("Personal Shared media generation supports images only");
-      }
       const ordinal = actionOrdinal;
       actionOrdinal += 1;
-      let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-      if (executionCtx) {
-        try {
-          admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
-            agent.organization_id,
-            executionCtx,
-          );
-        } catch (error) {
-          // error-policy:J1 translate the cache-only admission boundary into
-          // the Shared runtime's single retryable warming signal.
-          if (error instanceof InferenceAdmissionSnapshotCacheWarmingError) {
-            throw new SharedRuntimeCacheWarmingError(
-              "Image billing authorization is warming. Retry shortly.",
-            );
-          }
-          throw error;
-        }
-      }
       let rateLimited: Response | null;
       try {
         rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
-          cacheOnly: Boolean(executionCtx),
-          executionCtx,
-          config: inferenceRateLimitConfig(admissionSnapshot, "strict"),
+          config: PERSONAL_SHARED_RATE_LIMIT,
         });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
@@ -382,10 +446,97 @@ function personalSharedImagePort(
         );
       }
 
+      if (request.mediaType === "video") {
+        const model = request.imageUrl
+          ? PERSONAL_SHARED_IMAGE_VIDEO_MODEL_ID
+          : PERSONAL_SHARED_TEXT_VIDEO_MODEL_ID;
+        const definition = getSupportedVideoModelDefinition(model);
+        if (!definition) throw new Error(`Personal Shared video model is unsupported: ${model}`);
+        const candidate = getConfiguredVideoProviderCandidates([definition], videoKeys)[0];
+        if (!candidate) throw new Error("fal.ai video generation is not configured");
+        const options = resolvePersonalSharedSeedanceOptions(request);
+        const costUsd = estimatePersonalSharedSeedanceCostUsd(options);
+        await contentSafetyService.assertSafeForPublicUse({
+          surface: "media_generation_prompt",
+          organizationId: agent.organization_id,
+          userId: agent.user_id,
+          text: request.prompt,
+          imageUrls: request.imageUrl ? [request.imageUrl] : undefined,
+          metadata: { type: "video", model, source: "personal-shared" },
+        });
+        const generated = await candidate.provider.generate({
+          model,
+          prompt: request.prompt,
+          referenceUrl: request.imageUrl,
+          durationSeconds: options.durationSeconds,
+          resolution: options.resolution,
+          audio: options.audio,
+          aspectRatio: options.aspectRatio,
+          seed: options.seed,
+          endUserId: agent.user_id,
+          apiKeys: videoKeys,
+        });
+        if (generated.hasNsfwConcepts?.some(Boolean)) {
+          throw new Error("Generated video failed safety review");
+        }
+        const generationId = stableUuid(
+          `shared-video:${agent.id}:${roomId}:${turnIdentity}:${ordinal}`,
+        );
+        await generationsService.create({
+          id: generationId,
+          organization_id: agent.organization_id,
+          user_id: agent.user_id,
+          type: "video",
+          model,
+          provider: definition.provider,
+          prompt: request.prompt,
+          result: {
+            requestId: generated.requestId,
+            seed: generated.seed,
+            timings: generated.timings,
+            billingSource: definition.billingSource,
+            source: "personal-shared",
+            funding: "platform",
+          },
+          status: "completed",
+          storage_url: generated.video.url,
+          thumbnail_url: generated.video.url,
+          file_size: generated.video.file_size ? BigInt(generated.video.file_size) : undefined,
+          mime_type: generated.video.content_type ?? "video/mp4",
+          parameters: {
+            referenceUrl: request.imageUrl,
+            durationSeconds: options.durationSeconds,
+            resolution: options.resolution,
+            aspectRatio: options.aspectRatio,
+            audio: options.audio,
+            seed: options.seed,
+          },
+          dimensions: {
+            width: generated.video.width,
+            height: generated.video.height,
+            duration: options.durationSeconds,
+          },
+          cost: String(costUsd),
+          credits: "0",
+          job_id: generated.requestId,
+          completed_at: new Date(),
+        });
+        return {
+          mediaType: "video",
+          url: generated.video.url,
+          videoUrl: generated.video.url,
+          mimeType: generated.video.content_type ?? "video/mp4",
+          duration: options.durationSeconds,
+          provider: definition.provider,
+        };
+      }
+      if (request.mediaType !== "image") {
+        throw new Error(`Personal Shared media generation does not support ${request.mediaType}`);
+      }
       const outcome = await executeImageGeneration({
         input: {
           prompt: request.prompt,
-          model: DEFAULT_IMAGE_MODEL_ID,
+          model: PERSONAL_SHARED_IMAGE_MODEL_ID,
           numImages: 1,
           aspectRatio: request.aspectRatio,
           stylePreset: request.style,
@@ -410,18 +561,7 @@ function personalSharedImagePort(
         },
         bindings,
         providerKeys,
-        admit: async ({ context, cost }) => ({
-          kind: "organization" as const,
-          admission: await admitOrganizationInference({
-            context,
-            apiKeyId: null,
-            estimatedInputTokens: 0,
-            estimatedOutputTokens: 0,
-            flatCost: cost,
-            executionCtx,
-            admissionSnapshot,
-          }),
-        }),
+        admit: async () => ({ kind: "platform" as const }),
       });
       const image = outcome.images[0];
       if (!image) throw new Error("Canonical Cloud image generation returned no artifact");
@@ -452,11 +592,10 @@ function sharedElizaRuntimeExecution(
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared
-    ? personalSharedImagePort(agent, roomId, turnKey, executionCtx)
-    : undefined;
+  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
   return {
     agentKey: agent.id,
+    roomKey: roomId,
     channel: runtimeChannel,
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
@@ -494,7 +633,7 @@ function sharedElizaRuntimeExecution(
  * uuids reuse the Todo scope so memory rows line up with the runtime's
  * projected identities.
  */
-function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
   const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
   const embed =
     sharedRecallEnabled() && embedBase
@@ -509,6 +648,7 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
       organizationId: agent.organization_id,
       userId: agent.user_id,
       agentKey: agent.id,
+      roomKey: roomId,
       storage: sharedTodoStorageScope({
         sourceAgentId: agent.id,
         ownerId: agent.user_id,
@@ -553,7 +693,10 @@ async function sharedTurnRecallContext(
       history,
       embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
       storeSearch: async (vector) => {
-        const hits = await store.searchByEmbedding(vector, SHARED_RECALL_DEFAULT_TOP_K);
+        // This is relevance retrieval, not prompt shortening: the durable transcript
+        // is already supplied in full. Ask the repository for its complete supported
+        // candidate page, then preserve every returned row in the recall block.
+        const hits = await store.searchByEmbedding(vector, 200);
         return hits.map((hit) => ({
           id: hit.id,
           role: hit.entity_id === hit.agent_id ? ("assistant" as const) : ("user" as const),
@@ -576,6 +719,104 @@ async function sharedTurnRecallContext(
     );
     return undefined;
   }
+}
+
+/**
+ * P4 knowledge parity: renders the known-facts provider block for one turn, or
+ * undefined while the flag is off, the memory store is absent, or the tenant
+ * has no facts yet. Facts are an enhancement — a typed read failure degrades
+ * to a facts-free turn rather than failing a healthy reply.
+ */
+async function sharedTurnFactsContext(
+  store: SharedMemoryStore | null,
+): Promise<string | undefined> {
+  if (!store || !sharedFactsEnabled()) return undefined;
+  try {
+    const facts = await store.listFacts();
+    return buildSharedFactsContext(facts) ?? undefined;
+  } catch (error) {
+    // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
+    // the visible signal and the reply itself stays healthy.
+    logger.warn(
+      `[shared-runtime-chat] facts context unavailable this turn: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+}
+
+/** Joins the facts and recall provider blocks into one runtime context block. */
+function combinedTurnContext(
+  factsContext: string | undefined,
+  recallContext: string | undefined,
+): string | undefined {
+  const parts = [factsContext, recallContext].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
+/**
+ * P4 post-turn facts extraction, strictly off the response path (same shape as
+ * the P5 trace recorder): one small extraction call through the SAME platform
+ * model path the turn used, deduped against known facts, written as durable
+ * `facts` rows. Runs only for landed user turns while the flag is on; any
+ * failure is warned and dropped so knowledge accumulation can never fail or
+ * slow a delivered reply.
+ */
+function extractSharedTurnFactsOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  store: SharedMemoryStore | null,
+  character: SharedAgentCharacter,
+  userMessage: string,
+  assistantReply: string,
+): void {
+  if (!store || !sharedFactsEnabled()) return;
+  const model = resolveSharedAgentTurnModel(character.model);
+  if (!model) return;
+  void settleOffResponsePath(executionCtx, async () => {
+    try {
+      const [{ generateText }, { getInteractiveCerebrasLanguageModel }, knownFacts] =
+        await Promise.all([
+          import("ai"),
+          import("../../providers/language-model"),
+          store.listFacts(),
+        ]);
+      const facts = await extractSharedTurnFacts({
+        agentName: character.name,
+        userMessage,
+        assistantReply,
+        knownFacts,
+        generate: async (prompt) => {
+          const result = await generateText({
+            model: getInteractiveCerebrasLanguageModel(model),
+            prompt,
+            temperature: 0,
+            maxRetries: 0,
+            // A stalled provider request must not pin the waitUntil task open;
+            // the deadline surfaces as a distinct AbortError in the J7 warn.
+            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
+          });
+          assertModelOutputComplete({
+            finishReason: result.finishReason,
+            provider: "cerebras",
+            model,
+          });
+          return result.text;
+        },
+      });
+      if (facts.length) await store.recordFacts(facts);
+    } catch (error) {
+      // error-policy:J7 knowledge extraction is off-path enrichment; its
+      // failure must never surface into the already-delivered turn.
+      logger.warn(
+        `[shared-runtime-chat] facts extraction failed for this turn: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  });
 }
 
 function stableUuid(raw: string): string {
@@ -632,8 +873,11 @@ export function sharedRuntimeChannelId(agentId: string, roomId: string): string 
   return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
 }
 
-function channelId(agentId: string, params: Record<string, unknown>): string {
-  const room = stringValue(params.roomId) ?? stringValue(params.userId) ?? "default";
+export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+
+/** Storage-safe runtime room key derived from the coordinator's canonical room label. */
+export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
+  const room = normalizeSharedRuntimeRoom(roomId, userId);
   return sharedRuntimeChannelId(agentId, room);
 }
 
@@ -662,6 +906,29 @@ async function loadHistory(
   return history.filter(isTurn);
 }
 
+function constrainTrustedLifecycleHistory(
+  history: SharedTurnMessage[],
+  options: SharedRuntimeChatOptions,
+): SharedTurnMessage[] {
+  const cutoff = options.trustedHistoryCutoffAt;
+  if (cutoff === undefined) return history;
+  if (options.trustedMessageRole !== "system" || !Number.isSafeInteger(cutoff) || cutoff <= 0) {
+    throw new ElizaError("Shared runtime received an invalid trusted history cutoff", {
+      code: "INVALID_TRUSTED_HISTORY_CUTOFF",
+      context: { cutoff, trustedMessageRole: options.trustedMessageRole },
+      severity: "fatal",
+    });
+  }
+  // A lifecycle opener may consume only messages proven to predate the call.
+  // Undated legacy rows cannot satisfy that privacy assertion and fail closed.
+  return history.filter(
+    (message) =>
+      typeof message.createdAt === "number" &&
+      Number.isFinite(message.createdAt) &&
+      message.createdAt < cutoff,
+  );
+}
+
 async function mergeHistory(
   agentId: string,
   roomId: string,
@@ -682,7 +949,6 @@ async function mergeHistory(
     agentId,
     roomId,
     valid,
-    MAX_HISTORY_MESSAGES,
   )) as SharedTurnMessage[];
 }
 
@@ -756,10 +1022,13 @@ function billingPrompt(
   history: SharedTurnMessage[],
   message: string,
 ): Array<{ content: string }> {
+  const projectedHistory = sharedRuntimeModelHistoryMessages(history, message).map((turn) => ({
+    content: typeof turn.content === "string" ? turn.content : JSON.stringify(turn.content),
+  }));
   return [
     { content: character.system },
     ...(character.bio ?? []).map((content) => ({ content })),
-    ...history.map((turn) => ({ content: turn.content })),
+    ...projectedHistory,
     { content: message },
   ].filter((entry) => entry.content.trim());
 }
@@ -1073,7 +1342,7 @@ export class SharedRuntimeChatService {
     event: SharedTurnMessage,
     store: SharedRuntimeHistoryStore,
   ): Promise<void> {
-    await mergeHistory(agentId, channelId(agentId, { roomId }), [event], store);
+    await mergeHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), [event], store);
   }
 
   async getHistory(
@@ -1081,7 +1350,7 @@ export class SharedRuntimeChatService {
     roomId = agentId,
     store?: SharedRuntimeHistoryStore,
   ): Promise<SharedTurnMessage[]> {
-    return await loadHistory(agentId, channelId(agentId, { roomId }), store);
+    return await loadHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), store);
   }
 
   async getCharacter(
@@ -1125,7 +1394,7 @@ export class SharedRuntimeChatService {
         error: { code: -32602, message: "message.send requires params.text" },
       };
     }
-    const roomId = channelId(agent.id, params);
+    const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
@@ -1134,17 +1403,21 @@ export class SharedRuntimeChatService {
         return {
           jsonrpc: "2.0",
           id: rpc.id,
-          result: replay as unknown as Record<string, unknown>,
+          result: {
+            ...replay,
+            timing: replayedSharedProviderTiming(),
+          } as unknown as Record<string, unknown>,
         };
       }
     }
-    const [character, history] = await Promise.all([
+    const [character, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     let billing: BillingTurn | null;
     try {
       billing = await admitTurn(
@@ -1173,8 +1446,12 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = sharedTurnMemoryStore(agent);
-    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
+    const [factsContext, recallBlock] = await Promise.all([
+      sharedTurnFactsContext(memoryStore),
+      sharedTurnRecallContext(memoryStore, text, history),
+    ]);
+    const recallContext = combinedTurnContext(factsContext, recallBlock);
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
@@ -1210,9 +1487,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         turnStartedAtEpochMs,
         terminalTiming,
+        history,
+        options.channel,
       );
       await settleFailedProviderWorkOffPath(
         agent,
@@ -1232,12 +1512,21 @@ export class SharedRuntimeChatService {
       turnStartedAtEpochMs,
       turn,
       terminalTiming,
+      history,
+      options.channel,
     );
+    if (!turn.degraded && turn.responded !== false && messageRole === "user") {
+      extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
+    }
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
       turnIsProvablyFree = turn.degraded || isProviderFreeTurn(turn);
-      const actionResults = turnActionResults(turn);
+      const actionResults = turnActionResults(turn, {
+        agentId: agent.id,
+        originalIntent: text,
+        ...(claimKey ? { clientMessageId: claimKey } : {}),
+      });
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         ...(turn.responded === false ? { responded: false } : {}),
@@ -1250,6 +1539,7 @@ export class SharedRuntimeChatService {
         runtime: "shared",
         transport: "shared-runtime",
         ...(actionResults ? { actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
       };
       if (turn.degraded) {
         await billing?.settle(0);
@@ -1258,7 +1548,9 @@ export class SharedRuntimeChatService {
           agent.id,
           roomId,
           turn.history.filter(
-            (message) => message.id === messageIds.user || message.id === messageIds.assistant,
+            (message) =>
+              message.id === messageIds.assistant ||
+              (!options.transientInput && message.id === messageIds.user),
           ),
           options.historyStore,
         );
@@ -1309,7 +1601,7 @@ export class SharedRuntimeChatService {
     const params = record(rpc.params) ?? {};
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
-    const roomId = channelId(agent.id, params);
+    const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
@@ -1333,6 +1625,7 @@ export class SharedRuntimeChatService {
                 text: replay.text,
                 fullText: replay.text,
                 ...(replay.actionResults ? { actionResults: replay.actionResults } : {}),
+                timing: replayedSharedProviderTiming(),
               }),
             { headers: { "Content-Type": "text/event-stream; charset=utf-8" } },
           ),
@@ -1341,13 +1634,14 @@ export class SharedRuntimeChatService {
       }
     }
     const hydrateStartedAt = performance.now();
-    const [character, history] = await Promise.all([
+    const [character, loadedHistory] = await Promise.all([
       characterFor(agent, {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
       loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
+    const history = constrainTrustedLifecycleHistory(loadedHistory, options);
     timings.turn_hydrate = elapsedTurnMs(hydrateStartedAt);
     let billing: BillingTurn | null;
     const admissionStartedAt = performance.now();
@@ -1387,8 +1681,12 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = sharedTurnMemoryStore(agent);
-    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const streamMemoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
+    const [streamFactsContext, streamRecallBlock] = await Promise.all([
+      sharedTurnFactsContext(streamMemoryStore),
+      sharedTurnRecallContext(streamMemoryStore, text, history),
+    ]);
+    const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
@@ -1424,9 +1722,12 @@ export class SharedRuntimeChatService {
         options.executionCtx,
         agent,
         roomId,
+        options.traceId ?? messageIds.assistant,
         character.model?.trim() || "shared-runtime",
         streamTurnStartedAtEpochMs,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       detachRequestAbort();
       await settleFailedProviderWorkOffPath(
@@ -1450,6 +1751,8 @@ export class SharedRuntimeChatService {
         streamTurnStartedAtEpochMs,
         turn,
         streamTerminalTiming,
+        history,
+        options.channel,
       );
       const reply = turn.reply?.trim() ?? "";
       if (!reply) return sseError("Shared runtime is unavailable");
@@ -1488,11 +1791,15 @@ export class SharedRuntimeChatService {
     }
 
     const encoder = new TextEncoder();
-    const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
+    const makeTurnMessages = (
+      reply: string,
+      interrupted: boolean,
+      grounding?: SharedTurnMessage["grounding"],
+    ): SharedTurnMessage[] => {
       const sentAt = Date.now();
-      const messages: SharedTurnMessage[] = [
-        { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
-      ];
+      const messages: SharedTurnMessage[] = options.transientInput
+        ? []
+        : [{ id: messageIds.user, role: messageRole, content: text, createdAt: sentAt }];
       const assistantText = reply.trim();
       if (assistantText) {
         messages.push({
@@ -1501,6 +1808,7 @@ export class SharedRuntimeChatService {
           content: assistantText,
           createdAt: sentAt + 1,
           interrupted,
+          ...(grounding ? { grounding } : {}),
         });
       }
       return messages;
@@ -1523,25 +1831,53 @@ export class SharedRuntimeChatService {
       reply: string,
       interrupted: boolean,
       afterWrite?: () => Promise<void>,
+      grounding?: SharedTurnMessage["grounding"],
+      stagePending = false,
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
+      const messages = makeTurnMessages(reply, interrupted, grounding);
+      if (stagePending) {
+        options.historyStore?.stagePending?.(agent.id, roomId, messages);
+      }
       finalizationPromise = (async () => {
-        await mergeHistory(
-          agent.id,
-          roomId,
-          makeTurnMessages(reply, interrupted),
-          options.historyStore,
-        );
+        await mergeHistory(agent.id, roomId, messages, options.historyStore);
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
-          await streamMemoryStore.recordTurnPair({
-            userMessage: text.trim(),
-            assistantReply: reply,
-            messageIds,
-            messageRole,
-            interrupted,
-            channel: options.channel,
+          // The long-term-memory mirror is secondary to the durability boundary
+          // above (merged history) and the claim completion below: a stalled
+          // Hyperdrive or embeddings-sidecar write must not hold the terminal
+          // done frame open (#25689). settleOffResponsePath defers it under
+          // waitUntil and runs it inline only without an executionCtx.
+          await settleOffResponsePath(options.executionCtx, async () => {
+            try {
+              await streamMemoryStore.recordTurnPair({
+                userMessage: text.trim(),
+                assistantReply: reply,
+                messageIds,
+                messageRole,
+                interrupted,
+                channel: options.channel,
+              });
+            } catch (error) {
+              // error-policy:J4 the mirror is an enhancement on the landed turn;
+              // report the storage fault instead of failing a reply whose
+              // history and claim already committed.
+              logger.warn("[SharedRuntimeChat] long-term-memory mirror failed", {
+                agentId: agent.id,
+                roomId,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           });
+        }
+        if (!interrupted && messageRole === "user" && reply.trim()) {
+          extractSharedTurnFactsOffPath(
+            options.executionCtx,
+            streamMemoryStore,
+            character,
+            text,
+            reply,
+          );
         }
         await afterWrite?.();
         finalized = true;
@@ -1555,6 +1891,10 @@ export class SharedRuntimeChatService {
       start: async (controller) => {
         let finished = false;
         try {
+          // Flush one valid SSE comment before provider text so Workerd exposes
+          // the Durable Object response headers independently of model latency.
+          // Consumers ignore comments; the complete reply remains unchanged.
+          controller.enqueue(encoder.encode(SSE_TRANSPORT_READY_COMMENT));
           for await (const part of turn.parts!) {
             if (part.type === "text-delta") {
               streamedReply += part.text;
@@ -1590,6 +1930,7 @@ export class SharedRuntimeChatService {
                     degraded: false,
                     runtime: "shared",
                     transport: "shared-runtime",
+                    ...(part.timing ? { timing: part.timing } : {}),
                   });
                 }
                 terminalSettlementStarted = true;
@@ -1608,6 +1949,7 @@ export class SharedRuntimeChatService {
                     text: "",
                     fullText: "",
                     responded: false,
+                    ...(part.timing ? { timing: part.timing } : {}),
                   }),
                 ),
               );
@@ -1632,38 +1974,51 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = turnActionResults({
-              ...turn,
-              ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
-            });
-            await finalizeMessages(finalReply, false, async () => {
-              // Durable claim completion before the done frame: a lost/dropped
-              // terminal frame replays this result on retry instead of
-              // re-dispatching the provider. Interrupted turns stay pending.
-              if (claimKey && options.turnClaims) {
-                await options.turnClaims.complete(claimKey, {
-                  text: finalReply,
-                  messageId: messageIds.assistant,
-                  userMessageId: messageIds.user,
-                  agentName: character.name,
-                  channelId: roomId,
-                  model: turn.model,
-                  degraded: false,
-                  runtime: "shared",
-                  transport: "shared-runtime",
-                  ...(actionResults ? { actionResults } : {}),
-                });
-              }
-              if (isProviderFreeTurn(turn)) {
-                terminalSettlementStarted = true;
-                await billing?.settle(0);
-              } else if (billing) {
-                terminalSettlementStarted = true;
-                await settleOffResponsePath(options.executionCtx, () =>
-                  finishBilling(agent, billing, finalReply, text, part.usage),
-                );
-              }
-            });
+            const actionResults = turnActionResults(
+              {
+                ...turn,
+                ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
+              },
+              {
+                agentId: agent.id,
+                originalIntent: text,
+                ...(claimKey ? { clientMessageId: claimKey } : {}),
+              },
+            );
+            await finalizeMessages(
+              finalReply,
+              false,
+              async () => {
+                // Durable claim completion before the done frame: a lost/dropped
+                // terminal frame replays this result on retry instead of
+                // re-dispatching the provider. Interrupted turns stay pending.
+                if (claimKey && options.turnClaims) {
+                  await options.turnClaims.complete(claimKey, {
+                    text: finalReply,
+                    messageId: messageIds.assistant,
+                    userMessageId: messageIds.user,
+                    agentName: character.name,
+                    channelId: roomId,
+                    model: turn.model,
+                    degraded: false,
+                    runtime: "shared",
+                    transport: "shared-runtime",
+                    ...(part.timing ? { timing: part.timing } : {}),
+                    ...(actionResults ? { actionResults } : {}),
+                  });
+                }
+                if (isProviderFreeTurn(turn)) {
+                  terminalSettlementStarted = true;
+                  await billing?.settle(0);
+                } else if (billing) {
+                  terminalSettlementStarted = true;
+                  await settleOffResponsePath(options.executionCtx, () =>
+                    finishBilling(agent, billing, finalReply, text, part.usage),
+                  );
+                }
+              },
+              turn.internalGrounding,
+            );
             const done = actionResults
               ? {
                   messageId: messageIds.assistant,
@@ -1671,12 +2026,14 @@ export class SharedRuntimeChatService {
                   text: finalReply,
                   fullText: finalReply,
                   actionResults,
+                  ...(part.timing ? { timing: part.timing } : {}),
                 }
               : {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
                   fullText: finalReply,
+                  ...(part.timing ? { timing: part.timing } : {}),
                 };
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
@@ -1714,7 +2071,7 @@ export class SharedRuntimeChatService {
             error: error instanceof Error ? error.message : String(error),
             cause:
               error instanceof Error && error.cause instanceof Error
-                ? error.cause.message.slice(0, 240)
+                ? truncateWellFormed(toWellFormedUnicode(error.cause.message), 240)
                 : undefined,
           });
           if (!consumerCanceled) {
@@ -1740,15 +2097,21 @@ export class SharedRuntimeChatService {
                 ...(turn.capabilityWall ? { capabilityWall: turn.capabilityWall } : {}),
               },
               streamTerminalTiming,
+              history,
+              options.channel,
             );
           } else {
             recordFailedTurnTraceOffPath(
               options.executionCtx,
               agent,
               roomId,
+              options.traceId ?? messageIds.assistant,
               turn.model,
               streamTurnStartedAtEpochMs,
               streamTerminalTiming,
+              history,
+              options.channel,
+              consumerCanceled || generationAbort.signal.aborted ? "aborted" : "error",
             );
           }
           detachRequestAbort();
@@ -1771,12 +2134,22 @@ export class SharedRuntimeChatService {
           .then(() => undefined);
         observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
 
-        // The room may advance only after interrupted history is durable. It
-        // must not wait for provider teardown: abort is already signalled and
-        // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, () =>
-          settleInterruptedTurn("consumer canceled stream"),
+        // Stage the exact interrupted pair synchronously before the consumer's
+        // cancel promise can release room admission. Durable history, billing,
+        // and provider teardown may then finish off the room queue without
+        // hiding context from the next turn.
+        const finalization = finalizeMessages(
+          interruptedReply,
+          true,
+          () => settleInterruptedTurn("consumer canceled stream"),
+          undefined,
+          true,
         );
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(finalization);
+          return;
+        }
+        await finalization;
       },
     });
     return withTurnTimingHeaders(

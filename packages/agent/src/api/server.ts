@@ -20,6 +20,32 @@ function tokenMatches(expected: string, provided: string): boolean {
   );
 }
 
+function isBrowserCompanionOwnerMutation(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    method === "POST" &&
+    (pathname === "/api/browser-bridge/companions/pair" ||
+      /^\/api\/browser-bridge\/companions\/[^/]+\/(?:revoke|reset-revocation)$/.test(
+        pathname,
+      ))
+  );
+}
+
+function hasBrowserCompanionOwnerSessionCookie(
+  req: http.IncomingMessage,
+): boolean {
+  const cookie =
+    typeof req.headers.cookie === "string" ? req.headers.cookie : "";
+  return /(?:^|;\s*)eliza_session=[^;]+/.test(cookie);
+}
+
+function hasBrowserCompanionCsrfHeader(req: http.IncomingMessage): boolean {
+  const csrf = req.headers["x-eliza-csrf"];
+  return typeof csrf === "string" && csrf.trim().length > 0;
+}
+
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 /**
  * Restore's request-body cap IS the v1 restorable ceiling: anything retained
@@ -27,6 +53,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
  * the two cannot drift.
  */
 const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+const BACKUP_BODY_TOO_LARGE = "Agent backup request body is too large";
 
 import path from "node:path";
 import {
@@ -52,7 +79,7 @@ import type {
   AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import { readAliasedEnv } from "@elizaos/shared";
+import { formatError, readAliasedEnv } from "@elizaos/shared";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   getStylePresets,
@@ -67,7 +94,10 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
-import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
+import {
+  AgentBackupClientDisconnectedError,
+  writeAgentBackupJsonResponse,
+} from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
@@ -136,6 +166,8 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
   extensionPath: null,
   chromeBuildPath: null,
   chromePackagePath: null,
+  firefoxBuildPath: null,
+  firefoxPackagePath: null,
   safariWebExtensionPath: null,
   safariAppPath: null,
   safariPackagePath: null,
@@ -171,7 +203,6 @@ const optionalPluginSpecifiers = {
   cloud: "@elizaos/plugin-elizacloud",
   imessage: "@elizaos/plugin-imessage",
   mcp: "@elizaos/plugin-mcp",
-  signal: "@elizaos/plugin-signal",
   whatsapp: "@elizaos/plugin-whatsapp",
   workflow: "@elizaos/plugin-workflow",
 } as const;
@@ -182,7 +213,6 @@ const optionalPluginImports = {
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
-  signal: () => importOptionalPlugin(optionalPluginSpecifiers.signal),
   whatsapp: () => importOptionalPlugin(optionalPluginSpecifiers.whatsapp),
   workflow: () => importOptionalPlugin(optionalPluginSpecifiers.workflow),
 };
@@ -405,7 +435,6 @@ import {
   loadLocalInferenceRouteApi,
   loadLocalInferenceVoiceRouteApi,
 } from "./local-inference-server-api.ts";
-import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { resolveOptionalPluginImportFailure } from "./optional-plugin-fallback.ts";
 import {
   buildPluginDiagnosticEntry,
@@ -471,7 +500,6 @@ import {
   registerBuiltinViews,
   tryHandleHonoRuntimeRoute,
   tryHandleLifeOpsInboxFallbackLazy,
-  tryHandleMusicPlayerStatusFallbackLazy,
   tryHandleRuntimePluginRoute,
 } from "./server-lazy-routes.ts";
 import {
@@ -746,6 +774,7 @@ async function readBackupJsonBody(
   try {
     const raw = await readRequestBody(req, {
       maxBytes: MAX_BACKUP_BODY_BYTES,
+      tooLargeMessage: BACKUP_BODY_TOO_LARGE,
     });
     if (!raw) {
       error(res, "Request body is required", 400);
@@ -753,16 +782,22 @@ async function readBackupJsonBody(
     }
     return JSON.parse(raw);
   } catch (err) {
+    const tooLarge = formatError(err) === BACKUP_BODY_TOO_LARGE;
     error(
       res,
-      err instanceof Error ? err.message : "Invalid backup request body",
-      400,
+      tooLarge ? BACKUP_BODY_TOO_LARGE : "Invalid backup request body",
+      tooLarge ? 413 : 400,
     );
     return null;
   }
 }
 
 let activeTerminalRunCount = 0;
+const terminalRunIdReservations = new Map<string, number>();
+const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
+const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60_000;
+let lastTerminalRunIdSweepAt = 0;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
@@ -832,7 +867,11 @@ async function handleBuiltinOptionalRoutes(
     if (method === "POST") {
       await readBody(req).catch(() => undefined);
     }
-    json(res, absentPluginStub.buildBody(req));
+    json(
+      res,
+      absentPluginStub.buildBody(req),
+      absentPluginStub.statusCode ?? 200,
+    );
     return true;
   }
 
@@ -1312,6 +1351,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
@@ -1360,6 +1400,7 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
 const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1563,6 +1604,17 @@ async function handleRequest(
   // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
   // and live credit balance (W1-010).
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  const requestOrigin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  // A same-origin navigation commonly omits Origin. When an Origin is present,
+  // ambient cookie authority is available only to the narrower credentialed
+  // CORS trust set; arbitrary reflected origins remain bearer-only.
+  const allowHostCookieAuth =
+    requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
+  const requireBrowserCompanionOwnerSession = isBrowserCompanionOwnerMutation(
+    method,
+    pathname,
+  );
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1578,12 +1630,20 @@ async function handleRequest(
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
+          {
+            allowCookieAuth: allowHostCookieAuth,
+            allowTrustedLocalBypass: !requireBrowserCompanionOwnerSession,
+            allowBearerAuth: !requireBrowserCompanionOwnerSession,
+          },
         );
         return hostSessionAuthorization;
       }
       const authorize = bridge.isHttpRequestAuthorized;
+      // A legacy boolean-only bridge cannot separate cookie from bearer
+      // authority. Do not consult it for an explicitly untrusted origin;
+      // standalone bearer schemes are evaluated by the normal server gates.
       const authorized =
-        typeof authorize === "function"
+        allowHostCookieAuth && typeof authorize === "function"
           ? await authorize(req, state.runtime)
           : false;
       // Legacy boolean-only hosts can still pass the coarse request gate, but
@@ -1776,6 +1836,26 @@ async function handleRequest(
     return;
   }
 
+  if (requireBrowserCompanionOwnerSession) {
+    if (!hasBrowserCompanionOwnerSessionCookie(req)) {
+      json(res, { error: "Owner session required" }, 401);
+      return;
+    }
+    if (!hasBrowserCompanionCsrfHeader(req)) {
+      json(res, { error: "CSRF token required" }, 403);
+      return;
+    }
+    const ownerAuthorization = await resolveHostSessionAuthorization();
+    if (!ownerAuthorization.ok) {
+      json(res, { error: "Invalid owner session or CSRF token" }, 401);
+      return;
+    }
+    if (ownerAuthorization.role !== "OWNER") {
+      json(res, { error: "Owner role required" }, 403);
+      return;
+    }
+  }
+
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -1822,17 +1902,10 @@ async function handleRequest(
       const backups = await listLocalAgentBackups(state.runtime.agentId);
       json(res, { backups });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup list failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup list failed",
-        500,
-      );
+      // error-policy:J1 backup listing can surface filesystem paths in
+      // exceptions; keep the original diagnostic in the structured log.
+      logger.error({ err }, "[agent-backup] Local backup list failed");
+      error(res, "Backup list failed", 500);
     }
     return;
   }
@@ -1846,13 +1919,10 @@ async function handleRequest(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup failed",
-      );
-      error(res, err instanceof Error ? err.message : "Backup failed", 500);
+      // error-policy:J1 backup adapters can include filesystem and database
+      // diagnostics in exceptions; keep the original in the redacting logger.
+      logger.error({ err }, "[agent-backup] Local backup failed");
+      error(res, "Backup failed", 500);
     }
     return;
   }
@@ -1875,17 +1945,10 @@ async function handleRequest(
       const result = await restoreLocalAgentBackup(state.runtime, fileName);
       json(res, result);
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup restore failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup restore failed",
-        500,
-      );
+      // error-policy:J1 decryption, filesystem, and database diagnostics stay
+      // internal rather than becoming a public backup oracle.
+      logger.error({ err }, "[agent-backup] Local backup restore failed");
+      error(res, "Backup restore failed", 500);
     }
     return;
   }
@@ -1899,7 +1962,21 @@ async function handleRequest(
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatError(err);
+      if (
+        err instanceof AgentBackupClientDisconnectedError ||
+        message === "Agent backup response stream failed"
+      ) {
+        // The download transport died mid-stream (client abort or socket
+        // error). The response is already committed and the socket is gone;
+        // treat it like the v2 capture boundary's 499/ephemeral path rather
+        // than logging a server fault.
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot download aborted",
+        );
+        return;
+      }
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500
@@ -1911,7 +1988,7 @@ async function handleRequest(
         json(
           res,
           {
-            error: message,
+            error: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
             code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
           },
           503,
@@ -1922,10 +1999,12 @@ async function handleRequest(
       if (res.headersSent) {
         // error-policy:J1 Streaming may fail after the response is committed;
         // terminate that transport instead of appending a false JSON error.
-        res.destroy(err instanceof Error ? err : new Error(message));
+        res.destroy(new Error("Snapshot stream failed", { cause: err }));
         return;
       }
-      error(res, message, 500);
+      // error-policy:J1 the snapshot boundary preserves diagnostics in the
+      // server log while exposing only a stable failure to the API caller.
+      error(res, "Snapshot failed", 500);
     }
     return;
   }
@@ -2503,11 +2582,10 @@ async function handleRequest(
       });
       json(res, { ok: result.unloaded, ...result });
     } catch (err) {
-      json(
-        res,
-        { ok: false, error: err instanceof Error ? err.message : String(err) },
-        422,
-      );
+      // error-policy:J1 plugin-loader diagnostics stay in structured logs;
+      // callers receive a stable boundary error rather than exception text.
+      logger.error({ err }, "[eliza-api] Plugin unload failed");
+      json(res, { ok: false, error: "Plugin could not be unloaded" }, 422);
     }
     return;
   }
@@ -2545,11 +2623,6 @@ async function handleRequest(
             applyWhatsAppQrOverride: (...args: unknown[]) => void;
           }>("whatsapp")
         ).applyWhatsAppQrOverride,
-        applySignalQrOverride: (
-          await getOptionalPluginApi<{
-            applySignalQrOverride: (...args: unknown[]) => void;
-          }>("signal")
-        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2840,9 +2913,6 @@ async function handleRequest(
 
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
-
-  // ── BlueBubbles routes ──────────────────────────────────────────────────
-  // Extracted to @elizaos/plugin-bluebubbles setup-routes.ts (Plugin.routes).
 
   // ── Notification + inbox routes (/api/notifications/*, /api/inbox/*) ──
   // Notifications: the unified notification center backed by the runtime
@@ -3360,6 +3430,49 @@ async function handleRequest(
       setActiveTerminalRunCount: (delta: number) => {
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
       },
+      tryAcquireTerminalRunSlot: (
+        scopeId: string,
+        runId: string,
+        maxConcurrent: number,
+      ) => {
+        const now = Date.now();
+        if (
+          now - lastTerminalRunIdSweepAt >= TERMINAL_RUN_ID_SWEEP_INTERVAL_MS ||
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          for (const [reservedRunId, expiresAt] of terminalRunIdReservations) {
+            if (expiresAt <= now) {
+              terminalRunIdReservations.delete(reservedRunId);
+            }
+          }
+          lastTerminalRunIdSweepAt = now;
+        }
+        const reservationKey = `${scopeId}\0${runId}`;
+        if (terminalRunIdReservations.has(reservationKey)) {
+          return { rejection: "duplicate" as const };
+        }
+        if (activeTerminalRunCount >= maxConcurrent) {
+          return { rejection: "capacity" as const };
+        }
+        if (
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          return { rejection: "registry-capacity" as const };
+        }
+        terminalRunIdReservations.set(
+          reservationKey,
+          now + TERMINAL_RUN_ID_RESERVATION_TTL_MS,
+        );
+        activeTerminalRunCount += 1;
+        let released = false;
+        return {
+          release: () => {
+            if (released) return;
+            released = true;
+            activeTerminalRunCount = Math.max(0, activeTerminalRunCount - 1);
+          },
+        };
+      },
     })
   ) {
     return;
@@ -3402,18 +3515,6 @@ async function handleRequest(
   }
 
   if (await handleMobileOptionalRoutes(req, res, pathname, method)) {
-    return;
-  }
-
-  // ── Music player compatibility fallback ─────────────────────────────────
-  if (
-    await tryHandleMusicPlayerStatusFallbackLazy({
-      pathname,
-      method,
-      runtime: state.runtime,
-      res,
-    })
-  ) {
     return;
   }
 
@@ -3511,6 +3612,11 @@ export type ApiServerConfigurator = (
   server: http.Server,
 ) => void | Promise<void>;
 
+export type WebSocketAuthorizer = (
+  request: http.IncomingMessage,
+  url: URL,
+) => boolean | Promise<boolean>;
+
 function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -3553,6 +3659,13 @@ export async function startApiServer(opts?: {
    * intended for protocol extensions such as WebSocket upgrade handlers.
    */
   configureServer?: ApiServerConfigurator;
+  /**
+   * Lets a host recognize credentials it owns before the dashboard WebSocket
+   * is admitted. The agent server still owns origin/path checks, pending-socket
+   * limits, and its static-token fallback; this hook only adds an authenticated
+   * principal such as app-core's revocable machine session.
+   */
+  authorizeWebSocket?: WebSocketAuthorizer;
 }): Promise<{
   port: number;
   close: () => Promise<void>;
@@ -3744,18 +3857,13 @@ export async function startApiServer(opts?: {
             : resolvedSource === "cloud"
               ? ["server", "cloud"]
               : ["system"];
-    pushWithBatchEvict(
-      state.logBuffer,
-      {
-        timestamp: Date.now(),
-        level,
-        message,
-        source: resolvedSource,
-        tags: resolvedTags,
-      },
-      1200,
-      200,
-    );
+    state.logBuffer.push({
+      timestamp: Date.now(),
+      level,
+      message,
+      source: resolvedSource,
+      tags: resolvedTags,
+    });
   };
 
   addLog(
@@ -4135,8 +4243,13 @@ export async function startApiServer(opts?: {
     );
   };
 
+  // Requests authenticated by the host hook must remain authenticated when
+  // `ws` emits its later connection event. IncomingMessage identity is stable
+  // across handleUpgrade, and WeakSet avoids retaining completed requests.
+  const hostAuthorizedWebSocketRequests = new WeakSet<http.IncomingMessage>();
+
   // Handle upgrade requests for WebSocket
-  server.on("upgrade", (request, socket, head) => {
+  server.on("upgrade", async (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
     // a WebSocket — and its error handler — exists. Unhandled, it crashes the
     // process. Attach a no-op-ish guard for the whole upgrade window.
@@ -4174,7 +4287,26 @@ export async function startApiServer(opts?: {
       // DoS. The slot releases when the socket authenticates or closes (see
       // the connection handler), or in the catch below if the upgrade fails.
       let pendingWsPeer: string | null | undefined;
-      if (!isWebSocketAuthorized(request, wsUrl)) {
+      const staticallyAuthorized = isWebSocketAuthorized(request, wsUrl);
+      let hostAuthorized = false;
+      if (!staticallyAuthorized && opts?.authorizeWebSocket) {
+        try {
+          hostAuthorized = await opts.authorizeWebSocket(request, wsUrl);
+        } catch (error) {
+          // error-policy:J1 host authentication is an outer protocol boundary:
+          // fail closed for that credential and retain the bounded post-open
+          // static-token flow instead of crashing the server.
+          logger.error(
+            `[eliza-api] host WebSocket authorization failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+      if (hostAuthorized) {
+        hostAuthorizedWebSocketRequests.add(request);
+      }
+      if (!staticallyAuthorized && !hostAuthorized) {
         const peer = request.socket.remoteAddress ?? null;
         if (!tryAcquirePendingWebSocket(peer)) {
           rejectWebSocketUpgrade(
@@ -4200,6 +4332,7 @@ export async function startApiServer(opts?: {
           wss.emit("connection", ws, request);
         });
       } catch (upgradeErr) {
+        hostAuthorizedWebSocketRequests.delete(request);
         // error-policy:J2 release the reserved pre-auth slot, then rethrow
         // unchanged into the outer boundary handler.
         if (pendingWsPeer !== undefined) {
@@ -4208,6 +4341,7 @@ export async function startApiServer(opts?: {
         throw upgradeErr;
       }
     } catch (err) {
+      hostAuthorizedWebSocketRequests.delete(request);
       logger.error(
         `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
       );
@@ -4234,7 +4368,9 @@ export async function startApiServer(opts?: {
       wsUrl = new URL("ws://localhost/ws");
     }
 
-    let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+    const hostAuthorized = hostAuthorizedWebSocketRequests.delete(request);
+    let isAuthenticated =
+      hostAuthorized || isWebSocketAuthorized(request, wsUrl);
 
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever
@@ -4662,12 +4798,17 @@ export async function startApiServer(opts?: {
   wireModelRegistrationBroadcast(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
+  state.broadcastWsToClientId = (clientId: string, data: object) =>
+    eventHub.sendToClient(clientId, data);
 
   // View interactions originate outside HTTP requests and share the same event
   // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        state.broadcastWsToClientId ?? null,
+      );
     })
     .catch((err) => {
       logger.error(
@@ -4675,12 +4816,10 @@ export async function startApiServer(opts?: {
       );
     });
 
-  state.broadcastWsToClientId = (clientId: string, data: object) =>
-    eventHub.sendToClient(clientId, data);
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins
-  // (Signal, WhatsApp) can broadcast pairing events via the service.
+  // Pairing connectors such as WhatsApp can broadcast events via the service.
   if (state.runtime) {
     try {
       const setupSvc = state.runtime.getService("connector-setup") as {
@@ -4924,9 +5063,6 @@ export async function startApiServer(opts?: {
     for (const entry of earlyEntries) {
       state.logBuffer.push(entry);
     }
-    if (state.logBuffer.length > 1000) {
-      state.logBuffer.splice(0, state.logBuffer.length - 1000);
-    }
     addLog(
       "info",
       `Flushed ${earlyEntries.length} early startup log entries`,
@@ -4991,14 +5127,6 @@ export async function startApiServer(opts?: {
       dispose: async () => {
         const sessions = [...(state.whatsappPairingSessions?.values() ?? [])];
         state.whatsappPairingSessions?.clear();
-        await Promise.all(sessions.map((session) => session.stop()));
-      },
-    },
-    {
-      name: "Signal pairing sessions",
-      dispose: async () => {
-        const sessions = [...(state.signalPairingSessions?.values() ?? [])];
-        state.signalPairingSessions?.clear();
         await Promise.all(sessions.map((session) => session.stop()));
       },
     },

@@ -94,3 +94,96 @@ describe("Matrix account settings", () => {
     );
   });
 });
+
+describe("resolveMatrixAccountSettings owner-bind fail-closed", () => {
+  const ownerCharacter = {
+    matrix: {
+      homeserver: "https://owner.matrix",
+      userId: "@owner:matrix",
+      accessToken: "owner-access-token",
+      password: "owner-password",
+      deviceId: "OWNERDEVICE",
+      rooms: ["!owner:matrix"],
+    },
+  };
+  const ownerEnv = {
+    MATRIX_HOMESERVER: "https://env.matrix",
+    MATRIX_USER_ID: "@env:matrix",
+    MATRIX_ACCESS_TOKEN: "env-access-token",
+    MATRIX_PASSWORD: "env-password",
+    MATRIX_DEVICE_ID: "ENVDEVICE",
+  };
+
+  it("lets the default account inherit owner character identity", () => {
+    const runtime = runtimeWithSettings({}, ownerCharacter);
+    const resolved = resolveMatrixAccountSettings(runtime, "default");
+    expect(resolved.accountId).toBe("default");
+    expect(resolved.homeserver).toBe("https://owner.matrix");
+    expect(resolved.userId).toBe("@owner:matrix");
+    expect(resolved.accessToken).toBe("owner-access-token");
+    expect(resolved.password).toBe("owner-password");
+    expect(resolved.deviceId).toBe("OWNERDEVICE");
+  });
+
+  it("does not give a ghost accountId the owner token, password, or homeserver", () => {
+    const runtime = runtimeWithSettings({}, ownerCharacter);
+    const ghost = resolveMatrixAccountSettings(runtime, "ghost-account");
+    expect(ghost.accountId).toBe("ghost-account");
+    expect(ghost.homeserver).toBe("");
+    expect(ghost.userId).toBe("");
+    expect(ghost.accessToken).toBe("");
+    expect(ghost.password).toBeUndefined();
+    expect(ghost.deviceId).toBeUndefined();
+  });
+
+  it("does not let a named account without its own token inherit character identity", () => {
+    const runtime = runtimeWithSettings(
+      {},
+      { matrix: { ...ownerCharacter.matrix, accounts: { work: { enabled: true } } } }
+    );
+    const work = resolveMatrixAccountSettings(runtime, "work");
+    expect(work.accountId).toBe("work");
+    expect(work.homeserver).toBe("");
+    expect(work.userId).toBe("");
+    expect(work.accessToken).toBe("");
+    expect(work.password).toBeUndefined();
+    expect(work.deviceId).toBeUndefined();
+  });
+
+  it("keeps a named account own identity and does not attach owner character secrets", () => {
+    const runtime = runtimeWithSettings(
+      {},
+      {
+        matrix: {
+          ...ownerCharacter.matrix,
+          accounts: {
+            work: {
+              homeserver: "https://work.matrix",
+              userId: "@work:matrix",
+              accessToken: "work-access-token",
+            },
+          },
+        },
+      }
+    );
+    const work = resolveMatrixAccountSettings(runtime, "work");
+    expect(work.homeserver).toBe("https://work.matrix");
+    expect(work.userId).toBe("@work:matrix");
+    expect(work.accessToken).toBe("work-access-token");
+    expect(work.password).toBeUndefined();
+    expect(work.deviceId).toBeUndefined();
+  });
+
+  it("does not give a ghost accountId owner env identity either", () => {
+    const runtime = runtimeWithSettings(ownerEnv);
+    const ghost = resolveMatrixAccountSettings(runtime, "ghost-account");
+    expect(ghost.accessToken).toBe("");
+    expect(ghost.password).toBeUndefined();
+    expect(ghost.homeserver).toBe("");
+    expect(ghost.userId).toBe("");
+    const def = resolveMatrixAccountSettings(runtime, "default");
+    expect(def.accessToken).toBe("env-access-token");
+    expect(def.password).toBe("env-password");
+    expect(def.homeserver).toBe("https://env.matrix");
+  });
+});

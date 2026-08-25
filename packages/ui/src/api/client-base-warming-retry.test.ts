@@ -73,6 +73,50 @@ describe("ElizaClient warming 503 absorption (#18045)", () => {
     expect(out).toEqual(expect.objectContaining({ ok: true }));
   });
 
+  it("marks the first shared turn and each absorbed warming retry", async () => {
+    const request = vi
+      .fn<AgentRequestTransport["request"]>()
+      .mockResolvedValueOnce(warming503("shared_runtime_cache_warming"))
+      .mockResolvedValueOnce(
+        new Response('event: done\ndata: {"text":"ok"}\n\n', {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    const client = makeClient(request);
+    const pending = client.streamChatEndpoint(
+      "/api/conversations/c-1/messages/stream",
+      "hi",
+      () => undefined,
+      "DM",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      "caller-stable-id",
+    );
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(request).toHaveBeenCalledTimes(2);
+    const firstHeaders = new Headers(request.mock.calls[0]?.[1]?.headers);
+    const retryHeaders = new Headers(request.mock.calls[1]?.[1]?.headers);
+    const correlation = firstHeaders.get("X-ElizaOS-Turn-Correlation");
+    expect(correlation).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(correlation).not.toBe("caller-stable-id");
+    expect(retryHeaders.get("X-ElizaOS-Turn-Correlation")).toBe(correlation);
+    expect(firstHeaders.get("X-ElizaOS-Turn-Attempt")).toBe("1");
+    expect(retryHeaders.get("X-ElizaOS-Turn-Attempt")).toBe("2");
+    for (const call of request.mock.calls) {
+      expect(JSON.parse(String(call[1]?.body))).toMatchObject({
+        clientMessageId: "caller-stable-id",
+      });
+    }
+  });
+
   it("does not retry a generic 503 without a warming code", async () => {
     const request = vi
       .fn<AgentRequestTransport["request"]>()

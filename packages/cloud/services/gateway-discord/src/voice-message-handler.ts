@@ -8,7 +8,9 @@
  * - Cleans up expired audio files
  */
 
+import { createHash } from "node:crypto";
 import { type Attachment, MessageFlags } from "discord.js";
+import { parseIntegerEnvValue } from "./integer-env";
 import { logger } from "./logger";
 
 /**
@@ -16,15 +18,7 @@ import { logger } from "./logger";
  * Throws if the value is not a valid integer to fail fast on misconfiguration.
  */
 function parseIntEnv(name: string, defaultValue: number): number {
-  const value = process.env[name];
-  if (value === undefined) return defaultValue;
-  const parsed = parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
-    throw new Error(
-      `Invalid ${name} environment variable: "${value}" is not a valid integer`,
-    );
-  }
-  return parsed;
+  return parseIntegerEnvValue(name, process.env[name]) ?? defaultValue;
 }
 
 const VOICE_AUDIO_TTL_SECONDS = parseIntEnv("VOICE_AUDIO_TTL_SECONDS", 3600);
@@ -123,7 +117,12 @@ async function uploadVoiceObject(
     headers: {
       ...storageHeaders(config),
       "Content-Type": contentType,
+      "Content-Length": String(audioBuffer.byteLength),
+      "X-Content-Length": String(audioBuffer.byteLength),
       "Idempotency-Key": idempotencyKey,
+      "X-Content-SHA256": createHash("sha256")
+        .update(audioBuffer)
+        .digest("hex"),
       "X-Storage-Object-Key": key,
     },
     body: new Uint8Array(audioBuffer),

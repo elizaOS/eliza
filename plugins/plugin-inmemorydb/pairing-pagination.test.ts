@@ -88,4 +88,20 @@ describe("plugin-inmemorydb pairing pagination", () => {
       nextOffset: 2,
     });
   });
+
+  it("safely handles invalid date timestamps during order sorting", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    const req1 = request(1, 1_000);
+    const req2 = request(2, 2_000);
+    // Force an invalid date timestamp
+    (req1 as unknown as { createdAt: unknown }).createdAt = "invalid-date-string";
+
+    await adapter.createPairingRequests([req1, req2]);
+    const [sorted] = await adapter.getPairingRequests([
+      { channel: "telegram", agentId: AGENT_ID, order: "newest" },
+    ]);
+    expect(sorted.requests).toHaveLength(2);
+    expect(sorted.requests[0].id).toBe(id(2));
+  });
 });

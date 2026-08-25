@@ -6,7 +6,9 @@
 
 export { actionStateProvider } from "./actionState.ts";
 export { actionsProvider } from "./actions.ts";
+export { anxietyProvider } from "./anxiety.ts";
 export { attachmentsProvider } from "./attachments.ts";
+export { botAwarenessProvider } from "./botAwareness.ts";
 export { channelTopicsProvider } from "./channelTopics.ts";
 export { characterProvider } from "./character.ts";
 export { choiceProvider } from "./choice.ts";
@@ -40,7 +42,9 @@ import { anchorBundleSafety } from "../../../bundle-safety.ts";
 // when a consumer dereferences a re-exported binding at runtime.
 import { actionStateProvider as _bs_1_actionStateProvider } from "./actionState.ts";
 import { actionsProvider as _bs_2_actionsProvider } from "./actions.ts";
+import { anxietyProvider as _bs_21_anxietyProvider } from "./anxiety.ts";
 import { attachmentsProvider as _bs_3_attachmentsProvider } from "./attachments.ts";
+import { botAwarenessProvider as _bs_22_botAwarenessProvider } from "./botAwareness.ts";
 import { channelTopicsProvider as _bs_19_channelTopicsProvider } from "./channelTopics.ts";
 import { characterProvider as _bs_4_characterProvider } from "./character.ts";
 import { choiceProvider as _bs_5_choiceProvider } from "./choice.ts";
@@ -82,4 +86,6 @@ anchorBundleSafety("FEATURES_BASIC_CAPABILITIES_PROVIDERS_INDEX", [
 	_bs_18_runtimeModelContextProvider,
 	_bs_19_channelTopicsProvider,
 	_bs_20_replyContextProvider,
+	_bs_21_anxietyProvider,
+	_bs_22_botAwarenessProvider,
 ]);

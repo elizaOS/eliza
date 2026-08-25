@@ -17,7 +17,7 @@ function InlineMeta({
   return (
     <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted/85">
       <span
-        className="h-1.5 w-1.5 rounded-full"
+        className="size-1.5 rounded-full"
         style={color ? { backgroundColor: color } : undefined}
       />
       <span>{label}</span>

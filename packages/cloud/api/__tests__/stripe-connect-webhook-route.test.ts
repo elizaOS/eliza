@@ -57,6 +57,12 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  RateLimitPresets: { AGGRESSIVE: {} },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
+}));
+
 const { default: app } = await import(
   "../v1/earnings/payout/stripe-connect/webhook/route"
 );

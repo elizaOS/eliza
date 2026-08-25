@@ -82,7 +82,7 @@ test.describe("shared→dedicated tier upgrade", () => {
     const prevBoot = getBootConfig();
     const prevToken = readStoredStewardToken();
     setBootConfig({ ...prevBoot, cloudApiBase });
-    writeStoredStewardToken(authToken);
+    await writeStoredStewardToken(authToken);
 
     try {
       // ── 1. The account-native Shared identity has no sandbox row. ──────
@@ -647,9 +647,9 @@ test.describe("shared→dedicated tier upgrade", () => {
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       } else {
-        writeStoredStewardToken(prevToken);
+        await writeStoredStewardToken(prevToken);
       }
     }
   });

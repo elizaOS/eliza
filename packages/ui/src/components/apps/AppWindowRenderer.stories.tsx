@@ -6,6 +6,7 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactElement } from "react";
+import { Button } from "../ui/button";
 import { AppWindowRenderer } from "./AppWindowRenderer";
 import type { OverlayAppContext } from "./overlay-app-api";
 import { registerOverlayApp } from "./overlay-app-registry";
@@ -15,7 +16,7 @@ function MockOverlayComponent(props: OverlayAppContext): ReactElement {
     <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-background p-8 text-center">
       <img
         alt="mock app hero"
-        className="h-24 w-24 rounded-xl"
+        className="size-24 rounded-xl"
         src="https://placehold.co/96x96/orange/white?text=App"
       />
       <h2 className="text-xl font-semibold">Mock Overlay App</h2>
@@ -23,13 +24,14 @@ function MockOverlayComponent(props: OverlayAppContext): ReactElement {
         This is a registered overlay app rendered through the AppWindowRenderer.
         Theme: {props.uiTheme}.
       </p>
-      <button
+      <Button
         type="button"
-        className="rounded-md border border-border bg-card px-3 py-1.5 text-sm hover:bg-accent"
+        variant="outline"
+        size="regularCompact"
         onClick={props.exitToApps}
       >
         {props.t("Exit to apps")}
-      </button>
+      </Button>
     </div>
   );
 }

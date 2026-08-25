@@ -1,7 +1,7 @@
 /**
  * Top-up money routes are rate-limited and fail CLOSED on a Redis outage
- * (#12227 M11). Proves the `rateLimit({ failClosed: true })` middleware is
- * actually mounted on `/v1/topup/10` by driving a request through the real
+ * (#12227 M11 / #22982). Proves `moneyRateLimit` is actually mounted on
+ * `/v1/topup/10` by driving a request through the real
  * route with a throwing Redis dependency: the request must be rejected (503)
  * BEFORE the top-up handler runs.
  */

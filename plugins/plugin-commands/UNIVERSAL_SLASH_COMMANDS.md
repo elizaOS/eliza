@@ -100,12 +100,12 @@ registry, so all three target kinds flow through one serializer.
 ### Agent capability (target: `agent`) — `src/registry.ts` `DEFAULT_COMMANDS`
 
 `/help` `/commands` `/status` `/context` `/whoami` · `/stop` `/restart`
-`/reset` `/new` `/compact` · `/think` `/verbose` `/reasoning` `/elevated`
+`/reset` `/new` · `/think` `/verbose` `/reasoning` `/elevated`
 `/model` `/models` `/usage` `/queue` · `/allowlist` `/approve` `/subagents` ·
 `/tts` · `/bash` (and `/config` `/debug`, gated off by default) · plus
 `skill-<slug>` commands registered from loaded skills and any custom actions the
 user has defined. These flow to the agent and reply in-channel. Auth-gated
-commands (`/restart` `/reset` `/compact` `/elevated` `/allowlist` `/approve`
+commands (`/restart` `/reset` `/elevated` `/allowlist` `/approve`
 `/subagents` `/bash` `/config` `/debug`) carry `requiresAuth: true`, which survives
 serialization onto the wire.
 

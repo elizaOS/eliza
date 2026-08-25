@@ -9,10 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { AgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import {
-  firstSentenceEndIndex,
-  resolveAospGenerateTokenBudget,
-} from "../src/aosp-llama-paths";
+import { firstSentenceEndIndex } from "../src/aosp-llama-paths";
 import {
   type AospLoader,
   AospLoaderRuntimeService,
@@ -29,6 +26,7 @@ import {
   registerAospLlamaLoader,
   registerAospLoaderService,
   removeAospGeneratedStagingDir,
+  resolveAospCompletionBudget,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -778,58 +776,43 @@ describe("aospAsrAssetsPresent (TRANSCRIPTION registration gate)", () => {
   });
 });
 
-describe("resolveAospGenerateTokenBudget", () => {
-  it("caps oversized caller budgets with the Android debug env cap", () => {
+describe("resolveAospCompletionBudget", () => {
+  it("uses every token remaining after the complete prompt when omitted", () => {
     expect(
-      resolveAospGenerateTokenBudget({
-        requestedMaxTokens: 8192,
-        nCtx: 4096,
-        nBatch: 64,
-        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "384" },
+      resolveAospCompletionBudget({
+        contextSize: 4096,
+        promptTokenCount: 1000,
       }),
-    ).toMatchObject({
-      requestedMaxTokens: 8192,
-      maxTokens: 384,
-      maxOutputReserve: 384,
-      envCap: 384,
-      capped: true,
-    });
+    ).toBe(3096);
   });
 
-  it("uses a stock-Android-safe output cap by default", () => {
+  it("preserves an explicit supported request exactly", () => {
     expect(
-      resolveAospGenerateTokenBudget({
-        requestedMaxTokens: 8192,
-        nCtx: 4096,
-        nBatch: 64,
-        env: {},
+      resolveAospCompletionBudget({
+        requestedMaxTokens: 2048,
+        contextSize: 4096,
+        promptTokenCount: 1000,
       }),
-    ).toMatchObject({
-      requestedMaxTokens: 8192,
-      maxTokens: 256,
-      maxOutputReserve: 256,
-      contextCap: 2016,
-      envCap: 256,
-      capped: true,
-    });
+    ).toBe(2048);
   });
 
-  it("can explicitly disable the default output cap for diagnostics", () => {
-    expect(
-      resolveAospGenerateTokenBudget({
+  it("rejects an oversized explicit request instead of clamping it", () => {
+    expect(() =>
+      resolveAospCompletionBudget({
         requestedMaxTokens: 8192,
-        nCtx: 4096,
-        nBatch: 64,
-        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "0" },
+        contextSize: 4096,
+        promptTokenCount: 1000,
       }),
-    ).toMatchObject({
-      requestedMaxTokens: 8192,
-      maxTokens: 2016,
-      maxOutputReserve: 2016,
-      contextCap: 2016,
-      envCap: null,
-      capped: true,
-    });
+    ).toThrow(/refusing to clamp/);
+  });
+
+  it("rejects a complete prompt that does not fit", () => {
+    expect(() =>
+      resolveAospCompletionBudget({
+        contextSize: 4096,
+        promptTokenCount: 4096,
+      }),
+    ).toThrow(/refusing to truncate/);
   });
 });
 
@@ -853,6 +836,30 @@ describe("AOSP embedding gate", () => {
     expect(
       disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
     ).toHaveLength(1024);
+  });
+
+  it("ignores a prefix-parsed embedding dimension instead of sizing the vector from it", () => {
+    // parseInt("1024junk") is 1024, so a typo silently produced a vector of a
+    // width the operator never configured — and the width must match the SQL
+    // column, so this is not a cosmetic difference.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024junk" }),
+    ).toHaveLength(384);
+    expect(
+      disabledAospEmbeddingVector({
+        LOCAL_EMBEDDING_DIMENSIONS: "9007199254740993",
+      }),
+    ).toHaveLength(384);
+    // A signed value was accepted by parseInt and must stay accepted.
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "+1024" }),
+    ).toHaveLength(1024);
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "0" }),
+    ).toHaveLength(384);
+    expect(
+      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "-1" }),
+    ).toHaveLength(384);
   });
 });
 
@@ -911,6 +918,46 @@ describe("buildAospLoadModelArgs", () => {
         k: "q8_0",
         v: "f16",
       },
+    });
+  });
+
+  it("validates the complete chat context integer at the production load boundary", () => {
+    const contextSize = (raw: string) =>
+      withEnv({ ELIZA_LLAMA_N_CTX: raw }, () =>
+        buildAospLoadModelArgs("chat", "/models/chat.gguf"),
+      ).contextSize;
+
+    expect(contextSize("4097junk")).toBe(4096);
+    expect(contextSize("+4097")).toBe(4097);
+    expect(contextSize("0")).toBe(4096);
+    expect(contextSize("-1")).toBe(4096);
+    expect(contextSize(String(Number.MAX_SAFE_INTEGER))).toBe(
+      Number.MAX_SAFE_INTEGER,
+    );
+    expect(contextSize(String(Number.MAX_SAFE_INTEGER + 1))).toBe(4096);
+  });
+
+  it("validates GPU layers while preserving zero and the legacy GPU fallback", () => {
+    const load = (raw: string) =>
+      withEnv(
+        {
+          ELIZA_LLAMA_N_GPU_LAYERS: raw,
+          ELIZA_AOSP_LLAMA_USE_GPU: "true",
+        },
+        () => buildAospLoadModelArgs("chat", "/models/chat.gguf"),
+      );
+
+    expect(load("7junk")).toMatchObject({ gpuLayers: 99, useGpu: true });
+    expect(load("-1")).toMatchObject({ gpuLayers: 99, useGpu: true });
+    expect(load("+7")).toMatchObject({ gpuLayers: 7, useGpu: true });
+    expect(load("0")).toMatchObject({ gpuLayers: 0, useGpu: false });
+    expect(load(String(Number.MAX_SAFE_INTEGER))).toMatchObject({
+      gpuLayers: Number.MAX_SAFE_INTEGER,
+      useGpu: true,
+    });
+    expect(load(String(Number.MAX_SAFE_INTEGER + 1))).toMatchObject({
+      gpuLayers: 99,
+      useGpu: true,
     });
   });
 

@@ -183,6 +183,7 @@ const shard = parseUiSmokeShard(process.env[UI_SMOKE_SHARD_ENV]);
 
 export default defineConfig({
   testDir: "./test/ui-smoke",
+  testMatch: "**/*.spec.ts",
   timeout: 180_000,
   expect: {
     timeout: 15_000,
@@ -353,6 +354,11 @@ export default defineConfig({
             testMatch: [AUDIT_CLOUD_SPEC, AUDIT_PROJECT_WORKER_CONTRACT_SPEC],
             use: {
               ...devices["Desktop Chrome"],
+              // Cloud audit assertions depend on per-page API fixtures. A
+              // controlling worker can issue agent-origin fetches outside
+              // Playwright routing and turn deterministic empty states into
+              // CORS failures; service-worker behavior has dedicated tests.
+              ...BLOCK_PRODUCTION_SERVICE_WORKER,
               ...withChromiumLaunchOptions(),
             },
           },

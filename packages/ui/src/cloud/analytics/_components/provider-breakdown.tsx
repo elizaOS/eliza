@@ -4,7 +4,7 @@
 
 "use client";
 
-import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-shared/types";
+import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-sdk";
 import {
   Badge,
   Card,
@@ -113,7 +113,7 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
                         n: numberFormatter.format(provider.totalTokens),
                       })}
                     </span>
-                    <span className="text-green-600 dark:text-green-400">
+                    <span className="text-status-success">
                       {t("cloud.analytics.providerBreakdown.successPct", {
                         defaultValue: "{{p}}% success",
                         p: toSuccessRatePercent(provider.successRate).toFixed(

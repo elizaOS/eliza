@@ -38,9 +38,6 @@ const DOMAIN_SHAPE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
 const DOMAIN_TOKEN =
   /(?<![\p{L}\p{N}._@-])(?:[a-z0-9][a-z0-9-]{0,62}\.)+[a-z]{2,24}(?![\p{L}\p{N}-])/giu;
 
-/** Bound the prose scan — nobody names a purchase target 4000 chars in. */
-const MAX_SCANNED_TEXT = 4000;
-
 /** True when `value` is a registrable-looking domain (server-schema mirror). */
 export function isValidDomain(value: string): boolean {
   const v = value.trim();
@@ -88,7 +85,7 @@ export function extractDomainReferences(
   }
   // Canonical unwrapped payload, never raw content.text: the security
   // envelope's metadata lines are domain-shaped enough to false-match.
-  const text = unwrapUserMessageText(message).slice(0, MAX_SCANNED_TEXT);
+  const text = unwrapUserMessageText(message);
   const seen = new Set<string>();
   for (const match of text.matchAll(DOMAIN_TOKEN)) {
     const domain = normalizeDomain(match[0]);

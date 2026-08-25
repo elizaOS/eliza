@@ -8,6 +8,7 @@ import { describe, expect, mock, test } from "bun:test";
 const APP_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 const ORG_ID = "org-retire";
 const USER_ID = "user-retire";
+const GENERATION = "11111111-1111-4111-8111-111111111111";
 
 interface Row {
   id: string;
@@ -49,6 +50,19 @@ mock.module("../../../db/repositories/containers", () => ({
 
 mock.module("../apps", () => ({
   appsService: {
+    updateDeploymentGeneration: async (id: string, generation: string) =>
+      id === APP_ID
+        ? generation === GENERATION
+          ? {
+              id: APP_ID,
+              name: "retire-app",
+              organization_id: ORG_ID,
+              created_by_user_id: USER_ID,
+              github_repo: null,
+              metadata: { databaseMode: "none", deploymentGeneration: GENERATION },
+            }
+          : undefined
+        : undefined,
     getById: async (id: string) =>
       id === APP_ID
         ? {
@@ -112,6 +126,22 @@ function makeRunner(
 }
 
 describe("DefaultAppDeployRunner prior-container retirement", () => {
+  test("a delayed prior generation performs no retire, create, or enqueue", async () => {
+    seedPrior();
+    const retired: string[] = [];
+    const { runner, provisionJobs } = makeRunner(async (containerId) => {
+      retired.push(containerId);
+      return { containerId, jobId: "delete-stale", outcome: "retired" };
+    });
+
+    await runner.run(APP_ID, "22222222-2222-4222-8222-222222222222");
+
+    expect(retired).toEqual([]);
+    expect(provisionJobs).toEqual([]);
+    expect(rows.get("container-prior")?.status).toBe("running");
+    expect(rows.size).toBe(1);
+  });
+
   test("retires the prior row before creating the replacement", async () => {
     seedPrior();
     const deleteJobs: string[] = [];
@@ -121,7 +151,7 @@ describe("DefaultAppDeployRunner prior-container retirement", () => {
       return { containerId, jobId: "delete-1", outcome: "retired" };
     });
 
-    await runner.run(APP_ID);
+    await runner.run(APP_ID, GENERATION);
 
     expect(rows.get("container-prior")?.status).toBe("deleting");
     expect(deleteJobs).toEqual(["container-prior"]);
@@ -135,7 +165,7 @@ describe("DefaultAppDeployRunner prior-container retirement", () => {
       throw new Error("transaction rolled back");
     });
 
-    await runner.run(APP_ID);
+    await runner.run(APP_ID, GENERATION);
 
     expect(rows.get("container-prior")?.status).toBe("running");
     expect(provisionJobs).toEqual([JOB_TYPES.CONTAINER_PROVISION]);
@@ -150,7 +180,7 @@ describe("DefaultAppDeployRunner prior-container retirement", () => {
       throw new Error("connection lost after commit");
     });
 
-    await runner.run(APP_ID);
+    await runner.run(APP_ID, GENERATION);
 
     expect(rows.get("container-prior")?.status).toBe("deleting");
     expect(durableDeleteJobs).toEqual(["container-prior"]);
@@ -164,7 +194,7 @@ describe("DefaultAppDeployRunner prior-container retirement", () => {
       throw new Error("response lost after worker completion");
     });
 
-    await runner.run(APP_ID);
+    await runner.run(APP_ID, GENERATION);
 
     expect(rows.get("container-prior")?.status).toBe("deleted");
   });

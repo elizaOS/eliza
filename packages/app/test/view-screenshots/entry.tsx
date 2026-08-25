@@ -1,7 +1,7 @@
 /**
  * Screenshot-harness entry. Reads `?view=<id>&state=<id>&compact=0|1` from the
  * URL, imports the matching LifeOps view component, injects the per-state mock
- * fetchers (or, for CalendarView, primes the `useCalendarWeek` hook global), and
+ * fetchers (or, for Calendar, primes the `useCalendarWeek` hook global), and
  * mounts it into `#root`. `@elizaos/ui` + `@elizaos/ui/agent-surface` (and, for
  * calendar, its data hook + drawer) are aliased to local stubs in vite.config.
  *
@@ -63,7 +63,7 @@ const LOADERS: Record<string, () => Promise<{ default: ComponentType }>> = {
     ) as Promise<{ default: ComponentType }>,
   calendar: () =>
     import(
-      "../../../../plugins/plugin-calendar/src/components/calendar/CalendarView.tsx"
+      "../../../../plugins/plugin-calendar/src/components/calendar/SimpleCalendarView.tsx"
     ) as Promise<{ default: ComponentType }>,
 };
 

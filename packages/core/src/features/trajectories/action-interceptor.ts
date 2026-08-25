@@ -2,6 +2,7 @@
 
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
+import { sanitizeTrajectoryJsonValue } from "../../services/trajectory-json";
 import type {
 	Action,
 	ActionResult,
@@ -23,6 +24,29 @@ interface TrajectoryContext {
 }
 
 const trajectoryContexts = new WeakMap<IAgentRuntime, TrajectoryContext>();
+
+/**
+ * Origin snapshotted action/provider `state` with JSON.parse(JSON.stringify).
+ * StateValue allows arbitrary objects, so a cyclic or over-deep provider
+ * value RangeError/TypeError'd *after* the action already succeeded.
+ * Use the persistence sanitizer so the live snapshot matches the SQL walk
+ * (path-scoped cycles, Dates, bigint/function, item/key/byte caps).
+ * A poisoned getter still throws inside that walk — catch it so diagnostics
+ * cannot fail the turn (J7).
+ */
+export function snapshotStateForTrajectory(state: unknown): JsonValue | null {
+	if (state === undefined || state === null) return null;
+	try {
+		return sanitizeTrajectoryJsonValue(state) ?? null;
+	} catch (error) {
+		// error-policy:J7 snapshot diagnostics must never fail the turn; a
+		// poisoned getter degrades the snapshot to null but is surfaced.
+		logger.warn(
+			`[TrajectoryInterceptor] state snapshot degraded to null: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return null;
+	}
+}
 
 export function setTrajectoryContext(
 	runtime: IAgentRuntime,
@@ -60,6 +84,14 @@ function requiredTrajectoryString(
 		});
 	}
 	return value;
+}
+
+function trajectoryStringOrEmpty(
+	context: Record<string, JsonValue | undefined>,
+	field: string,
+): string {
+	const value = context[field];
+	return typeof value === "string" ? value : "";
 }
 
 function optionalTrajectoryNumber(
@@ -100,6 +132,12 @@ export function wrapActionWithLogging(
 			callback?: HandlerCallback,
 		): Promise<ActionResult | undefined> => {
 			const context = getTrajectoryContext(runtime);
+			// Await before the `|| { text: "" }` fallback. `Provider.get` is declared
+			// as Promise<ProviderResult>, so the un-awaited call was ALWAYS truthy
+			// and the fallback dead: a provider resolving `undefined` made the
+			// wrapper resolve `undefined` too, against its own return type. The
+			// active-step branch already awaited first; all three now normalize
+			// identically.
 			if (!context) {
 				const result = await originalHandler(
 					runtime,
@@ -130,9 +168,7 @@ export function wrapActionWithLogging(
 			}
 
 			const successHandler = (): void => {
-				const stateSnapshot = state
-					? (JSON.parse(JSON.stringify(state)) as JsonValue)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -165,9 +201,7 @@ export function wrapActionWithLogging(
 					"Action execution failed",
 				);
 
-				const stateSnapshot = state
-					? (JSON.parse(JSON.stringify(state)) as JsonValue)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -243,15 +277,14 @@ export function logLLMCallFromAction(
 
 	trajectoryLogger.logLLMCall(stepId, {
 		model: requiredTrajectoryString(actionContext, "model"),
-		systemPrompt: requiredTrajectoryString(actionContext, "systemPrompt", {
-			allowEmpty: true,
-		}),
-		userPrompt: requiredTrajectoryString(actionContext, "userPrompt", {
-			allowEmpty: true,
-		}),
-		response: requiredTrajectoryString(actionContext, "response", {
-			allowEmpty: true,
-		}),
+		// Prompt/response are recorded verbatim when present; a pure tool-call
+		// leg has NO text response (response is undefined, not ""), and the
+		// strict string requirement threw INVALID_TRAJECTORY_ACTION_CONTEXT —
+		// dropping exactly the planner legs a trajectory exists to show.
+		// Absent text records as "" honestly.
+		systemPrompt: trajectoryStringOrEmpty(actionContext, "systemPrompt"),
+		userPrompt: trajectoryStringOrEmpty(actionContext, "userPrompt"),
+		response: trajectoryStringOrEmpty(actionContext, "response"),
 		reasoning:
 			typeof actionContext.reasoning === "string"
 				? actionContext.reasoning
@@ -321,7 +354,7 @@ export function wrapProviderWithLogging(
 		): Promise<ProviderResult> => {
 			const context = getTrajectoryContext(runtime);
 			if (!context) {
-				return originalGet(runtime, message, state) || { text: "" };
+				return (await originalGet(runtime, message, state)) || { text: "" };
 			}
 
 			const { trajectoryId, logger: loggerService } = context;
@@ -332,16 +365,14 @@ export function wrapProviderWithLogging(
 					{ provider: provider.name, trajectoryId },
 					"No active step for provider access",
 				);
-				return originalGet(runtime, message, state) || { text: "" };
+				return (await originalGet(runtime, message, state)) || { text: "" };
 			}
 
 			const result = (await originalGet(runtime, message, state)) || {
 				text: "",
 			};
 
-			const stateSnapshot = state
-				? (JSON.parse(JSON.stringify(state)) as JsonValue)
-				: null;
+			const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 			loggerService.logProviderAccess(stepId, {
 				providerName: provider.name,

@@ -95,16 +95,14 @@ function invalidRecurrence(detail: string): never {
 function parseUntilValue(value: string): number {
   const dateOnly = value.match(/^(\d{4})(\d{2})(\d{2})$/);
   if (dateOnly) {
-    // Date-only UNTIL: inclusive through the end of that UTC day.
-    const ms = Date.UTC(
-      Number(dateOnly[1]),
-      Number(dateOnly[2]) - 1,
-      Number(dateOnly[3]),
-      23,
-      59,
-      59,
-    );
-    const date = new Date(ms);
+    const y = Number(dateOnly[1]);
+    const mo = Number(dateOnly[2]);
+    const d0 = Number(dateOnly[3]);
+    const d = new Date(0);
+    d.setUTCFullYear(y, mo - 1, d0);
+    d.setUTCHours(23, 59, 59, 0);
+    const ms = d.getTime();
+    const date = d;
     if (
       !Number.isFinite(ms) ||
       date.getUTCFullYear() !== Number(dateOnly[1]) ||
@@ -123,15 +121,16 @@ function parseUntilValue(value: string): number {
     // ECMAScript cannot represent leap seconds. RFC 5545 directs
     // implementations without that support to interpret second 60 as 59.
     const representedSecond = second === 60 ? 59 : second;
-    const ms = Date.UTC(
-      Number(dateTime[1]),
-      Number(dateTime[2]) - 1,
-      Number(dateTime[3]),
-      Number(dateTime[4]),
-      Number(dateTime[5]),
-      representedSecond,
-    );
-    const date = new Date(ms);
+    const dtY = Number(dateTime[1]);
+    const dtMo = Number(dateTime[2]);
+    const dtD = Number(dateTime[3]);
+    const dtH = Number(dateTime[4]);
+    const dtMi = Number(dateTime[5]);
+    const d2 = new Date(0);
+    d2.setUTCFullYear(dtY, dtMo - 1, dtD);
+    d2.setUTCHours(dtH, dtMi, representedSecond, 0);
+    const ms = d2.getTime();
+    const date = d2;
     if (
       !Number.isFinite(ms) ||
       date.getUTCFullYear() !== Number(dateTime[1]) ||
@@ -339,8 +338,14 @@ export function firstRecurrenceRule(
 type LocalDateOnly = Pick<ZonedDateParts, "year" | "month" | "day">;
 
 function daysBetweenLocalDates(from: LocalDateOnly, to: LocalDateOnly): number {
-  const fromMs = Date.UTC(from.year, from.month - 1, from.day, 12);
-  const toMs = Date.UTC(to.year, to.month - 1, to.day, 12);
+  const dFrom = new Date(0);
+  dFrom.setUTCFullYear(from.year, from.month - 1, from.day);
+  dFrom.setUTCHours(12, 0, 0, 0);
+  const fromMs = dFrom.getTime();
+  const dTo = new Date(0);
+  dTo.setUTCFullYear(to.year, to.month - 1, to.day);
+  dTo.setUTCHours(12, 0, 0, 0);
+  const toMs = dTo.getTime();
   return Math.round((toMs - fromMs) / 86_400_000);
 }
 
@@ -353,7 +358,10 @@ function addMonthsToLocalMonth(
 }
 
 function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0, 12)).getUTCDate();
+  const d = new Date(0);
+  d.setUTCFullYear(year, month, 0);
+  d.setUTCHours(12, 0, 0, 0);
+  return d.getUTCDate();
 }
 
 const MAX_GENERATED_OCCURRENCES = 1000;

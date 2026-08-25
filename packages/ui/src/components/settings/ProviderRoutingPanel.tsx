@@ -91,7 +91,7 @@ export function ProviderRoutingPanel({
           role="status"
           aria-label={t("providerswitcher.savingRestarting")}
         >
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Loader2 className="size-3.5 animate-spin" />
         </span>
       ) : null}
       {modelSaveSuccess ? (
@@ -101,7 +101,7 @@ export function ProviderRoutingPanel({
           role="status"
           aria-label={t("providerswitcher.savedRestartingAgent")}
         >
-          <CheckCircle2 className="h-3.5 w-3.5" />
+          <CheckCircle2 className="size-3.5" />
         </span>
       ) : null}
     </div>

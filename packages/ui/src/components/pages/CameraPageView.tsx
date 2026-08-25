@@ -173,7 +173,7 @@ export function CameraPageView(): React.JSX.Element {
           data-testid="camera-starting"
           className="absolute inset-0 grid place-items-center text-white/80"
         >
-          <Loader2 className="h-7 w-7 animate-spin" aria-hidden />
+          <Loader2 className="size-7 animate-spin" aria-hidden />
         </div>
       ) : null}
 
@@ -219,7 +219,7 @@ export function CameraPageView(): React.JSX.Element {
           className="absolute inset-0 grid place-items-center p-6 text-center"
         >
           <div className="flex max-w-xs flex-col items-center gap-3">
-            <AlertTriangle className="h-8 w-8 text-white/70" aria-hidden />
+            <AlertTriangle className="size-8 text-white/70" aria-hidden />
             <p className="text-sm text-white/80">
               {error ??
                 t("camera.unavailable", {
@@ -247,7 +247,7 @@ export function CameraPageView(): React.JSX.Element {
               onClick={handleRetake}
               data-testid="camera-retake"
             >
-              <RotateCcw className="h-4 w-4" aria-hidden />
+              <RotateCcw className="size-4" aria-hidden />
               {t("camera.retake", { defaultValue: "Retake" })}
             </Button>
           </div>
@@ -263,11 +263,11 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.switch", { defaultValue: "Switch camera" })}
               onClick={handleSwitch}
               disabled={busy}
-              variant="ghost"
+              variant="surface"
               size="icon-lg"
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/[0.18] bg-black/55 text-white transition-colors hover:bg-white/[0.16] disabled:opacity-50"
+              shape="circle"
             >
-              <SwitchCamera className="h-5 w-5" aria-hidden />
+              <SwitchCamera className="size-5" aria-hidden />
             </Button>
           </div>
 
@@ -277,16 +277,17 @@ export function CameraPageView(): React.JSX.Element {
               aria-label={t("camera.capture", { defaultValue: "Take photo" })}
               onClick={handleCapture}
               disabled={busy}
-              variant="ghost"
-              className="grid h-[72px] w-[72px] place-items-center rounded-full border-4 border-white/90 bg-white/10 transition-transform active:scale-95 disabled:opacity-60 motion-reduce:active:scale-100"
+              variant="surface"
+              size="icon-lg"
+              shape="circle"
             >
               {busy ? (
                 <Loader2
-                  className="h-6 w-6 animate-spin text-white"
+                  className="size-6 animate-spin text-white"
                   aria-hidden
                 />
               ) : (
-                <span className="h-14 w-14 rounded-full bg-white" />
+                <span className="size-14 rounded-full bg-white" />
               )}
             </Button>
           </div>
@@ -298,7 +299,7 @@ export function CameraPageView(): React.JSX.Element {
         <div
           data-testid="camera-error"
           role="alert"
-          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-red-500/90 px-3 py-1.5 text-center text-xs text-white"
+          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-danger/90 px-3 py-1.5 text-center text-xs text-danger-foreground"
         >
           {error}
         </div>

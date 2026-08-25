@@ -24,11 +24,9 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
-
-/** Max characters of fetched text we return when no extract path matches. */
-const WEB_FETCH_SNIPPET_CHARS = 4_000;
 
 /**
  * Capability gate: WEB_FETCH is enabled by default and opted out with
@@ -47,6 +45,19 @@ interface WebFetchParams {
   extract?: string;
 }
 
+const EXPLICIT_WEB_SEARCH_REQUEST =
+  /\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/i;
+const PUBLIC_HTTPS_URL = /https:\/\/[^\s<>"']+/i;
+
+/**
+ * Preserve an explicit user choice of discovery over direct URL retrieval.
+ * A named URL still belongs to WEB_FETCH even when surrounding prose mentions
+ * search; without a URL, an explicit web-search request must reach WEB_SEARCH.
+ */
+export function userExplicitlyRequiresWebSearch(text: string): boolean {
+  return EXPLICIT_WEB_SEARCH_REQUEST.test(text) && !PUBLIC_HTTPS_URL.test(text);
+}
+
 function readParams(options: unknown): WebFetchParams {
   const params = (options as { parameters?: Record<string, unknown> })
     ?.parameters;
@@ -59,16 +70,40 @@ function readParams(options: unknown): WebFetchParams {
   };
 }
 
+const MAX_JSON_EXTRACT_DEPTH = 16;
+const MAX_JSON_EXTRACT_PATH_LENGTH = 1024;
+const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
+
 /**
  * Resolve a dotted JSON path (e.g. `data.price` or `items.0.name`) against a
- * parsed JSON value. Returns undefined when any segment is missing.
+ * parsed JSON value. Returns undefined when any segment is missing or when
+ * the path is empty, too long, too deep, or contains an empty/oversized
+ * segment. JSON.parse produces plain data properties (accessor/Proxy traps
+ * are not reachable on host-parsed JSON); descriptor-only reflection is
+ * defense-in-depth and fails closed on hostile inputs.
  */
 function resolveJsonPath(root: unknown, path: string): unknown {
+  if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
+    return undefined;
+  const segments = path.split(".");
+  if (segments.length === 0 || segments.length > MAX_JSON_EXTRACT_DEPTH)
+    return undefined;
   let current: unknown = root;
-  for (const segment of path.split(".")) {
-    if (current === null || current === undefined) return undefined;
-    if (typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
+  for (const segment of segments) {
+    if (
+      segment.length === 0 ||
+      segment.length > MAX_JSON_EXTRACT_SEGMENT_LENGTH
+    )
+      return undefined;
+    if (current === null || typeof current !== "object") return undefined;
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(current as object, segment);
+    } catch {
+      return undefined;
+    }
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    current = descriptor.value;
   }
   return current;
 }
@@ -81,7 +116,7 @@ function stringifyValue(value: unknown): string {
 /**
  * Apply the optional `extract` instruction: when the body parses as JSON and
  * `extract` is a dotted path that resolves, return that field; otherwise fall
- * back to a truncated text snippet of the raw body.
+ * back to the complete guarded response body.
  */
 function extractValue(body: string, extract: string | undefined): string {
   if (extract) {
@@ -90,10 +125,10 @@ function extractValue(body: string, extract: string | undefined): string {
       const resolved = resolveJsonPath(parsed, extract);
       if (resolved !== undefined) return stringifyValue(resolved);
     } catch {
-      // Body was not JSON, or extract did not resolve — fall through to snippet.
+      // Body was not JSON, or extract did not resolve — return the complete body.
     }
   }
-  return body.slice(0, WEB_FETCH_SNIPPET_CHARS);
+  return toWellFormedUnicode(body);
 }
 
 export const webFetch: Action & Record<string, unknown> = {
@@ -138,13 +173,18 @@ export const webFetch: Action & Record<string, unknown> = {
     {
       name: "extract",
       description:
-        "Optional dotted JSON path selecting which field to return when the body is JSON (e.g. 'data.amount'). Omit to return a text snippet of the body.",
+        "Optional dotted JSON path selecting which field to return when the body is JSON (e.g. 'data.amount'). Omit to return the complete guarded response body.",
       required: false,
       schema: { type: "string" },
     },
   ],
 
-  validate: async (): Promise<boolean> => isWebFetchEnabled(),
+  validate: async (_runtime, message): Promise<boolean> => {
+    if (!isWebFetchEnabled()) return false;
+    const text =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    return !userExplicitlyRequiresWebSearch(text);
+  },
 
   handler: async (
     _runtime: IAgentRuntime,

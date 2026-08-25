@@ -799,6 +799,42 @@ export function normalizeOriginList(value: unknown, field: string): string[] {
   );
 }
 
+export function normalizeBlockedOriginList(
+  value: unknown,
+  field: string,
+): string[] {
+  if (!Array.isArray(value)) {
+    fail(400, `${field} must be an array`);
+  }
+  return normalizedStringSet(
+    value.map((candidate, index) => {
+      const entryField = `${field}[${index}]`;
+      const text = requireNonEmptyString(candidate, entryField).toLowerCase();
+      try {
+        const parsed = new URL(
+          /^[a-z][a-z0-9+.-]*:\/\//.test(text)
+            ? text
+            : `https://${text.replace(/^\*\./, "")}`,
+        );
+        if (
+          (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+          !parsed.hostname
+        ) {
+          fail(400, `${entryField} must be a valid HTTP(S) origin or hostname`);
+        }
+        return parsed.hostname.toLowerCase().replace(/\.+$/, "");
+      } catch (error) {
+        // error-policy:J3 Block entries are normalized to explicit hosts.
+        if (error instanceof LifeOpsServiceError) throw error;
+        return fail(
+          400,
+          `${entryField} must be a valid HTTP(S) origin or hostname`,
+        );
+      }
+    }),
+  );
+}
+
 export function normalizeBrowserSettingsUpdate(
   request: UpdateBrowserBridgeSettingsRequest,
   current: BrowserBridgeSettings,
@@ -842,7 +878,7 @@ export function normalizeBrowserSettingsUpdate(
     blockedOrigins:
       request.blockedOrigins === undefined
         ? [...current.blockedOrigins]
-        : normalizeOriginList(request.blockedOrigins, "blockedOrigins"),
+        : normalizeBlockedOriginList(request.blockedOrigins, "blockedOrigins"),
     maxRememberedTabs:
       request.maxRememberedTabs === undefined
         ? current.maxRememberedTabs

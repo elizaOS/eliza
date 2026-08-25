@@ -66,7 +66,7 @@ export const Connected: Story = {
     connectedContent: (
       <div className="space-y-4">
         <ConnectionIdentityPanel
-          icon={<MessageCircle className="h-6 w-6 text-white" />}
+          icon={<MessageCircle className="size-6 text-white" />}
           iconClassName="bg-[#5865F2]"
           title="Eliza Bot"
           subtitle="elizabot#4242 — joined 3 servers"
@@ -107,8 +107,8 @@ export const TelegramConnected: Story = {
     connectedContent: (
       <div className="space-y-4">
         <ConnectionIdentityPanel
-          icon={<Send className="h-6 w-6 text-white" />}
-          iconClassName="bg-sky-500"
+          icon={<Send className="size-6 text-white" />}
+          iconClassName="bg-accent"
           title="@eliza_assistant_bot"
           subtitle="Webhook healthy — 1,284 messages handled"
         />

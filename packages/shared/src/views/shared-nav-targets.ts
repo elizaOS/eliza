@@ -65,6 +65,7 @@ export const DOCUMENTS_NAV_VOCABULARY = {
 
 export const SHARED_NAV_TARGETS: Readonly<Record<string, SharedNavTarget>> = {
   settings: { viewId: "settings", label: "Settings" },
+  vault: { viewId: "vault", label: "Vault" },
   // The builtin wallet surface registers as the "inventory" tab (TAB_PATHS
   // inventory → /wallet in packages/ui/src/navigation); emitting the matcher's
   // raw "wallet" id would land in the client's not-found state.

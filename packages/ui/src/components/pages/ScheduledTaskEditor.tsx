@@ -84,10 +84,10 @@ export function ScheduledTaskEditor({
   const isManual = task.trigger.kind === "manual";
 
   return (
-    <div className="device-layout mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 lg:px-6">
+    <div className="device-layout mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 lg:px-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <CalendarClock className="h-5 w-5 shrink-0 text-accent" aria-hidden />
+          <CalendarClock className="size-5 shrink-0 text-accent" aria-hidden />
           <div>
             <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
               {item.title}
@@ -139,7 +139,7 @@ export function ScheduledTaskEditor({
           disabled={busy !== null}
           onClick={() => apply("acknowledge")}
         >
-          <Bell className="mr-1 h-3.5 w-3.5" aria-hidden />
+          <Bell className="mr-1  size-3.5" aria-hidden />
           {isManual
             ? t("scheduledtask.runNow", { defaultValue: "Run now" })
             : t("scheduledtask.acknowledge", { defaultValue: "Acknowledge" })}
@@ -150,7 +150,7 @@ export function ScheduledTaskEditor({
           disabled={busy !== null}
           onClick={() => apply("snooze", { minutes: SNOOZE_MINUTES })}
         >
-          <Clock className="mr-1 h-3.5 w-3.5" aria-hidden />
+          <Clock className="mr-1 size-3.5" aria-hidden />
           {t("scheduledtask.snooze", { defaultValue: "Snooze 1h" })}
         </Button>
         <Button
@@ -159,7 +159,7 @@ export function ScheduledTaskEditor({
           disabled={busy !== null}
           onClick={() => apply("complete")}
         >
-          <Check className="mr-1 h-3.5 w-3.5" aria-hidden />
+          <Check className="mr-1 size-3.5" aria-hidden />
           {t("scheduledtask.complete", { defaultValue: "Complete" })}
         </Button>
         <Button
@@ -168,7 +168,7 @@ export function ScheduledTaskEditor({
           disabled={busy !== null}
           onClick={() => apply("dismiss")}
         >
-          <X className="mr-1 h-3.5 w-3.5" aria-hidden />
+          <X className="mr-1 size-3.5" aria-hidden />
           {t("scheduledtask.dismiss", { defaultValue: "Dismiss" })}
         </Button>
       </div>

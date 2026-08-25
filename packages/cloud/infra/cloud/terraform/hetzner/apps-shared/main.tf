@@ -28,6 +28,18 @@ locals {
     "managed-by" = "eliza-cloud"
     "tier"       = "apps-shared"
   }
+
+  # Off-host backup pipeline (#21729): armed only when the full credential set
+  # is present. A partially supplied set is rejected by the tenant_db server
+  # precondition below rather than silently shipping unencrypted or nowhere.
+  backup_settings = [
+    var.backup_s3_endpoint,
+    var.backup_s3_bucket,
+    var.backup_s3_access_key,
+    var.backup_s3_secret_key,
+    var.backup_encryption_passphrase,
+  ]
+  backup_enabled = alltrue([for s in local.backup_settings : s != ""])
 }
 
 # Admin password for the tenant Postgres superuser. Stored in TF state (R2,
@@ -141,6 +153,15 @@ resource "hcloud_server" "tenant_db" {
     admin_password          = random_password.tenant_db_admin.result
     pgbouncer_auth_password = random_password.pgbouncer_auth.result
     operator_ssh_keys       = var.ssh_public_keys
+
+    backup_enabled               = local.backup_enabled
+    backup_s3_endpoint           = var.backup_s3_endpoint
+    backup_s3_bucket             = var.backup_s3_bucket
+    backup_s3_prefix             = var.backup_s3_prefix
+    backup_s3_access_key         = var.backup_s3_access_key
+    backup_s3_secret_key         = var.backup_s3_secret_key
+    backup_encryption_passphrase = var.backup_encryption_passphrase
+    backup_retention_days        = var.backup_retention_days
   })
 
   # Same convention as control-plane / apps-data-plane: allow in-place rename
@@ -149,6 +170,13 @@ resource "hcloud_server" "tenant_db" {
   lifecycle {
     prevent_destroy = true
     ignore_changes  = [user_data, image, name, ssh_keys]
+
+    # All-or-nothing backup configuration: a half-set credential bundle would
+    # either upload plaintext-adjacent artifacts or fail silently every night.
+    precondition {
+      condition     = local.backup_enabled || alltrue([for s in local.backup_settings : s == ""])
+      error_message = "Off-host backup settings are all-or-nothing: set backup_s3_endpoint, backup_s3_bucket, backup_s3_access_key, backup_s3_secret_key, and backup_encryption_passphrase together, or leave all empty to keep the pipeline inert."
+    }
   }
 }
 

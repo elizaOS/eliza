@@ -38,6 +38,20 @@ window.__setModelReady = (ready: boolean) => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const FIXTURE_NOTICE_STYLE: React.CSSProperties = {
+  position: "fixed",
+  top: 16,
+  left: "50%",
+  transform: "translateX(-50%)",
+  background: "rgba(0,0,0,0.75)",
+  border: "1px solid rgba(255,255,255,0.25)",
+  borderRadius: 12,
+  padding: "10px 16px",
+  fontSize: 13,
+  zIndex: 100,
+  maxWidth: 480,
+};
+
 const CONVERSATION: Conversation = {
   id: "conv-1",
   roomId: "room-1",
@@ -259,26 +273,11 @@ function Harness(): React.JSX.Element {
         </h1>
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
           The agent behind this fixture 503s every chat turn until the harness
-          marks the model ready — the #11670 repro window.
+          marks the model ready: the #11670 repro window.
         </p>
       </div>
       {notice ? (
-        <div
-          data-testid="fixture-notice"
-          style={{
-            position: "fixed",
-            top: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.75)",
-            border: "1px solid rgba(255,255,255,0.25)",
-            borderRadius: 12,
-            padding: "10px 16px",
-            fontSize: 13,
-            zIndex: 100,
-            maxWidth: 480,
-          }}
-        >
+        <div data-testid="fixture-notice" style={FIXTURE_NOTICE_STYLE}>
           {notice}
         </div>
       ) : null}

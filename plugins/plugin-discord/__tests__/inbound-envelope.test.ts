@@ -105,4 +105,24 @@ describe("inbound Discord envelope", () => {
 			"please note this as something the agent should learn from",
 		);
 	});
+
+	it("keeps surrogate pairs intact when truncating reply reference text", async () => {
+		const longReply = `${"a".repeat(196)}🦊${"b".repeat(50)}`;
+		const message = {
+			...makeDiscordMessage(),
+			fetchReference: async () => ({
+				id: "1234567890123456789",
+				content: longReply,
+				author: {
+					id: "3333333333333333333",
+					displayName: "Teammate",
+					username: "teammate",
+				},
+			}),
+		} as never;
+
+		const envelope = await formatInboundEnvelope(message, "test");
+		expect(envelope.formattedContent.isWellFormed()).toBe(true);
+		expect(envelope.formattedContent).toContain(`${"a".repeat(196)}...`);
+	});
 });

@@ -10,8 +10,8 @@
  * @module services/orchestrator-task-types
  */
 
-/** Lifecycle states. `validating` gates `done`: a sub-agent's `task_complete`
- * moves the task to `validating`, never straight to `done`. */
+/** Lifecycle states. `validating` gates `done`: only the elected coordinator's
+ * aggregate completion may enter validation, never a contributor receipt. */
 export type OrchestratorTaskStatus =
   | "open"
   | "active"
@@ -29,6 +29,9 @@ export type OrchestratorTaskPriority = "low" | "normal" | "high" | "urgent";
  * the provider. The UI renders these three cases distinctly so an operator is
  * never misled by a confident-looking `0`. */
 export type UsageState = "measured" | "estimated" | "unavailable";
+
+/** Durable authority a coding-task session holds in aggregate completion. */
+export type TaskCompletionRole = "coordinator" | "contributor";
 
 export type TaskMessageSenderKind =
   | "user"
@@ -72,6 +75,8 @@ export interface OrchestratorTaskRecord {
   /** Lineage: the task this one was forked from, if any. */
   parentTaskId?: string;
   forkSource?: string;
+  /** The only session authorized to request aggregate coding-task completion. */
+  completionCoordinatorSessionId?: string;
   /**
    * Durable workdir/repo binding, pinned at the task's FIRST successful spawn
    * and reused for every follow-up spawn of the same task. Without it,
@@ -114,9 +119,6 @@ export interface AttemptReflection {
   /** The verifier's one-line summary of why the attempt fell short. */
   summary: string;
 }
-
-/** Cap on retained reflections — keep the most recent few to bound prompt size. */
-export const MAX_ATTEMPT_REFLECTIONS = 5;
 
 /** Crash-retry budget: the total number of errored sessions a task's sub-agent
  * lineage may accrue before the task goes terminal `failed`. Bounds the
@@ -222,7 +224,7 @@ export function readRetryBudgetFirstSessionId(
 }
 
 export interface TaskProviderPolicy {
-  /** Preferred sub-agent framework: claude | codex | opencode | elizaos | pi-agent. */
+  /** Preferred sub-agent framework: claude | codex | elizaos | pi-agent. */
   preferredFramework?: string;
   /** Where inference/credentials are sourced: user-claude | user-openai | eliza-cloud | local. */
   providerSource?: string;
@@ -259,6 +261,20 @@ export interface OrchestratorTaskSession {
   idleCheckCount: number;
   taskDelivered: boolean;
   completionSummary?: string;
+  /** Completion authority. Optional for rows persisted before this contract. */
+  completionRole?: TaskCompletionRole;
+  /** Immediate spawning-session lineage for nested/parallel contributors. */
+  parentSessionId?: string;
+  /** Whether this contribution must be reviewed before aggregate completion. */
+  requiredForTaskCompletion?: boolean;
+  /** Coordinator requested completion while this task still had contributors. */
+  aggregateCompletionRequestedAt?: string;
+  /** The contributor's terminal receipt reached the elected coordinator. */
+  completionReceiptDeliveredAt?: string;
+  /** Last delivery failure; cleared only after a successful receipt handoff. */
+  completionReceiptDeliveryError?: string | null;
+  /** The coordinator subsequently completed after receiving this receipt. */
+  contributionReviewedAt?: string;
   lastSeenDecisionIndex: number;
   lastInputSentAt?: number;
   spawnedAt: number;

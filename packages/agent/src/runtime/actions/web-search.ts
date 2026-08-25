@@ -129,6 +129,13 @@ export const webSearch: Action & Record<string, unknown> = {
       required: false,
       schema: { type: "number" },
     },
+    {
+      name: "num_results",
+      description:
+        "Optional snake_case alias for numResults (default 6, max 10).",
+      required: false,
+      schema: { type: "number" },
+    },
   ],
 
   validate: async (): Promise<boolean> => isWebSearchEnabled(),

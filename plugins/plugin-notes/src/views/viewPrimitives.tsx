@@ -4,14 +4,9 @@
  * stable semantic target for chat-driven interaction.
  */
 
+import { Button, type ButtonProps } from "@elizaos/ui";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
-import type {
-  ButtonHTMLAttributes,
-  CSSProperties,
-  InputHTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
-} from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { StickyColor } from "../types.js";
 
 export function handleRenderedMutationFailure(cause: unknown): void {
@@ -70,21 +65,6 @@ export const GLASS_PANEL_STYLE: CSSProperties = {
   WebkitBackdropFilter: "blur(24px) saturate(145%)",
 };
 
-export const FIELD_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  width: "100%",
-  minHeight: 44,
-  border: "none",
-  borderRadius: 12,
-  padding: "10px 12px",
-  background: "color-mix(in srgb, var(--bg, #080808) 78%, transparent)",
-  color: "var(--txt, #f5f5f5)",
-  font: "inherit",
-  fontSize: 14,
-  lineHeight: 1.45,
-  boxShadow: "inset 0 0 0 1px rgba(255,255,255,.10)",
-};
-
 export const LABEL_STYLE: CSSProperties = {
   display: "grid",
   gap: 7,
@@ -101,26 +81,6 @@ export const SECONDARY_TEXT_STYLE: CSSProperties = {
   lineHeight: 1.45,
 };
 
-const BUTTON_STYLE: CSSProperties = {
-  boxSizing: "border-box",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 7,
-  minHeight: 44,
-  border: "none",
-  borderRadius: 12,
-  padding: "8px 12px",
-  background:
-    "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 86%, transparent)",
-  color: "var(--txt, #f5f5f5)",
-  font: "inherit",
-  fontSize: 13,
-  fontWeight: 650,
-  cursor: "pointer",
-  transition: "background 160ms ease, opacity 160ms ease, transform 160ms ease",
-};
-
 export function AgentAction({
   agentId,
   agentLabel,
@@ -133,7 +93,7 @@ export function AgentAction({
   children,
   disabled,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
+}: Omit<ButtonProps, "variant" | "size"> & {
   agentId: string;
   agentLabel: string;
   agentGroup: string;
@@ -151,112 +111,27 @@ export function AgentAction({
       if (!disabled) onClick?.({} as never);
     },
   });
-  const variantStyle: CSSProperties =
-    variant === "primary"
-      ? {
-          background: disabled
-            ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 86%, transparent)"
-            : "var(--accent, #ff6a1f)",
-          color: "var(--accent-foreground, #fff)",
-        }
-      : variant === "quiet"
-        ? { background: "transparent" }
-        : {};
   return (
-    <button
+    <Button
       ref={control.ref}
       type="button"
+      variant={
+        variant === "primary"
+          ? "default"
+          : variant === "quiet"
+            ? "ghost"
+            : "surface"
+      }
+      size={compact ? "icon-lg" : "touch"}
       {...control.agentProps}
       {...rest}
       aria-label={rest["aria-label"] ?? (compact ? agentLabel : undefined)}
       disabled={disabled}
       onClick={onClick}
-      style={{
-        ...BUTTON_STYLE,
-        ...variantStyle,
-        ...(compact ? { minWidth: 44, width: 44, padding: 0 } : {}),
-        ...(disabled ? { cursor: "default", opacity: 0.5 } : {}),
-        ...style,
-      }}
+      style={style}
     >
       {children}
-    </button>
-  );
-}
-
-export function AgentInput({
-  agentId,
-  agentLabel,
-  agentGroup,
-  value,
-  onValue,
-  style,
-  ...rest
-}: Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> & {
-  agentId: string;
-  agentLabel: string;
-  agentGroup: string;
-  value: string;
-  onValue: (value: string) => void;
-}) {
-  const control = useAgentElement<HTMLInputElement>({
-    id: agentId,
-    label: agentLabel,
-    role: "text-input",
-    group: agentGroup,
-    fillable: true,
-    getValue: () => value,
-    onFill: onValue,
-  });
-  return (
-    <input
-      ref={control.ref}
-      id={agentId}
-      aria-label={agentLabel}
-      {...control.agentProps}
-      {...rest}
-      value={value}
-      onChange={(event) => onValue(event.target.value)}
-      style={{ ...FIELD_STYLE, ...style }}
-    />
-  );
-}
-
-export function AgentTextarea({
-  agentId,
-  agentLabel,
-  agentGroup,
-  value,
-  onValue,
-  style,
-  ...rest
-}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange"> & {
-  agentId: string;
-  agentLabel: string;
-  agentGroup: string;
-  value: string;
-  onValue: (value: string) => void;
-}) {
-  const control = useAgentElement<HTMLTextAreaElement>({
-    id: agentId,
-    label: agentLabel,
-    role: "textarea",
-    group: agentGroup,
-    fillable: true,
-    getValue: () => value,
-    onFill: onValue,
-  });
-  return (
-    <textarea
-      ref={control.ref}
-      id={agentId}
-      aria-label={agentLabel}
-      {...control.agentProps}
-      {...rest}
-      value={value}
-      onChange={(event) => onValue(event.target.value)}
-      style={{ ...FIELD_STYLE, minHeight: 104, resize: "vertical", ...style }}
-    />
+    </Button>
   );
 }
 

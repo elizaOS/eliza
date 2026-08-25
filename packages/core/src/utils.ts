@@ -28,10 +28,10 @@ import { replaceIndexedNameTokens } from "./name-tokens";
 import type { TemplateType } from "./types/agent";
 import type { Entity } from "./types/environment";
 import type { Memory } from "./types/memory";
-import { ModelType } from "./types/model";
 import { type Content, ContentType, type UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
+import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import {
 	buildDeterministicSeed,
 	getDeterministicNames,
@@ -39,16 +39,10 @@ import {
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
-import { truncateWellFormed } from "./utils/well-formed";
-
-// Token / embedding budget constants
-export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
-/** Max tokens for embedding input text (default fallback) */
-export const DEFAULT_MAX_EMBEDDING_TOKENS = 8_000;
-/** Max character equivalent for embedding text (tokens * ~4 chars/token) */
-export const DEFAULT_MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_TOKENS * 4;
-/** Default max tokens for the assembled prompt sent to the model */
-export const DEFAULT_MAX_PROMPT_TOKENS = 128_000;
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "./utils/well-formed.js";
 
 // Text Utils
 
@@ -372,7 +366,7 @@ export const addHeader = (header: string, body: string) => {
  * @returns {string} The annotated section header.
  */
 export const conversationMessagesHeader = (visibleCount: number): string =>
-	`# Conversation Messages (most recent ${visibleCount}; older history is not shown here)`;
+	`# Conversation Messages (${visibleCount} retained)`;
 
 /**
  * Generates a string with random user names populated in a template.
@@ -527,8 +521,6 @@ export const formatMessages = ({
 }) => {
 	const entityById = new Map(entities.map((entity) => [entity.id, entity]));
 	const messageStrings: string[] = [];
-	let remainingAttachmentContext = 3;
-	let omittedAttachmentCount = 0;
 
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
 		const message = messages[i];
@@ -559,17 +551,7 @@ export const formatMessages = ({
 		const formattedName = senderIsBot ? `${baseName} (bot)` : baseName;
 
 		const attachments = (message.content as Content).attachments;
-		const visibleAttachments =
-			attachments && attachments.length > 0
-				? attachments.slice(0, Math.max(0, remainingAttachmentContext))
-				: [];
-		if (attachments && attachments.length > 0) {
-			remainingAttachmentContext = Math.max(
-				0,
-				remainingAttachmentContext - visibleAttachments.length,
-			);
-			omittedAttachmentCount += attachments.length - visibleAttachments.length;
-		}
+		const visibleAttachments = attachments ?? [];
 
 		const attachmentString =
 			visibleAttachments.length > 0
@@ -643,24 +625,14 @@ export const formatMessages = ({
 	}
 
 	const formattedMessages = messageStrings.join("\n");
-	if (omittedAttachmentCount === 0) {
-		return formattedMessages;
-	}
-
-	return [
-		formattedMessages,
-		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use ATTACHMENT action=read to inspect additional attachments.`,
-	]
-		.filter(Boolean)
-		.join("\n");
+	return formattedMessages;
 };
 
 export const formatTimestamp = formatTimestampBase;
 
 function parseStructuredResponseFence(text: string): string {
 	const trimmed = text.trim();
-	const match = /^```(?:toon|text)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-	return match?.[1]?.trim() ?? trimmed;
+	return (unwrapWholeCodeFence(trimmed, ["toon", "text"]) ?? trimmed).trim();
 }
 
 function parseToonScalar(value: string): unknown {
@@ -682,6 +654,24 @@ function parseToonScalar(value: string): unknown {
 	return value;
 }
 
+function parseToonKey(
+	rawKey: string,
+): { key: string; arrayIndex?: string } | null {
+	const keyWithIndex = rawKey.trimEnd();
+	let key = keyWithIndex;
+	let arrayIndex: string | undefined;
+	if (keyWithIndex.endsWith("]")) {
+		const openBracket = keyWithIndex.lastIndexOf("[");
+		if (openBracket < 0) return null;
+		const candidateIndex = keyWithIndex.slice(openBracket + 1, -1);
+		if (!/^\d+$/.test(candidateIndex)) return null;
+		key = keyWithIndex.slice(0, openBracket);
+		arrayIndex = candidateIndex;
+	}
+	if (!/^[A-Za-z_][\w.-]*$/.test(key)) return null;
+	return arrayIndex === undefined ? { key } : { key, arrayIndex };
+}
+
 /**
  * Parses the simple TOON key-value shape used by generated plugin prompts.
  *
@@ -701,11 +691,14 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#")) continue;
 
-		const match = /^([A-Za-z_][\w.-]*)(?:\[(\d+)\])?\s*:\s*(.*)$/.exec(line);
-		if (!match) continue;
+		const colonIndex = line.indexOf(":");
+		if (colonIndex < 0) continue;
+		const parsedKey = parseToonKey(line.slice(0, colonIndex));
+		if (!parsedKey) continue;
 
 		found = true;
-		const [, key, arrayIndex, rawValue] = match;
+		const { key, arrayIndex } = parsedKey;
+		const rawValue = line.slice(colonIndex + 1).trimStart();
 		const value = parseToonScalar(rawValue.trim());
 		if (arrayIndex === undefined) {
 			result[key] = value;
@@ -748,7 +741,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
-		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+		const safeText = toWellFormedUnicode(text);
 		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
 		if (!looksLikeXml) {
 			return null;
@@ -1063,39 +1056,14 @@ export async function splitChunks(
 	return chunks;
 }
 
-/**
- * Trims the provided text prompt to a specified token limit using a tokenizer model and type.
- */
+/** @deprecated Prompt inputs are preserved; provider boundaries reject unsupported sizes. */
 export async function trimTokens(
 	prompt: string,
-	maxTokens: number,
-	runtime: IAgentRuntime,
+	_maxTokens: number,
+	_runtime: IAgentRuntime,
 ) {
 	if (!prompt) throw new Error("Trim tokens received a null prompt");
-
-	// if prompt is less than of maxtokens / 5, skip
-	if (prompt.length < maxTokens / 5) return prompt;
-
-	if (maxTokens <= 0) throw new Error("maxTokens must be positive");
-
-	const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-		prompt,
-		modelType: ModelType.TEXT_TOKENIZER_ENCODE,
-	});
-
-	// If already within limits, return unchanged
-	if (tokens.length <= maxTokens) {
-		return prompt;
-	}
-
-	// Keep the most recent tokens by slicing from the end
-	const truncatedTokens = tokens.slice(-maxTokens);
-
-	// Decode back to text
-	return runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
-		tokens: truncatedTokens,
-		modelType: ModelType.TEXT_TOKENIZER_DECODE,
-	});
+	return prompt;
 }
 
 /**

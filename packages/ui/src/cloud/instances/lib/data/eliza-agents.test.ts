@@ -21,6 +21,7 @@ function agent(overrides: Record<string, unknown> = {}) {
     dockerImage: null,
     executionTier: "shared",
     webUiUrl: null,
+    activeJob: null,
     ...overrides,
   };
 }
@@ -61,6 +62,36 @@ describe("parseAgentsResponse", () => {
     expect(() =>
       parseAgentsResponse({ success: true, data: [record] }),
     ).toThrow("Agents response contained an invalid agent record");
+  });
+
+  it("rejects a malformed active lifecycle job", () => {
+    expect(() =>
+      parseAgentsResponse({
+        success: true,
+        data: [agent({ activeJob: { id: "job-1" } })],
+      }),
+    ).toThrow("Agents response contained an invalid active job");
+  });
+
+  it("accepts the server-owned active lifecycle job needed to resume polling", () => {
+    const activeJob = {
+      id: "job-1",
+      type: "agent_provision",
+      status: "in_progress",
+      attempts: 1,
+      maxAttempts: 3,
+      estimatedCompletionAt: "2026-08-16T01:05:00.000Z",
+      scheduledFor: "2026-08-16T01:02:00.000Z",
+      startedAt: "2026-08-16T01:02:03.000Z",
+      createdAt: "2026-08-16T01:01:59.000Z",
+      updatedAt: "2026-08-16T01:02:03.000Z",
+    };
+    const [parsed] = parseAgentsResponse({
+      success: true,
+      data: [agent({ activeJob })],
+    });
+
+    expect(parsed.activeJob).toEqual(activeJob);
   });
 
   it("fails the whole list when any record is invalid", () => {

@@ -55,6 +55,10 @@ describe("inferAgentSwitchProfile", () => {
 		expect(inferAgentSwitchProfile("hello")).toBeNull();
 		expect(inferAgentSwitchProfile("")).toBeNull();
 	});
+
+	it("scans a 100k non-matching request without regex backtracking", () => {
+		expect(inferAgentSwitchProfile(`switch ${"x".repeat(100_000)}`)).toBeNull();
+	});
 });
 
 describe("AGENT_SWITCH handler", () => {

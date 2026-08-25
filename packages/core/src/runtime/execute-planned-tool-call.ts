@@ -9,10 +9,11 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
+import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticArgs,
-	projectToolDiagnosticValue,
+	TOOL_DIAGNOSTIC_MASK,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import {
@@ -52,6 +53,11 @@ import { _resetActionRolePolicyCacheForTests as _resetCacheForTests } from "./ac
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
+import {
+	buildTurnEntityAliases,
+	type EntityAliasCapabilityMap,
+	resolveEntityAliasRefs,
+} from "./tool-arg-aliases";
 
 export interface PlannedToolCall {
 	id?: string;
@@ -69,6 +75,14 @@ export interface ExecutePlannedToolCallContext {
 	previousResults?: readonly ActionResult[];
 	callback?: Parameters<Action["handler"]>[4];
 	responses?: Memory[];
+	/**
+	 * Explicit per-turn alias grants for redaction placeholders in tool args
+	 * (#20091). When absent, the executor mints the map itself via
+	 * `buildTurnEntityAliases` from the composed state, resolved roles, and
+	 * canonical owner context; supplying it lets a planner boundary pass a
+	 * pre-authorized capability map. Never sourced from ambient settings.
+	 */
+	entityAliases?: EntityAliasCapabilityMap;
 }
 
 export type ExecutePlannedToolCallOptions = HandlerOptions & {
@@ -88,51 +102,213 @@ function isContentRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function toContentValue(value: unknown): ContentValue {
-	if (
-		value === undefined ||
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
+const MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH = 8;
+const MAX_ACTION_RESULT_DIAGNOSTIC_NODES = 1_024;
+
+interface ActionResultDiagnosticBudget {
+	nodes: number;
+}
+
+function redactDiagnosticString(
+	value: string,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+): ContentValue {
+	try {
+		return redactDiagnosticText(value);
+	} catch {
+		// error-policy:J4 A broken redactor becomes an explicit diagnostic mask.
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+}
+
+function defineDiagnosticProperty(
+	record: Record<string, ContentValue>,
+	key: string,
+	value: ContentValue,
+): void {
+	Object.defineProperty(record, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
+function projectActionResultDiagnosticValue(
+	value: unknown,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+	budget: ActionResultDiagnosticBudget,
+	suppressKeys?: ReadonlySet<string>,
+): ContentValue {
+	budget.nodes += 1;
+	if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (value === undefined || value === null || typeof value === "boolean") {
 		return value as ContentValue;
 	}
-	if (Array.isArray(value)) {
-		return value.map(toContentValue);
+	if (typeof value === "number") {
+		return Number.isFinite(value) ? value : TOOL_DIAGNOSTIC_MASK;
 	}
-	if (isContentRecord(value)) {
+	if (typeof value === "string") {
+		return redactDiagnosticString(value, redactDiagnosticText);
+	}
+	if (typeof value !== "object" || value === null) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (depth >= MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		let isArray: boolean;
+		try {
+			isArray = Array.isArray(value);
+		} catch {
+			// error-policy:J4 Revoked proxies degrade to an explicit diagnostic mask.
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		if (isArray) {
+			let lengthDescriptor: PropertyDescriptor | undefined;
+			try {
+				lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+			} catch {
+				// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const length = lengthDescriptor?.value;
+			if (
+				typeof length !== "number" ||
+				!Number.isSafeInteger(length) ||
+				length < 0 ||
+				length > MAX_ACTION_RESULT_DIAGNOSTIC_NODES - budget.nodes
+			) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const projected: ContentValue[] = new Array(length);
+			for (let index = 0; index < length; index += 1) {
+				let descriptor: PropertyDescriptor | undefined;
+				try {
+					descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+				} catch {
+					// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+					return TOOL_DIAGNOSTIC_MASK;
+				}
+				budget.nodes += 1;
+				if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+					return TOOL_DIAGNOSTIC_MASK;
+				}
+				if (!descriptor) continue;
+				projected[index] =
+					"value" in descriptor
+						? projectActionResultDiagnosticValue(
+								descriptor.value,
+								redactDiagnosticText,
+								seen,
+								depth + 1,
+								budget,
+							)
+						: TOOL_DIAGNOSTIC_MASK;
+			}
+			return projected;
+		}
+
+		let keys: PropertyKey[];
+		try {
+			keys = Reflect.ownKeys(value);
+		} catch {
+			// error-policy:J4 Revoked or hostile proxies degrade to a diagnostic mask.
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		if (keys.length > MAX_ACTION_RESULT_DIAGNOSTIC_NODES - budget.nodes) {
+			return TOOL_DIAGNOSTIC_MASK;
+		}
 		const record: Record<string, ContentValue> = {};
-		for (const [key, entry] of Object.entries(value)) {
-			record[key] = toContentValue(entry);
+		for (const key of keys) {
+			if (typeof key !== "string") continue;
+			let descriptor: PropertyDescriptor | undefined;
+			try {
+				descriptor = Object.getOwnPropertyDescriptor(value, key);
+			} catch {
+				// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			if (!descriptor?.enumerable) continue;
+			budget.nodes += 1;
+			if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			let projected: ContentValue;
+			if (suppressKeys?.has(key)) {
+				projected = sensitiveActionResultMarker(
+					"value" in descriptor ? descriptor.value : undefined,
+					redactDiagnosticText,
+					budget,
+				);
+			} else if (isSensitiveKeyName(key) || !("value" in descriptor)) {
+				projected = TOOL_DIAGNOSTIC_MASK;
+			} else {
+				projected = projectActionResultDiagnosticValue(
+					descriptor.value,
+					redactDiagnosticText,
+					seen,
+					depth + 1,
+					budget,
+				);
+			}
+			defineDiagnosticProperty(record, key, projected);
 		}
 		return record;
+	} finally {
+		seen.delete(value);
 	}
-	return String(value);
 }
 
 function actionResultToContentRecord(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): Record<string, ContentValue> {
-	const record: Record<string, ContentValue> = {};
-	for (const [key, value] of Object.entries(result)) {
-		if (options.suppressData && (key === "data" || key === "values")) {
-			record[key] = sensitiveActionResultMarker(value);
-			continue;
-		}
-		record[key] = toContentValue(value);
-	}
-	return record;
+	const projectedResult = projectActionResultDiagnosticValue(
+		result,
+		redactDiagnosticText,
+		new WeakSet<object>(),
+		0,
+		{ nodes: 0 },
+		options.suppressData ? new Set(["data", "values"]) : undefined,
+	);
+	return isContentRecord(projectedResult) ? projectedResult : {};
 }
 
 function sensitiveActionResultMarker(
 	value: unknown,
+	redactDiagnosticText?: ToolDiagnosticTextRedactor,
+	budget?: ActionResultDiagnosticBudget,
 ): Record<string, ContentValue> {
-	const actionName =
-		isContentRecord(value) && typeof value.actionName === "string"
-			? value.actionName
-			: undefined;
+	let actionName: string | undefined;
+	if (value !== null && typeof value === "object") {
+		try {
+			const descriptor = Object.getOwnPropertyDescriptor(value, "actionName");
+			if (
+				descriptor &&
+				"value" in descriptor &&
+				typeof descriptor.value === "string"
+			) {
+				actionName =
+					redactDiagnosticText && budget
+						? (redactDiagnosticString(
+								descriptor.value,
+								redactDiagnosticText,
+							) as string)
+						: descriptor.value;
+			}
+		} catch {
+			// error-policy:J4 A hostile result degrades to the privacy marker without
+			// allowing diagnostics to fail the settled action.
+		}
+	}
 	return {
 		...(actionName ? { actionName } : {}),
 		suppressed: true,
@@ -180,6 +356,12 @@ export function projectActionResultForClipboard(
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
+			: {}),
 	};
 	return {
 		success: result.success,
@@ -213,6 +395,9 @@ export function projectActionResultForClipboard(
 		...(result.modelReplyRequired !== undefined
 			? { modelReplyRequired: result.modelReplyRequired }
 			: {}),
+		...(result.modelReplyFallback !== undefined
+			? { modelReplyFallback: result.modelReplyFallback }
+			: {}),
 		...(result.continueChain !== undefined
 			? { continueChain: result.continueChain }
 			: {}),
@@ -236,6 +421,12 @@ function projectSettledResultForObserver(
 		...(result.data?.reconciliationRequired === true
 			? { reconciliationRequired: true }
 			: {}),
+		// Turn-delivery contract, not payload: tells the reply gate this turn's
+		// answer already went out (out-of-band ack). Projecting it away
+		// re-enabled the evaluator's mimicked ack (live 2026-08-19).
+		...(result.data?.suppressPlannerReply === true
+			? { suppressPlannerReply: true }
+			: {}),
 	};
 
 	return {
@@ -252,6 +443,9 @@ function projectSettledResultForObserver(
 			: {}),
 		...(projected.modelReplyRequired !== undefined
 			? { modelReplyRequired: projected.modelReplyRequired }
+			: {}),
+		...(projected.modelReplyFallback !== undefined
+			? { modelReplyFallback: projected.modelReplyFallback }
 			: {}),
 		...(projected.continueChain !== undefined
 			? { continueChain: projected.continueChain }
@@ -353,50 +547,6 @@ function runWithMessageTrajectoryContext<T>(
 	);
 }
 
-/**
- * Resolve prompt-side redaction placeholders the model copied into tool args
- * (matrix F16, tj-b6bf03e81193a2): settings values are redacted in prompts as
- * `[REDACTED:<NAME>]`, the model faithfully reproduces the placeholder in an
- * argument (`entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]"`), and schema/UUID
- * validation rejects it — every tool wanting the admin entity id fails.
- *
- * Deliberately narrow: only full-string placeholders whose setting name ends
- * in `_ENTITY_ID` (non-credential identifiers) resolve, and only when the
- * runtime setting exists and is UUID-shaped. Credential-class placeholders
- * stay unresolved by design — substituting bearer secrets into tool args
- * would hand them to any tool that echoes its inputs. The broader design
- * (resolvable redaction aliases) is a flagged follow-up.
- *
- * The RECORDED tool call keeps the placeholder (this transforms only the
- * executed-args copy), so resolved ids never enter trajectories.
- */
-const REDACTED_ENTITY_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
-const UUID_SHAPE =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function resolveRedactedSettingRefs(
-	runtime: Pick<IAgentRuntime, "getSetting" | "logger">,
-	args: Record<string, unknown>,
-): Record<string, unknown> {
-	let changed = false;
-	const resolved: Record<string, unknown> = { ...args };
-	for (const [key, value] of Object.entries(args)) {
-		if (typeof value !== "string") continue;
-		const match = REDACTED_ENTITY_REF.exec(value);
-		if (!match?.[1]) continue;
-		const settingValue = runtime.getSetting(match[1]);
-		if (typeof settingValue === "string" && UUID_SHAPE.test(settingValue)) {
-			resolved[key] = settingValue;
-			changed = true;
-			runtime.logger?.debug?.(
-				{ src: "runtime:tool-args", argument: key, setting: match[1] },
-				"Resolved redaction placeholder in tool argument",
-			);
-		}
-	}
-	return changed ? resolved : args;
-}
-
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -466,9 +616,23 @@ export async function executePlannedToolCall(
 			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
+	// Prompt-side redaction placeholders (matrix F16) resolve ONLY through the
+	// per-turn alias capability map (#20091): aliases the composed state proves
+	// redaction emitted, on an owner-authorized turn, with values derived from
+	// canonical owner resolution — never an ambient getSetting keyed by
+	// model-authored text. Recorded tool calls keep the placeholder; this
+	// transforms only the executed-args copy.
+	const entityAliases =
+		executorCtx.entityAliases ??
+		(await buildTurnEntityAliases(
+			runtime,
+			executorCtx.message,
+			executorCtx.state,
+			executorCtx.userRoles,
+		));
 	const validation = validateToolArgs(
 		action,
-		resolveRedactedSettingRefs(runtime, argsForValidation),
+		resolveEntityAliasRefs(entityAliases, argsForValidation),
 	);
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
@@ -758,12 +922,13 @@ export async function executePlannedToolCall(
 					),
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: projectToolDiagnosticValue(
-						actionResultToContentRecord(resultForEvent, {
-							suppressData: suppressActionResult,
-						}),
+					actionResult: actionResultToContentRecord(
+						resultForEvent,
 						redactDiagnosticText,
-					) as Record<string, ContentValue>,
+						{
+							suppressData: suppressActionResult,
+						},
+					),
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
@@ -819,10 +984,11 @@ async function emitToolResult(
 		status,
 		redactDiagnosticText,
 	);
-	streamingToolCall.result = projectToolDiagnosticValue(
-		actionResultToStreamingResult(result, options),
+	streamingToolCall.result = actionResultToStreamingResult(
+		result,
 		redactDiagnosticText,
-	) as ToolCall["result"];
+		options,
+	);
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -904,6 +1070,7 @@ function plannedToolCallToStreamingToolCall(
 
 function actionResultToStreamingResult(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): ToolCall["result"] {
 	const streamingResult: ActionResult = {
@@ -923,9 +1090,10 @@ function actionResultToStreamingResult(
 				: result.values,
 		turnComplete: result.turnComplete,
 		modelReplyRequired: result.modelReplyRequired,
+		modelReplyFallback: result.modelReplyFallback,
 		continueChain: result.continueChain,
 	};
-	return actionResultToContentRecord(streamingResult);
+	return actionResultToContentRecord(streamingResult, redactDiagnosticText);
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;

@@ -10,6 +10,8 @@
  * owns transport, retry, tolerant JSON parsing, and a canonical verdict
  * shape. Callers map the canonical shape back to their own return types.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 /** Canonical verdict alias re-exported for callers that don't pull types.ts. */
 export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 
@@ -41,7 +43,7 @@ export interface CerebrasJudgeOptions {
 }
 
 export interface JudgeCallOptions {
-  /** Max output tokens. Default 1024. */
+  /** Optional explicit output-token ceiling. Omission delegates to the model. */
   maxTokens?: number;
   /** Temperature. Default 0. */
   temperature?: number;
@@ -57,7 +59,10 @@ export interface JudgeCallOptions {
 }
 
 interface ChatCompletionShape {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
+  }>;
 }
 
 /** Clamp a finite number to [0, 1]; returns 0 for non-finite inputs. */
@@ -309,7 +314,9 @@ export class CerebrasJudge {
       model: this.model,
       messages: this.buildMessages(prompt, options.systemPrompt),
       temperature: options.temperature ?? 0,
-      max_tokens: options.maxTokens ?? 1024,
+      ...(options.maxTokens !== undefined
+        ? { max_tokens: options.maxTokens }
+        : {}),
     };
     const reasoningEffort =
       options.reasoningEffort ??
@@ -343,12 +350,20 @@ export class CerebrasJudge {
             continue;
           }
           throw new CerebrasJudgeError(
-            `cerebras error ${response.status}: ${errBody.slice(0, 300)}`,
+            `cerebras error ${response.status}: ${truncateWellFormed(toWellFormedUnicode(errBody), 300)}`,
             response.status,
             errBody,
           );
         }
         const data = (await response.json()) as ChatCompletionShape;
+        const finishReason = data.choices?.[0]?.finish_reason;
+        if (finishReason === "length") {
+          throw new CerebrasJudgeError(
+            "cerebras judge returned an incomplete output at its token boundary",
+            undefined,
+            JSON.stringify(data),
+          );
+        }
         return data.choices?.[0]?.message?.content ?? "";
       } catch (err) {
         if (err instanceof CerebrasJudgeError) {

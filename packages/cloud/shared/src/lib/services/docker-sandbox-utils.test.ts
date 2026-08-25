@@ -10,12 +10,18 @@ import {
   buildAgentContainerLabelFlags,
   buildDockerContainerEnvTransport,
   buildDockerCreateWithSecretEnvCommand,
+  buildReplacementCandidateObservedCommand,
+  buildReplacementSecretArtifactsCleanupCommand,
+  buildVolumeVaultPassphraseCommand,
   CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
   ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getContainerSecretEnvPath,
+  getReplacementCandidateObservedReceipt,
+  getReplacementDockerCreateQuiescentReceipt,
+  getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
   getVolumeVaultPassphrasePath,
   inferArchitectureFromHetznerServerType,
@@ -148,7 +154,7 @@ describe("secret container environment transport (#22060)", () => {
     });
     const secretEnvPath = getContainerSecretEnvPath(
       "/data/agents/agent-a",
-      "12345678-1234-1234-1234-123456789abc",
+      "12345678-1234-4234-8234-123456789abc",
     );
     const dockerCreate = [
       "docker create",
@@ -204,6 +210,46 @@ describe("secret container environment transport (#22060)", () => {
     fs.rmSync(volume, { recursive: true, force: true });
   });
 
+  test("fails a successful Docker create when secret-file cleanup is unresolved", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const volume = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-cleanup-failure-"));
+    const vaultPath = getVolumeVaultPassphrasePath(volume);
+    const secretEnvPath = `${volume}/container.env`;
+    const secret = "cleanup-secret-sentinel";
+    fs.writeFileSync(vaultPath, "persisted-vault-value", { mode: 0o600 });
+
+    try {
+      for (const scenario of [
+        { dockerCreateCommand: "rm() { return 1; }; true", expectedCode: 70 },
+        { dockerCreateCommand: "rm() { return 1; }; false", expectedCode: 1 },
+      ]) {
+        const command = buildDockerCreateWithSecretEnvCommand({
+          dockerCreateCommand: scenario.dockerCreateCommand,
+          secretEnvPath,
+          vaultPassphrasePath: vaultPath,
+        });
+        const result = await new Promise<{ code: number | null; output: string }>((resolve) => {
+          const child = spawn("/bin/sh", ["-c", command]);
+          let output = "";
+          child.stdout.on("data", (chunk) => (output += chunk.toString()));
+          child.stderr.on("data", (chunk) => (output += chunk.toString()));
+          child.on("close", (code) => resolve({ code, output }));
+          child.stdin.end(buildDockerContainerEnvTransport({ API_KEY: secret }).secretInput);
+        });
+
+        expect(result.code).toBe(scenario.expectedCode);
+        expect(result.output).not.toContain(secret);
+        expect(fs.existsSync(secretEnvPath)).toBe(true);
+        fs.unlinkSync(secretEnvPath);
+      }
+    } finally {
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
+
   test("fails closed and cleans up a truncated stdin stream without echoing secrets", async () => {
     const { spawn } = await import("node:child_process");
     const fs = await import("node:fs");
@@ -257,6 +303,218 @@ describe("secret container environment transport (#22060)", () => {
     await new Promise<void>((resolve) => child.on("close", () => resolve()));
     expect(fs.existsSync(secretEnvPath)).toBe(false);
     fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("coordinates exact plaintext producers and cleanup with one durable tombstone", () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const containerName = getContainerName(agentId);
+    const volumePath = getVolumePath(agentId);
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const secretEnvPath = getContainerSecretEnvPath(volumePath, attemptId);
+    const vaultCommand = buildVolumeVaultPassphraseCommand(volumePath, 0, attemptId);
+    const dockerCommand = buildDockerCreateWithSecretEnvCommand({
+      dockerCreateCommand: `docker create --env-file ${shellQuote(secretEnvPath)} image:latest`,
+      secretEnvPath,
+      vaultPassphrasePath: getVolumeVaultPassphrasePath(volumePath),
+      exactReplacement: { containerName, replacementAttemptId: attemptId },
+    });
+    const cleanupCommand = buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId);
+    const candidateCommand = buildReplacementCandidateObservedCommand(attemptId, "a".repeat(64));
+
+    for (const producer of [vaultCommand, dockerCommand]) {
+      expect(producer).toContain("flock -w 30 9");
+      expect(producer).toContain('test ! -e "$attempt_cancelled"');
+      expect(producer.indexOf("attempt_cancelled")).toBeLessThan(producer.indexOf("cat >"));
+    }
+    expect(vaultCommand).not.toContain(': > "$attempt_active"');
+    expect(dockerCommand).toContain(': > "$attempt_active"');
+    expect(vaultCommand).toContain(`.vault-passphrase.stdin.${attemptId}`);
+    expect(vaultCommand).not.toContain(".$$;");
+    expect(cleanupCommand.indexOf("attempt_cancelled")).toBeLessThan(
+      cleanupCommand.indexOf("rm -f --"),
+    );
+    expect(cleanupCommand).toContain(secretEnvPath);
+    for (const kind of ["stdin", "override", "generated", "normalized"]) {
+      expect(cleanupCommand).toContain(`.vault-passphrase.${kind}.${attemptId}`);
+    }
+    expect(cleanupCommand).toContain("if test -e");
+    expect(cleanupCommand).toContain("|| test -L");
+    expect(cleanupCommand).not.toContain('rm -f -- "$attempt_active"');
+    expect(cleanupCommand).not.toContain("find ");
+    expect(cleanupCommand).toContain(getReplacementSecretArtifactsCleanupReceipt(attemptId));
+    expect(candidateCommand).toContain(
+      getReplacementCandidateObservedReceipt(attemptId, "a".repeat(64)),
+    );
+    expect(candidateCommand).toContain('test -f "$attempt_cancelled"');
+  });
+
+  test("executes the exact tombstone protocol and keeps Docker ambiguity fail-closed", async () => {
+    const { spawn } = await import("node:child_process");
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-exact-fence-"));
+    const bin = path.join(root, "bin");
+    const volume = path.join(root, "volume");
+    const attempts = path.join(root, "attempts");
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const containerName = getContainerName(agentId);
+    const productionVolume = getVolumePath(agentId);
+    const productionAttempts = "/var/lib/eliza/replacement-attempts";
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    const marker = path.join(root, "docker-invoked");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.mkdirSync(volume, { recursive: true });
+    fs.writeFileSync(path.join(bin, "flock"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(volume, ".vault-passphrase"), "persisted-vault-value", {
+      mode: 0o600,
+    });
+
+    const remap = (command: string) =>
+      command
+        .replaceAll(productionVolume, volume)
+        .replaceAll(productionAttempts, attempts)
+        // macOS test runners use BSD chmod/cat/mv, which do not all accept the
+        // GNU `--` operand separator used on the Linux Docker nodes.
+        .replaceAll("chmod 700 --", "chmod 700")
+        .replaceAll("chmod 600 --", "chmod 600")
+        .replaceAll("cat -- ", "cat ")
+        .replaceAll("mv -- ", "mv ");
+    const run = (
+      command: string,
+      input = "",
+      extraPath?: string,
+    ): Promise<{ code: number | null; output: string }> =>
+      new Promise((resolve) => {
+        const child = spawn("/bin/sh", ["-c", remap(command)], {
+          env: {
+            ...process.env,
+            PATH: `${extraPath ? `${extraPath}:` : ""}${bin}:${process.env.PATH}`,
+          },
+        });
+        let output = "";
+        child.stdout.on("data", (chunk) => (output += chunk.toString()));
+        child.stderr.on("data", (chunk) => (output += chunk.toString()));
+        child.on("close", (code) => resolve({ code, output }));
+        child.stdin.end(input);
+      });
+
+    try {
+      const secretEnvPath = getContainerSecretEnvPath(productionVolume, attemptId);
+      const failedProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: "false",
+        secretEnvPath,
+        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
+        exactReplacement: { containerName, replacementAttemptId: attemptId },
+      });
+      const secretInput = buildDockerContainerEnvTransport({
+        API_KEY: "one-shot-secret-sentinel",
+      }).secretInput;
+      const failed = await run(failedProducer, secretInput);
+      expect(failed.code).not.toBe(0);
+      expect(failed.output).not.toContain("one-shot-secret-sentinel");
+      expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+      expect(fs.existsSync(path.join(volume, path.basename(secretEnvPath)))).toBe(false);
+
+      const cleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+      );
+      expect(cleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n`,
+      });
+      expect(fs.existsSync(path.join(attempts, attemptId, "active"))).toBe(true);
+      const observedContainerId = "b".repeat(64);
+      const observed = await run(
+        buildReplacementCandidateObservedCommand(attemptId, observedContainerId),
+      );
+      expect(observed).toEqual({
+        code: 0,
+        output: `${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+      });
+      const cleanupWithObservation = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, attemptId),
+      );
+      expect(cleanupWithObservation).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(attemptId)}\n${getReplacementCandidateObservedReceipt(attemptId, observedContainerId)}\n`,
+      });
+
+      const replay = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: `: > ${shellQuote(marker)}`,
+        secretEnvPath,
+        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
+        exactReplacement: { containerName, replacementAttemptId: attemptId },
+      });
+      const rejectedReplay = await run(replay, secretInput);
+      expect(rejectedReplay.code).toBe(75);
+      expect(rejectedReplay.output).not.toContain("one-shot-secret-sentinel");
+      expect(fs.existsSync(marker)).toBe(false);
+
+      const successfulAttemptId = "66666666-6666-4666-8666-666666666666";
+      const successfulSecretPath = getContainerSecretEnvPath(productionVolume, successfulAttemptId);
+      const successfulProducer = buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: `printf '%s\\n' ${shellQuote("a".repeat(64))}`,
+        secretEnvPath: successfulSecretPath,
+        vaultPassphrasePath: getVolumeVaultPassphrasePath(productionVolume),
+        exactReplacement: {
+          containerName,
+          replacementAttemptId: successfulAttemptId,
+        },
+      });
+      const succeeded = await run(successfulProducer, secretInput);
+      expect(succeeded).toEqual({ code: 0, output: `${"a".repeat(64)}\n` });
+      expect(fs.existsSync(path.join(attempts, successfulAttemptId, "active"))).toBe(false);
+      const quiescentCleanup = await run(
+        buildReplacementSecretArtifactsCleanupCommand(containerName, successfulAttemptId),
+      );
+      expect(quiescentCleanup).toEqual({
+        code: 0,
+        output: `${getReplacementSecretArtifactsCleanupReceipt(successfulAttemptId)}\n${getReplacementDockerCreateQuiescentReceipt(successfulAttemptId)}\n`,
+      });
+
+      for (const [suffix, kind] of [
+        ["44444444-4444-4444-8444-444444444444", "file"],
+        ["55555555-5555-4555-8555-555555555555", "symlink"],
+      ] as const) {
+        const survivingPath = path.join(volume, `.container-env-${suffix}`);
+        if (kind === "file") {
+          fs.writeFileSync(survivingPath, "must-survive-fake-rm", { mode: 0o600 });
+        } else {
+          fs.symlinkSync(path.join(root, "missing-target"), survivingPath);
+        }
+        const fakeRmBin = path.join(root, `fake-rm-${kind}`);
+        fs.mkdirSync(fakeRmBin);
+        fs.writeFileSync(path.join(fakeRmBin, "rm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+        const refused = await run(
+          buildReplacementSecretArtifactsCleanupCommand(containerName, suffix),
+          "",
+          fakeRmBin,
+        );
+        expect(refused.code).toBe(70);
+        expect(refused.output).not.toContain(getReplacementSecretArtifactsCleanupReceipt(suffix));
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("derives exact cleanup paths from the canonical container name only", () => {
+    const attemptId = "33333333-3333-4333-8333-333333333333";
+    expect(() =>
+      buildReplacementSecretArtifactsCleanupCommand("agent-not/a-valid-id", attemptId),
+    ).toThrow();
+    expect(() =>
+      buildDockerCreateWithSecretEnvCommand({
+        dockerCreateCommand: "docker create image:latest",
+        secretEnvPath: "/data/agents/someone-else/.container-env-wrong",
+        vaultPassphrasePath: "/data/agents/someone-else/.vault-passphrase",
+        exactReplacement: {
+          containerName: "agent-11111111-1111-4111-8111-111111111111",
+          replacementAttemptId: attemptId,
+        },
+      }),
+    ).toThrow("not canonical");
   });
 });
 
@@ -463,6 +721,34 @@ describe("volume-persisted vault passphrase (#18080 / #19225 / #22060)", () => {
     const path = await import("node:path");
     return fs.mkdtempSync(path.join(os.tmpdir(), "eliza-agent-volume-"));
   }
+
+  test("fails exact vault setup when temporary-secret cleanup is unresolved", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const override = "cleanup-vault-secret-sentinel";
+    const failingCleanupExec: typeof shExecStdin = (command, input, timeoutMs) =>
+      shExecStdin(`rm() { return 1; }; ${command}`, input, timeoutMs);
+
+    try {
+      const error = await ensureVolumeVaultPassphrase(
+        failingCleanupExec,
+        volume,
+        5_000,
+        override,
+      ).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ code: 70 });
+      expect(String(error)).not.toContain(override);
+      const temporaryFiles = fs
+        .readdirSync(volume)
+        .filter((name) => name.startsWith(".vault-passphrase."));
+      expect(temporaryFiles.length).toBeGreaterThan(0);
+      expect(
+        temporaryFiles.some((name) => fs.readFileSync(`${volume}/${name}`, "utf8") === override),
+      ).toBe(true);
+    } finally {
+      fs.rmSync(volume, { recursive: true, force: true });
+    }
+  });
 
   test("SSH setup failure preserves the transport error without exposing the override", async () => {
     const volume = await makeVolume();

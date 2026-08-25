@@ -26,6 +26,7 @@ import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
+import { dismissPermissionPrimingIfShown } from "./packaged-ui-actions";
 
 const SURFACE = '[data-testid="home-launcher-surface"]';
 const PROBE = '[data-testid="home-launcher-page-probe"]';
@@ -42,7 +43,7 @@ interface SurfaceRead {
 
 /**
  * Route the shell to `/views`, the canonical Home/Launcher surface. `/apps`
- * is the My Apps destination and intentionally does not mount this rail. Drive
+ * is a retired My Apps deep link into Projects and does not mount this rail. Drive
  * the shell's public navigation event instead of raw History: active surfaces
  * are denied direct path-changing history writes by the surface-realm guard.
  */
@@ -189,6 +190,7 @@ test("packaged desktop launcher: store flips the rail (data-page + AX probe) non
     // Mount the HomeLauncherSurface in the full shell; the launcher half lives
     // on the canonical /views route.
     const activeHarness = harness;
+    await dismissPermissionPrimingIfShown(activeHarness);
     await mountLauncherSurface(activeHarness);
     await expect
       .poll(async () => (await readSurface(activeHarness)).mounted, {

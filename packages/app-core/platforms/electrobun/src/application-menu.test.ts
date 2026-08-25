@@ -6,7 +6,9 @@ import {
   findViewMenuEntryById,
   getViewMenuEntries,
   NEW_VIEW_WINDOW_ACTION_PREFIX,
+  OPEN_DESKTOP_WORKSPACE_ACTION,
   parseViewWindowAction,
+  resolveDesktopWorkspaceWindowOptions,
 } from "./application-menu";
 import { overrideBrandConfig, resetBrandConfigForTests } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
@@ -167,5 +169,29 @@ describe("buildApplicationMenu", () => {
     expect(
       desktop?.submenu?.some((item) => item.action === "desktop-notify"),
     ).toBe(true);
+  });
+
+  it("routes Desktop Workspace to the complete managed shell", () => {
+    const menu = buildApplicationMenu({
+      isMac: true,
+      browserEnabled: true,
+      detachedWindows: noWindows,
+    });
+    const desktop = menu.find((item) => item.label === "Desktop");
+    const workspace = desktop?.submenu?.find(
+      (item) => item.label === "Desktop Workspace",
+    );
+
+    expect(workspace?.action).toBe(OPEN_DESKTOP_WORKSPACE_ACTION);
+    expect(workspace?.action).not.toBe("open-settings-desktop");
+    expect(resolveDesktopWorkspaceWindowOptions(workspace?.action)).toEqual({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+      alwaysOnTop: false,
+    });
+    expect(
+      resolveDesktopWorkspaceWindowOptions("open-settings-desktop"),
+    ).toBeUndefined();
   });
 });

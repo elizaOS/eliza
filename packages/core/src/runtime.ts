@@ -18,10 +18,11 @@
  *   `process.env` — in a multi-tenant process that would leak a host secret into
  *   every agent; hosts fold dotenv into the constructor `settings` map instead.
  * - Embedding width is pinned to whichever TEXT_EMBEDDING provider answered the
- *   boot dimension probe; a later embedding from a different provider can emit a
- *   width the SQL adapter silently drops (#8769). If every provider fails the
- *   probe, `initialize()` catches `EmbeddingDimensionProbeError` non-fatally and
- *   disables embedding generation instead of crashing boot.
+ *   boot dimension probe, including TEXT_EMBEDDING_BATCH; a later embedding from
+ *   a different provider can emit a width the SQL adapter silently drops (#8769).
+ *   If every provider fails the probe, `initialize()` catches
+ *   `EmbeddingDimensionProbeError` non-fatally and disables embedding generation
+ *   instead of crashing boot.
  * - Without a database adapter, `initialize()` falls back to the in-memory
  *   adapter only when `ALLOW_NO_DATABASE` is set.
  */
@@ -34,7 +35,10 @@ import {
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { registerConnectorSourceDefinitions } from "./connectors";
 import { deriveKnownSecrets } from "./constants/secrets";
-import { validateQueryEntitiesPagination } from "./database";
+import {
+	validateQueryEntitiesPagination,
+	validateTaskQueryPagination,
+} from "./database";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
 import { ElizaError, type ReportedError, toElizaError } from "./errors";
 import {
@@ -87,6 +91,11 @@ import {
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
 import { stringifyForModel } from "./runtime/json-output";
+import {
+	buildModelInputBudget,
+	DEFAULT_INPUT_RESERVE_TOKENS,
+	withModelInputBudgetProviderOptions,
+} from "./runtime/model-input-budget";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -117,6 +126,7 @@ import {
 import {
 	authorizeOwnerExclusiveDisclosure,
 	CompositeEntityRecognizer,
+	collectPiiPromptText,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	GuardedStreamScanner,
 	ownerExclusiveSuppressionNote,
@@ -324,7 +334,7 @@ import type {
 	StructuredOutputFailure,
 } from "./types/state";
 import type { ToolPolicyConfig, ToolProfileId } from "./types/tools";
-import { parseJSONObjectFromText, stringToUuid } from "./utils";
+import { parseJSONObjectFromText, stringToUuid, validateUuid } from "./utils";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
 import { resolveProviderContexts } from "./utils/context-catalog";
@@ -336,6 +346,7 @@ import { createHash } from "./utils/crypto-compat";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
+	assertModelOutputComplete,
 	getErrorMessage,
 	isTransientModelError,
 	modelProviderErrorDetail,
@@ -343,12 +354,14 @@ import {
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
+import { resolveSetting } from "./utils/resolve-setting";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
+import { toWellFormedUnicode } from "./utils/well-formed.js";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -846,6 +859,21 @@ function isTextStreamResult(
 	);
 }
 
+async function assertRuntimeModelOutputComplete(args: {
+	result: unknown;
+	provider: string;
+	model: string;
+}): Promise<void> {
+	if (typeof args.result !== "object" || args.result === null) return;
+	const record = args.result as { finishReason?: unknown };
+	if (!("finishReason" in record)) return;
+	assertModelOutputComplete({
+		finishReason: await Promise.resolve(record.finishReason),
+		provider: args.provider,
+		model: args.model,
+	});
+}
+
 /**
  * Read the hidden reasoning-token count from a model response so it can be
  * surfaced on the successful model span (#16394). Native results (tool-call
@@ -1219,6 +1247,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
 	readonly agentId: UUID;
+	readonly runtimeInstanceId: UUID;
 	readonly character: Character;
 	public adapter!: IDatabaseAdapter;
 	static #anonymousAgentCounter = 0;
@@ -1418,12 +1447,18 @@ export class AgentRuntime implements IAgentRuntime {
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
 	private stopRequested = false;
+	/** Records an initialization attempt that released waiters by failing. */
+	private initializationFailed = false;
+	/** Typed cancellation boundary for deferred plugin/service startup. */
+	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
 	private stopPromise: Promise<void> | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
 		agentId?: UUID;
+		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
+		runtimeInstanceId?: UUID;
 		/** Optional character configuration. If not provided, an anonymous character is created. */
 		character?: Character;
 		plugins?: Plugin[];
@@ -1540,6 +1575,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Falls back to random UUID only if no character name is provided
 		this.agentId =
 			character.id ?? opts.agentId ?? stringToUuid(character.name ?? uuidv4());
+		this.runtimeInstanceId = opts.runtimeInstanceId ?? (uuidv4() as UUID);
 		this.character = character;
 
 		this.initPromise = new Promise((resolve) => {
@@ -1788,24 +1824,14 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/** Flatten every string leaf of the model params plus the system prompt into
-	 * one text blob for the PII recognizer to scan. */
+	 * one text blob for the PII recognizer to scan. Uses the shared bounded
+	 * descriptor-safe PII walker so cyclic / over-deep / sparse / Proxy graphs
+	 * fail closed with {@link PII_PSEUDONYM_UNBOUNDED} before `learn`. */
 	private collectPromptText(
 		params: unknown,
 		systemPrompt: string | undefined,
 	): string {
-		const parts: string[] = [];
-		const walk = (value: unknown): void => {
-			if (typeof value === "string") {
-				parts.push(value);
-			} else if (Array.isArray(value)) {
-				for (const item of value) walk(item);
-			} else if (value && typeof value === "object") {
-				for (const child of Object.values(value)) walk(child);
-			}
-		};
-		walk(params);
-		if (systemPrompt) parts.push(systemPrompt);
-		return parts.join("\n");
+		return collectPiiPromptText(params, systemPrompt);
 	}
 
 	private hasNativeRuntimeFeature(feature: NativeRuntimeFeature): boolean {
@@ -2613,6 +2639,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.stopPromise = stopAttempt;
 		if (!this.stopRequested) {
 			this.stopRequested = true;
+			this.stopController.abort(
+				new DOMException("Runtime stop requested", "AbortError"),
+			);
 			// Freeze connector/service ingress before the first shutdown await. Without
 			// this phase, a gateway delivery can begin a new turn while the runtime is
 			// already waiting for its room-owner drain, behind the eventual service-stop
@@ -2892,9 +2921,11 @@ export class AgentRuntime implements IAgentRuntime {
 		/** Allow running without a persistent database adapter (benchmarks/tests). */
 		allowNoDatabase?: boolean;
 	}): Promise<void> {
+		this.initializationFailed = false;
 		try {
 			await this._initializeCore(options);
 		} catch (err) {
+			this.initializationFailed = true;
 			// error-policy:J2 Release initialization waiters before preserving
 			// the original initialization failure for the caller.
 			// Always resolve initPromise so eager service starts and stop()
@@ -3037,7 +3068,7 @@ export class AgentRuntime implements IAgentRuntime {
 					{ src: "agent", agentId: this.agentId },
 					"Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
 				);
-				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter(this.agentId));
 			} else {
 				this.logger.error(
 					{ src: "agent", agentId: this.agentId },
@@ -3311,11 +3342,96 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
+		// LOUD GUARD (owner-private disclosure regression class): a world whose
+		// canonical owner is a bare platform id (snowflake) instead of a valid
+		// entity UUID makes resolveCanonicalOwnerId return null (validateUuid
+		// rejects it), which denies every owner-private provider with
+		// `owner_mismatch`. This has recurred whenever a connector persisted a raw
+		// snowflake into `ownership.ownerId`. Assert it loudly at boot so the
+		// regression is caught in CI/health instead of silently degrading recall.
+		try {
+			await this.assertResolvableWorldOwners();
+		} catch (guardError) {
+			// error-policy:J6 the guard is diagnostic; a scan failure must not brick
+			// startup. Report and continue.
+			this.reportError("AgentRuntime.assertResolvableWorldOwners", guardError);
+		}
+
 		// Resolve init promise to allow services to start
 		if (this.initResolver) {
 			this.initResolver();
 			this.initResolver = undefined;
 		}
+	}
+
+	/**
+	 * Fail-loud scan for the owner-private disclosure regression class: any world
+	 * whose `ownership.ownerId` (or an OWNER-role grant) is a non-UUID value — the
+	 * bare-snowflake shape that makes resolveCanonicalOwnerId return null and
+	 * denies owner-private recall with `owner_mismatch`. Logs each offender
+	 * loudly and reports one aggregated error; it is diagnostic, not fatal.
+	 */
+	async assertResolvableWorldOwners(): Promise<void> {
+		if (typeof this.adapter?.getAllWorlds !== "function") {
+			return;
+		}
+		const worlds = await this.getAllWorlds();
+		const offenders: Array<{
+			worldId: string;
+			field: string;
+			value: string;
+		}> = [];
+		for (const world of worlds) {
+			const metadata = (world?.metadata ?? {}) as {
+				ownership?: { ownerId?: unknown };
+				roles?: Record<string, unknown>;
+			};
+			const ownerId = metadata.ownership?.ownerId;
+			if (
+				typeof ownerId === "string" &&
+				ownerId.length > 0 &&
+				validateUuid(ownerId) === null
+			) {
+				offenders.push({
+					worldId: String(world?.id ?? "unknown"),
+					field: "ownership.ownerId",
+					value: ownerId,
+				});
+			}
+			const roles = metadata.roles;
+			if (roles && typeof roles === "object") {
+				for (const [entityId, role] of Object.entries(roles)) {
+					if (role === "OWNER" && validateUuid(entityId) === null) {
+						offenders.push({
+							worldId: String(world?.id ?? "unknown"),
+							field: "roles[OWNER]",
+							value: entityId,
+						});
+					}
+				}
+			}
+		}
+		if (offenders.length === 0) {
+			return;
+		}
+		for (const offender of offenders) {
+			this.logger.error(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					worldId: offender.worldId,
+					field: offender.field,
+				},
+				"OWNER-PRIVATE DISCLOSURE GUARD: world owner is a non-resolvable, non-UUID value (bare platform id/snowflake). resolveCanonicalOwnerId will return null and owner-private providers will be denied with owner_mismatch. Fix the connector so it records a canonical entity UUID.",
+			);
+		}
+		this.reportError(
+			"AgentRuntime.assertResolvableWorldOwners",
+			new Error(
+				`${offenders.length} world(s) record a non-resolvable owner (bare snowflake / non-UUID). Owner-private recall is degraded until fixed.`,
+			),
+			{ offenderCount: offenders.length },
+		);
 	}
 
 	private getBasicCapabilitiesSettings(): Record<string, string> {
@@ -5366,7 +5482,7 @@ export class AgentRuntime implements IAgentRuntime {
 						// access row — omit them so readers do not slice a different
 						// string with compose-local offsets.
 						purpose: "compose_state",
-						query: { message: userText.slice(0, 2000) },
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5410,7 +5526,7 @@ export class AgentRuntime implements IAgentRuntime {
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
 						purpose: "compose_state",
-						query: { message: userText.slice(0, 2000) },
+						query: { message: toWellFormedUnicode(userText) },
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5865,6 +5981,23 @@ export class AgentRuntime implements IAgentRuntime {
 		return this.serviceRegistrationStatus.get(key) || "unknown";
 	}
 
+	getLifecycleState():
+		| "initializing"
+		| "running"
+		| "failed"
+		| "stopping"
+		| "stopped" {
+		if (this.stopRequested) {
+			return this.stopped && this.stopPromise === null ? "stopped" : "stopping";
+		}
+		if (this.initializationFailed) return "failed";
+		return this.initResolver ? "initializing" : "running";
+	}
+
+	getStopSignal(): AbortSignal {
+		return this.stopController.signal;
+	}
+
 	/**
 	 * Get service health information
 	 * @returns Object containing service health status
@@ -6283,7 +6416,20 @@ export class AgentRuntime implements IAgentRuntime {
 				params: Record<string, JsonValue | object>,
 		  ) => Promise<JsonValue | object>)
 		| undefined {
-		const resolvedModel = this.resolveModelRegistration(modelType);
+		const requestedModelKey = String(modelType);
+		// Keep capability probes aligned with useModel dispatch: once the
+		// embedding dimension probe pins a provider, another provider's BATCH
+		// handler is not usable because it may emit a different vector width.
+		const requestedProvider =
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
+			this.pinnedEmbeddingProvider !== undefined
+				? this.pinnedEmbeddingProvider
+				: undefined;
+		const resolvedModel = this.resolveModelRegistration(
+			requestedModelKey,
+			requestedProvider,
+		);
 		if (!resolvedModel) {
 			return undefined;
 		}
@@ -6408,6 +6554,157 @@ export class AgentRuntime implements IAgentRuntime {
 			paramsRecord.system = systemPrompt;
 		}
 		return systemPrompt;
+	}
+
+	/** Resolve the concrete provider model id used for final-wire budgeting. */
+	private resolveRegistrationModelName(
+		metadata: ModelRegistrationMetadata | undefined,
+	): string | undefined {
+		if (!metadata) return undefined;
+		if (
+			typeof metadata.displayModel === "string" &&
+			metadata.displayModel.trim()
+		) {
+			return metadata.displayModel.trim();
+		}
+		for (const setting of [
+			...(metadata.displayModelSettings ?? []),
+			metadata.displayModelSetting,
+		]) {
+			if (!setting) continue;
+			const value = resolveSetting(
+				{ getSetting: (key: string) => this.getSetting(key) },
+				setting,
+			);
+			if (value?.trim()) return value.trim();
+		}
+		if (
+			typeof metadata.displayModelDefault === "string" &&
+			metadata.displayModelDefault.trim()
+		) {
+			return metadata.displayModelDefault.trim();
+		}
+		return undefined;
+	}
+
+	/**
+	 * Budget the exact text-generation request after runtime transforms and
+	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
+	 * runtime can reject before a provider handler without silently rewriting
+	 * any model-facing field.
+	 */
+	private buildFinalModelInputBudget(
+		params: unknown,
+		metadata: ModelRegistrationMetadata | undefined,
+	) {
+		const record = isPlainObject(params)
+			? (params as Record<string, unknown>)
+			: {};
+		const contextWindowTokens =
+			typeof metadata?.contextWindowTokens === "number" &&
+			Number.isFinite(metadata.contextWindowTokens)
+				? Math.max(1, Math.floor(metadata.contextWindowTokens))
+				: undefined;
+		const requestedOutputTokens =
+			typeof record.maxTokens === "number" &&
+			Number.isFinite(record.maxTokens) &&
+			record.maxTokens > 0
+				? Math.floor(record.maxTokens)
+				: 0;
+		const requestedModelName =
+			typeof record.model === "string" && record.model.trim()
+				? record.model.trim()
+				: undefined;
+		return buildModelInputBudget({
+			completeRequest: params,
+			messages: Array.isArray(record.messages)
+				? (record.messages as GenerateTextParams["messages"])
+				: undefined,
+			promptSegments: Array.isArray(record.promptSegments)
+				? (record.promptSegments as GenerateTextParams["promptSegments"])
+				: undefined,
+			tools: Array.isArray(record.tools)
+				? (record.tools as GenerateTextParams["tools"])
+				: undefined,
+			system: record.system,
+			prompt: record.prompt,
+			input: record.input,
+			responseSchema: record.responseSchema,
+			responseFormat: record.responseFormat,
+			grammar: record.grammar,
+			responseSkeleton: record.responseSkeleton,
+			prefill: record.prefill,
+			modelName:
+				requestedModelName ??
+				(contextWindowTokens === undefined
+					? this.resolveRegistrationModelName(metadata)
+					: undefined),
+			...(contextWindowTokens ? { contextWindowTokens } : {}),
+			reserveTokens: Math.max(
+				DEFAULT_INPUT_RESERVE_TOKENS,
+				requestedOutputTokens,
+			),
+			estimationMode: "utf8-upper-bound",
+		});
+	}
+
+	/** Clone caller-owned request data before runtime transforms. Arrays and
+	 * plain records become handler-owned; opaque transport collaborators retain
+	 * identity because cloning them would change platform semantics. */
+	private cloneModelRequestGraph<T>(value: T): T {
+		const seen = new WeakMap<object, unknown>();
+		const clone = (candidate: unknown): unknown => {
+			if (candidate === null || typeof candidate !== "object") return candidate;
+			const existing = seen.get(candidate);
+			if (existing !== undefined) return existing;
+			if (Array.isArray(candidate)) {
+				const result: unknown[] = [];
+				seen.set(candidate, result);
+				for (const item of candidate) result.push(clone(item));
+				return result;
+			}
+			// A hostile Proxy may trap prototype reflection. Keep such an opaque
+			// value intact here; the descriptor-only secret/PII walkers normalize it
+			// later without consulting its prototype.
+			try {
+				if (!isPlainObject(candidate)) return candidate;
+			} catch {
+				return candidate;
+			}
+			const result: Record<string, unknown> = {};
+			seen.set(candidate, result);
+			for (const [key, nested] of Object.entries(candidate)) {
+				result[key] = clone(nested);
+			}
+			return result;
+		};
+		return clone(value) as T;
+	}
+
+	/** Freeze the complete admitted handler payload so provider code cannot add,
+	 * remove, or rewrite model-bound data after the final measurement. Only
+	 * arrays and plain records belong to the request graph; platform objects
+	 * such as AbortSignal remain opaque transport collaborators. */
+	private freezeAdmittedModelRequest(value: unknown): void {
+		const seen = new WeakSet<object>();
+		const visit = (candidate: unknown): void => {
+			if (
+				candidate === null ||
+				(typeof candidate !== "object" && typeof candidate !== "function") ||
+				seen.has(candidate as object)
+			) {
+				return;
+			}
+			if (!Array.isArray(candidate) && !isPlainObject(candidate)) return;
+			seen.add(candidate as object);
+			for (const nested of Object.values(
+				candidate as Record<string, unknown>,
+			)) {
+				visit(nested);
+			}
+			Object.freeze(candidate);
+		};
+		visit(value);
 	}
 
 	private getFirstUserPromptFromMessages(
@@ -6628,17 +6925,19 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		}
 
-		// TEXT_EMBEDDING calls without an explicit provider are pinned to the
-		// provider that answered the dimension probe: the vector column was sized
-		// from its output, so serving an embedding call from any other
-		// registration (including via rate-limit failover) can emit a
-		// different-width vector that the SQL adapter silently drops (#8769).
-		// Pinning also disables mid-call provider failover for embeddings — an
-		// embedding either comes from the provider the column was sized for, or
-		// the call fails loudly. An explicit provider argument still wins.
+		// TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH calls without an explicit
+		// provider are pinned to the provider that answered the dimension probe:
+		// the vector column was sized from its output, so serving an embedding
+		// call from any other registration (including a higher-priority BATCH
+		// handler, or via rate-limit failover) can emit a different-width vector
+		// that the SQL adapter silently drops (#8769). Pinning also disables
+		// mid-call provider failover for embeddings — an embedding either comes
+		// from the provider the column was sized for, or the call fails loudly.
+		// An explicit provider argument still wins.
 		const requestedProvider =
 			provider === undefined &&
-			requestedModelKey === ModelType.TEXT_EMBEDDING &&
+			(requestedModelKey === ModelType.TEXT_EMBEDDING ||
+				requestedModelKey === ModelType.TEXT_EMBEDDING_BATCH) &&
 			this.pinnedEmbeddingProvider !== undefined
 				? this.pinnedEmbeddingProvider
 				: provider;
@@ -6752,9 +7051,24 @@ export class AgentRuntime implements IAgentRuntime {
 					ModelType.VIDEO,
 					ModelType.TEXT_EMBEDDING,
 				];
+				const shouldSubstituteSecrets =
+					this.isSecretSwapEnabled() &&
+					!binaryModels.includes(resolvedModelKey);
+				// Validate the caller-owned graph before `isPlainObject` / object spread
+				// below can reflect it. The later collection still runs after secret swap
+				// so NER never sees raw secrets; this preflight exists to make the earlier
+				// runtime cloning boundary descriptor-safe and fail-closed as well.
+				if (
+					this.isPiiSwapEnabled() &&
+					!PII_SWAP_SKIP_MODELS.includes(resolvedModelKey)
+				) {
+					collectPiiPromptText(params);
+				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
-					? { ...(params as Record<string, JsonValue | object>) }
+					? shouldSubstituteSecrets
+						? { ...(params as Record<string, unknown>) }
+						: this.cloneModelRequestGraph(params)
 					: params;
 				if (
 					params === null ||
@@ -7063,10 +7377,7 @@ export class AgentRuntime implements IAgentRuntime {
 					modelParams,
 				);
 
-				if (
-					this.isSecretSwapEnabled() &&
-					!binaryModels.includes(resolvedModelKey)
-				) {
+				if (shouldSubstituteSecrets) {
 					// Reuse one session per turn so every model call in the turn shares a
 					// nonce and the action-execution boundary can restore what this call
 					// swapped. The session hangs off the turn-scoped trajectory context;
@@ -7192,10 +7503,55 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
-				// Capture the post-hook params + prompt into the outer scope so the
-				// catch block's failed-attempt trajectory record can see them.
+				// Capture the exact post-hook request before the final budget check so a
+				// typed zero-dispatch rejection records the same complete request.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
+
+				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
+					let finalBudget = this.buildFinalModelInputBudget(
+						modelParams,
+						resolvedModel.metadata,
+					);
+					if (isPlainObject(modelParams)) {
+						const paramsRecord = modelParams as Record<string, unknown>;
+						const providerOptions = isPlainObject(paramsRecord.providerOptions)
+							? (paramsRecord.providerOptions as Record<string, unknown>)
+							: {};
+						const seenBudgetSignatures = new Set<string>();
+						while (true) {
+							const signature = JSON.stringify(finalBudget);
+							if (seenBudgetSignatures.has(signature)) {
+								throw new ElizaError(
+									"Final model-input budget metadata did not stabilize",
+									{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+								);
+							}
+							seenBudgetSignatures.add(signature);
+							Object.assign(
+								providerOptions,
+								withModelInputBudgetProviderOptions(
+									providerOptions,
+									finalBudget,
+								),
+							);
+							paramsRecord.providerOptions = providerOptions;
+							const measuredWithMetadata = this.buildFinalModelInputBudget(
+								modelParams,
+								resolvedModel.metadata,
+							);
+							if (
+								measuredWithMetadata.estimatedInputTokens ===
+								finalBudget.estimatedInputTokens
+							) {
+								finalBudget = measuredWithMetadata;
+								break;
+							}
+							finalBudget = measuredWithMetadata;
+						}
+					}
+					this.freezeAdmittedModelRequest(modelParams);
+				}
 
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
@@ -7369,15 +7725,20 @@ export class AgentRuntime implements IAgentRuntime {
 					const resolvedToolCalls = hasToolCallsField
 						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
+					const resolvedFinishReason =
+						"finishReason" in streamRaw
+							? await Promise.resolve(streamRaw.finishReason)
+							: undefined;
+					assertModelOutputComplete({
+						finishReason: resolvedFinishReason,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
 					// The presence of `toolCalls` marks a native-result contract, even
 					// when the provider returns an empty list. Collapsing that result to a
 					// string discards usage, finish reason, and concrete model metadata,
 					// which makes successful hosted calls unpriceable.
 					if (hasToolCallsField) {
-						const resolvedFinishReason =
-							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason)
-								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
 								? await Promise.resolve(streamRaw.usage)
@@ -7499,6 +7860,14 @@ export class AgentRuntime implements IAgentRuntime {
 					if (ctxEnd) ctxEnd();
 				}
 
+				if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
+					await assertRuntimeModelOutputComplete({
+						result: resultRef.current,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
+				}
+
 				const elapsedTime =
 					(typeof performance !== "undefined" &&
 					typeof performance.now === "function"
@@ -7593,6 +7962,16 @@ export class AgentRuntime implements IAgentRuntime {
 					isTextStreamResult(resultRef.current as object)
 				) {
 					const streamResult = resultRef.current as TextStreamResult;
+					const checkedFinishReason = Promise.resolve(
+						streamResult.finishReason,
+					).then((finishReason) => {
+						assertModelOutputComplete({
+							finishReason,
+							provider: resolvedModel.provider,
+							model: resolvedModelKey,
+						});
+						return finishReason;
+					});
 					const trajArgs = {
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -7620,8 +7999,8 @@ export class AgentRuntime implements IAgentRuntime {
 					// backstop so at least one trajectory entry fires regardless
 					// of how the consumer treats the stream result (#17532 review,
 					// Finding 2).
-					streamResult.text.then(
-						(resolvedText) => {
+					Promise.all([streamResult.text, checkedFinishReason]).then(
+						([resolvedText]) => {
 							if (accumulatedChunks.length === 0 && resolvedText) {
 								accumulatedChunks.push(resolvedText);
 							}
@@ -7631,6 +8010,7 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					resultRef.current = {
 						...streamResult,
+						finishReason: checkedFinishReason,
 						textStream: (async function* () {
 							// Each .next() call re-enters the recording scope so
 							// the provider generator body (and its finally block
@@ -7643,7 +8023,10 @@ export class AgentRuntime implements IAgentRuntime {
 										recordingState,
 										() => innerIter.next(),
 									);
-									if (done) break;
+									if (done) {
+										await checkedFinishReason;
+										break;
+									}
 									accumulatedChunks.push(value);
 									yield value;
 								}
@@ -7674,6 +8057,7 @@ export class AgentRuntime implements IAgentRuntime {
 							return Promise.resolve(
 								runInModelCallRecordingScope(recordingState, async () => {
 									const t = await streamResult.text;
+									await checkedFinishReason;
 									accumulatedChunks.length = 0;
 									accumulatedChunks.push(t);
 									await recordOnce();
@@ -9301,10 +9685,9 @@ ${section_end}`;
 						const validatedContent = extractor.getValidatedFields();
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
-							const truncated =
-								content.length > 500 ? `${content.slice(0, 497)}...` : content;
+							const wellFormedContent = toWellFormedUnicode(content);
 							validatedParts.push(
-								stringifyStructuredForPrompt({ [field]: truncated }),
+								stringifyStructuredForPrompt({ [field]: wellFormedContent }),
 							);
 						}
 						if (validatedParts.length > 0) {
@@ -9318,7 +9701,7 @@ ${section_end}`;
 				// Repair reroll: when the extractor didn't produce a targeted retry
 				// context (the common case — contextLevel 2, no streaming extractor,
 				// or no validated fields), feed the model the CONCRETE reason its last
-				// output was rejected + the (redacted, truncated) bad output, so the
+				// output was rejected + the complete redacted bad output, so the
 				// reroll is corrective instead of a blind re-roll of the same prompt.
 				// Goes in the same `_smartRetryContext` field, which is rendered as a
 				// `stable:false` segment (prompt-cache safe) and cleared on
@@ -9332,12 +9715,10 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = this.redactSecrets(cleanResponse).slice(
-							0,
-							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
+						const priorOutput = toWellFormedUnicode(
+							this.redactSecrets(cleanResponse),
 						);
 						const issueList = repairIssues
-							.slice(0, 8)
 							.map((issue) => `- ${issue}`)
 							.join("\n");
 						smartRetryContextNext = `\n\n[REPAIR] Your previous response was rejected because it did not satisfy the required schema. Fix exactly these problems and return a corrected response:\n${issueList}${
@@ -11256,20 +11637,34 @@ ${section_end}`;
 		) {
 			return null;
 		}
-		const requested = params.limit ?? params.count;
+		const requestedLimit = params.limit ?? params.count;
+		// A caller that pins no limit asks for the room's complete retained
+		// window — the shape the prompt-integrity providers (RECENT_MESSAGES,
+		// FACTS, ATTACHMENTS) now use after they stopped capping model-facing
+		// history. Treat it as an infinite request so it still coalesces: the
+		// superset fetch drops the limit, `meta` records an unbounded window,
+		// and no bounded cache entry can ever serve it (Infinity fails the
+		// superset check), so coalescing can never shorten a complete read.
+		const unbounded = requestedLimit === undefined;
 		if (
-			typeof requested !== "number" ||
-			!Number.isFinite(requested) ||
-			requested <= 0
+			!unbounded &&
+			(typeof requestedLimit !== "number" ||
+				!Number.isFinite(requestedLimit) ||
+				requestedLimit <= 0)
 		) {
 			return null;
 		}
+		const requested = unbounded
+			? Number.POSITIVE_INFINITY
+			: (requestedLimit as number);
 		const roomId = params.roomId;
-		const supersetLimit = Math.max(
-			requested,
-			this.getConversationLength(),
-			AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
-		);
+		const supersetLimit = unbounded
+			? Number.POSITIVE_INFINITY
+			: Math.max(
+					requested,
+					this.getConversationLength(),
+					AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
+				);
 		const cached = this.roomMessagesMemo.peek(roomId);
 		const window =
 			cached && cached.meta >= requested
@@ -11280,7 +11675,7 @@ ${section_end}`;
 						this.adapter.getMemories({
 							tableName: "messages",
 							roomId,
-							limit: supersetLimit,
+							...(unbounded ? {} : { limit: supersetLimit }),
 							unique: false,
 						}),
 					);
@@ -11387,6 +11782,7 @@ ${section_end}`;
 		match_threshold?: number;
 		count?: number;
 		limit?: number;
+		offset?: number;
 		roomId?: UUID;
 		unique?: boolean;
 		worldId?: UUID;
@@ -11783,9 +12179,13 @@ ${section_end}`;
 
 	async getTasks(params: {
 		roomId?: UUID;
+		worldId?: UUID;
 		tags?: string[];
 		entityId?: UUID;
+		limit?: number;
+		offset?: number;
 	}): Promise<Task[]> {
+		validateTaskQueryPagination(params);
 		return this.adapter.getTasks({ ...params, agentIds: [this.agentId] });
 	}
 	async getTasksByName(name: string): Promise<Task[]> {
@@ -11831,6 +12231,17 @@ ${section_end}`;
 	async getTask(id: UUID): Promise<Task | null> {
 		const tasks = await this.adapter.getTasksByIds([id]);
 		return tasks[0] ?? null;
+	}
+
+	async updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+		const updated =
+			(await this.adapter.updatePendingTask?.call(this.adapter, id, task)) ??
+			false;
+		if (updated) {
+			this._markLocalTasksDirty();
+			this._notifyCompanionTasksDirty();
+		}
+		return updated;
 	}
 
 	async updateTask(id: UUID, task: Partial<Task>): Promise<void> {

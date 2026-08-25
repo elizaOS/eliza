@@ -190,6 +190,10 @@ async function expectPreferenceLoopClosed(
 export default scenario({
   id: "deterministic-preference-extraction",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Seed and final checks exercise runtime state without model calls.",
+  },
   title:
     "A passively extracted preference lands in the personality slot + facts table and re-enters the prompt",
   domain: "scenario-runner",

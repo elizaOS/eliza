@@ -80,6 +80,36 @@ describe("plugin-embeddings config", () => {
     expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "768" }))).toBe(768);
   });
 
+  it("accepts a valid positive integer, trimming surrounding whitespace", () => {
+    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "3072" }))).toBe(3072);
+    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "  768  " }))).toBe(768);
+  });
+
+  it("returns the default for unset or blank-only EMBEDDING_DIMENSIONS", () => {
+    expect(getEmbeddingDimensions(makeRuntime())).toBe(1536);
+    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "" }))).toBe(1536);
+    expect(getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "   " }))).toBe(1536);
+  });
+
+  it("rejects mixed/trailing-character values instead of silently truncating (issue #23028)", () => {
+    // Regression: Number.parseInt("1536abc", 10) used to return 1536, silently
+    // accepting a malformed vector width. It must now throw.
+    expect(() => getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "1536abc" }))).toThrow(
+      "Setting 'EMBEDDING_DIMENSIONS' must be a valid integer, got: 1536abc"
+    );
+    expect(() => getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: "12px" }))).toThrow(
+      /must be a valid integer/
+    );
+  });
+
+  it("rejects fractional, scientific, zero, negative, and non-numeric values", () => {
+    for (const bad of ["3.5", "1e3", "0", "-5", "abc", "0x10", "+7", "1_000"]) {
+      expect(() => getEmbeddingDimensions(makeRuntime({ EMBEDDING_DIMENSIONS: bad }))).toThrow(
+        `Setting 'EMBEDDING_DIMENSIONS' must be a valid integer, got: ${bad}`
+      );
+    }
+  });
+
   it("hasEmbeddingConfig is true when EITHER url or key is set", () => {
     expect(hasEmbeddingConfig(makeRuntime())).toBe(false);
     expect(hasEmbeddingConfig(makeRuntime({ EMBEDDING_BASE_URL: "https://x/v1" }))).toBe(true);

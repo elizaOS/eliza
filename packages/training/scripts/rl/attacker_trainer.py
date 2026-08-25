@@ -31,6 +31,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from lib.generation_integrity import require_complete_generation
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,14 +47,12 @@ class AttackerConfig:
     attacker_model_name: str = "google/gemma-4-E4B"
     attacker_api_key: str = ""
     attacker_temperature: float = 0.7
-    attacker_max_tokens: int = 200
 
     # Defender inference endpoint (vLLM serving defender model)
     defender_endpoint: str = "http://localhost:8002/v1"
     defender_model_name: str = "google/gemma-4-E4B"
     defender_api_key: str = ""
     defender_temperature: float = 0.0
-    defender_max_tokens: int = 200
 
     learning_rate: float = 1e-5
     kl_coeff: float = 0.05
@@ -195,7 +195,6 @@ async def _call_model(
     api_key: str,
     messages: list[dict[str, str]],
     temperature: float,
-    max_tokens: int,
 ) -> str:
     """Call an OpenAI-compatible model endpoint."""
     import aiohttp
@@ -208,7 +207,6 @@ async def _call_model(
         "model": model_name,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": max_tokens,
     }
 
     async with aiohttp.ClientSession() as session:
@@ -223,7 +221,10 @@ async def _call_model(
                 logger.warning(f"Model call failed ({resp.status}): {text[:200]}")
                 return ""
             data = await resp.json()
-            return data["choices"][0]["message"]["content"]
+            choice = require_complete_generation(
+                data["choices"][0], source="attacker_trainer.call_model"
+            )
+            return choice["message"]["content"]
 
 
 def _detect_outcome(defender_response: str) -> tuple[bool, bool, bool]:
@@ -293,7 +294,6 @@ class AttackerTrainer:
                 self.config.attacker_api_key,
                 attacker_history,
                 self.config.attacker_temperature,
-                self.config.attacker_max_tokens,
             )
             if not attacker_msg:
                 break
@@ -309,7 +309,6 @@ class AttackerTrainer:
                 self.config.defender_api_key,
                 defender_history,
                 self.config.defender_temperature,
-                self.config.defender_max_tokens,
             )
             if not defender_msg:
                 break

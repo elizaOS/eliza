@@ -1,3 +1,7 @@
+/**
+ Owns the iOS application lifecycle, native notification delivery, and the
+ process-wide platform hooks that must exist before Capacitor boots.
+ */
 import UIKit
 import Capacitor
 import CapacitorBackgroundRunner
@@ -182,9 +186,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if let urlString = userInfo["deepLinkOnTap"] as? String,
-           let url = URL(string: urlString) {
-            NSLog("[ElizaCompanion] Notification tapped — opening deep link: %@", urlString)
+        if let url = ElizaNotificationTapPayload.safeOpenDestination(
+            userInfo["deepLinkOnTap"]
+        ) {
+            // The target can contain producer-supplied notification context.
+            // Record the routing event without persisting the URL or query.
+            NSLog("[ElizaCompanion] Notification tapped — routing validated deep link")
             DispatchQueue.main.async {
                 UIApplication.shared.open(url, options: [:], completionHandler: nil)
             }

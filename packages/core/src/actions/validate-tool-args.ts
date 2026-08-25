@@ -88,17 +88,27 @@ function validateEnum(
 	value: unknown,
 	path: string,
 	errors: string[],
-): void {
+): unknown {
 	if (
 		!schema.enum ||
 		schema.enum.includes(value as string | number | boolean)
 	) {
-		return;
+		return value;
+	}
+
+	// Model tool arguments can carry transport whitespace around string enums.
+	// Normalize only when trimming produces an exact declared value.
+	if (
+		typeof value === "string" &&
+		schema.enum.includes(value.trim() as string | number | boolean)
+	) {
+		return value.trim();
 	}
 
 	errors.push(
 		`Argument '${formatPath(path)}' value '${String(value)}' is not one of: ${schema.enum.join(", ")}`,
 	);
+	return value;
 }
 
 function validateNumberBounds(
@@ -167,6 +177,25 @@ function validateObject(
 		}
 	}
 
+	// Planner models routinely fill UNUSED optional parameters with the
+	// strings "null"/"undefined"/"" rather than omitting them; a patterned
+	// optional then fails validation and kills an otherwise-valid call (live
+	// 2026-08-24: MEMORY create failed on memoryId:"null" and the turn
+	// claimed success anyway).
+	//
+	// The rule is deliberately narrow: a sentinel counts as "absent" ONLY for
+	// an optional property whose schema cannot accept the literal anyway. For
+	// a free-text optional, "" and the literal "null" are legitimate values a
+	// user may have actually asked to send, and dropping them would be silent
+	// data loss on the model -> action path. So the value is validated first,
+	// and only a value that BOTH fails its schema and reads as a sentinel is
+	// treated as omitted.
+	const requiredKeys = new Set(schema.required ?? []);
+	const readsAsAbsent = (key: string, supplied: unknown): boolean =>
+		!requiredKeys.has(key) &&
+		typeof supplied === "string" &&
+		["", "null", "undefined"].includes(supplied.trim().toLowerCase());
+
 	for (const [key, childSchema] of Object.entries(properties)) {
 		if (hasOwn(value, key) && value[key] !== undefined && value[key] !== null) {
 			const childPath = path ? `${path}.${key}` : key;
@@ -179,8 +208,15 @@ function validateObject(
 			);
 			if (errors.length === before) {
 				output[key] = childValue;
+				continue;
 			}
-			continue;
+			if (readsAsAbsent(key, value[key])) {
+				// Schema-rejected sentinel on an optional property: drop the
+				// rejection with it and fall through to the default/absent path.
+				errors.length = before;
+			} else {
+				continue;
+			}
 		}
 
 		if (
@@ -250,33 +286,40 @@ export function validateSchema(
 	}
 
 	switch (schema.type) {
-		case "string":
+		case "string": {
 			if (typeof value !== "string") {
 				errors.push(
 					`Argument '${formatPath(path)}' expected string, got ${describeType(value)}`,
 				);
 				return value;
 			}
-			validateEnum(schema, value, path, errors);
-			if (schema.minLength !== undefined && value.length < schema.minLength) {
+			const normalized = validateEnum(schema, value, path, errors) as string;
+			if (
+				schema.minLength !== undefined &&
+				normalized.length < schema.minLength
+			) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${value.length} is below minimum ${schema.minLength}`,
+					`Argument '${formatPath(path)}' length ${normalized.length} is below minimum ${schema.minLength}`,
 				);
 			}
-			if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+			if (
+				schema.maxLength !== undefined &&
+				normalized.length > schema.maxLength
+			) {
 				errors.push(
-					`Argument '${formatPath(path)}' length ${value.length} exceeds maximum ${schema.maxLength}`,
+					`Argument '${formatPath(path)}' length ${normalized.length} exceeds maximum ${schema.maxLength}`,
 				);
 			}
 			if (schema.pattern !== undefined) {
-				const result = testSchemaPattern(schema.pattern, value);
+				const result = testSchemaPattern(schema.pattern, normalized);
 				if (!result.ok) {
 					errors.push(
-						`Argument '${formatPath(path)}' value '${value}' ${result.reason}`,
+						`Argument '${formatPath(path)}' value '${normalized}' ${result.reason}`,
 					);
 				}
 			}
-			return value;
+			return normalized;
+		}
 
 		case "number":
 			if (typeof value !== "number" || !Number.isFinite(value)) {

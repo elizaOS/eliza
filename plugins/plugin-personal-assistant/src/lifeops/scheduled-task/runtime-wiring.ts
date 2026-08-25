@@ -26,6 +26,7 @@ import {
 } from "@elizaos/core";
 import type {
   ActivitySignalBusView,
+  CompletionCheckContribution,
   GlobalPauseView,
   OwnerFactsView,
   ScheduledTaskDispatcher,
@@ -34,6 +35,7 @@ import type {
   ScheduledTaskStore,
   SubjectStoreView,
   TaskExecutionProfile,
+  TaskGateContribution,
 } from "@elizaos/plugin-scheduling";
 import {
   createAnchorRegistry,
@@ -80,6 +82,11 @@ import { preferEffectiveMergedState } from "../schedule-state.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
 import { getActivitySignalBus } from "../signals/bus.js";
 import {
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../time.js";
+import {
   behaviouralBaselineFromProfile,
   readActivityProfile,
   registerActivityProfileGates,
@@ -98,6 +105,171 @@ interface RepositoryBackedStores {
 }
 
 const subjectStoresByRuntime = new WeakMap<IAgentRuntime, SubjectStoreView>();
+
+const QUOTA_OCCURRENCE_METADATA_KEY = "quotaOccurrenceId";
+const QUOTA_DEFINITION_REVISION_METADATA_KEY = "quotaDefinitionRevision";
+
+function quotaOccurrenceId(
+  metadata: ScheduledTaskDispatchRecord["metadata"],
+): string | null {
+  return metadataString(metadata, QUOTA_OCCURRENCE_METADATA_KEY);
+}
+
+/**
+ * Contribute the quota check-in gate and completion check to the single
+ * ScheduledTask spine. `quota_incomplete` is the structural stop-when-complete
+ * / active-window / active-day gate for `count_per_day` check-in fires;
+ * `quota_complete` retires the scheduled item once the derived remaining count
+ * reaches zero. Both read server-derived progress from the LifeOps repository
+ * and branch only on typed fields — never on prompt prose.
+ */
+export function registerQuotaProgressContributions(args: {
+  runtime: IAgentRuntime;
+  agentId: string;
+  gates: ReturnType<typeof createTaskGateRegistry>;
+  completionChecks: ReturnType<typeof createCompletionCheckRegistry>;
+}): void {
+  const repository = new LifeOpsRepository(args.runtime);
+  const quotaIncompleteGate: TaskGateContribution = {
+    kind: "quota_incomplete",
+    async evaluate(task, context) {
+      const occurrenceId = quotaOccurrenceId(task.metadata);
+      if (!occurrenceId) {
+        return {
+          kind: "deny",
+          reason: "quota_incomplete: quotaOccurrenceId missing",
+        };
+      }
+      const view = await repository.getOccurrenceView(
+        args.agentId,
+        occurrenceId,
+      );
+      if (!view?.progress) {
+        return {
+          kind: "deny",
+          reason: "quota_incomplete: quota occurrence unavailable",
+        };
+      }
+      if (view.state === "completed" || view.progress.remainingCount === 0) {
+        return { kind: "deny", reason: "quota_incomplete: quota complete" };
+      }
+      const definition = await repository.getDefinition(
+        args.agentId,
+        view.definitionId,
+      );
+      const expectedRevision = metadataString(
+        task.metadata,
+        QUOTA_DEFINITION_REVISION_METADATA_KEY,
+      );
+      if (
+        definition?.status !== "active" ||
+        definition.cadence.kind !== "count_per_day" ||
+        !definition.checkInPolicy ||
+        expectedRevision !== definition.updatedAt
+      ) {
+        return {
+          kind: "deny",
+          reason: "quota_incomplete: check-in policy is no longer current",
+        };
+      }
+      if (["skipped", "expired", "muted"].includes(view.state)) {
+        return {
+          kind: "deny",
+          reason: `quota_incomplete: occurrence ${view.state}`,
+        };
+      }
+      if (
+        view.state === "snoozed" &&
+        view.snoozedUntil &&
+        Date.parse(view.snoozedUntil) > Date.parse(context.nowIso)
+      ) {
+        return {
+          kind: "defer",
+          until: { atIso: view.snoozedUntil },
+          reason: "quota_incomplete: occurrence snoozed",
+        };
+      }
+      const localDateKey = view.metadata.localDateKey;
+      if (
+        typeof localDateKey !== "string" ||
+        getLocalDateKey(
+          getZonedDateParts(new Date(context.nowIso), view.timezone),
+        ) !== localDateKey
+      ) {
+        return {
+          kind: "deny",
+          reason: "quota_incomplete: active day has ended",
+        };
+      }
+      const localNow = getZonedDateParts(
+        new Date(context.nowIso),
+        definition.timezone,
+      );
+      const nowMinute = localNow.hour * 60 + localNow.minute;
+      let nextWindowStart: number | null = null;
+      for (const name of definition.checkInPolicy.windows) {
+        const window = definition.windowPolicy.windows.find(
+          (candidate) => candidate.name === name,
+        );
+        if (!window) continue;
+        const endMinute =
+          window.endMinute <= window.startMinute
+            ? window.endMinute + 24 * 60
+            : window.endMinute;
+        const comparableNow =
+          nowMinute < window.startMinute && endMinute >= 24 * 60
+            ? nowMinute + 24 * 60
+            : nowMinute;
+        if (comparableNow >= window.startMinute && comparableNow < endMinute) {
+          return { kind: "allow" };
+        }
+        if (
+          window.startMinute > nowMinute &&
+          (nextWindowStart === null || window.startMinute < nextWindowStart)
+        ) {
+          nextWindowStart = window.startMinute;
+        }
+      }
+      if (nextWindowStart !== null) {
+        const nextStart = buildUtcDateFromLocalParts(definition.timezone, {
+          year: localNow.year,
+          month: localNow.month,
+          day: localNow.day,
+          hour: Math.floor(nextWindowStart / 60),
+          minute: nextWindowStart % 60,
+          second: 0,
+        });
+        if (nextStart.getTime() <= Date.parse(view.relevanceEndAt)) {
+          return {
+            kind: "defer",
+            until: { atIso: nextStart.toISOString() },
+            reason: "quota_incomplete: waiting for an active check-in window",
+          };
+        }
+      }
+      return {
+        kind: "deny",
+        reason: "quota_incomplete: check-in windows closed for the active day",
+      };
+    },
+  };
+  const quotaCompleteCheck: CompletionCheckContribution = {
+    kind: "quota_complete",
+    async shouldComplete(task) {
+      const occurrenceId = quotaOccurrenceId(task.metadata);
+      if (!occurrenceId) return false;
+      const view = await repository.getOccurrenceView(
+        args.agentId,
+        occurrenceId,
+      );
+      return (
+        view?.state === "completed" || view?.progress?.remainingCount === 0
+      );
+    },
+  };
+  args.gates.register(quotaIncompleteGate);
+  args.completionChecks.register(quotaCompleteCheck);
+}
 
 export function registerLifeOpsScheduledTaskSubjectStore(
   runtime: IAgentRuntime,
@@ -286,10 +458,27 @@ function metadataString(
  *   deterministic fallback; a present-but-failed model call is a typed,
  *   retryable dispatch failure.
  */
-async function composeOwnerFacingScheduledTaskText(
+export async function composeOwnerFacingScheduledTaskText(
   runtime: IAgentRuntime,
   record: ScheduledTaskDispatchRecord,
 ): Promise<string> {
+  const quotaId = quotaOccurrenceId(record.metadata);
+  if (quotaId) {
+    const view = await new LifeOpsRepository(runtime).getOccurrenceView(
+      runtime.agentId,
+      quotaId,
+    );
+    if (!view?.progress) {
+      throw new Error(
+        `Quota check-in occurrence ${quotaId} has no progress projection`,
+      );
+    }
+    const { completedCount, targetCount, remainingCount, unit } = view.progress;
+    if (remainingCount === 0) {
+      return `${targetCount}/${targetCount} ${unit}${targetCount === 1 ? "" : "s"} complete for “${view.title}” today.`;
+    }
+    return `${completedCount}/${targetCount} ${unit}${targetCount === 1 ? "" : "s"} logged for “${view.title}” today — ${remainingCount} remaining. How is it going?`;
+  }
   const delegatesAssemblyTo = metadataString(
     record.metadata,
     "delegatesAssemblyTo",
@@ -965,6 +1154,12 @@ function buildLifeOpsRunnerDeps(
 
   const completionChecks = createCompletionCheckRegistry();
   registerBuiltInCompletionChecks(completionChecks);
+  registerQuotaProgressContributions({
+    runtime: opts.runtime,
+    agentId: opts.agentId,
+    gates,
+    completionChecks,
+  });
 
   const ladders = createEscalationLadderRegistry();
   registerDefaultEscalationLadders(ladders);

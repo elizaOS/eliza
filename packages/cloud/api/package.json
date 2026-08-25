@@ -18,6 +18,7 @@
     "build": "tsc6 --noEmit",
     "typecheck": "tsc --noEmit && bun run check:worker-bundle",
     "check:worker-bundle": "wrangler deploy --env production --dry-run --outdir .wrangler-dry-run",
+    "preflight:subscription-catalog": "bun --conditions=eliza-source ../scripts/admin/preflight-subscription-catalog.ts",
     "test": "node test/run-unit-isolated.mjs",
     "test:batch": "bun test __tests__",
     "test:audit": "node test/_audit-coverage.mjs",

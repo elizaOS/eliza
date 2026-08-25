@@ -31,6 +31,31 @@ function sseResponse(
   });
 }
 
+async function streamTerminalActionResult(actionResult: Record<string, unknown>) {
+  return streamTerminalActionResults([actionResult]);
+}
+
+async function streamTerminalActionResults(actionResults: Record<string, unknown>[]) {
+  const fetchImpl = (async () =>
+    sseResponse([
+      `event: done\ndata: ${JSON.stringify({ actionResults })}\n\n`,
+    ])) as unknown as typeof fetch;
+  return streamElizaConversation(
+    {
+      endpoint: "http://x",
+      authorization: "Bearer s",
+      model: "m",
+      transcript: "launch demo",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+      traceId: "trace-app-navigation",
+      signal: new AbortController().signal,
+      fetchImpl,
+    },
+    () => {},
+  );
+}
+
 describe("eliza sse bridge", () => {
   test("decodes delta.content tokens and completes on [DONE]", async () => {
     const deltas: string[] = [];
@@ -677,6 +702,41 @@ describe("eliza sse bridge", () => {
     expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
   });
 
+  test("carries the server-attested lifecycle history cutoff in the internal body", async () => {
+    let seenBody: Record<string, unknown> | null = null;
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      seenBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return sseResponse(["data: [DONE]\n\n"]);
+    }) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer server-held",
+        model: "m",
+        transcript: "generate a greeting",
+        messageRole: "system",
+        clientMessageId: "twilio-call:CA1:opening",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "cutoff-trace",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      () => {},
+    );
+
+    expect(seenBody).toMatchObject({
+      text: "generate a greeting",
+      messageRole: "system",
+      clientMessageId: "twilio-call:CA1:opening",
+      historyCutoffAt: 1_725_000_000_000,
+      transientInput: true,
+    });
+  });
+
   test("returns the originating-client VIEWS handoff from the local runtime done frame", async () => {
     const fetchImpl = (async () =>
       sseResponse([
@@ -722,6 +782,137 @@ describe("eliza sse bridge", () => {
         viewPath: "/notes",
         subview: "recent",
       },
+    });
+  });
+
+  test("returns a successful APP launch handoff addressed to Browser", async () => {
+    await expect(
+      streamTerminalActionResult({
+        actionName: "APP",
+        success: true,
+        values: {
+          mode: "launch",
+          viewId: "browser",
+          viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+          subview: "preview",
+        },
+      }),
+    ).resolves.toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: {
+        viewId: "browser",
+        viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+        subview: "preview",
+      },
+    });
+  });
+
+  test("rejects failed, wrong-mode, and non-Browser APP handoffs", async () => {
+    const rejected = [
+      {
+        actionName: "APP",
+        success: false,
+        values: { mode: "launch", viewId: "browser", viewPath: "/browser" },
+      },
+      {
+        actionName: "APP",
+        success: true,
+        values: { mode: "stop", viewId: "browser", viewPath: "/browser" },
+      },
+      {
+        actionName: "APP",
+        success: true,
+        values: { mode: "launch", viewId: "wallet", viewPath: "/wallet" },
+      },
+    ];
+
+    for (const actionResult of rejected) {
+      await expect(streamTerminalActionResult(actionResult)).resolves.toEqual({
+        completed: true,
+        aborted: false,
+      });
+    }
+  });
+
+  test("rejects non-canonical APP Browser paths and malformed terminal shapes", async () => {
+    const rejectedPaths = [
+      "/browser",
+      "/wallet?browse=https%3A%2F%2Fexample.com",
+      "/browser?browse=javascript%3Aalert(1)",
+      "/browser?browse=%2Fapi%2Fapps%2Flocal%2F..%2Fsecret",
+      "/browser?browse=%2F%2Fevil.example",
+      "/browser?browse=https%3A%2F%2Fuser%3Asecret%40example.com",
+      "/browser?browse=https%3A%2F%2Fexample.com&browse=https%3A%2F%2Fevil.example",
+      "/browser?browse=https%3A%2F%2Fexample.com%2F%250Ainject",
+      `/${"a".repeat(257)}`,
+    ];
+    for (const viewPath of rejectedPaths) {
+      await expect(
+        streamTerminalActionResult({
+          actionName: "APP",
+          success: true,
+          values: { mode: "launch", viewId: "browser", viewPath },
+        }),
+      ).resolves.toEqual({ completed: true, aborted: false });
+    }
+
+    await expect(
+      streamTerminalActionResult({
+        data: { actionName: "APP" },
+        success: true,
+        values: {
+          mode: "launch",
+          viewId: "browser",
+          viewPath: "/browser?browse=https%3A%2F%2Fexample.com",
+        },
+      }),
+    ).resolves.toEqual({ completed: true, aborted: false });
+  });
+
+  test("fails closed when a terminal frame contains multiple successful navigations", async () => {
+    await expect(
+      streamTerminalActionResults([
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Fone.example",
+          },
+        },
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=https%3A%2F%2Ftwo.example",
+          },
+        },
+      ]),
+    ).resolves.toEqual({ completed: true, aborted: false });
+  });
+
+  test("keeps the navigation handoff when non-navigation VIEWS modes share the frame", async () => {
+    await expect(
+      streamTerminalActionResults([
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "create", viewId: "chat" },
+        },
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "chat", viewPath: "/chat" },
+        },
+      ]),
+    ).resolves.toEqual({
+      completed: true,
+      aborted: false,
+      viewHandoff: { viewId: "chat", viewPath: "/chat" },
     });
   });
 

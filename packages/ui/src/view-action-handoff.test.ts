@@ -75,6 +75,37 @@ describe("view action handoff", () => {
     });
   });
 
+  it("accepts only a successful APP launch handoff addressed to Browser", () => {
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "APP",
+          success: true,
+          values: {
+            mode: "launch",
+            viewId: "browser",
+            viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+            completedActionHandoffId: "handoff-app",
+          },
+        },
+      ]),
+    ).toEqual({
+      viewId: "browser",
+      viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
+      completedActionHandoffId: "handoff-app",
+    });
+
+    expect(
+      findViewActionHandoff([
+        {
+          actionName: "APP",
+          success: true,
+          values: { mode: "launch", viewId: "wallet", viewPath: "/wallet" },
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it("ignores inherited handoff fields and delivery confirmations", () => {
     const inheritedMarker = Object.assign(
       Object.create({ completedActionDelivered: true }),

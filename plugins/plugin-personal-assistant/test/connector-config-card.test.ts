@@ -1,7 +1,7 @@
 /**
  * CONNECTOR action emits the in-chat `[CONFIG:<pluginId>]` setup-card marker on
- * `connect` for each chat-set-up connector (discord, telegram, signal,
- * imessage, whatsapp, wechat) when the connector is not yet connected, and
+ * `connect` for each chat-set-up connector (discord, telegram, imessage,
+ * whatsapp, wechat) when the connector is not yet connected, and
  * omits it once the connector reports connected. The UI parses this marker into
  * the InlinePluginConfig widget (packages/ui message-parser-helpers), so this
  * is the server half of "set up <connector> in chat → a setup widget".
@@ -62,7 +62,6 @@ vi.mock("../src/lifeops/service.js", () => {
     LifeOpsService: class LifeOpsService {
       getDiscordConnectorStatus = vi.fn(async () => status());
       getTelegramConnectorStatus = vi.fn(async () => status());
-      getSignalConnectorStatus = vi.fn(async () => status());
       getIMessageConnectorStatus = vi.fn(async () => status());
       getWhatsAppConnectorStatus = vi.fn(async () => status());
       startGoogleConnector = mocks.startGoogleConnector;
@@ -251,7 +250,6 @@ describe("CONNECTOR connect emits the setup-card marker", () => {
   it.each([
     ["discord", "[CONFIG:discord]"],
     ["telegram", "[CONFIG:telegram]"],
-    ["signal", "[CONFIG:signal]"],
     ["imessage", "[CONFIG:imessage]"],
     ["whatsapp", "[CONFIG:whatsapp]"],
     ["wechat", "[CONFIG:wechat]"],

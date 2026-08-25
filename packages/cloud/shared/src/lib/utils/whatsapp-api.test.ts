@@ -1,9 +1,12 @@
 // Exercises whatsapp api behavior with deterministic cloud-shared lib fixtures.
 import crypto from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import { logger } from "./logger";
+
 import {
   e164ToWhatsappId,
   isValidWhatsAppId,
+  sendWhatsAppTypingIndicator,
   verifyWhatsAppSignature,
   whatsappIdToE164,
 } from "./whatsapp-api";
@@ -49,5 +52,36 @@ describe("WhatsApp id ↔ E.164", () => {
     expect(isValidWhatsAppId("123456")).toBe(false); // too short
     expect(isValidWhatsAppId("1234567890123456")).toBe(false); // too long
     expect(isValidWhatsAppId("+14245074963")).toBe(false); // has +
+  });
+});
+
+describe("sendWhatsAppTypingIndicator diagnostics", () => {
+  test("does not log provider-controlled identifiers or error bodies", async () => {
+    const sentinelPhoneNumberId = "SENTINEL_WHATSAPP_PHONE_NUMBER_ID";
+    const sentinelMessageId = "SENTINEL_WHATSAPP_MESSAGE_ID";
+    const sentinelErrorBody = "SENTINEL_WHATSAPP_TYPING_ERROR_BODY";
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error(sentinelErrorBody));
+    const loggerDebug = vi.spyOn(logger, "debug").mockImplementation(() => undefined);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      await sendWhatsAppTypingIndicator(
+        "test-access-token",
+        sentinelPhoneNumberId,
+        sentinelMessageId,
+      );
+
+      const serializedLogs = JSON.stringify(loggerDebug.mock.calls);
+      expect(serializedLogs).not.toContain(sentinelPhoneNumberId);
+      expect(serializedLogs).not.toContain(sentinelMessageId);
+      expect(serializedLogs).not.toContain(sentinelErrorBody);
+      expect(loggerDebug).toHaveBeenCalledWith("[WhatsApp] Failed to send typing indicator", {
+        failureClass: "typing_indicator_failed",
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      loggerDebug.mockRestore();
+    }
   });
 });

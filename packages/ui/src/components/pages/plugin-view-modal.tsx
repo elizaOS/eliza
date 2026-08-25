@@ -46,13 +46,13 @@ function PluginGameListCard({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant="selection"
+      size="card"
       type="button"
       role="option"
       aria-selected={isSelected}
-      className={`plugins-game-card${isSelected ? " is-selected" : ""}${
-        !plugin.enabled ? " is-disabled" : ""
-      } h-auto`}
+      data-state={isSelected ? "on" : "off"}
+      className={`plugins-game-card${!plugin.enabled ? " is-disabled" : ""}`}
       onClick={() => onSelect(plugin.id)}
       {...agentProps}
     >
@@ -69,9 +69,9 @@ function PluginGameListCard({
             title={plugin.enabled ? enabledLabel : disabledLabel}
           >
             {plugin.enabled ? (
-              <CheckCircle2 className="h-3 w-3" />
+              <CheckCircle2 className="size-3" />
             ) : (
-              <XCircle className="h-3 w-3" />
+              <XCircle className="size-3" />
             )}
             <span className="sr-only">
               {plugin.enabled ? enabledLabel : disabledLabel}
@@ -107,10 +107,10 @@ function PluginGameResourceLink({
   return (
     <Button
       ref={ref}
-      variant="outline"
-      size="sm"
+      variant="outlineAccent"
+      size="dense"
       type="button"
-      className="plugins-game-link-btn border border-border bg-transparent px-2.5 py-1 text-xs-tight text-muted transition-colors hover:border-accent hover:text-txt"
+      className="plugins-game-link-btn"
       onClick={() => {
         void onOpen(url);
       }}
@@ -153,7 +153,7 @@ function PluginGameParamField({
         ref={ref}
         id={`input-${param.key}`}
         type={param.sensitive ? "password" : "text"}
-        className="w-full px-2 py-1 text-xs"
+        density="compact"
         placeholder={param.description}
         value={value}
         onChange={(event) =>
@@ -486,7 +486,7 @@ export function PluginGameModal({
         ) : (
           <div className="plugins-game-detail-empty">
             <span className="plugins-game-detail-empty-icon">
-              <Puzzle className="h-5 w-5" />
+              <Puzzle className="size-5" />
             </span>
             <span className="plugins-game-detail-empty-text">
               {t("pluginsview.SelectA")}{" "}

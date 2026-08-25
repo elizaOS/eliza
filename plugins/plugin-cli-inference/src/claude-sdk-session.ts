@@ -52,7 +52,7 @@
  * @module plugin-cli-inference/claude-sdk-session
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RotationSubprocessEnv } from "./account-rotation";
 import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 
@@ -331,6 +331,7 @@ export class ClaudeSdkSession {
   private readonly zodOverride?: ZodModule;
 
   private query: SdkQuery | null = null;
+  private abortController: AbortController | null = null;
   private feed: ((msg: SdkUserMessage) => void) | null = null;
   private iterator: AsyncIterator<SdkMessage> | null = null;
   private turns = 0;
@@ -569,6 +570,9 @@ export class ClaudeSdkSession {
       options.allowedTools = [];
       options.disallowedTools = [];
     }
+    const abortController = new AbortController();
+    options.abortController = abortController;
+    this.abortController = abortController;
     this.query = sdk.query({ prompt: promptStream(), options });
     this.iterator = this.query[Symbol.asyncIterator]();
     this.turns = 0;
@@ -577,8 +581,10 @@ export class ClaudeSdkSession {
       // resurrecting a session the caller already gave up on.
       const stale = this.query;
       this.query = null;
+      this.abortController = null;
       this.iterator = null;
       this.feed = null;
+      abortController.abort();
       stale?.interrupt?.().catch(() => {});
       throw new ProviderApiError("[cli-inference:sdk] session disposed during start", {
         retryable: true,
@@ -728,7 +734,7 @@ export class ClaudeSdkSession {
     );
     if (sawResult && limitEnvelope !== undefined) {
       throw new Error(
-        `[cli-inference:sdk] subscription rate limit reached: ${limitEnvelope.trim().slice(0, 120)}`
+        `[cli-inference:sdk] subscription rate limit reached: ${truncateWellFormed(toWellFormedUnicode(limitEnvelope.trim()), 120)}`
       );
     }
 
@@ -745,7 +751,7 @@ export class ClaudeSdkSession {
     if (apiErrorEnvelope !== undefined) {
       const parsed = parseProviderApiErrorText(apiErrorEnvelope);
       throw new ProviderApiError(
-        `[cli-inference:sdk] upstream ${apiErrorEnvelope.trim().slice(0, 160)}`,
+        `[cli-inference:sdk] upstream ${truncateWellFormed(toWellFormedUnicode(apiErrorEnvelope.trim()), 160)}`,
         { statusCode: parsed?.statusCode }
       );
     }
@@ -803,7 +809,9 @@ export class ClaudeSdkSession {
   async dispose(): Promise<void> {
     this.epoch += 1;
     const q = this.query;
+    const abortController = this.abortController;
     this.query = null;
+    this.abortController = null;
     this.iterator = null;
     this.feed = null;
     this.turns = 0;
@@ -836,5 +844,6 @@ export class ClaudeSdkSession {
         if (timer) clearTimeout(timer);
       }
     }
+    abortController?.abort();
   }
 }

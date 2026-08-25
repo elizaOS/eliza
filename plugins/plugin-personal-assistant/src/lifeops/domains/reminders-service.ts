@@ -18,6 +18,7 @@ import {
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import {
+  ElizaError,
   type IAgentRuntime,
   inspectSendHandlerResult,
   logger,
@@ -239,8 +240,21 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "../telemetry-retention.js";
-import { addMinutes, getLocalDateKey, getZonedDateParts } from "../time.js";
-import { callerDefinitionScopes } from "./definition-authorization.js";
+import {
+  addDaysToLocalDate,
+  addMinutes,
+  buildUtcDateFromLocalParts,
+  getLocalDateKey,
+  getZonedDateParts,
+} from "../time.js";
+import {
+  callerDefinitionScopes,
+  getCallerDefinition,
+  getCallerOccurrence,
+  getCallerOccurrenceView,
+  listCallerDefinitions,
+  nextMutationRevision,
+} from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
@@ -346,6 +360,8 @@ type ReminderAttemptLifecycle = "plan" | "escalation";
 export type LifeOpsScheduledWorkSubsystemFailure = {
   subsystem: string;
   error: string;
+  /** Stable machine-readable cause when the boundary threw an ElizaError. */
+  code?: string;
 };
 
 type RuntimeOwnerContactResolution = {
@@ -977,7 +993,6 @@ function collectNearbyReminderTitles(args: {
   currentAnchorAt: string | null;
   occurrences: LifeOpsOccurrenceView[];
   events: Array<{ id: string; title: string; startAt: string }>;
-  limit: number;
 }): string[] {
   if (!args.currentAnchorAt) return [];
   const anchorMs = Date.parse(args.currentAnchorAt);
@@ -990,7 +1005,6 @@ function collectNearbyReminderTitles(args: {
     if (occMs !== null && Math.abs(occMs - anchorMs) <= windowMs) {
       titles.push(occ.title);
     }
-    if (titles.length >= args.limit) return titles;
   }
   for (const event of args.events) {
     if (event.id === args.currentOwnerId) continue;
@@ -998,7 +1012,6 @@ function collectNearbyReminderTitles(args: {
     if (Math.abs(eventMs - anchorMs) <= windowMs) {
       titles.push(event.title);
     }
-    if (titles.length >= args.limit) return titles;
   }
   return titles;
 }
@@ -1201,7 +1214,6 @@ export class RemindersDomain {
 
   public async readRecentReminderConversation(args: {
     subjectType: LifeOpsSubjectType;
-    limit?: number;
   }): Promise<string[]> {
     if (
       args.subjectType !== "owner" ||
@@ -1225,7 +1237,6 @@ export class RemindersDomain {
       const memories = await this.ctx.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
-        limit: Math.max(6, (args.limit ?? 6) * 2),
       });
       if (!Array.isArray(memories) || memories.length === 0) {
         return [];
@@ -1249,8 +1260,7 @@ export class RemindersDomain {
             memory,
           }),
         )
-        .filter((line): line is string => typeof line === "string")
-        .slice(-(args.limit ?? 6));
+        .filter((line): line is string => typeof line === "string");
     } catch {
       return [];
     }
@@ -1372,7 +1382,6 @@ export class RemindersDomain {
       const memories = await this.ctx.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
-        limit: 50,
       });
       if (!Array.isArray(memories) || memories.length === 0) {
         return noResponse;
@@ -1397,7 +1406,19 @@ export class RemindersDomain {
             response.createdAt <= nowMs &&
             response.text.length > 0,
         )
-        .sort((left, right) => left.createdAt - right.createdAt);
+        .sort((left, right) => {
+          const l =
+            typeof left.createdAt === "number" &&
+            Number.isFinite(left.createdAt)
+              ? left.createdAt
+              : 0;
+          const r =
+            typeof right.createdAt === "number" &&
+            Number.isFinite(right.createdAt)
+              ? right.createdAt
+              : 0;
+          return l - r;
+        });
       if (ownerResponses.length === 0) {
         return noResponse;
       }
@@ -1520,7 +1541,6 @@ export class RemindersDomain {
 
     const recentConversation = await this.readRecentReminderConversation({
       subjectType: args.subjectType,
-      limit: 6,
     });
     const reminderAt = args.dueAt ?? args.scheduledFor;
     const prompt = buildReminderDispatchPrompt({
@@ -1567,7 +1587,6 @@ export class RemindersDomain {
 
     const recentConversation = await this.readRecentReminderConversation({
       subjectType: "owner",
-      limit: 6,
     });
     const prompt = [
       `Write a short assistant update about the workflow "${args.workflow.title}".`,
@@ -1789,15 +1808,11 @@ export class RemindersDomain {
     definitionId: string,
     now = new Date(),
   ): Promise<LifeOpsDefinitionRecord> {
-    let definition: LifeOpsTaskDefinition | null = null;
-    for (const scope of callerDefinitionScopes(this.ctx)) {
-      definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
-        definitionId,
-        scope,
-      );
-      if (definition) break;
-    }
+    const definition = await getCallerDefinition(
+      this.ctx.repository,
+      this.ctx,
+      definitionId,
+    );
     if (!definition) {
       fail(404, "life-ops definition not found");
     }
@@ -2413,12 +2428,149 @@ export class RemindersDomain {
     for (const occurrence of materialized) {
       await this.ctx.repository.upsertOccurrence(occurrence);
     }
+    await this.syncQuotaProgressCheckIn(definition, materialized, now);
     await this.ctx.repository.pruneNonTerminalOccurrences(
       definition.agentId,
       definition.id,
       materialized.map((occurrence) => occurrence.occurrenceKey),
     );
     return materialized;
+  }
+
+  /**
+   * Materialize today's optional quota check-in on the canonical scheduled-task
+   * spine. The stable occurrence-scoped idempotency key makes scheduler ticks
+   * replay-safe; the quota gate suppresses a fire after completion or day end.
+   */
+  private async syncQuotaProgressCheckIn(
+    definition: LifeOpsTaskDefinition,
+    occurrences: LifeOpsOccurrence[],
+    now: Date,
+  ): Promise<void> {
+    const policy = definition.checkInPolicy;
+    if (
+      definition.cadence.kind !== "count_per_day" ||
+      !policy ||
+      definition.status !== "active"
+    ) {
+      return;
+    }
+    const todayKey = getLocalDateKey(
+      getZonedDateParts(now, definition.timezone),
+    );
+    const occurrence = occurrences.find(
+      (candidate) => candidate.metadata.localDateKey === todayKey,
+    );
+    if (
+      !occurrence ||
+      ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
+    ) {
+      return;
+    }
+    const [year, month, day] = todayKey.split("-").map(Number);
+    if (![year, month, day].every(Number.isInteger)) return;
+    const localNow = getZonedDateParts(now, definition.timezone);
+    const nowMinute = localNow.hour * 60 + localNow.minute;
+    let fireAt: Date | null = null;
+    for (const windowName of policy.windows) {
+      const window = definition.windowPolicy.windows.find(
+        (candidate) => candidate.name === windowName,
+      );
+      if (!window) continue;
+      const endMinute =
+        window.endMinute <= window.startMinute
+          ? window.endMinute + 24 * 60
+          : window.endMinute;
+      const localNowComparable =
+        nowMinute < window.startMinute && endMinute >= 24 * 60
+          ? nowMinute + 24 * 60
+          : nowMinute;
+      const isInside =
+        localNowComparable >= window.startMinute &&
+        localNowComparable < endMinute;
+      if (isInside) {
+        const immediateCandidate = new Date(now.getTime() + 1_000);
+        if (
+          immediateCandidate.getTime() <= Date.parse(occurrence.relevanceEndAt)
+        ) {
+          fireAt = immediateCandidate;
+          break;
+        }
+        continue;
+      }
+      const candidateMinute = window.startMinute;
+      if (candidateMinute <= localNowComparable) continue;
+      const localDate = addDaysToLocalDate(
+        { year, month, day },
+        Math.floor(candidateMinute / (24 * 60)),
+      );
+      const minuteOfDay = candidateMinute % (24 * 60);
+      const candidate = buildUtcDateFromLocalParts(definition.timezone, {
+        ...localDate,
+        hour: Math.floor(minuteOfDay / 60),
+        minute: minuteOfDay % 60,
+        second: 0,
+      });
+      if (
+        candidate.getTime() > now.getTime() &&
+        candidate.getTime() <= Date.parse(occurrence.relevanceEndAt)
+      ) {
+        fireAt = candidate;
+        break;
+      }
+    }
+    if (!fireAt) return;
+    const runner = getScheduledTaskRunner(this.ctx.runtime, {
+      agentId: definition.agentId,
+      now: () => now,
+    });
+    await runner.schedule({
+      kind: "checkin",
+      promptInstructions:
+        "Render the structurally projected quota progress and ask one concise progress question.",
+      trigger: { kind: "once", atIso: fireAt.toISOString() },
+      priority:
+        definition.priority <= 2
+          ? "high"
+          : definition.priority >= 4
+            ? "low"
+            : "medium",
+      shouldFire: {
+        compose: "all",
+        gates: [
+          { kind: "quota_incomplete" },
+          { kind: "quiet_hours", params: { highPriorityBypass: false } },
+        ],
+      },
+      completionCheck: {
+        kind: "quota_complete",
+        followupAfterMinutes: policy.followupAfterMinutes,
+      },
+      output: {
+        destination: "in_app_card",
+        fallback: {
+          title: definition.title,
+          body: "Quota progress check-in",
+        },
+      },
+      idempotencyKey: `quota-checkin:${occurrence.id}:${definition.updatedAt}`,
+      respectsGlobalPause: true,
+      source: "plugin",
+      createdBy: "lifeops:quota-progress",
+      ownerVisible: true,
+      metadata: {
+        quotaDefinitionId: definition.id,
+        quotaDefinitionRevision: definition.updatedAt,
+        quotaOccurrenceId: occurrence.id,
+        quotaLocalDateKey: todayKey,
+        noReplyPolicy: {
+          ...policy.noReplyPolicy,
+          sensitive: false,
+          allowCrossChannel: false,
+          allowNonOwnerNotification: false,
+        },
+      },
+    });
   }
 
   public async getFreshOccurrence(
@@ -2428,15 +2580,17 @@ export class RemindersDomain {
     definition: LifeOpsTaskDefinition;
     occurrence: LifeOpsOccurrence;
   }> {
-    const occurrence = await this.ctx.repository.getOccurrence(
-      this.ctx.agentId(),
+    const occurrence = await getCallerOccurrence(
+      this.ctx.repository,
+      this.ctx,
       occurrenceId,
     );
     if (!occurrence) {
       fail(404, "life-ops occurrence not found");
     }
-    const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
+    const definition = await getCallerDefinition(
+      this.ctx.repository,
+      this.ctx,
       occurrence.definitionId,
     );
     if (!definition) {
@@ -2448,6 +2602,11 @@ export class RemindersDomain {
     const freshOccurrence = await this.ctx.repository.getOccurrence(
       this.ctx.agentId(),
       occurrenceId,
+      {
+        domain: definition.domain,
+        subjectType: definition.subjectType,
+        subjectId: definition.subjectId,
+      },
     );
     if (!freshOccurrence) {
       fail(404, "life-ops occurrence not found after refresh");
@@ -3308,7 +3467,7 @@ export class RemindersDomain {
             reminderAcknowledgedNote: acknowledgementNote,
             reminderAcknowledgedResolution: args.resolution,
           },
-          updatedAt: new Date().toISOString(),
+          updatedAt: nextMutationRevision(occurrence.updatedAt),
         });
       }
     } else {
@@ -3504,8 +3663,9 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
-        const occurrence = await this.ctx.repository.getOccurrenceView(
-          this.ctx.agentId(),
+        const occurrence = await getCallerOccurrenceView(
+          this.ctx.repository,
+          this.ctx,
           reviewAttempt.ownerId,
         );
         if (!occurrence) {
@@ -3532,13 +3692,13 @@ export class RemindersDomain {
           });
           continue;
         }
-        const definition = await this.ctx.repository.getDefinition(
-          this.ctx.agentId(),
+        const definition = await getCallerDefinition(
+          this.ctx.repository,
+          this.ctx,
           occurrence.definitionId,
         );
-        const preference = definition
-          ? await this.getReminderPreference(definition.id)
-          : null;
+        if (!definition) continue;
+        const preference = await this.getReminderPreference(definition.id);
         const attempt = await this.dispatchDueReminderEscalation({
           plan,
           ownerType: "occurrence",
@@ -4037,7 +4197,7 @@ export class RemindersDomain {
 
   public async syncWebsiteAccessState(now = new Date()): Promise<void> {
     const definitions = (
-      await this.ctx.repository.listDefinitions(this.ctx.agentId())
+      await listCallerDefinitions(this.ctx.repository, this.ctx)
     ).filter(
       (definition) =>
         definition.status === "active" && definition.websiteAccess,
@@ -4576,8 +4736,9 @@ export class RemindersDomain {
     definitionId?: string | null,
   ): Promise<LifeOpsReminderPreference> {
     const definition = definitionId
-      ? await this.ctx.repository.getDefinition(
-          this.ctx.agentId(),
+      ? await getCallerDefinition(
+          this.ctx.repository,
+          this.ctx,
           requireNonEmptyString(definitionId, "definitionId"),
         )
       : null;
@@ -4601,8 +4762,9 @@ export class RemindersDomain {
     const updatedAt = new Date().toISOString();
     const definitionId = normalizeOptionalString(request.definitionId) ?? null;
     if (definitionId) {
-      const definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
         definitionId,
       );
       if (!definition) {
@@ -4619,7 +4781,14 @@ export class RemindersDomain {
         ),
         updatedAt,
       };
-      await this.ctx.repository.updateDefinition(nextDefinition);
+      await this.ctx.repository.updateDefinition(nextDefinition, {
+        expectedUpdatedAt: definition.updatedAt,
+        expectedScope: {
+          domain: definition.domain,
+          subjectType: definition.subjectType,
+          subjectId: definition.subjectId,
+        },
+      });
       await this.ctx.recordAudit(
         "definition_updated",
         "definition",
@@ -4972,8 +5141,10 @@ export class RemindersDomain {
       return dueAttempts;
     }
 
-    const definitions = await this.ctx.repository.listActiveDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: true },
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -4983,11 +5154,13 @@ export class RemindersDomain {
     );
 
     const horizon = addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString();
-    const occurrenceViews =
+    const occurrenceViews = (
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-      );
+        callerDefinitionScopes(this.ctx),
+      )
+    ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =
       await this.ctx.repository.listReminderPlansForOwners(
         this.ctx.agentId(),
@@ -5151,7 +5324,6 @@ export class RemindersDomain {
           currentAnchorAt: occurrence.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition,
@@ -5222,7 +5394,6 @@ export class RemindersDomain {
           currentAnchorAt: reminder.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: null,
@@ -5276,7 +5447,6 @@ export class RemindersDomain {
           currentAnchorAt: occurrence.dueAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: definitionsById.get(occurrence.definitionId) ?? null,
@@ -5316,7 +5486,6 @@ export class RemindersDomain {
           currentAnchorAt: event.startAt,
           occurrences: occurrenceViews,
           events: calendarEvents,
-          limit: 3,
         }),
         timezone: ownerTimezone,
         definition: null,
@@ -5463,6 +5632,7 @@ export class RemindersDomain {
         subsystemFailures.push({
           subsystem,
           error: error instanceof Error ? error.message : String(error),
+          ...(error instanceof ElizaError ? { code: error.code } : {}),
         });
         return fallback;
       }
@@ -5973,17 +6143,22 @@ export class RemindersDomain {
   ): Promise<LifeOpsReminderInspection> {
     let plan: LifeOpsReminderPlan | null = null;
     if (ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
         ownerId,
       );
       if (!occurrence) {
         fail(404, "life-ops occurrence not found");
       }
-      const definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
         occurrence.definitionId,
       );
+      if (!definition) {
+        fail(404, "life-ops reminder not found");
+      }
       if (definition?.reminderPlanId) {
         plan = await this.ctx.repository.getReminderPlan(
           this.ctx.agentId(),
@@ -6031,22 +6206,42 @@ export class RemindersDomain {
         : normalizeIsoString(request.acknowledgedAt, "acknowledgedAt");
     const note = normalizeOptionalString(request.note) ?? null;
     if (ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
         ownerId,
       );
       if (!occurrence) {
         fail(404, "life-ops occurrence not found");
       }
-      await this.ctx.repository.updateOccurrence({
-        ...occurrence,
-        metadata: {
-          ...occurrence.metadata,
-          reminderAcknowledgedAt: acknowledgedAt,
-          reminderAcknowledgedNote: note,
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
+        occurrence.definitionId,
+      );
+      if (!definition) {
+        fail(404, "life-ops reminder not found");
+      }
+      await this.ctx.repository.updateOccurrence(
+        {
+          ...occurrence,
+          metadata: {
+            ...occurrence.metadata,
+            reminderAcknowledgedAt: acknowledgedAt,
+            reminderAcknowledgedNote: note,
+          },
+          updatedAt: new Date().toISOString(),
         },
-        updatedAt: new Date().toISOString(),
-      });
+        {
+          definitionScope: {
+            domain: definition.domain,
+            subjectType: definition.subjectType,
+            subjectId: definition.subjectId,
+          },
+          expectedUpdatedAt: occurrence.updatedAt,
+          expectedDefinitionUpdatedAt: definition.updatedAt,
+        },
+      );
     } else {
       const event = (
         await this.ctx.repository.listCalendarEvents(

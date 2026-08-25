@@ -3,8 +3,7 @@
  * between subscription, API-keys, and Eliza Cloud provider modes and renders the
  * matching credential inputs.
  */
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { Button, SettingsControls } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   AlertTriangle,
@@ -74,13 +73,13 @@ export function LlmProviderSection({
               <Button
                 key={option.value}
                 type="button"
-                variant={active ? "default" : "ghost"}
-                size="sm"
-                className="h-8 justify-start px-2 text-xs font-semibold"
+                variant={active ? "default" : "ghostMuted"}
+                size="dense"
+                align="start"
                 onClick={() => setPref("ELIZA_LLM_PROVIDER", option.value)}
                 aria-pressed={active}
               >
-                <Icon className="h-3.5 w-3.5" aria-hidden />
+                <Icon className="size-3.5" aria-hidden />
                 {option.label}
               </Button>
             );
@@ -118,37 +117,6 @@ export function LlmProviderSection({
               onChange={(e) => setPref("OPENAI_API_KEY", e.target.value)}
             />
           </SettingsControls.Field>
-          <SettingsControls.Field>
-            <SettingsControls.FieldLabel>
-              {t("codingagentsettingssection.OpencodeApiKey", {
-                defaultValue: "OpenCode API Key",
-              })}
-            </SettingsControls.FieldLabel>
-            <SettingsControls.Input
-              variant="compact"
-              type="password"
-              placeholder="sk-..."
-              value={prefs.ELIZA_OPENCODE_API_KEY || ""}
-              onChange={(e) =>
-                setPref("ELIZA_OPENCODE_API_KEY", e.target.value)
-              }
-            />
-          </SettingsControls.Field>
-          <SettingsControls.Field>
-            <SettingsControls.FieldLabel>
-              {t("codingagentsettingssection.OpencodeBaseUrl", {
-                defaultValue: "OpenCode Base URL",
-              })}
-            </SettingsControls.FieldLabel>
-            <SettingsControls.Input
-              variant="compact"
-              placeholder="https://api.openai.com/v1"
-              value={prefs.ELIZA_OPENCODE_BASE_URL || ""}
-              onChange={(e) =>
-                setPref("ELIZA_OPENCODE_BASE_URL", e.target.value)
-              }
-            />
-          </SettingsControls.Field>
         </div>
       )}
 
@@ -162,7 +130,7 @@ export function LlmProviderSection({
                   "Using your Eliza Cloud account for coding agent LLM calls.",
               })}
             >
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+              <CheckCircle2 className="size-3.5" aria-hidden />
               <span className="sr-only">
                 {t("codingagentsettingssection.CloudPaired", {
                   defaultValue:
@@ -177,7 +145,7 @@ export function LlmProviderSection({
                 defaultValue: "Unavailable",
               })}
             >
-              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              <AlertTriangle className="size-3.5" aria-hidden />
               <span className="sr-only">
                 {t("codingagentsettingssection.CloudUnpaired", {
                   defaultValue: "Unavailable",

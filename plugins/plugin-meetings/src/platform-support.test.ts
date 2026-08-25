@@ -15,7 +15,10 @@ import {
   resolveMeetingRuntimeSupport,
 } from "./platform-support.js";
 
-vi.mock("node:fs", () => ({ existsSync: vi.fn(() => true) }));
+vi.mock("node:fs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs")>()),
+  existsSync: vi.fn(() => true),
+}));
 
 const runtime = {} as IAgentRuntime;
 

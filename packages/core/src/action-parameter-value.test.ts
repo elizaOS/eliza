@@ -37,6 +37,11 @@ describe("toActionParameterValue", () => {
 		});
 	});
 
+	it("sanitizes model strings recursively without shortening them", () => {
+		const long = `${"x".repeat(1_100_000)}🦊`;
+		expect(toActionParameterValue(["\ud800abc", long])).toEqual(["�abc", long]);
+	});
+
 	it(`accepts a ${MAX_ACTION_PARAMETER_DEPTH}-deep array nest`, () => {
 		expect(
 			toActionParameterValue(nestArray(MAX_ACTION_PARAMETER_DEPTH)),
@@ -167,7 +172,7 @@ describe("toActionParameterValue", () => {
 			expect((error as ElizaError).code).toBe(ACTION_PARAMETER_UNBOUNDED);
 			expect((error as Error).name).not.toBe("TypeError");
 			expect((error as Error).cause).toBeInstanceOf(TypeError);
-			expect(String((error as Error).cause)).toMatch(/IsArray/);
+			expect(String((error as Error).cause)).toMatch(/isArray/i);
 		}
 	});
 

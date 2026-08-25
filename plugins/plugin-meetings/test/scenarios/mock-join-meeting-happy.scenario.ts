@@ -16,7 +16,15 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { installMockSeed } from "./_meetings-mock.js";
+import {
+  assertMeetingMockLedger,
+  defaultMockMeetingScript,
+  finalizeMeetingMockLedger,
+  installMockSeed,
+  joinedTranscriptIsReady,
+  MEETINGS_MOCK_REQUIRED_PLUGINS,
+  meetingMockLedgerMatches,
+} from "./_meetings-mock.js";
 
 const MEET_URL = "https://meet.google.com/abc-defg-hij";
 
@@ -61,12 +69,21 @@ async function transcriptHasScriptedText(
 export default scenario({
   id: "mock-join-meeting-happy",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Action and wait turns exercise production runtime state without model calls.",
+  },
   title: "Mocked JOIN_MEETING produces a scripted transcript (no browser)",
   domain: "meetings",
   tags: ["mock", "meetings", "join-meeting", "transcript"],
   isolation: "per-scenario",
-  requires: { plugins: ["@elizaos/plugin-meetings"] },
-  seed: [installMockSeed()],
+  requires: { plugins: MEETINGS_MOCK_REQUIRED_PLUGINS },
+  seed: [
+    installMockSeed({
+      "abc-defg-hij": defaultMockMeetingScript("google_meet"),
+    }),
+  ],
   rooms: [{ id: "main", source: "chat", title: "Mock Meeting Join" }],
   turns: [
     {
@@ -83,8 +100,9 @@ export default scenario({
     },
     {
       kind: "wait",
-      name: "let the mock meeting finalize its transcript",
-      durationMs: 400,
+      name: "wait for the authoritative transcript row to become ready",
+      timeoutMs: 5_000,
+      until: joinedTranscriptIsReady,
     },
     {
       kind: "action",
@@ -97,6 +115,12 @@ export default scenario({
           return `expected the scripted transcript text, got: ${text.slice(0, 200)}`;
         }
       },
+    },
+    {
+      kind: "action",
+      name: "snapshot strict meetings provider ledger",
+      actionName: "ASSERT_MEETING_MOCK_LEDGER",
+      assertTurn: assertMeetingMockLedger,
     },
   ],
   finalChecks: [
@@ -119,5 +143,11 @@ export default scenario({
       name: "transcript row holds the scripted two-speaker text",
       predicate: transcriptHasScriptedText,
     },
+    {
+      type: "custom",
+      name: "strict meetings provider ledger matches",
+      predicate: meetingMockLedgerMatches,
+    },
   ],
+  cleanup: [finalizeMeetingMockLedger()],
 });

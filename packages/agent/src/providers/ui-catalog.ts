@@ -84,6 +84,11 @@ export const UI_WIDGETS_GUIDE = `## In-chat widgets — canonical markers you ca
 Emit EXACTLY this marker whenever a plugin comes up in setup/config/status
 (e.g. [CONFIG:discord], [CONFIG:openai]). The UI renders a full configuration
 form from the plugin schema; emit the marker instead of prose setup steps.
+### [CONNECTOR:pluginId] — compact connect-a-service card
+On "connect X": confirm via [CHOICE:connector-add] (Add-it / Not-now), then on
+accept emit [CONNECTOR:x] + one closing line ("Tap the card to sign in.").
+The card shows icon + description + one Authorize/Add-token button. NEVER ask
+for tokens or paste auth links in chat text; the card handles both masked.
 
 ### [FOLLOWUPS] — 2–4 tappable next steps (optional)
 Use ONLY when a follow-up genuinely helps. Emit INLINE, one
@@ -111,9 +116,8 @@ Emit INLINE; body is one JSON object on its own line between the markers:
 {"title":"Schedule reminder","submitLabel":"Create","fields":[{"name":"title","type":"text","label":"Reminder","required":true},{"name":"when","type":"datetime","label":"When","required":true},{"name":"channel","type":"select","label":"Notify via","options":[{"label":"Push","value":"push"},{"label":"Email","value":"email"}]}]}
 [/FORM]
 Field types: text | number | select (needs options) | checkbox | date | time |
-datetime. Prefer date/time/datetime for schedules. Field names start with a
-letter. NEVER use [FORM] for secrets or API keys; use the secure secret flow.
-For one free-text answer, just ask.
+datetime (prefer temporal types for schedules; field names start with a letter).
+NEVER use [FORM] for secrets or API keys. For one free-text answer, just ask.
 
 ### [CHECKLIST] — live todo list while you work through steps
 [CHECKLIST]
@@ -130,7 +134,7 @@ Step status: pending | running | done | failed. Re-emit to advance. [WORKFLOW]
 is ordered; [CHECKLIST] is unordered.
 
 ### When to use
-- Plugin setup/status → [CONFIG:pluginId], always
+- Connect a service → [CONNECTOR:pluginId]; deeper setup/status → [CONFIG:pluginId]
 - Pick one → [CHOICE]; several values → [FORM]; next steps → [FOLLOWUPS]
 - Your own multi-step work → [CHECKLIST] (unordered) / [WORKFLOW] (ordered)
 - Custom dashboards/tables/charts → separate generative-UI guide; facts → text`;

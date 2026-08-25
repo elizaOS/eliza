@@ -45,7 +45,9 @@ const globalFetchLike: FetchLike | undefined =
 
 /** Append `/health` (or another path) to a base URL, collapsing slashes. */
 export function healthUrl(base: string, path = "/health"): string {
-  const trimmedBase = base.replace(/\/+$/, "");
+  let end = base.length;
+  while (end > 0 && base.charCodeAt(end - 1) === 47) end -= 1;
+  const trimmedBase = end === base.length ? base : base.slice(0, end);
   const trimmedPath = path.startsWith("/") ? path : `/${path}`;
   return `${trimmedBase}${trimmedPath}`;
 }

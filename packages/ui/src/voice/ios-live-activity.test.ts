@@ -1,16 +1,13 @@
 /**
- * Unit coverage for the iOS Live Activity driver: pure status→phase mapping,
- * transcript trimming, and the controller's start/update/end sequencing against
- * a fake ActivityKit bridge (throttle, disabled-support, off-iOS no-op,
- * start-before-end ordering).
+ * Unit coverage for canonical iOS voice Live Activity phase mapping and the
+ * serialized start/update/end/relaunch-reconciliation controller.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { LiveActivityPluginLike } from "../bridge/native-plugins";
 import {
-  DictationLiveActivityController,
   mapContinuousStatusToPhase,
-  truncateTranscriptSnippet,
+  VoiceLiveActivityController,
 } from "./ios-live-activity";
 
 function fakePlugin(
@@ -26,75 +23,55 @@ function fakePlugin(
 }
 
 describe("mapContinuousStatusToPhase", () => {
-  it("maps each continuous-chat status to a dictation phase", () => {
-    expect(mapContinuousStatusToPhase("listening")).toBe("recording");
+  it("maps every canonical voice status without inventing dictation state", () => {
+    expect(mapContinuousStatusToPhase("idle")).toBe("ready");
+    expect(mapContinuousStatusToPhase("listening")).toBe("listening");
+    expect(mapContinuousStatusToPhase("transcribing")).toBe("transcribing");
     expect(mapContinuousStatusToPhase("thinking")).toBe("thinking");
     expect(mapContinuousStatusToPhase("interrupting")).toBe("thinking");
     expect(mapContinuousStatusToPhase("speaking")).toBe("speaking");
-    expect(mapContinuousStatusToPhase("idle")).toBe("transcribing");
   });
 });
 
-describe("truncateTranscriptSnippet", () => {
-  it("collapses whitespace and keeps the tail", () => {
-    expect(truncateTranscriptSnippet("  hello   world  ")).toBe("hello world");
-    const long = "a".repeat(200);
-    const trimmed = truncateTranscriptSnippet(long, 10);
-    expect(trimmed).toBe(`…${"a".repeat(10)}`);
-    expect(trimmed.length).toBe(11);
-  });
-});
-
-describe("DictationLiveActivityController", () => {
+describe("VoiceLiveActivityController", () => {
   it("is inert off iOS", async () => {
     const plugin = fakePlugin();
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: false,
       plugin,
     });
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "hi",
-    });
+    await controller.sync({ active: true, phase: "listening" });
     expect(plugin.start).not.toHaveBeenCalled();
   });
 
-  it("starts an activity when the session goes active", async () => {
+  it("starts transcript-free when the canonical session becomes active", async () => {
     const plugin = fakePlugin();
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
-      sessionTitle: "Dictation",
+      sessionTitle: "Eliza voice",
     });
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "hello",
-    });
+    await controller.sync({ active: true, phase: "listening" });
     expect(plugin.start).toHaveBeenCalledTimes(1);
     expect(plugin.start).toHaveBeenCalledWith({
-      sessionTitle: "Dictation",
-      phase: "recording",
-      transcript: "hello",
+      sessionTitle: "Eliza voice",
+      phase: "listening",
     });
+    expect(plugin.start).not.toHaveBeenCalledWith(
+      expect.objectContaining({ transcript: expect.anything() }),
+    );
   });
 
-  it("delegates the default session title to native localization", async () => {
+  it("delegates the default title to native localization", async () => {
     const plugin = fakePlugin();
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
     });
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "hello",
-    });
+    await controller.sync({ active: true, phase: "ready" });
     expect(plugin.start).toHaveBeenCalledWith({
       sessionTitle: "",
-      phase: "recording",
-      transcript: "hello",
+      phase: "ready",
     });
   });
 
@@ -104,93 +81,105 @@ describe("DictationLiveActivityController", () => {
         .fn()
         .mockResolvedValue({ supported: true, enabled: false }),
     });
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
     });
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "x",
-    });
+    await controller.sync({ active: true, phase: "listening" });
     expect(plugin.start).not.toHaveBeenCalled();
   });
 
-  it("pushes phase changes immediately but throttles transcript churn", async () => {
-    const plugin = fakePlugin();
-    let clock = 1000;
-    const controller = new DictationLiveActivityController({
+  it("rechecks mutable authorization and recovers after Settings enables it", async () => {
+    const isSupported = vi
+      .fn()
+      .mockResolvedValueOnce({ supported: true, enabled: false })
+      .mockResolvedValueOnce({ supported: true, enabled: true });
+    const plugin = fakePlugin({ isSupported });
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
-      now: () => clock,
-      minUpdateIntervalMs: 800,
-    });
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "a",
     });
 
-    // Transcript-only change within the throttle window: skipped.
-    clock = 1200;
-    await controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "ab",
+    await controller.sync({ active: true, phase: "ready" });
+    expect(plugin.start).not.toHaveBeenCalled();
+
+    await controller.sync({ active: true, phase: "listening" });
+    expect(isSupported).toHaveBeenCalledTimes(2);
+    expect(plugin.start).toHaveBeenCalledWith({
+      sessionTitle: "",
+      phase: "listening",
     });
+  });
+
+  it("pushes only real phase transitions", async () => {
+    const plugin = fakePlugin();
+    const controller = new VoiceLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+    await controller.sync({ active: true, phase: "listening" });
+    await controller.sync({ active: true, phase: "listening" });
     expect(plugin.update).not.toHaveBeenCalled();
 
-    // Phase change: pushed immediately regardless of the window.
-    clock = 1300;
-    await controller.sync({
-      active: true,
-      phase: "thinking",
-      transcript: "ab",
-    });
+    await controller.sync({ active: true, phase: "thinking" });
     expect(plugin.update).toHaveBeenCalledTimes(1);
-    expect(plugin.update).toHaveBeenLastCalledWith({
+    expect(plugin.update).toHaveBeenCalledWith({
       activityId: "act-1",
       phase: "thinking",
-      transcript: "ab",
     });
-
-    // Transcript-only change past the window: pushed.
-    clock = 2200;
-    await controller.sync({
-      active: true,
-      phase: "thinking",
-      transcript: "abc",
-    });
-    expect(plugin.update).toHaveBeenCalledTimes(2);
   });
 
-  it("ends the activity when the session stops", async () => {
+  it("ends an owned session with an explicit terminal phase", async () => {
     const plugin = fakePlugin();
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
     });
-    await controller.sync({ active: true, phase: "recording", transcript: "" });
-    await controller.sync({
-      active: false,
-      phase: "recording",
-      transcript: "",
+    await controller.sync({ active: true, phase: "listening" });
+    await controller.sync({ active: false, phase: "ended" });
+    expect(plugin.end).toHaveBeenCalledWith({
+      activityId: "act-1",
+      phase: "ended",
     });
-    expect(plugin.end).toHaveBeenCalledWith({ activityId: "act-1" });
   });
 
-  it("does not end when there is no active activity", async () => {
+  it("ends an active failed session so native dismissal owns the error", async () => {
     const plugin = fakePlugin();
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
     });
-    await controller.sync({
-      active: false,
-      phase: "recording",
-      transcript: "",
+    await controller.sync({ active: true, phase: "speaking" });
+    await controller.sync({ active: true, phase: "error" });
+    expect(plugin.end).toHaveBeenCalledWith({
+      activityId: "act-1",
+      phase: "error",
     });
-    expect(plugin.end).not.toHaveBeenCalled();
+    expect(plugin.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ phase: "error" }),
+    );
+  });
+
+  it("clears one orphaned native activity on an inactive relaunch", async () => {
+    const plugin = fakePlugin();
+    const controller = new VoiceLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+    await controller.sync({ active: false, phase: "ended" });
+    await controller.sync({ active: false, phase: "ended" });
+    expect(plugin.end).toHaveBeenCalledTimes(1);
+    expect(plugin.end).toHaveBeenCalledWith({ phase: "ended" });
+  });
+
+  it("clears an orphan as ended instead of projecting a stale error", async () => {
+    const plugin = fakePlugin();
+    const controller = new VoiceLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+    await controller.sync({ active: false, phase: "error" });
+    expect(plugin.end).toHaveBeenCalledWith({ phase: "ended" });
   });
 
   it("serializes start before end when toggled rapidly", async () => {
@@ -205,34 +194,30 @@ describe("DictationLiveActivityController", () => {
         return { ended: true };
       }),
     });
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
     });
-    const p1 = controller.sync({
-      active: true,
-      phase: "recording",
-      transcript: "",
-    });
-    const p2 = controller.sync({
-      active: false,
-      phase: "recording",
-      transcript: "",
-    });
-    await Promise.all([p1, p2]);
+    const start = controller.sync({ active: true, phase: "listening" });
+    const end = controller.sync({ active: false, phase: "ended" });
+    await Promise.all([start, end]);
     expect(order).toEqual(["start", "end"]);
   });
 
-  it("swallows a failing ActivityKit call without rejecting", async () => {
+  it("reports a failing ActivityKit call without rejecting voice", async () => {
+    const error = new Error("Live Activities disabled");
+    const reportError = vi.fn();
     const plugin = fakePlugin({
-      start: vi.fn().mockRejectedValue(new Error("Live Activities disabled")),
+      start: vi.fn().mockRejectedValue(error),
     });
-    const controller = new DictationLiveActivityController({
+    const controller = new VoiceLiveActivityController({
       isIos: true,
       plugin,
+      reportError,
     });
     await expect(
-      controller.sync({ active: true, phase: "recording", transcript: "" }),
+      controller.sync({ active: true, phase: "listening" }),
     ).resolves.toBeUndefined();
+    expect(reportError).toHaveBeenCalledWith(error);
   });
 });

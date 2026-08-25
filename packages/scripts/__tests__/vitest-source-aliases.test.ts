@@ -6,6 +6,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createServer, normalizePath } from "vite";
 import { afterEach, describe, expect, test } from "vitest";
 import integrationConfig from "../vitest/integration.config.ts";
 import {
@@ -15,21 +16,27 @@ import {
 
 const temporaryRoots: string[] = [];
 
+type TestAlias = { find: string | RegExp; replacement: string };
+
 afterEach(() => {
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-function resolveAlias(
-  aliases: Array<{ find: string | RegExp; replacement: string }>,
+function findAlias(
+  aliases: TestAlias[],
   specifier: string,
-): string {
-  const alias = aliases.find(({ find }) =>
+): TestAlias | undefined {
+  return aliases.find(({ find }) =>
     typeof find === "string"
       ? specifier === find || specifier.startsWith(`${find}/`)
       : find.test(specifier),
   );
+}
+
+function resolveAlias(aliases: TestAlias[], specifier: string): string {
+  const alias = findAlias(aliases, specifier);
   expect(alias, `${specifier} must have a source alias`).toBeDefined();
   if (!alias) return specifier;
   return specifier.replace(alias.find, alias.replacement);
@@ -95,7 +102,7 @@ describe("workspace source aliases", () => {
     }
   });
 
-  test("honors exact eliza-source exports before generic package subpaths", () => {
+  test("honors exact eliza-source exports and null export barriers", () => {
     const repoRoot = mkdtempSync(
       path.join(tmpdir(), "eliza-vitest-source-aliases-"),
     );
@@ -117,6 +124,11 @@ describe("workspace source aliases", () => {
         name: "@elizaos/plugin.fixture",
         exports: {
           ".": "./dist/index.js",
+          "./private": null,
+          "./*": {
+            "eliza-source": "./src/*.ts",
+            import: "./dist/*.js",
+          },
           "./public+endpoint": {
             "eliza-source": {
               types: "./src/internal/endpoint.ts",
@@ -133,6 +145,7 @@ describe("workspace source aliases", () => {
             "eliza-source": "../outside.ts",
             import: "./dist/escape.js",
           },
+          "./retired": null,
         },
       }),
     );
@@ -144,8 +157,121 @@ describe("workspace source aliases", () => {
     expect(
       resolveAlias(aliases, "@elizaos/plugin.fixture/string-endpoint"),
     ).toBe(path.join(packageDir, "src", "internal", "string-endpoint.ts"));
+    for (const suffix of [
+      "",
+      "?raw",
+      "?url",
+      "#fragment",
+      ".js",
+      ".jsx",
+      ".mjs",
+      ".cjs",
+      ".ts",
+      ".tsx",
+      ".mts",
+      ".cts",
+      ".json",
+      ".js?raw",
+    ]) {
+      expect(
+        findAlias(aliases, `@elizaos/plugin.fixture/private${suffix}`),
+      ).toBeUndefined();
+    }
+    for (const subpath of [
+      "/private",
+      "./private",
+      "nested/./private",
+      "nested/../private",
+      "nested//private",
+      "nested\\..\\private",
+      "%2e/private",
+      "%2E%2e/private",
+      "nested%2Fprivate",
+      "nested%2fprivate",
+      "nested%5Cprivate",
+      "nested%5cprivate",
+    ]) {
+      expect(
+        findAlias(aliases, `@elizaos/plugin.fixture/${subpath}`),
+      ).toBeUndefined();
+    }
+    expect(resolveAlias(aliases, "@elizaos/plugin.fixture/private/child")).toBe(
+      path.join(packageDir, "src", "private", "child"),
+    );
     expect(resolveAlias(aliases, "@elizaos/plugin.fixture/escape")).toBe(
       path.join(packageDir, "src", "escape"),
     );
+  });
+
+  test("keeps null-export spellings under package-exports authority in Vite", async () => {
+    const aliases = buildWorkspaceSourceAliases(workspaceRepoRoot);
+    const server = await createServer({
+      configFile: false,
+      root: workspaceRepoRoot,
+      logLevel: "silent",
+      server: { middlewareMode: true },
+      resolve: { alias: aliases },
+    });
+    const importer = path.join(
+      workspaceRepoRoot,
+      "packages/scripts/__tests__/vite-null-export-probe.ts",
+    );
+    const blockedSpecifier = "@elizaos/agent/runtime/runtime-installation-id";
+    const agentSourcePrefix = `${normalizePath(
+      path.join(workspaceRepoRoot, "packages", "agent", "src"),
+    )}/`;
+    const specifiers = [
+      ...[
+        "",
+        "?raw",
+        "?url",
+        "#fragment",
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs",
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts",
+        ".json",
+        ".js?raw",
+      ].map((suffix) => `${blockedSpecifier}${suffix}`),
+      "@elizaos/agent/./runtime/runtime-installation-id",
+      "@elizaos/agent/runtime/./runtime-installation-id",
+      "@elizaos/agent/runtime//runtime-installation-id",
+      "@elizaos/agent/runtime/../runtime/runtime-installation-id",
+      "@elizaos/agent/runtime/.//runtime-installation-id",
+      "@elizaos/agent/runtime\\..\\runtime\\runtime-installation-id",
+      "@elizaos/agent/runtime/%2e/runtime-installation-id",
+      "@elizaos/agent/runtime/%2E%2e/runtime/runtime-installation-id",
+      "@elizaos/agent/runtime%2Fruntime-installation-id",
+      "@elizaos/agent/runtime%2fruntime-installation-id",
+      "@elizaos/agent/runtime%5Cruntime-installation-id",
+      "@elizaos/agent/runtime%5cruntime-installation-id",
+    ];
+
+    try {
+      for (const specifier of specifiers) {
+        const resolution = await server.pluginContainer
+          .resolveId(specifier, importer)
+          .then(
+            (resolved) => ({ resolved }),
+            (error: unknown) => ({ error }),
+          );
+        if ("error" in resolution) {
+          expect(String(resolution.error)).toMatch(
+            /is not exported|Invalid "exports" target/,
+          );
+        } else if (resolution.resolved) {
+          expect(
+            normalizePath(resolution.resolved.id).startsWith(agentSourcePrefix),
+            `${specifier} must stay under package-exports authority`,
+          ).toBe(false);
+        }
+      }
+    } finally {
+      await server.close();
+    }
   });
 });

@@ -6,24 +6,16 @@
  * keys, so a mismatched casing is silently dropped.
  */
 
+export type * from "./types.cloud-api.js";
 export type {
-  AgentDatabaseStatus,
-  AgentDetailDto,
   AgentDetailDto as Agent,
-  AgentListItemDto,
-  AgentResponse,
-  AgentSandboxStatus,
   AgentsResponse as AgentListResponse,
-  AgentWalletStatus,
-  ApiSuccessEnvelope,
-  CreditBalanceResponse,
-  CurrentUserDto,
-  CurrentUserOrganizationDto,
-  CurrentUserResponse,
   CurrentUserResponse as UserProfileResponse,
-  IsoDateString,
-  UpdatedUserDto,
-  UpdatedUserResponse,
+} from "./types.cloud-api.js";
+export {
+  ADMIN_ROLE_RANK,
+  adminRoleRank,
+  isAdminRole,
 } from "./types.cloud-api.js";
 
 export const DEFAULT_ELIZA_CLOUD_BASE_URL = "https://eliza.app";
@@ -245,10 +237,27 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
     autoTopUpAmount?: number | null;
     hasPaymentMethod?: boolean;
   };
+  pricing?: {
+    creditUnit: "USD";
+    creditsPerDollar: 1;
+    usdPerCredit: 1;
+    minimumTopUp: number;
+    x402Enabled: boolean;
+  };
 }
 
+/**
+ * Checkout accepts either the canonical `amountUsd` or the deprecated
+ * `credits` alias, which has always denominated the same dollar amount. Both
+ * stay optional so the interface remains extendable by SDK consumers; the
+ * server rejects a request that supplies neither, and rejects conflicting
+ * values when both are supplied.
+ */
 export interface CreateCreditsCheckoutRequest {
-  credits: number;
+  /** Canonical dollar charge and 1:1 organization-credit grant. */
+  amountUsd?: number;
+  /** @deprecated Compatibility alias; must equal amountUsd when both are sent. */
+  credits?: number;
   success_url: string;
   cancel_url: string;
 }
@@ -513,59 +522,12 @@ export interface SettleX402PaymentRequestResponse
   paymentRequest: X402PaymentRequestView;
 }
 
-export type RedemptionNetwork = "ethereum" | "base" | "bnb" | "bsc" | "solana";
-
-export interface CreateRedemptionRequest {
-  appId?: string;
-  pointsAmount: number;
-  network: RedemptionNetwork;
-  payoutAddress: string;
-  signature?: string;
-  idempotencyKey?: string;
-}
-
-export interface CreateRedemptionResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptionId?: string;
-  quote?: Record<string, unknown>;
-  warnings?: string[];
-  message?: string;
-  error?: string;
-}
-
-export interface ListRedemptionsResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptions: Array<Record<string, unknown>>;
-  paused?: boolean;
-}
-
 export interface RedemptionBalanceResponse extends Record<string, unknown> {
   success: boolean;
   balance?: Record<string, unknown>;
   earningsBySource?: Array<Record<string, unknown>>;
   recentEarnings?: Array<Record<string, unknown>>;
   error?: string;
-}
-
-export interface RedemptionQuoteResponse extends Record<string, unknown> {
-  success: boolean;
-  quote?: Record<string, unknown>;
-  canRedeem?: boolean;
-  availableNetworks?: string[];
-  error?: string;
-}
-
-export interface RedemptionStatusResponse extends Record<string, unknown> {
-  success: boolean;
-  operational?: boolean;
-  canRedeem?: boolean;
-  message?: string;
-  availableNetworks?: string[];
-  unavailableNetworks?: string[];
-  wallets?: Record<string, unknown>;
-  networks?: Array<Record<string, unknown>>;
-  warnings?: string[];
-  lastChecked?: string;
 }
 
 export interface AppEarningsResponse extends Record<string, unknown> {
@@ -758,6 +720,9 @@ export type AppReviewStatus =
   | "approved"
   | "rejected";
 
+/** Provisioning lifecycle of an app-owned database. */
+export type UserDatabaseStatus = "none" | "provisioning" | "ready" | "error";
+
 /** Discord social-automation config stored on an app (jsonb column). */
 export interface AppDiscordAutomation {
   enabled: boolean;
@@ -856,6 +821,10 @@ export interface AppDto {
   telegram_automation: AppTelegramAutomation | null;
   twitter_automation: AppTwitterAutomation | null;
   promotional_assets: AppPromotionalAsset[] | null;
+  user_database_status: UserDatabaseStatus;
+  user_database_uri: string | null;
+  user_database_region: string | null;
+  user_database_error: string | null;
   email_notifications: boolean | null;
   response_notifications: boolean | null;
   is_active: boolean;

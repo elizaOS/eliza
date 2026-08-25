@@ -208,14 +208,11 @@ function MediaFilterChip({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="compact"
+      align="start"
+      data-state={isActive ? "on" : "off"}
       aria-current={isActive ? "page" : undefined}
-      className={`h-auto min-h-[2.25rem] rounded-sm px-3 py-2 text-left text-xs-tight font-semibold transition-colors ${
-        isActive
-          ? "bg-accent/14 text-txt-strong"
-          : "bg-bg/35 text-muted hover:bg-bg-hover hover:text-txt"
-      }`}
       onClick={() => onSelect(chip)}
       {...agentProps}
     >
@@ -599,11 +596,10 @@ export function MediaGalleryView({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="rounded-sm"
                   data-testid="media-download"
                   onClick={() => void handleDownloadSelected()}
                 >
-                  <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                  <Download className="mr-1.5 size-4" aria-hidden />
                   {t("mediagalleryview.Download", {
                     defaultValue: "Download",
                   })}
@@ -613,11 +609,10 @@ export function MediaGalleryView({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="rounded-sm"
                     data-testid="media-share"
                     onClick={() => void handleShareSelected()}
                   >
-                    <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+                    <Share2 className="mr-1.5  size-4" aria-hidden />
                     {t("mediagalleryview.Share", {
                       defaultValue: "Share",
                     })}
@@ -634,7 +629,9 @@ export function MediaGalleryView({
                 <img
                   src={normalizeMediaUrl(selectedItem.url)}
                   alt={selectedItem.filename}
-                  className="max-h-[32rem] max-w-full rounded-sm object-contain"
+                  width={512}
+                  height={512}
+                  className="max-h-[32rem] w-auto max-w-full rounded-sm object-contain"
                 />
               ) : selectedItem.type === "video" ? (
                 <video

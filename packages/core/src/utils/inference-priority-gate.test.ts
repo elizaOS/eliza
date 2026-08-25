@@ -13,7 +13,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	applyBackgroundInferenceBudget,
-	clampBackgroundPrompt,
 	getInferencePriorityGate,
 	InferenceBackgroundWaitTimeoutError,
 	InferencePriorityGate,
@@ -243,24 +242,20 @@ describe("device-class background budget (#11760 seam)", () => {
 		).toBeNull();
 	});
 
-	it("constrained budget is tighter than standard on every axis", () => {
+	it("constrained devices use a shorter queue wait without an output budget", () => {
 		const constrained = resolveBackgroundInferenceBudget("constrained");
 		const standard = resolveBackgroundInferenceBudget("standard");
-		expect(constrained.maxTokens).toBeLessThan(standard.maxTokens);
-		expect(constrained.maxPromptChars).toBeLessThan(standard.maxPromptChars);
 		expect(constrained.lockWaitMs).toBeLessThan(standard.lockWaitMs);
+		expect(constrained).not.toHaveProperty("maxTokens");
+		expect(standard).not.toHaveProperty("maxTokens");
 	});
 
-	it("clamps the observed poison job (11k-char prompt, maxTokens 8192) on a constrained device", () => {
+	it("preserves a large explicit output request", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
-		const prompt = "<start_of_turn>system\n".padEnd(11_169, "x");
-		const result = applyBackgroundInferenceBudget(
-			{ prompt, maxTokens: 8_192 },
-			budget,
-		);
-		expect(result.prompt.length).toBeLessThanOrEqual(budget.maxPromptChars);
-		expect(result.maxTokens).toBe(budget.maxTokens);
-		expect(result.clamped).toHaveLength(2);
+		const prompt = "<start_of_turn>system\n".padEnd(150_000, "x");
+		expect(
+			applyBackgroundInferenceBudget({ prompt, maxTokens: 8_192 }, budget),
+		).toEqual({ prompt, maxTokens: 8_192, clamped: [] });
 	});
 
 	it("never clamps a request already inside the budget", () => {
@@ -274,24 +269,13 @@ describe("device-class background budget (#11760 seam)", () => {
 		expect(result.clamped).toEqual([]);
 	});
 
-	it("defaults maxTokens to the budget cap when the caller left it unset", () => {
+	it("keeps the provider output boundary omitted when the caller omitted it", () => {
 		const budget = resolveBackgroundInferenceBudget("constrained");
-		const result = applyBackgroundInferenceBudget(
-			{ prompt: "p", maxTokens: undefined },
-			budget,
-		);
-		expect(result.maxTokens).toBe(budget.maxTokens);
-		expect(result.clamped).toEqual([]);
-	});
-
-	it("middle-truncation preserves the prompt head and the generation suffix", () => {
-		const head = "<start_of_turn>system\nYou are Eliza.";
-		const tail = "latest context<end_of_turn>\n<start_of_turn>model\n";
-		const prompt = head + "m".repeat(10_000) + tail;
-		const clamped = clampBackgroundPrompt(prompt, 4_000);
-		expect(clamped.length).toBeLessThanOrEqual(4_000);
-		expect(clamped.startsWith("<start_of_turn>system\n")).toBe(true);
-		expect(clamped.endsWith("<start_of_turn>model\n")).toBe(true);
-		expect(clamped).toContain("middle truncated");
+		expect(
+			applyBackgroundInferenceBudget(
+				{ prompt: "p", maxTokens: undefined },
+				budget,
+			),
+		).toEqual({ prompt: "p", maxTokens: undefined, clamped: [] });
 	});
 });

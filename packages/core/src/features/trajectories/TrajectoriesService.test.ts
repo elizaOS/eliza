@@ -88,7 +88,7 @@ describe("TrajectoriesService", () => {
 		await service.stop();
 	});
 
-	it("persists LLM calls with bounded JSON-safe payloads", async () => {
+	it("persists complete JSON-safe model request and response payloads", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000010";
 		const stepId = "00000000-0000-4000-8000-000000000011";
 		const runtimeSecret = "SYNTH-CORE-DB-RUNTIME-SECRET-1111";
@@ -130,6 +130,10 @@ describe("TrajectoriesService", () => {
 			},
 		};
 		circular.self = circular;
+		let deepArgs: Record<string, unknown> = { final: "FINAL-DEPTH-CANARY" };
+		for (let depth = 30; depth >= 1; depth -= 1) {
+			deepArgs = { child: deepArgs };
+		}
 
 		service.logLlmCall({
 			stepId,
@@ -146,16 +150,25 @@ describe("TrajectoriesService", () => {
 				{
 					role: "assistant",
 					content: `--token=${flagCanary} ${runtimeSecret} ${"m".repeat(120_000)}`,
-					circular,
 				},
 			],
-			tools: { circular },
+			tools: [
+				{
+					name: "CANARY_TOOL",
+					description: "complete schema",
+					parameters: {
+						type: "object",
+						properties: { target: { type: "string" } },
+					},
+				},
+			],
 			toolCalls: [
 				{
 					id: "call-1",
 					name: "CANARY_TOOL",
 					args: {
 						target: `https://user:${uriCanary}@synthetic.invalid/`,
+						deep: deepArgs,
 					},
 				},
 			],
@@ -182,7 +195,6 @@ describe("TrajectoriesService", () => {
 		await service.flushWriteQueue(trajectoryId);
 
 		expect(updates).toHaveLength(1);
-		expect(updates[0].length).toBeLessThan(350_000);
 
 		const persisted = JSON.parse(row.steps_json);
 		const persistedJson = JSON.stringify(persisted);
@@ -190,9 +202,15 @@ describe("TrajectoriesService", () => {
 		expect(persistedJson).not.toContain(flagCanary);
 		expect(persistedJson).not.toContain(uriCanary);
 		const call = persisted[0].llmCalls[0];
-		expect(call.messages[0].content).toMatch(/\.{3}\[truncated\]$/);
-		expect(call.tools.circular.self).toBe("[REDACTED]");
-		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
+		// A recorded model call is training/evaluation input: CLAUDE.md forbids
+		// compacting or truncating it, so the 120k-character message body is
+		// persisted whole (only the secret canaries are redacted).
+		expect(call.messages[0].content).not.toContain("[truncated]");
+		expect(call.messages[0].content).toContain("m".repeat(120_000));
+		expect(call.tools[0].name).toBe("CANARY_TOOL");
+		expect(JSON.stringify(call.toolCalls[0].args.deep)).toContain(
+			"FINAL-DEPTH-CANARY",
+		);
 		expect(call.providerMetadata.self).toBe("[REDACTED]");
 		expect(call.providerOrder).toEqual(["CHARACTER"]);
 		expect(call.runId).toBe("run-identity-1");
@@ -504,7 +522,7 @@ describe("TrajectoriesService", () => {
 		});
 	});
 
-	it("keeps the step envelope readable when payload exhausts the sanitization budget", async () => {
+	it("keeps the step envelope readable across repeated oversized planner captures", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000040";
 		const stepId = "00000000-0000-4000-8000-000000000041";
 		const row = makeTrajectoryRow(trajectoryId, stepId);
@@ -529,10 +547,11 @@ describe("TrajectoriesService", () => {
 			return { rows: [], columns: [] };
 		};
 
-		// Two planner-style calls whose tool schemas together cross the shared
-		// node budget at write time — the live incident shape (2026-08-10: the
-		// second call's tools broke out of the step object mid-walk and the
-		// dropped trailing keys made every subsequent read of the row throw).
+		// Two planner-style calls carrying large tool schemas — the live incident
+		// shape (2026-08-10: the second call's tools broke out of the step object
+		// mid-walk and the dropped trailing keys made every subsequent read of the
+		// row throw). Sanitization is now lossless, so both calls persist whole
+		// and the envelope's required keys are always written.
 		const bigTools = Array.from({ length: 200 }, (_, i) => ({
 			name: `tool${i}`,
 			description: "d",
@@ -572,7 +591,10 @@ describe("TrajectoriesService", () => {
 		expect(afterOverflow[0].reward).toBe(0);
 		expect(afterOverflow[0].done).toBe(false);
 		expect(Array.isArray(afterOverflow[0].providerAccesses)).toBe(true);
-		expect(afterOverflow[0].metadata.truncatedLlmCalls).toBe(1);
+		// No call is dropped, so no truncation counter is minted.
+		expect(afterOverflow[0].llmCalls).toHaveLength(2);
+		expect(afterOverflow[0].llmCalls[1].tools).toHaveLength(bigTools.length);
+		expect(afterOverflow[0].metadata?.truncatedLlmCalls).toBeUndefined();
 
 		// The row must still accept captures — pre-fix this write was lost to
 		// TRAJECTORY_ROW_INVALID and the trajectory could never terminalize.
@@ -580,10 +602,10 @@ describe("TrajectoriesService", () => {
 		await service.flushWriteQueue(trajectoryId);
 
 		const persisted = JSON.parse(row.steps_json);
-		expect(persisted[0].llmCalls).toHaveLength(2);
+		expect(persisted[0].llmCalls).toHaveLength(3);
 		expect(persisted[0].reward).toBe(0);
 		expect(persisted[0].done).toBe(false);
-		expect(persisted[0].metadata.truncatedLlmCalls).toBe(1);
+		expect(persisted[0].metadata?.truncatedLlmCalls).toBeUndefined();
 	});
 
 	it("reads legacy rows whose steps lost trailing keys to budget truncation", async () => {
@@ -655,5 +677,202 @@ describe("TrajectoriesService", () => {
 		expect(persisted[0].reward).toBe(0);
 		expect(persisted[0].done).toBe(false);
 		expect(persisted[0].providerAccesses).toEqual([]);
+	});
+
+	it("persists recorder decision stages onto the step and stays idempotent per stageId", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000060";
+		const stepId = "00000000-0000-4000-8000-000000000061";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const service = new TrajectoriesService(createRuntimeWithoutSql());
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		const updates: string[] = [];
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				updates.push(sqlText);
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) row.steps_json = stepsJson;
+			}
+			return { rows: [], columns: [] };
+		};
+
+		const stage = {
+			stageId: "stage-tool-search-60",
+			kind: "toolSearch" as const,
+			iteration: 1,
+			startedAt: 100,
+			endedAt: 112,
+			latencyMs: 12,
+			toolSearch: {
+				query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+				results: [
+					{ name: "OWNER_ROUTINES", score: 0.4, rank: 1 },
+					{ name: "VIEWS", score: 0.2, rank: 2 },
+				],
+				selectedActions: ["OWNER_ROUTINES"],
+			},
+		};
+
+		service.logSemanticStage({ stepId, stage });
+		service.logSemanticStage({ stepId, stage });
+		await service.flushWriteQueue(trajectoryId);
+
+		expect(updates).toHaveLength(1);
+		const persisted = JSON.parse(row.steps_json);
+		expect(persisted[0].semanticStages).toHaveLength(1);
+		expect(persisted[0].semanticStages[0]).toMatchObject({
+			schemaVersion: 1,
+			stageId: "stage-tool-search-60",
+			kind: "toolSearch",
+			latencyMs: 12,
+			payload: {
+				toolSearch: { selectedActions: ["OWNER_ROUTINES"] },
+			},
+		});
+		// The persisted row must round-trip through the strict step reader.
+		const readBack = await (
+			service as unknown as {
+				getTrajectoryById: (
+					id: string,
+				) => Promise<{ steps: Array<Record<string, unknown>> } | null>;
+			}
+		).getTrajectoryById(trajectoryId);
+		expect(readBack?.steps[0].semanticStages).toHaveLength(1);
+	});
+
+	it("never writes a stage run the strict step reader cannot decode back", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000070";
+		const stepId = "00000000-0000-4000-8000-000000000071";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const reported: string[] = [];
+		const runtime = {
+			...createRuntimeWithoutSql(),
+			reportError: (scope: string) => {
+				reported.push(scope);
+			},
+		} as IAgentRuntime;
+		const service = new TrajectoriesService(runtime);
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) row.steps_json = stepsJson;
+			}
+			return { rows: [], columns: [] };
+		};
+
+		// Each of these stages validates individually with a fresh budget, but the
+		// read path decodes the whole array against one shared budget. Writing
+		// enough of them used to produce a row that `getTrajectoryById` rejects
+		// wholesale as TRAJECTORY_ROW_INVALID — taking every other step with it,
+		// and making the row unwritable. The write path must refuse first.
+		for (let index = 0; index < 250; index += 1) {
+			service.logSemanticStage({
+				stepId,
+				stage: {
+					stageId: `stage-tool-${index}`,
+					kind: "toolSearch" as const,
+					iteration: index,
+					startedAt: 100 + index,
+					endedAt: 112 + index,
+					latencyMs: 12,
+					toolSearch: {
+						query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+						// A realistic 10-candidate search. At this payload size the
+						// shared read budget is exhausted around 103 stages, far under
+						// the 250 the writer will accept.
+						results: Array.from({ length: 10 }, (_unused, rank) => ({
+							name: `ACTION_${rank}`,
+							score: 0.4,
+							rank: rank + 1,
+						})),
+						selectedActions: ["ACTION_0"],
+					},
+				},
+			});
+		}
+		// The turn's persistence barrier must survive: `flushWriteQueue` rethrows
+		// the queued write (J2), so a stage bound must never land in that queue.
+		await expect(
+			service.flushWriteQueue(trajectoryId),
+		).resolves.toBeUndefined();
+
+		// Whatever was accepted must read back cleanly — no throw, no poisoned row.
+		const readBack = await (
+			service as unknown as {
+				getTrajectoryById: (id: string) => Promise<{
+					steps: Array<{ semanticStages?: unknown[] }>;
+				} | null>;
+			}
+		).getTrajectoryById(trajectoryId);
+		expect(readBack).not.toBeNull();
+		const written = readBack?.steps[0].semanticStages ?? [];
+		expect(written.length).toBeGreaterThan(0);
+		// Anything the budget refused is a J7 diagnostic, never a silent corrupt
+		// write and never a thrown turn.
+		if (written.length < 250) {
+			expect(reported.length).toBeGreaterThan(0);
+		}
+	});
+
+	it("reports an invalid decision stage under J7 instead of persisting garbage", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000062";
+		const stepId = "00000000-0000-4000-8000-000000000063";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const reported: string[] = [];
+		const runtime = {
+			...createRuntimeWithoutSql(),
+			reportError: (scope: string) => {
+				reported.push(scope);
+			},
+		} as IAgentRuntime;
+		const service = new TrajectoriesService(runtime);
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		const updates: string[] = [];
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) updates.push(sqlText);
+			return { rows: [], columns: [] };
+		};
+
+		service.logSemanticStage({
+			stepId,
+			stage: {
+				stageId: "bad-stage",
+				kind: "toolSearch",
+				startedAt: 10,
+				endedAt: 5,
+				latencyMs: -5,
+			},
+		});
+		await service.flushWriteQueue(trajectoryId);
+
+		expect(updates).toHaveLength(0);
+		expect(reported).toContain("TrajectoriesService.detachedWrite");
 	});
 });

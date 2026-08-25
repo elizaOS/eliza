@@ -19,6 +19,7 @@ import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
+import { agentNodeIncarnationHistories } from "../../db/schemas/agent-node-incarnation-histories";
 import {
   type AgentSandboxBackup,
   agentSandboxes,
@@ -332,6 +333,7 @@ beforeAll(async () => {
       apiKeys,
       usageRecords,
       generations,
+      agentNodeIncarnationHistories,
       dockerNodes,
       agentSandboxes,
       jobs,
@@ -1646,6 +1648,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         user_id: seeded.actorUserId,
         agent_name: "Warm Claim Canary",
         status: "pending",
+        execution_tier: "dedicated-always",
       },
       {
         id: poolRowId,

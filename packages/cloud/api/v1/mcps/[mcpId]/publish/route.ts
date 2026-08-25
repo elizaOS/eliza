@@ -37,7 +37,7 @@ async function __hono_POST(
   });
 
   return Response.json({
-    mcp,
+    mcp: userMcpsService.toApiMcp(mcp),
     message:
       "MCP published successfully. It is now discoverable in the registry.",
   });
@@ -65,7 +65,7 @@ async function __hono_DELETE(
   });
 
   return Response.json({
-    mcp,
+    mcp: userMcpsService.toApiMcp(mcp),
     message: "MCP unpublished. It is no longer discoverable in the registry.",
   });
 }

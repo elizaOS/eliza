@@ -147,7 +147,7 @@ bun run --cwd packages/ui clean
 
 ## Testing
 
-The UI has four complementary layers. Prefer the cheapest layer that can catch a
+The UI has three complementary layers. Prefer the cheapest layer that can catch a
 given class of bug; reach for the heavier ones when behaviour or pixels matter.
 
 1. **Unit / component (`test`, vitest + jsdom).** Co-locate `*.test.tsx` with the
@@ -156,29 +156,21 @@ given class of bug; reach for the heavier ones when behaviour or pixels matter.
    `test/determinism.ts` (`withFrozenClock()`, `withSeededRandom()`) so renders
    are reproducible. Runs in CI via `test:client`.
 
-2. **Determinism lint (`audit:ui-determinism`, repo root).** A TS-AST gate that
-   fails CI on **new** render-time nondeterminism — `Date.now()`, `new Date()`,
-   `Math.random()`, `crypto.randomUUID()`, locale-defaulted `toLocale*` in a
-   component/hook render path (the root cause of flaky screenshots). It classifies
-   by execution context, so effect/handler/timer usage is fine. Existing backlog
-   is tracked in `packages/scripts/ui-determinism-baseline.json`; if a new
-   occurrence is intentional, run `audit:ui-determinism:update` and commit the
-   baseline. The repository `verify` command runs in `.github/workflows/ci.yml`.
-
-3. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
+2. **Story gate (`audit:stories`, `test/story-gate/`).** Renders **every**
    Storybook story in headless Chromium and HARD-fails on a story that throws,
-   renders blank, or raises a pageerror; console errors + serious/critical axe
-   a11y violations are enforced once their baselines are populated. A determinism
-   shim (frozen clock / seeded RNG / en-US-UTC / animations off) makes every
-   screenshot byte-stable. App-context-dependent stories are classified soft
-   `needs-runtime` (covered live by `audit:app`), not failed. Build the catalog
-   first (`build-storybook --output-dir storybook-static`), then run the gate
-   when reviewing story or design-system changes. Reusable helpers:
+   renders blank, or raises a pageerror. Console errors that remain after the
+   static-harness noise filters and serious or critical axe violations fail
+   directly; there is no per-story allowlist or baseline. A
+   determinism shim (frozen clock / seeded RNG / en-US-UTC / animations off)
+   makes every screenshot byte-stable. App-context-dependent stories are
+   classified soft `needs-runtime` (covered live by `audit:app`), not failed.
+   Build the catalog first (`build-storybook --output-dir storybook-static`),
+   then run the gate when reviewing story or design-system changes. Reusable helpers:
    `determinism-shim.mjs` and `log-capture.mjs`
    (durable frontend console/network artifact, wired per story into
    `output/frontend-logs.json`).
 
-4. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
+3. **Isolated browser e2e (`test:*-e2e`, `src/**/__e2e__/`).** esbuild-bundle a
    fixture → headless Chromium for gesture/animation/flow coverage no jsdom can
    reach (chat sheet detents, home screen, onboarding, agent surface). Author one
    when a behaviour depends on real layout, pointer events, or timing.
@@ -187,6 +179,31 @@ Every new story automatically gains story-gate coverage; a new interactive
 component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app` and `audit:cloud` in `packages/app`).
+
+Story presence is also checked against
+`scripts/stories-coverage-baseline.json`. `node scripts/stories-coverage.mjs
+--check` fails when the covered-component count or coverage ratio falls, or
+when a component newly appears in the missing-story set.
+
+### Design validation
+
+Design contracts are validated on rendered Storybook and application surfaces.
+Do not add source-text tests for CSS classes, color literals, component names,
+or other implementation tokens; those checks do not prove the resulting pixels
+or interaction behavior. The external `react-doctor design` diagnostics remain
+available behind a repo-root ratchet for redundant
+utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
+hover-only reveals, and similar problems:
+
+```bash
+bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
+bun run audit:design:update-baseline  # ratchet the baseline down after a cleanup PR
+```
+
+The baseline lives in `packages/scripts/design-doctor-baseline.json`; like the
+brand-token ratchet, counts may only decrease. The runner executes npx from a
+temp cwd because the repo root `overrides` conflict with react-doctor's own
+dependency tree.
 
 ### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
 
@@ -264,9 +281,7 @@ This package mostly reads config injected by the host, not raw env vars:
 - **Add a mutating control to a builtin view:** every on-screen mutation in
   `components/pages/`, `components/settings/`, or `components/character/` must
   have a registered agent-action twin ("views display, chat controls" — voice
-  has no DOM to click). The per-view handler baseline in
-  `src/testing/builtin-view-action-ratchet.ts` covers local handler growth per
-  view. Prefer adding or extending the semantic action; the generic
+  has no DOM to click). Prefer adding or extending the semantic action; the generic
   `useAgentElement` bridge is for third-party plugin views only.
 - **Add a Cloud console component:** add under `cloud-ui/components/` and export
   from `cloud-ui/index.ts`; it ships under the `@elizaos/ui/cloud-ui` subpath.
@@ -302,15 +317,10 @@ This package mostly reads config injected by the host, not raw env vars:
   shimmer and spinner for thinking, tool work, and speaking so transport-phase
   changes do not flash the app accent. Preserve its `motion-reduce` fallback
   when changing the status treatment.
-- **Builtin view mutations need semantic action twins.** First-party shell views
-  are covered by `src/testing/builtin-view-action-ratchet.ts`: every local
-  mutation site in the baseline either maps to a semantic action (`SETTINGS`,
-  `SCHEDULED_TASKS`, `BACKGROUND`, etc.) or is explicitly exempt as a diagnostic
-  view. When adding a button/filter/toggle/form handler to a builtin view, add or
-  reuse the action first, then update the ratchet baseline with the reason. The
-  per-site twin mapping (typed-client writes → action ids) is enforced by the
-  repo-level gate — see "Add a mutating control to a builtin view" in the
-  how-to list above.
+- **Local-agent prompt integrity.** The iOS in-renderer compatibility kernel forwards the complete conversation and does not add reply-token caps to local or Cloud generation. Native decode-boundary exhaustion must be rejected rather than displayed as a completed response.
+- **Builtin view mutations need semantic action twins.** When adding a
+  button/filter/toggle/form handler to a builtin view, add or reuse the owning
+  action first; see "Add a mutating control to a builtin view" above.
 - Type root `src/types/index.ts` re-exports from `@elizaos/shared/types`; keep
   shared transport/domain types there rather than redefining them here.
 - **Files / attachments.** The "Files" tab (`components/pages/FilesView.tsx`,

@@ -14,10 +14,6 @@ import type {
 } from "@elizaos/core";
 import { createAppControlClient } from "../client/api.js";
 
-const MAX_LISTED = 30;
-const MAX_RUNS_RETURNED = 30;
-const MAX_ORPHAN_RUNS = 10;
-
 const SNAPSHOT_TTL_MS = 45_000;
 
 interface AvailableAppsSnapshot {
@@ -85,8 +81,7 @@ async function fetchAvailableApps(): Promise<ProviderResult> {
 		runsByApp.set(run.appName, (runsByApp.get(run.appName) ?? 0) + 1);
 	}
 
-	const listedInstalled = installed.slice(0, MAX_LISTED);
-	const overflow = installed.length - listedInstalled.length;
+	const listedInstalled = installed;
 
 	const lines: string[] = [];
 	lines.push("available_apps:");
@@ -104,16 +99,13 @@ async function fetchAvailableApps(): Promise<ProviderResult> {
 				`  ${app.name},${app.displayName},${app.pluginName},${running}`,
 			);
 		}
-		if (overflow > 0) {
-			lines.push(`truncated: ${overflow}`);
-		}
 	} else {
 		lines.push("apps[0]:");
 	}
 
-	const orphanRuns = runs
-		.filter((r) => !installed.some((app) => app.name === r.appName))
-		.slice(0, MAX_ORPHAN_RUNS);
+	const orphanRuns = runs.filter(
+		(r) => !installed.some((app) => app.name === r.appName),
+	);
 	if (orphanRuns.length > 0) {
 		lines.push(
 			`otherRuns[${orphanRuns.length}]{runId,appName,displayName,status}:`,
@@ -135,8 +127,8 @@ async function fetchAvailableApps(): Promise<ProviderResult> {
 		data: {
 			status: "ready",
 			installed: listedInstalled,
-			runs: runs.slice(0, MAX_RUNS_RETURNED),
-			truncated: overflow > 0,
+			runs,
+			truncated: false,
 		},
 	};
 }

@@ -1,6 +1,6 @@
 /**
  * Per-framework coding-agent settings panel — the tabbed configuration surface
- * (elizaOS, Pi Agent, OpenCode, Claude, Codex) for auth, model, and
+ * (elizaOS, Pi Agent, Claude, Codex) for auth, model, and
  * approval-preset settings. Fills the `@elizaos/ui` settings-section slot and
  * composes AgentTabsSection, GlobalPrefsSection, LlmProviderSection,
  * ModelConfigSection, and GitHubConnectionCard. Preferences persist through the
@@ -46,7 +46,7 @@ function AgentAdvancedSettingsDisclosure({
   children: ReactNode;
 }) {
   return (
-    <details className="group px-1 py-1">
+    <details className="group p-1">
       <summary className="cursor-pointer select-none list-none text-xs font-medium text-muted transition-colors hover:text-txt">
         Defaults and workspace
       </summary>
@@ -99,7 +99,7 @@ export function CodingAgentSettingsSection() {
         if (cloud.apiKey) {
           loaded._CLOUD_API_KEY = cloud.apiKey;
         }
-        for (const agent of ["CLAUDE", "CODEX", "OPENCODE"] as const) {
+        for (const agent of ["CLAUDE", "CODEX"] as const) {
           const prefix = `ELIZA_${agent}`;
           if (env[`${prefix}_MODEL_POWERFUL`]) {
             loaded[`${prefix}_MODEL_POWERFUL`] =
@@ -125,9 +125,6 @@ export function CodingAgentSettingsSection() {
           "OPENAI_API_KEY",
           "ANTHROPIC_BASE_URL",
           "OPENAI_BASE_URL",
-          "ELIZA_OPENCODE_API_KEY",
-          "ELIZA_OPENCODE_BASE_URL",
-          "ELIZA_OPENCODE_LOCAL",
         ] as const) {
           if (env[key]) loaded[key] = env[key];
         }
@@ -416,7 +413,7 @@ export function CodingAgentSettingsSection() {
                   </div>
                   {preflight?.installCommand ? (
                     <code className="inline-flex max-w-full items-center gap-1 truncate text-2xs text-muted-strong">
-                      <Terminal className="h-3 w-3 shrink-0" aria-hidden />
+                      <Terminal className="size-3 shrink-0" aria-hidden />
                       <span className="truncate">
                         {preflight.installCommand}
                       </span>
@@ -428,11 +425,11 @@ export function CodingAgentSettingsSection() {
                     href={preflight.docsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-bg-hover hover:text-txt"
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-bg-hover hover:text-txt"
                     aria-label={`${AGENT_LABELS[agent]} docs`}
                     title={`${AGENT_LABELS[agent]} docs`}
                   >
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                    <ExternalLink className="size-3.5" aria-hidden />
                   </a>
                 ) : null}
               </div>

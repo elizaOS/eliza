@@ -1,13 +1,12 @@
 /**
- * Deterministic unit coverage for getRandomInterval's env parsing: negative
- * TWITTER_*_INTERVAL values must fall back like NaN instead of surviving the
- * min < max guard and collapsing the scheduler's setTimeout delay to ~0.
- * Fake runtime whose getSetting reads a map; Math.random is stubbed.
+ * Deterministic production-boundary coverage for plugin-x interval parsing.
+ * A fake runtime supplies settings while the real configuration validator and
+ * scheduler helper reject partial or zero interval magnitudes.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getRandomInterval } from "./environment";
+import { getRandomInterval, validateTwitterConfig } from "./environment";
 
 function makeRuntime(settings: Record<string, string>): IAgentRuntime {
   return {
@@ -32,8 +31,7 @@ describe("getRandomInterval", () => {
     expect(interval).toBe(135);
   });
 
-  it("treats a negative min like NaN so the interval clamps to [0, max] instead of going negative", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.5);
+  it("ignores a negative min instead of treating it as 0 and drawing in [0, max]", () => {
     const interval = getRandomInterval(
       makeRuntime({
         TWITTER_POST_INTERVAL_MIN: "-9999999",
@@ -41,8 +39,7 @@ describe("getRandomInterval", () => {
       }),
       "post",
     );
-    expect(interval).toBe(90);
-    expect(interval).toBeGreaterThanOrEqual(0);
+    expect(interval).toBe(120);
   });
 
   it("falls back to the fixed interval when both bounds are negative", () => {
@@ -71,5 +68,84 @@ describe("getRandomInterval", () => {
       "post",
     );
     expect(interval).toBe(120);
+  });
+
+  it.each(["1h", "90s", "120min", "12.5", "1e3", "0", "+120", " 120 min"])(
+    "rejects partial or zero interval %p and uses the documented default",
+    (value) => {
+      const interval = getRandomInterval(
+        makeRuntime({ TWITTER_POST_INTERVAL: value }),
+        "post",
+      );
+      expect(interval).toBe(120);
+    },
+  );
+
+  it("still accepts a whitespace-padded whole minute count", () => {
+    const interval = getRandomInterval(
+      makeRuntime({ TWITTER_POST_INTERVAL: "  90  " }),
+      "post",
+    );
+    expect(interval).toBe(90);
+  });
+});
+
+describe("validateTwitterConfig interval settings", () => {
+  const intervalDefaults = {
+    TWITTER_DM_POLL_INTERVAL_SECONDS: "60",
+    TWITTER_POST_INTERVAL: "120",
+    TWITTER_POST_INTERVAL_MIN: "90",
+    TWITTER_POST_INTERVAL_MAX: "180",
+    TWITTER_ENGAGEMENT_INTERVAL: "30",
+    TWITTER_ENGAGEMENT_INTERVAL_MIN: "20",
+    TWITTER_ENGAGEMENT_INTERVAL_MAX: "40",
+    TWITTER_DISCOVERY_INTERVAL_MIN: "15",
+    TWITTER_DISCOVERY_INTERVAL_MAX: "30",
+  } as const;
+
+  it.each(
+    Object.entries(intervalDefaults).flatMap(([key, defaultValue]) =>
+      ["1h", "0", "12.5", "1e3"].map((value) => [key, value, defaultValue]),
+    ),
+  )(
+    "rejects invalid %s value %s at the public configuration boundary",
+    async (key, value, defaultValue) => {
+      const config = await validateTwitterConfig(
+        makeRuntime({
+          TWITTER_AUTH_MODE: "broker",
+          TWITTER_BROKER_TOKEN: "test-token",
+          [key]: value,
+        }),
+      );
+      expect(config[key as keyof typeof intervalDefaults]).toBe(defaultValue);
+    },
+  );
+
+  it("accepts whitespace-padded whole interval values", async () => {
+    const config = await validateTwitterConfig(
+      makeRuntime({
+        TWITTER_AUTH_MODE: "broker",
+        TWITTER_BROKER_TOKEN: "test-token",
+        TWITTER_DM_POLL_INTERVAL_SECONDS: "  15  ",
+        TWITTER_POST_INTERVAL: "  90  ",
+      }),
+    );
+    expect(config.TWITTER_DM_POLL_INTERVAL_SECONDS).toBe("15");
+    expect(config.TWITTER_POST_INTERVAL).toBe("90");
+  });
+
+  it("does not widen the interval fix to zero-valued non-interval settings", async () => {
+    const config = await validateTwitterConfig(
+      makeRuntime({
+        TWITTER_AUTH_MODE: "broker",
+        TWITTER_BROKER_TOKEN: "test-token",
+        TWITTER_MAX_ENGAGEMENTS_PER_RUN: "0",
+        TWITTER_MAX_TWEET_LENGTH: "0",
+        TWITTER_RETRY_LIMIT: "0",
+      }),
+    );
+    expect(config.TWITTER_MAX_ENGAGEMENTS_PER_RUN).toBe("0");
+    expect(config.TWITTER_MAX_TWEET_LENGTH).toBe("0");
+    expect(config.TWITTER_RETRY_LIMIT).toBe("0");
   });
 });

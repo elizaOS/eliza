@@ -25,6 +25,8 @@ import type {
 } from "@elizaos/core";
 import { logger, satisfiesRoleGate } from "@elizaos/core";
 
+import { tryCanonicalizeJson } from "./tool-call-cache/key.ts";
+
 // ---------------------------------------------------------------------------
 // Sensitivity classification
 // ---------------------------------------------------------------------------
@@ -92,28 +94,44 @@ function loadCheckSenderRole() {
   return roleCheckLoader;
 }
 
-function stableStringify(value: unknown): string {
-  if (value === undefined) {
-    return "undefined";
-  }
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value) ?? String(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
-    .join(",")}}`;
-}
-
-function liveRoleMetadataKey(message: Memory): string {
+/**
+ * Canonical dedup key for the live connector metadata this message's role
+ * decision depends on, or `null` when the metadata cannot be canonicalized
+ * within budget.
+ *
+ * `message.metadata` is the connector-stamped identity blob (`roles.ts`
+ * `getConnectorMetadataFromMemory`) and nothing bounds its nesting:
+ * `MemoryMetadata`'s `CustomMetadata` arm is `[key: string]: MetadataValue`,
+ * and `agent-event-bridge.ts` reads whatever platform payload a connector
+ * stamped under `metadata.discord` / `.origin` / `.session` / `.sender`. The
+ * previous key was built by a local unbounded recursive walk, so an over-deep
+ * or cyclic blob RangeError'd here — before the role check, inside every gated
+ * provider's wrapped `get()`, so composeState dropped ALL of them and the
+ * owner's own sensitive context silently went empty. An enumerable getter in
+ * metadata also ran on this path, which a cache key cannot tolerate anyway
+ * (it makes the key non-deterministic).
+ *
+ * `tryCanonicalizeJson` is the repo's bounded canonical-TEXT walk, already
+ * merged and already used for exactly this job on the other untrusted cache
+ * boundary in this package (`tool-call-cache/key.ts`, #23428): depth, node,
+ * width, per-string and aggregate-byte budgets charged before allocation;
+ * path-local cycle detection so an honest DAG still canonicalizes;
+ * descriptor-only reflection so no getter or Proxy trap runs. Its text is
+ * byte-identical to the unbounded canonicalizer it replaced for every value
+ * within budget, so live keys do not move.
+ *
+ * A rejection is NOT a role decision. The caller falls back to the uncached
+ * path it already has for messages with no entity/room, so an out-of-budget
+ * blob costs one extra role lookup and can never change, skip, or reuse a
+ * gate result.
+ */
+function liveRoleMetadataKey(message: Memory): string | null {
   const source =
     typeof message.content.source === "string" ? message.content.source : "";
   const metadata = (message as Memory & { metadata?: unknown }).metadata;
-  return stableStringify({ metadata, source });
+  const canonical = tryCanonicalizeJson({ metadata, source });
+  if (!canonical.ok || canonical.canonical === undefined) return null;
+  return canonical.canonical;
 }
 
 async function fetchSenderRole(
@@ -131,13 +149,15 @@ async function getCachedSenderRole(
 ): Promise<RoleCheckValue> {
   const entityId = message.entityId;
   const roomId = message.roomId;
-  if (!entityId || !roomId) {
+  const metadataKey = liveRoleMetadataKey(message);
+  // No dedup key means no dedup — never a skipped or reused gate decision.
+  if (!entityId || !roomId || metadataKey === null) {
     const checkSenderRole = await loadCheckSenderRole();
     const fresh = await checkSenderRole(runtime, message);
     return fresh ? { role: fresh.role } : null;
   }
 
-  const key = `${runtime.agentId}|${entityId}|${roomId}|${liveRoleMetadataKey(message)}`;
+  const key = `${runtime.agentId}|${entityId}|${roomId}|${metadataKey}`;
   let roleCheckInflight = roleCheckInflightByRuntime.get(runtime);
   if (!roleCheckInflight) {
     roleCheckInflight = new Map();

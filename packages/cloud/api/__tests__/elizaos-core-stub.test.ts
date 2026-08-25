@@ -1,18 +1,34 @@
-// Exercises cloud API tests elizaos core stub.test behavior with deterministic Worker route fixtures.
+/** Exercises Worker-safe core stub behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
+import {
+  groupResponsePrecedencePolicy as canonicalGroupResponsePrecedencePolicy,
+  registerResponsePolicy as canonicalRegisterResponsePolicy,
+} from "@elizaos/prompts";
 
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   fetchWithSsrfGuard,
+  getInferenceTimer,
+  groupResponsePrecedencePolicy,
   hasDocumentAugmentationEnvelope,
+  registerResponsePolicy,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
   stripAugmentationForPersistence,
+  stripHtmlRawTextElements,
+  toWellFormedUnicode,
 } from "../src/stubs/elizaos-core";
 
 describe("elizaos-core Worker stub", () => {
+  test("mirrors the pure response-policy prompts used by the native planner", () => {
+    expect(groupResponsePrecedencePolicy).toBe(
+      canonicalGroupResponsePrecedencePolicy,
+    );
+    expect(registerResponsePolicy).toBe(canonicalRegisterResponsePolicy);
+  });
+
   test("exports the Eliza Cloud default text model aliases used by plugin-elizacloud", () => {
     expect(DEFAULT_CEREBRAS_TEXT_MODEL).toBe("gemma-4-31b");
     expect(DEFAULT_ELIZA_CLOUD_TEXT_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
@@ -25,6 +41,19 @@ describe("elizaos-core Worker stub", () => {
     await expect(
       runWithTrajectoryPurpose("inbox_triage", async () => "ok"),
     ).resolves.toBe("ok");
+  });
+
+  test("exposes the Worker-safe empty inference timing context", () => {
+    expect(getInferenceTimer()).toBeUndefined();
+  });
+
+  test("re-exports canonical pure text sanitizers used by Worker consumers", () => {
+    expect(
+      stripHtmlRawTextElements(
+        "before<script><!--<script>hidden</script>still-hidden</script>after",
+      ),
+    ).toBe("before after");
+    expect(toWellFormedUnicode("before\ud83dafter")).toBe("before�after");
   });
 
   test("strips document augmentation before Worker-side persistence", () => {

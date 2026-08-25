@@ -34,6 +34,8 @@ import { SettingsView } from "./SettingsView";
 // their own tests). The useApp + section-registry mocks are the seams this
 // refactor must keep stable.
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+const bootConfigMock = vi.hoisted(() => ({ cloudOnly: false }));
+const electrobunRuntimeMock = vi.hoisted(() => ({ isElectrobun: false }));
 const permissionPrimingMock = vi.hoisted(() => ({
   calls: [] as Array<{ ids: string[]; open: boolean }>,
 }));
@@ -101,6 +103,18 @@ vi.mock("../../state", () => ({
     sel(appMock.value),
   useAppSelectorShallow: (sel: (value: Record<string, unknown>) => unknown) =>
     sel(appMock.value),
+}));
+
+vi.mock("../../config/boot-config-store", () => ({
+  getBootConfig: () => ({ branding: { cloudOnly: bootConfigMock.cloudOnly } }),
+}));
+
+vi.mock("../../bridge/electrobun-runtime", () => ({
+  isElectrobunRuntime: () => electrobunRuntimeMock.isElectrobun,
+}));
+
+vi.mock("../settings/cloud-panel/CloudSettingsPanel", () => ({
+  CloudSettingsPanel: () => <div data-testid="cloud-settings-panel" />,
 }));
 
 vi.mock("../views/ShellViewAgentSurface", () => ({
@@ -245,6 +259,8 @@ function hubRow(id: string): HTMLButtonElement {
 beforeEach(() => {
   window.history.replaceState(null, "", "/settings");
   appMock.value = makeContext();
+  bootConfigMock.cloudOnly = false;
+  electrobunRuntimeMock.isElectrobun = false;
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
 });
@@ -307,6 +323,37 @@ describe("SettingsView", () => {
       "Cloud Management",
     );
     expect(screen.queryByTestId("settings-hub-row-managed-hidden")).toBeNull();
+    expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
+  });
+
+  it("renders the consolidated panel only for cloud-only branding in the Electrobun shell", () => {
+    bootConfigMock.cloudOnly = true;
+    electrobunRuntimeMock.isElectrobun = true;
+
+    render(<SettingsView />);
+
+    expect(screen.getByTestId("cloud-settings-panel")).toBeTruthy();
+    expect(screen.queryByTestId("settings-hub-list")).toBeNull();
+  });
+
+  it("keeps cloud-only web runtimes on the legacy view", () => {
+    bootConfigMock.cloudOnly = true;
+    electrobunRuntimeMock.isElectrobun = false;
+
+    render(<SettingsView />);
+
+    expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
+  });
+
+  it("keeps modal settings on the legacy view in a cloud-only build", () => {
+    bootConfigMock.cloudOnly = true;
+    electrobunRuntimeMock.isElectrobun = true;
+
+    render(<SettingsView inModal />);
+
+    expect(screen.queryByTestId("cloud-settings-panel")).toBeNull();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
   });
 
   it("keeps managed implementation controls available for local runtimes", () => {

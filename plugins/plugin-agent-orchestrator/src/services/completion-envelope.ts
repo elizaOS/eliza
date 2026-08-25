@@ -100,20 +100,35 @@ export type CompletionEnvelopeParse =
   | { present: true; ok: true; envelope: CompletionEnvelope }
   | { present: true; ok: false; errors: string[] };
 
-const FENCED_JSON_RE = /```json\s*\n([\s\S]*?)```/gi;
-
 function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === "string");
 }
 
 function extractJsonCandidate(text: string): string | null {
   // Prefer the LAST fenced ```json block (the completion envelope comes last).
-  let match: RegExpExecArray | null;
   let last: string | null = null;
-  FENCED_JSON_RE.lastIndex = 0;
-  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
-  while ((match = FENCED_JSON_RE.exec(text)) !== null) {
-    last = match[1]?.trim() ?? null;
+  const lowerText = text.toLowerCase();
+  let cursor = 0;
+  while (cursor < text.length) {
+    const opener = lowerText.indexOf("```json", cursor);
+    if (opener < 0) break;
+    let bodyStart = opener + 7;
+    while (bodyStart < text.length && text[bodyStart] !== "\n") {
+      if (text[bodyStart]?.trim() !== "") {
+        bodyStart = opener + 1;
+        break;
+      }
+      bodyStart += 1;
+    }
+    if (bodyStart === opener + 1 || text[bodyStart] !== "\n") {
+      cursor = opener + 1;
+      continue;
+    }
+    bodyStart += 1;
+    const closer = text.indexOf("```", bodyStart);
+    if (closer < 0) break;
+    last = text.slice(bodyStart, closer).trim() || null;
+    cursor = closer + 3;
   }
   if (last) return last;
   // No fence: only treat the whole message as JSON when it clearly looks like

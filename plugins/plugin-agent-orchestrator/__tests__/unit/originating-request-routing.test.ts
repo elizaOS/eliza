@@ -7,7 +7,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveOriginatingRequestText } from "../../src/actions/common.js";
+import {
+  canonicalSessionId,
+  resolveOriginatingRequestText,
+} from "../../src/actions/common.js";
 import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
 
 // Regression coverage for the whole-stack-claude workdir-route miss: when the
@@ -27,6 +30,12 @@ import { resolveSpawnWorkdir } from "../../src/services/task-agent-routing.js";
 // `content.text` via the narrow `messageText()` reader).
 
 const AGENT_ID = "agent-xyz";
+
+it("preserves the complete case-sensitive session identity", () => {
+  expect(canonicalSessionId("Session-AbC-00000009")).toBe(
+    "Session-AbC-00000009",
+  );
+});
 
 function msg(overrides: Partial<Memory> = {}): Memory {
   return {
@@ -164,6 +173,9 @@ describe("resolveOriginatingRequestText", () => {
     );
 
     expect(resolved).toContain("stopwatch web page");
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.objectContaining({ count: 8 }),
+    );
   });
 
   it("prefers the synchronous state source over getMemories", async () => {

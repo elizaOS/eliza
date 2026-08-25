@@ -437,6 +437,50 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
+	it("uses the complete native tool history when prompt segments are also present", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(registrations, ModelType.TEXT_SMALL);
+
+		await handler(runtime, {
+			messages: [
+				{ role: "system", content: "You are Eliza." },
+				{
+					role: "assistant",
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "call-2",
+							toolName: "READ_FILE",
+							input: { path: "README.md" },
+						},
+					],
+				},
+				{
+					role: "tool",
+					content: [
+						{
+							type: "tool-result",
+							toolCallId: "call-2",
+							toolName: "READ_FILE",
+							output: { type: "text", value: "complete file bytes" },
+						},
+					],
+				},
+			],
+			promptSegments: [{ content: "STALE_SEGMENT_SENTINEL" }],
+		});
+
+		const prompt = String(engineState.generate.mock.calls.at(-1)?.[0]?.prompt);
+		expect(prompt).not.toContain("STALE_SEGMENT_SENTINEL");
+		expect(prompt).toContain('"type":"tool-call"');
+		expect(prompt).toContain('"input":{"path":"README.md"}');
+		expect(prompt).toContain('"type":"tool-result"');
+		expect(prompt.match(/complete file bytes/g)).toHaveLength(1);
+	});
+
 	it("uses a fine-grained maxTokensPerStep for user-visible streaming, coarse for internal calls", async () => {
 		const prior = process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
 		delete process.env.ELIZA_LOCAL_STREAM_TOKENS_PER_STEP;
@@ -829,6 +873,33 @@ describe("ensureLocalInferenceHandler", () => {
 
 		expect(engineState.generate).toHaveBeenCalledWith(
 			expect.objectContaining({ onTextChunk: expect.any(Function) }),
+		);
+	});
+
+	it("adds Eliza turn markers to caller stop sequences", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const handler = findRegisteredHandler(
+			registrations,
+			ModelType.RESPONSE_HANDLER,
+		);
+
+		await handler(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			stopSequences: ["CUSTOM", "<end_of_turn>"],
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				stopSequences: [
+					"CUSTOM",
+					"<end_of_turn>",
+					"<start_of_turn>",
+					"<endoftext>",
+				],
+			}),
 		);
 	});
 

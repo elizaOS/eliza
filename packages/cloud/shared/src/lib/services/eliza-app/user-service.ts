@@ -65,6 +65,11 @@ export type PersonalDeliveryInput =
       username: string;
       globalName?: string | null;
       avatarUrl?: string | null;
+    }
+  | {
+      /** One canonical verified-phone identity shared by Blooio and Twilio. */
+      platform: "phone";
+      phoneNumber: string;
     };
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
@@ -222,12 +227,21 @@ class ElizaAppUserService {
    */
   async resolvePersonalDelivery(params: PersonalDeliveryInput): Promise<PersonalDeliveryResult> {
     const senderId =
-      params.platform === "telegram" ? params.telegramId.trim() : params.discordId.trim();
-    const idPattern = params.platform === "telegram" ? /^\d{1,20}$/ : /^\d{1,32}$/;
-    if (!idPattern.test(senderId)) {
+      params.platform === "telegram"
+        ? params.telegramId.trim()
+        : params.platform === "discord"
+          ? params.discordId.trim()
+          : normalizePhoneNumber(params.phoneNumber);
+    const validSender =
+      params.platform === "telegram"
+        ? /^\d{1,20}$/.test(senderId)
+        : params.platform === "discord"
+          ? /^\d{1,32}$/.test(senderId)
+          : isValidE164(senderId);
+    if (!validSender) {
       throw new Error(`Trusted ${params.platform} transport supplied an invalid sender id`);
     }
-    const username = params.username?.trim() || undefined;
+    const username = params.platform === "phone" ? undefined : params.username?.trim() || undefined;
     if (params.platform === "discord" && !username) {
       throw new Error("Trusted Discord transport supplied an invalid username");
     }
@@ -254,13 +268,18 @@ class ElizaAppUserService {
             telegramUsername: username,
             telegramFirstName: firstName,
           }
-        : {
-            platform: "discord",
-            discordId: senderId,
-            discordUsername: params.username.trim(),
-            discordGlobalName: globalName,
-            discordAvatarUrl: avatarUrl,
-          },
+        : params.platform === "discord"
+          ? {
+              platform: "discord",
+              discordId: senderId,
+              discordUsername: params.username.trim(),
+              discordGlobalName: globalName,
+              discordAvatarUrl: avatarUrl,
+            }
+          : {
+              platform: "phone",
+              phoneNumber: senderId,
+            },
     );
     if (reusable) {
       const personalAgentId = personalSharedAgentId({
@@ -298,28 +317,31 @@ class ElizaAppUserService {
       };
     }
 
-    const result = await usersRepository.findOrCreateMessagingPersonalAccount(
-      params.platform === "telegram"
-        ? {
-            platform: "telegram",
-            telegramId: senderId,
-            telegramUsername: username,
-            telegramFirstName: firstName,
-            displayName,
-            organizationName: `${displayName}'s Workspace`,
-            organizationSlug: generateSlugFromTelegram(username, senderId),
-          }
-        : {
-            platform: "discord",
-            discordId: senderId,
-            discordUsername: params.username.trim(),
-            discordGlobalName: globalName,
-            discordAvatarUrl: avatarUrl,
-            displayName,
-            organizationName: `${displayName}'s Workspace`,
-            organizationSlug: generateSlugFromDiscord(username, senderId),
-          },
-    );
+    const result =
+      params.platform === "phone"
+        ? await this.findOrCreateByPhone(senderId)
+        : await usersRepository.findOrCreateMessagingPersonalAccount(
+            params.platform === "telegram"
+              ? {
+                  platform: "telegram",
+                  telegramId: senderId,
+                  telegramUsername: username,
+                  telegramFirstName: firstName,
+                  displayName,
+                  organizationName: `${displayName}'s Workspace`,
+                  organizationSlug: generateSlugFromTelegram(username, senderId),
+                }
+              : {
+                  platform: "discord",
+                  discordId: senderId,
+                  discordUsername: params.username.trim(),
+                  discordGlobalName: globalName,
+                  discordAvatarUrl: avatarUrl,
+                  displayName,
+                  organizationName: `${displayName}'s Workspace`,
+                  organizationSlug: generateSlugFromDiscord(username, senderId),
+                },
+          );
     const personalAgentId = personalSharedAgentId({
       userId: result.user.id,
       organizationId: result.organization.id,
@@ -386,6 +408,11 @@ class ElizaAppUserService {
         phoneAdded: !existingTelegramUser.phone_number,
       });
 
+      await Promise.all([
+        invalidateBoundPersonalDeliveryProjection("telegram", telegramId),
+        invalidateBoundPersonalDeliveryProjection("phone", normalizedPhone),
+      ]);
+
       // Refetch to get updated data
       const updatedUser = await usersRepository.findByTelegramIdWithOrganization(telegramId);
       return {
@@ -448,6 +475,11 @@ class ElizaAppUserService {
         username: telegramData.username,
         phone: `***${normalizedPhone.slice(-4)}`,
       });
+
+      await Promise.all([
+        invalidateBoundPersonalDeliveryProjection("telegram", telegramId),
+        invalidateBoundPersonalDeliveryProjection("phone", normalizedPhone),
+      ]);
 
       // Refetch to get updated data
       const updatedUser = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
@@ -1012,6 +1044,8 @@ class ElizaAppUserService {
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 
+    await invalidateBoundPersonalDeliveryProjection("phone", normalizedPhone);
+
     return { success: true };
   }
 
@@ -1072,7 +1106,10 @@ class ElizaAppUserService {
       phone: `***${normalizedPhone.slice(-2)}`,
     });
 
-    await invalidateBoundPersonalDeliveryProjection("telegram", telegramId);
+    await Promise.all([
+      invalidateBoundPersonalDeliveryProjection("telegram", telegramId),
+      invalidateBoundPersonalDeliveryProjection("phone", normalizedPhone),
+    ]);
 
     return { success: true };
   }

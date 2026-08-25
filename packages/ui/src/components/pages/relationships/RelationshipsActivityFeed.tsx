@@ -123,9 +123,9 @@ export function RelationshipsActivityFeed() {
               role="img"
               aria-label={`${item.type} event`}
               title={item.type}
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted"
+              className="inline-flex size-5 shrink-0 items-center justify-center text-muted"
             >
-              <ActivityIcon className="h-3.5 w-3.5" />
+              <ActivityIcon className="size-3.5" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-txt">
@@ -149,13 +149,12 @@ export function RelationshipsActivityFeed() {
       {hasMore ? (
         <Button
           type="button"
-          size="sm"
+          size="dense"
           variant="outline"
-          className="h-8 rounded-sm px-3"
           disabled={loadingMore}
           onClick={loadMore}
         >
-          {loadingMore ? "Loading..." : "Load more"}
+          {loadingMore ? "Loading…" : "Load more"}
         </Button>
       ) : null}
     </div>

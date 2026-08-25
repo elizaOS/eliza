@@ -111,4 +111,23 @@ describe("INBOX choice markers", () => {
       ]),
     });
   });
+
+  it("keeps every triage entry actionable when more than five are returned", () => {
+    const entries = Array.from({ length: 8 }, (_, index) =>
+      entry({ id: `thread-${index + 1}`, senderName: `Sender ${index + 1}` }),
+    );
+
+    const choices = choiceBlocks(
+      appendInboxTriageChoiceMarkers("Loaded 8 pending items.", entries),
+    );
+
+    expect(choices).toHaveLength(entries.length);
+    expect(choices.at(-1)).toMatchObject({
+      scope: "inbox-thread-thread-8",
+      id: "thread-8",
+      options: expect.arrayContaining([
+        { value: "inbox reply thread-8", label: "Reply to Sender 8" },
+      ]),
+    });
+  });
 });

@@ -25,6 +25,7 @@ interface DesktopHttpRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  bodyBase64?: string | null;
 }
 
 function isExternalPlainHttpUrl(url: string): boolean {
@@ -86,6 +87,21 @@ const desktopHttpTransport: AgentRequestTransport = {
       body: methodAllowsBody(method) ? (body ?? null) : null,
       timeoutMs: context?.timeoutMs,
     })) as DesktopHttpRequestResult;
+
+    // Binary responses (audio, image, etc.) arrive as base64 to avoid UTF-8
+    // corruption through the Electrobun RPC string bridge.
+    if (result.bodyBase64) {
+      const binary = atob(result.bodyBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Response(bytes, {
+        status: result.status,
+        statusText: result.statusText ?? "",
+        headers: result.headers,
+      });
+    }
 
     return new Response(result.body ?? "", {
       status: result.status,

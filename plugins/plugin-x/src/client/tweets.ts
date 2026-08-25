@@ -321,7 +321,7 @@ export type TweetQuery =
 
 export async function fetchTweets(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   cursor: string | undefined,
   auth: TwitterAuth,
 ): Promise<QueryTweetsResponse> {
@@ -329,7 +329,7 @@ export async function fetchTweets(
 
   try {
     const response = await client.v2.userTimeline(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
       exclude: ["retweets", "replies"],
       "tweet.fields": [
         "id",
@@ -356,7 +356,7 @@ export async function fetchTweets(
     // Use the paginator's built-in methods to access data
     for await (const tweet of response) {
       convertedTweets.push(parseTweetV2ToV1(tweet, response.includes));
-      if (convertedTweets.length >= maxTweets) break;
+      if (maxTweets !== undefined && convertedTweets.length >= maxTweets) break;
     }
 
     return {
@@ -370,7 +370,7 @@ export async function fetchTweets(
 
 export async function fetchTweetsAndReplies(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   cursor: string | undefined,
   auth: TwitterAuth,
 ): Promise<QueryTweetsResponse> {
@@ -378,7 +378,7 @@ export async function fetchTweetsAndReplies(
 
   try {
     const response = await client.v2.userTimeline(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxTweets === undefined ? 100 : Math.min(maxTweets, 100),
       "tweet.fields": [
         "id",
         "text",
@@ -404,7 +404,7 @@ export async function fetchTweetsAndReplies(
     // Use the paginator's built-in methods to access data
     for await (const tweet of response) {
       convertedTweets.push(parseTweetV2ToV1(tweet, response.includes));
-      if (convertedTweets.length >= maxTweets) break;
+      if (maxTweets !== undefined && convertedTweets.length >= maxTweets) break;
     }
 
     return {
@@ -710,9 +710,48 @@ export async function deleteTweet(tweetId: string, auth: TwitterAuth) {
   }
 }
 
+/**
+ * Resolves the cursor for the next timeline page, or `undefined` when the
+ * provider signalled the end of the timeline.
+ *
+ * Only called when pagination is actually about to continue, so a caller that
+ * already collected everything it asked for is never subject to these guards.
+ * @param source Name of the calling generator, for the thrown error context.
+ * @param next The `next_token` the provider just returned.
+ * @param seenCursors Cursors this pagination run has already followed.
+ * @param pageCount Pages fetched so far in this run.
+ */
+export function nextTimelinePageCursor(
+  source: string,
+  next: string | undefined,
+  seenCursors: Set<string>,
+  pageCount: number,
+): string | undefined {
+  // A terminal page ends the run before any integrity guard applies.
+  if (!next) {
+    return undefined;
+  }
+
+  // A cursor the provider already handed out means pagination stopped
+  // advancing (an immediate repeat or a longer A -> B -> A cycle) — a fault,
+  // not something to keep looping on.
+  if (seenCursors.has(next)) {
+    throw new ElizaError(
+      `X timeline pagination in ${source} repeated a page cursor`,
+      {
+        code: "X_TIMELINE_PAGINATION_CURSOR_REPEATED",
+        context: { source, pageCount },
+      },
+    );
+  }
+
+  seenCursors.add(next);
+  return next;
+}
+
 export async function* getTweets(
   user: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
@@ -725,11 +764,14 @@ export async function* getTweets(
 
   let cursor: string | undefined;
   let totalFetched = 0;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
+    pageCount += 1;
     const response = await fetchTweets(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -737,26 +779,36 @@ export async function* getTweets(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    cursor = response.next;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
+
+    cursor = nextTimelinePageCursor(
+      "getTweets",
+      response.next,
+      seenCursors,
+      pageCount,
+    );
     if (!cursor) break;
   }
 }
 
 export async function* getTweetsByUserId(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
+    pageCount += 1;
     const response = await fetchTweets(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -764,17 +816,24 @@ export async function* getTweetsByUserId(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    cursor = response.next;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
+
+    cursor = nextTimelinePageCursor(
+      "getTweetsByUserId",
+      response.next,
+      seenCursors,
+      pageCount,
+    );
     if (!cursor) break;
   }
 }
 
 export async function* getTweetsAndReplies(
   user: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   const userIdRes = await getEntityIdByScreenName(user, auth);
@@ -787,11 +846,14 @@ export async function* getTweetsAndReplies(
 
   let cursor: string | undefined;
   let totalFetched = 0;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
+    pageCount += 1;
     const response = await fetchTweetsAndReplies(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -799,26 +861,36 @@ export async function* getTweetsAndReplies(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    cursor = response.next;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
+
+    cursor = nextTimelinePageCursor(
+      "getTweetsAndReplies",
+      response.next,
+      seenCursors,
+      pageCount,
+    );
     if (!cursor) break;
   }
 }
 
 export async function* getTweetsAndRepliesByUserId(
   userId: string,
-  maxTweets: number,
+  maxTweets: number | undefined,
   auth: TwitterAuth,
 ): AsyncGenerator<Tweet, void> {
   let cursor: string | undefined;
   let totalFetched = 0;
+  let pageCount = 0;
+  const seenCursors = new Set<string>();
 
-  while (totalFetched < maxTweets) {
+  while (maxTweets === undefined || totalFetched < maxTweets) {
+    pageCount += 1;
     const response = await fetchTweetsAndReplies(
       userId,
-      maxTweets - totalFetched,
+      maxTweets === undefined ? undefined : maxTweets - totalFetched,
       cursor,
       auth,
     );
@@ -826,10 +898,17 @@ export async function* getTweetsAndRepliesByUserId(
     for (const tweet of response.tweets) {
       yield tweet;
       totalFetched++;
-      if (totalFetched >= maxTweets) break;
+      if (maxTweets !== undefined && totalFetched >= maxTweets) break;
     }
 
-    cursor = response.next;
+    if (maxTweets !== undefined && totalFetched >= maxTweets) break;
+
+    cursor = nextTimelinePageCursor(
+      "getTweetsAndRepliesByUserId",
+      response.next,
+      seenCursors,
+      pageCount,
+    );
     if (!cursor) break;
   }
 }
@@ -1095,6 +1174,7 @@ export async function createQuoteTweetRequest(
   quotedTweetId: string,
   auth: TwitterAuth,
   _mediaData?: { data: Buffer; mediaType: string }[],
+  mediaIds?: string[],
 ) {
   const v2client = await auth.getV2Client();
   if (!v2client) {
@@ -1106,17 +1186,30 @@ export async function createQuoteTweetRequest(
     const quotedTweetUrl = `https://twitter.com/i/status/${quotedTweetId}`;
     const fullText = `${text} ${quotedTweetUrl}`;
 
-    const result = await v2client.v2.tweet({
+    const tweetConfig: SendTweetV2Params = {
       text: fullText,
-    });
+    };
+    if (mediaIds && mediaIds.length > 0) {
+      tweetConfig.media = {
+        media_ids: toTweetMediaIds(mediaIds),
+      };
+    }
+
+    const result = await v2client.v2.tweet(tweetConfig);
 
     return {
       ok: true,
       json: async () => result,
       data: result,
     };
-  } catch (error) {
-    throw new Error(`Failed to create quote tweet: ${errorMessage(error)}`);
+  } catch (cause) {
+    // error-policy:J2 Preserve the provider or request-assembly failure at the
+    // connector boundary so callers can distinguish it from an accepted write.
+    throw new ElizaError("Failed to create quote tweet", {
+      code: "X_QUOTE_REQUEST_FAILED",
+      cause,
+      context: { quotedTweetId },
+    });
   }
 }
 
@@ -1267,11 +1360,6 @@ export async function fetchRetweetersPage(
   };
 }
 
-// Bounds `getAllRetweeters` against a provider that never stops paginating
-// (repeated or perpetually-novel cursors) — 1,000 pages * 40/page covers even
-// a very viral tweet while keeping worst-case requests/memory finite.
-const MAX_RETWEETER_PAGES = 1000;
-
 /**
  * Retrieves *all* retweeters by chaining requests until no next cursor is found.
  * @param tweetId The ID of the tweet.
@@ -1289,16 +1377,6 @@ export async function getAllRetweeters(
 
   while (true) {
     pageCount += 1;
-    if (pageCount > MAX_RETWEETER_PAGES) {
-      throw new ElizaError(
-        `Retweeter pagination for tweet ${tweetId} exceeded ${MAX_RETWEETER_PAGES} pages`,
-        {
-          code: "X_RETWEETERS_PAGINATION_LIMIT_EXCEEDED",
-          context: { tweetId, pageCount },
-        },
-      );
-    }
-
     const { retweeters, bottomCursor } = await fetchRetweetersPage(
       tweetId,
       auth,

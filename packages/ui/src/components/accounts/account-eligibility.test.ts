@@ -4,13 +4,17 @@
  * connection signal.
  */
 
+import { codingProviderDescriptorForProvider } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   eligibilityChips,
   providerConnectionState,
   resolveProviderEligibility,
 } from "./account-eligibility";
-import { getAccountProviderOption } from "./account-provider-options";
+import {
+  ACCOUNT_PROVIDER_OPTIONS,
+  getAccountProviderOption,
+} from "./account-provider-options";
 
 function option(id: Parameters<typeof getAccountProviderOption>[0]) {
   const found = getAccountProviderOption(id);
@@ -25,28 +29,85 @@ const deepseekCoding = option("deepseek-coding");
 describe("resolveProviderEligibility", () => {
   it("prefers server runtime eligibility over static inference", () => {
     const resolved = resolveProviderEligibility(claudeSub, {
-      chat: true,
-      codingAgent: true,
-      note: "subscription chat enabled",
+      chat: { available: true },
+      codingAgent: { available: true, backend: "claude" },
     });
     expect(resolved.source).toBe("runtime");
     expect(resolved.chat).toBe(true);
     expect(resolved.codingAgent).toBe(true);
-    expect(resolved.note).toBe("subscription chat enabled");
   });
 
-  it("conservatively infers chat+coding for BYOK API providers", () => {
+  it("keeps BYOK API providers inference-only until a spawn route lands", () => {
     const resolved = resolveProviderEligibility(anthropicApi, undefined);
     expect(resolved.source).toBe("inferred");
     expect(resolved.chat).toBe(true);
-    expect(resolved.codingAgent).toBe(true);
+    expect(resolved.codingAgent).toBe(false);
   });
 
-  it("conservatively infers coding-only for subscription providers", () => {
+  it("does not infer coding-agent spawn support for inference-only APIs", () => {
+    const resolved = resolveProviderEligibility(
+      option("deepseek-api"),
+      undefined,
+    );
+    expect(resolved.chat).toBe(true);
+    expect(resolved.codingAgent).toBe(false);
+  });
+
+  it("surfaces the server's unsupported spawn reason", () => {
+    const resolved = resolveProviderEligibility(option("kimi-coding"), {
+      chat: { available: true, credentialPath: "account-pool" },
+      codingAgent: {
+        available: false,
+        credentialPath: "none",
+        unavailableReason: "No Kimi spawn backend is wired.",
+      },
+    });
+    expect(resolved.codingAgent).toBe(false);
+    expect(resolved.note).toBe("No Kimi spawn backend is wired.");
+  });
+
+  it("keeps the explicit Anthropic subscription chat policy in the descriptor", () => {
     const resolved = resolveProviderEligibility(claudeSub, undefined);
     expect(resolved.source).toBe("inferred");
     expect(resolved.chat).toBe(false);
     expect(resolved.codingAgent).toBe(true);
+  });
+
+  it("derives every fallback chat verdict from the canonical descriptor", () => {
+    for (const providerOption of ACCOUNT_PROVIDER_OPTIONS) {
+      const resolved = resolveProviderEligibility(providerOption, undefined);
+      const descriptor = codingProviderDescriptorForProvider(providerOption.id);
+      expect(resolved.chat, providerOption.id).toBe(
+        providerOption.unavailable
+          ? false
+          : (descriptor?.inferenceSupport ?? false),
+      );
+      expect(resolved.codingAgent, providerOption.id).toBe(
+        providerOption.unavailable ? false : descriptor?.spawnSupport === true,
+      );
+    }
+  });
+
+  it.each(["zai-coding", "kimi-coding"] as const)(
+    "infers inference-only eligibility for %s",
+    (providerId) => {
+      expect(resolveProviderEligibility(option(providerId), undefined)).toEqual(
+        {
+          chat: true,
+          codingAgent: false,
+          source: "inferred",
+        },
+      );
+    },
+  );
+
+  it("fails closed when a provider descriptor is missing", () => {
+    expect(
+      resolveProviderEligibility(
+        { ...anthropicApi, id: "missing-provider" as never },
+        undefined,
+      ),
+    ).toEqual({ chat: false, codingAgent: false, source: "inferred" });
   });
 
   it("infers neither for explicitly unavailable providers", () => {

@@ -119,6 +119,9 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
     await next();
   },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
 }));
 
 const { default: balanceApp } = await import("../v1/credits/balance/route");

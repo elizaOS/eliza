@@ -22,6 +22,7 @@ import { X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import { getStandaloneBottomReclaimState } from "../../platform/standalone-bottom-reclaim";
+import { Button } from "../ui/button";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.buildBadge.dismissed";
@@ -368,8 +369,10 @@ export function BuildBadge() {
         }}
       >
         <span className="pointer-events-auto flex items-center gap-1 rounded-full border border-border bg-surface/80 px-2 py-0.5 text-3xs leading-none text-muted opacity-70 transition-opacity hover:opacity-100">
-          <button
+          <Button
             type="button"
+            variant="publicRow"
+            size="content"
             data-testid="build-badge"
             title="Build version (tap for on-device diagnostics)"
             aria-label={`Build ${label}. Tap for on-device diagnostics.`}
@@ -377,34 +380,34 @@ export function BuildBadge() {
             className="font-mono tracking-tight"
           >
             {label}
-          </button>
+          </Button>
           {geom ? (
             <span
               data-testid="build-badge-geom"
               title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height rc=reclaim-var rcw=reclaim-wiring lv=100lvh dv=100dvh)"
-              className="font-mono tracking-tight text-3xs text-muted/80"
+              className="font-mono tracking-tight text-3xs text-muted"
             >
               {geom}
             </span>
           ) : null}
-          <button
+          <Button
             type="button"
             data-testid="build-badge-dismiss"
             title="Hide for this session"
             aria-label="Hide build badge for this session"
             onClick={dismiss}
           >
-            <X aria-hidden="true" className="h-2.5 w-2.5 shrink-0" />
-          </button>
+            <X aria-hidden="true" className="size-2.5 shrink-0" />
+          </Button>
         </span>
       </div>
 
       {diag ? (
         <>
-          <button
+          <Button
             type="button"
             aria-label="Close build diagnostics"
-            className="fixed inset-0 cursor-default bg-transparent"
+            className="fixed inset-0 cursor-default"
             onClick={closeDiag}
             style={{ zIndex: Z_BUILD_BADGE + 1 }}
           />
@@ -422,15 +425,16 @@ export function BuildBadge() {
           >
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-3xs text-muted">{label}</span>
-              <button
+              <Button
                 type="button"
+                variant="ghostMuted"
+                size="icon-sm"
                 data-testid="build-badge-diag-close"
                 aria-label="Close diagnostics"
                 onClick={closeDiag}
-                className="text-muted hover:text-foreground"
               >
-                <X aria-hidden="true" className="h-3.5 w-3.5" />
-              </button>
+                <X aria-hidden="true" className="size-3.5" />
+              </Button>
             </div>
             <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 font-mono leading-tight">
               {diag.map((row) => (

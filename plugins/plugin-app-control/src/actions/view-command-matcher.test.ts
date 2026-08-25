@@ -13,6 +13,7 @@ import {
 describe("matchViewCommand — explicit user examples", () => {
 	const cases: Array<[string, string]> = [
 		["open settings", "settings"],
+		["open the vault", "vault"],
 		["go to settings", "settings"],
 		["go to settings view", "settings"],
 		["show me the settings page", "settings"],

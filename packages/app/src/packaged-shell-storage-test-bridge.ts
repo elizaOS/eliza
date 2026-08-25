@@ -4,7 +4,7 @@
  * injects a marker global, and only then does this module expose narrow helpers
  * that write exact first-run keys through the shell storage privilege channel.
  */
-import { shellLocalStorage } from "@elizaos/ui/bridge";
+import { setStorageValue, shellLocalStorage } from "@elizaos/ui/bridge";
 
 const DESKTOP_TEST_BRIDGE_MARKER = "__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__";
 const PACKAGED_SHELL_STORAGE_TEST_GLOBAL =
@@ -25,11 +25,11 @@ export interface ResettableStateSeedResult {
 }
 
 export interface PackagedShellStorageTestBridge {
-  seedResettableState(): ResettableStateSeedResult;
+  seedResettableState(): Promise<ResettableStateSeedResult>;
   seedReturningInstallState(
     apiBase: string,
     chatOverlayHotkey?: string,
-  ): ReturningInstallSeedResult;
+  ): Promise<ReturningInstallSeedResult>;
 }
 
 declare global {
@@ -59,11 +59,11 @@ function readSeededState(win: Window): ReturningInstallSeedResult {
   };
 }
 
-export function seedReturningInstallStateForPackagedTests(
+export async function seedReturningInstallStateForPackagedTests(
   apiBase: string,
   chatOverlayHotkey?: string,
   win = window,
-): ReturningInstallSeedResult {
+): Promise<ReturningInstallSeedResult> {
   shellLocalStorage.removeItem("elizaos:first-run:force-fresh");
   shellLocalStorage.setItem("eliza:first-run-complete", "1");
   shellLocalStorage.setItem("eliza:setup:step", "activate");
@@ -74,7 +74,7 @@ export function seedReturningInstallStateForPackagedTests(
       JSON.stringify({ accelerator: chatOverlayHotkey, enabled: true }),
     );
   }
-  shellLocalStorage.setItem(
+  await setStorageValue(
     "elizaos:active-server",
     JSON.stringify({
       id: `remote:${apiBase}`,
@@ -86,11 +86,11 @@ export function seedReturningInstallStateForPackagedTests(
   return readSeededState(win);
 }
 
-export function seedResettableStateForPackagedTests(
+export async function seedResettableStateForPackagedTests(
   win = window,
-): ResettableStateSeedResult {
+): Promise<ResettableStateSeedResult> {
   shellLocalStorage.setItem("eliza:first-run-complete", "1");
-  shellLocalStorage.setItem(
+  await setStorageValue(
     "elizaos:active-server",
     JSON.stringify({
       id: "local:embedded",

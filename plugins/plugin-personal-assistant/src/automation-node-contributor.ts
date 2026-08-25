@@ -1,6 +1,6 @@
 /**
  * Registers LifeOps' automation-node contributor: exposes the assistant's
- * connectors and capabilities (Google, Discord, Signal, Telegram, permissions)
+ * connectors and capabilities (Google, Discord, Telegram, permissions)
  * as automation nodes the owner can wire into workflows in the automation UI.
  */
 
@@ -10,7 +10,6 @@ import type {
   IPermissionsRegistry,
   LifeOpsDiscordConnectorStatus,
   LifeOpsGoogleConnectorStatus,
-  LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
   PermissionState,
 } from "@elizaos/shared";
@@ -51,23 +50,6 @@ async function resolveTelegramStatus(
   } catch (error) {
     logger.warn(
       `[lifeops] Failed to resolve Telegram connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    // error-policy:J4 null renders the automation node as "not connected /
-    // requires setup" — a designed, distinguishable unavailable state.
-    return null;
-  }
-}
-
-async function resolveSignalStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsSignalConnectorStatus | null> {
-  try {
-    return await lifeOps.getSignalConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[lifeops] Failed to resolve Signal connector status: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -183,19 +165,13 @@ async function buildLifeOpsAutomationNodes({
   adminEntityId,
 }: AutomationNodeContributorContext): Promise<AutomationNodeDescriptor[]> {
   const lifeOps = new LifeOpsService(runtime, { ownerEntityId: adminEntityId });
-  const [
-    googleStatus,
-    telegramStatus,
-    signalStatus,
-    discordStatus,
-    calendarPermission,
-  ] = await Promise.all([
-    resolveGoogleStatus(lifeOps),
-    resolveTelegramStatus(lifeOps),
-    resolveSignalStatus(lifeOps),
-    resolveDiscordStatus(lifeOps),
-    resolveNativeCalendarPermission(runtime),
-  ]);
+  const [googleStatus, telegramStatus, discordStatus, calendarPermission] =
+    await Promise.all([
+      resolveGoogleStatus(lifeOps),
+      resolveTelegramStatus(lifeOps),
+      resolveDiscordStatus(lifeOps),
+      resolveNativeCalendarPermission(runtime),
+    ]);
 
   const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
   const hasGoogleCapability = (needle: string) =>
@@ -232,13 +208,6 @@ async function buildLifeOpsAutomationNodes({
       "Owner-scoped Telegram account messaging.",
       Boolean(telegramStatus?.connected),
       "Connect the owner Telegram account.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:signal",
-      "Signal",
-      "Owner-scoped Signal messaging.",
-      Boolean(signalStatus?.connected),
-      "Pair the owner Signal account.",
     ),
     buildLifeOpsNode(
       "lifeops:discord",

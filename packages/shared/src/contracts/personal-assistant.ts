@@ -78,6 +78,7 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
   "running",
   "success",
   "failed",
+  "failed_uncompensated",
   "cancelled",
 ] as const;
 export type LifeOpsWorkflowRunStatus =
@@ -272,7 +273,6 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "telegram",
   "discord",
   "twilio",
-  "signal",
   "whatsapp",
   "imessage",
   "apple_calendar",
@@ -323,6 +323,11 @@ export const LIFEOPS_MICROSOFT_CAPABILITIES = [
   "microsoft.calendar.read",
   "microsoft.calendar.freebusy",
   "microsoft.calendar.write",
+  "microsoft.mail.triage",
+  "microsoft.mail.send",
+  "microsoft.mail.manage",
+  "microsoft.contacts.read",
+  "microsoft.files.read",
 ] as const;
 export type LifeOpsMicrosoftCapability =
   (typeof LIFEOPS_MICROSOFT_CAPABILITIES)[number];
@@ -376,13 +381,6 @@ export const LIFEOPS_HEALTH_METRICS = [
 ] as const;
 export type LifeOpsHealthMetric = (typeof LIFEOPS_HEALTH_METRICS)[number];
 
-export const LIFEOPS_SIGNAL_CAPABILITIES = [
-  "signal.read",
-  "signal.send",
-] as const;
-export type LifeOpsSignalCapability =
-  (typeof LIFEOPS_SIGNAL_CAPABILITIES)[number];
-
 export const LIFEOPS_DISCORD_CAPABILITIES = [
   "discord.read",
   "discord.send",
@@ -416,7 +414,6 @@ export const LIFEOPS_REMINDER_CHANNELS = [
   "voice",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "email",
@@ -430,7 +427,6 @@ export const LIFEOPS_CHANNEL_TYPES = [
   "voice",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "x",
@@ -528,6 +524,7 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "definition_deleted",
   "occurrence_generated",
   "occurrence_completed",
+  "occurrence_progress_recorded",
   "occurrence_skipped",
   "occurrence_snoozed",
   "goal_created",
@@ -640,6 +637,52 @@ export interface LifeOpsWebsiteAccessPolicy {
   reason: string;
 }
 
+/**
+ * When during the day a count-quota routine may be worked on. `anytime` is
+ * structurally distinct from fixed slots/windows: it means the owner never
+ * named clock times, so nothing may fabricate them. `windows` constrains the
+ * quota to the named time windows without inventing per-rep slot times.
+ */
+export type LifeOpsQuotaTiming =
+  | { kind: "anytime" }
+  | { kind: "windows"; windows: LifeOpsTimeWindowName[] };
+
+/**
+ * Daily count quota ("25 pushups, 3 sets a day, whenever"): a fixed
+ * within-day target completed through per-increment progress events, not
+ * per-slot occurrences. Deliberately has NO slots — a count-only request must
+ * never be rewritten into fabricated wall-clock times.
+ */
+export interface LifeOpsCountPerDayCadence {
+  kind: "count_per_day";
+  /** Number of increments that complete one day (e.g. 3 sets). */
+  targetCount: number;
+  /** What one increment is called ("set", "glass", "time"). */
+  unit: string;
+  /** Work one increment represents ("25 pushups"), or null when unstated. */
+  perOccurrenceWork: string | null;
+  timing: LifeOpsQuotaTiming;
+  visibilityLeadMinutes?: number;
+  visibilityLagMinutes?: number;
+}
+
+/** Adaptive, scheduler-backed check-ins for one flexible daily quota. */
+export interface LifeOpsQuotaCheckInPolicy {
+  kind: "quota_progress";
+  /** Named owner-local windows in which a progress check-in may fire. */
+  windows: LifeOpsTimeWindowName[];
+  /** Minutes after a fire before the no-reply policy is evaluated. */
+  followupAfterMinutes: number;
+  noReplyPolicy: {
+    maxRetries: number;
+    retryCadenceMinutes: number[];
+    terminalStatus: "expired";
+    terminalReason: string;
+  };
+  /** Frozen true: reaching the quota structurally suppresses later nudges. */
+  stopWhenComplete: true;
+}
+
 export type LifeOpsCadence =
   // An explicitly undated item ("no due date", "just a plain todo"): the
   // definition exists and is reviewable but materializes no occurrences and
@@ -668,6 +711,7 @@ export type LifeOpsCadence =
       visibilityLeadMinutes?: number;
       visibilityLagMinutes?: number;
     }
+  | LifeOpsCountPerDayCadence
   | LifeOpsIntervalCadence
   | {
       kind: "weekly";
@@ -745,6 +789,7 @@ export interface LifeOpsTaskDefinition {
   cadence: LifeOpsCadence;
   windowPolicy: LifeOpsWindowPolicy;
   progressionRule: LifeOpsProgressionRule;
+  checkInPolicy: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess: LifeOpsWebsiteAccessPolicy | null;
   reminderPlanId: string | null;
   goalId: string | null;
@@ -788,6 +833,55 @@ export interface LifeOpsOccurrenceView extends LifeOpsOccurrence {
   timezone: string;
   source: string;
   goalId: string | null;
+  /** Required server projection; null for cadences without incremental progress. */
+  progress: LifeOpsOccurrenceProgress | null;
+}
+
+/**
+ * Append-only per-increment progress record for a count-quota occurrence.
+ * The idempotency key is owner/occurrence-scoped so a replayed "I did one set"
+ * message never double-counts; the day's completed count is always derived by
+ * summing these rows, never cached on the occurrence.
+ */
+export interface LifeOpsProgressEvent {
+  id: string;
+  agentId: string;
+  definitionId: string;
+  occurrenceId: string;
+  localDateKey: string;
+  idempotencyKey: string;
+  quantity: number;
+  unit: string;
+  note: string | null;
+  actor: string;
+  createdAt: string;
+}
+
+/** Server-projected quota progress; clients render these fields verbatim. */
+export interface LifeOpsOccurrenceProgress {
+  completedCount: number;
+  targetCount: number;
+  remainingCount: number;
+  unit: string;
+  perOccurrenceWork: string | null;
+}
+
+export interface RecordLifeOpsProgressRequest {
+  /** Caller-supplied replay guard (e.g. derived from the chat message id). */
+  idempotencyKey: string;
+  quantity?: number;
+  note?: string | null;
+}
+
+export interface RecordLifeOpsProgressResult {
+  occurrence: LifeOpsOccurrenceView;
+  progress: LifeOpsOccurrenceProgress;
+  /** False when the idempotency key had already been applied (replay). */
+  applied: boolean;
+  /** True when this call (or an earlier one) reached the daily target. */
+  completed: boolean;
+  /** Persisted progress-event id, or null on a deduplicated replay. */
+  progressEventId: string | null;
 }
 
 export interface LifeOpsGoalDefinition {
@@ -843,6 +937,7 @@ export interface LifeOpsWorkflowRun {
   id: string;
   agentId: string;
   workflowId: string;
+  idempotencyKey: string | null;
   startedAt: string;
   finishedAt: string | null;
   status: LifeOpsWorkflowRunStatus;
@@ -937,7 +1032,7 @@ export interface LifeOpsWorkflowPermissionPolicy {
 // `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
 // `LifeOpsBrowserActionKind`, and `LifeOpsBrowserAction` remain here
 // because workflow-linked session shapes below still reference them.
-export const LIFEOPS_BROWSER_KINDS = ["chrome", "safari"] as const;
+export const LIFEOPS_BROWSER_KINDS = ["chrome", "firefox", "safari"] as const;
 export type LifeOpsBrowserKind = (typeof LIFEOPS_BROWSER_KINDS)[number];
 
 export const LIFEOPS_BROWSER_ACTION_KINDS = [
@@ -1511,7 +1606,6 @@ export type LifeOpsTelemetryMessageChannel =
   | "x_dm"
   | "discord"
   | "telegram"
-  | "signal"
   | "imessage"
   | "whatsapp"
   | "sms"
@@ -2514,7 +2608,6 @@ export const LIFEOPS_INBOX_CHANNELS = [
   "x_dm",
   "discord",
   "telegram",
-  "signal",
   "imessage",
   "whatsapp",
   "sms",
@@ -2610,7 +2703,7 @@ export interface LifeOpsInboxThreadGroup {
 
 /**
  * The connector-backed feeds the inbox aggregates. `chat` covers every
- * memory-backed chat channel (Discord/Telegram/Signal/iMessage/WhatsApp/SMS —
+ * memory-backed chat channel (Discord/Telegram/iMessage/WhatsApp/SMS —
  * one local scan); `gmail` and `x_dm` are the remote connector seams.
  */
 export const LIFEOPS_INBOX_SOURCES = ["chat", "gmail", "x_dm"] as const;
@@ -2663,7 +2756,7 @@ export const LIFEOPS_INBOX_CACHE_MODES = [
 export type LifeOpsInboxCacheMode = (typeof LIFEOPS_INBOX_CACHE_MODES)[number];
 
 export interface GetLifeOpsInboxRequest {
-  /** Cap on the total number of messages returned. Defaults to 100. */
+  /** Explicit pagination cap. When omitted, every matching message is returned. */
   limit?: number;
   /** If omitted, all connected channels are included. */
   channels?: LifeOpsInboxChannel[];
@@ -2696,7 +2789,7 @@ export interface GetLifeOpsInboxRequest {
    * response's `sources` health is real.
    */
   cacheMode?: LifeOpsInboxCacheMode;
-  /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */
+  /** Explicit cache-operation pagination cap. Omission keeps cache reads complete. */
   cacheLimit?: number;
 }
 
@@ -2764,7 +2857,7 @@ export interface LifeOpsXConnectorStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Messaging connector types (Signal, Discord, Telegram)
+// Messaging connector types (Discord, Telegram)
 // ---------------------------------------------------------------------------
 
 export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
@@ -2774,82 +2867,10 @@ export const LIFEOPS_MESSAGING_CONNECTOR_REASONS = [
   "auth_pending",
   "auth_expired",
   "session_revoked",
+  "unsupported",
 ] as const;
 export type LifeOpsMessagingConnectorReason =
   (typeof LIFEOPS_MESSAGING_CONNECTOR_REASONS)[number];
-
-export interface LifeOpsSignalConnectorStatus {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  connected: boolean;
-  inbound: boolean;
-  reason: LifeOpsMessagingConnectorReason;
-  identity: { phoneNumber?: string; uuid?: string; deviceName?: string } | null;
-  grantedCapabilities: LifeOpsSignalCapability[];
-  pairing: LifeOpsSignalPairingStatus | null;
-  grant: LifeOpsConnectorGrant | null;
-  degradations?: LifeOpsConnectorDegradation[];
-}
-
-export interface SendLifeOpsSignalMessageRequest {
-  side?: LifeOpsConnectorSide;
-  recipient: string;
-  text: string;
-}
-
-export interface SendLifeOpsSignalMessageResponse {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  recipient: string;
-  ok: true;
-  timestamp: number;
-}
-
-/**
- * A single inbound Signal message as returned by {@link readSignalInbound} or
- * the plugin-signal local client.
- */
-export interface LifeOpsSignalInboundMessage {
-  /** Stable message ID (from the Signal service memory store or signal-cli). */
-  id: string;
-  /** elizaOS room ID this message was placed into. */
-  roomId: string;
-  /** Signal channel ID (typically the sender's phone number or group ID). */
-  channelId: string;
-  /** Stable per-conversation key used for reply routing. */
-  threadId: string;
-  /** Human-readable conversation name when known. */
-  roomName: string;
-  /** Display name of the sender. */
-  speakerName: string;
-  /** Sender phone number when signal-cli exposes one. */
-  senderNumber: string | null;
-  /** Sender UUID when signal-cli exposes one. */
-  senderUuid: string | null;
-  /** Sender device ID when signal-cli exposes one. */
-  sourceDevice: number | null;
-  /** Signal group ID for group messages. */
-  groupId: string | null;
-  /** Signal group event/type when signal-cli exposes one. */
-  groupType: string | null;
-  /** Plain-text body of the message. */
-  text: string;
-  /** Unix millisecond timestamp of the message. */
-  createdAt: number;
-  /** True when the message was sent by a contact (not by the agent's account). */
-  isInbound: boolean;
-  /** True when the message was received in a group conversation. */
-  isGroup: boolean;
-}
-
-export interface GetLifeOpsSignalMessagesRequest {
-  limit?: number;
-}
-
-export interface GetLifeOpsSignalMessagesResponse {
-  count: number;
-  messages: LifeOpsSignalInboundMessage[];
-}
 
 export interface LifeOpsDiscordDmPreview {
   channelId: string | null;
@@ -3047,29 +3068,6 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
   };
 }
 
-export interface StartLifeOpsSignalPairingRequest {
-  side?: LifeOpsConnectorSide;
-}
-
-export interface StartLifeOpsSignalPairingResponse {
-  provider: "signal";
-  side: LifeOpsConnectorSide;
-  sessionId: string;
-}
-
-export interface LifeOpsSignalPairingStatus {
-  sessionId: string;
-  state:
-    | "idle"
-    | "generating_qr"
-    | "waiting_for_scan"
-    | "linking"
-    | "connected"
-    | "failed";
-  qrDataUrl: string | null;
-  error: string | null;
-}
-
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
   source?: LifeOpsOwnerBrowserAccessSource;
@@ -3145,7 +3143,7 @@ export interface SubmitLifeOpsTelegramAuthRequest {
 
 export interface DisconnectLifeOpsMessagingConnectorRequest {
   side?: LifeOpsConnectorSide;
-  provider: "signal" | "discord" | "telegram";
+  provider: "discord" | "telegram";
 }
 
 export interface StartLifeOpsGoogleConnectorRequest {
@@ -3240,6 +3238,7 @@ export interface CreateLifeOpsDefinitionRequest {
   cadence: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   reminderPlan?: {
     steps: LifeOpsReminderStep[];
@@ -3261,6 +3260,7 @@ export interface UpdateLifeOpsDefinitionRequest {
   cadence?: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   status?: LifeOpsDefinitionStatus;
   reminderPlan?: {
@@ -3573,6 +3573,7 @@ export interface UpdateLifeOpsWorkflowRequest {
 }
 
 export interface RunLifeOpsWorkflowRequest {
+  idempotencyKey?: string;
   now?: string;
   confirmBrowserActions?: boolean;
 }
@@ -3644,6 +3645,9 @@ export interface UpdateLifeOpsBrowserSessionProgressRequest {
 export interface CompleteLifeOpsBrowserSessionRequest {
   status?: Extract<LifeOpsBrowserSessionStatus, "done" | "failed">;
   result?: Record<string, unknown>;
+  currentActionIndex?: number;
+  completedActionId?: string | null;
+  attemptId?: string | null;
 }
 
 // ── Settings card prop contracts ─────────────────────────────────────────────
@@ -3744,7 +3748,6 @@ export const LIFEOPS_MESSAGE_CHANNELS = [
   "email",
   "telegram",
   "discord",
-  "signal",
   "sms",
   "twilio_voice",
   "imessage",

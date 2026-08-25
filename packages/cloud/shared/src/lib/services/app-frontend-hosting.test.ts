@@ -15,6 +15,7 @@ import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-
 import {
   appFrontendHostingService,
   computeManifestHash,
+  frontendHostingLimits,
   generateRobots,
   generateSitemap,
   inferContentType,
@@ -57,6 +58,32 @@ function memoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
 }
 
 afterEach(() => setRuntimeR2Bucket(null));
+
+describe("frontendHostingLimits env parsing", () => {
+  const KEY = "ELIZA_FRONTEND_KEEP_SUPERSEDED";
+  const original = process.env[KEY];
+  afterEach(() => {
+    if (original === undefined) delete process.env[KEY];
+    else process.env[KEY] = original;
+  });
+
+  test("a sub-1 retention count falls back instead of flooring to zero", () => {
+    // keepSuperseded feeds `superseded.slice(keep)`. Flooring 0.5 to 0 makes
+    // that slice every rollback deployment and delete its R2 artifacts.
+    process.env[KEY] = "0.5";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(5);
+  });
+
+  test("a whole retention count is still honoured", () => {
+    process.env[KEY] = "2";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(2);
+  });
+
+  test("a fractional count at or above 1 still truncates as before", () => {
+    process.env[KEY] = "2.7";
+    expect(frontendHostingLimits.keepSuperseded()).toBe(2);
+  });
+});
 
 describe("normalizeSitePath", () => {
   test("strips leading slashes and passes clean paths", () => {
@@ -162,6 +189,20 @@ describe("injectBeacon", () => {
     expect(out).toContain('"session-456"');
     expect(out).toContain("visitor_id:v");
     expect(out).toContain("session_id:sid");
+  });
+  test("keeps every script-shaped beacon value inside its JavaScript literal", () => {
+    const breakout = '</script><script data-owned="no">alert(1)</script>&\u2028\u2029';
+    const out = injectBeacon("<body></body>", `app-${breakout}`, `https://site.test/${breakout}`, {
+      visitorId: `visitor-${breakout}`,
+      sessionId: `session-${breakout}`,
+    });
+
+    expect(out.match(/<script>/g)).toHaveLength(1);
+    expect(out.match(/<\/script>/g)).toHaveLength(1);
+    expect(out).not.toContain('</script><script data-owned="no">');
+    expect(out).toContain("\\u003c/script\\u003e");
+    expect(out).toContain("\\u0026");
+    expect(out).toContain("\\u2028\\u2029");
   });
   test("no-op without a body", () => {
     expect(injectBeacon("<div></div>", "app-123")).toBe("<div></div>");

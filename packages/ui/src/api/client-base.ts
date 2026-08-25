@@ -11,6 +11,7 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
+import { parseChatTerminalFailure } from "@elizaos/shared/contracts";
 import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
@@ -54,10 +55,13 @@ import {
   mergeStreamingText,
 } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "./auth/sessions";
 import type {
   AccountConnectRequest,
   ChatActionResultSummary,
   ChatFailureKind,
+  ChatTerminalFailure,
   ChatTokenUsage,
   ChatToolCallEvent,
   ChatTurnStatus,
@@ -76,7 +80,9 @@ import {
   isIosInProcessLocalAgentBase,
 } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
+import { remoteRelayTransportForUrl } from "./remote-relay-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
+import { sshRuntimeTransportForUrl } from "./ssh-runtime-transport";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -89,11 +95,16 @@ const LOCAL_STORAGE_API_BASE_KEY = "elizaos_api_base";
 const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
   "x-elizaos-client-id",
   "x-elizaos-ui-language",
+  // The baseline headers are meaningful only on the shared Worker routes and
+  // are not in the dedicated container server's CORS contract.
+  "x-elizaos-turn-correlation",
+  "x-elizaos-turn-attempt",
 ]);
 const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 ]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
+const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 type StreamChatEvent = {
   type?: string;
@@ -117,6 +128,7 @@ type StreamChatEvent = {
   thought?: string;
   noResponseReason?: string;
   failureKind?: ChatFailureKind;
+  terminalFailure?: ChatTerminalFailure;
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   actionResults?: ChatActionResultSummary[];
@@ -247,6 +259,7 @@ type StreamChatState = {
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
   doneFailureKind: ChatFailureKind | undefined;
+  doneTerminalFailure: ChatTerminalFailure | undefined;
   doneAccountConnect: AccountConnectRequest | undefined;
   doneLocalInference: LocalInferenceChatMetadata | undefined;
   doneActionResults: ChatActionResultSummary[] | undefined;
@@ -427,6 +440,7 @@ function applyStreamChatDoneEvent(
   if (typeof parsed.failureKind === "string") {
     state.doneFailureKind = parsed.failureKind;
   }
+  state.doneTerminalFailure = parseChatTerminalFailure(parsed.terminalFailure);
   if (parsed.accountConnect && typeof parsed.accountConnect === "object") {
     state.doneAccountConnect = parsed.accountConnect;
   }
@@ -757,6 +771,22 @@ const WARMING_MAX_DELAY_MS = 5_000;
 // its wait clamped to whatever budget remains, and once the deadline passes
 // the structured warming error surfaces instead of another retry.
 const WARMING_TOTAL_BUDGET_MS = 5_000;
+const SHARED_TURN_CORRELATION_HEADER = "X-ElizaOS-Turn-Correlation";
+const SHARED_TURN_ATTEMPT_HEADER = "X-ElizaOS-Turn-Attempt";
+
+function generateSharedTurnCorrelation(): string | null {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID().toLowerCase();
+  }
+  if (typeof globalThis.crypto?.getRandomValues !== "function") return null;
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex
+    .slice(6, 8)
+    .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
 
 /** Clamp the warming barrier's advertised `Retry-After` (seconds) into ms. */
 function warmingRetryDelayMs(retryAfterSeconds: number | undefined): number {
@@ -1366,7 +1396,17 @@ export class ElizaClient {
     let resumeRetries = 0;
     let warmingRetries = 0;
     let warmingDeadline: number | null = null;
-    let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    let requestAttempt = 0;
+    const requestOnce = () =>
+      this.rawRequestOnce(
+        path,
+        requestUrl,
+        init,
+        options,
+        token,
+        ++requestAttempt,
+      );
+    let res = await requestOnce();
     // Personal-Eliza cutover repoint happens once, before classification: a
     // structural Shared rejection can rebind this client to the dedicated
     // runtime, after which the re-issued request (fresh base/url/token) enters
@@ -1382,7 +1422,7 @@ export class ElizaClient {
       requestBase = this.baseUrl;
       requestUrl = this.rawRequestUrl(path);
       token = this.apiToken;
-      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+      res = await requestOnce();
     }
     while (true) {
       // 401: one token refresh per logical request, wherever in the retry
@@ -1396,13 +1436,7 @@ export class ElizaClient {
         const retryToken = hydratedToken ?? (!token ? this.apiToken : null);
         if (retryToken && retryToken !== token) {
           token = retryToken;
-          res = await this.rawRequestOnce(
-            path,
-            requestUrl,
-            init,
-            options,
-            token,
-          );
+          res = await requestOnce();
           continue;
         }
       }
@@ -1420,13 +1454,7 @@ export class ElizaClient {
           await sleepUnlessAborted(resumeRetryDelayMs(res), init?.signal);
           if (!init?.signal?.aborted) {
             resumeRetries += 1;
-            res = await this.rawRequestOnce(
-              path,
-              requestUrl,
-              init,
-              options,
-              token,
-            );
+            res = await requestOnce();
             continue;
           }
         }
@@ -1529,13 +1557,7 @@ export class ElizaClient {
           );
           await sleepUnlessAborted(delay, init?.signal);
           if (!init?.signal?.aborted) {
-            res = await this.rawRequestOnce(
-              path,
-              requestUrl,
-              init,
-              options,
-              token,
-            );
+            res = await requestOnce();
             continue;
           }
         }
@@ -1663,6 +1685,7 @@ export class ElizaClient {
     init: RequestInit | undefined,
     options: { allowNonOk?: boolean; timeoutMs?: number } | undefined,
     token: string | null,
+    requestAttempt: number,
   ): Promise<Response> {
     const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
     const abortController = new AbortController();
@@ -1692,6 +1715,7 @@ export class ElizaClient {
         abortController,
         token,
         requestUrl,
+        requestAttempt,
       );
       const transport = await this.rawRequestTransport(requestUrl);
       return await transport.request(requestUrl, requestInit, { timeoutMs });
@@ -1718,8 +1742,10 @@ export class ElizaClient {
     abortController: AbortController,
     token: string | null,
     requestUrl: string,
+    requestAttempt: number,
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
+    const method = (init?.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {
       ...(!isDedicatedCloudRequest
         ? { "X-ElizaOS-Client-Id": this.clientId }
@@ -1730,6 +1756,21 @@ export class ElizaClient {
         : {}),
       ...requestHeadersToRecord(init?.headers),
     };
+    const hasCsrfHeader = Object.keys(headers).some(
+      (name) => name.toLowerCase() === CSRF_HEADER_NAME,
+    );
+    if (
+      !isDedicatedCloudRequest &&
+      !hasCsrfHeader &&
+      CSRF_REQUIRED_METHODS.has(method)
+    ) {
+      const csrfToken = readCsrfTokenFromCookie();
+      if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+    }
+    const correlation = headers[SHARED_TURN_CORRELATION_HEADER];
+    if (correlation) {
+      headers[SHARED_TURN_ATTEMPT_HEADER] = String(requestAttempt);
+    }
     if (isDedicatedCloudRequest) {
       for (const key of Object.keys(headers)) {
         if (DEDICATED_CLOUD_CORS_BLOCKED_HEADERS.has(key.toLowerCase())) {
@@ -1739,6 +1780,9 @@ export class ElizaClient {
     }
     return {
       ...init,
+      credentials: isDedicatedCloudRequest
+        ? "omit"
+        : (init?.credentials ?? "include"),
       signal: abortController.signal,
       headers,
     };
@@ -1754,6 +1798,8 @@ export class ElizaClient {
       (await androidNativeAgentTransportForUrl(requestUrl)) ??
       (await iosInProcessAgentTransportForUrl(requestUrl)) ??
       (await desktopLocalAgentTransportForUrl(requestUrl)) ??
+      remoteRelayTransportForUrl(requestUrl) ??
+      sshRuntimeTransportForUrl(requestUrl) ??
       desktopHttpTransportForUrl(requestUrl) ??
       nativeCloudHttpTransportForUrl(requestUrl) ??
       this.requestTransport
@@ -2606,6 +2652,7 @@ export class ElizaClient {
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
     failureKind?: ChatFailureKind;
+    terminalFailure?: ChatTerminalFailure;
     accountConnect?: AccountConnectRequest;
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
@@ -2624,6 +2671,10 @@ export class ElizaClient {
     // takes precedence so the retry is idempotent with the original attempt.
     const resolvedClientMessageId =
       clientMessageId ?? ElizaClient.generateMessageId();
+    // This identifier exists only for short-lived attempt telemetry. Keep it
+    // separate from the persisted/idempotent message ID so natural logs cannot
+    // be joined back to message records or caller-supplied identifiers.
+    const turnCorrelation = generateSharedTurnCorrelation();
     const res = await this.rawRequest(
       path,
       {
@@ -2631,6 +2682,11 @@ export class ElizaClient {
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
+          ...(turnCorrelation
+            ? {
+                [SHARED_TURN_CORRELATION_HEADER]: turnCorrelation,
+              }
+            : {}),
         },
         body: JSON.stringify({
           text,
@@ -2671,6 +2727,7 @@ export class ElizaClient {
       doneNoResponseReason: null,
       doneUsage: undefined,
       doneFailureKind: undefined,
+      doneTerminalFailure: undefined,
       doneAccountConnect: undefined,
       doneLocalInference: undefined,
       doneActionResults: undefined,
@@ -2817,6 +2874,9 @@ export class ElizaClient {
       ...(streamState.doneUsage ? { usage: streamState.doneUsage } : {}),
       ...(streamState.doneFailureKind
         ? { failureKind: streamState.doneFailureKind }
+        : {}),
+      ...(streamState.doneTerminalFailure
+        ? { terminalFailure: streamState.doneTerminalFailure }
         : {}),
       ...(streamState.doneAccountConnect
         ? { accountConnect: streamState.doneAccountConnect }

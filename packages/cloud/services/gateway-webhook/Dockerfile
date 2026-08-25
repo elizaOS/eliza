@@ -27,24 +27,30 @@ WORKDIR /app
 
 ARG SERVICE_DIR=packages/cloud/services/gateway-webhook
 ARG COMMON_DIR=packages/cloud/services/_common
+ARG CORE_DIR=packages/core
 
 # Install dependencies
 FROM base AS deps
 ARG SERVICE_DIR
 ARG COMMON_DIR
+ARG CORE_DIR
 COPY ${SERVICE_DIR}/package.json ${SERVICE_DIR}/
 COPY ${COMMON_DIR}/package.json ${COMMON_DIR}/
+COPY ${CORE_DIR}/package.json ${CORE_DIR}/
 # Production dependency resolution must not traverse test-only workspace links;
 # doing so would require vendoring cloud-shared's entire transitive workspace.
 RUN bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); delete manifest.devDependencies; await Bun.write(path, JSON.stringify(manifest));' "${SERVICE_DIR}/package.json" \
-    && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*"]}\n' > package.json \
+    && bun -e 'const path = Bun.argv.at(-1); const manifest = await Bun.file(path).json(); await Bun.write(path, JSON.stringify({name:manifest.name,version:manifest.version,type:"module",exports:"./src/errors.ts"}));' "${CORE_DIR}/package.json" \
+    && printf '{"name":"gateway-webhook-build","private":true,"workspaces":["packages/cloud/services/*","packages/core"]}\n' > package.json \
     && bun install --production
 
 # Build stage
 FROM deps AS builder
 ARG SERVICE_DIR
 ARG COMMON_DIR
+ARG CORE_DIR
 COPY ${COMMON_DIR}/src ${COMMON_DIR}/src
+COPY ${CORE_DIR}/src/errors.ts ${CORE_DIR}/src/errors.ts
 COPY ${SERVICE_DIR}/tsconfig.json ${SERVICE_DIR}/
 COPY ${SERVICE_DIR}/src ${SERVICE_DIR}/src
 WORKDIR /app/${SERVICE_DIR}

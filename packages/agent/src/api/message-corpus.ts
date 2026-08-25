@@ -57,8 +57,8 @@ export interface GeneratedMessageCorpus {
   conversations: GeneratedCorpusConversation[];
   /** Distinctive per-topic keywords usable as demo search queries. */
   sampleQueries: string[];
-  oldestMessageAt: number;
-  newestMessageAt: number;
+  oldestMessageAt: number | null;
+  newestMessageAt: number | null;
 }
 
 const DEFAULT_CONVERSATIONS = 12;
@@ -355,8 +355,8 @@ export function generateMessageCorpus(
   const startWindow = spanMs - messagesPerConversation * 5 * 60_000 - 60_000;
 
   const conversations: GeneratedCorpusConversation[] = [];
-  let oldestMessageAt = Number.POSITIVE_INFINITY;
-  let newestMessageAt = 0;
+  let oldestMessageAt: number | null = null;
+  let newestMessageAt: number | null = null;
 
   for (let i = 0; i < conversationCount; i++) {
     const pack = TOPIC_PACKS[i % TOPIC_PACKS.length];
@@ -380,8 +380,10 @@ export function generateMessageCorpus(
       const lines = role === "user" ? pack.userLines : pack.assistantLines;
       const text = fillTemplate(lines[Math.floor(rng() * lines.length)], rng);
       messages.push({ role, text, createdAt: at });
-      oldestMessageAt = Math.min(oldestMessageAt, at);
-      newestMessageAt = Math.max(newestMessageAt, at);
+      oldestMessageAt =
+        oldestMessageAt === null ? at : Math.min(oldestMessageAt, at);
+      newestMessageAt =
+        newestMessageAt === null ? at : Math.max(newestMessageAt, at);
       // 30s–5min between turns.
       at += 30_000 + Math.floor(rng() * 270_000);
     }
@@ -410,7 +412,7 @@ export function generateMessageCorpus(
       0,
       Math.min(conversationCount, TOPIC_PACKS.length),
     ).map((p) => p.sampleQuery),
-    oldestMessageAt: Number.isFinite(oldestMessageAt) ? oldestMessageAt : now,
+    oldestMessageAt,
     newestMessageAt,
   };
 }
@@ -449,16 +451,21 @@ export interface SeededConversationRef {
   title: string;
   topic: string;
   createdAt: number;
-  lastMessageAt: number;
+  lastMessageAt: number | null;
 }
 
 export interface MessageCorpusSeedSummary {
   conversations: SeededConversationRef[];
   messagesCreated: number;
   factsCreated: number;
-  oldestMessageAt: number;
-  newestMessageAt: number;
+  oldestMessageAt: number | null;
+  newestMessageAt: number | null;
   sampleQueries: string[];
+}
+
+export interface MessageCorpusSeedOptions {
+  /** Existing owner identity to use instead of the dev seeder's synthetic owner. */
+  ownerEntityId?: UUID;
 }
 
 /**
@@ -472,13 +479,14 @@ export interface MessageCorpusSeedSummary {
 export async function seedMessageCorpus(
   runtime: MessageCorpusRuntime,
   corpus: GeneratedMessageCorpus,
+  options: MessageCorpusSeedOptions = {},
 ): Promise<MessageCorpusSeedSummary> {
   const agentName = runtime.character.name ?? "Eliza";
   const worldId = stringToUuid(`${agentName}-web-chat-world`);
   const messageServerId = stringToUuid(`${agentName}-web-server`) as UUID;
-  const ownerEntityId = stringToUuid(
-    `message-corpus-owner-${runtime.agentId}`,
-  ) as UUID;
+  const ownerEntityId =
+    options.ownerEntityId ??
+    (stringToUuid(`message-corpus-owner-${runtime.agentId}`) as UUID);
 
   const seeded: SeededConversationRef[] = [];
   let messagesCreated = 0;
@@ -500,7 +508,7 @@ export async function seedMessageCorpus(
       metadata: { ownership: { ownerId: ownerEntityId } },
     });
 
-    let lastMessageAt = conversation.createdAt;
+    let lastMessageAt: number | null = null;
     for (const message of conversation.messages) {
       await runtime.createMemory(
         {

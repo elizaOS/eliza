@@ -118,6 +118,23 @@ function aliasMatches(raw: string, alias: string): boolean {
 	return false;
 }
 
+/**
+ * Tiebreak priority as a usable number. `priority` is optional on a
+ * plugin-supplied definition, and `?? 0` only replaces `undefined` — a
+ * non-finite value a plugin computed (bad division, parsed config, unchecked
+ * `Number()`) passes straight through. Unlike `confidence`, priority is never
+ * floored out, so it reaches the explicit-tier sort, the natural-tier
+ * tiebreak, and the ambiguity refusal. There `NaN === NaN` is false, which
+ * silently stops two genuinely tied shortcuts from being recognized as
+ * equal-priority and executes one instead of deferring to the LLM.
+ */
+function prioritySortKey(def: ShortcutDefinition): number {
+	const priority = def.priority;
+	return typeof priority === "number" && Number.isFinite(priority)
+		? priority
+		: 0;
+}
+
 function requiredAction(def: ShortcutDefinition): string | undefined {
 	if (def.requiresAction) return def.requiresAction;
 	if (def.target.kind === "action") return def.target.name;
@@ -167,7 +184,7 @@ export function matchShortcut(
 	}
 	if (explicit.length > 0) {
 		explicit.sort(
-			(a, b) => (b.shortcut.priority ?? 0) - (a.shortcut.priority ?? 0),
+			(a, b) => prioritySortKey(b.shortcut) - prioritySortKey(a.shortcut),
 		);
 		return explicit[0] ?? null;
 	}
@@ -204,7 +221,7 @@ export function matchShortcut(
 		.filter((match) => match.confidence >= SHORTCUT_CONFIDENCE_FLOOR)
 		.sort((a, b) => {
 			if (b.confidence !== a.confidence) return b.confidence - a.confidence;
-			return (b.shortcut.priority ?? 0) - (a.shortcut.priority ?? 0);
+			return prioritySortKey(b.shortcut) - prioritySortKey(a.shortcut);
 		});
 	if (eligible.length === 0) return null;
 
@@ -215,7 +232,7 @@ export function matchShortcut(
 		runnerUp &&
 		runnerUp.shortcut.id !== top.shortcut.id &&
 		top.confidence - runnerUp.confidence < SHORTCUT_AMBIGUITY_EPSILON &&
-		(top.shortcut.priority ?? 0) === (runnerUp.shortcut.priority ?? 0)
+		prioritySortKey(top.shortcut) === prioritySortKey(runnerUp.shortcut)
 	) {
 		// Two near-ties at equal priority → ambiguous; defer to the LLM.
 		return null;

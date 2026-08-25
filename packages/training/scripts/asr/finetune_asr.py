@@ -92,6 +92,13 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parents[3]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT.parent))
+
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("asr.finetune")
@@ -820,10 +827,26 @@ def _evaluate_wer(
             if cfg.get("bf16") and device == "cuda":
                 input_features = input_features.to(torch.bfloat16)
             with torch.no_grad():
-                generated_ids = model.generate(input_features, max_new_tokens=256)
+                max_new_tokens = remaining_model_context_tokens(
+                    model,
+                    processor.tokenizer,
+                    prompt_tokens=1,
+                    source="finetune_asr.evaluate",
+                )
+                generated_ids = model.generate(
+                    input_features, max_new_tokens=max_new_tokens
+                )
+            require_complete_generated_tokens(
+                generated_ids,
+                max_new_tokens=max_new_tokens,
+                source="asr.finetune_eval",
+                terminal_token_ids=model.generation_config.eos_token_id,
+            )
             transcription = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
             references.append(rec["transcript"].lower().strip())
             hypotheses.append(transcription.lower().strip())
+        except IncompleteGenerationError:
+            raise
         except Exception as exc:
             log.warning("eval failed for %s: %s", rec["id"], exc)
 
@@ -855,7 +878,15 @@ def _estimate_rtf(model: Any, processor: Any, records: list[dict[str, Any]], cfg
             input_features = torch.from_numpy(log_mel).unsqueeze(0).to(device)
             t0 = time.perf_counter()
             with torch.no_grad():
-                model.generate(input_features, max_new_tokens=256)
+                model.generate(
+                    input_features,
+                    max_new_tokens=remaining_model_context_tokens(
+                        model,
+                        processor.tokenizer,
+                        prompt_tokens=1,
+                        source="finetune_asr.smoke",
+                    ),
+                )
             total_wall_s += time.perf_counter() - t0
         except Exception:
             pass

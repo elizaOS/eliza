@@ -67,6 +67,8 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({ requireAdmin }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {}, STRICT: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   failureResponse: (c: { json: (body: unknown, status: number) => Response }) =>

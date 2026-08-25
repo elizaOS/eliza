@@ -392,7 +392,7 @@ function buildSelectorName(modelId: string): string {
   }
 
   if (provider === "anthropic") {
-    return titleCase(rawName.replace(/^claude-/, "claude-"));
+    return titleCase(rawName);
   }
 
   return titleCase(rawName);

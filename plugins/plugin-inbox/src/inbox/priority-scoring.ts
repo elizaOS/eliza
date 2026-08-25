@@ -105,11 +105,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function promptValue(
-  value: string | null | undefined,
-  maxLength: number,
-): string {
-  const normalized = (value ?? "").slice(0, maxLength).replace(/\s+/g, " ");
+function promptValue(value: string | null | undefined): string {
+  const normalized = (value ?? "").replace(/\s+/g, " ");
   const trimmed = normalized.trim();
   return trimmed.length > 0 ? trimmed : "null";
 }
@@ -137,7 +134,7 @@ function buildPrompt(
     lines.push(
       "",
       "Owner context:",
-      `ownerName: ${promptValue(opts.ownerName, 160)}`,
+      `ownerName: ${promptValue(opts.ownerName)}`,
     );
   }
   if (opts.topRelationships && opts.topRelationships.length > 0) {
@@ -145,10 +142,8 @@ function buildPrompt(
       "",
       "Important contacts (treat their messages as higher priority):",
       opts.topRelationships
-        .slice(0, 12)
         .map(
-          (name, index) =>
-            `importantContacts[${index}]: ${promptValue(name, 160)}`,
+          (name, index) => `importantContacts[${index}]: ${promptValue(name)}`,
         )
         .join("\n"),
     );
@@ -157,16 +152,16 @@ function buildPrompt(
   for (const [index, message] of batch.entries()) {
     lines.push(
       `messages[${index}]:`,
-      `  from: ${promptValue(message.sender.displayName, 160)}`,
-      `  channel: ${promptValue(message.channel, 80)}`,
-      `  chatType: ${promptValue(message.chatType ?? "dm", 40)}`,
+      `  from: ${promptValue(message.sender.displayName)}`,
+      `  channel: ${promptValue(message.channel)}`,
+      `  chatType: ${promptValue(message.chatType ?? "dm")}`,
       `  participantCount: ${
         typeof message.participantCount === "number"
           ? message.participantCount
           : "null"
       }`,
-      `  subject: ${promptValue(message.subject, 200)}`,
-      `  snippet: ${promptValue(message.snippet, 600)}`,
+      `  subject: ${promptValue(message.subject)}`,
+      `  snippet: ${promptValue(message.snippet)}`,
     );
   }
   lines.push(

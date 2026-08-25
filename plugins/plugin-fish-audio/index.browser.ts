@@ -9,7 +9,9 @@ configureFishAudioWebSocketFactory(() => {
   );
 });
 
+export type { FishAudioFailureClassification } from "./src/index";
 export {
+  classifyFishAudioFailure,
   default,
   fishAudioPlugin,
   handleFishAudioTextToSpeech,

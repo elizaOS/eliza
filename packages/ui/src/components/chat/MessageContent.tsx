@@ -16,6 +16,7 @@
 
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
+import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
   memo,
@@ -34,6 +35,7 @@ import type { UiSpec } from "../../config/ui-spec";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { cn } from "../../lib/utils";
 import { isDesktopPlatform, isNative } from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -59,6 +61,7 @@ import { CodeBlock } from "../ui/code-block";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { Input } from "../ui/input";
 import { AccountConnectBlock } from "./AccountConnectBlock";
+import { CapabilityHandoffBlock } from "./CapabilityHandoffBlock";
 import {
   connectorWidgetModes,
   defaultConnectorWidgetModeId,
@@ -566,24 +569,22 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           {modes.map((mode) => {
             const active = mode.id === selectedModeId;
             return (
-              <button
+              <Button
                 key={mode.id}
                 type="button"
                 aria-pressed={active}
                 title={mode.description}
                 data-testid={`inline-plugin-config-mode-${mode.id}`}
+                variant="selection"
+                size="tiny"
+                data-state={active ? "on" : "off"}
                 onClick={() => {
                   setModeChoice(mode.id);
                   setError(null);
                 }}
-                className={`px-3 py-1 h-7 text-2xs font-medium border transition-colors ${
-                  active
-                    ? "border-accent text-accent bg-accent/10"
-                    : "border-border text-muted hover:text-txt hover:border-txt/40"
-                }`}
               >
                 {mode.label}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -595,8 +596,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleOAuthSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-oauth-btn"
@@ -611,19 +611,21 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
                 })}
           </Button>
           {apiKeyModeId && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setModeChoice(apiKeyModeId);
                 setError(null);
               }}
               data-testid="inline-plugin-config-use-apikey"
-              className="mt-2 block text-2xs text-muted underline hover:text-txt"
+              variant="mutedLink"
+              size="content"
+              className="mt-2 block"
             >
               {t("messagecontent.OAuthUseApiKey", {
                 defaultValue: "Use an API key / local setup instead",
               })}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -639,8 +641,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           )}
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-8 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="denseWide"
             onClick={() => void handleLocalSignIn()}
             disabled={signingIn}
             data-testid="inline-plugin-config-local-btn"
@@ -690,8 +691,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         {showConfigForm && (
           <Button
             variant="default"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs bg-accent text-accent-fg hover:opacity-90 disabled:opacity-40"
+            size="tinyWide"
             onClick={handleSave}
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
@@ -705,9 +705,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
         {!isEnabled ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs border-ok/50 text-ok bg-ok/5 hover:bg-ok/10 hover:text-ok disabled:opacity-40"
+            variant="outlineAccent"
+            size="tinyWide"
             onClick={() => void handleToggle(true)}
             disabled={enabling || saving}
           >
@@ -721,9 +720,8 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           </Button>
         ) : (
           <Button
-            variant="outline"
-            size="sm"
-            className="px-4 py-1.5 h-7 text-xs text-muted hover:border-danger hover:text-danger disabled:opacity-40"
+            variant="dangerOutline"
+            size="tinyWide"
             onClick={() => void handleToggle(false)}
             disabled={enabling || saving}
           >
@@ -856,9 +854,8 @@ export function MessageUiSpecBlock({
           {t("messagecontent.InteractiveUI")}
         </span>
         <Button
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-2xs text-txt hover:underline decoration-accent/50 underline-offset-2"
+          variant="mutedLink"
+          size="content"
           onClick={() => setShowRaw((v) => !v)}
         >
           {showRaw
@@ -894,13 +891,13 @@ export function MessageUiSpecBlock({
               <span className="font-semibold text-destructive">
                 Couldn't render this widget.
               </span>{" "}
-              <button
+              <Button
                 type="button"
                 className="underline underline-offset-2"
                 onClick={() => setShowRaw((v) => !v)}
               >
                 {showRaw ? "Hide JSON" : "View JSON"}
-              </button>
+              </Button>
             </div>
           )}
         >
@@ -949,6 +946,8 @@ export function SensitiveRequestBlock({
 
   const tunnel = request.delivery?.tunnel;
   const requestLabel = sensitiveRequestTitleLabel(request.key);
+  const isSaved =
+    status === "saved" || status === "submitted" || status === "fulfilled";
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1035,14 +1034,25 @@ export function SensitiveRequestBlock({
   return (
     <div
       data-testid="sensitive-request"
-      className="my-2 py-1.5 text-sm space-y-3"
+      className="my-2 rounded-sm border border-border/50 bg-card/40 px-3 py-2.5 text-sm space-y-3"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 break-words font-medium">{requestLabel}</div>
+        <div className="min-w-0">
+          <div className="break-words font-medium">{requestLabel}</div>
+          {canCollectSecret && !tunnel && !isRemoteConnect && (
+            <div className="mt-0.5 text-xs text-muted">
+              Masked input. It never lands in the transcript.
+            </div>
+          )}
+        </div>
         <div
           data-testid="sensitive-request-status"
-          className="shrink-0 text-xs text-muted"
+          className={cn(
+            "flex shrink-0 items-center gap-1 text-xs",
+            isSaved ? "text-ok" : "text-muted",
+          )}
         >
+          {isSaved && <Check className="size-3.5" aria-hidden />}
           {sensitiveRequestStatusLabel(status)}
         </div>
       </div>
@@ -1077,7 +1087,8 @@ export function SensitiveRequestBlock({
                     id={inputId}
                     aria-label={label}
                     data-testid={`sensitive-request-file-${field.name}`}
-                    className="border-border bg-bg px-2 py-1.5 text-sm"
+                    variant="secret"
+                    density="short"
                     type="file"
                     accept={accept}
                     // Mobile: prefer the rear camera for image capture (2FA QR/seed).
@@ -1130,7 +1141,8 @@ export function SensitiveRequestBlock({
                 <Input
                   id={inputId}
                   aria-label={label}
-                  className="border-border bg-bg px-2 py-1.5 text-sm"
+                  variant="secret"
+                  density="short"
                   type={field.input === "secret" ? "password" : "text"}
                   value={values[field.name] ?? ""}
                   onChange={(event) => {
@@ -1151,8 +1163,22 @@ export function SensitiveRequestBlock({
             disabled={saving || !canSubmit}
             data-testid="sensitive-request-submit"
           >
-            {saving ? "Saving..." : (request.form?.submitLabel ?? "Save")}
+            {saving
+              ? "Saving…"
+              : (request.form?.submitLabel ??
+                (isRemoteConnect ? "Connect" : "Save securely"))}
           </Button>
+          {!isRemoteConnect && (
+            <div
+              className="flex items-center gap-1.5 text-xs text-muted"
+              data-testid="sensitive-request-security-note"
+            >
+              <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+              {tunnel
+                ? "Sent once to the waiting session. Never stored, never posted to chat."
+                : "Sent directly to the agent. Never posted to chat."}
+            </div>
+          )}
         </form>
       )}
       {canStartOAuth && request.form?.kind === "oauth" && (
@@ -1303,9 +1329,10 @@ function OAuthRequestPanel({
         disabled={authorizing}
         data-testid="sensitive-request-oauth-start"
       >
-        {authorizing ? "Authorizing..." : label}
+        {authorizing ? "Authorizing…" : label}
       </Button>
-      <div className="text-xs text-muted">
+      <div className="flex items-center gap-1.5 text-xs text-muted">
+        <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
         Authorization happens on the provider's secure page. The token is stored
         securely and is never shown in chat.
       </div>
@@ -1387,6 +1414,17 @@ export function MessageContent({
     return <AccountConnectBlock request={message.accountConnect} />;
   }
 
+  if (message.capabilityHandoff) {
+    return (
+      <div className="space-y-2">
+        {message.text.trim() ? (
+          <MessageTextBody text={message.text} boldSlashCommand={false} />
+        ) : null}
+        <CapabilityHandoffBlock request={message.capabilityHandoff} />
+      </div>
+    );
+  }
+
   if (
     message.localInference &&
     message.localInference.status !== "ready" &&
@@ -1415,7 +1453,7 @@ export function MessageContent({
             {downloading
               ? "Downloading"
               : localDownloadState === "busy"
-                ? "Starting..."
+                ? "Starting…"
                 : localDownloadState === "queued"
                   ? "Download queued"
                   : "Download default model"}
@@ -1474,7 +1512,12 @@ export function MessageContent({
   // one-tap Retry that resends the preceding user turn. Permanent gates
   // (`no_provider`, `insufficient_credits`, `missing_capability`) stay off the
   // shared retry contract in `@elizaos/shared`.
-  if (message.failureKind && isRetryableChatFailureKind(message.failureKind)) {
+  if (
+    message.failureKind &&
+    (message.terminalFailure
+      ? message.terminalFailure.transient
+      : isRetryableChatFailureKind(message.failureKind))
+  ) {
     return (
       <div className="border border-warn/30 bg-warn/5 rounded-sm p-3 text-sm">
         <div className="text-muted whitespace-pre-wrap mb-2">
@@ -1579,7 +1622,7 @@ export function MessageContent({
                   key={segmentKey}
                   className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden"
                 >
-                  <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
+                  <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
                     &lt;{seg.tag}&gt;
                   </div>
                   <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words text-muted m-0 overflow-x-auto overscroll-x-contain">
@@ -1622,8 +1665,8 @@ export function MessageContent({
       ) : null}
       {analysisMode && message.actionName && (
         <div className="my-2 overflow-hidden rounded-sm border border-accent/20 bg-accent/5">
-          <div className="bg-accent/10 px-3 py-1 text-xs font-mono font-bold text-accent uppercase tracking-wider">
-            ACTION TAKEN
+          <div className="bg-accent/10 px-3 py-2 text-xs font-semibold text-accent">
+            Action taken
           </div>
           <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
             {message.actionName}
@@ -1634,8 +1677,8 @@ export function MessageContent({
         message.actionCallbackHistory &&
         message.actionCallbackHistory.length > 0 && (
           <div className="my-2 overflow-hidden rounded-sm border border-border/60 bg-surface/70">
-            <div className="bg-bg-accent px-3 py-1 text-xs font-mono font-bold text-muted-strong uppercase tracking-wider">
-              ACTION CALLBACK HISTORY
+            <div className="bg-bg-accent px-3 py-2 text-xs font-semibold text-muted-strong">
+              Action callback history
             </div>
             <div className="px-3 py-2 text-xs font-mono text-muted space-y-1">
               {(() => {

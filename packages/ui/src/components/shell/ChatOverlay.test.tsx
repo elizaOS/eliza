@@ -616,7 +616,7 @@ describe("ChatOverlay", () => {
     expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
-  it("publishes the full resting footprint and compact-landscape side clearance", () => {
+  it("reserves only side clearance for the compact landscape composer", () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
       "innerWidth",
@@ -681,7 +681,7 @@ describe("ChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-chat-clearance",
         ),
-      ).toBe("80px");
+      ).toBe("0px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 
@@ -970,7 +970,7 @@ describe("ChatOverlay", () => {
       );
       const stop = screen.getByTestId("chat-composer-mic");
       expect(stop.className).not.toContain("animate-pulse");
-      expect(stop.className).toContain("text-white");
+      expect(stop.className).toContain("text-inverse");
       expect(stop.className).not.toContain("text-accent");
       expect(stop.getAttribute("aria-label")).toBe("end conversation");
     });
@@ -1047,6 +1047,16 @@ describe("ChatOverlay", () => {
 
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 1 });
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
+  it("collapses an open sheet when a control-heavy view requests focus", () => {
+    render(<ChatOverlay controller={makeController()} initialMode="half" />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent(window, new CustomEvent("eliza:chat:close"));
+
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
@@ -1427,7 +1437,7 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController({ handsFree: true })} />);
     const mic = screen.getByTestId("chat-composer-mic");
     expect(mic.getAttribute("aria-pressed")).toBe("true");
-    expect(mic.className).toContain("text-white");
+    expect(mic.className).toContain("text-inverse");
     expect(mic.className).not.toContain("text-accent");
     expect(mic.className).not.toContain("animate-pulse");
     expect(mic.className).not.toMatch(/bg-white/);
@@ -1449,11 +1459,7 @@ describe("ChatOverlay", () => {
     expect(log?.querySelectorAll('[data-testid="thread-line"]').length).toBe(1);
   });
 
-  it("hides the topic chips bar + dividers on a single-topic thread", () => {
-    // The lock-screen leak: a fresh thread whose only Stage-1 topic is
-    // `greeting` was rendering a grey `greeting` chip top-left and a
-    // "— GREETING —" divider above the only message. One topic group must
-    // open clean — no chips rail, no divider.
+  it("renders a single-topic thread without topic chrome", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1480,12 +1486,11 @@ describe("ChatOverlay", () => {
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
-    // The message still renders — gating only removes the topic chrome.
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("how can I help");
   });
 
-  it("shows the chips bar + dividers once the thread spans two topics", () => {
+  it("renders multiple-topic messages as one flat chronological transcript", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -1509,15 +1514,13 @@ describe("ChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
-    // Two distinct topics → two group dividers, labels humanized.
-    expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Deployment",
-    );
-    expect(screen.getByTestId("topic-chips-bar").textContent).toContain(
-      "Billing",
-    );
+    expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
+    expect(screen.queryByTestId("topic-group-header")).toBeNull();
+    expect(screen.queryByTestId("topic-group-pill")).toBeNull();
+    const lines = screen.getAllByTestId("thread-line");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.textContent).toContain("deploy failing");
+    expect(lines[1]?.textContent).toContain("charged twice");
   });
 
   it("aligns the assistant bubble left and the user bubble right", () => {
@@ -4199,7 +4202,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(controller.clearConversation).not.toHaveBeenCalled();
   });
 
-  it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
+  it("renders the infinite-scroll top sentinel above a populated thread (#14279)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     openSheet();
@@ -4616,9 +4619,202 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
     expect(document.getElementById("continuous-thread")).not.toBeNull();
     expect(screen.queryByTestId("chat-thread-loading")).toBeNull();
   });
+
+  it("reads as loading, not designed-empty, when opened during boot-time hydration", () => {
+    // A programmatic open (boot-recovery, deep link) can expand the sheet
+    // before the server transcript has hydrated. An empty sheet there is a
+    // loading state, never a broken empty box.
+    const { rerender } = render(<ChatOverlay controller={makeController()} />);
+    openSheetToHalf();
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "booting",
+          messages: [],
+          conversationLoading: false,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.getByTestId("chat-thread-loading")).toBeTruthy();
+  });
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  function assistantTurnBody(messageId: string): HTMLElement {
+    const body = document
+      .getElementById(`chat-message-${messageId}`)
+      ?.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      );
+    expect(body).toBeTruthy();
+    return body as HTMLElement;
+  }
+
+  it("marks parsed prose, not attachment or inline-widget chrome, as message text", () => {
+    const form = JSON.stringify({
+      id: "trip-details",
+      title: "Trip details",
+      fields: [{ name: "destination", type: "text", label: "Destination" }],
+    });
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "a-interrupted",
+              role: "assistant",
+              content: "Partial durable answer",
+              interrupted: true,
+              createdAt: 1,
+            },
+            {
+              id: "a-attachment-only",
+              role: "assistant",
+              content: "",
+              attachments: [
+                {
+                  id: "generated-image",
+                  url: "data:image/png;base64,iVBORw0KGgo=",
+                  contentType: "image",
+                  title: "Generated image",
+                },
+              ],
+              createdAt: 2,
+            },
+            {
+              id: "a-choice-only",
+              role: "assistant",
+              content:
+                "[CHOICE:approval id=choice-only]\nyes=Approve\nno=Reject\n[/CHOICE]",
+              createdAt: 3,
+            },
+            {
+              id: "a-form-only",
+              role: "assistant",
+              content: `[FORM]\n${form}\n[/FORM]`,
+              createdAt: 4,
+            },
+            {
+              id: "a-prose-widget",
+              role: "assistant",
+              content:
+                "Choose next:\n[CHOICE:next id=choice-with-prose]\ncontinue=Continue\n[/CHOICE]",
+              createdAt: 5,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const interruptedRow = screen
+      .getByText("Partial durable answer")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    expect(interruptedRow?.dataset.interrupted).toBe("true");
+    expect(
+      interruptedRow?.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      )?.dataset.hasMessageText,
+    ).toBe("true");
+
+    const attachmentRow = screen
+      .getByTestId("message-attachments")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    const attachmentBody = attachmentRow?.querySelector<HTMLElement>(
+      '[data-testid="overlay-assistant-turn-body"]',
+    );
+    expect(attachmentBody?.dataset.phase).toBe("reply");
+    expect(attachmentBody?.dataset.hasMessageText).toBe("false");
+
+    expect(screen.getByTestId("choice-shell-choice-only")).toBeTruthy();
+    expect(assistantTurnBody("a-choice-only").dataset.hasMessageText).toBe(
+      "false",
+    );
+    expect(screen.getByTestId("form-request")).toBeTruthy();
+    expect(assistantTurnBody("a-form-only").dataset.hasMessageText).toBe(
+      "false",
+    );
+    expect(screen.getByText("Choose next:")).toBeTruthy();
+    expect(assistantTurnBody("a-prose-widget").dataset.hasMessageText).toBe(
+      "true",
+    );
+  });
+
+  it("does not promote hidden or structured-only markup to assistant prose", () => {
+    const uiSpec = JSON.stringify({
+      root: "heading",
+      state: {},
+      elements: {
+        heading: {
+          type: "Heading",
+          props: { text: "Structured only", level: "h2" },
+          children: [],
+        },
+      },
+    });
+    const permissionRequest = JSON.stringify({
+      action: "permission_request",
+      permission: "camera",
+      reason: "Scan a code.",
+      feature: "scanner.qr.read",
+    });
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "a-hidden-only",
+              role: "assistant",
+              content: "<think>private reasoning</think>",
+              createdAt: 1,
+            },
+            {
+              id: "a-code-only",
+              role: "assistant",
+              content: "```ts\nconst answer = 42;\n```",
+              createdAt: 2,
+            },
+            {
+              id: "a-config-only",
+              role: "assistant",
+              content: "[CONFIG:weather]",
+              createdAt: 3,
+            },
+            {
+              id: "a-ui-only",
+              role: "assistant",
+              content: `\`\`\`json\n${uiSpec}\n\`\`\``,
+              createdAt: 4,
+            },
+            {
+              id: "a-permission-only",
+              role: "assistant",
+              content: `\`\`\`json\n${permissionRequest}\n\`\`\``,
+              createdAt: 5,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    expect(screen.queryByText("private reasoning")).toBeNull();
+    expect(screen.getByTestId("code-block")).toBeTruthy();
+    expect(screen.getByTestId("permission-card")).toBeTruthy();
+    for (const messageId of [
+      "a-hidden-only",
+      "a-code-only",
+      "a-config-only",
+      "a-ui-only",
+      "a-permission-only",
+    ]) {
+      expect(assistantTurnBody(messageId).dataset.hasMessageText).toBe("false");
+    }
+  });
+
   it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {
     render(
       <ChatOverlay
@@ -5301,16 +5497,67 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(controller.send).toHaveBeenCalledWith("what's the weather?");
   });
 
-  it("does NOT show Retry on an unrecoverable failure (no_provider / insufficient_credits)", () => {
+  it("marks a non-retryable normal assistant failure without showing Retry", () => {
     const controller = makeController({
       messages: [
         { id: "u1", role: "user", content: "hi", createdAt: 1 },
         {
           id: "a1",
           role: "assistant",
-          content: "",
+          content: "The required capability is unavailable.",
           createdAt: 2,
-          failureKind: "insufficient_credits",
+          failureKind: "missing_capability",
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    const failedTurn = screen
+      .getByText("The required capability is unavailable.")
+      .closest('[data-testid="thread-line"]');
+    expect(failedTurn?.getAttribute("data-failure")).toBe("missing_capability");
+    expect(screen.queryByTestId("thread-line-retry")).toBeNull();
+  });
+
+  it("shows Retry when a typed terminal failure explicitly marks a normally permanent kind transient", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "fix it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "Shell execution failed.",
+          createdAt: 2,
+          failureKind: "coding_tool_failure",
+          terminalFailure: {
+            kind: "coding_tool_failure",
+            message: "Shell execution failed.",
+            transient: true,
+            code: "SHELL_UNAVAILABLE",
+          },
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+    render(<ChatOverlay controller={controller} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(screen.getByTestId("thread-line-retry")).toBeTruthy();
+  });
+
+  it("hides Retry when a typed terminal failure marks a normally retryable kind permanent", () => {
+    const controller = makeController({
+      messages: [
+        { id: "u1", role: "user", content: "try it", createdAt: 1 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "The planner cannot continue.",
+          createdAt: 2,
+          failureKind: "planner_exhaustion",
+          terminalFailure: {
+            kind: "planner_exhaustion",
+            message: "The planner cannot continue.",
+            transient: false,
+          },
         },
       ],
     } as unknown as Partial<ShellController>);

@@ -1,5 +1,5 @@
 /**
- * js-tiktoken wrappers for offline token math — encode/decode/count/truncate
+ * js-tiktoken wrappers for offline token math — encode/decode/count
  * keyed to a runtime model slot. Resolves the tiktoken encoding from the model
  * name, falling back to o200k_base for 4o-family models else cl100k_base.
  */
@@ -65,18 +65,4 @@ export function countTokens(
 ): number {
   const tokens = tokenizeText(runtime, modelType, text);
   return tokens.length;
-}
-
-export function truncateToTokenLimit(
-  runtime: IAgentRuntime,
-  modelType: ModelTypeName,
-  text: string,
-  maxTokens: number
-): string {
-  const tokens = tokenizeText(runtime, modelType, text);
-  if (tokens.length <= maxTokens) {
-    return text;
-  }
-  const truncatedTokens = tokens.slice(0, maxTokens);
-  return detokenizeText(runtime, modelType, truncatedTokens);
 }

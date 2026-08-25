@@ -4,7 +4,7 @@
  * an in-process keyed queue over the cache-backed store.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   RuntimeDurableObjectNamespace,
   RuntimeDurableObjectStub,
@@ -26,6 +26,212 @@ import {
 } from "./onboarding-proactive-greeting";
 import { type ElizaAppProvisioningStatus, getElizaAppProvisioningStatus } from "./provisioning";
 import { elizaAppUserService } from "./user-service";
+
+const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
+// Coordinator replies are small JSON control documents. One MiB leaves room
+// for retained session history while keeping a single internal hop within a
+// fixed Worker-memory budget; larger histories must be bounded or paginated.
+const ONBOARDING_RESPONSE_MAX_BYTES = 1024 * 1024;
+const REBUFFERED_RESPONSE_HEADERS = [
+  "content-encoding",
+  "content-length",
+  "trailer",
+  "transfer-encoding",
+] as const;
+
+function onboardingAbortError(message: string, name: "AbortError" | "TimeoutError"): DOMException {
+  return new DOMException(message, name);
+}
+
+async function bufferOnboardingResponse(
+  response: Response,
+  signal: AbortSignal,
+  throwIfAbortedOrExpired: () => void,
+): Promise<Response> {
+  throwIfAbortedOrExpired();
+  const rawContentLength = response.headers.get("content-length");
+  if (rawContentLength !== null && /^\d+$/.test(rawContentLength)) {
+    const declaredLength = Number(rawContentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength > ONBOARDING_RESPONSE_MAX_BYTES) {
+      const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
+        code: "ONBOARDING_RESPONSE_TOO_LARGE",
+        context: { maxBytes: ONBOARDING_RESPONSE_MAX_BYTES, receivedBytes: declaredLength },
+      });
+      try {
+        await response.body?.cancel(error);
+      } catch (cause) {
+        // error-policy:J6 The response is rejected; cancellation only releases transport.
+        logger.debug("[onboarding-chat] Failed to cancel declared-oversize response body", {
+          cause,
+        });
+      }
+      throw error;
+    }
+  }
+  if (!response.body) {
+    throwIfAbortedOrExpired();
+    return response;
+  }
+
+  const reader = response.body.getReader();
+  // Copy every view immediately so a one-byte chunk cannot retain a large
+  // transport-owned backing buffer or grow an unbounded chunk-object list.
+  const body = new Uint8Array(ONBOARDING_RESPONSE_MAX_BYTES);
+  let receivedBytes = 0;
+  const cancelBody = (): void => {
+    // error-policy:J6 The request already failed; cancellation only releases the response stream.
+    reader.cancel(signal.reason).catch((cause: unknown) => {
+      logger.debug("[onboarding-chat] Failed to cancel aborted onboarding response body", {
+        cause,
+      });
+    });
+  };
+  signal.addEventListener("abort", cancelBody, { once: true });
+  try {
+    while (true) {
+      // An immediately-ready stream can starve the timer queue with an
+      // unbounded microtask chain, especially when chunks are empty. Enforce
+      // the monotonic wall-clock deadline inside the read loop as well.
+      throwIfAbortedOrExpired();
+      const next = await reader.read();
+      throwIfAbortedOrExpired();
+      if (next.done) break;
+      // Empty fragments do not contribute to the bounded payload. Retaining
+      // them would let a hostile stream grow the chunk-object inventory without
+      // consuming any of the byte budget.
+      if (next.value.byteLength === 0) continue;
+      const nextReceivedBytes = receivedBytes + next.value.byteLength;
+      if (nextReceivedBytes > ONBOARDING_RESPONSE_MAX_BYTES) {
+        const error = new ElizaError("Onboarding hop response exceeds the byte limit", {
+          code: "ONBOARDING_RESPONSE_TOO_LARGE",
+          context: {
+            maxBytes: ONBOARDING_RESPONSE_MAX_BYTES,
+            receivedBytes: nextReceivedBytes,
+          },
+        });
+        try {
+          await reader.cancel(error);
+        } catch (cause) {
+          // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+          logger.debug("[onboarding-chat] Failed to cancel oversized onboarding response body", {
+            cause,
+          });
+        }
+        throw error;
+      }
+      body.set(next.value, receivedBytes);
+      receivedBytes = nextReceivedBytes;
+    }
+  } catch (error) {
+    let rejection = error;
+    try {
+      throwIfAbortedOrExpired();
+    } catch (abortOrDeadlineReason) {
+      // The composed signal is the authoritative cancellation boundary. A
+      // transport is allowed to reject its reader/cancel hooks with a different
+      // error, but callers must still observe the exact signal reason.
+      rejection = abortOrDeadlineReason;
+    }
+    try {
+      await reader.cancel(rejection);
+    } catch (cause) {
+      // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+      logger.debug("[onboarding-chat] Failed to cancel rejected onboarding response body", {
+        cause,
+      });
+    }
+    throw rejection;
+  } finally {
+    signal.removeEventListener("abort", cancelBody);
+    try {
+      reader.releaseLock();
+    } catch (cause) {
+      // error-policy:J6 Stream lock release is best-effort transport teardown.
+      logger.debug("[onboarding-chat] Failed to release onboarding response body lock", { cause });
+    }
+  }
+
+  throwIfAbortedOrExpired();
+  const headers = new Headers(response.headers);
+  for (const header of REBUFFERED_RESPONSE_HEADERS) headers.delete(header);
+  const bufferedBody = receivedBytes === body.byteLength ? body : body.slice(0, receivedBytes);
+  return new Response(bufferedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
+ * Bound every onboarding coordinator / agent API hop so a hung or overloaded
+ * Durable Object or agent cannot pin the onboarding worker indefinitely. The
+ * clearable deadline covers headers and a bounded, fully buffered body read,
+ * and composes with caller cancellation. The returned response preserves
+ * semantic headers but drops transport/representation headers invalidated by
+ * Fetch decoding and rebuffering.
+ */
+export async function onboardingFetch(
+  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
+  input: string | URL,
+  init?: RequestInit,
+  timeoutMs: number = ONBOARDING_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new ElizaError("Onboarding hop timeout must be a positive timer-safe integer", {
+      code: "INVALID_ONBOARDING_TIMEOUT",
+      context: { timeoutMs },
+    });
+  }
+
+  const controller = new AbortController();
+  const deadlineAt = performance.now() + timeoutMs;
+  const timeoutError = onboardingAbortError(
+    "The onboarding request deadline expired.",
+    "TimeoutError",
+  );
+  let rejectAbort!: (reason: unknown) => void;
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject;
+  });
+  const abort = (reason: unknown): void => {
+    if (controller.signal.aborted) return;
+    controller.abort(reason);
+    rejectAbort(reason);
+  };
+  const onCallerAbort = (): void => {
+    if (!init?.signal) return;
+    abort(init.signal.reason);
+  };
+  init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (init?.signal?.aborted) onCallerAbort();
+  const timeout = setTimeout(() => abort(timeoutError), timeoutMs);
+  const throwIfAbortedOrExpired = (): void => {
+    if (controller.signal.aborted) throw controller.signal.reason;
+    if (performance.now() >= deadlineAt) {
+      abort(timeoutError);
+      throw timeoutError;
+    }
+  };
+
+  try {
+    if (controller.signal.aborted) return await abortPromise;
+    throwIfAbortedOrExpired();
+    const response = await Promise.race([
+      stub.fetch(input, { ...init, signal: controller.signal }),
+      abortPromise,
+    ]);
+    throwIfAbortedOrExpired();
+    const buffered = await Promise.race([
+      bufferOnboardingResponse(response, controller.signal, throwIfAbortedOrExpired),
+      abortPromise,
+    ]);
+    throwIfAbortedOrExpired();
+    return buffered;
+  } finally {
+    clearTimeout(timeout);
+    init?.signal?.removeEventListener("abort", onCallerAbort);
+  }
+}
 
 export type OnboardingChatRole = "user" | "assistant";
 export type OnboardingPlatform = "web" | "telegram" | "discord" | "whatsapp" | "twilio" | "blooio";
@@ -153,7 +359,6 @@ export interface OnboardingChatResult {
 }
 
 const SESSION_TTL_SECONDS = 14 * 24 * 60 * 60;
-const MAX_HISTORY_MESSAGES = 200;
 /**
  * Claim authority is intentionally a separate session purpose from ordinary
  * Telegram onboarding. There is no legacy fallback: callers with an older or
@@ -165,7 +370,6 @@ const TELEGRAM_ACCOUNT_CLAIM_SESSION_PATTERN = /^platform:telegram-claim:[0-9a-f
  * message length, but gateway services call runOnboardingChat directly with
  * raw connector payloads, so the session store enforces its own bound.
  */
-const MAX_MESSAGE_LENGTH = 4000;
 // The Cloud app host. Serves the authenticated `/get-started` continuation
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
 // the messaging Connect CTA now targets directly, plus in-app Cloud links.
@@ -311,9 +515,11 @@ async function resolveContinuationToken(token: string): Promise<string | null> {
 
   const coordinator = onboardingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(trimmed)
-      .fetch("https://onboarding.internal/resolve", { method: "POST" });
+    const response = await onboardingFetch(
+      coordinator.getByName(trimmed),
+      "https://onboarding.internal/resolve",
+      { method: "POST" },
+    );
     if (response.ok) {
       const resolved: unknown = await response.json();
       if (isOnboardingContinuation(resolved)) return resolved.sessionId;
@@ -341,13 +547,15 @@ async function loadOnboardingSessionForValidation(
 ): Promise<OnboardingSession | null> {
   const coordinator = onboardingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(sessionId)
-      .fetch("https://onboarding.internal/inspect", {
+    const response = await onboardingFetch(
+      coordinator.getByName(sessionId),
+      "https://onboarding.internal/inspect",
+      {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId }),
-      });
+      },
+    );
     if (response.ok) {
       return (await response.json()) as OnboardingSession;
     }
@@ -626,17 +834,21 @@ export async function claimTelegramOnboardingContinuation(
   if (!coordinator || !SESSION_ID_PATTERN.test(token) || isReservedSessionId(token)) {
     throw trustedContinuationError(null);
   }
-  const response = await coordinator.getByName(token).fetch("https://onboarding.internal/claim", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      claimId: input.claimId,
-      telegramId: input.telegramId,
-      phoneNumber: input.phoneNumber,
-      userId: input.authenticatedAccount?.userId,
-      organizationId: input.authenticatedAccount?.organizationId,
-    }),
-  });
+  const response = await onboardingFetch(
+    coordinator.getByName(token),
+    "https://onboarding.internal/claim",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        claimId: input.claimId,
+        telegramId: input.telegramId,
+        phoneNumber: input.phoneNumber,
+        userId: input.authenticatedAccount?.userId,
+        organizationId: input.authenticatedAccount?.organizationId,
+      }),
+    },
+  );
   if (!response.ok) throw trustedContinuationError(null);
   return parseTelegramOnboardingContinuationClaim(await response.json());
 }
@@ -651,13 +863,15 @@ export async function completeTelegramOnboardingContinuationClaim(input: {
 }): Promise<void> {
   const coordinator = onboardingCoordinator();
   if (!coordinator) throw trustedContinuationError(null);
-  const response = await coordinator
-    .getByName(input.continuationToken.trim())
-    .fetch("https://onboarding.internal/complete-claim", {
+  const response = await onboardingFetch(
+    coordinator.getByName(input.continuationToken.trim()),
+    "https://onboarding.internal/complete-claim",
+    {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
-    });
+    },
+  );
   if (!response.ok) throw trustedContinuationError(null);
 }
 
@@ -678,12 +892,6 @@ export async function mirrorOnboardingSessionToCache(session: OnboardingSession)
   await cache.set(sessionCacheKey(session.id), session, SESSION_TTL_SECONDS);
 }
 
-function trimHistory(history: OnboardingChatMessage[]): OnboardingChatMessage[] {
-  return history.length > MAX_HISTORY_MESSAGES
-    ? history.slice(history.length - MAX_HISTORY_MESSAGES)
-    : history;
-}
-
 function appendMessage(
   session: OnboardingSession,
   role: OnboardingChatRole,
@@ -694,10 +902,10 @@ function appendMessage(
   return {
     ...session,
     updatedAt: nowIso(),
-    history: trimHistory([
+    history: [
       ...session.history,
       { id: crypto.randomUUID(), role, content: message, createdAt: nowIso() },
-    ]),
+    ],
   };
 }
 
@@ -1192,19 +1400,37 @@ function fallbackReply(args: {
     }
     return `still here, ${name}! one step left: connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
   }
-  if (args.handoffComplete) {
-    return `you're in, ${name}. your shared Eliza is connected and already knows everything from this chat. just keep talking here.`;
+  switch (args.provisioning.status) {
+    case "running":
+      if (args.handoffComplete) {
+        return `your transcript is copied to the current Dedicated agent, ${name}. its lifecycle record says running; the normal chat path still confirms live readiness.`;
+      }
+      return `your Dedicated lifecycle record says running, ${name}. I'm finishing the transcript handoff, but this status alone does not prove live readiness.`;
+    case "provisioning":
+      return `the Dedicated lifecycle record says provisioning, ${name}. this chat did not start or restart it and cannot promise an ETA.`;
+    case "pending":
+      return `a Dedicated lifecycle record is pending, ${name}. that does not prove a provisioning job is running; use the explicit lifecycle controls to continue.`;
+    case "error":
+      return `the Dedicated lifecycle record is in error, ${name}. this status read does not identify the failed operation; nothing was restarted from this chat.`;
+    case "disconnected":
+      return `your existing Dedicated agent is disconnected, ${name}. this chat did not restart it; retry through the normal lifecycle controls or contact support.`;
+    case "stopped":
+      return `your existing Dedicated agent is stopped, ${name}. use the normal lifecycle controls if you want to resume it.`;
+    case "sleeping":
+      return `your existing Dedicated agent is sleeping, ${name}. use the normal lifecycle controls if you want to wake it.`;
+    case "deletion_pending":
+      return `the previous Dedicated target is being removed, ${name}. this chat will not create or restart a replacement.`;
+    case "deletion_failed":
+      return `removal of the previous Dedicated target failed, ${name}. contact support; this chat will not create or restart it.`;
+    case "none":
+      return `your account is connected, ${name}. no eligible Dedicated target exists; this chat will not create one.`;
+    default:
+      // `status` is plain text on a database several deployables write to,
+      // so an unrecognised value must not fall out of this switch: the
+      // caller sanitizes the reply and would throw on undefined, 500-ing the
+      // whole turn over a status it merely could not name.
+      return `your account is connected, ${name}. I can't read the current Dedicated status; this chat will not create or restart anything.`;
   }
-  if (args.provisioning.status === "running") {
-    return `your Dedicated agent is running, ${name}. I'm finishing the existing connection now.`;
-  }
-  if (args.provisioning.status === "error") {
-    return `the last Dedicated setup failed, ${name}. nothing was restarted from this chat.`;
-  }
-  if (args.provisioning.status === "pending" || args.provisioning.status === "provisioning") {
-    return `an existing Dedicated setup is still in progress, ${name}. this chat did not start or restart it.`;
-  }
-  return `your account is connected, ${name}. Dedicated compute stays off until you explicitly start it.`;
 }
 
 function sanitizeReplyText(reply: string): string {
@@ -1294,7 +1520,8 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
       organizationId: session.organizationId,
     });
 
-    const rememberResponse = await fetch(
+    const rememberResponse = await onboardingFetch(
+      { fetch },
       `${connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
       {
         method: "POST",
@@ -1320,7 +1547,9 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
         });
         return "";
       });
-      throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
+      throw new Error(
+        `memory copy failed (${rememberResponse.status}) ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+      );
     }
 
     return {
@@ -1369,6 +1598,26 @@ export interface OnboardingSessionStore {
   save(session: OnboardingSession): Promise<void>;
 }
 
+/**
+ * Cheap change fingerprint for the idle-poll save guard. Structural equality is
+ * what matters here (was anything about this session rewritten this turn?), and
+ * the turn mutates a single object lineage, so key order is stable. Never
+ * throws: a fingerprint failure degrades to "assume changed" and saves, which
+ * is the pre-existing behavior.
+ */
+function fingerprintSession(session: unknown): string {
+  try {
+    // `updatedAt` is restamped unconditionally every turn, so including it
+    // would make the fingerprint always differ and the guard never fire —
+    // leaving the save unconditional and costing two serializations for
+    // nothing. Compare everything else.
+    return JSON.stringify(session, (key, value) => (key === "updatedAt" ? undefined : value)) ?? "";
+  } catch {
+    // error-policy:J4 unfingerprintable session falls back to always-save.
+    return `unfingerprintable:${Math.random()}`;
+  }
+}
+
 export async function runOnboardingChatWithStore(
   input: OnboardingChatInput,
   resolvedSessionId: string,
@@ -1376,6 +1625,10 @@ export async function runOnboardingChatWithStore(
 ): Promise<OnboardingChatResult> {
   let sessionId = resolvedSessionId;
   let session = await store.load(sessionId);
+  // Change fingerprint for the idle-poll guard at the end of the turn: the
+  // Worker store turns every save into a durable transaction, so a settled
+  // session must not be re-persisted on each poll.
+  const sessionFingerprintBeforeTurn = fingerprintSession(session);
 
   // Browser account authentication is not proof that an arbitrary opaque ID
   // belongs to a bot-issued Telegram session. Strict redemption must resolve
@@ -1480,12 +1733,15 @@ export async function runOnboardingChatWithStore(
         }
       : null;
 
-  // statusOnly is a read-only poll: skip all user-message processing so it
-  // can never mutate session history, name, or preferred-name state, even if
-  // a caller accidentally includes a message field.
-  const userMessage = input.statusOnly
-    ? undefined
-    : input.message?.trim().slice(0, MAX_MESSAGE_LENGTH);
+  // statusOnly skips all user-message processing, so a poll can never mutate
+  // session history, name, or preferred-name state even if a caller
+  // accidentally includes a message field. It is observation-only for
+  // COMPUTE and BILLING — it creates, restarts, enqueues and charges nothing.
+  // It is not a pure read: a poll still commits canonical-target corrections
+  // to the session, and a `running` observation still performs the transcript
+  // handoff (that is the only handoff path for a user who never types, since
+  // the browser polls with statusOnly: true).
+  const userMessage = input.statusOnly ? undefined : input.message?.trim();
   let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
@@ -1512,10 +1768,35 @@ export async function runOnboardingChatWithStore(
 
   if (!requiresLogin && session.userId && session.organizationId) {
     // Account claim and onboarding turns never create or restart Dedicated
-    // compute. Provisioning is an explicit lifecycle action owned by its
-    // dedicated route; this conversation only reports the current state.
-    provisioning = await getElizaAppProvisioningStatus(session.organizationId);
-    session.agentId = provisioning.agentId ?? session.agentId;
+    // compute. Provisioning remains owned by explicit lifecycle controls;
+    // this conversation only reports the current state.
+    provisioning = await getElizaAppProvisioningStatus(session.organizationId, session.userId);
+    const canonicalAgentId = provisioning.agentId ?? undefined;
+    const canonicalLaunchUrl = canonicalAgentId ? controlPanelUrl(canonicalAgentId) : undefined;
+    const handoffReceiptMatchesCanonicalTarget =
+      !session.handoffCopiedAt || session.launchUrl === canonicalLaunchUrl;
+    const retainHealthyHandoffWhileDeletionFailureIsVisible =
+      provisioning.status === "deletion_failed" &&
+      !!session.agentId &&
+      !!session.handoffCopiedAt &&
+      !!session.launchUrl;
+    if (
+      !retainHealthyHandoffWhileDeletionFailureIsVisible &&
+      (session.agentId !== canonicalAgentId || !handoffReceiptMatchesCanonicalTarget)
+    ) {
+      // The status selector is the current authority. A target change (or no
+      // eligible target) invalidates every handoff result tied to the old id.
+      // The URL check also self-heals legacy sessions where an older reader
+      // changed agentId without clearing the prior target's handoff receipt.
+      // This prevents stale launch URLs and makes the canonical target earn
+      // its own idempotent transcript handoff.
+      session = {
+        ...session,
+        agentId: canonicalAgentId,
+        handoffCopiedAt: undefined,
+        launchUrl: undefined,
+      };
+    }
   }
 
   let launchUrl = session.launchUrl ?? null;
@@ -1575,7 +1856,12 @@ export async function runOnboardingChatWithStore(
   if (shouldAppendReply) {
     session = appendMessage(session, "assistant", reply);
   }
-  await store.save(session);
+  // An idle poll must not write: the Worker path turns every save into a
+  // durable transaction, so polling a settled session was re-persisting
+  // identical bytes on every turn.
+  if (shouldAppendReply || fingerprintSession(session) !== sessionFingerprintBeforeTurn) {
+    await store.save(session);
+  }
 
   return {
     session,
@@ -1638,7 +1924,7 @@ async function runViaCoordinator(
   sessionId: string,
 ): Promise<OnboardingChatResult> {
   return readOnboardingCoordinatorResult<OnboardingChatResult>(
-    await stub.fetch("https://onboarding.internal/turn", {
+    await onboardingFetch(stub, "https://onboarding.internal/turn", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input, sessionId }),

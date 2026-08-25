@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { parsePersonalWorkspaceCapabilityHandoff } from "@elizaos/shared";
 import {
   createRequestDedicatedUpgradeAction,
   createSharedRuntimeCapabilitiesProvider,
@@ -39,24 +40,39 @@ describe("Shared runtime capability components", () => {
     expect(result.data).toMatchObject({
       runtimeMode: "shared",
       available: [
-        "conversation and reasoning",
-        "conversation memory",
-        "public web search",
-        "private reminders",
+        "Conversation and planning",
+        "Writing and drafting",
+        "Public web research",
+        "Reminders",
       ],
+      agentCapabilityCatalog: expect.objectContaining({ version: 1, tier: "shared" }),
       canActivateDedicatedWithoutConfirmation: false,
     });
     expect(result.text).toContain(REQUEST_DEDICATED_UPGRADE_ACTION);
+    expect(result.text).toContain("prerequisites:");
+    expect(result.text).toContain("confirmation:");
   });
 
-  test("returns a review handoff without provisioning or charging", async () => {
-    const action = createRequestDedicatedUpgradeAction("personal:user/1");
+  test("returns a structured review handoff for an in-character continuation", async () => {
+    const action = createRequestDedicatedUpgradeAction({
+      agentId: "personal:user-1",
+      webSearch: true,
+      reminders: false,
+      todos: false,
+      media: false,
+      transport: "app",
+    });
     const delivered: string[] = [];
     const result = await action.handler(
       {} as never,
-      {} as never,
+      {
+        content: {
+          text: "run tests in my repository",
+          chatIdempotency: { clientMessageId: "client-1" },
+        },
+      } as never,
       undefined,
-      { parameters: { capability: "coding" } },
+      { parameters: { capabilityId: "coding-runtime" } },
       async (content) => {
         delivered.push(content.text ?? "");
         return [];
@@ -65,10 +81,66 @@ describe("Shared runtime capability components", () => {
 
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({
-      upgradePath: "/cloud/agents/personal%3Auser%2F1",
+      upgradePath: "/cloud/agents/personal%3Auser-1",
       mutationPerformed: false,
       requiresUserConfirmation: true,
+      capabilityHandoff: expect.objectContaining({
+        capabilityId: "coding-runtime",
+        continuation: {
+          originalIntent: "run tests in my repository",
+          clientMessageId: "client-1",
+        },
+      }),
     });
-    expect(delivered[0]).toContain("Nothing has been activated or charged");
+    expect(result.text).toContain("no mutation or charge was performed");
+    expect(delivered).toEqual([]);
+    expect(action.suppressPostActionContinuation).not.toBe(true);
+  });
+
+  test("rejects a disabled Shared-tier capability instead of selling Dedicated", async () => {
+    const action = createRequestDedicatedUpgradeAction({
+      agentId: "personal:user-1",
+      webSearch: false,
+      reminders: false,
+      todos: false,
+      media: false,
+    });
+    const result = await action.handler(
+      {} as never,
+      { content: { text: "search for this" } } as never,
+      undefined,
+      { parameters: { capabilityId: "web-search" } },
+    );
+    expect(result.success).toBe(false);
+    expect(result.data).toBeUndefined();
+  });
+
+  test("preserves the complete request and rejects an oversized client id", async () => {
+    const action = createRequestDedicatedUpgradeAction({
+      agentId: "personal:user-1",
+      webSearch: true,
+      reminders: false,
+      todos: false,
+      media: false,
+    });
+    const originalIntent = "run this exactly: ".concat("x".repeat(16_001));
+    const result = await action.handler(
+      {} as never,
+      {
+        content: {
+          text: originalIntent,
+          chatIdempotency: { clientMessageId: "c".repeat(129) },
+        },
+      } as never,
+      undefined,
+      { parameters: { capabilityId: "coding-runtime" } },
+    );
+
+    const handoff = parsePersonalWorkspaceCapabilityHandoff(
+      result.data?.capabilityHandoff,
+      "personal:user-1",
+    );
+    expect(handoff?.continuation?.originalIntent).toBe(originalIntent);
+    expect(handoff?.continuation?.clientMessageId).toBeUndefined();
   });
 });

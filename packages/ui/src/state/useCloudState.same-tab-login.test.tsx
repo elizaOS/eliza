@@ -35,6 +35,7 @@ const globalWithPlatform = globalThis as typeof globalThis & {
 };
 const windowWithElectrobun = window as Window & {
   __electrobunWindowId?: number;
+  __ELIZA_DESKTOP_RUNTIME_MODE__?: string;
   __ELIZA_ELECTROBUN_RPC__?: {
     request: Record<string, (params?: unknown) => Promise<unknown>>;
     onMessage: (name: string, listener: (payload: unknown) => void) => void;
@@ -91,6 +92,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     localStorage.clear();
     delete globalWithPlatform.Capacitor;
     delete windowWithElectrobun.__electrobunWindowId;
+    delete windowWithElectrobun.__ELIZA_DESKTOP_RUNTIME_MODE__;
     delete windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__;
     __resetPreparedDesktopCloudLoginSessionForTests();
     vi.restoreAllMocks();
@@ -568,6 +570,69 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       );
       expect(popup.close).toHaveBeenCalled();
       expect(openSpy).toHaveBeenCalledWith("", CLOUD_LOGIN_POPUP_NAME);
+
+      unmount();
+      vi.clearAllTimers();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses direct Cloud auth when cloud-only Electrobun serves assets from loopback", async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: "http://127.0.0.1:5174/?shellMode=chat-overlay",
+        origin: "http://127.0.0.1:5174",
+        protocol: "http:",
+        hostname: "127.0.0.1",
+        port: "5174",
+        pathname: "/",
+        search: "?shellMode=chat-overlay",
+        assign: assignSpy,
+      },
+    });
+    windowWithElectrobun.__electrobunWindowId = 1;
+    windowWithElectrobun.__ELIZA_DESKTOP_RUNTIME_MODE__ = "cloud";
+    windowWithElectrobun.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        openExternal: vi.fn(async () => ({ opened: true })),
+      },
+      onMessage: vi.fn(),
+      offMessage: vi.fn(),
+    };
+    vi.spyOn(client, "getBaseUrl").mockReturnValue("http://127.0.0.1:5174");
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.eliza.app",
+      browserUrl: "https://eliza.app/auth/cli-login?session=sess-desktop",
+      sessionId: "sess-desktop",
+    });
+    cloudLoginPollDirectSpy.mockResolvedValue({
+      status: "pending",
+    });
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      await act(async () => {
+        void result.current.handleCloudLogin(null);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(cloudLoginSpy).not.toHaveBeenCalled();
+      expect(cloudLoginDirectSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
+        "https://api.eliza.app",
+        "sess-desktop",
+      );
 
       unmount();
       vi.clearAllTimers();

@@ -19,6 +19,7 @@ import {
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectionCapabilityTile } from "./connection-capability-tile";
 import { useOAuthConnections } from "./oauth-connection";
 
 export function MicrosoftConnection() {
@@ -42,10 +43,10 @@ export function MicrosoftConnection() {
 
   const getScopeIcon = (scope: string) => {
     if (scope.includes("Mail")) {
-      return <Mail className="h-4 w-4" />;
+      return <Mail className="size-4" />;
     }
     if (scope.includes("Calendar")) {
-      return <Calendar className="h-4 w-4" />;
+      return <Calendar className="size-4" />;
     }
     return null;
   };
@@ -113,7 +114,7 @@ export function MicrosoftConnection() {
       connectedContent={
         <div className="space-y-4">
           <ConnectionIdentityPanel
-            icon={<Mail className="h-6 w-6 text-txt-strong" />}
+            icon={<Mail className="size-6 text-txt-strong" />}
             iconClassName="bg-muted"
             title={activeConnection?.email}
             subtitle={t("cloud.microsoft.connectedSubtitle", {
@@ -132,7 +133,7 @@ export function MicrosoftConnection() {
                 {activeConnection.scopes
                   .filter((s) => !["openid", "profile", "email"].includes(s))
                   .map((scope) => (
-                    <Badge key={scope} variant="outline" className="text-xs">
+                    <Badge key={scope} variant="outline">
                       {getScopeIcon(scope)}
                       <span className="ml-1">{getScopeName(scope)}</span>
                     </Badge>
@@ -184,28 +185,24 @@ export function MicrosoftConnection() {
       setupContent={
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Mail className="h-6 w-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.outlook", { defaultValue: "Outlook" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.outlookDesc", {
-                  defaultValue: "Send & read emails",
-                })}
-              </p>
-            </div>
-            <div className="p-3 bg-muted rounded-sm text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-2 text-muted" />
-              <p className="text-sm font-medium">
-                {t("cloud.microsoft.calendar", { defaultValue: "Calendar" })}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t("cloud.microsoft.calendarDesc", {
-                  defaultValue: "Manage events",
-                })}
-              </p>
-            </div>
+            <ConnectionCapabilityTile
+              icon={<Mail className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.outlook", {
+                defaultValue: "Outlook",
+              })}
+              description={t("cloud.microsoft.outlookDesc", {
+                defaultValue: "Send & read emails",
+              })}
+            />
+            <ConnectionCapabilityTile
+              icon={<Calendar className="size-6 text-muted" aria-hidden />}
+              title={t("cloud.microsoft.calendar", {
+                defaultValue: "Calendar",
+              })}
+              description={t("cloud.microsoft.calendarDesc", {
+                defaultValue: "Manage events",
+              })}
+            />
           </div>
 
           <ConnectionCallout
@@ -235,14 +232,14 @@ export function MicrosoftConnection() {
           >
             {isConnecting ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Loader2 className="size-4 animate-spin mr-2" />
                 {t("cloud.microsoft.connecting", {
                   defaultValue: "Connecting...",
                 })}
               </>
             ) : (
               <>
-                <MicrosoftIcon className="h-4 w-4 mr-2 text-current" />
+                <MicrosoftIcon className="size-4 mr-2 text-current" />
                 {t("cloud.microsoft.connectButton", {
                   defaultValue: "Connect with Microsoft",
                 })}
@@ -255,7 +252,7 @@ export function MicrosoftConnection() {
   );
 }
 
-function MicrosoftIcon({ className = "h-5 w-5" }: { className?: string }) {
+function MicrosoftIcon({ className = "size-5" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 23 23" aria-label="Microsoft">
       <path fill="#f35325" d="M1 1h10v10H1z" />

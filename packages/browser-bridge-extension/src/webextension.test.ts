@@ -1,0 +1,178 @@
+/**
+ * Adversarial tests for the browser API facade using callback- and
+ * promise-style shims that never settle, matching extension-runtime hangs.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BROWSER_BRIDGE_REQUEST_TIMEOUT_MS } from "./request-timeout";
+import {
+  getManifestVersion,
+  hasWebsiteAccess,
+  queryTabs,
+  requestAllWebsiteAccess,
+  requestWebsiteAccess,
+  sendNativeMessage,
+  sendTabMessage,
+} from "./webextension";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("browser extension operation deadlines", () => {
+  it("rejects a content-script message when its callback never runs", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      tabs: {
+        sendMessage: vi.fn(() => undefined),
+      },
+    });
+
+    const request = sendTabMessage(42, {
+      type: "browser-bridge:capture-page",
+    });
+    const rejection = expect(request).rejects.toThrow(
+      `tabs.sendMessage timed out after ${BROWSER_BRIDGE_REQUEST_TIMEOUT_MS} ms`,
+    );
+
+    await vi.advanceTimersByTimeAsync(BROWSER_BRIDGE_REQUEST_TIMEOUT_MS);
+    await rejection;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects a browser API promise that never settles", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      tabs: {
+        query: vi.fn(() => new Promise<never>(() => undefined)),
+      },
+    });
+
+    const request = queryTabs({});
+    const rejection = expect(request).rejects.toThrow(
+      `tabs.query timed out after ${BROWSER_BRIDGE_REQUEST_TIMEOUT_MS} ms`,
+    );
+
+    await vi.advanceTimersByTimeAsync(BROWSER_BRIDGE_REQUEST_TIMEOUT_MS);
+    await rejection;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clears the deadline after a callback-style operation succeeds", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      tabs: {
+        query: vi.fn(
+          (
+            _query: Record<string, unknown>,
+            callback: (tabs: unknown[]) => void,
+          ) => callback([{ id: 7 }]),
+        ),
+      },
+    });
+
+    await expect(queryTabs({})).resolves.toEqual([{ id: 7 }]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("checks and requests only the exact active-site origin", async () => {
+    const contains = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(false),
+    );
+    const request = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(true),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      permissions: { contains, request },
+    });
+
+    const origin = "https://accounts.example.com/*";
+    await expect(hasWebsiteAccess(origin)).resolves.toBe(false);
+    await expect(requestWebsiteAccess(origin)).resolves.toBe(true);
+    expect(contains).toHaveBeenCalledWith(
+      { origins: [origin] },
+      expect.any(Function),
+    );
+    expect(request).toHaveBeenCalledWith(
+      { origins: [origin] },
+      expect.any(Function),
+    );
+  });
+
+  it("accepts a permission that the browser committed despite a false request callback", async () => {
+    const contains = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(true),
+    );
+    const request = vi.fn(
+      (_request: { origins: string[] }, callback: (allowed: boolean) => void) =>
+        callback(false),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: {},
+      permissions: { contains, request },
+    });
+
+    await expect(requestAllWebsiteAccess()).resolves.toBe(true);
+    await expect(requestWebsiteAccess("https://example.com/*")).resolves.toBe(
+      true,
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(contains).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the typed native-messaging wrapper and surfaces runtime errors", async () => {
+    const sendNative = vi.fn(
+      (host: string, request: unknown, callback: (response: unknown) => void) =>
+        callback({ host, request }),
+    );
+    vi.stubGlobal("chrome", {
+      runtime: { sendNativeMessage: sendNative },
+    });
+    await expect(
+      sendNativeMessage<{ v: 1 }, { host: string; request: { v: 1 } }>(
+        "ai.elizaos.browserbridge",
+        { v: 1 },
+      ),
+    ).resolves.toEqual({
+      host: "ai.elizaos.browserbridge",
+      request: { v: 1 },
+    });
+    expect(sendNative).toHaveBeenCalledTimes(1);
+
+    vi.stubGlobal("chrome", { runtime: {} });
+    await expect(
+      sendNativeMessage("ai.elizaos.browserbridge", { v: 1 }),
+    ).rejects.toThrow("runtime.sendNativeMessage is unavailable");
+  });
+
+  it("uses release semver instead of the Chrome four-part manifest version", () => {
+    vi.stubGlobal("chrome", {
+      runtime: {
+        getManifest: () => ({
+          version: "2.0.3.40007",
+          version_name: "2.0.3-beta.7",
+        }),
+      },
+    });
+    expect(getManifestVersion()).toBe("2.0.3-beta.7");
+
+    vi.stubGlobal("chrome", {
+      runtime: {
+        getManifest: () => ({ version: "2.0.3", version_name: "invalid" }),
+      },
+    });
+    expect(getManifestVersion()).toBe("2.0.3");
+
+    vi.stubGlobal("chrome", {
+      runtime: { getManifest: () => ({ version: "2.0.3.40007" }) },
+    });
+    expect(getManifestVersion()).toBe("0.0.0");
+  });
+});

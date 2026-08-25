@@ -7,11 +7,34 @@ const workflow = readFileSync(
   join(root, ".github/workflows/deploy-eliza-provisioning-worker.yml"),
   "utf8",
 );
+const effectRegistry = readFileSync(
+  join(root, ".github/develop-effects.json"),
+  "utf8",
+);
+const surfaceGraph = readFileSync(
+  join(root, ".github/develop-surface-graph.json"),
+  "utf8",
+);
 const provisioningService = readFileSync(
   join(root, "packages/cloud/scripts/admin/eliza-provisioning-worker.service"),
   "utf8",
 );
-const services = [
+const backupService = readFileSync(
+  join(
+    root,
+    "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
+  ),
+  "utf8",
+);
+const backupEnvExample = readFileSync(
+  join(root, "packages/cloud/shared/.env.example"),
+  "utf8",
+);
+const systemdEnvironmentHelper = readFileSync(
+  join(root, "packages/cloud/scripts/admin/systemd-environment-line.mjs"),
+  "utf8",
+);
+const generatedKeywordServices = [
   provisioningService,
   readFileSync(
     join(root, "packages/cloud/scripts/admin/eliza-agent-router.service"),
@@ -64,6 +87,12 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain('-B "$DEPLOY_BRANCH" "$DEPLOY_SHA"');
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"');
     expect(workflow).toContain('git checkout "$DEPLOY_SHA" -- bun.lock');
+    expect(workflow).toContain(
+      "SYSTEMD_ENVIRONMENT_HELPER_SHA256=$helper_sha256",
+    );
+    expect(workflow).toContain(
+      "BACKUP_SYSTEMD_UNIT_SHA256=$backup_unit_sha256",
+    );
     expect(workflow).not.toContain(
       'origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"',
     );
@@ -146,6 +175,11 @@ describe("provisioning worker deployment contract", () => {
       "SANDBOX_REGISTRY_REDIS_URL",
       "DATABASE_URL",
       "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
     ];
     const deployJob = parsedWorkflow.jobs?.deploy;
     expect(deployJob).toBeDefined();
@@ -213,6 +247,18 @@ describe("provisioning worker deployment contract", () => {
     ]) {
       expect(remoteDeploy.env?.[name]).toContain("secrets.");
     }
+    const dormantBackupSecrets = [
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
+    ];
+    const forwardedNames = (remoteDeploy.with?.envs ?? "").split(",");
+    for (const name of dormantBackupSecrets) {
+      expect(remoteDeploy.env?.[name]).toBeUndefined();
+      expect(forwardedNames).not.toContain(name);
+    }
     expect(remoteDeploy.env?.DEPLOY_SSH_KEY).toBeUndefined();
     expect(remoteDeploy.with?.key).toContain(
       "secrets.ELIZA_PROVISIONING_SSH_KEY",
@@ -227,7 +273,9 @@ describe("provisioning worker deployment contract", () => {
       ["Setup Node for migration gate", 5],
       ["Setup Bun for migration gate", 5],
       ["Install exact migration dependencies", 10],
+      ["Fence current develop SHA before database mutation", 1],
       ["Run exact-SHA canonical database migrations", 10],
+      ["Recheck current develop SHA before host deployment", 1],
     ]);
     let totalPreSshMinutes = 0;
     for (const [name, expectedMinutes] of expectedBounds) {
@@ -236,7 +284,7 @@ describe("provisioning worker deployment contract", () => {
       totalPreSshMinutes += bound ?? 0;
     }
 
-    expect(totalPreSshMinutes).toBe(38);
+    expect(totalPreSshMinutes).toBe(40);
     expect(workflow).toContain("timeout-minutes: 95");
     expect(totalPreSshMinutes + 5 + 40 + 5).toBeLessThan(95);
   });
@@ -256,7 +304,9 @@ describe("provisioning worker deployment contract", () => {
   it("fails checkout cleanup loudly and covers all shared-package changes", () => {
     expect(workflow).toContain("git reset --hard HEAD\n");
     expect(workflow).not.toContain("git reset --hard HEAD 2>/dev/null || true");
-    expect(workflow).toContain("- 'packages/shared/**'");
+    expect(effectRegistry).toContain('"id": "provisioning-worker-staging"');
+    expect(effectRegistry).toContain('"surfaces": ["canonical", "cloud"]');
+    expect(surfaceGraph).toContain('"packages/shared"');
   });
 
   it("serializes the SSH mutation on the target host after runner cancellation", () => {
@@ -270,15 +320,355 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain("timeout-minutes: 95");
   });
 
-  it("regenerates before deploy and self-heals both services", () => {
+  it("regenerates before deploy and self-heals every service", () => {
     expect(workflow).toContain(
       "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
     );
-    for (const service of services) {
+    for (const service of generatedKeywordServices) {
       expect(service).toContain(
         "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
       );
     }
+    // The deployment already generated the sources before systemd is
+    // restarted. This unit has ProtectSystem=strict and must not attempt a
+    // second write beneath /opt/eliza from its read-only ExecStartPre sandbox.
+    expect(backupService).not.toContain("ensure-generated-keywords.sh");
+  });
+
+  it("installs the dormant backup worker with persistent spool and exact disabled health", () => {
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
+    );
+    expect(workflow).toContain(
+      'sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service "$BACKUP_SYSTEMD_UNIT"',
+    );
+    expect(workflow).toContain('sudo systemctl restart "$BACKUP_SYSTEMD_UNIT"');
+    expect(workflow).toContain(
+      'BACKUP_UNIT_DESTINATION="/etc/systemd/system/$BACKUP_SYSTEMD_UNIT"',
+    );
+    expect(workflow).toContain(
+      'systemd-analyze verify "$BACKUP_UNIT_DESTINATION"',
+    );
+    expect(workflow).not.toMatch(
+      /sudo install -m 0644 \\\s*packages\/cloud\/scripts\/admin\/eliza-backup-catalog-worker\.service/,
+    );
+    expect(workflow).toContain("--property=DynamicUser --value");
+    expect(workflow).toContain("--property=User --value");
+    expect(workflow).toContain("--property=Group --value");
+    expect(workflow).toContain("--property=ExecStart --value");
+    expect(workflow).toContain("--property=FragmentPath --value");
+    expect(workflow).toContain("--property=DropInPaths --value");
+    expect(workflow).toContain('[ -n "$BACKUP_EFFECTIVE_DROP_INS" ]');
+    expect(workflow).toContain(
+      `BACKUP_EXPECTED_DYNAMIC_USER="\${BACKUP_SYSTEMD_UNIT%.service}"`,
+    );
+    const backupDestination = workflow.indexOf(
+      'BACKUP_UNIT_DESTINATION="/etc/systemd/system/$BACKUP_SYSTEMD_UNIT"',
+    );
+    const destinationVerify = workflow.indexOf(
+      'systemd-analyze verify "$BACKUP_UNIT_DESTINATION"',
+      backupDestination,
+    );
+    const daemonReload = workflow.indexOf(
+      "sudo systemctl daemon-reload",
+      destinationVerify,
+    );
+    const effectiveFragment = workflow.indexOf(
+      "--property=FragmentPath --value",
+      daemonReload,
+    );
+    const enable = workflow.indexOf(
+      'sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service "$BACKUP_SYSTEMD_UNIT"',
+      effectiveFragment,
+    );
+    expect(backupDestination).toBeGreaterThan(-1);
+    expect(destinationVerify).toBeGreaterThan(backupDestination);
+    expect(daemonReload).toBeGreaterThan(destinationVerify);
+    expect(effectiveFragment).toBeGreaterThan(daemonReload);
+    expect(enable).toBeGreaterThan(effectiveFragment);
+    expect(workflow).toContain(
+      'parsed.format === "elizaos.agent-backup.catalog-worker-health.v1"',
+    );
+    expect(workflow).toContain('parsed.state === "disabled"');
+    expect(workflow).toContain("parsed.enabled === false");
+
+    expect(backupService).toContain("StateDirectory=eliza-backup-catalog");
+    expect(backupService).toContain("RuntimeDirectory=eliza-backup-catalog");
+    expect(backupService).toContain("TimeoutStopSec=30");
+    expect(backupService).toContain("KillSignal=SIGTERM");
+    expect(backupService).toContain("DynamicUser=yes");
+    expect(backupService).not.toContain("User=deploy");
+    expect(backupService).not.toContain("Group=deploy");
+    expect(backupService).toContain(
+      "Environment=HOME=/var/lib/eliza-backup-catalog",
+    );
+    expect(backupService).toContain("ProtectHome=yes");
+    expect(backupService).toContain("ReadOnlyPaths=/opt/eliza");
+    expect(backupService).not.toContain("/home/deploy/.bun/bin");
+    expect(workflow).not.toContain("SAFE_CHILD_PATH=/home/deploy/.bun/bin");
+    expect(workflow).toContain('"$BUN_BIN" --conditions=eliza-source');
+    expect(backupService).not.toContain("ExecStartPre=");
+    expect(backupService).toContain("RestartPreventExitStatus=78");
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/daemons/backup-catalog-worker-preflight.ts",
+    );
+    expect(backupService).toContain(
+      "EnvironmentFile=/etc/eliza/backup-catalog-worker.env",
+    );
+    expect(backupService).not.toContain(
+      "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0",
+    );
+    expect(backupService).not.toContain("AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0");
+    expect(workflow).not.toMatch(
+      /(?:chown|install -d -o deploy)[^\n]*(?:eliza-backup|BACKUP_)/,
+    );
+  });
+
+  it("documents every enabled backup authority name for a future activation", () => {
+    for (const name of [
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_CATALOG_WORKER_ID",
+      "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
+      "AGENT_BACKUP_R2_ACCOUNT_ID",
+      "AGENT_BACKUP_R2_ENDPOINT",
+      "AGENT_BACKUP_R2_BUCKET",
+      "AGENT_BACKUP_R2_REGION",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
+      "AGENT_BACKUP_HETZNER_ACCOUNT_ID",
+      "AGENT_BACKUP_HETZNER_ENDPOINT",
+      "AGENT_BACKUP_HETZNER_BUCKET",
+      "AGENT_BACKUP_HETZNER_REGION",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_BASE_URL",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
+      "AGENT_BACKUP_AGENT_SCHEMA_VERSION",
+      "AGENT_BACKUP_DATABASE_SCHEMA_VERSION",
+      "AGENT_BACKUP_RUNTIME_PLUGINS_JSON",
+      "AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID",
+      "AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT",
+      "AGENT_BACKUP_STORAGE_SCOPE",
+      "AGENT_BACKUP_SPOOL_STATE_DIRECTORY",
+      "AGENT_BACKUP_SPOOL_MAX_BYTES",
+      "AGENT_BACKUP_SPOOL_MIN_FREE_BYTES",
+      "AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE",
+      "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
+      "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS",
+    ]) {
+      expect(workflow).toContain(name);
+      expect(backupEnvExample).toContain(name);
+    }
+  });
+
+  it("keeps both backup gates uniquely off while treating enabled authority as optional", () => {
+    expect(workflow.match(/^\s*BACKUP_CATALOG_RUNTIME_GATE=0$/gm)).toHaveLength(
+      1,
+    );
+    expect(workflow.match(/^\s*BACKUP_RPO_SCHEDULER_GATE=0$/gm)).toHaveLength(
+      1,
+    );
+    expect(workflow).not.toContain("BACKUP_CATALOG_RUNTIME_GATE=${{");
+    expect(workflow).not.toContain("BACKUP_RPO_SCHEDULER_GATE=${{");
+    expect(workflow).toContain('BACKUP_GATE="$BACKUP_CATALOG_RUNTIME_GATE"');
+    expect(workflow).toContain('if [ "$BACKUP_GATE" = "1" ]; then');
+    expect(workflow).toContain(
+      "Verified disabled backup-catalogue gate and configuration names; values were not printed.",
+    );
+  });
+
+  it("validates complete plans before root-owned atomic EnvironmentFile replacement", () => {
+    expect(workflow).toContain("printf '%s' \"$value\" \\");
+    expect(workflow).toContain('| run_environment_helper serialize "$key" \\');
+    expect(workflow).toContain('sudo flock -w 120 "$ENV_FILE.lock" \\');
+    expect(workflow).toContain('"$NODE_BIN" "$ENV_SERIALIZER" reconcile \\');
+    expect(workflow).toContain('sudo flock -w 120 "$BACKUP_ENV_FILE.lock" \\');
+    expect(workflow).toContain('"$NODE_BIN" "$ENV_SERIALIZER" install \\');
+    expect(workflow).not.toContain(
+      'printf \'%s=%s\\n\' "$key" "$val" | sudo tee -a "$ENV_FILE"',
+    );
+    expect(workflow).not.toMatch(/sudo sed -i [^\n]*"\$ENV_FILE"/);
+    expect(workflow).not.toMatch(/sudo tee -a "\$ENV_FILE"/);
+
+    const safeOffReplacement = workflow.indexOf(
+      'sudo flock -w 120 "$BACKUP_ENV_FILE.lock"',
+    );
+    const oldProcessDisable = workflow.indexOf(
+      'sudo systemctl disable --now "$BACKUP_SYSTEMD_UNIT"',
+    );
+    const inactiveCheck = workflow.indexOf(
+      '[ "$BACKUP_OLD_ACTIVE_STATE" = "inactive" ]',
+      oldProcessDisable,
+    );
+    const pidCheck = workflow.indexOf(
+      '[ "$BACKUP_OLD_MAIN_PID" = "0" ]',
+      oldProcessDisable,
+    );
+    const disabledCheck = workflow.indexOf(
+      '[ "$BACKUP_OLD_ENABLE_STATE" != "disabled" ]',
+      oldProcessDisable,
+    );
+    const firstAtomicReplacement = workflow.indexOf(
+      'sudo flock -w 120 "$ENV_FILE.lock"',
+    );
+    expect(oldProcessDisable).toBeGreaterThan(-1);
+    expect(inactiveCheck).toBeGreaterThan(oldProcessDisable);
+    expect(pidCheck).toBeGreaterThan(oldProcessDisable);
+    expect(disabledCheck).toBeGreaterThan(oldProcessDisable);
+    expect(safeOffReplacement).toBeGreaterThan(inactiveCheck);
+    expect(safeOffReplacement).toBeGreaterThan(pidCheck);
+    expect(safeOffReplacement).toBeGreaterThan(disabledCheck);
+    expect(firstAtomicReplacement).toBeGreaterThan(safeOffReplacement);
+    expect(firstAtomicReplacement).toBeGreaterThan(
+      workflow.indexOf('if [ "$BACKUP_CATALOG_RUNTIME_GATE" = "1" ]; then'),
+    );
+
+    const reconcileFunction = systemdEnvironmentHelper.slice(
+      systemdEnvironmentHelper.indexOf(
+        "export function reconcileSystemdEnvironmentFile",
+      ),
+      systemdEnvironmentHelper.indexOf("async function readStdinBounded"),
+    );
+    const write = reconcileFunction.indexOf("writeFileSync(descriptor");
+    const chmod = reconcileFunction.indexOf("chmodSync(candidatePath, 0o600)");
+    const chown = reconcileFunction.indexOf("chownSync(candidatePath");
+    const injection = reconcileFunction.indexOf(
+      "beforeRename?.(candidatePath, attempt)",
+    );
+    const rename = reconcileFunction.indexOf(
+      "renameSync(candidatePath, targetPath)",
+    );
+    expect(write).toBeGreaterThan(-1);
+    expect(chmod).toBeGreaterThan(write);
+    expect(chown).toBeGreaterThan(chmod);
+    expect(injection).toBeGreaterThan(chown);
+    expect(rename).toBeGreaterThan(injection);
+  });
+
+  it("installs an exact disabled backup allowlist with no secret authority", () => {
+    expect(workflow).toContain(
+      "BACKUP_ENV_FILE=/etc/eliza/backup-catalog-worker.env",
+    );
+    expect(workflow).toContain(
+      'sudo install -d -o root -g root -m 0755 "$(dirname "$BACKUP_ENV_FILE")"',
+    );
+    expect(workflow).toContain(
+      '"$(sudo stat -c \'%U:%G:%a\' "$BACKUP_ENV_FILE")" != "root:root:600"',
+    );
+
+    const disabledPlan = workflow.slice(
+      workflow.indexOf(
+        "# The backup daemon receives a separate exact allowlist.",
+      ),
+      workflow.indexOf("# Activation remains impossible in this changeset"),
+    );
+    const disabledNames = [
+      "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
+      "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
+      "AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS",
+      "AGENT_BACKUP_CATALOG_WORKER_RETRY_MS",
+      "AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS",
+      "AGENT_BACKUP_SPOOL_STATE_DIRECTORY",
+      "AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE",
+    ];
+    for (const name of disabledNames) {
+      expect(disabledPlan).toContain(name);
+    }
+    const plannedDisabledNames = [
+      ...new Set(
+        [...disabledPlan.matchAll(/\bAGENT_BACKUP_[A-Z0-9_]+\b/g)].map(
+          (match) => match[0],
+        ),
+      ),
+    ].sort();
+    expect(plannedDisabledNames).toEqual([...disabledNames].sort());
+    for (const forbidden of [
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
+      "CONTAINERS_SSH_KEY",
+      "HEADSCALE_API_KEY",
+      "SANDBOX_REGISTRY_REDIS_URL",
+    ]) {
+      expect(disabledPlan).not.toContain(forbidden);
+    }
+
+    const sharedAssignmentLoopStart = workflow.indexOf(
+      "            for kv in \\",
+    );
+    const sharedAssignmentLoopEnd = workflow.indexOf(
+      '"DATABASE_SSL_NO_VERIFY=$DATABASE_SSL_NO_VERIFY"; do',
+      sharedAssignmentLoopStart,
+    );
+    const sharedAssignmentLoop = workflow.slice(
+      sharedAssignmentLoopStart,
+      sharedAssignmentLoopEnd,
+    );
+    expect(sharedAssignmentLoopStart).toBeGreaterThan(-1);
+    expect(sharedAssignmentLoopEnd).toBeGreaterThan(sharedAssignmentLoopStart);
+    expect(sharedAssignmentLoop).not.toContain("AGENT_BACKUP_");
+    expect(workflow).toContain("shared_backup_only_names=(");
+    expect(workflow).toContain(
+      'remove_environment_setting "$ENV_REPLACEMENTS" "$name"',
+    );
+
+    const enabledAllowlist = workflow.slice(
+      workflow.indexOf("enabled_backup_names=("),
+      workflow.indexOf(
+        "# An EnvironmentFile replacement cannot revoke authority",
+      ),
+    );
+    expect(enabledAllowlist).toContain("DATABASE_URL");
+    expect(enabledAllowlist).toContain("AGENT_BACKUP_STEWARD_KMS_TOKEN");
+    for (const forbidden of [
+      "CONTAINERS_SSH_KEY",
+      "HEADSCALE_API_KEY",
+      "SANDBOX_REGISTRY_REDIS_URL",
+    ]) {
+      expect(enabledAllowlist).not.toContain(forbidden);
+    }
+  });
+
+  it("does not offer a value-returning EnvironmentFile CLI command", () => {
+    expect(systemdEnvironmentHelper).not.toContain('command === "lookup"');
+    expect(systemdEnvironmentHelper).toContain('command === "nonempty"');
+    expect(systemdEnvironmentHelper).toContain('command === "equals"');
+  });
+
+  it("compares the canonical domain inside the root helper without returning values", () => {
+    const healthStep = workflow.slice(workflow.indexOf("- name: Health check"));
+    expect(workflow).not.toContain("NODE_BIN=$(command -v node)");
+    expect(workflow).not.toMatch(
+      /^\s*ENV_SERIALIZER=\/opt\/eliza\/.*systemd-environment-line\.mjs$/m,
+    );
+    expect(healthStep).toContain("NODE_BIN=/usr/bin/node");
+    expect(healthStep).toContain(
+      "ENV_SERIALIZER=/usr/local/lib/eliza-admin/systemd-environment-line.mjs",
+    );
+    expect(healthStep).toContain("root:root:555");
+    expect(healthStep).toContain("HEALTH_HELPER_SHA256");
+    expect(healthStep).toContain('"$NODE_BIN" "$ENV_SERIALIZER" equals \\');
+    expect(healthStep).toContain('"$ENV_FILE" ELIZA_CLOUD_AGENT_BASE_DOMAIN');
+    expect(healthStep).not.toContain(" lookup ");
+    expect(healthStep).not.toMatch(/awk[^\n]*ELIZA_CLOUD_AGENT_BASE_DOMAIN/);
+    expect(healthStep).toContain(
+      "Agent router base-domain drift. Values were not printed.",
+    );
+    expect(healthStep).not.toContain("found ${ACTUAL_AGENT_BASE_DOMAIN");
+    expect(healthStep).toContain(
+      'sudo /usr/bin/env -i PATH="$SAFE_CHILD_PATH" "$NODE_BIN" -e',
+    );
+    expect(healthStep).toContain(
+      'readFileSync("/run/eliza-backup-catalog/health.json")',
+    );
+    expect(healthStep).not.toContain(
+      "test -s /run/eliza-backup-catalog/health.json",
+    );
+    expect(healthStep).not.toContain("< /run/eliza-backup-catalog/health.json");
   });
 
   it("reconciles WARM_POOL_ENABLED from the protected environment so re-arms cannot drop it (#16961)", () => {
@@ -365,7 +755,7 @@ describe("provisioning worker deployment contract", () => {
     // Execute the actual validator embedded in the workflow rather than
     // asserting on its text, so a regression to substring matching fails.
     const validator = workflow.match(
-      /validate_public_health_payload\(\) \{\n\s*node -e '([\s\S]*?)'\n\s*\}/,
+      /validate_public_health_payload\(\) \{\n\s*\/usr\/bin\/env -i PATH="\$SAFE_CHILD_PATH" "\$NODE_BIN" -e '([\s\S]*?)'\n\s*\}/,
     );
     expect(validator).not.toBeNull();
     const script = (validator as RegExpMatchArray)[1];
@@ -373,6 +763,12 @@ describe("provisioning worker deployment contract", () => {
     const runValidator = (payload: string): number => {
       const proc = Bun.spawnSync(["node", "-e", script], {
         stdin: Buffer.from(payload),
+        env: {
+          PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+          HOME: process.env.HOME ?? "/tmp",
+          TMPDIR: "/tmp",
+          NODE_ENV: "test",
+        },
       });
       return proc.exitCode;
     };

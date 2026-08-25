@@ -1468,6 +1468,23 @@ export function resolveBionicStreamStep(): number | undefined {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+/**
+ * Keep Eliza chat-turn control markers on every bionic-host request, including
+ * the Capacitor bridge fast path that builds its native wire payload directly.
+ */
+export function resolveBionicStopSequences(
+	requested: readonly string[] | undefined,
+): string[] {
+	return Array.from(
+		new Set([
+			...(requested ?? []).filter((stop) => stop.length > 0),
+			"<end_of_turn>",
+			"<start_of_turn>",
+			"<endoftext>",
+		]),
+	);
+}
+
 // A flat on-device model (…/models/eliza-1-2b-128k.gguf) is not the bundle
 // layout `libelizainference`'s eliza_pick_text_file() globs (<bundle>/text/
 // *.gguf), so a delegated generate fails with "bundle_dir does not exist". We
@@ -1739,9 +1756,10 @@ function bionicHostGenerateStream(
 }
 
 /**
- * Clamp a background-priority request to the device-class budget and resolve
- * its bounded lane wait (#11914). Interactive requests pass through untouched
- * with an unbounded lane wait (their transport timeout governs the total).
+ * Validate a background-priority request against the device-class budget and
+ * resolve its bounded lane wait (#11914). Interactive requests pass through
+ * untouched with an unbounded lane wait (their transport timeout governs the
+ * total).
  */
 function resolveMobileLaneBudget(
 	priority: LocalInferencePriority,
@@ -1754,15 +1772,13 @@ function resolveMobileLaneBudget(
 	const budget = resolveBackgroundInferenceBudget(
 		inferenceRamClassFromEnv() ?? "standard",
 	);
-	const clamped = applyBackgroundInferenceBudget({ prompt, maxTokens }, budget);
-	if (clamped.clamped.length > 0) {
-		logger.info(
-			`[mobile-device-bridge] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
-		);
-	}
+	const budgeted = applyBackgroundInferenceBudget(
+		{ prompt, maxTokens },
+		budget,
+	);
 	return {
-		prompt: clamped.prompt,
-		maxTokens: clamped.maxTokens,
+		prompt: budgeted.prompt,
+		maxTokens: budgeted.maxTokens,
 		lockWaitMs: budget.lockWaitMs,
 	};
 }
@@ -1774,7 +1790,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// generate goes through the process-wide interactive-over-background
 		// lane (#11914): interactive turns dispatch ahead of queued background
 		// jobs; background jobs run only when the lane is idle, wait a bounded
-		// time, and are clamped to the device-class budget. Without this, one
+		// time, and reject unsupported explicit device-class budgets. Without this, one
 		// long autonomous job self-queues on the host lock and starves chat.
 		const priority = params.priority ?? "interactive";
 
@@ -1793,13 +1809,14 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			const lane = resolveMobileLaneBudget(
 				priority,
 				buildGemmaBionicPrompt(params),
-				params.maxTokens ?? 256,
+				params.maxTokens,
 			);
 			const baseRequest = {
 				bundleDir: installed ? deriveBionicBundleDir(installed.modelPath) : "",
 				drafterPath: installed?.draftModelPath ?? "",
 				prompt: lane.prompt,
 				maxTokens: lane.maxTokens ?? 256,
+				stopSequences: resolveBionicStopSequences(params.stopSequences),
 			};
 			const res = await getInferencePriorityGate().runExclusive(
 				{
@@ -1839,6 +1856,21 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			if (!res.ok) {
 				throw new Error(
 					`[mobile-device-bridge] bionic host generate failed: ${res.error ?? "unknown"}`,
+				);
+			}
+			if (
+				typeof res.tokens === "number" &&
+				res.tokens >= baseRequest.maxTokens
+			) {
+				throw new ElizaError(
+					"Bionic local model output reached the decode boundary before a stop condition",
+					{
+						code: "MODEL_OUTPUT_INCOMPLETE",
+						context: {
+							maxTokens: baseRequest.maxTokens,
+							outputTokens: res.tokens,
+						},
+					},
 				);
 			}
 			if (typeof res.tokS === "number") {

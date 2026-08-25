@@ -262,10 +262,28 @@ function isCloudDeployTarget(config: AppDeployConfig): boolean {
 }
 
 function extractViewPluginSourceDir(task: string): string | undefined {
+  const lowerTask = task.toLowerCase();
+  const extractAfter = (
+    marker: string,
+    terminators: readonly string[],
+  ): string | undefined => {
+    const markerStart = lowerTask.indexOf(marker);
+    if (markerStart < 0) return undefined;
+    let valueStart = markerStart + marker.length;
+    while (valueStart < task.length && task[valueStart]?.trim() === "") {
+      valueStart += 1;
+    }
+    if (valueStart === markerStart + marker.length) return undefined;
+    let valueEnd = task.length;
+    for (const terminator of terminators) {
+      const candidate = lowerTask.indexOf(terminator.toLowerCase(), valueStart);
+      if (candidate >= 0 && candidate < valueEnd) valueEnd = candidate;
+    }
+    return task.slice(valueStart, valueEnd).trim() || undefined;
+  };
   return (
-    task
-      .match(/plugin source directory is\s+(.+?)(?:\. It|\n|$)/i)?.[1]
-      ?.trim() ?? task.match(/source lives in\s+(.+?)(?:\.|\n|$)/i)?.[1]?.trim()
+    extractAfter("plugin source directory is", [". it", "\n"]) ??
+    extractAfter("source lives in", [".", "\n"])
   );
 }
 

@@ -43,4 +43,29 @@ describe("McpService lifecycle", () => {
     expect(internals.connections.has("bad-close")).toBe(false);
     expect(internals.connectionStates.has("bad-close")).toBe(false);
   });
+
+  it("handles corrupted config JSON in restartConnection by setting error status without throwing", async () => {
+    const service = new McpService();
+    const internals = service as unknown as {
+      connections: Map<
+        string,
+        {
+          server: { status: string; error?: string; config: string };
+        }
+      >;
+    };
+
+    internals.connections.set("corrupted-server", {
+      server: {
+        status: "idle",
+        config: "{ invalid json payload, unclosed",
+      },
+    });
+
+    await expect(service.restartConnection("corrupted-server")).resolves.toBeUndefined();
+
+    const connection = internals.connections.get("corrupted-server");
+    expect(connection?.server.status).toBe("error");
+    expect(connection?.server.error).toContain("Invalid server configuration JSON");
+  });
 });

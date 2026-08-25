@@ -58,6 +58,7 @@ export interface DeepLinkNavigationIntent {
  */
 export function resolveDeepLinkNavigationIntent(
   path: string,
+  searchParams?: URLSearchParams,
 ): DeepLinkNavigationIntent | null {
   // eliza://connectors → Settings → Connectors index.
   // eliza://settings/connectors/<provider> → Settings → connector detail.
@@ -89,9 +90,30 @@ export function resolveDeepLinkNavigationIntent(
       // `/wallet` resolves to the `inventory` tab via `tabFromPath`.
       return { viewId: "inventory", viewPath: "/wallet" };
     case "browser":
-      return { viewId: "browser", viewPath: "/browser" };
+      return {
+        viewId: "browser",
+        viewPath: browserViewPath(searchParams),
+      };
     default:
       return null;
+  }
+}
+
+function browserViewPath(searchParams: URLSearchParams | undefined): string {
+  const browse = searchParams?.get("browse");
+  if (!browse) return "/browser";
+  try {
+    const parsed = new URL(browse);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "live.browser.run"
+    ) {
+      return "/browser";
+    }
+    return `/browser?browse=${encodeURIComponent(parsed.href)}`;
+  } catch {
+    // error-policy:J3 malformed OS-delivered browser targets are discarded.
+    return "/browser";
   }
 }
 

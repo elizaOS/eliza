@@ -27,6 +27,7 @@ export interface StatusBadgeProps
   withDot?: boolean;
   pulse?: boolean;
   icon?: React.ReactNode;
+  presentation?: "default" | "pill";
 }
 
 function normalizeStatusVariant(variant: StatusVariant): StatusVariant {
@@ -73,6 +74,7 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
       withDot = false,
       pulse = false,
       icon,
+      presentation = "default",
       className,
       ...props
     },
@@ -87,17 +89,19 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
         data-status={resolvedVariant}
         className={cn(
           "inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 text-2xs font-bold uppercase",
+          presentation === "pill" &&
+            "rounded-full px-2.5 py-1 text-xs-tight font-medium normal-case",
           statusBadgeClasses(resolvedVariant),
           className,
         )}
         {...props}
       >
         {resolvedVariant === "processing" ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
+          <Loader2 className="size-3 animate-spin" />
         ) : icon ? (
           <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
         ) : showDot ? (
-          <span className="relative flex h-2 w-2">
+          <span className="relative flex  size-2">
             {pulse && (
               <span
                 className={cn(
@@ -108,7 +112,7 @@ export const StatusBadge = React.forwardRef<HTMLSpanElement, StatusBadgeProps>(
             )}
             <span
               className={cn(
-                "relative inline-flex h-2 w-2 rounded-full",
+                "relative inline-flex size-2 rounded-full",
                 statusDotClasses(resolvedVariant),
               )}
             />
@@ -145,7 +149,7 @@ export const StatusDot = React.forwardRef<HTMLSpanElement, StatusDotProps>(
       <span
         ref={ref}
         className={cn(
-          "inline-block h-2 w-2 rounded-full",
+          "inline-block size-2 rounded-full",
           statusDotClasses(variant),
           className,
         )}

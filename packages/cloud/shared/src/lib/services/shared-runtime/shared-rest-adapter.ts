@@ -20,14 +20,25 @@ import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
+import { logger } from "../../utils/logger";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+import {
+  parseSharedProviderTimingReceipt,
+  type SharedProviderTimingReceipt,
+} from "./shared-runtime-timing";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
+
+/** Serialize the privacy-bounded provider receipt into finite Server-Timing metrics. */
+export function sharedTurnServerTiming(receipt: SharedProviderTimingReceipt | undefined): string {
+  if (!receipt) return "";
+  return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0} clamped=${receipt.clamped ? 1 : 0}"`;
+}
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
@@ -427,6 +438,31 @@ export function sharedRestAuthMe(
 }
 
 /**
+ * GET .../api/auth/status — legacy startup-coordinator probe. The newer
+ * top-level gate uses `/api/auth/me`, but `ElizaClient.getAuthStatus()` still
+ * asks for this compact shape before first-run hydration. The enclosing Cloud
+ * route has already authenticated the API key, so Shared is unambiguously an
+ * authenticated bearer session with no pairing flow of its own.
+ */
+export function sharedRestAuthStatus(): {
+  required: false;
+  authenticated: true;
+  pairingEnabled: false;
+  expiresAt: null;
+  localAccess: false;
+  passwordConfigured: false;
+} {
+  return {
+    required: false,
+    authenticated: true,
+    pairingEnabled: false,
+    expiresAt: null,
+    localAccess: false,
+    passwordConfigured: false,
+  };
+}
+
+/**
  * GET .../api/character — the character the app reads. Reuse the same cache-only
  * character resolver as the shared turn; a linked-character cache miss schedules
  * authoritative hydration under waitUntil and fails retryably instead of reading
@@ -544,7 +580,12 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
-): Promise<{ text: string; agentName: string }> {
+): Promise<{
+  text: string;
+  agentName: string;
+  timing?: SharedProviderTimingReceipt;
+  mediaUrls?: string[];
+}> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
@@ -579,7 +620,32 @@ export async function sharedRestMessageSend(
     }
     throw new Error(response.error.message || "shared message.send failed");
   }
-  const result = (response.result ?? {}) as { text?: unknown };
+  const result = (response.result ?? {}) as {
+    text?: unknown;
+    timing?: unknown;
+    actionResults?: unknown;
+  };
   const replyText = typeof result.text === "string" ? result.text : "";
-  return { text: replyText, agentName: agentName || "Eliza" };
+  const mediaUrls = Array.isArray(result.actionResults)
+    ? result.actionResults.flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const data = (entry as { data?: unknown }).data;
+        if (!data || typeof data !== "object") return [];
+        const mediaUrl = (data as { mediaUrl?: unknown }).mediaUrl;
+        return typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : [];
+      })
+    : [];
+  const timing = parseSharedProviderTimingReceipt(result.timing);
+  if (result.timing !== undefined && timing === undefined) {
+    logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
+      agentId: agent.id,
+      conversationId,
+    });
+  }
+  return {
+    text: replyText,
+    agentName: agentName || "Eliza",
+    ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
+    ...(timing ? { timing } : {}),
+  };
 }

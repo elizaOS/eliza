@@ -173,7 +173,12 @@ export async function isJtiRevoked(jti: string): Promise<boolean> {
   return hit !== null && hit !== undefined;
 }
 
-/** Test-only: drop the cached client so a fresh env is picked up. */
+/** Test-only: drop or override the cached client so a fresh env or mock is picked up. */
 export function __resetDenylistClientForTests(): void {
   cachedRedis = null;
+}
+
+/** Test-only: inject a mock/failing Redis client for deterministic error-policy testing. */
+export function __setDenylistClientForTests(client: CompatibleRedis | null): void {
+  cachedRedis = client;
 }

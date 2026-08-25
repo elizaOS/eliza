@@ -606,11 +606,29 @@ export function buildDataURI(registrationFile: AgentRegistrationFile): string {
 
 export function parseDataURI(uri: string): AgentRegistrationFile {
   if (uri.startsWith("data:application/json;base64,")) {
-    const b64 = uri.replace("data:application/json;base64,", "");
-    const json = decodeURIComponent(escape(atob(b64)));
-    return JSON.parse(json);
+    try {
+      const b64 = uri.replace("data:application/json;base64,", "");
+      const json = decodeURIComponent(escape(atob(b64)));
+      return JSON.parse(json) as AgentRegistrationFile;
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow for malformed data URI payload
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`parseDataURI: Invalid base64 JSON payload: ${detail}`, {
+        cause: error,
+      });
+    }
   }
-  if (uri.startsWith("{")) return JSON.parse(uri);
+  if (uri.startsWith("{")) {
+    try {
+      return JSON.parse(uri) as AgentRegistrationFile;
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow for malformed inline JSON
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`parseDataURI: Invalid inline JSON payload: ${detail}`, {
+        cause: error,
+      });
+    }
+  }
   throw new Error(
     `parseDataURI: Cannot parse URI scheme: ${uri.substring(0, 50)}`,
   );

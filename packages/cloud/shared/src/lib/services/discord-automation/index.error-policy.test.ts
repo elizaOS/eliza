@@ -12,6 +12,12 @@ process.env.DISCORD_BOT_TOKEN = "test-bot-token";
 const channelUpsert = mock(async () => {});
 const guildUpsert = mock(async () => {});
 
+// This suite exercises Discord transport and persistence policy. Keep the
+// unrelated Core Unicode helper hermetic so the focused test does not require
+// a built @elizaos/core workspace package.
+mock.module("@elizaos/core", () => ({
+  truncateWellFormed: (value: string, maxUnits: number) => value.slice(0, maxUnits),
+}));
 mock.module("../../../db/repositories/discord-channels", () => ({
   discordChannelsRepository: {
     upsert: channelUpsert,
@@ -30,7 +36,7 @@ mock.module("../../utils/logger", () => ({
   logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
 }));
 
-const { discordAutomationService } = await import("./index");
+const { discordAutomationService, discordFetch } = await import("./index");
 
 const realFetch = globalThis.fetch;
 
@@ -43,6 +49,23 @@ function jsonResponse(body: unknown, init?: { ok?: boolean; status?: number }): 
     json: async () => body,
     text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
   } as unknown as Response;
+}
+
+function hungResponse(
+  init?: RequestInit,
+  onSignal?: (signal: AbortSignal | undefined) => void,
+): Promise<Response> {
+  onSignal?.(init?.signal);
+  return new Promise<Response>((_resolve, reject) => {
+    const guard = setTimeout(
+      () => reject(new Error("test guard elapsed before Discord deadline")),
+      2_000,
+    );
+    init?.signal?.addEventListener("abort", () => {
+      clearTimeout(guard);
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    });
+  });
 }
 
 beforeEach(() => {
@@ -152,5 +175,70 @@ describe("handleBotOAuthCallback — J6 best-effort: channel cache-warm failure 
     expect(result.guildId).toBe(guildId);
     // The guild was persisted even though channel warm-up threw.
     expect(guildUpsert).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("discordFetch — bounded hops fail closed and keep caller signals", () => {
+  it("aborts a hung Discord API hop at the timeout", async () => {
+    // A Discord API that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the 25s default matches the send path).
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) =>
+      hungResponse(init),
+    ) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      discordFetch("https://discord.com/api/v10/guilds/g1", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("propagates a caller abort through the composed signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) =>
+      hungResponse(init, (signal) => {
+        seen = signal;
+      }),
+    ) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    const pending = discordFetch(
+      "https://discord.com/api/v10/users/@me",
+      { signal: controller.signal },
+      60_000,
+    );
+    controller.abort();
+    await expect(pending).rejects.toThrow(/aborted/i);
+    expect(seen).not.toBe(controller.signal);
+  });
+
+  it("keeps the hop deadline when the caller signal never aborts", async () => {
+    // The caller signal must not replace the bound: a caller holding a signal
+    // it never fires would otherwise pin the worker forever.
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) =>
+      hungResponse(init),
+    ) as unknown as typeof fetch;
+
+    const never = new AbortController();
+    const start = Date.now();
+    await expect(
+      discordFetch("https://discord.com/api/v10/users/@me", { signal: never.signal }, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+});
+
+describe("sendMessage — shared Discord deadline boundary", () => {
+  it("passes the shared deadline signal to the message transport", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return jsonResponse({ id: "message-1" });
+    }) as unknown as typeof fetch;
+
+    const result = await discordAutomationService.sendMessage("channel-1", "hello");
+
+    expect(result).toEqual({ success: true, messageId: "message-1" });
+    expect(seen).toBeInstanceOf(AbortSignal);
   });
 });

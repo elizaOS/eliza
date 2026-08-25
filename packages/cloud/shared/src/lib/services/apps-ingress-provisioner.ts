@@ -13,7 +13,7 @@
  * `scripts/verify-apps-ingress-routing.sh`.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AppRouteInput,
   buildCaddyAddRouteUrl,
@@ -78,7 +78,7 @@ function mutationError(input: {
 
 async function responseDetail(res: IngressResponse): Promise<string> {
   try {
-    return (await res.text()).slice(0, 200);
+    return truncateWellFormed(toWellFormedUnicode(await res.text()), 200);
   } catch (cause) {
     // error-policy:J2 Preserve the body-read failure at the Caddy boundary.
     throw new ElizaError("[apps-ingress] failed to read Caddy admin error response", {

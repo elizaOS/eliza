@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eliza Browser</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <h1>Eliza Browser</h1>
+
+      <section class="connection" aria-label="Browser connection">
+        <p
+          id="statusTitle"
+          class="status"
+          data-kind="syncing"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          Connecting to Eliza…
+        </p>
+        <button id="primaryAction" class="primary" type="button" hidden></button>
+      </section>
+
+      <details id="details" class="details" hidden>
+        <summary>Details</summary>
+        <button id="disconnect" class="disconnect" type="button" hidden>
+          Disconnect this browser
+        </button>
+      </details>
+    </main>
+    <script src="./popup.js"></script>
+  </body>
+</html>

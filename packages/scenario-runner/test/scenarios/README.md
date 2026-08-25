@@ -41,9 +41,11 @@ provider always requires an exact fixture or explicit resolver:
   `/api/mcp/status` route capability reporting for the discovered fixture tool
   and resource.
 - `deterministic-workflow-actions-routes` covers real embedded workflow services
-  from `@elizaos/plugin-workflow` by seeding and executing a Manual Trigger ->
-  Set workflow, then asserting `WORKFLOW` execution listing, `/workflows/:id`,
-  `/executions`, and exact runData output.
+  from `@elizaos/plugin-workflow` with 50 create/update/read/delete persistence
+  cycles before tagging, seeding, and executing a native
+  Smithers workflow, then asserting `WORKFLOW` execution listing, canonical
+  `/api/workflow/workflows/:id` read routes, native run events, and exact
+  persisted execution input.
 - `deterministic-github-actions-routes` covers the real GitHub promoted issue
   parent `GITHUB` router, promoted issue actions (`GITHUB_ISSUE_CREATE`,
   assign, close, reopen, comment, label), `GITHUB_PR_LIST`,
@@ -62,6 +64,9 @@ provider always requires an exact fixture or explicit resolver:
 - `deterministic-lifeops-scheduled-tasks` covers the real LifeOps
   `SCHEDULED_TASKS` handler and repository-backed `ScheduledTask` state
   transitions for create, list, get, snooze, complete, and history.
+- `deterministic-lifeops-recurrence` creates, lists, edits, and dismisses a
+  daily cron task while driving the real scheduler across a 30-day logical
+  horizon; it requires one delivery and one durable fired transition per day.
 - `deterministic-coding-tools-actions` covers the real coding-tools `FILE`,
   `SHELL`, and `WORKTREE` handlers against an isolated throwaway git repo under
   `/tmp`, including file side effects and worktree cleanup.
@@ -86,6 +91,12 @@ bun run --cwd packages/scenario-runner test:live:e2e
 
 That script intentionally does not set `SCENARIO_USE_DETERMINISTIC_MODEL`; the CLI still
 requires a real provider key for live natural-language planner runs.
+
+- `live-schedule-negotiation-action` is the focused one-turn Codex-to-elizaOS
+  scheduling proof. It requires the personal-assistant scheduling action, an
+  initiated persisted negotiation, and the nested `schedule_plan` model call;
+  schedule CRUD and 30-day recurrence remain in the deterministic real-service
+  scenario so provider latency cannot weaken those assertions.
 
 - `live-help-knowledge` covers the deleted-Help-view replacement: a real model
   must answer first-run help questions from the bundled help FAQ fragments,

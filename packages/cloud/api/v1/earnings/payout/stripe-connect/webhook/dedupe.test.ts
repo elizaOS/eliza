@@ -66,6 +66,12 @@ mock.module("@elizaos/cloud-shared/lib/services/stripe-connect-payout", () => ({
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
   getAuditDispatcher: () => ({ emit: async () => undefined }),
 }));
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  RateLimitPresets: { AGGRESSIVE: {} },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
+}));
+
 mock.module("@/lib/utils/logger", () => ({
   logger: {
     info: mock(() => undefined),

@@ -12,7 +12,14 @@
  * into the attacker's account (login CSRF).
  */
 
-export type StewardOAuthProvider = "google" | "discord" | "github" | "twitter";
+import { trimEndCharacters } from "../utils/string-boundaries.js";
+
+export type StewardOAuthProvider =
+  | "google"
+  | "discord"
+  | "github"
+  | "twitter"
+  | "apple";
 
 const STEWARD_PKCE_VERIFIER_STORAGE_KEY = "steward.oauth.pkce.verifier";
 const STEWARD_PKCE_VERIFIER_TTL_MS = 10 * 60 * 1000;
@@ -204,6 +211,6 @@ export function buildStewardOAuthAuthorizeUrl(
   if (options.state) {
     params.set("state", options.state);
   }
-  const stewardApiUrl = options.stewardApiUrl.replace(/\/+$/, "");
+  const stewardApiUrl = trimEndCharacters(options.stewardApiUrl, "/");
   return `${stewardApiUrl}/auth/oauth/${provider}/authorize?${params.toString()}`;
 }

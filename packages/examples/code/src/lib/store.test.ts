@@ -1,5 +1,5 @@
 /** Exercises room, message, task, pane, and submission transitions in the Code example store. */
-import { beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { stringToUuid } from "@elizaos/core";
 import type { CodeTask } from "../types.js";
 import { useStore } from "./store.js";
@@ -18,6 +18,14 @@ function task(name: string): CodeTask {
     },
   };
 }
+
+afterEach(() => {
+  // Scoped, not leaked: loadSession now honors this flag, so leaving it set
+  // made every LATER test file in the same bun process silently skip its
+  // session loads (live 2026-08-20: session round-trip tests failed only in
+  // the full run).
+  delete process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE;
+});
 
 beforeEach(() => {
   process.env.ELIZA_CODE_DISABLE_SESSION_PERSISTENCE = "1";

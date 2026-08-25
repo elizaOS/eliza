@@ -12,13 +12,17 @@
  */
 import type http from "node:http";
 import {
+  CONNECTOR_JSON_UNBOUNDED,
   type ConnectorAccount,
+  type ConnectorAccountJsonObject,
   type ConnectorAccountPatch,
   type ConnectorAccountPurpose,
   type ConnectorAccountRole,
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
+  cloneConnectorJsonObject,
   DEFAULT_PRIVACY_LEVEL,
+  ElizaError,
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
@@ -29,9 +33,13 @@ import {
 } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
+import {
+  BLOCKED_OBJECT_GRAPH_UNBOUNDED,
+  cloneWithoutBlockedObjectKeys,
+  isBlockedObjectKey,
+} from "./blocked-object-keys.ts";
 import { resolveDirectRequestOrigin } from "./request-origin.ts";
 import { decodePathComponent } from "./server-helpers.ts";
-import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -81,6 +89,10 @@ const confirmationSchema = z
   })
   .optional();
 const AUDIT_REDACTED = "[REDACTED]";
+/** Served in place of stored metadata whose graph exceeds the bounded walk. */
+const AUDIT_UNBOUNDED = "[UNBOUNDED]";
+const UNBOUNDED_METADATA_MESSAGE =
+  "Connector account metadata exceeds the bounded walk budget";
 const AUDIT_SECRET_KEY_PATTERN =
   /(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
 const CLIENT_RESERVED_METADATA_KEYS = new Set([
@@ -327,25 +339,22 @@ function isClientReservedMetadataKey(key: string): boolean {
   return CLIENT_RESERVED_METADATA_KEYS.has(normalizeMetadataKey(key));
 }
 
+/**
+ * `metadataSchema` is `z.record(z.string(), z.unknown())`, so a caller-supplied
+ * connector-account body may nest arbitrarily. Both metadata walks therefore
+ * run on the shared bounded walker exported by `./blocked-object-keys.ts`
+ * (depth cap, node budget, path-local WeakSet cycle guard, descriptor-only
+ * reflection, typed `BLOCKED_OBJECT_GRAPH_UNBOUNDED` failure) rather than
+ * recursing once per nesting level. Blocked keys are dropped by the walker
+ * itself; the key policies below carry the connector-specific rules.
+ */
 function cleanMetadataValue(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => cleanMetadataValue(item));
-  }
-  if (typeof value !== "object") return value;
-
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (
-      isBlockedObjectKey(key) ||
-      AUDIT_SECRET_KEY_PATTERN.test(key) ||
-      isClientReservedMetadataKey(key)
-    ) {
-      continue;
-    }
-    cleaned[key] = cleanMetadataValue(item);
-  }
-  return cleaned;
+  return cloneWithoutBlockedObjectKeys(value, {
+    keyAction: (key) =>
+      AUDIT_SECRET_KEY_PATTERN.test(key) || isClientReservedMetadataKey(key)
+        ? "drop"
+        : "keep",
+  });
 }
 
 function cleanMetadata(value: unknown): Metadata | undefined {
@@ -356,19 +365,48 @@ function cleanMetadata(value: unknown): Metadata | undefined {
   return cleaned as Metadata;
 }
 
-function redactAuditMetadata(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value))
-    return value.map((item) => redactAuditMetadata(item));
-  if (typeof value !== "object") return value;
+function isUnboundedMetadataGraph(error: unknown): boolean {
+  return (
+    error instanceof ElizaError &&
+    (error.code === BLOCKED_OBJECT_GRAPH_UNBOUNDED ||
+      error.code === CONNECTOR_JSON_UNBOUNDED)
+  );
+}
 
-  const redacted: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    redacted[key] = AUDIT_SECRET_KEY_PATTERN.test(key)
-      ? AUDIT_REDACTED
-      : redactAuditMetadata(item);
+/**
+ * Validate sanitized metadata against the stricter durable-storage projection
+ * before the manager can invoke a registered provider callback. The route
+ * walker intentionally has a looser budget, so relying on the adapter alone
+ * would allow a provider side effect before persistence rejects the patch.
+ */
+function validatePatchMetadataForStorage(
+  patch: ConnectorAccountPatch,
+): ConnectorAccountPatch {
+  if (patch.metadata === undefined) return patch;
+  return {
+    ...patch,
+    metadata: cloneConnectorJsonObject(
+      patch.metadata as ConnectorAccountJsonObject,
+    ),
+  };
+}
+
+function redactAuditMetadata(value: unknown): unknown {
+  try {
+    return cloneWithoutBlockedObjectKeys(value, {
+      keyAction: (key) =>
+        AUDIT_SECRET_KEY_PATTERN.test(key) ? "redact" : "keep",
+      redactedValue: AUDIT_REDACTED,
+    });
+  } catch (error) {
+    // error-policy:J4 metadata already at rest may exceed the walk budget (it
+    // could have been written before this bound existed, or by an in-process
+    // writer that does not pass through this route). Serve an explicit marker
+    // so a single stored value cannot 500 every subsequent read; the reader is
+    // told the value was withheld rather than handed a silent truncation.
+    if (!isUnboundedMetadataGraph(error)) throw error;
+    return AUDIT_UNBOUNDED;
   }
-  return redacted;
 }
 
 function accountPatchFromBody(
@@ -741,8 +779,21 @@ export async function handleConnectorAccountRoutes(
         error(res, "Privacy escalation requires confirmation", 403);
         return true;
       }
+      let createPatch: ConnectorAccountPatch;
+      try {
+        createPatch = validatePatchMetadataForStorage(
+          accountPatchFromBody(parsed.data),
+        );
+      } catch (err) {
+        // error-policy:J1 route boundary — an over-budget caller body at either
+        // the route-walk or durable-storage budget becomes a 400 before any
+        // provider callback. Every other error is rethrown.
+        if (!isUnboundedMetadataGraph(err)) throw err;
+        error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+        return true;
+      }
       const account = await manager.createAccount(provider, {
-        ...accountPatchFromBody(parsed.data),
+        ...createPatch,
         ...(parsed.data.id ? { id: parsed.data.id } : {}),
       } as ConnectorAccountPatch);
       json(res, serializeAccount(account), 201);
@@ -783,7 +834,18 @@ export async function handleConnectorAccountRoutes(
           error(res, "Connector account not found", 404);
           return true;
         }
-        const patch = accountPatchFromBody(parsed.data, existing.metadata);
+        let patch: ConnectorAccountPatch;
+        try {
+          patch = validatePatchMetadataForStorage(
+            accountPatchFromBody(parsed.data, existing.metadata),
+          );
+        } catch (err) {
+          // error-policy:J1 route boundary — same pre-provider translation as
+          // the POST path above; every unrelated failure is rethrown.
+          if (!isUnboundedMetadataGraph(err)) throw err;
+          error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+          return true;
+        }
         if (
           requiresOwnerRoleConfirmation(existing, patch.role) &&
           !hasOwnerRoleConfirmation(parsed.data.confirmation)
@@ -840,12 +902,28 @@ export async function handleConnectorAccountRoutes(
       }
 
       if (action === "refresh") {
-        const refreshed = await manager.patchAccount(provider, accountId, {
-          metadata: {
-            ...(account.metadata ?? {}),
-            lastSyncedAt: Date.now(),
-          },
-        });
+        let refreshPatch: ConnectorAccountPatch;
+        try {
+          // error-policy:J1 route boundary — the stored row may already sit at
+          // the durable-storage node budget; adding lastSyncedAt tips it over,
+          // and the rejection must land before any registered provider
+          // patchAccount callback fires. Every other error is rethrown.
+          refreshPatch = validatePatchMetadataForStorage({
+            metadata: {
+              ...(account.metadata ?? {}),
+              lastSyncedAt: Date.now(),
+            },
+          });
+        } catch (err) {
+          if (!isUnboundedMetadataGraph(err)) throw err;
+          error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+          return true;
+        }
+        const refreshed = await manager.patchAccount(
+          provider,
+          accountId,
+          refreshPatch,
+        );
         json(res, {
           ok: true,
           provider,
@@ -867,15 +945,37 @@ export async function handleConnectorAccountRoutes(
           return true;
         }
         const accounts = await manager.listAccounts(provider);
+        // Plan-then-execute: construct and validate EVERY affected account's
+        // patch before the first provider callback or row write. A later
+        // over-budget row must not 400 after earlier rows have already
+        // flipped — that would leave the provider's account set in a
+        // partially mutated, zero-or-two-default state. Provider/DB failures
+        // during execution still follow the manager's explicit partial-failure
+        // contract; only deterministic validation is hoisted here.
+        const plan: Array<{ id: string; patch: ConnectorAccountPatch }> = [];
         for (const item of accounts) {
           const isTarget = item.id === accountId;
           if (item.metadata?.isDefault === isTarget) continue;
-          await manager.patchAccount(provider, item.id, {
-            metadata: {
-              ...(item.metadata ?? {}),
-              isDefault: isTarget,
-            },
-          });
+          let defaultPatch: ConnectorAccountPatch;
+          try {
+            // error-policy:J1 route boundary — same pre-provider validation as
+            // refresh: a listed row near the storage budget must be rejected
+            // here, before ANY provider callback can run. Rethrow otherwise.
+            defaultPatch = validatePatchMetadataForStorage({
+              metadata: {
+                ...(item.metadata ?? {}),
+                isDefault: isTarget,
+              },
+            });
+          } catch (err) {
+            if (!isUnboundedMetadataGraph(err)) throw err;
+            error(res, UNBOUNDED_METADATA_MESSAGE, 400);
+            return true;
+          }
+          plan.push({ id: item.id, patch: defaultPatch });
+        }
+        for (const step of plan) {
+          await manager.patchAccount(provider, step.id, step.patch);
         }
         const updatedAccounts = await manager.listAccounts(provider);
         const updatedAccount =

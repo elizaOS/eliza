@@ -49,6 +49,7 @@ const s3Versions = new Map<string, Map<string, StoredTestObject>>();
 const s3ReplacementBeforeDelete = new Map<string, StoredTestObject>();
 const s3Calls: S3Call[] = [];
 let s3Server: ReturnType<typeof Bun.serve>;
+let slowDeleteAborted = false;
 
 function clearStorageEnv(): void {
   for (const key of STORAGE_ENV_KEYS) delete process.env[key];
@@ -151,6 +152,26 @@ beforeAll(() => {
         });
       }
       if (request.method === "DELETE") {
+        if (key === "slow-delete") {
+          return new Promise<Response>((resolve) => {
+            let settled = false;
+            const finish = (response: Response) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(response);
+            };
+            const timer = setTimeout(() => finish(new Response(null, { status: 504 })), 2_000);
+            request.signal.addEventListener(
+              "abort",
+              () => {
+                slowDeleteAborted = true;
+                finish(new Response(null, { status: 499 }));
+              },
+              { once: true },
+            );
+          });
+        }
         const replacement = s3ReplacementBeforeDelete.get(key);
         if (replacement) {
           s3ReplacementBeforeDelete.delete(key);
@@ -187,6 +208,7 @@ beforeEach(() => {
   s3Versions.clear();
   s3ReplacementBeforeDelete.clear();
   s3Calls.length = 0;
+  slowDeleteAborted = false;
 });
 
 afterEach(() => {
@@ -481,6 +503,37 @@ describe("S3-compatible exact-key lifecycle", () => {
       },
       { method: "HEAD", bucket: "backup-catalog-test", key, versionId: "s3-version-1" },
     ]);
+  });
+
+  test("propagates caller abort through the S3 delete command and skips the post-delete HEAD", async () => {
+    configureS3();
+    const key = "slow-delete";
+    setS3Object(key, {
+      size: 42,
+      etag: "slow-etag",
+      version: "slow-version",
+      sha256: "c2xvdy1zaGEyNTY=",
+    });
+    const observed = await headObject(key);
+    if (observed.status !== "present") throw new Error("Expected a present S3 object");
+    s3Calls.length = 0;
+    const controller = new AbortController();
+    const deletion = deleteObject(
+      { key, locator: observed.locator },
+      { signal: controller.signal, deadline: new Date(Date.now() + 60_000) },
+    );
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (s3Calls.some((call) => call.method === "DELETE")) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(s3Calls.some((call) => call.method === "DELETE")).toBe(true);
+    controller.abort(new Error("shutdown"));
+    await expectLifecycleError(deletion, "OBJECT_STORAGE_DELETE_ABORTED");
+    for (let attempt = 0; attempt < 100 && !slowDeleteAborted; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(slowDeleteAborted).toBe(true);
+    expect(s3Calls.filter((call) => call.method === "HEAD")).toHaveLength(1);
   });
 
   test("deletes the catalogued S3 version even when the current key is hidden by a delete marker", async () => {

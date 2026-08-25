@@ -5,6 +5,7 @@
  * Variables: per-request values populated by middleware (e.g. resolved user).
  */
 
+import type { BrowserWorker } from "@cloudflare/playwright";
 import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
@@ -63,6 +64,10 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
+  ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -86,6 +91,9 @@ export interface Bindings {
    */
   CACHE_KV?: KvNamespaceLike;
 
+  /** Cloudflare Browser Run endpoint used by the managed DoorDash adapter. */
+  BROWSER?: BrowserWorker;
+
   /**
    * One strongly ordered coordinator per shared agent conversation. The object
    * owns warm history and mirrors it to Postgres after the response path.
@@ -97,6 +105,9 @@ export interface Bindings {
    * cached balance leases and endpoint rate limits without querying Postgres.
    */
   INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
+
+  /** Atomic per-user ledger preventing duplicate confirmed DoorDash checkout submissions. */
+  DOORDASH_CHECKOUT_GATES?: RuntimeDurableObjectNamespace;
 
   /**
    * One strongly ordered identity/quota cache per anonymous chat session.
@@ -121,6 +132,7 @@ export interface Bindings {
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
   DASHBOARD_CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -239,6 +251,8 @@ export interface Bindings {
   VOICE_REALTIME_USER_DAILY_MINUTES?: string;
   /** Max concurrent live voice sessions per worker. */
   VOICE_REALTIME_MAX_SESSIONS?: string;
+  /** Public HTTPS API origin used to construct signed Twilio callback and media URLs. */
+  TWILIO_PUBLIC_URL?: string;
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
@@ -305,6 +319,12 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
+  /**
+   * Hard ceiling, in bytes, on a single field persisted inline in a SQL text or
+   * jsonb column when object storage is unavailable. Defaults to 1 MiB; values
+   * below 1024 are ignored.
+   */
+  SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- Steward (auth provider) ----
@@ -402,6 +422,11 @@ export interface Bindings {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   /**
+   * Test-only Stripe-compatible loopback origin. The Stripe client accepts it
+   * only under the explicit CLOUD_E2E + NODE_ENV=test gates and never in prod.
+   */
+  STRIPE_CLOUD_E2E_API_ORIGIN?: string;
+  /**
    * Signing secret for the Stripe **Connect** webhook endpoint
    * (`/api/v1/earnings/payout/stripe-connect/webhook`). Connect endpoints have
    * their own secret, distinct from `STRIPE_WEBHOOK_SECRET` (the main billing
@@ -410,6 +435,14 @@ export interface Bindings {
    */
   STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
+  /** Server-only recurring Plus plan Stripe Price binding. */
+  STRIPE_PLUS_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Plus plan. */
+  STRIPE_PLUS_PRODUCT_ID?: string;
+  /** Server-only recurring Pro plan Stripe Price binding. */
+  STRIPE_PRO_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Pro plan. */
+  STRIPE_PRO_PRODUCT_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;
@@ -451,6 +484,27 @@ export interface Bindings {
   WEBHOOK_GATEWAY_URL?: string;
   GATEWAY_WEBHOOK_URL?: string;
   ELIZA_APP_WEBHOOK_PROJECT?: string;
+  /**
+   * Exactly `"true"` enables vision descriptions of inbound Blooio image media
+   * on Personal Shared turns; any other value keeps the raw media-URL text.
+   * The gateway-webhook service reads the same variable to decide whether to
+   * forward media URLs at all, so enable both deployments together.
+   * Keep this unset outside tests until the retention, real-PostgreSQL
+   * concurrency, signed Blooio/provider, and edge-egress promotion gates in
+   * `docs/inbound-media-vision-promotion.md` are complete.
+   */
+  ELIZA_APP_INBOUND_MEDIA_VISION?: string;
+  /**
+   * Per-UTC-day image ceilings for pooled-key inbound media vision, consumed
+   * atomically from the primary-database ledger before any provider call: one
+   * for the resolved sending account and one across every sender of a
+   * connector account. Unset keeps the conservative defaults in
+   * `inbound-media-enrichment.ts`; "0" denies every description; any value
+   * that is not a non-negative integer fails closed (no vision, raw media
+   * text kept) and is logged as a configuration error.
+   */
+  ELIZA_APP_INBOUND_MEDIA_VISION_SENDER_DAILY_IMAGES?: string;
+  ELIZA_APP_INBOUND_MEDIA_VISION_CONNECTOR_DAILY_IMAGES?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
@@ -478,6 +532,10 @@ export interface Bindings {
   CONTAINERS_BOOTSTRAP_SECRET?: string;
   CONTAINERS_HCLOUD_LOCATION?: string;
   NODE_ENV?: string;
+  /** Exact local full-stack test gate; never set on deployed Workers. */
+  CLOUD_E2E?: string;
+  /** Unique local-only receipt used to bind Worker E2E probes to their owner. */
+  CLOUD_E2E_RUN_RECEIPT?: string;
   /**
    * Git commit stamped at deploy time so `/api/health` can prove which Worker
    * revision is currently served before CI allows another deploy to overwrite it.
@@ -568,6 +626,8 @@ export interface Variables {
   traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
+  /** Registered app that issued a mobile lifecycle credential. */
+  apiKeySourceAppId?: string;
 }
 
 export type AppEnv = {

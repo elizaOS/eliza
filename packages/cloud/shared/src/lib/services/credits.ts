@@ -27,6 +27,7 @@ import { getRouteTimeoutMs } from "../utils/request-timeout";
 import type { AffiliateBillingAttribution } from "./affiliate-billing-attribution";
 import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
+import { assertCreditRefundReservationPresent } from "./credit-reconciliation-invariants";
 import { resolveCostBuffer } from "./credits-config";
 import { emailService } from "./email";
 import { organizationsService } from "./organizations";
@@ -2193,6 +2194,13 @@ export class CreditsService {
       };
     }
 
+    assertCreditRefundReservationPresent({
+      reservationTransactionId: reservationTxId,
+      refundAmount: difference,
+      refundTolerance: EPSILON,
+      scope: "CreditsService.reconcile",
+    });
+
     const baseMetadata = {
       ...metadata,
       reserved: reservedAmount,
@@ -2203,8 +2211,9 @@ export class CreditsService {
     // refund/deduct as `stripePaymentIntentId` so a retry of an already-committed
     // reconcile (commit-then-ack-loss) is a no-op instead of a second refund
     // (platform loss) or a second overage charge (consumer double-charge).
-    // Without a reservation id there is nothing stable to key on, so we keep the
-    // prior non-idempotent behavior. (#10846 finding 2)
+    // Without a reservation id there is nothing stable to key on. Only the
+    // charge-only legacy lane can reach that shape; positive refunds fail
+    // closed above. (#10846 finding 2)
     const reconKey = (phase: "refund" | "overage"): string | undefined =>
       reservationTxId ? `recon:${reservationTxId}:${phase}` : undefined;
 

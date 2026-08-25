@@ -1,7 +1,7 @@
 /**
  * Cross-platform OS secret store — **contract only** (no native bindings here).
  *
- * **Spec:** [Platform secure store (design)](../../../../docs/guides/platform-secure-store.md)
+ * **Spec:** [Platform secure store (design)](../../../../docs/security/platform-secure-store.md)
  *
  * Implementations live per runtime (e.g. Electrobun main process, Node CLI with
  * native addons). Wallet and other callers depend on this interface + shared
@@ -12,6 +12,13 @@
 export type SecureStoreSecretKind =
   | "wallet.evm_private_key"
   | "wallet.solana_private_key"
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles"
+  | "runtime.access_token"
+  | "connector.telegram_personal_session"
+  | "connector.telegram_personal_auth_state"
   | "steward.api_url"
   | "steward.tenant_id"
   | "steward.agent_id"
@@ -36,6 +43,10 @@ export type SecureStoreSetResult =
   | { ok: true }
   | { ok: false; reason: SecureStoreUnavailableReason; message?: string };
 
+export type SecureStoreDeleteResult =
+  | { ok: true; deleted: boolean }
+  | { ok: false; reason: SecureStoreUnavailableReason; message?: string };
+
 /**
  * Which native API backs this implementation (for diagnostics and support).
  */
@@ -47,6 +58,14 @@ export type PlatformSecureStoreBackend =
   | "file_encrypted_fallback"
   /** Legacy / tests: no OS integration. */
   | "none";
+
+export interface PlatformSecureStoreProtection {
+  readonly backend: PlatformSecureStoreBackend;
+  readonly available: boolean;
+  readonly synchronized: false;
+  readonly scope: "device" | "host" | "unavailable";
+  readonly access: "app_only" | "user_session" | "unavailable";
+}
 
 /**
  * Platform-provided secret storage scoped by `vaultId` (see design doc for derivation).
@@ -65,7 +84,10 @@ export interface PlatformSecureStore {
     value: string,
   ): Promise<SecureStoreSetResult>;
 
-  delete(vaultId: string, kind: SecureStoreSecretKind): Promise<void>;
+  delete(
+    vaultId: string,
+    kind: SecureStoreSecretKind,
+  ): Promise<SecureStoreDeleteResult>;
 
   /** True if the backend can run on this host right now (e.g. Secret Service up). */
   isAvailable(): Promise<boolean>;

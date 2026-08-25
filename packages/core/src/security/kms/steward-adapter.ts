@@ -2,6 +2,7 @@
  * Steward KMS HTTP client that implements the production key-management wire contract.
  */
 
+import { trimEndCharacters } from "../../utils/string-boundaries.js";
 import {
 	type EncryptResult,
 	type GetOrCreateKeyOptions,
@@ -51,7 +52,7 @@ export interface StewardKmsOptions {
 }
 
 function trimSlash(s: string): string {
-	return s.replace(/\/+$/, "");
+	return trimEndCharacters(s, "/");
 }
 
 function endpoint(base: string, path: string): string {

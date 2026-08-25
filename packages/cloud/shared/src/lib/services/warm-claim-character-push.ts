@@ -21,10 +21,9 @@
  *     messageExamples, postExamples (everything else — plugins, settings,
  *     secrets, connectors, knowledge — is dropped; secrets must NEVER ride
  *     along on this call anyway);
- *   - length caps mirrored from the schema (name 100, username 50,
- *     system 10000, adjective/topic items 100) via slice, so an oversized
- *     field degrades to a truncated push instead of a 422 that would forfeit
- *     the whole character;
+ *   - strings are Unicode-normalized but never shortened. If a downstream
+ *     schema cannot accept the complete character, that boundary rejects the
+ *     payload explicitly instead of silently changing the character;
  *   - messageExamples are included ONLY when they already match the strict
  *     `[{ examples: [{ name, content: { text, actions? } }] }]` group form
  *     (extra content keys are stripped); the legacy `[[{user,content}]]` form
@@ -33,6 +32,8 @@
  * Returns null when there is no name to push (no config name and no
  * agent_name), in which case the caller skips the push entirely.
  */
+
+import { toWellFormedUnicode } from "@elizaos/core";
 
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 
@@ -80,19 +81,14 @@ export function mergeWarmClaimEnvironmentVars(
   return applyRemoteDockerRuntimeMode(merged);
 }
 
-const NAME_MAX = 100;
-const USERNAME_MAX = 50;
-const SYSTEM_MAX = 10_000;
-const LIST_ITEM_MAX = 100;
-
 /** Bounded timeout for the post-claim character push HTTP call. */
 export const WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS = 10_000;
 
-function cleanStringArray(value: unknown, itemMax?: number): string[] | undefined {
+function cleanStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value
     .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
-    .map((v) => (itemMax !== undefined ? v.slice(0, itemMax) : v));
+    .map(toWellFormedUnicode);
   return items.length > 0 ? items : undefined;
 }
 
@@ -126,8 +122,11 @@ function sanitizeMessageExampleGroups(value: unknown): MessageExampleGroup[] | u
         ? rawActions.filter((a): a is string => typeof a === "string" && a.length > 0)
         : undefined;
       examples.push({
-        name,
-        content: { text, ...(actions && actions.length > 0 ? { actions } : {}) },
+        name: toWellFormedUnicode(name),
+        content: {
+          text: toWellFormedUnicode(text),
+          ...(actions && actions.length > 0 ? { actions: actions.map(toWellFormedUnicode) } : {}),
+        },
       });
     }
     groups.push({ examples });
@@ -155,25 +154,25 @@ export function buildWarmClaimCharacterPayload(
       : (agentName?.trim() ?? "");
   if (!name) return null;
 
-  const payload: Record<string, unknown> = { name: name.slice(0, NAME_MAX) };
+  const payload: Record<string, unknown> = { name: toWellFormedUnicode(name) };
 
   if (typeof config.username === "string" && config.username.trim()) {
-    payload.username = config.username.trim().slice(0, USERNAME_MAX);
+    payload.username = toWellFormedUnicode(config.username.trim());
   }
   if (typeof config.system === "string" && config.system.trim()) {
-    payload.system = config.system.slice(0, SYSTEM_MAX);
+    payload.system = toWellFormedUnicode(config.system);
   }
 
   const bio =
     typeof config.bio === "string" && config.bio.trim()
-      ? [config.bio]
+      ? [toWellFormedUnicode(config.bio)]
       : cleanStringArray(config.bio);
   if (bio) payload.bio = bio;
 
-  const adjectives = cleanStringArray(config.adjectives, LIST_ITEM_MAX);
+  const adjectives = cleanStringArray(config.adjectives);
   if (adjectives) payload.adjectives = adjectives;
 
-  const topics = cleanStringArray(config.topics, LIST_ITEM_MAX);
+  const topics = cleanStringArray(config.topics);
   if (topics) payload.topics = topics;
 
   if (config.style && typeof config.style === "object" && !Array.isArray(config.style)) {

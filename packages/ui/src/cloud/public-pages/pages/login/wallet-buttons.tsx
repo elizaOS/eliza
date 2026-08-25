@@ -27,6 +27,7 @@ import type {
 } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
+import { Button } from "../../../../components/ui/button";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 
 type HexAddress = `0x${string}`;
@@ -348,15 +349,17 @@ function EthereumButton({
   // that fires on a later successful connect.
 
   return (
-    <button
+    <Button
+      variant="outlineMuted"
+      size="touch"
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="hosted-signin-focus-emphasis"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.evm", { defaultValue: "EVM wallet" })}
-    </button>
+    </Button>
   );
 }
 
@@ -449,20 +452,22 @@ function SolanaButton({
   }, [autoStart, disabled, handleClick, loading, onAutoStartHandled]);
 
   return (
-    <button
+    <Button
+      variant="outlineMuted"
+      size="touch"
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+      className="hosted-signin-focus-emphasis"
     >
       {loading && <Spinner />}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana wallet" })}
-    </button>
+    </Button>
   );
 }
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
   );
 }

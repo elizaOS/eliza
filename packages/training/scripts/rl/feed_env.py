@@ -39,6 +39,11 @@ from atroposlib.envs.base import (
 from dotenv import load_dotenv
 from pydantic import Field
 
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    require_complete_generation,
+)
+
 from .evaluation import EvaluationSuite, RolloutDumper
 from .format_validator import FormatValidationResult, validate_response_format
 from .kl_controller import KLConfig, create_kl_controller
@@ -57,7 +62,7 @@ from .rewards import (
 from .rubric_loader import has_custom_rubric, normalize_archetype
 from .state_paths import default_trajectory_dir
 from .temporal_credit import attribute_temporal_credit
-from .tokenization_utils import tokenize_for_trainer
+from .tokenization_utils import remaining_context_tokens, tokenize_for_trainer
 
 # Optional Tinker support
 if TYPE_CHECKING:
@@ -110,12 +115,6 @@ class FeedEnvConfig(BaseEnvConfig):
     min_actions_per_trajectory: int = Field(
         default=3, description="Minimum actions required in a trajectory"
     )
-    max_steps_per_trajectory: int = Field(
-        default=20, description="Maximum steps to include from each trajectory"
-    )
-    max_trajectories: int = Field(
-        default=1000, description="Maximum trajectories to load from database (prevents OOM)"
-    )
     trajectory_batch_size: int = Field(
         default=100, description="Number of trajectories to fetch per batch"
     )
@@ -131,7 +130,6 @@ class FeedEnvConfig(BaseEnvConfig):
         description="Model to use for LLM judge scoring (Deprecated by Deterministic Judge)",
     )
     judge_temperature: float = Field(default=0.3, description="Temperature for judge model")
-    judge_max_tokens: int = Field(default=2000, description="Max tokens for judge response")
 
     # Scoring preferences
     scoring_rubric: str = Field(
@@ -379,7 +377,6 @@ class FeedRLAIFEnv(BaseEnv):
         config = HFReaderConfig(
             dataset_id=self.config.hf_trajectory_dataset,
             split=self.config.hf_trajectory_split,
-            max_trajectories=self.config.max_trajectories,
             min_actions=self.config.min_actions_per_trajectory,
         )
 
@@ -419,12 +416,6 @@ class FeedRLAIFEnv(BaseEnv):
         selected_trajectories = 0
 
         for window_id in sorted(reader.get_window_ids()):
-            if (
-                self.config.max_trajectories is not None
-                and selected_trajectories >= self.config.max_trajectories
-            ):
-                break
-
             for trajectory_data in reader.get_trajectories_by_window(window_id):
                 steps = trajectory_data.get("steps", trajectory_data.get("stepsJson", []))
                 if isinstance(steps, str):
@@ -529,12 +520,6 @@ class FeedRLAIFEnv(BaseEnv):
                     }
                 )
                 selected_trajectories += 1
-                if (
-                    self.config.max_trajectories is not None
-                    and selected_trajectories >= self.config.max_trajectories
-                ):
-                    break
-
         self.trajectory_cache = [
             {"group_key": key, "trajectories": trajectories}
             for key, trajectories in groups.items()
@@ -554,8 +539,8 @@ class FeedRLAIFEnv(BaseEnv):
             raise RuntimeError("Database not connected")
 
         logger.info(
-            f"Loading trajectories (lookback={self.config.lookback_hours}h, "
-            f"max={self.config.max_trajectories}, min_actions={self.config.min_actions_per_trajectory})"
+            f"Loading complete trajectory snapshot (lookback={self.config.lookback_hours}h, "
+            f"min_actions={self.config.min_actions_per_trajectory})"
         )
 
         async with self.db_pool.acquire() as conn:
@@ -587,7 +572,6 @@ class FeedRLAIFEnv(BaseEnv):
 
             # Get trajectories with valid steps from recent windows
             # Includes archetype for archetype-aware scoring
-            # LIMIT prevents OOM on large datasets
             # Note: LEFT JOIN on User is optional - we handle NULL agent_name
             rows = await conn.fetch(
                 """
@@ -613,11 +597,9 @@ class FeedRLAIFEnv(BaseEnv):
                     AND t."stepsJson"::text != '[]'
                     AND t."episodeLength" >= $2
                 ORDER BY t."createdAt" DESC
-                LIMIT $3
             """,
                 timedelta(hours=self.config.lookback_hours),
                 self.config.min_actions_per_trajectory,
-                self.config.max_trajectories,
             )
 
         logger.info(f"Fetched {len(rows)} trajectories from database")
@@ -876,8 +858,6 @@ class FeedRLAIFEnv(BaseEnv):
                     continue
 
                 # Generate multiple completions per prompt for GRPO score variance.
-                max_tokens = min(512, self.config.max_token_length // 3)
-                prompt_budget = max(1, self.config.max_token_length - max_tokens)
                 prompt_tokens = _normalize_token_ids(
                     self.tokenizer.apply_chat_template(
                         messages,
@@ -885,27 +865,20 @@ class FeedRLAIFEnv(BaseEnv):
                         add_generation_prompt=True,
                     )
                 )
-                while len(prompt_tokens) > prompt_budget and len(messages) > 2:
-                    if messages[0].get("role") == "system":
-                        messages = [messages[0], *messages[2:]]
-                    else:
-                        messages = messages[1:]
-                    prompt_tokens = _normalize_token_ids(
-                        self.tokenizer.apply_chat_template(
-                            messages,
-                            return_tensors=None,
-                            add_generation_prompt=True,
-                        )
-                    )
-
-                if len(prompt_tokens) > prompt_budget:
+                if len(prompt_tokens) >= self.config.max_token_length:
                     logger.warning(
-                        "Skipping trajectory %s: prompt too long for RL sampling (%s > %s)",
+                        "Skipping trajectory %s: complete prompt does not fit RL context (%s >= %s)",
                         traj.get("trajectory_id"),
                         len(prompt_tokens),
-                        prompt_budget,
+                        self.config.max_token_length,
                     )
                     continue
+                max_tokens = remaining_context_tokens(
+                    self.tokenizer,
+                    messages,
+                    context_tokens=self.config.max_token_length,
+                    source="feed_env.collect_trajectories",
+                )
 
                 num_completions = self.config.group_size
 
@@ -914,7 +887,6 @@ class FeedRLAIFEnv(BaseEnv):
                     try:
                         tinker_result = await self.tinker_client.sample_async(
                             messages=messages,
-                            max_tokens=max_tokens,
                             temperature=0.7,
                             n=num_completions,
                             include_logprobs=False,
@@ -969,7 +941,23 @@ class FeedRLAIFEnv(BaseEnv):
                     )
                     continue
 
+                complete_choices = []
                 for choice in choices:
+                    try:
+                        complete_choices.append(
+                            require_complete_generation(choice, source="feed_env.rollout")
+                        )
+                    except IncompleteGenerationError as exc:
+                        logger.warning(
+                            "Rejected rollout generation: %s", exc.rejection.as_dict()
+                        )
+                logger.info(
+                    "Rollout generation admission: attempted=%s accepted=%s",
+                    len(choices),
+                    len(complete_choices),
+                )
+
+                for choice in complete_choices:
                     response_content = choice.get("message", {}).get("content", "")
                     finish_reason = choice.get("finish_reason", "stop")
 
@@ -1065,12 +1053,6 @@ You receive market updates and must analyze, reason, and then act."""
 
         # Convert steps to user/assistant exchanges
         steps = traj.get("steps", [])
-        max_steps = self.config.max_steps_per_trajectory
-
-        # Take most recent steps if too many
-        if len(steps) > max_steps:
-            steps = steps[-max_steps:]
-
         for step_idx, step in enumerate(steps):
             if not isinstance(step, dict):
                 continue
@@ -1402,7 +1384,7 @@ You receive market updates and must analyze, reason, and then act."""
             epsilon = 0.0
             epsilon += (len(generated_response) % 100) * 0.0001  # Response length variance
             # Deterministic content-based variance (sum of character codes)
-            content_hash = sum(ord(c) for c in generated_response[:50]) % 1000
+            content_hash = sum(ord(c) for c in generated_response) % 1000
             epsilon += content_hash * 0.00001  # Content-based variance
             # Add more variance based on action type
             if format_validation.action.action_type:

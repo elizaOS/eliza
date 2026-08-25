@@ -22,7 +22,6 @@ import { evaluateCommentAttribution } from "./check-agent-comment-attribution.mj
 const API_ROOT = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 const PAGE_SIZE = 100;
-const MAX_PAGES = 20;
 const MAX_SNAPSHOT_CHARACTERS = 400_000;
 const REPOSITORY_RE =
   /^[a-z0-9](?:[a-z0-9_.-]{0,99})\/[a-z0-9](?:[a-z0-9_.-]{0,99})$/i;
@@ -232,7 +231,7 @@ export function createGithubReader({
 
   async function getAll(endpoint, query = {}) {
     const values = [];
-    for (let page = 1; page <= MAX_PAGES; page += 1) {
+    for (let page = 1; ; page += 1) {
       const batch = ensureArray(
         await get(endpoint, { ...query, per_page: PAGE_SIZE, page }),
         endpoint,
@@ -240,9 +239,6 @@ export function createGithubReader({
       values.push(...batch);
       if (batch.length < PAGE_SIZE) return values;
     }
-    throw new Error(
-      `GitHub GET ${endpoint} exceeded the ${MAX_PAGES * PAGE_SIZE}-record audit limit`,
-    );
   }
 
   return { get, getAll };

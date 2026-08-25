@@ -19,6 +19,7 @@
  */
 
 import type { TrajectoryProviderAttribution } from "../../runtime/trajectory-provider-attribution";
+import type { TrajectorySemanticStageRecord } from "../../services/trajectory-semantic-stage";
 import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "../../types";
 import type { ContextEvent } from "../../types/context-object";
 
@@ -217,6 +218,11 @@ export interface TrajectoryStep {
 	// Action taken. Optional: Agent-bridge LLM-only captures have no action and
 	// must not fabricate one (#17730 / #17762). ART and other readers must guard.
 	action?: ActionAttempt;
+
+	// Stage-1/planner/tool/evaluation decision envelopes mirrored from the
+	// per-turn runtime recorder (#17030). Bounded and pre-validated by the
+	// shared semantic-stage module; absent on rows written before the fan-out.
+	semanticStages?: TrajectorySemanticStageRecord[];
 
 	// Feedback
 	reward: number;

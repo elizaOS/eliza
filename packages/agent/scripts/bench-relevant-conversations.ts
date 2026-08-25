@@ -102,9 +102,15 @@ function textToVector(text: string): number[] {
 
 /** Cluster around a topic center so the corpus geometry resembles real text
  * embeddings (unrelated docs at moderate similarity, not near-orthogonal). */
-function clusteredVector(center: number[], rand: () => number, closeness: number): number[] {
+function clusteredVector(
+  center: number[],
+  rand: () => number,
+  closeness: number,
+): number[] {
   const noise = randomVector(rand);
-  return normalize(center.map((c, i) => closeness * c + (1 - closeness) * noise[i]));
+  return normalize(
+    center.map((c, i) => closeness * c + (1 - closeness) * noise[i]),
+  );
 }
 
 function vectorLiteral(vec: number[]): string {
@@ -179,7 +185,9 @@ async function main(): Promise<void> {
   );
 
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
-  const pgliteDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-recall-bench-"));
+  const pgliteDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-recall-bench-"),
+  );
   process.env.PGLITE_DATA_DIR = pgliteDir;
 
   const runtime = new AgentRuntime({
@@ -189,7 +197,9 @@ async function main(): Promise<void> {
     enableAutonomy: false,
   });
 
-  const pluginSqlModule = (await import(["@elizaos", "plugin-sql"].join("/"))) as {
+  const pluginSqlModule = (await import(
+    ["@elizaos", "plugin-sql"].join("/")
+  )) as {
     default?: Plugin;
     plugin?: Plugin;
   };
@@ -269,7 +279,9 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
   process.stdout.write("seeding corpus...\n");
   const seedStart = performance.now();
 
-  const centers = Array.from({ length: 32 }, () => normalize(randomVector(rand)));
+  const centers = Array.from({ length: 32 }, () =>
+    normalize(randomVector(rand)),
+  );
   const matchVector = textToVector(MATCH_QUERY);
 
   const CHUNK = 250;
@@ -349,7 +361,7 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
         params !== null &&
         typeof params === "object" &&
         typeof (params as { text?: unknown }).text === "string"
-          ? ((params as { text: string }).text)
+          ? (params as { text: string }).text
           : "dimension probe";
       return textToVector(text);
     },
@@ -394,8 +406,14 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
     `ORDER BY e.dim_384 <=> '${vectorLiteral(vec)}'::vector ASC LIMIT 15`;
 
   for (const [label, sqlText] of [
-    ["threshold-in-SQL (current adapter shape), scarce-match query", oldShape(scarceVector)],
-    ["no-threshold top-K (post-filter shape), scarce-match query", newShape(scarceVector)],
+    [
+      "threshold-in-SQL (current adapter shape), scarce-match query",
+      oldShape(scarceVector),
+    ],
+    [
+      "no-threshold top-K (post-filter shape), scarce-match query",
+      newShape(scarceVector),
+    ],
   ] as const) {
     const explain = await executeRawSql(runtime, `EXPLAIN ANALYZE ${sqlText}`);
     process.stdout.write(`EXPLAIN ANALYZE — ${label}\n`);
@@ -431,13 +449,18 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
       });
     },
   );
-  await timeStage(`BM25 rankByKeyword over ${hashRows.length} rows`, reps, async () =>
-    rankByKeyword(SCARCE_QUERY, hashRows, (m) =>
-      typeof m.content.text === "string" ? m.content.text : "",
-    ),
+  await timeStage(
+    `BM25 rankByKeyword over ${hashRows.length} rows`,
+    reps,
+    async () =>
+      rankByKeyword(SCARCE_QUERY, hashRows, (m) =>
+        typeof m.content.text === "string" ? m.content.text : "",
+      ),
   );
-  await timeStage(`embedRecallQuery (simulated ${args.embedMs}ms model)`, reps, () =>
-    embedRecallQuery(runtime, SCARCE_QUERY),
+  await timeStage(
+    `embedRecallQuery (simulated ${args.embedMs}ms model)`,
+    reps,
+    () => embedRecallQuery(runtime, SCARCE_QUERY),
   );
 
   await timeStage(
@@ -464,25 +487,37 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
         accessContext,
       }),
   );
-  await timeStage("raw SQL threshold-in-SQL shape, scarce-match query", reps, () =>
-    executeRawSql(runtime, oldShape(scarceVector)),
+  await timeStage(
+    "raw SQL threshold-in-SQL shape, scarce-match query",
+    reps,
+    () => executeRawSql(runtime, oldShape(scarceVector)),
   );
-  await timeStage("raw SQL no-threshold top-K shape, scarce-match query", reps, () =>
-    executeRawSql(runtime, newShape(scarceVector)),
+  await timeStage(
+    "raw SQL no-threshold top-K shape, scarce-match query",
+    reps,
+    () => executeRawSql(runtime, newShape(scarceVector)),
   );
-  await timeStage("raw SQL threshold-in-SQL shape, plentiful-match query", reps, () =>
-    executeRawSql(runtime, oldShape(textToVector(MATCH_QUERY))),
+  await timeStage(
+    "raw SQL threshold-in-SQL shape, plentiful-match query",
+    reps,
+    () => executeRawSql(runtime, oldShape(textToVector(MATCH_QUERY))),
   );
-  await timeStage("raw SQL no-threshold top-K shape, plentiful-match query", reps, () =>
-    executeRawSql(runtime, newShape(textToVector(MATCH_QUERY))),
+  await timeStage(
+    "raw SQL no-threshold top-K shape, plentiful-match query",
+    reps,
+    () => executeRawSql(runtime, newShape(textToVector(MATCH_QUERY))),
   );
 
   const resultRooms = roomIds.slice(0, 10);
-  await timeStage("room resolve — 10x sequential getRoomsByIds([id])", reps, async () => {
-    for (const id of resultRooms) {
-      await runtime.getRoomsByIds([id]);
-    }
-  });
+  await timeStage(
+    "room resolve — 10x sequential getRoomsByIds([id])",
+    reps,
+    async () => {
+      for (const id of resultRooms) {
+        await runtime.getRoomsByIds([id]);
+      }
+    },
+  );
   await timeStage("room resolve — 1x batched getRoomsByIds(ids)", reps, () =>
     runtime.getRoomsByIds(resultRooms),
   );
@@ -496,11 +531,15 @@ async function run(runtime: AgentRuntime, args: BenchArgs): Promise<void> {
 
   process.stdout.write("\nsummary (median ms):\n");
   for (const stage of results) {
-    process.stdout.write(`  ${stage.label.padEnd(58)} ${stage.median.toFixed(1)}\n`);
+    process.stdout.write(
+      `  ${stage.label.padEnd(58)} ${stage.median.toFixed(1)}\n`,
+    );
   }
 }
 
 main().catch((error: unknown) => {
-  process.stderr.write(`bench failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+  process.stderr.write(
+    `bench failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+  );
   process.exit(1);
 });

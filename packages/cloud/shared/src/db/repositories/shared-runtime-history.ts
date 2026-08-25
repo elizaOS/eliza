@@ -1,5 +1,5 @@
 // Persists shared runtime history records for cloud services through the shared DB boundary.
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, max } from "drizzle-orm";
 import { mergeSharedRuntimeHistoryMessages } from "../../lib/services/shared-runtime/shared-runtime-history-policy";
 import { dbRead, dbWrite } from "../client";
 import {
@@ -35,10 +35,16 @@ export class SharedRuntimeHistoryRepository {
    * shared agent worth re-warming.
    */
   async listRecentlyActiveAgentIds(since: Date, limit: number): Promise<string[]> {
+    const latestActivityAt = max(sharedRuntimeHistory.updated_at);
     const rows = await dbRead
-      .selectDistinct({ agentId: sharedRuntimeHistory.agent_id })
+      .select({
+        agentId: sharedRuntimeHistory.agent_id,
+        latestActivityAt,
+      })
       .from(sharedRuntimeHistory)
       .where(gt(sharedRuntimeHistory.updated_at, since))
+      .groupBy(sharedRuntimeHistory.agent_id)
+      .orderBy(desc(latestActivityAt), asc(sharedRuntimeHistory.agent_id))
       .limit(limit);
     return rows.map((row) => row.agentId);
   }
@@ -75,7 +81,6 @@ export class SharedRuntimeHistoryRepository {
     agentId: string,
     channelId: string,
     messages: SharedRuntimeHistoryMessage[],
-    limit: number,
   ): Promise<SharedRuntimeHistoryMessage[]> {
     const merged = await dbWrite.transaction(async (tx) => {
       const now = new Date();
@@ -104,7 +109,6 @@ export class SharedRuntimeHistoryRepository {
       const next = mergeSharedRuntimeHistoryMessages(
         Array.isArray(row?.messages) ? row.messages : [],
         messages,
-        limit,
       );
       await tx
         .update(sharedRuntimeHistory)

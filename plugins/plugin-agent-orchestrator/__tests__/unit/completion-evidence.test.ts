@@ -145,7 +145,7 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
     expect(order).toEqual(sorted);
   });
 
-  it("caps the total assembled evidence size", () => {
+  it("preserves every section of oversized evidence", () => {
     const evidence = buildEvidenceStringFromInput({
       fallbackSummary: "x",
       changeSet: changeSet({ diff: "+line\n".repeat(5000) }),
@@ -158,12 +158,9 @@ describe("buildEvidenceStringFromInput (legacy signal-mining assembler)", () => 
       })),
       artifacts: [{ artifactType: "screenshot", title: "s", ref: "/x.png" }],
     });
-    // #21240 raised MAX_EVIDENCE_CHARS to 24_000 (plus the truncation marker).
-    // Oversized individual fields are clamped per-section ("[truncated]")
-    // before the global "[evidence truncated]" cap can fire, so assert the
-    // bound plus the per-section marker this fixture actually trips.
-    expect(evidence.length).toBeLessThanOrEqual(24_100);
-    expect(evidence).toContain("[truncated]");
+    expect(evidence).toContain("d".repeat(50_000));
+    expect(evidence).toContain("r".repeat(50_000));
+    expect(evidence).toContain("+line\n".repeat(5000));
   });
 });
 
@@ -233,13 +230,11 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
     expect(evidence).toContain("## GROUND TRUTH");
   });
 
-  it("keeps an oversized appended section inside the evidence cap", () => {
-    // #21240 raised MAX_EVIDENCE_CHARS to 24_000; oversize accordingly so the
-    // clamp is actually exercised.
+  it("keeps an oversized appended section complete", () => {
     const evidence = appendCompletionEvidenceSection(
       "existing",
       "x".repeat(40_000),
     );
-    expect(evidence.length).toBeLessThanOrEqual(24_000);
+    expect(evidence).toBe(`existing\n\n${"x".repeat(40_000)}`);
   });
 });

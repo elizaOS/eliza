@@ -35,6 +35,30 @@ describe("voice latency budget", () => {
     expect(budget.inputToVadMs).toBe(50);
   });
 
+  it("ignores a trailing-garbage budget instead of parsing its prefix", () => {
+    const budget = getVoiceLatencyBudgetFromEnv({
+      ELIZA_VOICE_BUDGET_RUNTIME_TO_FIRST_TOKEN_MS: "250junk",
+    });
+
+    expect(budget.runtimeToFirstTokenMs).not.toBe(250);
+    expect(budget.runtimeToFirstTokenMs).toBe(
+      getDefaultVoiceLatencyBudget().runtimeToFirstTokenMs,
+    );
+  });
+
+  it("keeps an explicit leading plus and rejects one past the safe range", () => {
+    const defaults = getDefaultVoiceLatencyBudget();
+    const budget = getVoiceLatencyBudgetFromEnv({
+      ELIZA_VOICE_BUDGET_RUNTIME_TO_FIRST_TOKEN_MS: "+250",
+      ELIZA_VOICE_BUDGET_TOTAL_TO_PLAYBACK_MS: String(
+        Number.MAX_SAFE_INTEGER + 1,
+      ),
+    });
+
+    expect(budget.runtimeToFirstTokenMs).toBe(250);
+    expect(budget.totalToPlaybackMs).toBe(defaults.totalToPlaybackMs);
+  });
+
   it("evaluates stage pass and miss results", () => {
     const results = evaluateVoiceLatencyBudget(
       {

@@ -5,10 +5,11 @@
  * seams (admission, billing) are deterministic doubles, each with a call
  * counter — so the suite can assert that a cold create → first send → retry
  * sequence produces exactly ONE provider dispatch, ONE admission/reservation,
- * and ONE billed settlement, that the retry returns the identical terminal
- * result (even from a rebuilt Durable Object over the same storage), and that
- * a reused clientMessageId with different text is rejected with a structured
- * 409 instead of replacing the landed transcript pair.
+ * and ONE billed settlement, that the retry returns the same user-visible
+ * terminal content plus replay timing (even from a rebuilt Durable Object over
+ * the same storage), and that a reused clientMessageId with different text is
+ * rejected with a structured 409 instead of replacing the landed transcript
+ * pair.
  */
 
 import { beforeEach, expect, mock, test } from "bun:test";
@@ -193,6 +194,12 @@ function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
   return {
     storage: {
       get: async <T>(key: string) => data.get(key) as T | undefined,
+      list: async <T>({ prefix = "" }: { prefix?: string } = {}) =>
+        new Map(
+          [...data.entries()]
+            .filter(([key]) => key.startsWith(prefix))
+            .map(([key, value]) => [key, value as T]),
+        ),
       put: async (key: string, value: unknown) => {
         data.set(key, structuredClone(value));
       },
@@ -280,7 +287,7 @@ beforeEach(() => {
   });
 });
 
-test("cold create → first send → retry: one dispatch, one admission, one charge, identical result", async () => {
+test("cold create → first send → retry: one dispatch, one admission, one charge, stable content", async () => {
   const data = new Map<string, Map<string, unknown>>();
   const background: Promise<unknown>[] = [];
   const namespace = makeNamespace(data, background);
@@ -307,11 +314,15 @@ test("cold create → first send → retry: one dispatch, one admission, one cha
   expect(billSettlements).toBe(1);
   expect(settledCosts).toEqual([0.004]);
 
-  // Same-key retry (a lost response) replays the stored terminal result:
-  // no second dispatch, admission, reservation, or charge.
+  // Same-key retry (a lost response) replays the stored user-visible content
+  // with explicit replay timing: no second dispatch, admission, reservation,
+  // or charge.
   const retry = await postMessage(namespace, send);
   expect(retry.status).toBe(200);
-  expect((await retry.json()) as { text: string }).toEqual(firstBody);
+  expect(await retry.json()).toMatchObject({
+    ...firstBody,
+    timing: { replayed: true, callCount: 0 },
+  });
   await settleBackground(background);
   expect(providerDispatches).toBe(1);
   expect(admissions).toBe(1);
@@ -341,9 +352,10 @@ test("cold create → first send → retry: one dispatch, one admission, one cha
   const rebuilt = makeNamespace(data, background);
   const replayAfterRestart = await postMessage(rebuilt, send);
   expect(replayAfterRestart.status).toBe(200);
-  expect((await replayAfterRestart.json()) as { text: string }).toEqual(
-    firstBody,
-  );
+  expect(await replayAfterRestart.json()).toMatchObject({
+    ...firstBody,
+    timing: { replayed: true, callCount: 0 },
+  });
   expect(providerDispatches).toBe(1);
   expect(admissions).toBe(1);
   expect(billSettlements).toBe(1);

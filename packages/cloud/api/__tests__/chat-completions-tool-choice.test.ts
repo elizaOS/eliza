@@ -36,10 +36,6 @@ const { getRecoverableProviderErrorStatus } = __streamingCreditTestHooks;
 const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
   __passthroughStreamingTestHooks;
 
-// Mirror of MIN_RESPONSE_TOKENS in route.ts. Kept as a literal here so the test
-// fails loudly if the production floor changes without intent.
-const MIN_RESPONSE_TOKENS = 4096;
-
 describe("mapToolChoice", () => {
   test("returns undefined when toolChoice is undefined", () => {
     expect(mapToolChoice(undefined)).toBeUndefined();
@@ -114,8 +110,7 @@ describe("convertTools", () => {
 });
 
 /**
- * computeEffectiveMaxTokens preserves an explicit caller output/spend ceiling.
- * Reasoning models receive a safer default only when max_tokens is omitted.
+ * computeEffectiveMaxTokens preserves explicit ceilings and never invents one.
  */
 describe("computeEffectiveMaxTokens", () => {
   test("non-reasoning model: passes request max_tokens through unchanged", () => {
@@ -138,10 +133,10 @@ describe("computeEffectiveMaxTokens", () => {
     );
   });
 
-  test("reasoning model with no max_tokens: floors to MIN_RESPONSE_TOKENS", () => {
-    expect(computeEffectiveMaxTokens(undefined, null, "openai/o3-mini")).toBe(
-      MIN_RESPONSE_TOKENS,
-    );
+  test("reasoning model with no max_tokens: leaves the provider uncapped", () => {
+    expect(
+      computeEffectiveMaxTokens(undefined, null, "openai/o3-mini"),
+    ).toBeUndefined();
   });
 
   test("reasoning model with generous max_tokens: honors the larger request", () => {
@@ -179,7 +174,7 @@ describe("computeEffectiveMaxTokens", () => {
     ).toBe(512);
   });
 
-  test("active Cerebras reasoning floors omitted max_tokens to the response-token floor", () => {
+  test("active Cerebras reasoning never invents an omitted max_tokens", () => {
     expect(
       computeEffectiveMaxTokens(
         undefined,
@@ -188,10 +183,10 @@ describe("computeEffectiveMaxTokens", () => {
         undefined,
         "low",
       ),
-    ).toBe(MIN_RESPONSE_TOKENS);
-    expect(computeEffectiveMaxTokens(undefined, null, "zai-glm-4.7")).toBe(
-      MIN_RESPONSE_TOKENS,
-    );
+    ).toBeUndefined();
+    expect(
+      computeEffectiveMaxTokens(undefined, null, "zai-glm-4.7"),
+    ).toBeUndefined();
     expect(
       computeEffectiveMaxTokens(
         undefined,
@@ -200,7 +195,7 @@ describe("computeEffectiveMaxTokens", () => {
         undefined,
         "low",
       ),
-    ).toBe(MIN_RESPONSE_TOKENS);
+    ).toBeUndefined();
   });
 
   test("Anthropic CoT budget: preserves an explicit caller ceiling", () => {
@@ -209,10 +204,10 @@ describe("computeEffectiveMaxTokens", () => {
     ).toBe(1000);
   });
 
-  test("Anthropic CoT budget: reserves response capacity when max_tokens is omitted", () => {
+  test("Anthropic CoT budget: does not invent max_tokens when omitted", () => {
     expect(
       computeEffectiveMaxTokens(undefined, 8000, "anthropic/claude-opus-4.8"),
-    ).toBe(8000 + MIN_RESPONSE_TOKENS);
+    ).toBeUndefined();
   });
 
   test("Anthropic CoT budget: honors a larger requested max_tokens", () => {
@@ -238,13 +233,13 @@ describe("computeEffectiveMaxTokens", () => {
     ).toBe(50);
   });
 
-  test("catalog reasoning signal: defaults omitted max_tokens to the safe floor", () => {
+  test("catalog reasoning signal: leaves omitted max_tokens uncapped", () => {
     expect(
       computeEffectiveMaxTokens(undefined, null, "z-ai/glm-5.1", [
         "max_tokens",
         "reasoning",
       ]),
-    ).toBe(MIN_RESPONSE_TOKENS);
+    ).toBeUndefined();
   });
 
   test("catalog non-reasoning signal: passes small max_tokens through", () => {

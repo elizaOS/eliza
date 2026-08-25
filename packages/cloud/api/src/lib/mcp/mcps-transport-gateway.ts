@@ -11,11 +11,21 @@
 
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { isKillSwitched } from "@/api-app/lib/mcp/integration-catalog";
+import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { forwardMcpUpstreamRequest } from "@/lib/mcp/mcp-upstream-forward";
+import {
+  callManagedDoorDashTool,
+  DOORDASH_MANAGED_TOOLS,
+} from "@/lib/services/doordash-managed";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const BUILTIN = new Set<string>(["time", "weather", "crypto"]);
 const COINGECKO = "https://api.coingecko.com/api/v3";
+
+export const MCP_PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
+/** Browser-backed DoorDash MCP calls include navigation and need a bounded interactive deadline. */
+export const MCP_DOORDASH_UPSTREAM_TIMEOUT_MS = 120_000;
 
 type JsonRpcId = string | number | null;
 type JsonObject = Record<string, unknown>;
@@ -248,6 +258,7 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
   url.searchParams.set("language", "en");
   const res = await fetch(url.toString(), {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) return null;
   const data = (await res.json()) as GeocodeResponse;
@@ -338,6 +349,7 @@ async function callWeatherTool(
 
   const res = await fetch(forecastUrl.toString(), {
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) return errorResult({ error: "Weather provider request failed" });
   const data = (await res.json()) as ForecastResponse;
@@ -359,6 +371,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return errorResult({ error: "CoinGecko trending failed" });
     const data = (await res.json()) as {
@@ -387,6 +400,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) return errorResult({ error: "CoinGecko request failed" });
     const data = (await res.json()) as Record<string, Record<string, number>>;
@@ -406,6 +420,7 @@ async function callCryptoTool(
         Accept: "application/json",
         "User-Agent": "eliza-cloud-mcp/1.0",
       },
+      signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
     });
     if (!res.ok)
       return errorResult({ error: `CoinGecko error: ${res.status}` });
@@ -497,6 +512,79 @@ async function handleBuiltinJsonRpc(
   return jsonRpcError(id, -32601, "Method not found");
 }
 
+async function handleManagedDoorDashJsonRpc(req: Request): Promise<Response> {
+  if (req.method !== "POST") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  let body: JsonRpcRequest;
+  try {
+    const parsed = await req.json();
+    body = isJsonObject(parsed) ? parsed : {};
+  } catch {
+    return jsonRpcError(null, -32700, "Parse error");
+  }
+
+  const id = jsonRpcId(body.id);
+  if (body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+    return jsonRpcError(id, -32600, "Invalid Request");
+  }
+
+  let authResult: Awaited<ReturnType<typeof requireAuthOrApiKeyWithOrg>>;
+  try {
+    authResult = await requireAuthOrApiKeyWithOrg(req);
+  } catch {
+    return jsonRpcError(
+      id,
+      -32001,
+      "DoorDash requires authenticated Cloud access",
+    );
+  }
+
+  if (body.method === "initialize") {
+    return jsonRpcResult(id, {
+      protocolVersion: "2024-11-05",
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: "eliza-cloud-doordash", version: "2.0.0" },
+    });
+  }
+  if (body.method === "ping") return jsonRpcResult(id, {});
+  if (body.method === "tools/list") {
+    return jsonRpcResult(id, { tools: DOORDASH_MANAGED_TOOLS });
+  }
+  if (body.method === "tools/call") {
+    const params = isJsonObject(body.params) ? body.params : {};
+    const name = stringArg(params, "name");
+    const args = isJsonObject(params.arguments) ? params.arguments : {};
+    if (!name) return jsonRpcError(id, -32602, "Missing tool name");
+    try {
+      const result = await callManagedDoorDashTool(name, args, {
+        apiKeyId: authResult.apiKey?.id ?? null,
+        organizationId: authResult.user.organization_id,
+        requestSource: "mcp",
+        userId: authResult.user.id,
+      });
+      return jsonRpcResult(id, textResult(result));
+    } catch (error) {
+      // error-policy:J1 the MCP transport converts managed browser failures into tool errors.
+      return jsonRpcResult(
+        id,
+        errorResult({
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "DoorDash operation failed",
+        }),
+      );
+    }
+  }
+  if (body.method.startsWith("notifications/")) {
+    return new Response(null, { status: 202 });
+  }
+  return jsonRpcError(id, -32601, "Method not found");
+}
+
 export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
 
@@ -513,13 +601,32 @@ export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
       );
     }
 
+    if (isKillSwitched(c.env, provider, provider)) {
+      return c.json(
+        {
+          success: false,
+          error: "integration_disabled",
+          reason: `The ${provider} integration is disabled by the operator kill switch.`,
+        },
+        503,
+      );
+    }
+
     const envKey = upstreamEnvKey(provider);
     const upstreamRaw = c.env[envKey];
     if (typeof upstreamRaw === "string" && upstreamRaw.trim().length > 0) {
-      return forwardMcpUpstreamRequest(c.req.raw, upstreamRaw.trim());
+      return forwardMcpUpstreamRequest(c.req.raw, upstreamRaw.trim(), {
+        timeoutMs:
+          provider === "doordash"
+            ? MCP_DOORDASH_UPSTREAM_TIMEOUT_MS
+            : undefined,
+      });
     }
 
     if (!BUILTIN.has(provider)) {
+      if (provider === "doordash") {
+        return handleManagedDoorDashJsonRpc(c.req.raw);
+      }
       return c.json(
         {
           success: false,

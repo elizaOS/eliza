@@ -72,7 +72,7 @@ export function formatSpeakerLabel(
 export function roomSourceTag(room: Room | null): string {
   if (!room) return "[unknown]";
   const source = room.source || room.type;
-  const name = room.name || room.id.slice(0, 8);
+  const name = room.name || room.id;
   return `[${source}] ${name}`;
 }
 

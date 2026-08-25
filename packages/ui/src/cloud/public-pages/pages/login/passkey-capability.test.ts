@@ -71,7 +71,7 @@ describe("resolveWebPasskeyCapability", () => {
     });
   });
 
-  it("is usable only when UVPAA resolves true", async () => {
+  it("is usable when the secure WebAuthn APIs exist", async () => {
     await expect(
       resolveWebPasskeyCapability({
         isSecureContext: true,
@@ -81,20 +81,17 @@ describe("resolveWebPasskeyCapability", () => {
     ).resolves.toEqual({ usable: true, reason: "available" });
   });
 
-  it("fails closed when UVPAA resolves false", async () => {
+  it("does not hide roaming passkeys when UVPAA resolves false", async () => {
     await expect(
       resolveWebPasskeyCapability({
         isSecureContext: true,
         navigator: { credentials },
         publicKeyCredential: publicKeyCredential(async () => false),
       }),
-    ).resolves.toEqual({
-      usable: false,
-      reason: "platform-authenticator-unavailable",
-    });
+    ).resolves.toEqual({ usable: true, reason: "available" });
   });
 
-  it("fails closed when UVPAA rejects", async () => {
+  it("does not depend on the platform-only UVPAA probe", async () => {
     await expect(
       resolveWebPasskeyCapability({
         isSecureContext: true,
@@ -103,9 +100,6 @@ describe("resolveWebPasskeyCapability", () => {
           throw new Error("probe failed");
         }),
       }),
-    ).resolves.toEqual({
-      usable: false,
-      reason: "platform-authenticator-probe-failed",
-    });
+    ).resolves.toEqual({ usable: true, reason: "available" });
   });
 });

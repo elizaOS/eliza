@@ -6,7 +6,8 @@
  * - the immediate (mount) request carries statusOnly:true with no message
  * - the 5-second retry carries statusOnly:true with no message
  * - the returned transcript has no poll-generated duplicate assistant replies
- * - cleanup (ready-state transition and unmount) stops further polling
+ * - cleanup on unmount stops further polling
+ * - canonical target changes remain observable after the first ready state
  *
  * Uses jsdom (already a root devDependency) to provide the DOM React needs,
  * and controllable timer shims so tests advance the 5 s poll timeout
@@ -23,8 +24,15 @@ const fetchCalls: Array<{ url: string; method: string; body: unknown }> = [];
 // running until the test deliberately flips the status to "running".
 let nextStatus = "pending";
 let runningHasBridge = true;
+let sharedAgentId: string | null = null;
+let sharedBridgeUrl: string | null = null;
 let statusResponseSuccess = true;
 let releaseStatusResponse: (() => void) | null = null;
+let legacyStatusAgentId: string | null = null;
+let legacyStatusBridgeUrl: string | null = null;
+let legacyChatStatus = "running";
+let legacyChatAgentId: string | null = null;
+let legacyChatBridgeUrl: string | null = null;
 
 // --- Controllable poll scheduler ---
 // Production recursively schedules setTimeout(cb, 5000). We capture the
@@ -72,8 +80,20 @@ const clientMock = {
         success: statusResponseSuccess,
         data: {
           status: nextStatus,
-          agentId: null,
-          bridgeUrl: null,
+          agentId: legacyStatusAgentId,
+          bridgeUrl: legacyStatusBridgeUrl,
+        },
+      };
+    }
+
+    if (url === "/api/eliza-app/provisioning-agent/chat") {
+      return {
+        success: true,
+        data: {
+          reply: "Canonical target refreshed.",
+          containerStatus: legacyChatStatus,
+          agentId: legacyChatAgentId,
+          bridgeUrl: legacyChatBridgeUrl,
         },
       };
     }
@@ -95,11 +115,12 @@ const clientMock = {
             : "Hi! I'm Eliza.",
           provisioning: {
             status: nextStatus,
-            agentId: isRunning ? "agent-123" : null,
+            agentId: sharedAgentId ?? (isRunning ? "agent-123" : null),
             bridgeUrl:
-              isRunning && runningHasBridge
+              sharedBridgeUrl ??
+              (isRunning && runningHasBridge
                 ? "https://agent-123.example"
-                : null,
+                : null),
           },
           messages: [
             {
@@ -185,6 +206,8 @@ interface ObservedState {
   isReady: boolean;
   provisioningError: string | null;
   hasObservedStatus: boolean;
+  bridgeUrl: string | null;
+  agentId: string | null;
   sendMessage: (content: string) => Promise<void>;
 }
 
@@ -199,6 +222,8 @@ function mountHook(
     isReady: false,
     provisioningError: null,
     hasObservedStatus: false,
+    bridgeUrl: null,
+    agentId: null,
     sendMessage: async () => undefined,
   };
 
@@ -214,6 +239,8 @@ function mountHook(
         isReady: result.isReady,
         provisioningError: result.provisioningError,
         hasObservedStatus: result.hasObservedStatus,
+        bridgeUrl: result.bridgeUrl,
+        agentId: result.agentId,
         sendMessage: result.sendMessage,
       };
     });
@@ -239,8 +266,15 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     fetchCalls.length = 0;
     nextStatus = "pending";
     runningHasBridge = true;
+    sharedAgentId = null;
+    sharedBridgeUrl = null;
     statusResponseSuccess = true;
     releaseStatusResponse = null;
+    legacyStatusAgentId = null;
+    legacyStatusBridgeUrl = null;
+    legacyChatStatus = "running";
+    legacyChatAgentId = null;
+    legacyChatBridgeUrl = null;
     capturedTimers = [];
     activeTimers = new Set();
   });
@@ -305,6 +339,49 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     releaseStatusResponse?.();
     await waitForEffects(50);
+    unmount();
+  });
+
+  test("legacy chat clears a disappeared canonical target", async () => {
+    nextStatus = "running";
+    legacyStatusAgentId = "agent-a";
+    legacyStatusBridgeUrl = "https://agent-a.example";
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+
+    expect(getState().isReady).toBe(true);
+    expect(getState().agentId).toBe("agent-a");
+    expect(getState().bridgeUrl).toBe("https://agent-a.example");
+    expect(
+      [...activeTimers].filter((timer) => !timer.cleared),
+    ).not.toHaveLength(0);
+
+    legacyChatStatus = "none";
+    legacyChatAgentId = null;
+    legacyChatBridgeUrl = null;
+    await getState().sendMessage("Are you still there?");
+    await waitForEffects(50);
+
+    expect(getState().containerStatus).toBe("none");
+    expect(getState().agentId).toBeNull();
+    expect(getState().bridgeUrl).toBeNull();
+    expect(getState().isReady).toBe(false);
+
+    unmount();
+  });
+
+  test("deletion failure is terminal and cannot time out", async () => {
+    nextStatus = "deletion_failed";
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+
+    expect(getState().containerStatus).toBe("deletion_failed");
+    expect(getState().provisioningError).toBe(
+      "Removing your previous Dedicated agent failed. Contact support.",
+    );
+    expect([...activeTimers].filter((timer) => !timer.cleared)).toHaveLength(0);
     unmount();
   });
 
@@ -445,41 +522,64 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     unmount();
   });
 
-  test("ready-state transition stops further polling", async () => {
-    const { getState, unmount } = mountHook(
-      true,
-      "platform:blooio:+123****7890",
-    );
+  test("keeps monitoring after ready and replaces a stopped canonical target", async () => {
+    legacyStatusAgentId = "agent-a";
+    const { getState, unmount } = mountHook(true, null);
 
     // Wait for mount + immediate poll (status pending).
     await waitForEffects(150);
 
     // Flip the mock so the next response is provisioning=running with a bridgeUrl.
     nextStatus = "running";
+    legacyStatusBridgeUrl = "https://agent-a.example";
 
-    // Fire the retry tick — the hook should see isReady and stop polling.
+    // Fire the retry tick — the hook becomes ready but keeps monitoring.
     await tickPollTimers();
     await waitForEffects(100);
 
-    // The hook must have transitioned to ready.
     expect(getState().isReady).toBe(true);
+    expect(getState().agentId).toBe("agent-a");
+    expect(getState().bridgeUrl).toBe("https://agent-a.example");
 
-    // After the ready transition, the cleanup function should have cleared
-    // the timer. Verify no new calls arrive from further ticks.
-    const callsAfterReady = fetchCalls.filter(
-      (c) => c.url === "/api/eliza-app/onboarding/chat",
-    ).length;
-
-    // Even if we fire timers manually, cleared timers are skipped.
+    // The selector can later make a different lifecycle row canonical. The
+    // hook must replace the old id and clear its bridge after readiness.
+    nextStatus = "stopped";
+    legacyStatusAgentId = "agent-b";
+    legacyStatusBridgeUrl = null;
     await tickPollTimers();
     await waitForEffects(50);
 
-    const callsAfterExtraTick = fetchCalls.filter(
-      (c) => c.url === "/api/eliza-app/onboarding/chat",
-    ).length;
+    expect(getState().containerStatus).toBe("stopped");
+    expect(getState().agentId).toBe("agent-b");
+    expect(getState().bridgeUrl).toBeNull();
+    expect(getState().isReady).toBe(false);
 
-    // No new calls should have arrived.
-    expect(callsAfterExtraTick).toBe(callsAfterReady);
+    unmount();
+  });
+
+  test("shared onboarding observes canonical A-to-B replacement after ready", async () => {
+    nextStatus = "running";
+    sharedAgentId = "agent-a";
+    sharedBridgeUrl = "https://agent-a.example";
+    const { getState, unmount } = mountHook(
+      true,
+      "platform:blooio:+123****7890",
+    );
+
+    await waitForEffects(150);
+    expect(getState().isReady).toBe(true);
+    expect(getState().agentId).toBe("agent-a");
+
+    nextStatus = "stopped";
+    sharedAgentId = "agent-b";
+    sharedBridgeUrl = null;
+    await tickPollTimers();
+    await waitForEffects(50);
+
+    expect(getState().containerStatus).toBe("stopped");
+    expect(getState().agentId).toBe("agent-b");
+    expect(getState().bridgeUrl).toBeNull();
+    expect(getState().isReady).toBe(false);
 
     unmount();
   });

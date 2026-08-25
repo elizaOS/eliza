@@ -29,7 +29,7 @@ describe("DATABASE read-only SQL guard", () => {
 
     expect(result).toMatchObject({ ok: false });
     if (!result.ok) {
-      expect(result.reason).toContain('"DELETE"');
+      expect(result.reason).toContain("Unterminated dollar-quoted string");
     }
     expect(elapsed).toBeLessThan(1000);
   });

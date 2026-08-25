@@ -22,12 +22,7 @@ import {
 	type SetupContext,
 	SetupStep,
 } from "../types/setup";
-
-export const MAX_SETUP_OUTPUT_LENGTH = 5000;
-const MAX_SETUP_ERRORS = 8;
-const MAX_SETUP_CHANNELS = 10;
-const MAX_SETUP_SKILLS = 12;
-const MAX_SETUP_MISSING_ITEMS = 8;
+import { toWellFormedUnicode } from "../utils/well-formed.ts";
 
 /**
  * Format a step status for display.
@@ -108,7 +103,7 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 	if (context.settings.channels) {
 		const channels = context.settings.channels;
 		if (channels.enabledChannels.length > 0) {
-			output += `- Channels: ${channels.enabledChannels.slice(0, MAX_SETUP_CHANNELS).join(", ")}\n`;
+			output += `- Channels: ${channels.enabledChannels.join(", ")}\n`;
 		} else {
 			output += "- Channels: None configured\n";
 		}
@@ -119,7 +114,7 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 	if (context.settings.skills) {
 		const skills = context.settings.skills;
 		if (skills.enabledSkills.length > 0) {
-			output += `- Skills: ${skills.enabledSkills.slice(0, MAX_SETUP_SKILLS).join(", ")}\n`;
+			output += `- Skills: ${skills.enabledSkills.join(", ")}\n`;
 		} else {
 			output += "- Skills: None configured\n";
 		}
@@ -130,7 +125,7 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 	// Add errors if any
 	if (context.errors.length > 0) {
 		output += "\n### Errors:\n";
-		for (const error of context.errors.slice(0, MAX_SETUP_ERRORS)) {
+		for (const error of context.errors) {
 			output += `- [${SETUP_STEP_LABELS[error.step]}] ${error.message}\n`;
 		}
 	}
@@ -177,10 +172,8 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 	return output;
 }
 
-export function truncateSetupProgressText(text: string): string {
-	return text.length > MAX_SETUP_OUTPUT_LENGTH
-		? `${text.slice(0, MAX_SETUP_OUTPUT_LENGTH - 3)}...`
-		: text;
+export function normalizeSetupProgressText(text: string): string {
+	return toWellFormedUnicode(text);
 }
 
 /**
@@ -245,7 +238,7 @@ export const setupProgressProvider: Provider = {
 			const context = metadata.setupStateMachine.context;
 			const agentName = runtime.character.name ?? "Agent";
 
-			const progressText = truncateSetupProgressText(
+			const progressText = normalizeSetupProgressText(
 				generateProgressText(context, agentName),
 			);
 
@@ -265,7 +258,7 @@ export const setupProgressProvider: Provider = {
 						isComplete: context.currentStep === SetupStep.COMPLETE,
 						progress: calculateProgress(context),
 					},
-					truncated: progressText.length >= MAX_SETUP_OUTPUT_LENGTH,
+					truncated: false,
 				},
 				values: {
 					setupProgress: progressText,
@@ -319,8 +312,29 @@ export const setupMissingProvider: Provider = {
 				};
 			}
 
+			// Same gates as SETUP_PROGRESS above: setup state is a DM-only
+			// surface, and a missing world or a world without metadata is a
+			// normal designed-empty case — not a load failure. Reading
+			// `.setupStateMachine` off an undefined metadata object here used
+			// to throw and misroute every such turn into reportError plus a
+			// fabricated "unavailable" state.
+			if (room.type !== ChannelType.DM) {
+				return {
+					data: { missing: [] },
+					values: { setupMissing: "" },
+					text: "",
+				};
+			}
+
 			const world = await runtime.getWorld(room.worldId);
-			const metadata = world?.metadata as {
+			if (!world?.metadata) {
+				return {
+					data: { missing: [] },
+					values: { setupMissing: "" },
+					text: "",
+				};
+			}
+			const metadata = world.metadata as {
 				setupStateMachine?: SerializedSetupState;
 			};
 
@@ -370,7 +384,7 @@ export const setupMissingProvider: Provider = {
 				};
 			}
 
-			const visibleMissing = missing.slice(0, MAX_SETUP_MISSING_ITEMS);
+			const visibleMissing = missing;
 			const text = `Still needs configuration:\n${visibleMissing.map((m) => `- ${m}`).join("\n")}`;
 
 			return {

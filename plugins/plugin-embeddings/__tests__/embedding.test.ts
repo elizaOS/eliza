@@ -376,12 +376,10 @@ describe("plugin-embeddings handleBatchTextEmbedding", () => {
   });
 });
 
-describe("plugin-embeddings input truncation", () => {
+describe("plugin-embeddings input preservation", () => {
   const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
-  it("never splits a surrogate pair at the truncation boundary", async () => {
-    // The 😀 spans code units MAX-1..MAX, so a blind slice(0, MAX) would keep a
-    // lone high surrogate — mojibake (U+FFFD) or a reject at the endpoint.
+  it("sends a long input and its surrogate pair intact", async () => {
     const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 1)}😀tail`;
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
@@ -391,12 +389,10 @@ describe("plugin-embeddings input truncation", () => {
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
     const sent = body.input as string;
     expect(sent.isWellFormed()).toBe(true);
-    expect(sent.length).toBeLessThanOrEqual(MAX_EMBEDDING_CHARS);
-    expect(sent).toBe("a".repeat(MAX_EMBEDDING_CHARS - 1));
+    expect(sent).toBe(text);
   });
 
-  it("keeps an astral char that fits entirely under the cap", async () => {
-    // Here the pair ends exactly at the boundary — no back-off should occur.
+  it("keeps content after an astral character beyond the former cap", async () => {
     const text = `${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀tail`;
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
@@ -406,7 +402,6 @@ describe("plugin-embeddings input truncation", () => {
     const body = JSON.parse((fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string);
     const sent = body.input as string;
     expect(sent.isWellFormed()).toBe(true);
-    expect(sent).toBe(`${"a".repeat(MAX_EMBEDDING_CHARS - 2)}😀`);
-    expect(sent.length).toBe(MAX_EMBEDDING_CHARS);
+    expect(sent).toBe(text);
   });
 });

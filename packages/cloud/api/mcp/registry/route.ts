@@ -1,8 +1,24 @@
-/** Serves the public MCP catalog with validated filters and optional community entries. */
+/**
+ * Serves the public MCP catalog with validated filters and optional community
+ * entries. Platform entries carry trust/health/availability metadata from the
+ * integration catalog policy; unconfigured integrations are never advertised
+ * and kill-switched ones are listed as disabled with their connection surface
+ * withheld.
+ */
 
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
+import { BUILTIN_MCP_PRICING } from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  INTEGRATION_TRUST,
+  type IntegrationAvailability,
+  type IntegrationHealth,
+  type IntegrationTrust,
+  integrationHealth,
+  plannerVisibleFeatures,
+  resolveIntegrationAvailability,
+} from "@/api-app/lib/mcp/integration-catalog";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { userMcpsService } from "@/lib/services/user-mcps";
@@ -21,6 +37,7 @@ const queryParamsSchema = z.object({
       "search",
       "communication",
       "productivity",
+      "commerce",
       "data",
       "ai",
     ])
@@ -67,6 +84,9 @@ interface McpRegistryEntry {
   pricing: {
     type: "free" | "credits" | "x402";
     description: string;
+    creditUnit?: "USD";
+    priceUsd?: string | number;
+    /** @deprecated Legacy MCP pricing points. */
     pricePerRequest?: string;
   };
   x402Enabled: boolean;
@@ -86,6 +106,9 @@ interface McpRegistryEntry {
 type BuiltInRegistryEntry = McpRegistryEntry & {
   source: "platform";
   fullEndpoint: string;
+  availability: IntegrationAvailability;
+  health: IntegrationHealth;
+  trust: IntegrationTrust;
 };
 type UserRegistryEntry = ReturnType<typeof userMcpsService.toRegistryFormat> & {
   source: "community";
@@ -98,6 +121,48 @@ type RegistryEntry = BuiltInRegistryEntry | UserRegistryEntry;
  * These can be enabled on agents via their character settings
  */
 const MCP_REGISTRY: McpRegistryEntry[] = [
+  {
+    id: "doordash",
+    name: "DoorDash",
+    description:
+      "Search restaurants, browse menus, manage carts, preview checkout, place explicitly confirmed orders, and track delivery through an operator-configured DoorDash MCP adapter.",
+    category: "commerce",
+    endpoint: "/api/mcps/doordash/streamable-http",
+    type: "streamable-http",
+    version: "1.0.0",
+    status: "live",
+    icon: "shopping-bag",
+    color: "#FF3008",
+    toolCount: 11,
+    features: [
+      "doordash_auth_check",
+      "doordash_auth_clear",
+      "doordash_set_address",
+      "doordash_search",
+      "doordash_menu",
+      "doordash_add_to_cart",
+      "remove_from_cart",
+      "doordash_cart",
+      "order_history",
+      "doordash_checkout",
+      "doordash_track_order",
+    ],
+    pricing: {
+      type: "free",
+      description: "No Eliza platform fee; DoorDash order charges still apply",
+    },
+    x402Enabled: false,
+    documentation:
+      "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-doordash",
+    configTemplate: {
+      servers: {
+        doordash: {
+          type: "streamable-http",
+          url: "/api/mcps/doordash/streamable-http",
+        },
+      },
+    },
+  },
   {
     id: "crypto-prices",
     name: "Crypto Prices",
@@ -112,10 +177,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     color: "#F7931A",
     toolCount: 3,
     features: ["get_price", "get_market_data", "list_trending"],
-    pricing: {
-      type: "free",
-      description: "Free tier available",
-    },
+    pricing: BUILTIN_MCP_PRICING.crypto,
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/crypto-prices",
     configTemplate: {
@@ -147,10 +209,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       "calculate_time_diff",
       "list_timezones",
     ],
-    pricing: {
-      type: "free",
-      description: "Free to use",
-    },
+    pricing: BUILTIN_MCP_PRICING.time,
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/time",
     configTemplate: {
@@ -181,11 +240,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
       "compare_weather",
       "search_location",
     ],
-    pricing: {
-      type: "credits",
-      description: "1-2 credits per request",
-      pricePerRequest: "1-2",
-    },
+    pricing: BUILTIN_MCP_PRICING.weather,
     x402Enabled: false,
     configTemplate: {
       servers: {
@@ -222,7 +277,9 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     ],
     pricing: {
       type: "credits",
-      description: "Uses your credit balance (requires API key authentication)",
+      description:
+        "Uses your USD-denominated cloud-credit balance (requires API key authentication)",
+      creditUnit: "USD",
     },
     x402Enabled: false,
     documentation: "https://docs.elizaos.ai/mcps/platform",
@@ -249,11 +306,7 @@ const MCP_REGISTRY: McpRegistryEntry[] = [
     color: "#10B981",
     toolCount: 2,
     features: ["search", "fetch_page"],
-    pricing: {
-      type: "credits",
-      description: "0.01 credits per search",
-      pricePerRequest: "0.01",
-    },
+    pricing: BUILTIN_MCP_PRICING.webSearch,
     x402Enabled: false,
     configTemplate: {
       servers: {
@@ -393,25 +446,11 @@ function withRegistryTimeout<T>(
 
 app.get("/", async (c) => {
   try {
-    const user = await withRegistryTimeout(
-      getCurrentUser(c),
-      "optional auth lookup",
-      // error-policy:J4 optional auth on a public catalog — a lookup failure
-      // degrades to the anonymous view, surfaced via isAuthenticated:false below.
-    ).catch((error) => {
-      logger.warn("[MCP Registry] Optional auth lookup failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    });
-    const isAuthenticated = user !== null;
-
-    const baseUrl =
-      c.env.NEXT_PUBLIC_APP_URL ||
-      (c.req.header("host")
-        ? `${c.req.header("x-forwarded-proto") || "https"}://${c.req.header("host")}`
-        : "http://localhost:3000");
-
+    // Validate the public query surface before spending any lookup effort.
+    // An invalid request such as ?limit=0 has an already-determined 400, so
+    // starting the optional auth lookup first only makes that response wait on
+    // the optional-auth timeout; the auth catch degrades a failed lookup to
+    // anonymous but cannot un-spend the work (#24791).
     const limitRaw = c.req.query("limit");
     const parsedLimit =
       limitRaw === undefined || limitRaw === ""
@@ -444,27 +483,77 @@ app.get("/", async (c) => {
 
     const { category, status, limit, search } = validationResult.data;
 
-    // Process built-in registry entries
-    const builtInRegistry: BuiltInRegistryEntry[] = MCP_REGISTRY.map(
-      (entry) => ({
+    const user = await withRegistryTimeout(
+      getCurrentUser(c),
+      "optional auth lookup",
+      // error-policy:J4 optional auth on a public catalog — a lookup failure
+      // degrades to the anonymous view, surfaced via isAuthenticated:false below.
+    ).catch((error) => {
+      logger.warn("[MCP Registry] Optional auth lookup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    });
+    const isAuthenticated = user !== null;
+
+    const baseUrl =
+      c.env.NEXT_PUBLIC_APP_URL ||
+      (c.req.header("host")
+        ? `${c.req.header("x-forwarded-proto") || "https"}://${c.req.header("host")}`
+        : "http://localhost:3000");
+
+    // Process built-in registry entries. Availability gates advertising:
+    // unconfigured integrations (their transport would answer 501) are never
+    // listed, and kill-switched entries are listed as disabled with their
+    // connection surface (config template, endpoint) withheld.
+    const builtInRegistry: BuiltInRegistryEntry[] = [];
+    for (const entry of MCP_REGISTRY) {
+      const trust: IntegrationTrust | undefined = INTEGRATION_TRUST[entry.id];
+      if (trust === undefined) {
+        // Fail closed: an entry without a trust record is unreviewed and must
+        // not be advertised at all.
+        logger.warn("[MCP Registry] No trust record; entry withheld", {
+          id: entry.id,
+        });
+        continue;
+      }
+      const availability = resolveIntegrationAvailability(
+        c.env,
+        entry.id,
+        entry.endpoint,
+      );
+      if (availability === "unconfigured") continue;
+      const disabled = availability === "disabled";
+      builtInRegistry.push({
         ...entry,
         source: "platform" as const,
-        configTemplate: {
-          servers: Object.fromEntries(
-            Object.entries(entry.configTemplate.servers).map(([key, value]) => [
-              key,
-              {
-                ...value,
-                url: value.url.replace("${BASE_URL}", ""),
-              },
-            ]),
-          ),
-        },
-        fullEndpoint: entry.endpoint.startsWith("http")
-          ? entry.endpoint
-          : `${baseUrl}${entry.endpoint}`,
-      }),
-    );
+        availability,
+        health: integrationHealth(availability, trust.provenance),
+        trust,
+        status: disabled ? "maintenance" : entry.status,
+        features: disabled ? [] : plannerVisibleFeatures(trust, entry.features),
+        configTemplate: disabled
+          ? { servers: {} }
+          : {
+              servers: Object.fromEntries(
+                Object.entries(entry.configTemplate.servers).map(
+                  ([key, value]) => [
+                    key,
+                    {
+                      ...value,
+                      url: value.url.replace("${BASE_URL}", ""),
+                    },
+                  ],
+                ),
+              ),
+            },
+        fullEndpoint: disabled
+          ? ""
+          : entry.endpoint.startsWith("http")
+            ? entry.endpoint
+            : `${baseUrl}${entry.endpoint}`,
+      });
+    }
 
     // Fetch user MCPs (public, live). The community subset is an enhancement on
     // top of the always-available built-in registry, so a lookup failure/timeout

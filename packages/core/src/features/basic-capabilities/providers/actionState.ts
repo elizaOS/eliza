@@ -4,15 +4,14 @@
  * later actions can build on earlier ones.
  *
  * It assembles up to four sections — the active action plan (steps, progress,
- * per-step status/errors/results), the current chain's action results, working
- * memory (top recent entries by timestamp), and recent action history
- * reconstructed from `action_result` memories in the `messages` table (grouped
- * by run and trimmed to a character budget). Results are context-agnostic, so
+ * per-step status/errors/results), the current chain's action results, complete
+ * working memory, and complete action history reconstructed from `action_result`
+ * memories in the `messages` table. Results are context-agnostic, so
  * the provider is not cache-stable across a turn; any failure degrades to
  * "No action state available" rather than throwing.
  */
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { stringifyForDiagnostics } from "../../../runtime/json-output.ts";
+import { renderActionResultsForModel } from "../../../runtime/planner-rendering.js";
 import type {
 	ActionResult,
 	IAgentRuntime,
@@ -21,24 +20,13 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
-import {
-	formatActionResultsForPrompt,
-	MAX_ACTION_RESULT_TEXT_CHARS,
-	truncateMiddle,
-} from "../../../utils/action-results.js";
-import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.js";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
-const ACTION_HISTORY_TARGET_CHARS = 20000;
-const MAX_RUNS = 3;
-export const MAX_THOUGHT_CHARS = 2000;
-
-export function truncateThought(thought: string): string {
-	return thought.length > MAX_THOUGHT_CHARS
-		? `${thought.slice(0, MAX_THOUGHT_CHARS - 1)}…`
-		: thought;
+export function normalizeThoughtText(thought: string): string {
+	return toWellFormedUnicode(thought);
 }
 
 type WorkingMemoryEntry = {
@@ -46,10 +34,6 @@ type WorkingMemoryEntry = {
 	result: ActionResult;
 	timestamp: number;
 };
-
-function formatDataForPrompt(data: unknown): string {
-	return stringifyForDiagnostics(data);
-}
 
 export const actionStateProvider: Provider = {
 	name: spec.name,
@@ -112,10 +96,11 @@ export const actionStateProvider: Provider = {
 								stepText += `\n   Error: ${step.error}`;
 							}
 							if (step.result?.text) {
-								stepText += `\n   Result: ${truncateMiddle(
-									step.result.text,
-									MAX_ACTION_RESULT_TEXT_CHARS,
-								)}`;
+								stepText += `\n   Result: ${
+									renderActionResultsForModel([step.result], {
+										header: "",
+									}).text
+								}`;
 							}
 
 							return stepText;
@@ -128,9 +113,9 @@ export const actionStateProvider: Provider = {
 			// Format previous action results
 			let resultsText = "";
 			if (actionResults.length > 0) {
-				resultsText = formatActionResultsForPrompt(actionResults, {
+				resultsText = renderActionResultsForModel(actionResults, {
 					header: "# Current Chain Action Results",
-				});
+				}).text;
 			} else {
 				resultsText = "";
 			}
@@ -141,27 +126,25 @@ export const actionStateProvider: Provider = {
 				const entries = Object.entries(workingMemory) as Array<
 					[string, WorkingMemoryEntry]
 				>;
-				const topEntries: Array<[string, WorkingMemoryEntry]> = [];
-				for (const entry of entries) {
-					if (topEntries.length < 10) {
-						topEntries.push(entry);
-						topEntries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-						continue;
-					}
-					if (entry[1].timestamp > topEntries[9][1].timestamp) {
-						topEntries[9] = entry;
-						topEntries.sort((a, b) => b[1].timestamp - a[1].timestamp);
-					}
-				}
-				const memoryEntries = topEntries
+				const memoryEntries = entries
+					.sort((a, b) => {
+						const aTime =
+							typeof a[1]?.timestamp === "number" &&
+							Number.isFinite(a[1].timestamp)
+								? a[1].timestamp
+								: 0;
+						const bTime =
+							typeof b[1]?.timestamp === "number" &&
+							Number.isFinite(b[1].timestamp)
+								? b[1].timestamp
+								: 0;
+						return bTime - aTime;
+					})
 					.map(([key, entry]) => {
 						const result: ActionResult = entry.result;
-						const resultText =
-							typeof result.text === "string" && result.text.trim().length > 0
-								? truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS)
-								: result.data
-									? formatDataForPrompt(result.data)
-									: "(no output)";
+						const resultText = renderActionResultsForModel([result], {
+							header: "",
+						}).text;
 						return `**${entry.actionName || key}**: ${resultText}`;
 					})
 					.join("\n");
@@ -174,7 +157,6 @@ export const actionStateProvider: Provider = {
 			const recentMessages = await runtime.getMemories({
 				tableName: "messages",
 				roomId: message.roomId,
-				limit: 20,
 				unique: false,
 			});
 
@@ -199,33 +181,9 @@ export const actionStateProvider: Provider = {
 					}
 				}
 
-				// Take only the most recent runs, then apply budget trimming
 				const allRuns = Array.from(groupedByRun.entries());
-				const recentRuns = allRuns.slice(-MAX_RUNS);
 
-				const selectedRuns = sliceToFitBudget(
-					recentRuns,
-					([runId, memories]) => {
-						const textChars = memories.reduce((sum, memory) => {
-							const content = memory.content;
-							return (
-								sum +
-								String(content.actionName || "").length +
-								String(content.actionStatus || "").length +
-								String(content.planStep || "").length +
-								Math.min(
-									String(content.text || "").length,
-									MAX_ACTION_RESULT_TEXT_CHARS,
-								)
-							);
-						}, 0);
-						return textChars + runId.length + 80;
-					},
-					ACTION_HISTORY_TARGET_CHARS,
-					{ fromEnd: true },
-				);
-
-				const formattedMemories = selectedRuns
+				const formattedMemories = allRuns
 					.map(([runId, memories]) => {
 						const sortedMemories = memories.sort(
 							(a: Memory, b: Memory) => (a.createdAt || 0) - (b.createdAt || 0),
@@ -238,10 +196,7 @@ export const actionStateProvider: Provider = {
 								const status = memContent.actionStatus || "unknown";
 								const planStep = memContent.planStep || "";
 								const rawText = memContent.text || "";
-								const text = truncateMiddle(
-									rawText,
-									MAX_ACTION_RESULT_TEXT_CHARS,
-								);
+								const text = toWellFormedUnicode(rawText);
 
 								let memText = `  - ${actionName} (${status})`;
 								if (planStep) {
@@ -257,8 +212,8 @@ export const actionStateProvider: Provider = {
 
 						const firstMemory = sortedMemories[0];
 						const rawThought = String(firstMemory?.content.planThought || "");
-						const thought = truncateThought(rawThought);
-						return `**Run ${runId.slice(0, 8)}**${thought ? ` - ${thought}` : ""}\n${runText}`;
+						const thought = normalizeThoughtText(rawThought);
+						return `**Run ${runId}**${thought ? ` - ${thought}` : ""}\n${runText}`;
 					})
 					.join("\n\n");
 

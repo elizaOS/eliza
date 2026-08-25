@@ -1,6 +1,7 @@
 /**
  * Types for the skill security scanner.
  */
+import { toWellFormedUnicode } from "@elizaos/core";
 
 export type SkillScanSeverity = "info" | "warn" | "critical";
 
@@ -46,13 +47,12 @@ export interface SkillScanOptions {
 	maxFiles?: number;
 	maxFileBytes?: number;
 	additionalSafeDomains?: string[];
+	signal?: AbortSignal;
 }
 
 export function truncateEvidence(evidence: string, maxLen = 120): string {
-	if (evidence.length <= maxLen) return evidence;
-	if (maxLen <= 0) return "";
-	if (maxLen === 1) return "…";
-	return `${evidence.slice(0, maxLen - 1)}…`;
+	void maxLen;
+	return toWellFormedUnicode(evidence);
 }
 
 /** Line-level rule: matches per-line, fires at most once per file. */

@@ -318,7 +318,7 @@ export class DebugTraceCollector {
           "parse_failure",
           `Failed to parse model response after ${maxAttempts} attempts`,
           {
-            rawInput: rawInput.substring(0, 500),
+            rawInput,
             parseError,
             attemptNumber,
             maxAttempts,

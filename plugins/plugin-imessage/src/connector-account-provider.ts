@@ -6,7 +6,7 @@
  * `@elizaos/core/connectors/account-manager`.
  *
  * Source of truth for accounts is character settings (`character.settings.imessage`)
- * plus env-var fallbacks (IMESSAGE_CLI_PATH, IMESSAGE_DB_PATH, ...).
+ * plus native connector env-var fallbacks such as `IMESSAGE_DB_PATH`.
  * In practice there is a single local macOS Messages account per host, but the
  * accountId surface still applies for multi-handle deployments.
  *
@@ -59,7 +59,6 @@ function toConnectorAccount(account: ResolvedIMessageAccount): ConnectorAccount 
     createdAt: now,
     updatedAt: now,
     metadata: {
-      cliPath: account.cliPath,
       dbPath: account.dbPath ?? null,
       dmPolicy: account.config.dmPolicy ?? "pairing",
       groupPolicy: account.config.groupPolicy ?? "allowlist",

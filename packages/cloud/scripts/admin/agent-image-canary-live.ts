@@ -378,10 +378,14 @@ async function request(
   phase: FailurePhase,
 ): Promise<Response> {
   try {
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, deadline])
+      : deadline;
     return await fetchImpl(url, {
       ...init,
       redirect: "error",
-      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+      signal,
     });
   } catch {
     // error-policy:J1 The live-client transport boundary emits a typed failure.

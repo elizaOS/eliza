@@ -45,6 +45,9 @@ subpath export.
   an independent provider-local lock.
 - Keep provider protocol details at the boundary and return the shared typed
   account/credential contracts to consumers.
+- Preserve complete direct-provider failure bodies when they fit the explicit
+  diagnostic boundary. If a response body exceeds that boundary, reject the
+  body as unavailable; never return a prefix labeled as the provider error.
 
 ## Commands
 

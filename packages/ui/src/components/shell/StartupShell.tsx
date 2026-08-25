@@ -37,8 +37,7 @@ export const STARTUP_SPLASH_DELAY_MS = STARTUP_TIMING_POLICY.splashDelayMs;
 /**
  * True only after `active` has stayed `true` continuously for `delayMs`.
  * Flips back to `false` the instant `active` goes `false`. The timer lives in
- * an effect (never at render time) so the render path stays deterministic and
- * the `audit:ui-determinism` gate stays green.
+ * an effect (never at render time) so the render path stays deterministic.
  */
 function useDelayElapsed(active: boolean, delayMs: number): boolean {
   const [elapsed, setElapsed] = useState(false);
@@ -137,7 +136,7 @@ function StartupLoading(props: { phase: string; status: string }) {
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <BrandMark className="h-12 w-12" />
+          <BrandMark className="size-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
             {brandName()}
           </span>

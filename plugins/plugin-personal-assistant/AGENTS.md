@@ -132,7 +132,6 @@ Frequently used controls include:
 | `SELFCONTROL_HOSTS_FILE_PATH` / `WEBSITE_BLOCKER_HOSTS_FILE_PATH` | Override the blocker hosts file |
 | `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | Configure browser companion token lifetime |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_BASE_URL` | Configure cloud-backed assistant features |
-| `ELIZA_LIFEOPS_CONTEXT_WINDOW` | Override the LifeOps provider context budget |
 
 Connector credentials and domain-specific settings belong to their owning plugin. `ELIZA_DEVICE_KIND` and `ELIZA_DEVICE_ID` control device-specific behavior.
 
@@ -143,6 +142,7 @@ Connector credentials and domain-specific settings belong to their owning plugin
 - Connector dispatch returns typed `DispatchResult` values. Do not reduce transport outcomes to booleans.
 - External sends, signatures, and other consequential operations pass through owner policy and approval boundaries.
 - Add domain logic to the owning plugin. Keep this package focused on orchestration, normalized owner projections, and cross-domain policy.
+- Owner-private planner providers and ranking inputs must expose every matching record. Do not hide approvals, delegation contracts, work threads, todos, or commitments behind fixed-count slices; use explicit caller pagination only on surfaces that return a truthful continuation contract.
 - Build default packs with `compileTaskDefinition` or `compileTaskDefinitions`, register them through the pack catalog, and run `lint:default-packs`.
 - Deferred task initialization occurs after `runtime.initPromise`; failures must remain observable in logs, runtime error reporting, or the initialization-failure cache.
 - Use `src/lifeops/service-mixin-*.ts` for new LifeOps service capabilities and keep `src/lifeops/service.ts` as composition.

@@ -38,6 +38,8 @@ export interface DraftStreamController {
 		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
 	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
+	/** End streaming without emitting an interruption message. */
+	discard: () => Promise<void>;
 	messageId: () => string | undefined;
 	isStarted: () => boolean;
 	isDone: () => boolean;
@@ -66,6 +68,7 @@ export function createDraftStreamController(
 	let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 	let started = false;
 	let done = false;
+	const activeSnapshots = new Set<Promise<unknown>>();
 
 	const clearThrottle = () => {
 		if (throttleTimer) {
@@ -158,12 +161,34 @@ export function createDraftStreamController(
 		}
 	};
 
+	const trackActiveSnapshot = <T>(snapshot: Promise<T>): Promise<T> => {
+		activeSnapshots.add(snapshot);
+		void snapshot.then(
+			() => activeSnapshots.delete(snapshot),
+			() => activeSnapshots.delete(snapshot),
+		);
+		return snapshot;
+	};
+
+	const sendTrackedSnapshot = (
+		text: string,
+		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+	): Promise<boolean> => {
+		return trackActiveSnapshot(sendSnapshot(text, components));
+	};
+
+	const waitForActiveSnapshots = async (): Promise<void> => {
+		while (activeSnapshots.size > 0) {
+			await Promise.allSettled([...activeSnapshots]);
+		}
+	};
+
 	const flush = async (): Promise<void> => {
 		clearThrottle();
 		if (pendingText !== null) {
 			const text = pendingText;
 			pendingText = null;
-			await sendSnapshot(text);
+			await sendTrackedSnapshot(text);
 		}
 	};
 
@@ -229,7 +254,10 @@ export function createDraftStreamController(
 		}
 
 		if (trimmed.length <= maxChars) {
-			await sendSnapshot(trimmed, components);
+			await sendTrackedSnapshot(trimmed, components);
+			if (done) {
+				return sentMessages;
+			}
 			done = true;
 			log("draft-stream: finalized (single message)");
 			return sentMessages;
@@ -255,9 +283,15 @@ export function createDraftStreamController(
 		const firstChunk = firstHead.trimEnd();
 		let remaining = trimmed.slice(firstHead.length).trimStart();
 
-		await sendSnapshot(firstChunk);
+		await sendTrackedSnapshot(firstChunk);
+		if (done) {
+			return sentMessages;
+		}
 
 		while (remaining.length > 0 && channel) {
+			if (done) {
+				break;
+			}
 			const nextBreak = findBreakPoint(
 				remaining,
 				maxChars,
@@ -276,19 +310,24 @@ export function createDraftStreamController(
 			}
 			try {
 				const isLastChunk = remaining.length === 0;
-				const overflowMessage = await channel.send({
-					content: chunk,
-					...(isLastChunk && components && components.length > 0
-						? { components }
-						: {}),
-					...(draftReplyToMessageId && draftReplyToMode === "all"
-						? {
-								reply: { messageReference: draftReplyToMessageId },
-							}
-						: {}),
-				});
-				lastSentMessage = overflowMessage;
-				sentMessages.push(overflowMessage);
+				await trackActiveSnapshot(
+					channel
+						.send({
+							content: chunk,
+							...(isLastChunk && components && components.length > 0
+								? { components }
+								: {}),
+							...(draftReplyToMessageId && draftReplyToMode === "all"
+								? {
+										reply: { messageReference: draftReplyToMessageId },
+									}
+								: {}),
+						})
+						.then((overflowMessage) => {
+							lastSentMessage = overflowMessage;
+							sentMessages.push(overflowMessage);
+						}),
+				);
 			} catch (error) {
 				warn(
 					`draft-stream: overflow send failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -328,11 +367,34 @@ export function createDraftStreamController(
 		log("draft-stream: aborted");
 	};
 
+	const discard = async (): Promise<void> => {
+		if (done) {
+			return;
+		}
+		done = true;
+		clearThrottle();
+		pendingText = null;
+		await waitForActiveSnapshots();
+		for (const message of [...sentMessages].reverse()) {
+			try {
+				await message.delete();
+			} catch (error) {
+				// error-policy:J6 designed-abort teardown is best-effort; failure to
+				// delete an already-sent snapshot is observable in connector logs.
+				warn(
+					`draft-stream: silent discard delete failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+		log("draft-stream: discarded silently");
+	};
+
 	return {
 		start,
 		update,
 		finalize,
 		abort,
+		discard,
 		messageId: () => lastSentMessage?.id,
 		isStarted: () => started,
 		isDone: () => done,

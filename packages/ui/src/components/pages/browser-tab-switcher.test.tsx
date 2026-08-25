@@ -281,8 +281,7 @@ describe("BrowserTabSwitcher", () => {
     expect(scroller.className).toContain("overflow-y-auto");
     expect(scroller.className).toContain("overscroll-contain");
     expect(scroller.hasAttribute("data-scroll-cert-scroller")).toBe(true);
-    expect(close.className).toContain("h-11");
-    expect(close.className).toContain("w-11");
+    expect(close.className).toContain("size-11");
 
     fireEvent.click(close);
     expect(onOpenChange).toHaveBeenCalledWith(false);

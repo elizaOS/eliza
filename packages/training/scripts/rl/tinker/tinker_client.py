@@ -25,6 +25,12 @@ from typing import Literal
 
 import numpy as np
 
+from lib.generation_integrity import (
+    IncompleteGenerationError,
+    PromptExceedsContextError,
+    require_complete_finish_reasons,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TINKER_OPENAI_BASE_URL = os.getenv(
@@ -118,7 +124,7 @@ class TinkerConfig:
     epsilon: float = 1e-8
 
     # Sampling settings
-    default_max_tokens: int = 512
+    max_context_tokens: int = 4096
     default_temperature: float = 0.7
     stop_sequences: list[str] = field(
         default_factory=lambda: ["\n\n", "<|endoftext|>", "<end_of_turn>"]
@@ -602,21 +608,12 @@ class FeedTinkerClient:
         completion_tokens = self.tokenizer.encode(completion, add_special_tokens=False)
         completion_weights = [1.0] * len(completion_tokens)
 
-        # Keep the latest prompt context and the full completion when possible.
-        if max_sequence_length and max_sequence_length > 1:
-            if len(completion_tokens) >= max_sequence_length:
-                completion_tokens = completion_tokens[:max_sequence_length]
-                completion_weights = completion_weights[:max_sequence_length]
-                prompt_tokens = []
-                prompt_weights = []
-            else:
-                keep_prompt_tokens = max_sequence_length - len(completion_tokens)
-                prompt_tokens = (
-                    prompt_tokens[-keep_prompt_tokens:] if keep_prompt_tokens > 0 else []
-                )
-                prompt_weights = (
-                    prompt_weights[-keep_prompt_tokens:] if keep_prompt_tokens > 0 else []
-                )
+        if max_sequence_length and len(prompt_tokens) + len(completion_tokens) > max_sequence_length:
+            raise ValueError(
+                "TRAINING_ROW_SEQUENCE_LIMIT_EXCEEDED: complete prompt and completion "
+                f"require {len(prompt_tokens) + len(completion_tokens)} tokens, "
+                f"trainer limit is {max_sequence_length}; row rejected without slicing"
+            )
 
         all_tokens = prompt_tokens + completion_tokens
         all_weights = prompt_weights + completion_weights
@@ -648,9 +645,12 @@ class FeedTinkerClient:
         Returns:
             TinkerDatum ready for training
         """
-        if max_sequence_length and max_sequence_length > 1 and len(tokens) > max_sequence_length:
-            tokens = tokens[-max_sequence_length:]
-            masks = masks[-max_sequence_length:]
+        if max_sequence_length and len(tokens) > max_sequence_length:
+            raise ValueError(
+                "TRAINING_ROW_SEQUENCE_LIMIT_EXCEEDED: complete pre-tokenized row "
+                f"requires {len(tokens)} tokens, trainer limit is {max_sequence_length}; "
+                "row rejected without slicing"
+            )
 
         # Convert masks to weights (0 for -100, 1 otherwise)
         weights = [0.0 if m == -100 else 1.0 for m in masks]
@@ -971,7 +971,6 @@ class FeedTinkerClient:
     def sample(
         self,
         messages: list[dict],
-        max_tokens: int | None = None,
         temperature: float | None = None,
         n: int = 1,
         stop: list[str] | None = None,
@@ -982,7 +981,6 @@ class FeedTinkerClient:
 
         Args:
             messages: Chat messages to complete
-            max_tokens: Maximum tokens to generate
             temperature: Sampling temperature
             n: Number of completions to generate
             stop: Stop sequences
@@ -991,7 +989,6 @@ class FeedTinkerClient:
         Returns:
             SampleResult with completions and optional logprobs
         """
-        max_tokens = max_tokens or self.config.default_max_tokens
         temperature = temperature if temperature is not None else self.config.default_temperature
         stop = stop or self.config.stop_sequences
 
@@ -1003,11 +1000,19 @@ class FeedTinkerClient:
         )
 
         # Tokenize
-        prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(prompt))
+        encoded_prompt = self.tokenizer.encode(prompt)
+        remaining_tokens = self.config.max_context_tokens - len(encoded_prompt)
+        if remaining_tokens <= 0:
+            raise PromptExceedsContextError(
+                "tinker.sample",
+                len(encoded_prompt),
+                self.config.max_context_tokens,
+            )
+        prompt_tokens = tinker_types.ModelInput.from_ints(encoded_prompt)
 
         # Sampling params
         params = tinker_types.SamplingParams(
-            max_tokens=max_tokens,
+            max_tokens=remaining_tokens,
             temperature=temperature,
             stop=stop,
         )
@@ -1028,8 +1033,23 @@ class FeedTinkerClient:
         if include_logprobs and hasattr(result, "prompt_logprobs"):
             logprobs = [result.prompt_logprobs] * n
 
-        # Extract finish reasons
-        finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+        # Read the authoritative Tinker stop_reason. SampledSequence exposes
+        # `stop_reason` ("stop" | "length"); it has no `finish_reason` field, so
+        # a missing value means completion state is unproven — reject instead of
+        # synthesizing "stop" (#25157).
+        finish_reasons: list[str] = []
+        for seq in result.sequences:
+            reason = getattr(seq, "stop_reason", None)
+            if reason is None:
+                raise IncompleteGenerationError(
+                    "tinker.sample",
+                    "missing_stop_reason",
+                )
+            normalized = str(reason).strip().lower()
+            if normalized not in ("stop", "length"):
+                raise IncompleteGenerationError("tinker.sample", normalized or "unknown")
+            finish_reasons.append(normalized)
+        require_complete_finish_reasons(finish_reasons, source="tinker.sample")
 
         return SampleResult(
             completions=completions,
@@ -1040,13 +1060,11 @@ class FeedTinkerClient:
     async def sample_async(
         self,
         messages: list[dict],
-        max_tokens: int | None = None,
         temperature: float | None = None,
         n: int = 1,
         stop: list[str] | None = None,
         include_logprobs: bool = False,
     ) -> SampleResult:
-        max_tokens = max_tokens or self.config.default_max_tokens
         temperature = temperature if temperature is not None else self.config.default_temperature
         stop = stop or self.config.stop_sequences
 
@@ -1055,9 +1073,17 @@ class FeedTinkerClient:
             tokenize=False,
             add_generation_prompt=True,
         )
-        prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(prompt))
+        encoded_prompt = self.tokenizer.encode(prompt)
+        remaining_tokens = self.config.max_context_tokens - len(encoded_prompt)
+        if remaining_tokens <= 0:
+            raise PromptExceedsContextError(
+                "tinker.sample_async",
+                len(encoded_prompt),
+                self.config.max_context_tokens,
+            )
+        prompt_tokens = tinker_types.ModelInput.from_ints(encoded_prompt)
         params = tinker_types.SamplingParams(
-            max_tokens=max_tokens,
+            max_tokens=remaining_tokens,
             temperature=temperature,
             stop=stop,
         )
@@ -1077,7 +1103,22 @@ class FeedTinkerClient:
         logprobs = []
         if include_logprobs and hasattr(result, "prompt_logprobs"):
             logprobs = [result.prompt_logprobs] * n
-        finish_reasons = [getattr(seq, "finish_reason", "stop") for seq in result.sequences]
+
+        # Same authoritative stop_reason read as sample(): missing or unknown
+        # completion state is unproven and rejected, never synthesized (#25157).
+        finish_reasons: list[str] = []
+        for seq in result.sequences:
+            reason = getattr(seq, "stop_reason", None)
+            if reason is None:
+                raise IncompleteGenerationError(
+                    "tinker.sample_async",
+                    "missing_stop_reason",
+                )
+            normalized = str(reason).strip().lower()
+            if normalized not in ("stop", "length"):
+                raise IncompleteGenerationError("tinker.sample_async", normalized or "unknown")
+            finish_reasons.append(normalized)
+        require_complete_finish_reasons(finish_reasons, source="tinker.sample_async")
 
         return SampleResult(
             completions=completions,
@@ -1120,7 +1161,8 @@ class FeedTinkerClient:
 
         prompt_tokens = tinker_types.ModelInput.from_ints(self.tokenizer.encode(full_text))
 
-        # Compute logprobs via prefill
+        # Tinker requires a generated token to expose prompt logprobs. That
+        # token is protocol scaffolding and is never decoded as model output.
         result = self.sampling_client.sample(
             prompt=prompt_tokens,
             num_samples=1,

@@ -10,10 +10,12 @@
  * `connectCloudCapabilitySandbox` is the end-to-end entry point.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
+import { trimEndCharacters } from "../utils/string-boundaries.ts";
 import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,
@@ -301,7 +303,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
         );
         const text = await response.text();
         if (!response.ok) {
-          lastError = `HTTP ${response.status}: ${text.slice(0, 500)}`;
+          lastError = `HTTP ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`;
         } else {
           const availability = JSON.parse(text) as {
             available?: unknown;
@@ -313,7 +315,7 @@ export async function waitForCloudCapabilityEndpointAvailability(
           ) {
             return;
           }
-          lastError = `unexpected availability payload: ${text.slice(0, 500)}`;
+          lastError = `unexpected availability payload: ${truncateWellFormed(toWellFormedUnicode(text), 500)}`;
         }
       } finally {
         clearTimeout(timeout);
@@ -440,7 +442,7 @@ function lowercaseHeaders(headers: HeadersInit | undefined): HeadersInit {
 }
 
 function normalizeCloudApiBase(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
+  const trimmed = trimEndCharacters(value.trim(), "/");
   if (!trimmed) throw new Error("cloudApiBase is required.");
   try {
     const url = new URL(trimmed);
@@ -459,7 +461,7 @@ function normalizeCloudApiBase(value: string): string {
         ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudApiOrigin,
       ).hostname;
     }
-    return url.toString().replace(/\/+$/, "");
+    return trimEndCharacters(url.toString(), "/");
   } catch {
     throw new Error(`Invalid cloudApiBase: ${value}`);
   }
@@ -473,7 +475,7 @@ function firstString(...values: unknown[]): string | null {
 }
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  return trimEndCharacters(value, "/");
 }
 
 function sleep(ms: number): Promise<void> {

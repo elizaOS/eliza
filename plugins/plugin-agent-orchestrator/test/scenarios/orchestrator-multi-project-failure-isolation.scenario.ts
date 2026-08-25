@@ -517,7 +517,7 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: [ISOLATION_PLUGIN_NAME],
+    fixturePlugins: [ISOLATION_PLUGIN_NAME],
   },
   seed: [
     {

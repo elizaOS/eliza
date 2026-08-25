@@ -5,7 +5,11 @@ import {
   type PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
-import { createPaymentRequestsService, toPublicPaymentRequest } from "./payment-requests";
+import {
+  createPaymentRequestsService,
+  toPaymentRequestDto,
+  toPublicPaymentRequest,
+} from "./payment-requests";
 
 class GuardedPaymentRequestsRepository extends PaymentRequestsRepository {
   createCalls = 0;
@@ -85,6 +89,68 @@ describe("toPublicPaymentRequest", () => {
     };
 
     expect(toPublicPaymentRequest(row, new Date(1)).hostedUrl).toBe(row.hostedUrl);
+  });
+});
+
+describe("toPaymentRequestDto", () => {
+  test("constructs the creator DTO without internal payment state", () => {
+    const row: PaymentRequestRow = {
+      ...fakeRow("pr-creator", "organization-canary"),
+      agentId: "agent-1",
+      appId: "app-1",
+      reason: "Premium plan",
+      status: "settled",
+      hostedUrl: "https://checkout.example.test/session",
+      paymentContext: { kind: "specific_payer", payerIdentityId: "context-canary" },
+      payerIdentityId: "payer-identity-canary",
+      payerUserId: "payer-user-canary",
+      payerOrganizationId: "payer-org-canary",
+      callbackUrl: "https://callback.example.test/canary",
+      callbackSecret: "callback-secret-canary",
+      providerIntent: { sessionSecret: "provider-intent-canary" },
+      settledAt: new Date("2026-08-20T10:03:00.000Z"),
+      settlementTxRef: "settlement-tx-canary",
+      settlementProof: { signature: "settlement-proof-canary" },
+      expiresAt: new Date("2026-08-20T10:30:00.000Z"),
+      createdAt: new Date("2026-08-20T10:00:00.000Z"),
+      updatedAt: new Date("2026-08-20T10:03:00.000Z"),
+      metadata: { internal: "metadata-canary" },
+      successUrl: "https://success.example.test/canary",
+      cancelUrl: "https://cancel.example.test/canary",
+    };
+
+    const dto = toPaymentRequestDto(row);
+
+    expect(dto).toEqual({
+      id: "pr-creator",
+      agentId: "agent-1",
+      appId: "app-1",
+      provider: "stripe",
+      amountCents: 100,
+      currency: "USD",
+      reason: "Premium plan",
+      status: "settled",
+      hostedUrl: "https://checkout.example.test/session",
+      settledAt: "2026-08-20T10:03:00.000Z",
+      expiresAt: "2026-08-20T10:30:00.000Z",
+      createdAt: "2026-08-20T10:00:00.000Z",
+      updatedAt: "2026-08-20T10:03:00.000Z",
+    });
+    const serialized = JSON.stringify(dto);
+    for (const canary of [
+      "organization-canary",
+      "context-canary",
+      "payer-identity-canary",
+      "payer-user-canary",
+      "payer-org-canary",
+      "callback-secret-canary",
+      "provider-intent-canary",
+      "settlement-tx-canary",
+      "settlement-proof-canary",
+      "metadata-canary",
+    ]) {
+      expect(serialized).not.toContain(canary);
+    }
   });
 });
 

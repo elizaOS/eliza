@@ -7,8 +7,8 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
@@ -85,7 +85,7 @@ async function handlePOST(request: Request) {
 }
 
 const honoRouter = new Hono<AppEnv>();
-honoRouter.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
+honoRouter.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     return await handlePOST(c.req.raw);
   } catch (error) {

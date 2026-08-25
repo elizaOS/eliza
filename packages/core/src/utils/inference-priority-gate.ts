@@ -34,12 +34,10 @@
  * device-bridge text handlers (`plugin-capacitor-bridge`). All three run in the
  * same agent process and share the {@link getInferencePriorityGate} singleton.
  *
- * The device-class background budget (#11760 probe seam) lives here too:
- * {@link resolveBackgroundInferenceBudget} caps a background job's `maxTokens`
- * and prompt size by RAM class so a background summarization cannot hold the
- * lane for multi-minute stretches on a constrained phone.
+ * The device-class background wait policy (#11760 probe seam) lives here too:
+ * {@link resolveBackgroundInferenceBudget} limits only how long queued
+ * background work may wait. It never changes prompt or output capacity.
  */
-
 import type { LocalInferencePriority } from "../types/model";
 
 /**
@@ -67,30 +65,20 @@ export function inferenceRamClassFromEnv(
 }
 
 /**
- * Per-class budget for background-priority generation on the single local
- * lane. Sized from the Pixel 6a (`constrained`) measurements in #11734/#11912:
- * marginal prefill ≈ 5.1 tok/s and decode ≤ 7.9 tok/s, so the constrained caps
- * bound a background job's lock hold to a few minutes worst-case instead of
- * the tens of minutes an uncapped 11k-char / 8192-token job costs.
+ * Per-class queue-wait policy for background-priority generation on the single
+ * local lane. It prevents stale scheduled work from piling up without changing
+ * the generation request once the lane is acquired.
  */
 export interface BackgroundInferenceBudget {
-	/** Cap on `maxTokens` for a background generation. */
-	maxTokens: number;
-	/** Cap on prompt length in characters (middle-truncated, ends preserved). */
-	maxPromptChars: number;
 	/** Bounded gate wait before the background request fails without running. */
 	lockWaitMs: number;
 }
 
 const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-	maxTokens: 192,
-	maxPromptChars: 4_000,
 	lockWaitMs: 120_000,
 };
 
 const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-	maxTokens: 1_024,
-	maxPromptChars: 24_000,
 	lockWaitMs: 300_000,
 };
 
@@ -103,55 +91,16 @@ export function resolveBackgroundInferenceBudget(
 		: STANDARD_BACKGROUND_BUDGET;
 }
 
-const PROMPT_TRUNCATION_MARKER =
-	"\n…[middle truncated: on-device background inference budget]…\n";
-
 /**
- * Clamp a background job's prompt to `maxPromptChars` by removing the MIDDLE,
- * preserving the head (system/template opening) and the tail (the most recent
- * context plus the template's generation suffix — e.g. Gemma's
- * `<start_of_turn>model`), so the prompt envelope stays well-formed.
- */
-export function clampBackgroundPrompt(
-	prompt: string,
-	maxPromptChars: number,
-): string {
-	if (prompt.length <= maxPromptChars) return prompt;
-	const usable = maxPromptChars - PROMPT_TRUNCATION_MARKER.length;
-	if (usable <= 0) return prompt.slice(-maxPromptChars);
-	const headChars = Math.floor(usable * 0.3);
-	const tailChars = usable - headChars;
-	return (
-		prompt.slice(0, headChars) +
-		PROMPT_TRUNCATION_MARKER +
-		prompt.slice(prompt.length - tailChars)
-	);
-}
-
-/**
- * Apply the background budget to a generate request. Interactive requests are
- * NEVER clamped — this is for background-priority jobs only. Returns the
- * clamped fields plus a human-readable list of what changed (for the log line
- * at the call site).
+ * Preserve a background generation request while retaining the legacy helper
+ * name and `clamped` result field for source compatibility. Device scheduling
+ * policy belongs to the queue wait; it must not impose a model-output cap.
  */
 export function applyBackgroundInferenceBudget(
 	args: { prompt: string; maxTokens: number | undefined },
-	budget: BackgroundInferenceBudget,
-): { prompt: string; maxTokens: number; clamped: string[] } {
-	const clamped: string[] = [];
-	let prompt = args.prompt;
-	if (prompt.length > budget.maxPromptChars) {
-		prompt = clampBackgroundPrompt(prompt, budget.maxPromptChars);
-		clamped.push(
-			`prompt ${args.prompt.length}→${prompt.length} chars (cap ${budget.maxPromptChars})`,
-		);
-	}
-	let maxTokens = args.maxTokens ?? budget.maxTokens;
-	if (maxTokens > budget.maxTokens) {
-		clamped.push(`maxTokens ${maxTokens}→${budget.maxTokens}`);
-		maxTokens = budget.maxTokens;
-	}
-	return { prompt, maxTokens, clamped };
+	_budget: BackgroundInferenceBudget,
+): { prompt: string; maxTokens: number | undefined; clamped: string[] } {
+	return { prompt: args.prompt, maxTokens: args.maxTokens, clamped: [] };
 }
 
 /**

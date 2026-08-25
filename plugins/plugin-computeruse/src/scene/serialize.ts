@@ -1,29 +1,45 @@
 /**
- * Token-efficient Scene serializer.
+ * Complete Scene serializer with structural secure-field redaction.
  *
  * Used by the `scene` provider to render the current Scene into the agent
- * prompt. We deliberately cap lists by display so a 4k-monitor session
- * doesn't push the prompt to thousands of tokens:
- *
- *   - displays              : full list (small)
- *   - focused_window        : full (small)
- *   - apps                  : pid, name, window count, top-2 window titles
- *   - ocr                   : top-N most-confident lines per display
- *                             (default N = 24, configurable)
- *   - ax                    : limited to the focused window's display subtree
- *                             (default cap = 24)
- *   - vlm_scene / elements  : passed through verbatim
+ * prompt. Every detected app, window, OCR block, and accessibility node is
+ * retained, while values overlapping password/secure-text accessibility
+ * fields are replaced and accompanied by explicit redaction metadata.
  *
  * The output is fenced JSON for predictable downstream tokenization.
  */
 
 import type { Scene } from "./scene-types.js";
 
+const REDACTED_SECURE_FIELD = "[REDACTED_SECURE_FIELD]";
+
+function isSecureAxRole(role: string): boolean {
+  const normalized = role.toLowerCase().replaceAll(/[^a-z]/g, "");
+  return (
+    normalized.includes("password") || normalized.includes("securetextfield")
+  );
+}
+
+function overlaps(
+  left: [number, number, number, number],
+  right: [number, number, number, number],
+): boolean {
+  return (
+    left[0] < right[0] + right[2] &&
+    left[0] + left[2] > right[0] &&
+    left[1] < right[1] + right[3] &&
+    left[1] + left[3] > right[1]
+  );
+}
+
 export interface SerializeOptions {
+  /** @deprecated Scene serialization is lossless; this option is ignored. */
   ocrTopN?: number;
+  /** @deprecated Scene serialization is lossless; this option is ignored. */
   axMax?: number;
+  /** @deprecated Scene serialization is lossless; this option is ignored. */
   appTopWindows?: number;
-  /** Cap total apps emitted. Prefers apps with at least one visible window. */
+  /** @deprecated Scene serialization is lossless; this option is ignored. */
   appMax?: number;
 }
 
@@ -31,22 +47,25 @@ export function serializeSceneForPrompt(
   scene: Scene,
   options: SerializeOptions = {},
 ): string {
-  const ocrTopN = options.ocrTopN ?? 24;
-  const axMax = options.axMax ?? 24;
-  const appTopWindows = options.appTopWindows ?? 2;
-  const appMax = options.appMax ?? 32;
+  void options;
 
-  // OCR: per-display, sorted by descending confidence, capped.
+  // OCR remains complete; confidence ordering only improves readability.
   const ocrByDisplay = new Map<number, typeof scene.ocr>();
   for (const box of scene.ocr) {
     const arr = ocrByDisplay.get(box.displayId) ?? [];
     arr.push(box);
     ocrByDisplay.set(box.displayId, arr);
   }
-  const trimmedOcr: typeof scene.ocr = [];
+  const completeOcr: typeof scene.ocr = [];
   for (const [, arr] of ocrByDisplay) {
-    arr.sort((a, b) => b.conf - a.conf);
-    trimmedOcr.push(...arr.slice(0, ocrTopN));
+    arr.sort((a, b) => {
+      const bConf =
+        typeof b.conf === "number" && Number.isFinite(b.conf) ? b.conf : 0;
+      const aConf =
+        typeof a.conf === "number" && Number.isFinite(a.conf) ? a.conf : 0;
+      return bConf - aConf || a.text.localeCompare(b.text);
+    });
+    completeOcr.push(...arr);
   }
 
   // AX: prefer focused-window display subtree.
@@ -54,23 +73,21 @@ export function serializeSceneForPrompt(
     scene.focused_window?.displayId ?? scene.displays[0]?.id ?? 0;
   const focusedAx = scene.ax.filter((n) => n.displayId === focusedDisplay);
   const remaining = scene.ax.filter((n) => n.displayId !== focusedDisplay);
-  const trimmedAx = [...focusedAx, ...remaining].slice(0, axMax);
+  const completeAx = [...focusedAx, ...remaining];
+  const secureFields = completeAx.filter((node) => isSecureAxRole(node.role));
 
-  // Prefer apps with visible windows — those are the ones the planner can
-  // act on. Background-only processes get clipped to keep the prompt
-  // tractable on Linux hosts with 500+ processes.
+  // Prefer apps with visible windows while retaining every app and window.
   const appsByPriority = [...scene.apps].sort((a, b) => {
     const aw = a.windows.length;
     const bw = b.windows.length;
     if (aw !== bw) return bw - aw;
     return a.name.localeCompare(b.name);
   });
-  const trimmedApps = appsByPriority.slice(0, appMax);
-  const compactApps = trimmedApps.map((app) => ({
+  const compactApps = appsByPriority.map((app) => ({
     name: app.name,
     pid: app.pid,
     window_count: app.windows.length,
-    windows: app.windows.slice(0, appTopWindows).map((w) => ({
+    windows: app.windows.map((w) => ({
       id: w.id,
       title: w.title,
       displayId: w.displayId,
@@ -88,31 +105,34 @@ export function serializeSceneForPrompt(
     })),
     focused_window: scene.focused_window,
     apps: compactApps,
-    ocr: trimmedOcr.map((b) => ({
+    ocr: completeOcr.map((b) => ({
       id: b.id,
-      text: b.text,
+      text: secureFields.some(
+        (field) =>
+          field.displayId === b.displayId && overlaps(field.bbox, b.bbox),
+      )
+        ? REDACTED_SECURE_FIELD
+        : b.text,
       bbox: b.bbox,
       conf: Number(b.conf.toFixed(3)),
       displayId: b.displayId,
     })),
-    ax: trimmedAx.map((n) => ({
+    ax: completeAx.map((n) => ({
       id: n.id,
       role: n.role,
-      label: n.label,
+      label: isSecureAxRole(n.role) ? REDACTED_SECURE_FIELD : n.label,
       bbox: n.bbox,
       actions: n.actions,
       displayId: n.displayId,
     })),
     vlm_scene: scene.vlm_scene,
     vlm_elements: scene.vlm_elements,
-    truncation: {
-      ocr_total: scene.ocr.length,
-      ocr_kept: trimmedOcr.length,
-      ax_total: scene.ax.length,
-      ax_kept: trimmedAx.length,
-      apps_total: scene.apps.length,
-      apps_kept: trimmedApps.length,
-    },
+    redactions: secureFields.map((field) => ({
+      kind: "secure_field",
+      bounds: field.bbox,
+      displayId: field.displayId,
+      reason: "Accessibility role marks this region as credential input",
+    })),
   };
   return ["```json", JSON.stringify(compact, null, 2), "```"].join("\n");
 }

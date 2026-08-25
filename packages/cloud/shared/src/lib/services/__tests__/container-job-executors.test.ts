@@ -76,6 +76,9 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
     async deleteById(hostContainerId: string, name: string) {
       calls.push({ op: "deleteById", arg: { hostContainerId, name } });
     },
+    async deletePrimaryById(hostContainerId: string) {
+      calls.push({ op: "deletePrimaryById", arg: hostContainerId });
+    },
     async restart(name: string) {
       calls.push({ op: "restart", arg: name });
     },
@@ -88,7 +91,19 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
   return { calls, provider };
 }
 
-const job = (data: unknown) => ({ id: "job-1", data });
+const job = (data: unknown, organizationId?: string) => {
+  const payloadOrganizationId =
+    typeof data === "object" &&
+    data !== null &&
+    typeof Reflect.get(data, "organizationId") === "string"
+      ? (Reflect.get(data, "organizationId") as string)
+      : "org-1";
+  return {
+    id: "job-1",
+    data,
+    organization_id: organizationId ?? payloadOrganizationId,
+  };
+};
 
 describe("executeContainerProvision", () => {
   test("builds input from the row, provisions, and marks running", async () => {
@@ -149,7 +164,7 @@ describe("executeContainerProvision", () => {
       {
         provider,
         store,
-        markAppDeployed: async (appId, url) => {
+        markAppDeployed: async (appId, _generation, url) => {
           deployed.push({ appId, url });
         },
       },
@@ -179,6 +194,144 @@ describe("executeContainerProvision", () => {
       ),
     ).rejects.toThrow("docker create failed");
     expect(deployedOnFail).toEqual([]);
+  });
+
+  test("a stale container generation performs no provider or state mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerProvision(
+      job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async (_appId, generation) => {
+          expect(generation).toBe(deploymentGeneration);
+          return false;
+        },
+      },
+    );
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a provision job whose generation disagrees with its row performs no mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration: "22222222-2222-4222-8222-222222222222",
+      }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async () => true,
+      },
+    );
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a generated container fails closed when the generation fence is not wired", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toMatchObject({ code: "APP_DEPLOYMENT_GENERATION_FENCE_MISSING" });
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([]);
+  });
+
+  test("a generation that becomes stale during provision is discarded before state mutation", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const provisionStarted = Promise.withResolvers<void>();
+    const releaseProvision = Promise.withResolvers<void>();
+    let current = true;
+    const { calls, provider } = fakeProvider({
+      async provision(params: unknown) {
+        calls.push({ op: "provision", arg: params });
+        provisionStarted.resolve();
+        await releaseProvision.promise;
+        return {
+          containerId: "docker-stale-1",
+          hostPort: 49001,
+          network: "app-net-x",
+          nodeId: "node-1",
+          nodeHost: "node.example.test",
+        };
+      },
+    });
+
+    const execution = executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration,
+      }),
+      { provider, store, isAppDeploymentCurrent: async () => current },
+    );
+    await provisionStarted.promise;
+    current = false;
+    releaseProvision.resolve();
+    await execution;
+
+    expect(calls.map((call) => call.op)).toEqual(["provision", "deletePrimaryById"]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
+  });
+
+  test("a generation that becomes stale before markRunning discards the primary and slot", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+    let currentChecks = 0;
+
+    await executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration,
+      }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async () => {
+          currentChecks += 1;
+          return currentChecks < 3;
+        },
+      },
+    );
+
+    expect(currentChecks).toBe(3);
+    expect(calls.map((call) => call.op)).toEqual(["provision", "deletePrimaryById"]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
   });
 
   test("marks error and rethrows when provisioning fails", async () => {
@@ -506,6 +659,48 @@ describe("executeContainerDelete / restart / logs", () => {
       }),
     ).rejects.toThrow("does not own");
     expect(calls).toEqual([]);
+  });
+
+  test("rejects an organization-only payload before a foreign tenant lookup", async () => {
+    const { events, store } = fakeStore();
+    const lookedUpOrganizations: string[] = [];
+    store.findDeletingByOrganization = async (organizationId) => {
+      lookedUpOrganizations.push(organizationId);
+      return [ROW];
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerDelete(job({ organizationId: "org-foreign" }, "org-owner"), {
+        provider,
+        store,
+      }),
+    ).rejects.toMatchObject({ code: "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH" });
+
+    expect(lookedUpOrganizations).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  test("rejects a codec-valid payload when its tenant differs from the job row", async () => {
+    const { events, store } = fakeStore();
+    let containerRead = false;
+    store.getById = async () => {
+      containerRead = true;
+      return ROW;
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerDelete(
+        job({ containerId: "container-1", organizationId: "org-foreign" }, "org-owner"),
+        { provider, store },
+      ),
+    ).rejects.toMatchObject({ code: "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH" });
+
+    expect(containerRead).toBe(false);
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
   });
 
   test("restart restarts by container name", async () => {

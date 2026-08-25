@@ -14,12 +14,10 @@ import {
   fetchXDirectMessagesWithRuntimeService,
   getXAccountStatusWithRuntimeService,
   readIMessagesWithRuntimeService,
-  readSignalRecentWithRuntimeService,
   resolveRuntimeConnectorAccountId,
   searchTelegramMessagesWithRuntimeService,
   sendDiscordMessageWithRuntimeService,
   sendIMessageWithRuntimeService,
-  sendSignalMessageWithRuntimeService,
   sendWhatsAppMessageWithRuntimeService,
   sendXDirectMessageWithRuntimeService,
 } from "./runtime-service-delegates.js";
@@ -367,40 +365,6 @@ describe("runtime service delegates", () => {
         limit: 5,
       }),
     );
-  });
-
-  it("delegates Signal reads and sends with accountId", async () => {
-    const getRecentMessages = vi.fn(async () => [{ id: "s1", text: "recent" }]);
-    const sendMessage = vi.fn(async () => ({ timestamp: 1234 }));
-    const runtime = runtimeWithServices({
-      signal: { getRecentMessages, sendMessage },
-    });
-
-    const read = await readSignalRecentWithRuntimeService({
-      runtime,
-      grant: grant({ provider: "signal" }),
-      limit: 10,
-    });
-    const sent = await sendSignalMessageWithRuntimeService({
-      runtime,
-      grant: grant({ provider: "signal" }),
-      recipient: "+15551234567",
-      text: "ping",
-    });
-
-    expect(read).toMatchObject({
-      status: "handled",
-      accountId: "acct-owner-1",
-    });
-    expect(getRecentMessages).toHaveBeenCalledWith(10, "acct-owner-1");
-    expect(sent).toMatchObject({
-      status: "handled",
-      accountId: "acct-owner-1",
-      value: { timestamp: 1234 },
-    });
-    expect(sendMessage).toHaveBeenCalledWith("+15551234567", "ping", {
-      accountId: "acct-owner-1",
-    });
   });
 
   it("delegates iMessage send and read through the native plugin service", async () => {

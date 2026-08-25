@@ -107,7 +107,6 @@ describe("onboarding coordinator error integration", () => {
               loader: "ts",
               contents: `
                 const none = { status: "none", agentId: null, bridgeUrl: null, sandbox: null };
-                export async function ensureElizaAppProvisioning() { return none; }
                 export async function getElizaAppProvisioningStatus() { return none; }
                 export function publicElizaAppProvisioningPayload(value) { return value; }
               `,

@@ -133,6 +133,44 @@ const RPC = {
 };
 
 describe("bridgeSharedMessageStream — billing tail deferred via executionCtx.waitUntil", () => {
+  test("persists complete grounding internally without emitting provider evidence in done SSE", async () => {
+    reset();
+    const providerBody = "PRIVATE_PROVIDER_BODY_MARKER";
+    const sourceExcerpt = "PRIVATE_SOURCE_EXCERPT_MARKER";
+    const internalGrounding = {
+      kind: "web_search" as const,
+      query: "what is btc price rn",
+      provider: "parallel" as const,
+      observedAt: Date.UTC(2026, 7, 23, 12, 0, 0),
+      sourceUrls: ["https://coin.example/bitcoin"],
+      sources: [{ url: "https://coin.example/bitcoin", text: sourceExcerpt }],
+      text: providerBody,
+      truncated: false,
+    };
+    streamTurnImpl = () => ({
+      model: "openai/gpt-oss-120b",
+      degraded: false,
+      internalGrounding,
+      parts: makeParts("Bitcoin is current. [Source](https://coin.example/bitcoin)"),
+    });
+    const svc = makeService();
+
+    const response = await svc.bridgeSharedMessageStream(REC, RPC);
+    const body = await drainSse(response);
+
+    expect(svc.saveSharedRuntimeHistory).toHaveBeenCalledTimes(1);
+    const persisted = (svc.saveSharedRuntimeHistory as ReturnType<typeof mock>).mock.calls[0]?.[2];
+    expect(persisted).toBeArray();
+    expect((persisted as Array<Record<string, unknown>>).at(-1)?.grounding).toEqual(
+      internalGrounding,
+    );
+    expect(body).toContain("event: done");
+    expect(body).toContain("Bitcoin is current.");
+    expect(body).not.toContain(providerBody);
+    expect(body).not.toContain(sourceExcerpt);
+    expect(body).not.toContain("internalGrounding");
+  });
+
   test("`done` frame flushes BEFORE the billing tail; deferred task settles at billing.totalCost", async () => {
     reset();
     // Gate billUsage so we can prove the stream completed without waiting on it.

@@ -189,6 +189,26 @@ function addDaysIso(value: string, days: number): string {
   return new Date(ms + days * MS_PER_DAY).toISOString();
 }
 
+export function compareRecurringChargesByAnnualizedCost(
+  a: { annualizedCostUsd?: unknown; merchantNormalized: string },
+  b: { annualizedCostUsd?: unknown; merchantNormalized: string },
+): number {
+  const bCost =
+    typeof b.annualizedCostUsd === "number" &&
+    Number.isFinite(b.annualizedCostUsd)
+      ? b.annualizedCostUsd
+      : 0;
+  const aCost =
+    typeof a.annualizedCostUsd === "number" &&
+    Number.isFinite(a.annualizedCostUsd)
+      ? a.annualizedCostUsd
+      : 0;
+  return (
+    bCost - aCost ||
+    String(a.merchantNormalized).localeCompare(String(b.merchantNormalized))
+  );
+}
+
 export function detectRecurringCharges(
   transactions: readonly LifeOpsPaymentTransaction[],
 ): LifeOpsRecurringCharge[] {
@@ -270,6 +290,6 @@ export function detectRecurringCharges(
       category,
     });
   }
-  charges.sort((a, b) => b.annualizedCostUsd - a.annualizedCostUsd);
+  charges.sort(compareRecurringChargesByAnnualizedCost);
   return charges;
 }

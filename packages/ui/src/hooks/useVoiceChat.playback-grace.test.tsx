@@ -381,8 +381,9 @@ describe("useVoiceChat playback is decoupled from the visualizer worklet (#16102
     });
   });
 
-  it("serves a repeated short utterance from the audio cache without refetching", async () => {
-    const uniqueText = "cache me please, a short cacheable reply";
+  it("serves a repeated full response from the audio cache without refetching", async () => {
+    const uniqueText =
+      "Cache this complete generated response even though it is deliberately longer than ten speech tokens.";
     const { result } = renderVoiceChat({ provider: "local-inference" });
 
     act(() => {
@@ -409,7 +410,7 @@ describe("useVoiceChat playback is decoupled from the visualizer worklet (#16102
       expect(createdSources.length).toBeGreaterThan(1);
       expect(createdSources[1]?.start).toHaveBeenCalledWith(0);
     });
-    // The second identical, short, cacheable utterance is served from
+    // The second identical complete response is served from
     // globalAudioCache — no second network fetch.
     expect(
       fetchedUrls.filter((url) => url.includes("/api/tts/local-inference"))

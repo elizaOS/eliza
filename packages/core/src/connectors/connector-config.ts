@@ -71,30 +71,6 @@ export function isConnectorConfigured(
 		return true;
 	}
 
-	const hasEnabledSignalAccount =
-		connectorName === "signal" &&
-		typeof config.accounts === "object" &&
-		config.accounts !== null &&
-		Object.values(config.accounts as Record<string, unknown>).some(
-			(account) => {
-				if (!account || typeof account !== "object") return false;
-				const accountConfig = account as Record<string, unknown>;
-				if (accountConfig.enabled === false) return false;
-				return Boolean(
-					accountConfig.authDir ||
-						accountConfig.account ||
-						accountConfig.httpUrl ||
-						accountConfig.httpHost ||
-						accountConfig.httpPort ||
-						accountConfig.cliPath,
-				);
-			},
-		);
-
-	if (hasEnabledSignalAccount) {
-		return true;
-	}
-
 	switch (connectorName) {
 		case "bluebubbles":
 			return Boolean(config.serverUrl && config.password);
@@ -103,15 +79,6 @@ export function isConnectorConfigured(
 		case "imessage":
 			return Boolean(
 				config.enabled === true || config.cliPath || config.dbPath,
-			);
-		case "signal":
-			return Boolean(
-				config.authDir ||
-					config.account ||
-					config.httpUrl ||
-					config.httpHost ||
-					config.httpPort ||
-					config.cliPath,
 			);
 		case "whatsapp":
 			// authState/sessionPath: legacy field names

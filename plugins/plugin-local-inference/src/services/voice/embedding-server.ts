@@ -10,6 +10,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
 	isValidEmbeddingDim,
 	type LocalEmbeddingRoute,
@@ -68,7 +69,7 @@ export async function embedWithFetch(
 	if (!response.ok) {
 		const body = await response.text().catch(() => "");
 		throw new Error(
-			`[embedding-server] /v1/embeddings returned ${response.status}: ${body.slice(0, 200)}`,
+			`[embedding-server] /v1/embeddings returned ${response.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
 		);
 	}
 	const payload = (await response.json()) as {

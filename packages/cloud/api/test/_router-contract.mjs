@@ -21,7 +21,7 @@ const ROUTER = join(API_ROOT, "src", "_router.generated.ts");
 
 function generatedRoutes() {
   const routerSrc = readFileSync(ROUTER, "utf8");
-  return [...routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g)].map((m) => m[1]);
+  return [...routerSrc.matchAll(/^ {4}path: "([^"]+)",$/gm)].map((m) => m[1]);
 }
 
 function route(label) {

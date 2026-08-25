@@ -70,18 +70,18 @@ export function ChatVoiceSpeakerBadge({
       data-testid={dataTestId ?? "chat-voice-speaker"}
       data-owner={isOwner ? "true" : undefined}
       className={cn(
-        "inline-flex items-center gap-1 rounded-sm border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted",
+        "inline-flex items-center gap-1 rounded-sm border border-border bg-card px-1.5 py-0.5 text-2xs font-medium text-muted",
         className,
       )}
       title={isOwner ? `${label} (OWNER)` : label}
       role="img"
       aria-label={isOwner ? `${label}, OWNER, spoken` : `${label}, spoken`}
     >
-      <Mic className="h-2.5 w-2.5" aria-hidden />
+      <Mic className="size-2.5" aria-hidden />
       <span className="text-txt">{label}</span>
       {isOwner ? (
         <Crown
-          className="h-2.5 w-2.5 text-accent"
+          className="size-2.5 text-accent"
           aria-hidden
           data-testid="chat-voice-speaker-owner-crown"
         />

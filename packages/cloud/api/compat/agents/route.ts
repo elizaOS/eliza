@@ -193,6 +193,10 @@ app.post("/", async (c) => {
         agentName: parsed.data.agentName,
         agentConfig: sanitizedConfig,
         environmentVars: parsed.data.environmentVars,
+        // Compat remains container-free unless this deployment explicitly
+        // owns eager provisioning. Never let the persistence default choose
+        // Shared for a request that will immediately enqueue container work.
+        executionTier: autoProvision ? "dedicated-always" : "shared",
         maxNonTerminalAgents,
       });
     } catch (error) {

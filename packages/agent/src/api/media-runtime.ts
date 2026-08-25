@@ -29,6 +29,8 @@ import {
 /** Cap on bytes pulled while rehosting a remote attachment into the store. */
 const REHOST_MAX_BYTES = 50 * 1024 * 1024;
 
+export const DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS = 10_000;
+
 /** Media content types worth rehosting (skip `link` and unknown). */
 const REHOSTABLE_CONTENT_TYPES = new Set([
   "image",
@@ -44,11 +46,21 @@ const REHOSTABLE_CONTENT_TYPES = new Set([
  * `/api/media/<hash>` URL. Returns the served URL, or null on any failure
  * (blocked host, too large, unreachable) so the caller can keep the original.
  */
-async function rehostRemoteMediaUrl(url: string): Promise<string | null> {
+async function rehostRemoteMediaUrl(
+  url: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<string | null> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_MEDIA_REHOST_FETCH_TIMEOUT_MS;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, timeoutSignal])
+    : timeoutSignal;
   try {
     const { buffer, contentType } = await fetchRemoteMedia({
       url,
       maxBytes: REHOST_MAX_BYTES,
+      signal,
+      timeoutMs,
       lookupFn: nodeLookupFn,
       pinnedFetchImpl: nodePinnedFetch,
     });

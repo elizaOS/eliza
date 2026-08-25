@@ -92,6 +92,13 @@ function makeHarness(
       });
       return inner.upsert(task, options);
     },
+    async upsertIfStatus(task, options) {
+      upserts.push({
+        taskId: task.taskId,
+        nextFireAtIso: options.nextFireAtIso ?? null,
+      });
+      return inner.upsertIfStatus(task, options);
+    },
   };
 
   const logStore = createInMemoryScheduledTaskLogStore();
@@ -128,7 +135,6 @@ function makeHarness(
         "in_app",
         "push",
         "telegram",
-        "signal",
         "whatsapp",
         "discord",
         "sms",
@@ -437,7 +443,6 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
       "in_app",
       "push",
       "telegram",
-      "signal",
       "whatsapp",
       "discord",
       "sms",
@@ -457,7 +462,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
         taskId: task.taskId,
       })
     ).filter((r) => r.transition === "escalated");
-    expect(escalatedRows).toHaveLength(9);
+    expect(escalatedRows).toHaveLength(8);
   });
 
   it("skips disconnected high-priority connector candidates and parks on a connected fallback", async () => {
@@ -510,7 +515,7 @@ describe("dispatch-policy enforcement (typed DispatchResult failures)", () => {
     expect(result.kind).toBe("dispatch_deferred");
     const persisted = await h.store.get(task.taskId);
     expect(persisted?.metadata?.pendingDispatch).toEqual({
-      stepIndex: 7,
+      stepIndex: 6,
       attempt: 0,
     });
 

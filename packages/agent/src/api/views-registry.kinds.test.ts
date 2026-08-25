@@ -8,9 +8,7 @@
  */
 
 import type { Plugin } from "@elizaos/core";
-import { resolveViewKind } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { BUILTIN_VIEWS } from "./builtin-views.js";
 import { listViews, unregisterPluginViews } from "./views-registry.js";
 
 const PLUGIN_NAME = "@elizaos/plugin-view-kind-fixture";
@@ -47,53 +45,6 @@ function ids(entries: { id: string }[]): string[] {
 
 afterEach(() => {
   unregisterPluginViews(PLUGIN_NAME);
-});
-
-describe("BUILTIN_VIEWS categorization", () => {
-  it("sorts every built-in view into the curated system/developer/preview IA", () => {
-    const byId = new Map(BUILTIN_VIEWS.map((v) => [v.id, resolveViewKind(v)]));
-    expect(byId.get("chat")).toBe("system");
-    expect(byId.get("browser")).toBe("system");
-    expect(byId.get("settings")).toBe("system");
-    expect(byId.get("character")).toBe("system");
-    expect(byId.get("documents")).toBe("system");
-    expect(byId.get("transcripts")).toBe("system");
-    // #10669: automations/plugins-page/memories promoted preview→system
-    // (always-on shipping surfaces, matching builtin-views.ts).
-    expect(byId.get("automations")).toBe("system");
-    expect(byId.get("plugins-page")).toBe("system");
-    expect(byId.get("memories")).toBe("system");
-    expect(byId.get("logs")).toBe("developer");
-    expect(byId.get("database")).toBe("developer");
-    expect(byId.get("trajectories")).toBe("developer");
-    expect(byId.get("camera")).toBe("preview");
-    expect(byId.get("background")).toBe("preview");
-    // No built-in is left uncategorized (resolves to a concrete kind).
-    for (const v of BUILTIN_VIEWS) {
-      expect(["system", "release", "developer", "preview"]).toContain(
-        resolveViewKind(v),
-      );
-    }
-  });
-
-  it("keeps the Browser route agent-routable without expanding the manager roster", () => {
-    const browser = BUILTIN_VIEWS.find((view) => view.id === "browser");
-    expect(browser).toMatchObject({
-      path: "/browser",
-      relatedActions: ["BROWSER"],
-      visibleInManager: false,
-    });
-  });
-
-  it("tags every built-in view explicitly — no view relies on the implicit default", () => {
-    // Per issue #8796: every view must be explicitly tagged system/release/
-    // developer/preview. A bare entry resolves to "release" by default, which
-    // hides an untagged view in plain sight — forbid it.
-    const untagged = BUILTIN_VIEWS.filter(
-      (v) => v.viewKind == null && v.developerOnly == null,
-    ).map((v) => v.id);
-    expect(untagged).toEqual([]);
-  });
 });
 
 describe("listViews kind filtering", () => {

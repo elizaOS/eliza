@@ -153,10 +153,11 @@ export class UAIDResolver {
   private readonly cache = new Map<string, CacheEntry>();
 
   constructor(config: UAIDResolverConfig = {}) {
-    this.brokerUrl = (config.brokerUrl ?? DEFAULT_BROKER_URL).replace(
-      /\/+$/,
-      "",
-    );
+    const brokerUrl = config.brokerUrl ?? DEFAULT_BROKER_URL;
+    let end = brokerUrl.length;
+    while (end > 0 && brokerUrl.charCodeAt(end - 1) === 47) end -= 1;
+    this.brokerUrl =
+      end === brokerUrl.length ? brokerUrl : brokerUrl.slice(0, end);
     this.apiKey = config.apiKey;
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.cacheTtlMs = config.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;

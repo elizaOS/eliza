@@ -21,6 +21,7 @@ import {
   isDedicatedCloudAgentBase,
 } from "../../utils/cloud-agent-base";
 import { setElizaApiToken } from "../../utils/eliza-globals";
+import { Button } from "../ui/button";
 
 export { cloudPairTokenKeyForAgent };
 
@@ -405,7 +406,7 @@ export function CloudHostedAgentAuthNotice({
   return (
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[25rem]">
-        <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
+        <div className="mx-auto mb-6 size-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
         <h1 className="text-2xl font-semibold text-white">
           {nativeRecoveryMode === "retry"
@@ -422,8 +423,9 @@ export function CloudHostedAgentAuthNotice({
               : "This Cloud agent uses your Eliza Cloud session. Open it from Eliza Cloud again to create a fresh secure sign-in link."}
         </p>
         {onNativeReauth ? (
-          <button
-            className={ctaClass}
+          <Button
+            variant="default"
+            size="touch"
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeReauth, "primary")}
             type="button"
@@ -437,15 +439,17 @@ export function CloudHostedAgentAuthNotice({
                 : nativeRecoveryMode === "manage"
                   ? "Open Eliza Cloud"
                   : "Re-open from Eliza Cloud"}
-          </button>
+          </Button>
         ) : (
           <a className={ctaClass} href={reopenUrl} rel="noopener" target="_top">
             Re-open from Eliza Cloud
           </a>
         )}
         {nativeRecoveryMode === "manage" && onNativeRetry ? (
-          <button
-            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-md border border-white/15 bg-white/5 px-5 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-70"
+          <Button
+            variant="outlineMuted"
+            size="touch"
+            className="mt-3"
             disabled={activeNativeAction !== null}
             onClick={() => void handleNativeAction(onNativeRetry, "retry")}
             type="button"
@@ -453,7 +457,7 @@ export function CloudHostedAgentAuthNotice({
             {activeNativeAction === "retry"
               ? "Reconnecting…"
               : "I fixed it — reconnect"}
-          </button>
+          </Button>
         ) : null}
         {reauthError ? (
           <p className="mt-4 text-sm leading-6 text-[#f4b55a]" role="alert">
@@ -530,7 +534,7 @@ export function CloudPairRelay({
     // scrolls-from-top when the error copy pushes it past the fold.
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[24rem]">
-        <div className="mx-auto mb-6 h-2 w-2 rotate-45 bg-[#f3a51f]" />
+        <div className="mx-auto mb-6  size-2 rotate-45 bg-[#f3a51f]" />
         <p className="mb-4 text-sm font-semibold text-white/45">Eliza</p>
         <h1 className="text-2xl font-semibold text-white">{title}</h1>
         <p
@@ -540,13 +544,14 @@ export function CloudPairRelay({
           {message}
         </p>
         {status.phase === "session-only" ? (
-          <button
-            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
+          <Button
+            size="touch"
+            className="mt-7"
             onClick={() => onPaired()}
             type="button"
           >
             Continue to your agent
-          </button>
+          </Button>
         ) : null}
       </div>
     </main>

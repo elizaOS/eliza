@@ -4,9 +4,9 @@
  * PERFORMANCE: Character data is cached in Redis for fast runtime access.
  */
 
-import type { Agent } from "@elizaos/core";
+import { type Agent, ElizaError } from "@elizaos/core";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../../db/client";
+import { type DbTransaction, dbRead, dbWrite } from "../../../db/client";
 import {
   type NewUserCharacter,
   type UserCharacter,
@@ -16,12 +16,21 @@ import {
 export type { UserCharacter } from "../../../db/repositories";
 
 import { agentsRepository } from "../../../db/repositories/agents/agents";
-import { elizaRoomCharactersTable, userCharacters, users } from "../../../db/schemas";
+import {
+  elizaRoomCharactersTable,
+  organizations,
+  userCharacters,
+  users,
+} from "../../../db/schemas";
 import { memoryTable, participantTable, roomTable } from "../../../db/schemas/eliza";
 import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
+import {
+  type CloudCharacterLimitSource,
+  resolveMaxCloudCharactersForOrg,
+} from "../../constants/cloud-character-quota";
 import type { ElizaCharacter } from "../../types/eliza-character";
 import {
   generateUniqueUsername,
@@ -35,6 +44,10 @@ import { usersService } from "../users";
 // Cache key for character data (longer TTL since characters rarely change)
 const characterCacheKey = (id: string) => `character:data:${id}`;
 const CHARACTER_CACHE_TTL = CacheTTL.agent.characterData; // 1 hour
+const USERNAME_AUTHORITY_LOCK_TIMEOUT_MS = 10_000;
+const USERNAME_AUTHORITY_STATEMENT_TIMEOUT_MS = 30_000;
+const USERNAME_AUTHORITY_LOCK_NAMESPACE = "cloud-character";
+const USERNAME_AUTHORITY_LOCK_KEY = "username-claim";
 
 /**
  * PERF: In-memory cache for character data (60s TTL).
@@ -47,6 +60,140 @@ const characterHydrations = new Map<string, Promise<void>>();
 export type InferenceCharacterCacheResolution =
   | { kind: "ready"; character: UserCharacter | null }
   | { kind: "warming" | "unavailable" };
+
+export type CharacterCreationPolicy =
+  | { mode: "metered" }
+  | { mode: "bootstrap" }
+  | {
+      mode: "trusted";
+      caller: "affiliate-create-character" | "service-api-v1-agents";
+    };
+
+export interface CharacterCreationOptions {
+  policy: CharacterCreationPolicy;
+}
+
+export interface CharacterCreationQuotaReceipt {
+  currentBefore: number;
+  currentAfter: number;
+  limit: number;
+  limitSource: CloudCharacterLimitSource;
+}
+
+export interface CharacterCreationReceipt {
+  character: UserCharacter;
+  created: boolean;
+  quota?: CharacterCreationQuotaReceipt;
+}
+
+export interface MeteredCharacterCreationReceipt extends CharacterCreationReceipt {
+  created: true;
+  quota: CharacterCreationQuotaReceipt;
+}
+
+const TRUSTED_CHARACTER_CREATION_CALLERS = new Set([
+  "affiliate-create-character",
+  "service-api-v1-agents",
+]);
+
+function requireCharacterCreationPolicy(
+  options: CharacterCreationOptions | undefined,
+): CharacterCreationPolicy {
+  const candidate: unknown = options?.policy;
+  if (candidate !== null && typeof candidate === "object" && !Array.isArray(candidate)) {
+    const record = candidate as Record<string, unknown>;
+    if (record.mode === "metered" || record.mode === "bootstrap") {
+      return { mode: record.mode };
+    }
+    if (
+      record.mode === "trusted" &&
+      typeof record.caller === "string" &&
+      TRUSTED_CHARACTER_CREATION_CALLERS.has(record.caller)
+    ) {
+      return {
+        mode: "trusted",
+        caller: record.caller as "affiliate-create-character" | "service-api-v1-agents",
+      };
+    }
+  }
+
+  throw new ElizaError("Character creation requires a valid explicit quota policy", {
+    code: "CHARACTER_CREATION_POLICY_REQUIRED",
+    severity: "fatal",
+  });
+}
+
+/** Raised when a metered character create observes no remaining org capacity. */
+export class CloudCharacterQuotaExceededError extends ElizaError {
+  override readonly name = "CloudCharacterQuotaExceededError";
+  readonly organizationId: string;
+  readonly current: number;
+  readonly limit: number;
+  readonly limitSource: CloudCharacterLimitSource;
+
+  constructor(params: {
+    organizationId: string;
+    current: number;
+    limit: number;
+    limitSource: CloudCharacterLimitSource;
+  }) {
+    super(
+      `Agent quota exceeded. Your organization has reached the maximum of ${params.limit} agents.`,
+      {
+        code: "CLOUD_CHARACTER_QUOTA_EXCEEDED",
+        context: params,
+        severity: "ephemeral",
+      },
+    );
+    this.organizationId = params.organizationId;
+    this.current = params.current;
+    this.limit = params.limit;
+    this.limitSource = params.limitSource;
+  }
+}
+
+function mirroredAgent(character: UserCharacter): Partial<Agent> {
+  return {
+    id: character.id as `${string}-${string}-${string}-${string}-${string}`,
+    name: character.name,
+    username: character.username ?? undefined,
+    bio: character.bio as string[] | undefined,
+    system: character.system ?? undefined,
+    enabled: true,
+    settings: character.settings as Record<
+      string,
+      string | number | boolean | Record<string, string | number | boolean>
+    >,
+  };
+}
+
+/** Ensures a lock waiter scans from a fresh snapshot after its predecessor commits. */
+async function withCharacterCreationTransaction<T>(
+  operation: (tx: DbTransaction) => Promise<T>,
+): Promise<T> {
+  return await dbWrite.transaction(operation, { isolationLevel: "read committed" });
+}
+
+/**
+ * Serializes every username claim across organizations.
+ *
+ * The username index is global, while the create authority's row lock is
+ * intentionally per organization. This transaction-scoped advisory lock must
+ * therefore be held before either an explicit existence check or an automatic
+ * global scan chooses a candidate, and through the insert that claims it. The
+ * caller pins READ COMMITTED so a waiter scans from a fresh snapshot after the
+ * preceding lock holder commits.
+ */
+async function lockUsernameClaimAuthority(tx: DbTransaction): Promise<void> {
+  await tx.execute(sql`
+    SELECT
+      set_config('lock_timeout', ${`${USERNAME_AUTHORITY_LOCK_TIMEOUT_MS}ms`}, TRUE),
+      set_config('statement_timeout', ${`${USERNAME_AUTHORITY_STATEMENT_TIMEOUT_MS}ms`}, TRUE)
+  `);
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${USERNAME_AUTHORITY_LOCK_NAMESPACE}), hashtext(${USERNAME_AUTHORITY_LOCK_KEY}))`,
+  );
+}
 
 /**
  * Service for character CRUD operations.
@@ -196,11 +343,21 @@ export class CharactersService {
 
   /**
    * Bounded existence probe: does the organization have any cloud character?
-   * For hot paths that only need emptiness (default-character provisioning),
-   * where listByOrganization would fetch every fat character row.
+   * For callers that only need emptiness, where listByOrganization would
+   * fetch every fat character row. Default-character self-heal uses the
+   * stronger mirror-health probe below.
    */
   async existsForOrganization(organizationId: string): Promise<boolean> {
     return await userCharactersRepository.existsForOrganization(organizationId, "cloud");
+  }
+
+  /**
+   * Read-only fast path for default-character self-heal. A false result is not
+   * authority to create; Steward routes it to create(..., bootstrap), where
+   * the primary organization lock makes the final ensure decision.
+   */
+  async hasHealthyCloudCharacterMirror(organizationId: string): Promise<boolean> {
+    return await userCharactersRepository.hasHealthyCloudCharacterMirror(organizationId);
   }
 
   async listPublic(options?: {
@@ -225,9 +382,9 @@ export class CharactersService {
    * Generate a unique username for a character.
    * Uses the name to create a slug, then ensures uniqueness.
    */
-  async generateUniqueUsername(name: string): Promise<string> {
+  async generateUniqueUsername(name: string, tx?: DbTransaction): Promise<string> {
     // Get all existing usernames
-    const existingUsernames = await userCharactersRepository.getAllUsernames();
+    const existingUsernames = await userCharactersRepository.getAllUsernames(tx);
 
     // Add reserved usernames
     for (const reserved of RESERVED_USERNAMES) {
@@ -271,7 +428,27 @@ export class CharactersService {
     return await userCharactersRepository.findByUsername(username);
   }
 
-  async create(data: NewUserCharacter): Promise<UserCharacter> {
+  async create(data: NewUserCharacter, options: CharacterCreationOptions): Promise<UserCharacter> {
+    return (await this.createWithReceipt(data, options)).character;
+  }
+
+  /**
+   * Creates a character and returns the decision made inside the authoritative
+   * transaction. Metered HTTP callers use the receipt to preserve authoritative
+   * quota observability without issuing a stale post-commit replica read.
+   */
+  async createWithReceipt(
+    data: NewUserCharacter,
+    options: { policy: { mode: "metered" } },
+  ): Promise<MeteredCharacterCreationReceipt>;
+  async createWithReceipt(
+    data: NewUserCharacter,
+    options: CharacterCreationOptions,
+  ): Promise<CharacterCreationReceipt>;
+  async createWithReceipt(
+    data: NewUserCharacter,
+    options: CharacterCreationOptions,
+  ): Promise<CharacterCreationReceipt> {
     // `name` arrives from the same pre-validation request body as `username`
     // (the route casts raw JSON to ElizaCharacter). A non-string name 500s via
     // slugify(name).toLowerCase() in generateUniqueUsername below; and when a
@@ -282,20 +459,24 @@ export class CharactersService {
       throw ValidationError("Invalid name: must be a non-empty string");
     }
 
-    // Generate username if not provided
+    const policy = requireCharacterCreationPolicy(options);
+
+    const source = data.source ?? "cloud";
+    if (source !== "cloud") {
+      throw ValidationError("CharactersService.create only accepts Cloud characters");
+    }
+
+    // Format validation is request-local. Global uniqueness is resolved later
+    // on the same primary transaction as the quota and inserts.
     let username = data.username;
-    if (username === undefined || username === null || username === "") {
-      // Blank is provided-but-unset (empty-is-unset contract), same as omitting the field.
-      username = await this.generateUniqueUsername(data.name);
-      logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
-    } else if (typeof username !== "string") {
-      // Character creation receives request bodies before route-level shape
-      // validation, so username can be any JSON value. Rejecting here keeps
-      // create/update behavior aligned and prevents validateUsername from
-      // turning malformed input into a TypeError 500 (#13637 class).
-      throw ValidationError("Invalid username: must be a string");
-    } else {
-      // Validate provided username
+    if (username !== undefined && username !== null && username !== "") {
+      if (typeof username !== "string") {
+        // Character creation receives request bodies before route-level shape
+        // validation, so username can be any JSON value. Rejecting here keeps
+        // create/update behavior aligned and prevents validateUsername from
+        // turning malformed input into a TypeError 500 (#13637 class).
+        throw ValidationError("Invalid username: must be a string");
+      }
       const validation = validateUsername(username);
       if (!validation.valid) {
         // A genuinely-invalid provided username is caller error, not a server
@@ -303,42 +484,147 @@ export class CharactersService {
         throw ValidationError(`Invalid username: ${validation.error}`);
       }
 
-      // Use normalized (lowercased) username from validation
       username = validation.normalized!;
-
-      // Check uniqueness
-      const exists = await userCharactersRepository.usernameExists(username);
-      if (exists) {
-        throw ValidationError("Username is already taken");
-      }
     }
 
-    // Create the character in user_characters table with username
-    const character = await userCharactersRepository.create({
-      ...data,
-      username,
+    const result = await withCharacterCreationTransaction<CharacterCreationReceipt>(async (tx) => {
+      // The organization row is the per-tenant serialization authority. The
+      // billing inputs, exact Cloud population, decision, character insert,
+      // and required runtime mirror therefore share one primary transaction.
+      const [organization] = await tx
+        .select({
+          id: organizations.id,
+          creditBalance: organizations.credit_balance,
+          settings: organizations.settings,
+        })
+        .from(organizations)
+        .where(eq(organizations.id, data.organization_id))
+        .limit(1)
+        .for("update");
+
+      if (!organization) {
+        throw new ElizaError("Character organization not found", {
+          code: "CHARACTER_ORGANIZATION_NOT_FOUND",
+          context: { organizationId: data.organization_id },
+          severity: "fatal",
+        });
+      }
+
+      const [population] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(userCharacters)
+        .where(
+          and(
+            eq(userCharacters.organization_id, data.organization_id),
+            eq(userCharacters.source, "cloud"),
+          ),
+        );
+      const current = Number(population?.count ?? 0);
+
+      if (policy.mode === "bootstrap" && current > 0) {
+        const [existing] = await tx
+          .select()
+          .from(userCharacters)
+          .where(
+            and(
+              eq(userCharacters.organization_id, data.organization_id),
+              eq(userCharacters.source, "cloud"),
+            ),
+          )
+          .orderBy(userCharacters.created_at, userCharacters.id)
+          .limit(1);
+        if (!existing) {
+          throw new ElizaError("Cloud character count and rows disagree", {
+            code: "CLOUD_CHARACTER_POPULATION_INCONSISTENT",
+            context: { organizationId: data.organization_id, current },
+            severity: "fatal",
+          });
+        }
+
+        // Bootstrap doubles as repair for a pre-existing character whose
+        // legacy two-step create crashed before its runtime mirror was written.
+        await agentsRepository.ensure(mirroredAgent(existing), tx);
+        return { character: existing, created: false };
+      }
+
+      let quota: CharacterCreationQuotaReceipt | undefined;
+      if (policy.mode === "metered") {
+        const resolution = resolveMaxCloudCharactersForOrg(
+          Number(organization.creditBalance),
+          organization.settings,
+        );
+        if (current >= resolution.limit) {
+          throw new CloudCharacterQuotaExceededError({
+            organizationId: data.organization_id,
+            current,
+            limit: resolution.limit,
+            limitSource: resolution.source,
+          });
+        }
+        quota = {
+          currentBefore: current,
+          currentAfter: current + 1,
+          limit: resolution.limit,
+          limitSource: resolution.source,
+        };
+      }
+
+      // All insertion paths take the same global namespace authority after
+      // their organization lock. This uniform order cannot cycle, and makes
+      // the explicit check and automatic scan authoritative against each
+      // other until the unique claim commits.
+      await lockUsernameClaimAuthority(tx);
+
+      if (username === undefined || username === null || username === "") {
+        // Blank is provided-but-unset (empty-is-unset contract), same as
+        // omitting the field. Bootstrap checks existing rows before reaching
+        // this point so concurrent ensure calls never fail on their shared
+        // deterministic username.
+        username = await this.generateUniqueUsername(data.name, tx);
+        logger.info(`[Characters] Generated username: @${username} for "${data.name}"`);
+      } else if (await userCharactersRepository.usernameExists(username, tx)) {
+        throw ValidationError("Username is already taken");
+      }
+
+      const character = await userCharactersRepository.create(
+        {
+          ...data,
+          source: "cloud",
+          username,
+        },
+        tx,
+      );
+      const mirrorCreated = await agentsRepository.create(mirroredAgent(character), tx);
+      if (!mirrorCreated) {
+        throw new ElizaError("Character runtime mirror already exists", {
+          code: "CHARACTER_AGENT_MIRROR_CONFLICT",
+          context: {
+            organizationId: data.organization_id,
+            characterId: character.id,
+          },
+          severity: "fatal",
+        });
+      }
+
+      return {
+        character,
+        created: true,
+        ...(quota ? { quota } : {}),
+      };
     });
 
-    // Also create the agent in the elizaOS agents table
-    const agent: Partial<Agent> = {
-      id: character.id as `${string}-${string}-${string}-${string}-${string}`,
-      name: character.name,
-      username: character.username ?? undefined,
-      bio: character.bio as string[] | undefined,
-      system: character.system ?? undefined,
-      enabled: true,
-      settings: character.settings as Record<
-        string,
-        string | number | boolean | Record<string, string | number | boolean>
-      >,
-    };
+    if (policy.mode === "trusted") {
+      logger.info("[Characters] Trusted character quota policy used", {
+        caller: policy.caller,
+        organizationId: data.organization_id,
+        characterId: result.character.id,
+      });
+    }
+    if (result.created) {
+      await cache.del(CacheKeys.org.dashboard(data.organization_id));
+    }
 
-    await agentsRepository.create(agent);
-
-    // Invalidate dashboard cache
-    await cache.del(CacheKeys.org.dashboard(data.organization_id));
-
-    return character;
+    return result;
   }
 
   async update(id: string, data: Partial<NewUserCharacter>): Promise<UserCharacter | undefined> {

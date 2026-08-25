@@ -8,6 +8,7 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_SERVICE_NAME } from "../types";
@@ -50,11 +51,8 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
 }
 
 const MCP_ACTION_CONTEXTS = ["connectors", "automation", "documents"];
-const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
-
-function truncateMcpToolOutput(output: string): string {
-  if (output.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return output;
-  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+export function normalizeMcpToolOutput(output: string): string {
+  return toWellFormedUnicode(output);
 }
 
 function hasSelectedContext(state: State | undefined): boolean {
@@ -194,24 +192,24 @@ export function createMcpToolAction(
         runtime,
         String(message.entityId ?? ""),
       );
-      const boundedToolOutput = truncateMcpToolOutput(toolOutput);
+      const normalizedToolOutput = normalizeMcpToolOutput(toolOutput);
 
       if (result.isError) {
         logger.error(
-          { serverName, toolName: tool.name, output: boundedToolOutput },
+          { serverName, toolName: tool.name, output: normalizedToolOutput },
           "[MCP] Tool error",
         );
         return {
           success: false,
-          error: boundedToolOutput || "Tool execution failed",
-          text: boundedToolOutput,
+          error: normalizedToolOutput || "Tool execution failed",
+          text: normalizedToolOutput,
           data: {
             actionName,
             serverName,
             toolName: tool.name,
             toolArguments: params,
             isError: true,
-            outputTruncated: boundedToolOutput !== toolOutput,
+            outputTruncated: false,
           },
         };
       }
@@ -225,22 +223,22 @@ export function createMcpToolAction(
 
       return {
         success: true,
-        text: boundedToolOutput,
+        text: normalizedToolOutput,
         values: {
           success: true,
           serverName,
           toolName: tool.name,
           hasAttachments,
-          output: boundedToolOutput,
-          outputTruncated: boundedToolOutput !== toolOutput,
+          output: normalizedToolOutput,
+          outputTruncated: false,
         },
         data: {
           actionName,
           serverName,
           toolName: tool.name,
           toolArguments: params,
-          output: boundedToolOutput,
-          outputTruncated: boundedToolOutput !== toolOutput,
+          output: normalizedToolOutput,
+          outputTruncated: false,
           attachments: attachments.length > 0 ? attachments : undefined,
         },
       };

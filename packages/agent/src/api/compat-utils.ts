@@ -7,6 +7,7 @@
  * whichever conversation identifier the client supplied. No I/O — the compat
  * route modules call these to normalize inbound bodies.
  */
+import { createHash } from "node:crypto";
 import { asRecord } from "@elizaos/shared";
 
 function readString(value: unknown): string {
@@ -157,4 +158,30 @@ export function resolveCompatRoomKey(
   }
 
   return fallback;
+}
+
+/**
+ * Maximum client-supplied conversation-key length embedded verbatim in the
+ * room-UUID derivation.
+ */
+export const COMPAT_ROOM_KEY_MAX_LENGTH = 120;
+
+/**
+ * Scope a resolved conversation key for the room-UUID derivation without
+ * aliasing distinct conversations onto one room.
+ *
+ * The derivation hashes whatever string it receives, so truncating a longer
+ * key to {@link COMPAT_ROOM_KEY_MAX_LENGTH} made any two identifiers sharing a
+ * 120-char prefix — JWT-style ids, path-like conversation keys — derive the
+ * same roomId and silently share one conversation's memory. Keys within the
+ * limit keep their exact historical derivation; longer keys are prefixed with
+ * the complete SHA-256 digest of the full key, giving the room derivation a
+ * collision-resistant scope. Rooms created before this fix from a >120-char
+ * key are not reachable under the new derivation by design: they were already
+ * merged with any prefix-sharing sibling.
+ */
+export function scopeCompatRoomKey(rawKey: string): string {
+  if (rawKey.length <= COMPAT_ROOM_KEY_MAX_LENGTH) return rawKey;
+  const digest = createHash("sha256").update(rawKey, "utf8").digest("hex");
+  return `sha256:${digest}`;
 }

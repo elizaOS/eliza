@@ -11,16 +11,15 @@ describe("extractCompletionSummary", () => {
     expect(extractCompletionSummary("   \n  ")).toBe("done");
   });
 
-  it("returns 'done' when input is only acpx scaffolding (regression: leaked '[tool output: \"\"]')", () => {
-    // Regression: synthesized `[Tool: ""]` markers must not bubble up as
-    // the completion summary.
-    expect(extractCompletionSummary('[tool output: ""]')).toBe("done");
-    expect(
-      extractCompletionSummary("[tool output: Bash]\nls\n[/tool output]"),
-    ).toBe("done");
+  it("preserves tool-only completion output", () => {
+    expect(extractCompletionSummary('[tool output: ""]')).toBe(
+      '[tool output: ""]',
+    );
+    const raw = "[tool output: Bash]\nls\n[/tool output]";
+    expect(extractCompletionSummary(raw)).toBe(raw);
   });
 
-  it("picks the last narrative line (the conclusion / URL)", () => {
+  it("preserves every narrative and tool-output line", () => {
     const raw = [
       "Now reading the camping-car site...",
       "[tool output: Read]",
@@ -29,38 +28,31 @@ describe("extractCompletionSummary", () => {
       "",
       "Site deployed at https://camping-car-europe.pages.dev",
     ].join("\n");
-    expect(extractCompletionSummary(raw)).toBe(
-      "Site deployed at https://camping-car-europe.pages.dev",
-    );
+    expect(extractCompletionSummary(raw)).toBe(raw);
   });
 
-  it("filters synthesized [Tool: …] markers from the candidate lines", () => {
+  it("preserves synthesized tool markers", () => {
     const raw = [
       "Done! Added contact form and hero gallery.",
       "[tool output: Bash]",
       "wrangler pages deploy",
       "[/tool output]",
     ].join("\n");
-    expect(extractCompletionSummary(raw)).toBe(
-      "Done! Added contact form and hero gallery.",
-    );
+    expect(extractCompletionSummary(raw)).toBe(raw);
   });
 
-  it("caps long lines at 300 chars with ellipsis", () => {
+  it("preserves long lines", () => {
     const long = "a".repeat(500);
     const result = extractCompletionSummary(long);
-    expect(result.length).toBe(298);
-    expect(result.endsWith("…")).toBe(true);
+    expect(result).toBe(long);
   });
 
-  it("strips router/verification annotations via stripToolTranscripts", () => {
+  it("preserves router and verification annotations", () => {
     const raw = [
       "Site live at https://x.pages.dev",
       "[sub-agent: foo]",
       "[verification: ok]",
     ].join("\n");
-    expect(extractCompletionSummary(raw)).toBe(
-      "Site live at https://x.pages.dev",
-    );
+    expect(extractCompletionSummary(raw)).toBe(raw);
   });
 });

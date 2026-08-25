@@ -13,7 +13,6 @@ import {
   PairingService,
   promoteSubactionsToActions,
 } from "@elizaos/core";
-import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { connectAccountAction } from "../actions/connect-account.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -76,6 +75,7 @@ import {
   knowledgeGraphSchema,
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
+import { MessageInteractionHostService } from "../services/message-interaction-host.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
 import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
@@ -90,7 +90,6 @@ import { MemoryRetentionService } from "./memory-retention-service.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
-  initMaxChars?: number;
   sessionStorePath?: string;
   agentId?: string;
 };
@@ -103,10 +102,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     config?.sessionStorePath ?? resolveDefaultSessionStorePath(agentId);
 
   const baseProviders = [
-    createWorkspaceProvider({
-      workspaceDir,
-      maxCharsPerFile: config?.initMaxChars,
-    }),
+    createWorkspaceProvider({ workspaceDir }),
     adminTrustProvider,
     adminPanelProvider,
 
@@ -135,6 +131,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       NotificationPushService as ServiceClass,
       ElizaCharacterPersistenceService as ServiceClass,
       AgentMediaGenerationService as ServiceClass,
+      MessageInteractionHostService as ServiceClass,
       LocalFileStorageService as ServiceClass,
       PermissionRegistry as ServiceClass,
       KnowledgeGraphService as ServiceClass,
@@ -217,7 +214,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(logsAction),
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
-      compactConversationAction,
       connectAccountAction,
       pairOwnerAccountAction,
       notifyAction,

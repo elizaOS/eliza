@@ -5,6 +5,8 @@
  * proxy them without treating them as canonical product origins.
  */
 
+import { trimEndCharacters } from "../utils/string-boundaries.js";
+
 export type ElizaCloudEnvironment = "production" | "staging";
 
 export interface ElizaDomainContract {
@@ -227,7 +229,7 @@ export function canonicalCloudPathForLegacyDashboard(
   }
 
   const normalizedPathname =
-    pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+    pathname.length > 1 ? trimEndCharacters(pathname, "/") : pathname;
   const staticTarget = LEGACY_DASHBOARD_STATIC_TARGETS[normalizedPathname];
   if (staticTarget) return staticTarget;
 

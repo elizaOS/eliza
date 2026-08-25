@@ -109,6 +109,11 @@ const EXPECTED_PREFS_LEDGER = [
 export default scenario({
   id: "deterministic-settings-voice-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic SETTINGS voice-section payload contract",
   domain: "scenario-runner",
   tags: [

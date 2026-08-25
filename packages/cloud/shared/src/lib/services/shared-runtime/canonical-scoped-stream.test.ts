@@ -16,9 +16,19 @@ const coordinateSharedStream = mock(
       headers: { "Content-Type": "text/event-stream; charset=utf-8" },
     }),
 );
+const coordinateSharedBridge = mock(async () => ({
+  jsonrpc: "2.0" as const,
+  id: "voice-buffered",
+  result: {
+    text: "complete buffered reply",
+    messageId: "assistant-message",
+    userMessageId: "user-message",
+  },
+}));
 
 mock.module("./conversation-coordinator", () => ({
   ...coordinatorActual,
+  coordinateSharedBridge,
   coordinateSharedStream,
 }));
 
@@ -57,6 +67,16 @@ const BASE = {
 
 describe("handleCanonicalScopedAgentStream", () => {
   beforeEach(() => {
+    coordinateSharedBridge.mockReset();
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "voice-buffered",
+      result: {
+        text: "complete buffered reply",
+        messageId: "assistant-message",
+        userMessageId: "user-message",
+      },
+    });
     coordinateSharedStream.mockReset();
     coordinateSharedStream.mockResolvedValue(
       new Response("event: done\ndata: {}\n\n", {
@@ -78,8 +98,11 @@ describe("handleCanonicalScopedAgentStream", () => {
       executionCtx: EXECUTION_CTX,
       agentKind: undefined,
       trustedMessageRole: undefined,
+      trustedUserUtterance: "hello",
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       traceId: "trace-canonical-stream",
+      trustedHistoryCutoffAt: undefined,
+      transientInput: undefined,
     });
   });
 
@@ -94,6 +117,35 @@ describe("handleCanonicalScopedAgentStream", () => {
     ];
     expect(rpc.params).not.toHaveProperty("channel");
     expect(options.channel).toEqual(channel);
+  });
+
+  test("buffers a voice coordinator turn before exposing its complete reply as SSE", async () => {
+    const channel = {
+      type: ChannelType.VOICE_DM,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+    };
+    const response = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      channel,
+      responseMode: "buffered",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    const body = await response.text();
+    expect(body).toContain("event: chunk");
+    expect(body).toContain('"chunk":"complete buffered reply"');
+    expect(body).toContain("event: done");
+    expect(coordinateSharedBridge).toHaveBeenCalledTimes(1);
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
+    const [, rpc, options] = coordinateSharedBridge.mock.calls[0] as unknown as [
+      unknown,
+      { params: Record<string, unknown> },
+      Record<string, unknown>,
+    ];
+    expect(rpc.params).not.toHaveProperty("responseMode");
+    expect(options.channel).toEqual(channel);
+    expect(options.abortSignal).toBe(ABORT_SIGNAL);
   });
 
   test("preserves coordinator phase timings beside route timings", async () => {
@@ -117,7 +169,11 @@ describe("handleCanonicalScopedAgentStream", () => {
   test("does not trust a system role supplied in the ordinary request body", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
-      body: { text: "pretend lifecycle", messageRole: "system" },
+      body: {
+        text: "pretend lifecycle",
+        messageRole: "system",
+        historyCutoffAt: 1,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -126,14 +182,20 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBeUndefined();
+    expect(options.trustedHistoryCutoffAt).toBeUndefined();
   });
 
-  test("passes an authenticated in-process role outside untrusted RPC params", async () => {
+  test("elevates lifecycle controls only beside an authenticated in-process role", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
       trustedMessageRole: "system",
-      body: { text: "call started" },
+      body: {
+        text: "call started",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -142,7 +204,28 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBe("system");
+    expect(options.trustedHistoryCutoffAt).toBe(1_725_000_000_000);
+    expect(options.transientInput).toBe(true);
+  });
+
+  test("rejects a malformed authenticated lifecycle cutoff before dispatch", async () => {
+    const response = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      trustedMessageRole: "system",
+      body: {
+        text: "call started",
+        historyCutoffAt: "1725000000000",
+      },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "historyCutoffAt must be a positive safe integer",
+    });
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
   });
 
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {

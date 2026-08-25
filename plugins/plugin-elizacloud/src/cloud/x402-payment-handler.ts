@@ -134,22 +134,31 @@ export async function parseX402Response(
   if (headerValue?.toLowerCase().startsWith("x402")) {
     const jsonPart = headerValue.slice(4).trim();
     if (jsonPart.length > 0) {
-      const parsed = JSON.parse(jsonPart) as RawX402Body | RawRequirement[];
-      const requirements = Array.isArray(parsed)
-        ? parseRequirementsArray(parsed)
-        : parseRequirementsArray(parsed.paymentRequirements ?? parsed.accepts);
-      if (requirements.length > 0) return requirements;
+      try {
+        const parsed = JSON.parse(jsonPart) as RawX402Body | RawRequirement[];
+        const requirements = Array.isArray(parsed)
+          ? parseRequirementsArray(parsed)
+          : parseRequirementsArray(parsed.paymentRequirements ?? parsed.accepts);
+        if (requirements.length > 0) return requirements;
+      } catch {
+        // error-policy:J4 Non-JSON www-authenticate falls through to body parse
+      }
     }
   }
   // Fall back to body parse. Clone so the caller can still read it.
   const cloned = response.clone();
   const text = await cloned.text();
   if (text.length === 0) return null;
-  const body = JSON.parse(text) as RawX402Body;
-  const requirements = parseRequirementsArray(
-    body.paymentRequirements ?? body.accepts,
-  );
-  return requirements.length > 0 ? requirements : null;
+  try {
+    const body = JSON.parse(text) as RawX402Body;
+    const requirements = parseRequirementsArray(
+      body.paymentRequirements ?? body.accepts,
+    );
+    return requirements.length > 0 ? requirements : null;
+  } catch {
+    // error-policy:J4 Plaintext or HTML 402 responses yield null rather than throwing SyntaxError
+    return null;
+  }
 }
 
 /**

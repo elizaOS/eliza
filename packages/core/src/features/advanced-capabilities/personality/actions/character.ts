@@ -38,6 +38,10 @@ import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
 import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../../utils/well-formed.ts";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
@@ -80,7 +84,6 @@ export const CHARACTER_OP_ACCESS: Record<
 };
 
 const IDENTITY_NAME_MAX_LENGTH = 120;
-const IDENTITY_SYSTEM_MAX_LENGTH = 100_000;
 
 const SAVEABLE_CHARACTER_FIELDS: ReadonlyArray<keyof Character> = [
 	"name",
@@ -349,11 +352,11 @@ export const characterAction: Action = {
 	] as ActionExample[][],
 };
 
-function trimToString(value: unknown, max: number): string | undefined {
+export function trimToString(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (!trimmed) return undefined;
-	return trimmed.slice(0, max);
+	return toWellFormedUnicode(trimmed);
 }
 
 function readCharacterField(
@@ -370,8 +373,8 @@ async function runUpdateIdentity(
 	params: CharacterParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const name = trimToString(params.name, IDENTITY_NAME_MAX_LENGTH);
-	const systemPrompt = trimToString(params.system, IDENTITY_SYSTEM_MAX_LENGTH);
+	const name = trimToString(params.name);
+	const systemPrompt = trimToString(params.system);
 
 	if (!name && !systemPrompt) {
 		const text =
@@ -380,6 +383,14 @@ async function runUpdateIdentity(
 			text,
 			success: false,
 			values: { error: "MISSING_PARAMETERS" },
+			data: { action: "CHARACTER", op: "update_identity" },
+		};
+	}
+	if (name && name.length > IDENTITY_NAME_MAX_LENGTH) {
+		return {
+			text: `Character name cannot exceed ${IDENTITY_NAME_MAX_LENGTH} characters.`,
+			success: false,
+			values: { error: "NAME_TOO_LONG" },
 			data: { action: "CHARACTER", op: "update_identity" },
 		};
 	}
@@ -615,7 +626,10 @@ async function runModify(
 				{
 					scope: effectiveScope,
 					requestSource: requestResolution.requestSource,
-					messageText: messageText.substring(0, 100),
+					messageText: truncateWellFormed(
+						toWellFormedUnicode(messageText),
+						100,
+					),
 				},
 				"Evaluating CHARACTER.modify with LLM",
 			);
@@ -682,7 +696,10 @@ async function runModify(
 				// stays in the result for the evaluator to voice, not dumped in chat.
 				logger.warn(
 					{
-						messageText: messageText.substring(0, 100),
+						messageText: truncateWellFormed(
+							toWellFormedUnicode(messageText),
+							100,
+						),
 						concerns: safety.concerns,
 						reasoning: safety.reasoning,
 					},
@@ -1080,7 +1097,6 @@ Example:
 			const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 				prompt: intentPrompt,
 				temperature: 0.2,
-				maxTokens: 150,
 			});
 			const raw = parseStructuredRecord(response);
 			if (!raw) {
@@ -1124,12 +1140,10 @@ Example:
 async function buildRecentConversationContext(
 	runtime: IAgentRuntime,
 	message: Memory,
-	maxMessages = 6,
 ): Promise<string> {
 	try {
 		const recentMessages = await runtime.getMemories({
 			roomId: message.roomId,
-			count: maxMessages,
 			unique: true,
 			tableName: "messages",
 		});
@@ -1139,7 +1153,6 @@ async function buildRecentConversationContext(
 					typeof entry.content.text === "string" &&
 					entry.content.text.trim().length > 0,
 			)
-			.slice(-maxMessages)
 			.map((entry) => {
 				const speaker =
 					entry.entityId === runtime.agentId
@@ -1237,7 +1250,6 @@ style_post: array of post style items`;
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: parsePrompt,
 			temperature: 0.2,
-			maxTokens: 500,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw || normalizeBoolean(raw.apply) === false) return null;
@@ -1303,7 +1315,6 @@ acceptable_style_post: array of post style items`;
 		const response = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: safetyPrompt,
 			temperature: 0.2,
-			maxTokens: 800,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw) {
@@ -1425,7 +1436,6 @@ Set action: none only if the request truly does not specify any interaction pref
 		const response = await runtime.useModel(ModelType.TEXT_SMALL, {
 			prompt,
 			temperature: 0.2,
-			maxTokens: 200,
 		});
 		const raw = parseStructuredRecord(response);
 		if (!raw) return null;
@@ -1585,7 +1595,7 @@ async function handleUserPreference(
 					type: MemoryType.CUSTOM,
 					category: preference.category,
 					timestamp: Date.now(),
-					originalRequest: messageText.substring(0, 200),
+					originalRequest: toWellFormedUnicode(messageText),
 				},
 			},
 			USER_PREFS_TABLE,

@@ -1,15 +1,12 @@
 /**
  * `emitModelUsageEvent`: normalizes token-usage counts from the three shapes the
  * plugin encounters (local `TokenUsage`, AI SDK usage, raw OpenAI API usage) into
- * one payload and emits `EventType.MODEL_USED` for telemetry, truncating the
- * prompt to keep event payloads small.
+ * one payload and emits `EventType.MODEL_USED` with the complete prompt.
  */
 import type { IAgentRuntime, ModelEventPayload, ModelTypeName } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 import type { TokenUsage } from "../types";
 import { getUsageProvider } from "./config";
-
-const MAX_PROMPT_LENGTH = 200;
 
 /**
  * Transient-retry totals for one model call. Accumulated by the retry loops in
@@ -57,13 +54,6 @@ interface OpenAIAPIUsage {
 }
 
 type ModelUsage = TokenUsage | AISDKUsage | OpenAIAPIUsage;
-
-function truncatePrompt(prompt: string): string {
-  if (prompt.length <= MAX_PROMPT_LENGTH) {
-    return prompt;
-  }
-  return `${prompt.slice(0, MAX_PROMPT_LENGTH - 1)}…`;
-}
 
 function normalizeUsage(usage: ModelUsage): TokenUsage {
   if ("promptTokens" in usage) {
@@ -126,7 +116,7 @@ export function emitModelUsageEvent(
     model,
     modelName: model,
     modelLabel: String(type),
-    prompt: truncatePrompt(prompt),
+    prompt,
     ...(retry
       ? {
           retryCount: retry.retryCount,

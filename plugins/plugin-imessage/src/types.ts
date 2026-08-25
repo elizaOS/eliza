@@ -36,8 +36,6 @@ export type IMessageChatType = "direct" | "group";
  * Configuration settings for the iMessage plugin
  */
 export interface IMessageSettings {
-  /** Path to iMessage CLI tool */
-  cliPath: string;
   /** Path to iMessage database */
   dbPath?: string;
   /** Polling interval in ms */
@@ -202,13 +200,6 @@ export class IMessageNotSupportedError extends IMessagePluginError {
   }
 }
 
-export class IMessageCliError extends IMessagePluginError {
-  constructor(message: string, exitCode?: number) {
-    super(message, "CLI_ERROR", exitCode !== undefined ? { exitCode } : undefined);
-    this.name = "IMessageCliError";
-  }
-}
-
 // Utility functions
 
 /**
@@ -225,7 +216,16 @@ export function isPhoneNumber(input: string): boolean {
  * Check if a string looks like an email
  */
 export function isEmail(input: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+  const at = input.indexOf("@");
+  if (at <= 0 || at !== input.lastIndexOf("@")) return false;
+  const dot = input.indexOf(".", at + 2);
+  if (dot < 0 || dot === input.length - 1) return false;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index];
+    if (character === "@") continue;
+    if (character?.trim() === "") return false;
+  }
+  return true;
 }
 
 /**

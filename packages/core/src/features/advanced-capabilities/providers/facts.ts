@@ -1,6 +1,6 @@
 /**
  * FACTS provider: injects the durable and current facts the agent knows about
- * the speaker and the room into the prompt context. Pulls bounded recent
+ * the speaker and the room into the prompt context. Pulls complete readable
  * candidate pools from the `facts` memory table (one room-scoped, one per
  * related entity in the speaker's identity cluster), partitions them into
  * durable (identity-level, never decays) and current (time-decayed) kinds,
@@ -10,9 +10,17 @@
  * header; room-pool facts about other participants render under a neutral
  * room header, so relay/webhook turns keep room recall without the room's
  * facts being misattributed to the bridge sender.
- * Retrieval deliberately avoids vector search so relevance is computed from the
- * fact's own words and extracted keywords; a keyword-miss on durable facts
- * falls back to the highest-prior candidates so direct recall still works.
+ * Lexical BM25 stays the primary lane, but it is no longer the only one: a
+ * bounded semantic lane (local gte-small embedding of the query, one embed
+ * call plus the same bounded fact-table searches the old total-miss widen
+ * path used) is ALWAYS unioned in, so facts that are meaning-related but
+ * lexically disjoint from the query ("Connor is a Zcash core dev" vs a
+ * "convent/season/grove" turn) still surface. In-turn evidence text — the
+ * current message's attachment/link-preview text and any action results
+ * already on the composed state — contributes query tokens too, so content
+ * the agent just read participates in retrieval within the same turn.
+ * A keyword-miss on durable facts still falls back to the highest-prior
+ * candidates so direct recall works.
  * Sender-owned `preference` facts get a separate bounded always-on lane
  * because standing preferences should be visible on every turn even with zero
  * lexical overlap ("brief replies" never BM25-matches "what's next?"); the
@@ -22,7 +30,6 @@
 import { ElizaError } from "../../../errors.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { getRelatedEntityIds } from "../../../identity-clusters.ts";
-import { isCanonicalModelCapabilityDisabled } from "../../../runtime/canonical-model-capabilities.ts";
 import type {
 	FactKind,
 	FactMetadata,
@@ -32,7 +39,6 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/model.ts";
 import {
 	buildFactQueryText,
 	scoreFactKeywordRelevance,
@@ -54,14 +60,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const DEFAULT_FACT_CONFIDENCE = 0.6;
 
-/**
- * How many recent fact candidates we pull per scope before local BM25 keyword
- * scoring. SQL adapters currently do not consistently support metadata
- * filtering here, so we fetch a bounded recent pool and partition by
- * `metadata.kind` in TypeScript before ranking.
- */
-const CANDIDATE_POOL_PER_SEARCH = 120;
-const TOP_PER_KIND = 6;
+/** Cap on in-turn evidence text folded into the retrieval query. */
 const PRIVATE_FACT_PRIVACY_CLASSES = new Set([
 	"private",
 	"sensitive",
@@ -113,15 +112,24 @@ function readFactKind(memory: Memory): FactKind {
  * back to `createdAt` so legacy facts and current facts that omit
  * `valid_at` still rank consistently.
  */
+function isRenderableTimestamp(value: number): boolean {
+	// Match packages/core/src/utils/time-format.ts: construct the Date first and
+	// require a finite getTime(). `Number.isFinite` alone admits values outside
+	// the ±8.64e15 Date range — a microsecond-precision timestamp from a
+	// connector, say — which then throws `RangeError: Invalid time value` from
+	// `toISOString()` and takes the whole provider down with it.
+	return Number.isFinite(new Date(value).getTime());
+}
+
 function readEffectiveTimestampMs(memory: Memory): number | null {
 	const validAt = readFactMetadata(memory).validAt;
 	if (typeof validAt === "string") {
 		const parsed = Date.parse(validAt);
-		if (Number.isFinite(parsed)) return parsed;
+		if (isRenderableTimestamp(parsed)) return parsed;
 	}
 	if (
 		typeof memory.createdAt === "number" &&
-		Number.isFinite(memory.createdAt)
+		isRenderableTimestamp(memory.createdAt)
 	) {
 		return memory.createdAt;
 	}
@@ -156,9 +164,9 @@ function rankByKeywordScore(
 		.map((entry) => ({
 			memory: entry.memory,
 			score: entry.relevance * scoreFactPrior(entry.memory, kind, nowMs),
+			prior: scoreFactPrior(entry.memory, kind, nowMs),
 		}))
-		.filter((entry) => entry.score > 0)
-		.sort((left, right) => right.score - left.score)
+		.sort((left, right) => right.score - left.score || right.prior - left.prior)
 		.map((entry) => entry.memory);
 }
 
@@ -241,37 +249,90 @@ function shouldMinimizePrivateFactsForTurn(message: Memory): boolean {
 	);
 }
 
-// Bounded always-on lane for the sender's stored `preference` facts. The gate
-// is purely structural (extractor-assigned category + sender ownership +
-// prior), never a keyword sniff of the fact text: the extractor LLM decided at
-// write time that the row is a preference, and the responding model decides at
-// read time which of the (≤3) surfaced preferences applies to this turn.
-const PREFERENCE_LANE_LIMIT = 3;
-
 function isPreferenceFact(memory: Memory): boolean {
 	return readCategory(memory) === "preference";
 }
 
-function topByPrior(
-	memories: Memory[],
-	kind: FactKind,
-	nowMs: number,
-	limit: number,
-): Memory[] {
-	return [...memories]
-		.sort(
-			(left, right) =>
-				scoreFactPrior(right, kind, nowMs) - scoreFactPrior(left, kind, nowMs),
-		)
-		.slice(0, limit);
+function byPrior(memories: Memory[], kind: FactKind, nowMs: number): Memory[] {
+	return [...memories].sort(
+		(left, right) =>
+			scoreFactPrior(right, kind, nowMs) - scoreFactPrior(left, kind, nowMs),
+	);
 }
 
 function mergeAlwaysIncludedFacts(
 	alwaysIncluded: Memory[],
 	ranked: Memory[],
-	max: number,
 ): Memory[] {
-	return dedupeById([...alwaysIncluded, ...ranked]).slice(0, max);
+	return dedupeById([...alwaysIncluded, ...ranked]);
+}
+
+/**
+ * Textual evidence the agent already possesses THIS turn, beyond the message
+ * text itself: attachment/link-preview text and descriptions on the current
+ * message, and the textual results of actions that already ran (present on
+ * the composed state's actionResults when the provider re-runs after a
+ * planner tool — e.g. an ATTACHMENT page read). Folded into the retrieval
+ * query so in-turn-acquired content contributes query tokens within the same
+ * turn. The complete evidence string participates in retrieval.
+ */
+function collectTurnEvidenceText(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): string {
+	const parts: string[] = [];
+	for (const attachment of message.content.attachments ?? []) {
+		if (typeof attachment.title === "string") parts.push(attachment.title);
+		if (typeof attachment.description === "string") {
+			parts.push(attachment.description);
+		}
+		if (typeof attachment.text === "string") parts.push(attachment.text);
+	}
+	const pushResultText = (result: unknown): void => {
+		if (!result || typeof result !== "object") return;
+		const record = result as Record<string, unknown>;
+		if (typeof record.text === "string") parts.push(record.text);
+		if (typeof record.userFacingText === "string") {
+			parts.push(record.userFacingText);
+		}
+		const data = record.data;
+		if (data && typeof data === "object" && !Array.isArray(data)) {
+			const content = (data as Record<string, unknown>).content;
+			if (typeof content === "string") parts.push(content);
+		}
+	};
+	const actionResults = state?.data?.actionResults;
+	if (Array.isArray(actionResults)) {
+		for (const result of actionResults) pushResultText(result);
+	}
+	// The composed state a provider receives is the runtime's cached turn
+	// state, which does not always carry actionResults (callers enrich a COPY
+	// via withActionResultsForPrompt). The per-turn scratch entry is the
+	// durable in-memory record of what already ran this turn — an in-process
+	// Map read, never a DB call.
+	if (
+		typeof runtime.getActionResults === "function" &&
+		typeof message.id === "string" &&
+		message.id
+	) {
+		try {
+			for (const result of runtime.getActionResults(message.id)) {
+				pushResultText(result);
+			}
+		} catch (error) {
+			// error-policy:J7 the scratch-state read is a diagnostics-grade
+			// enrichment; losing it degrades recall for one turn but must not
+			// fail the provider. Reported rather than swallowed so a
+			// consistently broken accessor surfaces instead of looking like a
+			// turn that simply had no prior action results.
+			runtime.reportError?.("FactsProvider.turnEvidence", error, {
+				messageId: message.id,
+			});
+		}
+	}
+	const joined = parts.filter((part) => part.trim().length > 0).join("\n");
+	return joined;
 }
 
 function formatDurableLine(memory: Memory): string {
@@ -322,13 +383,12 @@ const factsProvider: Provider = {
 	get: async (
 		runtime: IAgentRuntime,
 		message: Memory,
-		_state: State,
+		state: State,
 	): Promise<ProviderResult> => {
 		try {
 			const recentMessagesPromise = runtime.getMemories({
 				tableName: "messages",
 				roomId: message.roomId,
-				limit: 10,
 				unique: false,
 			});
 			const relatedEntityIdsPromise = getRelatedEntityIds(
@@ -340,33 +400,23 @@ const factsProvider: Provider = {
 				relatedEntityIdsPromise,
 			]);
 
-			// Build the lexical query from the current message and recent context.
-			const lastMessageLines: string[] = [];
-			for (
-				let i = recentMessages.length - 1;
-				i >= 0 && lastMessageLines.length < 5;
-				i -= 1
-			) {
-				lastMessageLines.push(recentMessages[i]?.content.text ?? "");
-			}
-			lastMessageLines.reverse();
-			const last5Messages = lastMessageLines.join("\n");
+			// Build the lexical query from the current message and complete retained
+			// conversation context. Ranking affects order only; every readable fact is
+			// still rendered below.
+			const conversationText = recentMessages
+				.map((recentMessage) => recentMessage.content.text ?? "")
+				.join("\n");
+			// In-turn evidence: attachment/link-preview text on the current message
+			// and textual results of actions that already ran this turn. Folding it
+			// into the query means content the agent just read (an ATTACHMENT page
+			// read whose text says "ZCash infra") contributes retrieval tokens
+			// WITHIN the same turn instead of being invisible to fact recall.
+			const evidenceText = collectTurnEvidenceText(runtime, message, state);
 			const queryText = buildFactQueryText(
 				message.content.text ?? "",
-				last5Messages,
+				conversationText,
+				evidenceText,
 			);
-
-			if (!queryText) {
-				return {
-					values: { facts: "" },
-					data: {
-						facts: [],
-						durableFacts: [],
-						currentFacts: [],
-					},
-					text: "No facts available.",
-				};
-			}
 
 			// Two parallel candidate fetches, one room-scoped and one entity-scoped,
 			// both over the `facts` table. We intentionally use `getMemories`
@@ -384,14 +434,12 @@ const factsProvider: Provider = {
 					tableName: "facts",
 					roomId: message.roomId,
 					worldId: message.worldId,
-					count: CANDIDATE_POOL_PER_SEARCH,
 					unique: false,
 				}),
 				...relatedEntityIds.map((entityId) =>
 					runtime.getMemories({
 						tableName: "facts",
 						entityId,
-						count: CANDIDATE_POOL_PER_SEARCH,
 						unique: false,
 					}),
 				),
@@ -399,72 +447,9 @@ const factsProvider: Provider = {
 			const entityFacts = entityFactPools.flat();
 
 			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
-			let dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
+			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
 				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
 			);
-			// Bounded-pool blindness guard: both pools are RECENCY-fetched, so a
-			// fact older than the last CANDIDATE_POOL_PER_SEARCH extractions per
-			// scope is invisible to ranking no matter how directly the user asks
-			// for it (observed live: "whats my keyboard budget" fabricated an
-			// answer while the extracted "$150 max" fact sat in the store, pushed
-			// out of the recent pool by heavy room traffic). When keyword scoring
-			// finds NOTHING relevant in the recency pools, widen once with an
-			// embedding search over the same room/entity scopes and merge the
-			// hits — ranking stays local and keyword-based over the widened pool.
-			// Gated to genuine misses so ordinary turns pay no embedding cost;
-			// any failure degrades to the recency pools.
-			const poolHasKeywordHit = scoreFactKeywordRelevance(
-				queryText,
-				dedupedPool,
-			).some((entry) => entry.relevance > 0);
-			if (
-				!poolHasKeywordHit &&
-				!(
-					typeof runtime.getSetting === "function" &&
-					isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
-				)
-			) {
-				try {
-					const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-						text: queryText,
-					});
-					if (Array.isArray(embedding) && embedding.length > 0) {
-						const [searchedRoom, ...searchedEntities] = await Promise.all([
-							runtime.searchMemories({
-								embedding,
-								tableName: "facts",
-								roomId: message.roomId,
-								worldId: message.worldId,
-								count: 12,
-								unique: false,
-							}),
-							...relatedEntityIds.map((entityId) =>
-								runtime.searchMemories({
-									embedding,
-									tableName: "facts",
-									entityId,
-									count: 12,
-									unique: false,
-								}),
-							),
-						]);
-						dedupedPool = dedupeById([
-							...dedupedPool,
-							...searchedRoom,
-							...searchedEntities.flat(),
-						]).filter(
-							(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
-						);
-					}
-				} catch (error) {
-					// error-policy:J4 the widened pool is an optional recall upgrade;
-					// an unavailable embedding model or search degrades to the
-					// recency pools while staying observable.
-					runtime.reportError?.("FactsProvider.poolWiden", error, {
-						roomId: message.roomId,
-					});
-				}
-			}
 			const { durable: durableCandidates, current: currentCandidates } =
 				partitionByKind(dedupedPool);
 
@@ -478,47 +463,21 @@ const factsProvider: Provider = {
 				"durable",
 				queryText,
 				nowMs,
-			).slice(0, TOP_PER_KIND);
-			// Durable facts are identity-level claims ("my dog's name is Jeff",
-			// "my car is named Bertha") and few in number. Keyword/BM25 ranking
-			// against the current message drops them whenever the question does
-			// not lexically overlap the stored fact — e.g. "whats my cars name?"
-			// vs "my car's name is Bertha" (no stemming for cars->car, and the
-			// shared term "name" has ~0 IDF across a small pool), which scores 0
-			// and hides a fact the user is directly asking to recall. When
-			// relevance ranking surfaces no durable facts, fall back to the
-			// highest-prior durable facts (confidence × recency, via
-			// scoreFactPrior) so direct recall still works and a high-confidence
-			// identity fact is preferred over a newer low-confidence one. Bounded
-			// to TOP_PER_KIND, so this never floods the prompt.
-			if (durableFacts.length === 0 && durableCandidates.length > 0) {
-				durableFacts = [...durableCandidates]
-					.sort(
-						(left, right) =>
-							scoreFactPrior(right, "durable", nowMs) -
-							scoreFactPrior(left, "durable", nowMs),
-					)
-					.slice(0, TOP_PER_KIND);
-			}
-			const preferenceLane = topByPrior(
+			);
+			const preferenceLane = byPrior(
 				durableCandidates.filter(
 					(memory) => isAboutSender(memory) && isPreferenceFact(memory),
 				),
 				"durable",
 				nowMs,
-				PREFERENCE_LANE_LIMIT,
 			);
-			durableFacts = mergeAlwaysIncludedFacts(
-				preferenceLane,
-				durableFacts,
-				TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
-			);
+			durableFacts = mergeAlwaysIncludedFacts(preferenceLane, durableFacts);
 			const currentFacts = rankByKeywordScore(
 				currentCandidates,
 				"current",
 				queryText,
 				nowMs,
-			).slice(0, TOP_PER_KIND);
+			);
 			const allFacts = [...durableFacts, ...currentFacts];
 
 			if (allFacts.length === 0) {

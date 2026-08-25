@@ -4,6 +4,7 @@
  * the message text, and hands the chosen name back via `onSave`; the caller
  * owns the actual persistence.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
@@ -25,6 +26,13 @@ interface SaveCommandModalProps {
 }
 
 const NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+
+export function formatCommandPreview(text: string): string {
+  const wellFormed = toWellFormedUnicode(text);
+  return wellFormed.length > 120
+    ? `${truncateWellFormed(wellFormed, 117)}...`
+    : wellFormed;
+}
 
 export function SaveCommandModal({
   open,
@@ -75,7 +83,7 @@ export function SaveCommandModal({
     [handleSubmit],
   );
 
-  const preview = text.length > 120 ? `${text.slice(0, 120)}...` : text;
+  const preview = formatCommandPreview(text);
 
   return (
     <Dialog
@@ -118,12 +126,9 @@ export function SaveCommandModal({
               aria-labelledby={inputLabelId}
               aria-describedby={error ? inputErrorId : undefined}
               aria-invalid={error ? "true" : undefined}
-              className="flex-1 h-8 text-sm "
-              style={{
-                background: "var(--bg-hover)",
-                border: "1px solid var(--border)",
-                color: "var(--text)",
-              }}
+              variant="form"
+              density="compact"
+              className="flex-1"
             />
           </div>
           {error && (

@@ -17,6 +17,14 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
 import { EmptyState } from "../../../components/ui/empty-state";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -89,7 +97,7 @@ export function AppUsers({ appId }: AppUsersProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        <Loader2 className="size-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -101,7 +109,7 @@ export function AppUsers({ appId }: AppUsersProps) {
     return (
       <EmptyState
         variant="dashed"
-        icon={<UsersIcon className="h-6 w-6" />}
+        icon={<UsersIcon className="size-6" />}
         title={t("cloud.appUsers.emptyTitle", { defaultValue: "No users yet" })}
         description={t("cloud.appUsers.emptyDescription", {
           defaultValue: "Users will appear here once they start using your app",
@@ -116,7 +124,7 @@ export function AppUsers({ appId }: AppUsersProps) {
         <div className="space-y-4 rounded-sm border border-border bg-card p-4">
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
-              <UsersIcon className="h-4 w-4 text-accent" />
+              <UsersIcon className="size-4 text-accent" />
               {t("cloud.appUsers.authenticatedUsers", {
                 count: users.length,
                 defaultValue: "Authenticated Users ({{count}})",
@@ -131,7 +139,7 @@ export function AppUsers({ appId }: AppUsersProps) {
                 className="flex items-center justify-between rounded-sm bg-bg-accent p-3 transition-all hover:bg-bg-hover"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="size-8">
                     <AvatarFallback className="bg-accent text-accent-fg text-xs">
                       {appUser.user_id.substring(0, 2).toUpperCase()}
                     </AvatarFallback>
@@ -146,11 +154,11 @@ export function AppUsers({ appId }: AppUsersProps) {
                     </p>
                     <div className="flex items-center gap-3 text-xs text-muted">
                       <span className="flex items-center gap-1">
-                        <Activity className="h-3 w-3" />
+                        <Activity className="size-3" />
                         {appUser.total_requests}
                       </span>
                       <span className="flex items-center gap-1">
-                        <DollarSign className="h-3 w-3" />$
+                        <DollarSign className="size-3" />$
                         {parseFloat(appUser.total_credits_used).toFixed(2)}
                       </span>
                     </div>
@@ -166,7 +174,7 @@ export function AppUsers({ appId }: AppUsersProps) {
                         defaultValue: "First seen {{time}}",
                       })}
                     </p>
-                    <p className="mt-0.5 text-[10px] text-muted">
+                    <p className="mt-0.5 text-2xs text-muted">
                       {t("cloud.appUsers.lastSeen", {
                         time: formatDistanceToNow(
                           new Date(appUser.last_seen_at),
@@ -187,7 +195,7 @@ export function AppUsers({ appId }: AppUsersProps) {
         <div className="space-y-4 rounded-sm border border-border bg-card p-4">
           <div className="flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-sm font-medium text-txt">
-              <Globe className="h-4 w-4 text-accent" />
+              <Globe className="size-4 text-accent" />
               {t("cloud.appUsers.visitors", {
                 count: visitors.length,
                 defaultValue: "Visitors ({{count}})",
@@ -195,48 +203,47 @@ export function AppUsers({ appId }: AppUsersProps) {
             </h3>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => fetchData()}
               disabled={isLoading}
-              className="h-8 w-8 p-0"
             >
               <RefreshCw
-                className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+                className={`size-4 ${isLoading ? "animate-spin" : ""}`}
               />
             </Button>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-b border-border">
+                  <TableHead className="px-3 py-2 text-left text-xs font-medium text-muted">
                     {t("cloud.appUsers.ipAddress", {
                       defaultValue: "IP Address",
                     })}
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
+                  </TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs font-medium text-muted">
                     {t("cloud.appUsers.requests", {
                       defaultValue: "Requests",
                     })}
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted">
+                  </TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs font-medium text-muted">
                     {t("cloud.appUsers.lastSeenHeader", {
                       defaultValue: "Last Seen",
                     })}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {visitors.map((visitor, index) => (
-                  <tr
+                  <TableRow
                     key={visitor.ip}
                     className="border-b border-border/60 hover:bg-bg-hover"
                   >
-                    <td className="py-2 px-3">
+                    <TableCell className="py-2 px-3">
                       <div className="flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-bg-accent">
-                          <span className="text-[10px] text-muted">
+                        <div className="flex size-6 items-center justify-center rounded-full bg-bg-accent">
+                          <span className="text-2xs text-muted">
                             {index + 1}
                           </span>
                         </div>
@@ -244,19 +251,19 @@ export function AppUsers({ appId }: AppUsersProps) {
                           {visitor.ip}
                         </code>
                       </div>
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs font-medium text-txt">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right text-xs font-medium text-txt tabular-nums">
                       {visitor.requestCount.toLocaleString()}
-                    </td>
-                    <td className="px-3 py-2 text-right text-xs text-muted">
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right text-xs text-muted">
                       {formatDistanceToNow(new Date(visitor.lastSeen), {
                         addSuffix: true,
                       })}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

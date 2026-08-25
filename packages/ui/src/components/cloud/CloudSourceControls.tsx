@@ -28,26 +28,18 @@ export function CloudSourceModeToggle({
     <div className="inline-flex overflow-hidden rounded-sm bg-bg-muted ">
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
-        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
-          mode === "cloud"
-            ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
-            : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
-        }`}
+        variant="selection"
+        size="compact"
+        data-state={mode === "cloud" ? "on" : "off"}
         onClick={() => onChange("cloud")}
       >
         {resolvedCloudLabel}
       </Button>
       <Button
         type="button"
-        variant="ghost"
-        size="sm"
-        className={`rounded-sm px-3 py-1.5 text-xs font-semibold transition-colors ${
-          mode === "own-key"
-            ? "bg-accent text-accent-fg hover:bg-accent/90 hover:text-accent-fg"
-            : "bg-transparent text-muted hover:bg-bg-hover hover:text-txt"
-        }`}
+        variant="selection"
+        size="compact"
+        data-state={mode === "own-key" ? "on" : "off"}
         onClick={() => onChange("own-key")}
       >
         {ownKeyLabel}
@@ -76,10 +68,10 @@ export function CloudConnectionStatus({
       <ConnectionStatus
         state={connected ? "connected" : "disconnected"}
         label={connected ? resolvedConnectedText : disconnectedText}
-        className="border-0 bg-transparent px-0 py-0 shadow-none"
+        className="border-0 bg-transparent p-0 shadow-none"
       />
       <span
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border ${
+        className={`inline-flex size-6 items-center justify-center rounded-full border ${
           connected
             ? "border-ok/30 bg-ok-subtle text-ok"
             : "border-warn/35 bg-warn-subtle text-warn"
@@ -93,9 +85,9 @@ export function CloudConnectionStatus({
         }
       >
         {connected ? (
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+          <CheckCircle2 className="size-3.5" aria-hidden />
         ) : (
-          <WifiOff className="h-3.5 w-3.5" aria-hidden />
+          <WifiOff className="size-3.5" aria-hidden />
         )}
       </span>
     </div>

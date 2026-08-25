@@ -82,14 +82,6 @@ export const SCOPE_VALUES: readonly PersonalityScope[] = [
 	"global",
 ] as const;
 
-/** Maximum custom directives per slot. */
-export const MAX_CUSTOM_DIRECTIVES = 5;
-/** Maximum character length per custom directive. */
-export const MAX_DIRECTIVE_CHARS = 200;
-
-/** Hard token cap for terse verbosity responses (post-generation truncation). */
-export const MAX_TERSE_TOKENS = 60;
-
 /** Who authored a personality write. Explicit (user/admin) beats inference. */
 export type PersonalitySource = "user" | "admin" | "agent_inferred";
 

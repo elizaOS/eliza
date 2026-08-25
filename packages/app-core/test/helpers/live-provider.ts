@@ -450,16 +450,26 @@ function resolveConfiguredCliBackend(): CliBackend | null {
     : null;
 }
 
-function cliBackendCredentialsPath(backend: CliBackend): string {
+export function cliBackendStatePaths(
+  backend: CliBackend,
+  userHome = homedir(),
+): readonly string[] {
   return backend.startsWith("codex")
-    ? path.join(homedir(), ".codex", "auth.json")
-    : path.join(homedir(), ".claude", ".credentials.json");
+    ? [path.join(userHome, ".codex", "auth.json")]
+    : [
+        path.join(userHome, ".claude", ".credentials.json"),
+        path.join(userHome, ".claude.json"),
+      ];
 }
 
 function selectCliProvider(): LiveProviderConfig | null {
   const backend = resolveConfiguredCliBackend();
   if (!backend) return null;
-  if (!existsSync(cliBackendCredentialsPath(backend))) return null;
+  if (
+    !cliBackendStatePaths(backend).some((statePath) => existsSync(statePath))
+  ) {
+    return null;
+  }
 
   const isCodex = backend.startsWith("codex");
   const model = isCodex

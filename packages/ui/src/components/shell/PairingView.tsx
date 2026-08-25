@@ -4,6 +4,8 @@
  * busy) from the app store and submits the entered code via
  * `handlePairingSubmit`. Blocks the rest of the shell until pairing succeeds.
  */
+
+import { useEffect, useState } from "react";
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { startFreshFirstRunReload } from "../../platform";
@@ -22,12 +24,8 @@ import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
-/* The screen card keeps its surface scrim: it must carry its own contrast
-   over the wallpaper. Inner content is flat — no nested boxes. */
-const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95";
-
 export function PairingView() {
+  const [statusUnavailable, setStatusUnavailable] = useState(false);
   const {
     pairingEnabled,
     pairingExpiresAt,
@@ -49,6 +47,32 @@ export function PairingView() {
   }));
   const branding = useBranding();
   const pairingCode = pairingCodeInput.trim();
+
+  // PairingView can be selected by the independent /api/auth/me gate after
+  // startup has already advanced to a paintable shell. In that path the
+  // startup poll never populated the pairing slice, so its initial `false`
+  // must not be mistaken for an authoritative "pairing disabled" response.
+  // Hydrate from the public, secret-free auth-status contract whenever this
+  // surface mounts; this is also the source of truth for code expiry.
+  useEffect(() => {
+    let active = true;
+    void client
+      .getAuthStatus()
+      .then((status) => {
+        if (!active) return;
+        setStatusUnavailable(false);
+        setState("pairingEnabled", status.pairingEnabled === true);
+        setState("pairingExpiresAt", status.expiresAt);
+      })
+      .catch(() => {
+        // error-policy:J4 an auth-status diagnostic failure remains fail-closed
+        // and is shown as an explicit unavailable state.
+        if (active) setStatusUnavailable(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [setState]);
 
   function formatExpiry(timestamp: number | null): string {
     if (!timestamp) return "";
@@ -79,11 +103,22 @@ export function PairingView() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(var(--accent-rgb),0.12),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_40%)]"
       />
-      <Card className={SCREEN_CARD_CLASS}>
+      <Card variant="pairingGate">
+        {statusUnavailable ? (
+          <div
+            role="alert"
+            className="border-b border-destructive/40 bg-destructive/10 px-6 py-3 text-sm text-destructive"
+          >
+            {t("pairingview.StatusUnavailable", {
+              defaultValue:
+                "Pairing status is unavailable. Check the connection and reopen this screen.",
+            })}
+          </div>
+        ) : null}
         <CardHeader className="pb-6 pt-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-1.5">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/80">
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
                 {branding.appName}
               </div>
               <CardTitle className="text-xl text-txt-strong">
@@ -146,7 +181,8 @@ export function PairingView() {
                       .filter(Boolean)
                       .join(" ") || undefined
                   }
-                  className="h-12 rounded-sm text-base sm:text-sm"
+                  variant="form"
+                  density="search"
                 />
               </div>
 
@@ -154,7 +190,7 @@ export function PairingView() {
                 <div
                   id="pairing-code-error"
                   role="alert"
-                  className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-3 text-sm leading-relaxed text-danger"
+                  className="rounded-sm border border-danger/30 bg-danger/10 p-3 text-sm leading-relaxed text-danger"
                 >
                   {pairingError}
                 </div>
@@ -195,7 +231,7 @@ export function PairingView() {
               </p>
 
               <div className="space-y-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">
                   {t("pairingview.NextSteps")}
                 </p>
                 <ol className="list-decimal space-y-2 pl-5 text-sm leading-relaxed text-txt">

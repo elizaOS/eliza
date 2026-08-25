@@ -11,6 +11,7 @@
  * enough to rewrite on every change — we never mutate in place.
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
@@ -147,9 +148,20 @@ export async function writeAssignments(
 ): Promise<void> {
 	await ensureRoot();
 	const payload: AssignmentsFile = { version: 1, assignments };
-	const tmp = `${assignmentsPath()}.tmp`;
-	await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-	await fs.rename(tmp, assignmentsPath());
+	// Unique staging name per write: a fixed `${path}.tmp` shared by concurrent
+	// writers lets one rename consume the other's temp file and throw ENOENT
+	// out of a mutation that reported success (issue #25123's staging race,
+	// mirrored from local-inference-routes.ts writeJsonFile).
+	const tmp = `${assignmentsPath()}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+	try {
+		await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
+		await fs.rename(tmp, assignmentsPath());
+	} catch (error) {
+		// error-policy:J6 temp cleanup is best-effort; unique names keep an
+		// orphan harmless to concurrent writers, and the write error is preserved.
+		await fs.rm(tmp, { force: true }).catch(() => undefined);
+		throw error;
+	}
 }
 
 export async function setAssignment(

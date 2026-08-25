@@ -267,10 +267,9 @@ export function NeedsAttentionWidget({
               key={option.id}
               type="button"
               variant={option.isCancel ? "ghost" : "outline"}
-              size="sm"
+              size="tinyWide"
               aria-label={option.label}
               data-testid={`needs-attention-option-${option.id}`}
-              className="h-7 px-3 text-xs"
               onClick={() => onChooseOption(option)}
             >
               {option.label}

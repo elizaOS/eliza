@@ -119,7 +119,7 @@ export function PluginPermissionsPageClient() {
                 label={
                   <span className="flex min-w-0 flex-wrap items-center gap-2">
                     <span>{g.plugin_name ?? g.plugin_id}</span>
-                    <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-[10px] text-muted">
+                    <span className="rounded-full border border-border px-1.5 py-0.5 font-mono text-2xs text-muted">
                       {g.permission}
                     </span>
                   </span>

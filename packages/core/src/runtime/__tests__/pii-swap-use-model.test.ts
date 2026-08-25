@@ -11,7 +11,9 @@ import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	GazetteerEntityRecognizer,
+	MAX_PII_PSEUDONYM_WALK_NODES,
 	PII_ENTITY_RECOGNIZER_SERVICE,
+	PII_PSEUDONYM_UNBOUNDED,
 	type PiiEntityRecognizer,
 	PseudonymSession,
 } from "../../security/index.js";
@@ -375,5 +377,56 @@ describe("AgentRuntime.useModel PII swap — ingress", () => {
 
 		expect(seenPrompt).toContain("Dana Whitfield");
 		expect(seenPrompt).toContain("Acme Robotics");
+	});
+
+	it("rejects an unbounded sparse graph before model-provider dispatch", async () => {
+		const runtime = makeRuntime(true);
+		const handler = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "bounded prompt",
+				payload: new Array(MAX_PII_PSEUDONYM_WALK_NODES),
+			}),
+		).rejects.toMatchObject({ code: PII_PSEUDONYM_UNBOUNDED });
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("rejects hostile graphs in prompt collection before model-provider dispatch", async () => {
+		const cyclic: Record<string, unknown> = { prompt: "bounded prompt" };
+		cyclic.self = cyclic;
+		let getterCalls = 0;
+		const accessor = { prompt: "bounded prompt" } as Record<string, unknown>;
+		Object.defineProperty(accessor, "payload", {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				return "Dana Whitfield";
+			},
+		});
+		const { proxy, revoke } = Proxy.revocable([], {});
+		revoke();
+
+		const cases = [
+			["cycle", cyclic],
+			["accessor", accessor],
+			["revoked child", { prompt: "bounded prompt", payload: proxy }],
+		] as const;
+		for (const [label, params] of cases) {
+			const runtime = makeRuntime(true);
+			const handler = vi.fn(async () => "must not run");
+			runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+			try {
+				await runtime.useModel(ModelType.TEXT_SMALL, params as never);
+				throw new Error(`provider dispatched for ${label}`);
+			} catch (error) {
+				expect(error, label).toMatchObject({
+					code: PII_PSEUDONYM_UNBOUNDED,
+				});
+			}
+			expect(handler, label).not.toHaveBeenCalled();
+		}
+		expect(getterCalls).toBe(0);
 	});
 });

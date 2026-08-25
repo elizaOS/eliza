@@ -90,4 +90,39 @@ describe("SKILL details with security-enveloped input", () => {
 		expect(echoed).toContain("matching that reference");
 		expect(echoed.length).toBeLessThan(300);
 	});
+
+	it("preserves complete long skill details", async () => {
+		const longReadme = `${"a".repeat(3999)}🦊${"b".repeat(50)}`;
+		const service = {
+			getSkillDetails: vi.fn(async () => ({
+				skill: {
+					slug: "pdf-processing",
+					displayName: "PDF Processing",
+					summary: longReadme,
+					stats: { downloads: 10, stars: 5, versions: 1 },
+				},
+				latestVersion: { version: "1.0.0" },
+			})),
+			isInstalled: vi.fn(async () => true),
+		};
+		const runtime = {
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn();
+
+		const result = await getSkillDetailsAction.handler(
+			runtime,
+			{ content: { text: "pdf-processing details" } } as unknown as Memory,
+			undefined,
+			{ parameters: { slug: "pdf-processing" } },
+			callback,
+		);
+
+		expect(result.success).toBe(true);
+		const echoed = callback.mock.calls.at(-1)?.[0]?.text ?? "";
+		expect(echoed.isWellFormed()).toBe(true);
+		expect(echoed).toContain(longReadme);
+	});
 });

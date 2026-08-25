@@ -57,15 +57,14 @@ function CloudRouteErrorFallback({
           ? "This page needs a newer version of the console"
           : "This page ran into a problem"}
       </p>
-      <p className="max-w-sm break-words font-mono text-[11px] text-muted opacity-70">
+      <p className="max-w-sm break-words font-mono text-xs text-muted opacity-70">
         {error.message}
       </p>
       {staleChunk ? (
         <Button
           type="button"
-          size="sm"
-          variant="outline"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="outlineMuted"
           onClick={() => window.location.reload()}
           data-testid="cloud-route-error-reload"
         >
@@ -74,9 +73,8 @@ function CloudRouteErrorFallback({
       ) : (
         <Button
           type="button"
-          size="sm"
-          variant="outline"
-          className="rounded-sm text-xs"
+          size="compact"
+          variant="outlineMuted"
           onClick={onRetry}
           data-testid="cloud-route-error-retry"
         >

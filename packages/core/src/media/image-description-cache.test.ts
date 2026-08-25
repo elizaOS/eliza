@@ -47,7 +47,19 @@ describe("imageDescriptionCacheKey", () => {
 		expect(imageDescriptionCacheKey("a")).not.toBe(
 			imageDescriptionCacheKey("b"),
 		);
-		expect(imageDescriptionCacheKey("x")).toMatch(/^img-desc:v1:[a-f0-9]{8}$/);
+		expect(imageDescriptionCacheKey("x")).toMatch(/^img-desc:v2:[a-f0-9]{64}$/);
+	});
+
+	// Regression for the 32-bit FNV-1a key: these two real-world-shaped URLs
+	// collided under `img-desc:v1:62b0a0eb`, so the second image was served
+	// the first image's cached description forever.
+	it("separates URLs that collided under the 32-bit v1 key", () => {
+		const urlA = "https://cdn.example.com/media/539599.jpg";
+		const urlB = "https://cdn.example.com/media/722382.jpg";
+		expect(imageDescriptionCacheKey(urlA)).not.toBe(
+			imageDescriptionCacheKey(urlB),
+		);
+		expect(imageDescriptionCacheKey(urlA)).toMatch(/^img-desc:v2:/);
 	});
 });
 
@@ -132,6 +144,28 @@ describe("describeImageCached", () => {
 		const { runtime, useModel } = fakeRuntime({});
 		expect(await describeImageCached(runtime, "  ", "p")).toBeNull();
 		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	// End-to-end regression for #23680: a description cached for one URL must
+	// never be served for a different URL that shared the old 32-bit key.
+	it("never serves image A's description for its former v1 collision partner", async () => {
+		const urlA = "https://cdn.example.com/media/539599.jpg";
+		const urlB = "https://cdn.example.com/media/722382.jpg";
+		const useModel = vi.fn(
+			async (_modelType: unknown, params: { imageUrl: string }) =>
+				params.imageUrl === urlA
+					? '{"title":"A tabby cat","description":"a cat on a windowsill"}'
+					: '{"title":"City skyline","description":"a skyline at dusk"}',
+		);
+		const { runtime } = fakeRuntime({ useModel });
+
+		const describedA = await describeImageCached(runtime, urlA, "p");
+		const describedB = await describeImageCached(runtime, urlB, "p");
+
+		expect(describedA?.title).toBe("A tabby cat");
+		expect(describedB?.title).toBe("City skyline");
+		// Both were real misses: no cross-contamination through the cache.
+		expect(useModel).toHaveBeenCalledTimes(2);
 	});
 });
 

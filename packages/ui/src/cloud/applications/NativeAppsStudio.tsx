@@ -30,6 +30,7 @@
  * pages via `CloudRouterShell`, never this file).
  */
 
+import { logger } from "@elizaos/logger";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
@@ -282,7 +283,7 @@ export default function NativeAppsStudio(): React.JSX.Element {
           ),
         ]);
         if (!cancelled && refreshed?.token) {
-          writeStoredStewardToken(refreshed.token);
+          await writeStoredStewardToken(refreshed.token);
           // Let the auth context + any storage listeners pick up the fresh JWT.
           try {
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
@@ -293,7 +294,15 @@ export default function NativeAppsStudio(): React.JSX.Element {
       }
       if (!cancelled) setBooted(true);
     };
-    void boot();
+    void boot().catch((error) => {
+      // error-policy:J4 the studio boots into its ordinary signed-out/error
+      // state when protected token rotation cannot be persisted durably.
+      logger.error(
+        { error },
+        "[NativeAppsStudio] could not persist refreshed Steward session",
+      );
+      if (!cancelled) setBooted(true);
+    });
     return () => {
       cancelled = true;
     };

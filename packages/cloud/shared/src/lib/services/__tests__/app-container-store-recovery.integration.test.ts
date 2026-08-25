@@ -34,9 +34,13 @@ beforeAll(async () => {
   client = new PGlite();
   database = drizzle(client);
   const repository: AppContainerStoreRepository = {
+    // The real repository returns the updated row and returns null only when its
+    // id + hard-terminal-status compare-and-set matched nothing; `markRunning`
+    // now treats null as "a delete already won", so this stand-in has to report
+    // the applied row rather than a blanket null.
     updateStatus: async (id, status, error) => {
       statusUpdates.push({ id, status, ...(error ? { error } : {}) });
-      return null;
+      return { id, status, error_message: error ?? null } as never;
     },
     update: async (id, organizationId, data) => {
       containerUpdates.push({ id, organizationId, data });

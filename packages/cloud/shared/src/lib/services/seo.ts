@@ -1,5 +1,6 @@
 // Coordinates cloud service seo behavior behind route handlers.
 import { Buffer } from "node:buffer";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
@@ -19,6 +20,23 @@ import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
+
+const SEO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every SEO provider hop AND keep it inside the file's own SSRF-safe
+ * wrapper: `safeFetch` screens and pins every outbound address, and this helper
+ * adds a fail-closed hop timeout. A caller-provided signal is composed with the
+ * deadline rather than replacing it — a caller that cancels still aborts early,
+ * and a caller whose signal never fires still cannot outlive the bound.
+ */
+export function seoFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
+  const deadline = AbortSignal.timeout(SEO_REQUEST_TIMEOUT_MS);
+  return safeFetch(rawUrl, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 export type CreateSeoRequestParams = {
   organizationId: string;
@@ -99,7 +117,7 @@ async function callDataForSeoKeywords(
     keywords,
   };
 
-  const response = await fetch(
+  const response = await seoFetch(
     "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live",
     {
       method: "POST",
@@ -164,7 +182,7 @@ async function callSerpApiSnapshot(params: {
   url.searchParams.set("device", params.device || "desktop");
   url.searchParams.set("api_key", apiKey);
 
-  const response = await fetch(url.toString());
+  const response = await seoFetch(url.toString());
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`SerpApi request failed: ${response.status} ${text}`);
@@ -211,7 +229,7 @@ async function callClaudeSeoDraft(
   // WARNING: If ANTHROPIC_COT_BUDGET is set and budget 0 is not passed here,
   // temperature will be ignored by the AI SDK when thinking is enabled.
   // Temperature 0.3 for deterministic, consistent SEO metadata output.
-  const { text } = await generateText({
+  const result = await generateText({
     model: getLanguageModel(modelId),
     temperature: 0.3,
     ...mergeAnthropicCotProviderOptions(modelId, process.env, 0),
@@ -229,6 +247,11 @@ async function callClaudeSeoDraft(
       .filter(Boolean)
       .join("\n"),
   });
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: "anthropic",
+    model: modelId,
+  });
 
   return parseJson<{
     title?: string;
@@ -236,7 +259,7 @@ async function callClaudeSeoDraft(
     keywords?: string[];
     metaTags?: Record<string, string>;
     schema?: Record<string, unknown>;
-  }>(text);
+  }>(result.text);
 }
 
 async function submitIndexNow(urlToSubmit: string): Promise<{ submitted: boolean }> {
@@ -244,7 +267,7 @@ async function submitIndexNow(urlToSubmit: string): Promise<{ submitted: boolean
   const keyLocation = ensureEnv("INDEXNOW_KEY_LOCATION", "IndexNow key location");
   const url = await assertSafeOutboundUrl(urlToSubmit);
 
-  const response = await fetch("https://api.indexnow.org/indexnow", {
+  const response = await seoFetch("https://api.indexnow.org/indexnow", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -269,7 +292,12 @@ async function runHealthCheck(pageUrl: string): Promise<{
   robots: boolean;
   canonical?: string;
 }> {
-  const response = await safeFetch(pageUrl, {
+  // `pageUrl` is caller-supplied (`request.page_url`), so this is the one SEO
+  // hop an untrusted input can aim at an arbitrary host. It goes through
+  // `seoFetch` for the same reason every provider hop does: `safeFetch` alone
+  // screens the address but has no deadline, so a host that accepts the
+  // connection and never answers pins the worker forever.
+  const response = await seoFetch(pageUrl, {
     method: "GET",
     redirect: "error",
   });

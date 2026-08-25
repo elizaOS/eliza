@@ -5,14 +5,21 @@
  */
 
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
-import type { ChatFailureKind, ChatToolCallEvent } from "../api";
+import type {
+  ChatFailureKind,
+  ChatTerminalFailure,
+  ChatToolCallEvent,
+} from "../api";
 import { publishNativeTranscriptEvent } from "./transport";
 
 /** Whether retry can plausibly resolve a structured chat failure as-is. */
 export function isNativeChatFailureRetryable(
   failureKind: ChatFailureKind,
+  terminalFailure?: ChatTerminalFailure,
 ): boolean {
-  return isRetryableChatFailureKind(failureKind);
+  return terminalFailure
+    ? terminalFailure.transient
+    : isRetryableChatFailureKind(failureKind);
 }
 
 function toolDetail(event: ChatToolCallEvent): string | undefined {
@@ -65,7 +72,11 @@ export interface NativeChatTranscriptTurnPublisher {
   publishUserFinal(text: string, at: number): void;
   publishAgentText(text: string, final?: boolean): void;
   publishToolState(event: ChatToolCallEvent): void;
-  publishFailureKind(failureKind: ChatFailureKind, message?: string): void;
+  publishFailureKind(
+    failureKind: ChatFailureKind,
+    message?: string,
+    terminalFailure?: ChatTerminalFailure,
+  ): void;
   publishError(options: {
     code: string;
     retryable: boolean;
@@ -77,6 +88,7 @@ export interface NativeChatTranscriptTurnPublisher {
     streamedText: string;
     completed?: boolean;
     failureKind?: ChatFailureKind;
+    terminalFailure?: ChatTerminalFailure;
     accountConnect?: unknown;
   }): void;
 }
@@ -146,11 +158,16 @@ export function createNativeChatTranscriptTurnPublisher(options: {
   const publishFailureKind = (
     failureKind: ChatFailureKind,
     message?: string,
+    terminalFailure?: ChatTerminalFailure,
   ): void => {
     publishError({
-      code: failureKind,
-      retryable: isNativeChatFailureRetryable(failureKind),
-      ...(message ? { message } : {}),
+      code: terminalFailure?.code ?? failureKind,
+      retryable: isNativeChatFailureRetryable(failureKind, terminalFailure),
+      ...(terminalFailure?.message
+        ? { message: terminalFailure.message }
+        : message
+          ? { message }
+          : {}),
     });
   };
 
@@ -182,7 +199,11 @@ export function createNativeChatTranscriptTurnPublisher(options: {
         result.completed !== false,
       );
       if (result.failureKind) {
-        publishFailureKind(result.failureKind);
+        publishFailureKind(
+          result.failureKind,
+          undefined,
+          result.terminalFailure,
+        );
       } else if (result.accountConnect) {
         publishError({
           code: "account-connect-required",

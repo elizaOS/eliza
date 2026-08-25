@@ -3,10 +3,11 @@
  * (skill-items.ts): the trajectory / step / service shapes, a defensive
  * `getTrajectoryService` lookup that returns null unless the "trajectories" service
  * exposes both list and detail, a tolerant JSON-object parser, and
- * `formatTrajectoryForPrompt`, which renders a trajectory (step by step, prompts
- * truncated) into the digest fed to the extraction model.
+ * `formatTrajectoryForPrompt`, which renders a complete trajectory step by step
+ * into the digest fed to the extraction model.
  */
 import type { IAgentRuntime } from "../../../types/index.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 
 export interface SkillTrajectoryLlmCall {
 	systemPrompt?: string;
@@ -111,10 +112,10 @@ export function formatTrajectoryForPrompt(
 			const purpose = call.purpose ?? call.actionType ?? "step";
 			lines.push(`[${purpose}]`);
 			if (call.userPrompt) {
-				lines.push(`USER: ${call.userPrompt.slice(0, 600)}`);
+				lines.push(`USER: ${toWellFormedUnicode(call.userPrompt)}`);
 			}
 			if (call.response) {
-				lines.push(`AGENT: ${call.response.slice(0, 600)}`);
+				lines.push(`AGENT: ${toWellFormedUnicode(call.response)}`);
 			}
 		}
 	}

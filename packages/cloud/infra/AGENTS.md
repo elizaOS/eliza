@@ -11,6 +11,13 @@ Infrastructure-as-code and local-dev tooling for the elizaOS Cloud stack: Kubern
 
 Nothing in this package is imported by TypeScript code. The YAML/Terraform/shell files are consumed directly by `kubectl`, `helm`, `terraform`, `docker compose`, and the chainsaw integration-test runner.
 
+## Documentation
+
+- Internal: package Markdown, including `README.md`, `STAGING_AUTHORITY.md`,
+  `cloud/RAILWAY.md`, and the Terraform root READMEs.
+- External: none.
+- Format: Markdown.
+
 ## Layout
 
 ```
@@ -21,6 +28,7 @@ packages/cloud/infra/
     AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration record (completed; open: KMS sunset + stale gateway role-ARN GitHub env vars)
     RAILWAY.md                     # Canonical service/runtime/request-path map — where each surface runs
     bitrouter/                     # RETIRED — only CLOUDFLARE_MIGRATION_PLAN.md remains (the Worker is the model gateway now)
+    runners/                       # Canonical general-farm runner systemd template + single-slot repair script (#19708)
     charts/
       README.md                    # Charts overview (local/shared charts only; the gateway-discord chart was deleted with the EKS retirement)
     local/                         # kind cluster setup for local development
@@ -85,6 +93,8 @@ packages/cloud/infra/
     chainsaw-suites.test.ts        # Static checks for Chainsaw suites (YAML well-formed, local file refs valid)
     docker-compose.test.ts         # Static coverage for local docker-compose.yml (env placeholders, service shape)
     terraform-static.test.ts       # Lightweight Terraform file invariants (no provider init required)
+    runner-farm-static.test.ts     # Static invariants for cloud/runners systemd unit + repair script
+    runner-farm-repair.test.ts     # Behavioral repair-script regression against a fake systemd host
 ```
 
 ## Key subsystems

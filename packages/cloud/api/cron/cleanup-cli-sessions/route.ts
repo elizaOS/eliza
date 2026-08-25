@@ -18,10 +18,13 @@ const app = new Hono<AppEnv>();
 async function handle(c: Context<AppEnv>) {
   try {
     requireCronSecret(c);
-    await cliAuthSessionsService.cleanupExpiredSessions();
+    const { deletedSessions, revokedOrphanKeys } =
+      await cliAuthSessionsService.cleanupExpiredSessions();
     return c.json({
       success: true,
-      message: "Expired CLI auth sessions cleaned up successfully",
+      message: `Reaped ${deletedSessions} expired CLI auth sessions; revoked ${revokedOrphanKeys} orphan keys`,
+      deletedSessions,
+      revokedOrphanKeys,
     });
   } catch (error) {
     logger.error("Error cleaning up CLI auth sessions:", error);

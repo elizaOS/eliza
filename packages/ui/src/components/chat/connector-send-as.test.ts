@@ -79,7 +79,7 @@ describe("connector send-as helpers", () => {
     const merged = mergeConnectorSendAsMetadata(
       { uiTab: "chat", __responseContext: { primaryContext: "general" } },
       buildConnectorSendAsMetadata(
-        { provider: "signal", source: "signal" },
+        { provider: "whatsapp", source: "whatsapp" },
         account("work"),
       ),
     );

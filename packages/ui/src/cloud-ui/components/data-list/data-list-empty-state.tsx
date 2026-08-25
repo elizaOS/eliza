@@ -33,7 +33,7 @@ export function DataListEmptyState({
         "rounded-sm border border-border bg-bg-elevated p-8 md:p-12",
         className,
       )}
-      icon={Icon ? <Icon className="h-6 w-6" /> : undefined}
+      icon={Icon ? <Icon className="size-6" /> : undefined}
       title={title}
       description={description}
       action={action}

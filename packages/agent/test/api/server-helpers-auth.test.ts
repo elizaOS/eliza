@@ -6,6 +6,7 @@ import {
   __resetPendingWebSocketsForTests,
   applyCors,
   CORS_ALLOWED_HEADERS,
+  extractAuthToken,
   isAuthorized,
   isServerTokenAuthorized,
   MAX_PENDING_WEBSOCKETS_PER_PEER,
@@ -13,6 +14,15 @@ import {
   releasePendingWebSocket,
   tryAcquirePendingWebSocket,
 } from "../../src/api/server-helpers-auth";
+
+describe("extractAuthToken", () => {
+  it("rejects an oversized authorization header without accepting a prefix", () => {
+    const req = new http.IncomingMessage(new Socket());
+    req.headers.authorization = `Bearer ${"a".repeat(8_185)}trailing-data`;
+
+    expect(extractAuthToken(req)).toBeNull();
+  });
+});
 
 class HeaderCapture extends http.ServerResponse {
   readonly headers = new Map<string, string | number | readonly string[]>();
@@ -75,6 +85,72 @@ describe("applyCors", () => {
     expect(allowedHeaders).toContain("X-ElizaOS-UI-Language");
     expect(allowedHeaders).toContain("X-ElizaOS-Token");
     expect(allowedHeaders).toContain("X-Waifu-Chat-Access-Token");
+  });
+
+  it("never enables ambient browser credentials for reflected cloud origins", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("https://untrusted.example"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://untrusted.example",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeUndefined();
+  });
+
+  it("retains credentials for an explicitly configured browser origin", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_ALLOWED_ORIGINS = "https://trusted.example";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("https://trusted.example"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://trusted.example",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  });
+
+  it("retains credentials for an app-owned WebView origin", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(requestWithOrigin("capacitor://localhost"), res, "/api/status"),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
+  });
+
+  it("never grants ambient credentials to file origins", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("file:///tmp/index.html"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "file:///tmp/index.html",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeUndefined();
   });
 
   it("allows waifu token-page iframe ancestors when hosted chat JWT auth is enabled", () => {

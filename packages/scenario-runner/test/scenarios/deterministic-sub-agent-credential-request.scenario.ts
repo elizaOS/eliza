@@ -370,6 +370,10 @@ function expectTurnHasJsonStatus(
 export default scenario({
   id: "deterministic-sub-agent-credential-request",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason: "Direct API turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic sub-agent credential request bridge",
   domain: "agent-orchestrator",
   tags: ["pr", "deterministic", "zero-cost", "credentials", "sub-agent"],

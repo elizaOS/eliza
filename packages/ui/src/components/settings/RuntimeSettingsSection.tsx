@@ -127,6 +127,8 @@ export function RuntimeSettingsSection() {
         }),
       );
     } catch (error) {
+      // error-policy:J4 import failures become a visibly distinct settings
+      // message and never fabricate a successful migration.
       setMigrationMessage(
         t("settings.runtime.importDirectStateFailed", {
           defaultValue: "Import failed: {{error}}",

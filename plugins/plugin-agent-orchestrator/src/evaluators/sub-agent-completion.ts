@@ -7,9 +7,10 @@
  * router/tool-transcript noise — captured `[tool output: …]` envelopes, raw
  * path/transcript leaks, loopback-vs-user-facing URLs, empty-completion
  * placeholders, and failure markers reported without positive evidence. A short
- * clean answer, or a degenerate (`length` / `content_filter`) completion, is
- * relayed once instead of re-spawned; that is the guard against the weak-model
- * re-spawn loop (elizaOS/eliza#8875). Its failure-side twin is
+ * clean answer is relayed. An incomplete (`length` / `content_filter`) result
+ * is rejected explicitly rather than presenting partial text as a completed
+ * answer or re-spawning it; that is the guard against the weak-model re-spawn
+ * loop (elizaOS/eliza#8875). Its failure-side twin is
  * `sub-agent-failure.ts`.
  *
  * Relayed replies are verification-aware: when the durable task behind the
@@ -406,9 +407,8 @@ function deliverableFromMetadata(message: Memory): string | undefined {
 // `length` (ran out of token / turn budget mid-answer — truncated) or
 // `content_filter` (refused / blocked). The ACP `stopReason` is normalized to
 // one of these by the router (subAgentFinishReason metadata) before it reaches
-// here. Re-spawning the SAME root request on a degenerate completion just
-// truncates/blocks again — the ~70x weak-model re-spawn loop (issue
-// elizaOS/eliza#8875). We relay the best partial once instead.
+// here. Re-spawning the SAME root request repeats the failure, while relaying
+// the prefix falsely presents an incomplete answer as complete. Reject it.
 const DEGENERATE_FINISH_REASONS = new Set(["length", "content_filter"]);
 
 function finishReasonFromMetadata(message: Memory): string | undefined {
@@ -703,12 +703,12 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     ) {
       return true;
     }
-    // A truncated (`length`) or content-filtered (`content_filter`) sub-agent
+    // An output-limited (`length`) or content-filtered (`content_filter`) sub-agent
     // completion is TERMINAL for the planner: the model ran out of room or was
     // blocked mid-answer, so a fresh TASKS_SPAWN_AGENT on the SAME root request
     // just truncates/blocks again — the ~70x weak-model re-spawn loop the cap
     // only bounds (issue elizaOS/eliza#8875). The ACP completion's stopReason is
-    // threaded here as subAgentFinishReason. Relay the best partial once, UNLESS
+    // threaded here as subAgentFinishReason. Reject the partial, UNLESS
     // the plan is feeding the still-running session more input
     // (TASKS_SEND_TO_AGENT), which is the one legitimate non-relay follow-up.
     if (
@@ -763,42 +763,26 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         ],
       };
     }
-    // Degenerate completion (truncated / content-filtered): relay the best
-    // partial ONCE and clear the planner's candidate actions so it cannot
-    // re-spawn the same request. When there is nothing usable to relay, suppress
-    // the turn rather than loop (issue elizaOS/eliza#8875).
+    // Incomplete completion (output-limited / content-filtered): reject it and
+    // clear planner actions so neither a partial answer nor a re-spawn loop can
+    // masquerade as success (issue elizaOS/eliza#8875).
     const finishReason = finishReasonFromMetadata(message);
     if (
       isDegenerateFinishReason(finishReason) &&
       !planContinuesExistingSession(messageHandler.plan)
     ) {
-      const partial = cleanCompletionReply(
-        replyPatchFromCompletion(currentReply, completionText, verifiedUrls),
-      );
-      if (partial) {
-        return {
-          ...respondIfNeeded(messageHandler),
-          requiresTool: false,
-          setContexts: [SIMPLE_CONTEXT_ID],
-          clearCandidateActions: true,
-          clearParentActionHints: true,
-          reply: frameReplyWithVerification(
-            withVerificationCaveat(partial),
-            verification,
-          ),
-          debug: [
-            `sub-agent completion finished with stopReason=${finishReason} (truncated/blocked); relaying best partial once instead of re-spawning the same request`,
-          ],
-        };
-      }
       return {
-        processMessage: "IGNORE",
+        ...respondIfNeeded(messageHandler),
         requiresTool: false,
-        clearReply: true,
+        setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
         clearParentActionHints: true,
+        reply:
+          finishReason === "content_filter"
+            ? "The sub-agent was blocked before it produced a complete result. No partial result was used."
+            : "The sub-agent reached its output limit before it produced a complete result. No partial result was used.",
         debug: [
-          `sub-agent completion finished with stopReason=${finishReason} and carried no usable partial; suppressing to avoid a re-spawn loop`,
+          `sub-agent completion finished with stopReason=${finishReason}; rejecting incomplete output`,
         ],
       };
     }

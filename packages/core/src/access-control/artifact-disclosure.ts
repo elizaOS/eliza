@@ -223,11 +223,31 @@ export function resolveArtifactDisclosure(
 	if (!ctx) return "full";
 	if (ctx.requesterEntityId === agentId) return "full";
 	const actor = actorFromAccessContext(ctx, agentId);
-	if (actor.role !== "USER") return "full";
+	// Tier 2 is OWNER/ADMIN only. Every other actor — USER, GUEST, RUNTIME, or
+	// an UNRESOLVED authority — must fall through to the grant check and the
+	// scope ladder below: treating "not USER" as elevated here hands
+	// least-privileged viewers tier-2 `full` disclosure and inverts the
+	// fail-closed matrix this module documents.
+	if (actor.role === "OWNER" || actor.role === "ADMIN") return "full";
 	const grants = record.grants ?? record.share?.grants;
 	const grant = grants?.find((g) => g.entityId === ctx.requesterEntityId);
 	if (grant) return grant.mode === "full" ? "full" : "redacted";
-	return canReadScope(record.scope, record.scopedEntityId, actor)
+	// Tier 4: absent role authority may preserve open room/global disclosure,
+	// but it must never inherit USER's entity-self exception for private data.
+	// Mapping UNRESOLVED to USER without this private-scope fence lets a bare
+	// requester context read its own `user-private` artifact despite having no
+	// resolved authorization state.
+	if (
+		actor.role === "UNRESOLVED" &&
+		record.scope !== "global" &&
+		record.scope !== "shared" &&
+		record.scope !== "room"
+	) {
+		return "none";
+	}
+	const ladderActor =
+		actor.role === "UNRESOLVED" ? { ...actor, role: "USER" as const } : actor;
+	return canReadScope(record.scope, record.scopedEntityId, ladderActor)
 		? "full"
 		: "none";
 }

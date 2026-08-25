@@ -2,6 +2,10 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
+import {
+  groupParticipantLabel,
+  resolveGroupParticipantDisplayName,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 import { logger } from "@/lib/utils/logger";
 import { markPreverifiedPersonalSharedRequest } from "../preverified-auth";
 
@@ -17,11 +21,6 @@ const resolvePersonalDelivery = mock(async () => ({
   dedicatedTarget: activeTarget,
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
-}));
-const findOrCreateByPhone = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000012" },
-  organization: { id: "00000000-0000-4000-8000-000000000011" },
-  isNew: true,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
@@ -105,6 +104,41 @@ const coordinateSharedHistory = mock(async () => [
     createdAt: 101,
   },
 ]);
+const issueGroupClaim = mock(async () => undefined);
+const consumeGroupClaimAndBind = mock(
+  async (): Promise<
+    | { status: "invalid" }
+    | { status: "already_bound" }
+    | { status: "bound"; binding: Record<string, unknown> }
+  > => ({ status: "invalid" }),
+);
+const resolveGroupBinding = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const setGroupResponsePolicy = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const revokeGroupBinding = mock(async () => false);
+const applyGroupMembershipChange = mock(
+  async (): Promise<Record<string, unknown> | null> => null,
+);
+const authorizeGroupDelivery = mock(
+  async (): Promise<{
+    authorized: boolean;
+    leaseToken: string | null;
+    expiresAt: string | null;
+  }> => ({
+    authorized: false,
+    leaseToken: null,
+    expiresAt: null,
+  }),
+);
+const commitGroupDelivery = mock(async () => false);
+const recordGroupDeliveryReceipts = mock(async () => ({
+  recorded: false,
+  inserted: 0,
+}));
+const hasGroupDeliveryReceipt = mock(async () => false);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
@@ -113,12 +147,18 @@ const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByPhone,
     resolvePersonalDelivery,
   },
 }));
+// The real serializer, not a re-implementation: mocking it meant the header
+// this route exists to emit was never actually produced by the code under
+// test, so the whole route-layer claim went unexercised.
+const { sharedTurnServerTiming } = await import(
+  "@/lib/services/shared-runtime/shared-rest-adapter"
+);
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+  sharedTurnServerTiming,
 }));
 mock.module("@/lib/services/shared-runtime/prewarm-shared-agent", () => ({
   prewarmPersonalSharedAgentTurnCaches,
@@ -147,6 +187,70 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 }));
 mock.module("@/lib/services/shared-runtime/conversation-coordinator", () => ({
   coordinateSharedHistory,
+}));
+// In-memory stand-in for the participant identity registry: ordinals are
+// assigned per binding in first-seen order and names go through the real
+// resolution rules, exactly as the repository does, so the label a turn
+// produces is deterministic in tests.
+type StubParticipant = {
+  platformUserId: string;
+  ordinal: number;
+  displayName: string | null;
+};
+const groupParticipantOrdinals = new Map<
+  string,
+  Map<string, StubParticipant>
+>();
+const recordGroupParticipantTurn = mock(
+  async ({
+    bindingId,
+    platformUserId,
+    displayName,
+  }: {
+    bindingId: string;
+    platformUserId: string;
+    displayName?: string | null;
+  }) => {
+    let binding = groupParticipantOrdinals.get(bindingId);
+    if (!binding) {
+      binding = new Map<string, StubParticipant>();
+      groupParticipantOrdinals.set(bindingId, binding);
+    }
+    const resolved = resolveGroupParticipantDisplayName({
+      candidate: displayName,
+      platformUserId,
+      roster: [...binding.values()],
+    });
+    const existing = binding.get(platformUserId);
+    binding.set(platformUserId, {
+      platformUserId,
+      ordinal: existing?.ordinal ?? binding.size + 1,
+      displayName: resolved,
+    });
+    const roster = [...binding.values()];
+    const actor = roster.find((p) => p.platformUserId === platformUserId);
+    if (!actor) throw new Error("participant registry stub lost its actor");
+    return { actor, roster };
+  },
+);
+mock.module("@/db/repositories/personal-shared-groups", () => ({
+  personalSharedGroupsRepository: {
+    issueClaim: issueGroupClaim,
+    consumeClaimAndBind: consumeGroupClaimAndBind,
+    resolveBinding: resolveGroupBinding,
+    setResponsePolicy: setGroupResponsePolicy,
+    revokeBinding: revokeGroupBinding,
+    applyMembershipChange: applyGroupMembershipChange,
+    authorizeDelivery: authorizeGroupDelivery,
+    commitDelivery: commitGroupDelivery,
+    recordDeliveryReceipts: recordGroupDeliveryReceipts,
+    hasDeliveryReceipt: hasGroupDeliveryReceipt,
+  },
+}));
+mock.module("@/db/repositories/personal-shared-group-participants", () => ({
+  personalSharedGroupParticipantsRepository: {
+    recordTurn: recordGroupParticipantTurn,
+  },
 }));
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   resolveSharedRuntimeWorkerRequestContext: () => ({
@@ -186,6 +290,7 @@ function request(
 const valid = {
   platform: "telegram",
   project: "eliza-app",
+  connectorAccountId: "telegram:test-bot",
   chatId: "123456789",
   telegramUserId: "123456789",
   telegramUsername: "nubs",
@@ -197,14 +302,74 @@ const valid = {
 const validPhone = {
   platform: "blooio",
   project: "eliza-app",
+  connectorAccountId: "blooio:test-number",
   phoneNumber: "+15551234567",
   messageId: "blooio:eliza:message-42",
   message: "hello from Messages",
 };
 
+const canonicalGroupBinding = {
+  id: "00000000-0000-4000-8000-000000000030",
+  organization_id: "00000000-0000-4000-8000-000000000001",
+  owner_user_id: "00000000-0000-4000-8000-000000000002",
+  personal_agent_id: "personal:3e91680e-2611-5ff5-b759-c16b990967bd",
+  platform: "telegram",
+  project: "eliza-app",
+  connector_account_id: "telegram:test-bot",
+  provider_chat_id: "-100123456789",
+  conversation_id: "group:00000000-0000-5000-8000-000000000030",
+  state: "active",
+  response_policy: "mention_only",
+  created_by_platform_user_id: "123456789",
+  authority_version: 7,
+};
+
+const canonicalBlooioGroupBinding = {
+  ...canonicalGroupBinding,
+  id: "00000000-0000-4000-8000-000000000031",
+  platform: "blooio",
+  connector_account_id: "blooio:test-number",
+  provider_chat_id: "chat_group_123",
+  conversation_id: "group:00000000-0000-5000-8000-000000000031",
+  created_by_platform_user_id: "+15551234567",
+};
+
+const validGroup = {
+  platform: "telegram",
+  chatType: "supergroup",
+  project: "eliza-app",
+  connectorAccountId: "telegram:test-bot",
+  chatId: "-100123456789",
+  actor: {
+    platformUserId: "123456789",
+    displayName: "Nubs",
+    role: "administrator",
+  },
+  messageId: "telegram:eliza:group-42",
+  message: "@ElizaIsNotABot hello",
+  invocation: "mention",
+};
+
+const validBlooioGroup = {
+  platform: "blooio",
+  chatType: "group",
+  project: "eliza-app",
+  connectorAccountId: "blooio:test-number",
+  chatId: "chat_group_123",
+  actor: {
+    platformUserId: "+15551234567",
+    displayName: "Nubs",
+    role: "possessor",
+  },
+  messageId: "blooio:eliza:group-42",
+  message: "Eliza hello",
+  invocation: "mention",
+};
+
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
-    findOrCreateByPhone.mockClear();
+    groupParticipantOrdinals.clear();
+    recordGroupParticipantTurn.mockClear();
     activeTarget = null;
     personalDeliveryIsNew = false;
     resolvePersonalDelivery.mockClear();
@@ -216,6 +381,32 @@ describe("personal Shared messaging deliveries", () => {
     bridge.mockClear();
     importCanonicalConversation.mockClear();
     coordinateSharedHistory.mockClear();
+    issueGroupClaim.mockClear();
+    consumeGroupClaimAndBind.mockClear();
+    resolveGroupBinding.mockClear();
+    setGroupResponsePolicy.mockClear();
+    revokeGroupBinding.mockClear();
+    applyGroupMembershipChange.mockClear();
+    authorizeGroupDelivery.mockClear();
+    commitGroupDelivery.mockClear();
+    recordGroupDeliveryReceipts.mockClear();
+    hasGroupDeliveryReceipt.mockClear();
+    applyGroupMembershipChange.mockImplementation(async () => null);
+    authorizeGroupDelivery.mockImplementation(async () => ({
+      authorized: false,
+      leaseToken: null,
+      expiresAt: null,
+    }));
+    commitGroupDelivery.mockImplementation(async () => false);
+    recordGroupDeliveryReceipts.mockImplementation(async () => ({
+      recorded: false,
+      inserted: 0,
+    }));
+    hasGroupDeliveryReceipt.mockImplementation(async () => false);
+    setGroupResponsePolicy.mockImplementation(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementation(async () => true);
     enqueueAgentResumeOnce.mockClear();
     enqueueAgentWakeOnce.mockClear();
     triggerImmediate.mockClear();
@@ -332,7 +523,36 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         chatId: "123456789",
       },
+      "hello",
     );
+  });
+
+  test("reuses one Personal Shared identity across Telegram and Blooio DMs", async () => {
+    const telegramResponse = await request(valid);
+    const blooioResponse = await request(validPhone);
+    const telegramBody = (await telegramResponse.json()) as {
+      data: { identity: { id: string }; account: { userId: string } };
+    };
+    const blooioBody = (await blooioResponse.json()) as {
+      data: { identity: { id: string }; account: { userId: string } };
+    };
+
+    expect(telegramResponse.status).toBe(200);
+    expect(blooioResponse.status).toBe(200);
+    expect(blooioBody.data.identity.id).toBe(telegramBody.data.identity.id);
+    expect(blooioBody.data.account.userId).toBe(
+      telegramBody.data.account.userId,
+    );
+    expect(resolvePersonalDelivery).toHaveBeenNthCalledWith(1, {
+      platform: "telegram",
+      telegramId: "123456789",
+      username: "nubs",
+      displayName: "Nubs",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenNthCalledWith(2, {
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
   });
 
   test("warms a newly auto-registered personal account before its first turn", async () => {
@@ -452,6 +672,54 @@ describe("personal Shared messaging deliveries", () => {
     });
   });
 
+  test("classifies a both-path account resolution failure as a retryable 503", async () => {
+    const { PersonalDeliveryAccountResolutionError } = await import(
+      "@/api-app/personal-delivery-projection"
+    );
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    resolvePersonalDelivery.mockImplementationOnce(async () => {
+      throw new PersonalDeliveryAccountResolutionError(
+        "status-502:TypeError",
+        new Error("private SQL detail"),
+      );
+    });
+
+    try {
+      const response = await request(valid);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(response.headers.get("x-eliza-failure-stage")).toBe(
+        "account_resolution",
+      );
+      expect(response.headers.get("x-eliza-failure-name")).toBe(
+        "PersonalDeliveryAccountResolutionError",
+      );
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error:
+          "Account resolution is temporarily unavailable. Retry this turn shortly.",
+        code: "service_unavailable",
+        retryable: true,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        expect.objectContaining({
+          stage: "account_resolution",
+          errorName: "PersonalDeliveryAccountResolutionError",
+          projectionFailure: "status-502:TypeError",
+        }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "private SQL detail",
+      );
+    } finally {
+      logger.error = originalError;
+    }
+  });
+
   test("redacts an unrecognized error name from headers and logs", async () => {
     const errorLog = mock(() => undefined);
     const originalError = logger.error;
@@ -493,7 +761,7 @@ describe("personal Shared messaging deliveries", () => {
     try {
       const response = await request({
         ...valid,
-        message: undefined,
+        message: "please verify it",
         voiceNote: {
           bytesBase64: bytes.toString("base64"),
           mimeType: "audio/ogg",
@@ -507,7 +775,7 @@ describe("personal Shared messaging deliveries", () => {
       expect(sharedRestMessageSend).toHaveBeenCalledWith(
         expect.anything(),
         expect.stringMatching(/^personal:/),
-        "remember the red bicycle",
+        "please verify it\n\n[Voice note transcript]\nremember the red bicycle",
         "Eliza",
         runtimeExecutionCtx,
         namespace,
@@ -518,6 +786,7 @@ describe("personal Shared messaging deliveries", () => {
           project: "eliza-app",
           chatId: "123456789",
         },
+        "please verify it\nremember the red bicycle",
       );
       await expect(response.json()).resolves.toMatchObject({
         data: { reply: "hello from Eliza" },
@@ -654,24 +923,613 @@ describe("personal Shared messaging deliveries", () => {
     expect(renewedSession).not.toBe(firstSession);
   });
 
-  test("uses the phone account without provisioning an agent row", async () => {
+  test("issues a one-time owner-bound group claim without entering inference", async () => {
+    const response = await request({ ...valid, message: "/group" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_issued",
+        reply: expect.stringMatching(
+          /Add Eliza to the group[\s\S]*\/eliza_link [A-Z0-9]{8}[\s\S]*same Telegram account/,
+        ),
+      },
+    });
+    expect(issueGroupClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerUserId: "00000000-0000-4000-8000-000000000002",
+        platform: "telegram",
+        connectorAccountId: "telegram:test-bot",
+        issuedToPlatformUserId: "123456789",
+        codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("gives Blooio owners iMessage-specific group-link instructions", async () => {
+    const response = await request({ ...validPhone, message: "/group" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_issued",
+        reply: expect.stringMatching(
+          /Add Eliza to the group[\s\S]*Eliza link [A-Z0-9]{8}[\s\S]*same iMessage identity/,
+        ),
+      },
+    });
+    expect(issueGroupClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        platform: "blooio",
+        connectorAccountId: "blooio:test-number",
+        issuedToPlatformUserId: "+15551234567",
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("binds a Blooio group through the requesting iMessage possessor", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "bound" as const,
+      binding: canonicalBlooioGroupBinding,
+    }));
+    const response = await request({
+      ...validBlooioGroup,
+      message: "Eliza link ABCD2345",
+      invocation: "command",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_bound",
+        identity: {
+          id: canonicalBlooioGroupBinding.personal_agent_id,
+          runtime: "shared",
+        },
+        account: {
+          userId: canonicalBlooioGroupBinding.owner_user_id,
+          organizationId: canonicalBlooioGroupBinding.organization_id,
+        },
+        reply: expect.stringContaining(
+          "explicit mentions, commands, and replies",
+        ),
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith({
+      codeHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      providerChatId: "chat_group_123",
+      actorPlatformUserId: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("fails a mismatched Blooio group claimant closed", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "invalid" as const,
+    }));
+    const response = await request({
+      ...validBlooioGroup,
+      actor: {
+        ...validBlooioGroup.actor,
+        platformUserId: "+15557654321",
+      },
+      message: "Eliza link ABCD2345",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_invalid",
+        reply: expect.stringContaining("not valid for this account or sender"),
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith(
+      expect.objectContaining({ actorPlatformUserId: "+15557654321" }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("guides a suspended Blooio group through owner reconnect", async () => {
+    resolveGroupBinding.mockImplementationOnce(async () => ({
+      ...canonicalBlooioGroupBinding,
+      state: "suspended",
+    }));
+    const response = await request(validBlooioGroup);
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_suspended",
+        reply: expect.stringMatching(/owner.*DM Eliza `\/group`.*reconnect/i),
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("fails a Telegram group link closed without verified admin authority", async () => {
+    const response = await request({
+      ...validGroup,
+      actor: { ...validGroup.actor, role: "unknown" },
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_admin_required",
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(consumeGroupClaimAndBind).not.toHaveBeenCalled();
+  });
+
+  test("binds a verified Telegram admin to the pre-existing owner identity", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "bound" as const,
+      binding: canonicalGroupBinding,
+    }));
+    const response = await request({
+      ...validGroup,
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_bound",
+        account: {
+          userId: canonicalGroupBinding.owner_user_id,
+          organizationId: canonicalGroupBinding.organization_id,
+        },
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
+        },
+      },
+    });
+    expect(consumeGroupClaimAndBind).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerChatId: "-100123456789",
+        actorPlatformUserId: "123456789",
+      }),
+    );
+  });
+
+  test("does not let a second administrator take over an active owner binding", async () => {
+    consumeGroupClaimAndBind.mockImplementationOnce(async () => ({
+      status: "already_bound" as const,
+    }));
+    const response = await request({
+      ...validGroup,
+      message: "/eliza_link 23456789",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_claim_already_bound",
+        reply: expect.stringContaining("already linked to another Eliza owner"),
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("routes a bound mention in its stable group conversation", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request(validGroup);
+
+    expect(response.status).toBe(200);
+    await expect(response.clone().json()).resolves.toMatchObject({
+      data: {
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
+        },
+      },
+    });
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
+      namespace,
+      {
+        warmConversation: true,
+        conversationId: canonicalGroupBinding.conversation_id,
+      },
+    );
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: canonicalGroupBinding.personal_agent_id }),
+      canonicalGroupBinding.conversation_id,
+      `${groupParticipantLabel({
+        ordinal: 1,
+        displayName: validGroup.actor.displayName,
+      })}: ${validGroup.message}`,
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      validGroup.messageId,
+      "platform",
+      {
+        platform: "telegram",
+        kind: "group",
+        project: "eliza-app",
+        connectorAccountId: "telegram:test-bot",
+        chatId: "-100123456789",
+        ownerLabel: "Nubs",
+        authority: {
+          bindingId: canonicalGroupBinding.id,
+          ownerUserId: canonicalGroupBinding.owner_user_id,
+          personalAgentId: canonicalGroupBinding.personal_agent_id,
+          version: canonicalGroupBinding.authority_version,
+        },
+      },
+      validGroup.message,
+      { type: "GROUP", source: "telegram" },
+    );
+  });
+
+  test("keeps mention-only groups silent for ambient traffic", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request({ ...validGroup, invocation: "ambient" });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_silent", reply: "" },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a policy update after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    setGroupResponsePolicy.mockImplementationOnce(async () => null);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza ambient on",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_changed",
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("does not report a disconnect after the active binding changed", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementationOnce(async () => false);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza leave",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_changed",
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("returns the incremented binding authority with a policy confirmation", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    const updated = { ...canonicalGroupBinding, authority_version: 8 };
+    setGroupResponsePolicy.mockImplementationOnce(async () => updated);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza ambient on",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_policy_updated",
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: updated.id,
+            ownerUserId: updated.owner_user_id,
+            personalAgentId: updated.personal_agent_id,
+            version: 8,
+          },
+        },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("marks a successful revoke confirmation as explicit control egress", async () => {
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+    revokeGroupBinding.mockImplementationOnce(async () => true);
+    const response = await request({
+      ...validGroup,
+      message: "Eliza leave",
+      invocation: "command",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_binding_revoked",
+        groupDelivery: { kind: "control" },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("suspends and restores only an existing Telegram group binding", async () => {
+    applyGroupMembershipChange.mockImplementation(
+      async () => canonicalGroupBinding,
+    );
+    const response = await request({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      messageId: "telegram:membership:42",
+      membershipChange: "removed",
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_membership_removed", reply: "" },
+    });
+    expect(applyGroupMembershipChange).toHaveBeenCalledWith({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      providerChatId: "-100123456789",
+      membershipChange: "removed",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("reports a live delivery reservation without fabricating membership removal", async () => {
+    applyGroupMembershipChange.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("internal delivery state"), {
+        code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
+      });
+    });
+    const response = await request({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      messageId: "telegram:membership:pending",
+      membershipChange: "removed",
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("Retry-After")).toBe("5");
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error:
+        "A provider delivery reservation is still active. Group authority was not changed; retry shortly.",
+      code: "group_delivery_pending",
+      retryable: true,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("records provider egress receipts without entering inference", async () => {
+    recordGroupDeliveryReceipts.mockImplementationOnce(async () => ({
+      recorded: true,
+      inserted: 1,
+    }));
+    const response = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:incoming-42",
+      providerMessageIds: ["outgoing-42"],
+      leaseToken: "00000000-0000-4000-8000-000000000097",
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_delivery_receipt_recorded",
+        recorded: true,
+        inserted: 1,
+      },
+    });
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("accepts the full shared source-message boundary for delivery receipts", async () => {
+    recordGroupDeliveryReceipts.mockImplementationOnce(async () => ({
+      recorded: true,
+      inserted: 1,
+    }));
+    const sourceMessageId = "s".repeat(240);
+    const response = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId,
+      providerMessageIds: ["outgoing-boundary"],
+      leaseToken: "00000000-0000-4000-8000-000000000095",
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceMessageId }),
+    );
+
+    const rejected = await request({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
+      chatId: "chat_group_123",
+      sourceMessageId: "s".repeat(241),
+      providerMessageIds: ["outgoing-over-boundary"],
+      leaseToken: "00000000-0000-4000-8000-000000000094",
+      authority: {
+        bindingId: canonicalGroupBinding.id,
+        ownerUserId: canonicalGroupBinding.owner_user_id,
+        personalAgentId: canonicalGroupBinding.personal_agent_id,
+        version: canonicalGroupBinding.authority_version,
+      },
+    });
+    expect(rejected.status).toBe(400);
+    expect(recordGroupDeliveryReceipts).toHaveBeenCalledTimes(1);
+  });
+
+  test("revalidates the exact binding generation before provider egress", async () => {
+    const leaseToken = "00000000-0000-4000-8000-000000000099";
+    authorizeGroupDelivery.mockImplementationOnce(async () => ({
+      authorized: true,
+      leaseToken,
+      expiresAt: "2026-08-22T01:00:00.000Z",
+    }));
+    const authority = {
+      bindingId: canonicalGroupBinding.id,
+      ownerUserId: canonicalGroupBinding.owner_user_id,
+      personalAgentId: canonicalGroupBinding.personal_agent_id,
+      version: canonicalGroupBinding.authority_version,
+    };
+    const response = await request({
+      eventType: "delivery_authorization",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
+      invocation: "ambient",
+      authority,
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        code: "group_delivery_authorization",
+        authorized: true,
+        leaseToken,
+      },
+    });
+    expect(authorizeGroupDelivery).toHaveBeenCalledWith({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      providerChatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
+      invocation: "ambient",
+      authority,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("commits only the exact delivery reservation before provider egress", async () => {
+    const leaseToken = "00000000-0000-4000-8000-000000000096";
+    commitGroupDelivery.mockImplementationOnce(async () => true);
+    const authority = {
+      bindingId: canonicalGroupBinding.id,
+      ownerUserId: canonicalGroupBinding.owner_user_id,
+      personalAgentId: canonicalGroupBinding.personal_agent_id,
+      version: canonicalGroupBinding.authority_version,
+    };
+    const response = await request({
+      eventType: "delivery_commit",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      chatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
+      authority,
+    });
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: { code: "group_delivery_committed", committed: true },
+    });
+    expect(commitGroupDelivery).toHaveBeenCalledWith({
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
+      providerChatId: "-100123456789",
+      sourceMessageId: "telegram:eliza-app:source-1",
+      leaseToken,
+      authority,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("auto-registers a first phone message without provisioning an agent row", async () => {
+    personalDeliveryIsNew = true;
     const response = await request(validPhone);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       data: { identity: { id: string }; account: { userId: string } };
     };
-    expect(findOrCreateByPhone).toHaveBeenCalledWith("+15551234567");
-    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
-    expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
-      "00000000-0000-4000-8000-000000000012",
+      "00000000-0000-4000-8000-000000000002",
+    );
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+      { warmConversation: true },
     );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
         id: body.data.identity.id,
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
         execution_tier: "shared",
       }),
       body.data.identity.id,
@@ -686,10 +1544,137 @@ describe("personal Shared messaging deliveries", () => {
         project: "eliza-app",
         phoneNumber: "+15551234567",
       },
+      "hello from Messages",
     );
   });
 
-  test("routes a linked Discord DM through the same personal room", async () => {
+  test("routes a phone transport to the same Dedicated primary after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request(validPhone);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns binding authority with a Dedicated group reply after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    resolveGroupBinding.mockImplementationOnce(
+      async () => canonicalGroupBinding,
+    );
+
+    const response = await request(validGroup);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+        groupDelivery: {
+          kind: "binding",
+          authority: {
+            bindingId: canonicalGroupBinding.id,
+            ownerUserId: canonicalGroupBinding.owner_user_id,
+            personalAgentId: canonicalGroupBinding.personal_agent_id,
+            version: canonicalGroupBinding.authority_version,
+          },
+        },
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      activeTarget.id,
+      canonicalGroupBinding.organization_id,
+      expect.objectContaining({
+        params: expect.objectContaining({
+          roomId: canonicalGroupBinding.conversation_id,
+          conversationId: canonicalGroupBinding.conversation_id,
+        }),
+      }),
+    );
+  });
+
+  test("keeps a Blooio reminder on Dedicated after cutover without Shared prewarm", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const reminder = "Remind me in 2 minutes to stretch";
+
+    const response = await request({
+      ...validPhone,
+      messageId: "blooio:reminder-42",
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        account: {
+          userId: "00000000-0000-4000-8000-000000000002",
+          organizationId: "00000000-0000-4000-8000-000000000001",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "blooio:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "blooio:reminder-42",
+          platformName: "blooio",
+          source: "blooio",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
+  });
+
+  test("auto-registers a first Discord DM in the same personal room", async () => {
+    personalDeliveryIsNew = true;
     const discordUserId = ["123456789", "012345678"].join("");
     const response = await request({
       platform: "discord",
@@ -713,6 +1698,14 @@ describe("personal Shared messaging deliveries", () => {
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
     });
     expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
+      }),
+      namespace,
+      { warmConversation: true },
+    );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
       body.data.identity.id,
@@ -726,6 +1719,7 @@ describe("personal Shared messaging deliveries", () => {
         platform: "discord",
         discordUserId: "123456789012345678",
       },
+      "continue our conversation",
     );
   });
 
@@ -772,6 +1766,108 @@ describe("personal Shared messaging deliveries", () => {
         }),
       }),
     );
+  });
+
+  test("keeps a Telegram reminder on Dedicated after cutover without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const reminder = "Remind me in 2 minutes to stretch";
+
+    const response = await request({
+      ...valid,
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "telegram:eliza:42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "telegram:eliza:42",
+          platformName: "telegram",
+          source: "telegram",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
+  });
+
+  test("keeps a Discord reminder on Dedicated after cutover without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const discordUserId = ["123456789", "012345678"].join("");
+    const reminder = "Remind me in 2 minutes to stretch";
+    bridge.mockImplementationOnce(async () => ({
+      jsonrpc: "2.0" as const,
+      id: "discord:reminder-42",
+      result: { text: "hello from Dedicated" },
+    }));
+
+    const response = await request({
+      platform: "discord",
+      discordUserId,
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      messageId: "discord:reminder-42",
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "discord:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "discord:reminder-42",
+          platformName: "discord",
+          source: "discord",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
   test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
@@ -972,7 +2068,37 @@ describe("personal Shared messaging deliveries", () => {
     { ...valid, message: "" },
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
-    expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
+  });
+
+  // The route's headline claim is that a provider timing receipt reaches the
+  // client as a `shared_model` Server-Timing segment. Every other test here
+  // returns no `timing`, so that segment was never produced — this drives the
+  // real serializer with a real receipt.
+  test("emits the shared_model segment when the turn carries a timing receipt", async () => {
+    sharedRestMessageSend.mockResolvedValueOnce({
+      text: "hello from Eliza",
+      timing: {
+        replayed: false,
+        durationMs: 1234.5,
+        callCount: 2,
+        fallbackCount: 1,
+        selectedProvider: "openrouter",
+        callsTruncated: false,
+        clamped: false,
+        calls: [],
+      },
+    } as never);
+
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+
+    const serverTiming = response.headers.get("server-timing") ?? "";
+    expect(serverTiming).toContain("shared_model;dur=1234.5");
+    expect(serverTiming).toContain("provider=openrouter");
+    expect(serverTiming).toContain("calls=2");
+    expect(serverTiming).toContain("fallbacks=1");
+    expect(serverTiming).toContain("replayed=0");
+    expect(serverTiming).toContain("clamped=0");
   });
 });

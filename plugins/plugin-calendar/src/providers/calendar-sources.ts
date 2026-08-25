@@ -3,7 +3,7 @@
  * and versioned feed selection.
  *
  * Calendar labels are untrusted provider data, so the rendering quotes and
- * bounds them while keeping opaque identity fields separate. An unavailable
+ * normalizes them while keeping opaque identity fields separate. An unavailable
  * service is rendered as unavailable and reported; it is never collapsed into
  * an authoritative empty source list.
  */
@@ -32,7 +32,7 @@ function safeLabel(value: string | null, fallback: string): string {
   const normalized = value
     ? replaceControlCharacters(value).replace(/\s+/gu, " ").trim()
     : null;
-  return JSON.stringify((normalized || fallback).slice(0, 160));
+  return JSON.stringify(normalized || fallback);
 }
 
 function replaceControlCharacters(value: string): string {
@@ -43,7 +43,7 @@ function replaceControlCharacters(value: string): string {
 }
 
 function safeOpaque(value: string): string {
-  return JSON.stringify(replaceControlCharacters(value).slice(0, 512));
+  return JSON.stringify(replaceControlCharacters(value));
 }
 
 function sourceLine(source: LifeOpsCalendarSourceAdministrationEntry): string {

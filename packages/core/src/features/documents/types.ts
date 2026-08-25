@@ -106,7 +106,6 @@ export const ModelConfigSchema = z.object({
 	TEXT_MODEL: z.string().optional(),
 
 	MAX_INPUT_TOKENS: positiveSafeIntegerSetting(),
-	MAX_OUTPUT_TOKENS: positiveSafeIntegerSetting(4096),
 
 	EMBEDDING_DIMENSION: positiveSafeIntegerSetting(1536),
 
@@ -139,7 +138,6 @@ export interface ProviderRateLimits {
 export interface TextGenerationOptions {
 	provider?: "anthropic" | "openai" | "openrouter" | "google";
 	modelName?: string;
-	maxTokens?: number;
 	cacheDocument?: string;
 	cacheOptions?: {
 		type: "ephemeral";
@@ -164,6 +162,8 @@ export interface AddDocumentOptions {
 	content: string;
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
+	/** Read-only entity grants that remain valid independently of room membership. */
+	directGrantEntityIds?: UUID[];
 	addedBy?: UUID;
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
@@ -193,6 +193,7 @@ export type DocumentAddedByRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
 	| "RUNTIME";
 
@@ -231,6 +232,13 @@ export interface DocumentMemoryMetadata
 	addedAt?: number;
 	ingestionAttemptId?: UUID;
 	ingestionState?: "pending" | "ready" | "failed";
+	/**
+	 * Token of the update attempt that committed this document revision.
+	 * Fragment readers require fragments to carry the same token whenever the
+	 * parent declares one, fencing off same-revision generations staged by
+	 * concurrent update attempts that lost the compare-and-swap.
+	 */
+	revisionAttemptId?: UUID;
 	title?: string;
 	filename?: string;
 	originalFilename?: string;
@@ -261,6 +269,8 @@ export interface DocumentFragmentMemoryMetadata
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	addedAt?: number;
+	/** Update attempt that staged this fragment; must match the parent's committed token to be readable. */
+	revisionAttemptId?: UUID;
 	position: number;
 	source?: string;
 	documentTitle?: string;
@@ -275,7 +285,6 @@ export interface DocumentsConfig {
 	CTX_DOCUMENTS_ENABLED: boolean;
 	LOAD_DOCS_ON_STARTUP: boolean;
 	MAX_INPUT_TOKENS?: string | number;
-	MAX_OUTPUT_TOKENS?: string | number;
 	EMBEDDING_PROVIDER?: string;
 	TEXT_PROVIDER?: string;
 	TEXT_EMBEDDING_MODEL?: string;

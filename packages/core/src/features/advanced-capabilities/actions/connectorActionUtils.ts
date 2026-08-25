@@ -1,9 +1,9 @@
 /**
  * Shared helpers for the connector-backed messaging actions (MESSAGE and POST).
  * Provides loose param coercion for planner-supplied input (textParam,
- * boolParam, numberParam, limitParam — which clamps to 1..100 to bound query
- * cost), connector selection and scoping by source + account
- * (selectConnector / connectorSelectionFailure), target resolution from params,
+ * boolParam, numberParam, limitParam), connector selection and scoping by
+ * source + account (selectConnector / connectorSelectionFailure), target
+ * resolution from params,
  * and the refresh* helpers that rewrite an action's description /
  * descriptionCompressed to advertise the currently registered
  * MessageConnector / PostConnector instances.
@@ -90,9 +90,9 @@ export function sourceParam(params: ParamRecord): string | undefined {
 	return textParam(params.source) ?? textParam(params.platform);
 }
 
-export function limitParam(params: ParamRecord, fallback = 20): number {
-	const limit = numberParam(params.limit, fallback) ?? fallback;
-	return Math.max(1, Math.min(100, Math.floor(limit)));
+export function limitParam(params: ParamRecord): number | undefined {
+	const limit = numberParam(params.limit);
+	return limit === undefined ? undefined : Math.max(1, Math.floor(limit));
 }
 
 export function isUuidLike(value: string | undefined): value is UUID {
@@ -221,19 +221,13 @@ export function refreshMessageConnectorActionDescription(
 					getMessageConnectors?: () => MessageConnector[];
 				}
 			).getMessageConnectors?.call(runtime) ?? []);
-	const visible = connectors
-		.slice(0, 12)
-		.map((connector) =>
-			messageConnectorSummary(connector, Boolean(options.connectorOnly)),
-		);
-	const suffix =
-		connectors.length > visible.length
-			? `; +${connectors.length - visible.length} more`
-			: "";
+	const visible = connectors.map((connector) =>
+		messageConnectorSummary(connector, Boolean(options.connectorOnly)),
+	);
 	const connectorText =
 		connectors.length === 0
 			? "connectors[0]: none_registered"
-			: `connectors[${connectors.length}]: ${visible.join("; ")}${suffix}`;
+			: `connectors[${connectors.length}]: ${visible.join("; ")}`;
 	action.description = `${options.baseDescription}\n${connectorText}`;
 	action.descriptionCompressed = `${options.baseCompressed} ${connectorText}`;
 }
@@ -249,19 +243,13 @@ export function refreshPostConnectorActionDescription(
 	},
 ): void {
 	const connectors = getPostConnectorsWithHook(runtime, options.hook);
-	const visible = connectors
-		.slice(0, 12)
-		.map((connector) =>
-			postConnectorSummary(connector, Boolean(options.connectorOnly)),
-		);
-	const suffix =
-		connectors.length > visible.length
-			? `; +${connectors.length - visible.length} more`
-			: "";
+	const visible = connectors.map((connector) =>
+		postConnectorSummary(connector, Boolean(options.connectorOnly)),
+	);
 	const connectorText =
 		connectors.length === 0
 			? "connectors[0]: none_registered"
-			: `connectors[${connectors.length}]: ${visible.join("; ")}${suffix}`;
+			: `connectors[${connectors.length}]: ${visible.join("; ")}`;
 	action.description = `${options.baseDescription}\n${connectorText}`;
 	action.descriptionCompressed = `${options.baseCompressed} ${connectorText}`;
 }
@@ -611,7 +599,6 @@ export async function resolveTargetForConnector(
 						text:
 							`Target is ambiguous for ${connector.label}. Choose one of:\n` +
 							sorted
-								.slice(0, 8)
 								.map(
 									(target, index) =>
 										`${index + 1}. ${target.label ?? targetLabel(target.target)} (${target.kind ?? "target"})`,
@@ -621,7 +608,7 @@ export async function resolveTargetForConnector(
 						data: {
 							error: "TARGET_AMBIGUOUS",
 							source: connector.source,
-							candidates: sorted.slice(0, 8),
+							candidates: sorted,
 						},
 					},
 				};
@@ -658,7 +645,7 @@ export const LOOSE_TARGET_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source: discord, slack, signal, x, bluesky, nostr, telegram.",
+			"Connector source: discord, slack, x, bluesky, nostr, telegram.",
 		required: false,
 		schema: { type: "string" },
 	},

@@ -103,20 +103,6 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		acceptsArgs: false,
 		requiresAuth: true,
 	},
-	{
-		key: "compact",
-		nativeName: "compact",
-		description: "Compact conversation history",
-		textAliases: ["/compact"],
-		scope: "both",
-		category: "session",
-		acceptsArgs: true,
-		requiresAuth: true,
-		args: [
-			{ name: "instructions", description: "Optional compaction instructions" },
-		],
-	},
-
 	// Options commands
 	{
 		key: "think",

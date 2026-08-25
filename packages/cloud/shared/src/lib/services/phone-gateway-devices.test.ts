@@ -3,7 +3,11 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { PgDialect } from "drizzle-orm/pg-core";
 
 import * as realDbClient from "../../db/client";
+// Load SQL metadata projections before this suite installs process-global
+// schema doubles, so later batched PGlite suites retain the real columns.
+import "../../db/repositories/phone-metadata-readers";
 import * as realDbSchemas from "../../db/schemas";
+import * as realLogger from "../utils/logger";
 
 // bun's `mock.module` patches the process-global module registry. Under the
 // batched cloud-unit runner (`--isolate` occasionally fails to contain these on
@@ -13,16 +17,19 @@ import * as realDbSchemas from "../../db/schemas";
 // reinstall them in afterAll so this file's stubs are strictly local.
 const realDbClientExports = { ...realDbClient };
 const realDbSchemasExports = { ...realDbSchemas };
+const realLoggerExports = { ...realLogger };
 
 const values = mock();
 const onConflictDoUpdate = mock();
 const returning = mock();
 const execute = mock();
 const selectLimit = mock();
+const selectWhere = mock();
 const updateSet = mock();
 const updateWhere = mock();
 const updateReturning = mock();
 const transaction = mock();
+const loggerWarn = mock();
 
 const insertBuilder = {
   values,
@@ -31,7 +38,7 @@ const insertBuilder = {
 };
 const selectBuilder = {
   from: mock(() => selectBuilder),
-  where: mock(() => selectBuilder),
+  where: selectWhere,
   limit: selectLimit,
 };
 const updateBuilder = {
@@ -102,17 +109,29 @@ mock.module("../../db/schemas", () => ({
   vertexTuningJobs: {},
 }));
 
+mock.module("../utils/logger", () => ({
+  logger: {
+    debug: mock(),
+    error: mock(),
+    info: mock(),
+    warn: loggerWarn,
+  },
+}));
+
 const {
   authenticateBlueBubblesGateway,
   createBlueBubblesGatewayRegistration,
   hashBlueBubblesGatewayToken,
+  listBlueBubblesGateways,
   registerPhoneGatewayDevice,
   revokeBlueBubblesGateway,
+  touchBlueBubblesGateway,
 } = await import("./phone-gateway-devices");
 
 afterAll(() => {
   mock.module("../../db/client", () => realDbClientExports);
   mock.module("../../db/schemas", () => realDbSchemasExports);
+  mock.module("../utils/logger", () => realLoggerExports);
 });
 
 describe("registerPhoneGatewayDevice", () => {
@@ -127,6 +146,8 @@ describe("registerPhoneGatewayDevice", () => {
     execute.mockResolvedValue(undefined);
     selectLimit.mockReset();
     selectLimit.mockResolvedValue([]);
+    selectWhere.mockReset();
+    selectWhere.mockReturnValue(selectBuilder);
     updateSet.mockReset();
     updateSet.mockReturnValue(updateBuilder);
     updateWhere.mockReset();
@@ -142,6 +163,7 @@ describe("registerPhoneGatewayDevice", () => {
           update: mock(() => updateBuilder),
         }),
     );
+    loggerWarn.mockClear();
   });
 
   test("upserts a shared gateway device by provider, phone number, and bridge id", async () => {
@@ -170,7 +192,7 @@ describe("registerPhoneGatewayDevice", () => {
         friendly_name: "Eliza Cloud Gateway",
         send_method: "bluebubbles-local-bridge",
         cloud_webhook_url: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
-        metadata: '{"eventType":"new-message"}',
+        metadata: { eventType: "new-message" },
         is_active: true,
       }),
     );
@@ -186,21 +208,74 @@ describe("registerPhoneGatewayDevice", () => {
     );
   });
 
-  test("repairs the gateway table on first use when the migration is missing", async () => {
-    returning
-      .mockRejectedValueOnce(new Error('relation "phone_gateway_devices" does not exist'))
-      .mockResolvedValueOnce([{ id: "gateway-device-1" }]);
+  test("fails closed without recreating the gateway table when its migration is missing", async () => {
+    returning.mockRejectedValueOnce(
+      Object.assign(new Error('relation "phone_gateway_devices" does not exist'), {
+        code: "42P01",
+      }),
+    );
 
-    const result = await registerPhoneGatewayDevice({
-      provider: "blooio",
-      phoneNumber: "+14159611510",
+    await expect(
+      registerPhoneGatewayDevice({
+        provider: "blooio",
+        phoneNumber: "+14159611510",
+      }),
+    ).rejects.toMatchObject({ code: "PHONE_SCHEMA_MIGRATION_REQUIRED" });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("rejects non-JSON gateway metadata before insert without logging its contents", async () => {
+    const secret = "gateway-secret-that-must-not-appear";
+    try {
+      await registerPhoneGatewayDevice({
+        provider: "blooio",
+        phoneNumber: "+14159611510",
+        metadata: { invalid: undefined, secret },
+      });
+      throw new Error("Expected invalid gateway metadata");
+    } catch (error) {
+      // error-policy:J3 the test inspects the typed invalid-input boundary.
+      expect(error).toMatchObject({ code: "PHONE_GATEWAY_METADATA_INVALID" });
+      expect(String(error)).not.toContain(secret);
+      expect(JSON.stringify(error)).not.toContain(secret);
+    }
+    expect(returning).not.toHaveBeenCalled();
+  });
+
+  test("uses bounded diagnostics when gateway persistence fails", async () => {
+    const sentinelPhone = "+19995550123";
+    const sentinelBridge = "SENTINEL_PROVIDER_BRIDGE_ID";
+    const sentinelDatabaseBody = "SENTINEL_GATEWAY_DATABASE_BODY";
+    returning.mockRejectedValueOnce(
+      Object.assign(
+        new Error(`${sentinelDatabaseBody}-message`, {
+          cause: Object.assign(new Error(`${sentinelDatabaseBody}-cause`), {
+            name: `${sentinelDatabaseBody}-cause-name`,
+          }),
+        }),
+        {
+          name: `${sentinelDatabaseBody}-name`,
+        },
+      ),
+    );
+
+    await expect(
+      registerPhoneGatewayDevice({
+        provider: "blooio",
+        phoneNumber: sentinelPhone,
+        bridgeId: sentinelBridge,
+      }),
+    ).resolves.toEqual({
+      id: null,
+      registered: false,
+      skippedReason: "write_failed",
     });
 
-    expect(result).toEqual({
-      id: "gateway-device-1",
-      registered: true,
-    });
-    expect(execute).toHaveBeenCalledTimes(5);
+    const serializedLogs = JSON.stringify(loggerWarn.mock.calls);
+    expect(serializedLogs).not.toContain(sentinelPhone);
+    expect(serializedLogs).not.toContain(sentinelBridge);
+    expect(serializedLogs).not.toContain(sentinelDatabaseBody);
+    expect(serializedLogs).toContain('"errorClass":"unexpected_phone_failure"');
   });
 
   test("registers a sender-owned BlueBubbles phone with a one-time hash-stored credential", async () => {
@@ -224,22 +299,21 @@ describe("registerPhoneGatewayDevice", () => {
     expect(result.token).toMatch(/^bbg_[0-9a-f]{64}$/);
 
     const inserted = values.mock.calls[0]?.[0] as {
-      metadata: string;
+      metadata: Record<string, unknown>;
       provider: string;
       bridge_id: string;
     };
-    const metadata = JSON.parse(inserted.metadata) as Record<string, unknown>;
     expect(inserted.provider).toBe("blooio");
     expect(inserted.bridge_id).toBe(result.bridgeId);
-    expect(metadata).toMatchObject({
+    expect(inserted.metadata).toMatchObject({
       schemaVersion: 2,
       gatewayKind: "bluebubbles",
       ownerUserId: "user-1",
       routingMode: "sender-owned",
       agentId: null,
     });
-    expect(metadata).not.toHaveProperty("token");
-    expect(metadata.authTokenHash).toBe(await hashBlueBubblesGatewayToken(result.token));
+    expect(inserted.metadata).not.toHaveProperty("token");
+    expect(inserted.metadata.authTokenHash).toBe(await hashBlueBubblesGatewayToken(result.token));
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ last_seen_at: null }));
   });
 
@@ -278,11 +352,13 @@ describe("registerPhoneGatewayDevice", () => {
     expect(lockParameters).toEqual([["org-1:+14155550123"], ["org-1:+14155550123"]]);
 
     for (const [predicate] of updateWhere.mock.calls) {
-      const parameters = dialect.sqlToQuery(predicate).params;
+      const query = dialect.sqlToQuery(predicate);
+      const parameters = query.params;
       expect(parameters).toContain("org-1");
       expect(parameters).toContain("+14155550123");
       expect(parameters).not.toContain("first-admin");
       expect(parameters).not.toContain("second-admin");
+      expect(query.sql).not.toContain("::jsonb");
     }
   });
 
@@ -353,8 +429,44 @@ describe("registerPhoneGatewayDevice", () => {
     });
   });
 
+  test("translates missing gateway schema across every read and mutation boundary", async () => {
+    const missingTable = () =>
+      Object.assign(new Error('relation "phone_gateway_devices" does not exist'), {
+        code: "42P01",
+      });
+
+    selectLimit.mockRejectedValueOnce(missingTable());
+    await expect(authenticateBlueBubblesGateway("bb-registered", "token")).rejects.toMatchObject({
+      code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+    });
+
+    selectWhere.mockRejectedValueOnce(missingTable());
+    await expect(listBlueBubblesGateways("org-1", "user-1")).rejects.toMatchObject({
+      code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+    });
+
+    updateWhere.mockRejectedValueOnce(missingTable());
+    await expect(touchBlueBubblesGateway("gateway-device-1")).rejects.toMatchObject({
+      code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+    });
+
+    selectLimit.mockRejectedValueOnce(missingTable());
+    await expect(
+      revokeBlueBubblesGateway("org-1", "user-1", "gateway-device-1"),
+    ).rejects.toMatchObject({ code: "PHONE_SCHEMA_MIGRATION_REQUIRED" });
+  });
+
   test("revokes only a gateway owned by the authenticated user", async () => {
     const token = `bbg_${"d".repeat(64)}`;
+    const metadata = {
+      schemaVersion: 2,
+      gatewayKind: "bluebubbles",
+      ownerUserId: "user-1",
+      routingMode: "sender-owned",
+      agentId: null,
+      authTokenHash: await hashBlueBubblesGatewayToken(token),
+      tokenCreatedAt: new Date().toISOString(),
+    };
     const record = {
       id: "gateway-device-1",
       organization_id: "org-1",
@@ -364,19 +476,11 @@ describe("registerPhoneGatewayDevice", () => {
       friendly_name: "Test iPhone",
       is_active: true,
       last_seen_at: null,
-      metadata: JSON.stringify({
-        schemaVersion: 2,
-        gatewayKind: "bluebubbles",
-        ownerUserId: "user-1",
-        routingMode: "sender-owned",
-        agentId: null,
-        authTokenHash: await hashBlueBubblesGatewayToken(token),
-        tokenCreatedAt: new Date().toISOString(),
-      }),
+      metadata: JSON.stringify(metadata),
     };
 
     selectLimit.mockResolvedValueOnce([
-      { ...record, metadata: record.metadata.replace("user-1", "user-2") },
+      { ...record, metadata: JSON.stringify({ ...metadata, ownerUserId: "user-2" }) },
     ]);
     await expect(revokeBlueBubblesGateway("org-1", "user-1", "gateway-device-1")).resolves.toBe(
       false,

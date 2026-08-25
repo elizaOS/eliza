@@ -245,6 +245,14 @@ async function main() {
     ? [
         "--var",
         "NODE_ENV:test",
+        ...(process.env.CLOUD_E2E_RUN_RECEIPT
+          ? [
+              "--var",
+              "CLOUD_E2E:1",
+              "--var",
+              `CLOUD_E2E_RUN_RECEIPT:${process.env.CLOUD_E2E_RUN_RECEIPT}`,
+            ]
+          : []),
         "--var",
         `ELIZA_KMS_BACKEND:${kmsBackend}`,
         ...(localRootKey
@@ -256,6 +264,29 @@ async function main() {
         `ELIZA_CLOUD_AGENT_BASE_DOMAIN:${agentBaseDomainOverride}`,
       ]
     : [];
+  // A fake Stripe endpoint is intentionally narrower than ordinary local dev:
+  // pass the synthetic credentials/origin into workerd only for the exact
+  // cloud E2E runtime. `shared/lib/stripe.ts` independently revalidates the
+  // same gates and requires a canonical loopback origin before constructing a
+  // client, so these variables cannot become a generic provider redirect.
+  const isCloudE2ETestMode =
+    process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
+  const stripeCloudE2EOrigin = process.env.STRIPE_CLOUD_E2E_API_ORIGIN;
+  const stripeE2EDevVars =
+    isCloudE2ETestMode && stripeCloudE2EOrigin
+      ? [
+          "--var",
+          "CLOUD_E2E:1",
+          "--var",
+          "ENVIRONMENT:local",
+          "--var",
+          `STRIPE_CLOUD_E2E_API_ORIGIN:${stripeCloudE2EOrigin}`,
+          "--var",
+          "STRIPE_SECRET_KEY:sk_test_cloud_e2e",
+          "--var",
+          "STRIPE_WEBHOOK_SECRET:whsec_cloud_e2e",
+        ]
+      : [];
   // Redis/cache selection must reach the Worker's `c.env`, not just this launcher's
   // process.env: routes build their client via `buildRedisClient(c.env)`, and
   // wrangler `--local` only exposes vars passed through wrangler.toml/.dev.vars/
@@ -289,6 +320,7 @@ async function main() {
           apiPort,
           "--local",
           ...testModeVars,
+          ...stripeE2EDevVars,
           ...redisDevVars,
           ...appDeployDevVars,
         ];

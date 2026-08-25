@@ -4,7 +4,7 @@
  */
 
 import type { ToolCall } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { jsonSchema, type ModelMessage, type ToolChoice, type ToolSet } from "ai";
 
 type JsonObject = Record<string, unknown>;
@@ -110,7 +110,7 @@ export function normalizeNativeTools(tools: unknown): ToolSet | undefined {
     if (!name) {
       throw new ElizaError("Ollama native tool definition is missing a name", {
         code: "OLLAMA_INVALID_TOOL_DEFINITION",
-        context: { tool: stringifyContent(rawTool).slice(0, 300) },
+        context: { tool: truncateWellFormed(toWellFormedUnicode(stringifyContent(rawTool)), 300) },
         severity: "ephemeral",
       });
     }
@@ -207,7 +207,9 @@ export function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | 
   if (toolName) return { type: "tool", toolName };
   throw new ElizaError("Ollama toolChoice does not name a tool", {
     code: "OLLAMA_INVALID_TOOL_CHOICE",
-    context: { toolChoice: stringifyContent(toolChoice).slice(0, 300) },
+    context: {
+      toolChoice: truncateWellFormed(toWellFormedUnicode(stringifyContent(toolChoice)), 300),
+    },
     severity: "ephemeral",
   });
 }

@@ -1,17 +1,207 @@
 /**
- * Payout Alerting Service
- *
- * Sends alerts for critical payout events to Slack/PagerDuty.
- *
- * ALERT TYPES:
- * - CRITICAL: System paused, security breach suspected
- * - HIGH: Hot wallet low, repeated failures
- * - MEDIUM: High volume, unusual patterns
- * - LOW: Informational
+ * Delivers security-critical payout alerts to the configured Slack webhook and
+ * the fixed PagerDuty Events API without allowing an alert hop to pin payout
+ * processing or redirect its payload to an unintended endpoint.
  */
 
 import { MONITORING } from "../config/redemption-security";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
+
+const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
+const MAX_ALERT_REQUEST_BODY_BYTES = 64 * 1024;
+const MAX_ALERT_RESPONSE_BODY_BYTES = 64 * 1024;
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+export type AlertTransport = (url: string, init?: RequestInit) => Promise<Response>;
+
+function assertAllowedAlertEndpoint(input: string | URL): URL {
+  const url = new URL(input.toString());
+  const isSlackWebhook =
+    url.hostname === "hooks.slack.com" &&
+    url.pathname.startsWith("/services/") &&
+    url.pathname.split("/").filter(Boolean).length === 4;
+  const isPagerDutyEventsApi = url.toString() === PAGERDUTY_EVENTS_URL;
+
+  if (
+    url.protocol !== "https:" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== "" ||
+    (!isSlackWebhook && !isPagerDutyEventsApi)
+  ) {
+    throw new Error("Payout alert endpoint is not an approved Slack or PagerDuty URL");
+  }
+
+  return url;
+}
+
+/**
+ * Sends one bounded payout-alert request. Only the two owned alert endpoints
+ * are accepted, redirects are rejected, caller cancellation is composed with
+ * (rather than substituted for) the per-hop deadline, and the deadline stays
+ * armed until the response body has been consumed under a fixed byte ceiling.
+ * The returned Response carries the fully buffered (bounded) body, so callers
+ * never hold an open transport stream.
+ */
+export async function alertFetch(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
+  transport: AlertTransport = safeFetch,
+): Promise<Response> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_TIMEOUT_MS) {
+    throw new RangeError(
+      `Payout alert timeout must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}`,
+    );
+  }
+
+  const url = assertAllowedAlertEndpoint(input);
+  if (init.body != null && typeof init.body !== "string") {
+    throw new TypeError("Payout alert request body must be a JSON string");
+  }
+  if (
+    typeof init.body === "string" &&
+    new TextEncoder().encode(init.body).byteLength > MAX_ALERT_REQUEST_BODY_BYTES
+  ) {
+    throw new RangeError("Payout alert request body exceeds the 64 KiB limit");
+  }
+
+  init.signal?.throwIfAborted();
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(() => {
+    deadlineController.abort(
+      new DOMException("The operation was aborted by the payout alert timeout", "TimeoutError"),
+    );
+  }, timeoutMs);
+  const signal = init.signal
+    ? AbortSignal.any([init.signal, deadlineController.signal])
+    : deadlineController.signal;
+  signal.throwIfAborted();
+
+  let acceptResponse = true;
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  const pendingResponse = Promise.resolve()
+    .then(() =>
+      transport(url.toString(), {
+        ...init,
+        redirect: "manual",
+        signal,
+      }),
+    )
+    .then((response) => {
+      if (!acceptResponse) releaseAlertResponse(response, "late");
+      return response;
+    });
+
+  try {
+    const response = await Promise.race([pendingResponse, aborted]);
+    signal.throwIfAborted();
+    if (REDIRECT_STATUSES.has(response.status)) {
+      releaseAlertResponse(response, "redirect");
+      throw new Error(`Payout alert endpoint redirected with status ${response.status}`);
+    }
+    const body = await readBoundedResponseBody(response, aborted);
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  } finally {
+    acceptResponse = false;
+    clearTimeout(deadlineTimer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+/**
+ * Drains the response body while the hop deadline is still armed. A declared
+ * Content-Length above the ceiling is rejected before any byte is read; a
+ * chunked body that crosses the ceiling, or one that stalls past the deadline,
+ * is cancelled (detached) and rejected. Any failure here surfaces to the
+ * caller as the hop outcome rather than leaving an open stream behind.
+ */
+async function readBoundedResponseBody(
+  response: Response,
+  aborted: Promise<never>,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const declared = Number(declaredLength);
+    if (
+      !Number.isSafeInteger(declared) ||
+      declared < 0 ||
+      declared > MAX_ALERT_RESPONSE_BODY_BYTES
+    ) {
+      releaseAlertResponse(response, "oversized");
+      throw new RangeError(
+        `Payout alert response declares ${declaredLength} bytes, above the ${MAX_ALERT_RESPONSE_BODY_BYTES} byte limit`,
+      );
+    }
+  }
+  if (!response.body || NULL_BODY_STATUSES.has(response.status)) {
+    releaseAlertResponse(response, "empty");
+    return null;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await Promise.race([reader.read(), aborted]);
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_ALERT_RESPONSE_BODY_BYTES) {
+        throw new RangeError(
+          `Payout alert response body exceeds the ${MAX_ALERT_RESPONSE_BODY_BYTES} byte limit`,
+        );
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    // error-policy:J6 the bounded read already failed (oversize, stall, or stream
+    // error) and is rethrown unchanged; cancellation is detached so a hostile
+    // stream cannot delay that rethrow.
+    void reader.cancel(error).catch((cancelError: unknown) => {
+      // error-policy:J6 Response disposal is best-effort after the hop already failed.
+      logger.warn("[PayoutAlerts] Failed to cancel oversized or stalled response body", {
+        error: cancelError,
+      });
+    });
+    throw error;
+  }
+  reader.releaseLock();
+  if (total === 0) return null;
+  const body = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function releaseAlertResponse(response: Response, channel: string): void {
+  try {
+    void response.body?.cancel().catch((error) => {
+      // error-policy:J6 Response disposal is best-effort after delivery completed.
+      logger.warn(`[PayoutAlerts] Failed to release ${channel} response body`, { error });
+    });
+  } catch (error) {
+    // error-policy:J6 Response disposal is best-effort after delivery completed.
+    logger.warn(`[PayoutAlerts] Failed to release ${channel} response body`, { error });
+  }
+}
 
 // ============================================================================
 // TYPES
@@ -64,7 +254,7 @@ export class PayoutAlertsService {
   private slackWebhookUrl: string | undefined;
   private pagerDutyKey: string | undefined;
 
-  constructor() {
+  constructor(private readonly transport: AlertTransport = safeFetch) {
     this.slackWebhookUrl = process.env[MONITORING.SLACK_WEBHOOK_ENV];
     this.pagerDutyKey = process.env[MONITORING.PAGERDUTY_KEY_ENV];
 
@@ -127,12 +317,18 @@ export class PayoutAlertsService {
       ],
     };
 
+    let response: Response | undefined;
     try {
-      const response = await fetch(this.slackWebhookUrl!, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(slackPayload),
-      });
+      response = await alertFetch(
+        this.slackWebhookUrl!,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(slackPayload),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        this.transport,
+      );
 
       if (!response.ok) {
         logger.error("[PayoutAlerts] Slack webhook failed", {
@@ -140,7 +336,10 @@ export class PayoutAlertsService {
         });
       }
     } catch (error) {
+      // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send Slack alert", { error });
+    } finally {
+      if (response) releaseAlertResponse(response, "Slack");
     }
   }
 
@@ -168,12 +367,18 @@ export class PayoutAlertsService {
       },
     };
 
+    let response: Response | undefined;
     try {
-      const response = await fetch("https://events.pagerduty.com/v2/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pagerDutyPayload),
-      });
+      response = await alertFetch(
+        PAGERDUTY_EVENTS_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pagerDutyPayload),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        this.transport,
+      );
 
       if (!response.ok) {
         logger.error("[PayoutAlerts] PagerDuty alert failed", {
@@ -181,7 +386,10 @@ export class PayoutAlertsService {
         });
       }
     } catch (error) {
+      // error-policy:J7 Alert diagnostics must not stop payout processing.
       logger.error("[PayoutAlerts] Failed to send PagerDuty alert", { error });
+    } finally {
+      if (response) releaseAlertResponse(response, "PagerDuty");
     }
   }
 

@@ -43,6 +43,15 @@ describe("inventory — categorization heuristics", () => {
     expect(categorizeKey("CUSTOM_BACKEND_API_KEY")).toBe("plugin");
   });
 
+  it("classifies durable per-account connector credentials separately", () => {
+    expect(
+      categorizeKey("connector.agent-1.telegram.personal.access_token"),
+    ).toBe("connector");
+    expect(categorizeKey("connector.agent-1.github.alice.refresh_token")).toBe(
+      "connector",
+    );
+  });
+
   it("classifies wallet keys", () => {
     expect(categorizeKey("EVM_PRIVATE_KEY")).toBe("wallet");
     expect(categorizeKey("SOLANA_PRIVATE_KEY")).toBe("wallet");
@@ -211,6 +220,11 @@ describe("inventory — listVaultInventory", () => {
     await vault.set("WORKFLOW_API_KEY", "workflow-NEVERLEAK-3", {
       sensitive: true,
     });
+    await vault.set(
+      "connector.agent-1.github.alice.refresh_token",
+      "CONNECTOR-NEVERLEAK-6",
+      { sensitive: true },
+    );
     await vault.set("creds.github.com.alice", "PASSWORD-NEVERLEAK-4", {
       sensitive: true,
     });
@@ -223,6 +237,9 @@ describe("inventory — listVaultInventory", () => {
     expect(byKey.get("OPENROUTER_API_KEY")?.category).toBe("provider");
     expect(byKey.get("EVM_PRIVATE_KEY")?.category).toBe("wallet");
     expect(byKey.get("WORKFLOW_API_KEY")?.category).toBe("plugin");
+    expect(
+      byKey.get("connector.agent-1.github.alice.refresh_token")?.category,
+    ).toBe("connector");
     expect(byKey.get("creds.github.com.alice")?.category).toBe("credential");
     expect(byKey.get("pm.1password.session")?.category).toBe("session");
 

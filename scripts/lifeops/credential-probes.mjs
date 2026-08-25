@@ -7,8 +7,7 @@
  * never a secret: every detail string passes through redactSecrets(), which
  * replaces any secret-shaped env value by its last-4 mask, so even a provider
  * echoing a token back cannot leak it. All probes are plain global fetch with
- * a 10s abort; the non-HTTP paths are the documented signal-cli fallback and
- * the local iMessage chat.db access check.
+ * a 10s abort; the local iMessage path uses a read-only chat.db access check.
  *
  * Two probe granularities coexist. PROBES/probeFamily keep the family-level
  * sweep (one verdict per connector family; CLI:
@@ -388,101 +387,6 @@ async function probeTwilio(e) {
         `account ok: ${r.body?.friendly_name ?? "unnamed"} (status=${r.body?.status ?? "?"})`,
       )
     : fail("twilio", `account HTTP ${r.status}: ${errorSnippet(r)}`);
-}
-
-/**
- * Linked-account identifiers in `signal-cli listAccounts` stdout. signal-cli
- * mixes warning lines into stdout on some builds, so non-empty output is not
- * evidence of a linked account: keep only trimmed lines that — after
- * stripping the `Number: ` prefix case-insensitively — are an E.164 number or
- * a `u:username` handle. Shared with the connector-path availability leaf
- * (connector-paths.mjs) so the coarse dashboard row and this probe cannot
- * drift on what counts as an account (#15848).
- */
-export function parseSignalAccountLines(stdout) {
-  return String(stdout ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .map((line) => line.replace(/^Number:\s*/i, ""))
-    .filter((line) => /^\+\d{6,}$|^u:[A-Za-z0-9_.-]+$/.test(line));
-}
-
-export async function probeSignal(
-  e,
-  { fetchJsonFn = fetchJson, spawnSyncFn = spawnSync } = {},
-) {
-  const httpUrl = e("SIGNAL_HTTP_URL");
-  if (httpUrl) {
-    const base = httpUrl.replace(/\/+$/, "");
-    const about = await fetchJsonFn(`${base}/v1/about`);
-    if (!about.httpOk) {
-      return fail(
-        "signal",
-        `GET /v1/about HTTP ${about.status}: ${errorSnippet(about)}`,
-      );
-    }
-    const accounts = await fetchJsonFn(`${base}/v1/accounts`);
-    if (!accounts.httpOk) {
-      return fail(
-        "signal",
-        `GET /v1/accounts HTTP ${accounts.status}: ${errorSnippet(accounts)}`,
-      );
-    }
-    if (!Array.isArray(accounts.body)) {
-      return fail("signal", "GET /v1/accounts returned a non-array body");
-    }
-    if (accounts.body.length === 0) {
-      return fail("signal", "no linked Signal account");
-    }
-    const selected = e("SIGNAL_ACCOUNT_NUMBER");
-    if (selected && !accounts.body.includes(selected)) {
-      return fail(
-        "signal",
-        `configured account ${maskTail(selected)} is not linked (${accounts.body.length} other account(s))`,
-      );
-    }
-    return pass(
-      "signal",
-      `signal-cli-rest-api reachable; ${accounts.body.length} linked account(s)${selected ? `; configured ${maskTail(selected)} present` : ""}`,
-    );
-  }
-  const cliPath = e("SIGNAL_CLI_PATH");
-  if (!cliPath && !e("SIGNAL_ACCOUNT_NUMBER"))
-    return missing("signal", "SIGNAL_HTTP_URL or SIGNAL_CLI_PATH");
-  const command = cliPath ?? "signal-cli";
-  const version = spawnSyncFn(command, ["--version"], {
-    encoding: "utf8",
-    timeout: PROBE_TIMEOUT_MS,
-  });
-  if (version.status !== 0) {
-    return fail(
-      "signal",
-      `${command} --version failed (status=${version.status ?? "spawn-error"}${version.error ? `, ${version.error.code ?? version.error.message}` : ""})`,
-    );
-  }
-  const listed = spawnSyncFn(command, ["listAccounts"], {
-    encoding: "utf8",
-    timeout: PROBE_TIMEOUT_MS,
-  });
-  if (listed.status !== 0) {
-    return fail(
-      "signal",
-      `${command} listAccounts failed (status=${listed.status ?? "spawn-error"}${listed.error ? `, ${listed.error.code ?? listed.error.message}` : ""})`,
-    );
-  }
-  const accounts = parseSignalAccountLines(listed.stdout);
-  if (accounts.length === 0) return fail("signal", "no linked Signal account");
-  const selected = e("SIGNAL_ACCOUNT_NUMBER");
-  if (selected && !accounts.includes(selected)) {
-    return fail(
-      "signal",
-      `configured account ${maskTail(selected)} is not linked (${accounts.length} other account(s))`,
-    );
-  }
-  return pass(
-    "signal",
-    `${command} ${(version.stdout ?? "").split("\n")[0].trim()}; ${accounts.length} linked account(s)${selected ? `; configured ${maskTail(selected)} present` : ""}`,
-  );
 }
 
 // --- model providers (per-key path probes + family aggregate) ----------------
@@ -875,7 +779,6 @@ const PROBES = {
   x: probeX,
   whatsapp: probeWhatsapp,
   twilio: probeTwilio,
-  signal: probeSignal,
   model: probeModel,
   health: probeHealth,
   plaid: probePlaid,
@@ -952,7 +855,6 @@ export const PATH_PROBES = {
   "discord.user-token": probeDiscordUserToken,
   "slack.bot": probeSlack,
   "slack.user-token": probeSlackUserToken,
-  "signal.cli": probeSignal,
   "whatsapp.cloud-api": probeWhatsapp,
   "imessage.macos": probeImessageMacos,
   "imessage.bluebubbles": probeBlueBubbles,

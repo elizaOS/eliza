@@ -26,6 +26,9 @@ import {
 	type Service,
 	ServiceType,
 	stringToUuid,
+	TurnAbortedError,
+	toWellFormedUnicode,
+	truncateWellFormed,
 	type UUID,
 } from "@elizaos/core";
 import {
@@ -80,6 +83,7 @@ import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
+import { chunkDiscordText } from "./messaging";
 import { waitForDiscordIngressReadiness } from "./readiness";
 import {
 	applyDiscordStalenessGuard,
@@ -117,11 +121,12 @@ import {
 	extractUrls,
 	getMessageService,
 	getMessagingAPI,
+	MAX_MESSAGE_LENGTH,
 	normalizeDiscordMessageText,
 	sendMessageInChunks,
 } from "./utils";
 
-const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
+export const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
 // Filler tokens carrying no answer content — two single-fact replies differing
 // only in these words are the same fact reworded.
@@ -193,6 +198,23 @@ export function numericFactSignatureTokens(text: string): Set<string> | null {
 	const set = new Set(tokens);
 	const hasNumber = [...set].some((token) => /[0-9]/.test(token));
 	return hasNumber && set.size > 0 ? set : null;
+}
+
+/** Maximum UTF-16 code units of message text carried in a suppression log. */
+const DUPLICATE_TEXT_PREVIEW_LIMIT = 200;
+
+/**
+ * Collapses external message text into a bounded log preview. Discord text is
+ * untrusted and may already carry lone surrogates, and a plain slice can split
+ * an astral pair, so the value is repaired and truncated on code-point
+ * boundaries before it reaches the logger. This is a preview only; the complete
+ * text is never replaced by it.
+ */
+export function buildDuplicateTextPreview(text: string): string {
+	return truncateWellFormed(
+		toWellFormedUnicode(text.replace(/\s+/g, " ").trim()),
+		DUPLICATE_TEXT_PREVIEW_LIMIT,
+	);
 }
 
 export function isSubsetOrEqual(a: Set<string>, b: Set<string>): boolean {
@@ -427,6 +449,7 @@ export interface DiscordOutboundDeliveryParams {
 	replyToMessageId?: string;
 	text?: string;
 	attachmentUrls?: readonly string[];
+	interactionIdentity?: string;
 	now?: number;
 	windowMs?: number;
 	state?: Map<string, DiscordOutboundDeliveryState>;
@@ -488,7 +511,8 @@ export function beginDiscordOutboundDelivery(
 ): BeginDiscordOutboundDeliveryResult {
 	const text = normalizeOutboundText(params.text);
 	const attachments = outboundAttachmentIdentity(params.attachmentUrls);
-	if (!text && !attachments) {
+	const interactionIdentity = params.interactionIdentity?.trim() ?? "";
+	if (!text && !attachments && !interactionIdentity) {
 		return {
 			kind: "deliver",
 			reservation: {
@@ -509,6 +533,7 @@ export function beginDiscordOutboundDelivery(
 		params.channelId,
 		params.replyToMessageId ?? "",
 		attachments,
+		interactionIdentity,
 		text,
 	].join("\u0000");
 
@@ -636,6 +661,19 @@ export interface AbortableTimeoutResult {
 	timedOut: boolean;
 	settled: boolean;
 	error?: unknown;
+}
+
+/**
+ * Reads core's designed TurnAbortedError contract. Both user cancellation and
+ * runtime lifecycle shutdown use TURN_ABORTED, so callers preserve the reason
+ * instead of misclassifying every designed abort as user-requested. Designed
+ * aborts are control flow, not provider failures, and must not emit retry text.
+ */
+export function designedTurnAbortReason(error: unknown): string | null {
+	if (error instanceof TurnAbortedError && error.reason.trim().length > 0) {
+		return error.reason;
+	}
+	return null;
 }
 
 /**
@@ -830,6 +868,57 @@ export function buildDmSendOptions(
 	};
 }
 
+/** Minimal `User.send` surface needed to deliver a chunked DM reply. */
+export interface DmSendTarget {
+	send(options: DmSendOptions): Promise<DiscordMessage>;
+}
+
+/**
+ * Deliver a DM reply through the same transport chunking as guild sends.
+ *
+ * Discord hard-caps message content at 2000 characters; a single
+ * `user.send(...)` with a longer body (e.g. a multi-day recall digest) is
+ * rejected outright, so the reply never arrives. This routes DM text through
+ * `chunkDiscordText` — the fence-aware chunker every other outbound Discord
+ * path already uses — with the shared `MAX_MESSAGE_LENGTH` (1900) headroom
+ * budget, and sends the chunks sequentially so ordering is preserved.
+ *
+ * Attachments and interactive components ride the LAST chunk, mirroring
+ * `sendMessageInChunks`, so widgets sit directly under the end of the answer.
+ *
+ * A components/files-only reply (no prose after trimming) still produces a
+ * single send so those payloads are never dropped.
+ */
+export async function sendDmInChunks(
+	user: DmSendTarget,
+	textContent: string,
+	files: AttachmentBuilder[],
+	components: ActionRowBuilder<MessageActionRowComponentBuilder>[] | undefined,
+): Promise<DiscordMessage[]> {
+	const chunks =
+		textContent.trim().length > 0
+			? chunkDiscordText(textContent, { maxChars: MAX_MESSAGE_LENGTH })
+			: [];
+	if (chunks.length <= 1) {
+		const content = chunks[0] ?? textContent;
+		return [await user.send(buildDmSendOptions(content, files, components))];
+	}
+	const sent: DiscordMessage[] = [];
+	for (let i = 0; i < chunks.length; i++) {
+		const isLast = i === chunks.length - 1;
+		sent.push(
+			await user.send(
+				buildDmSendOptions(
+					chunks[i],
+					isLast ? files : [],
+					isLast ? components : undefined,
+				),
+			),
+		);
+	}
+	return sent;
+}
+
 /**
  * Class representing a Message Manager for handling Discord messages.
  */
@@ -843,6 +932,7 @@ export class MessageManager {
 	private discordService: IDiscordService;
 	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
+	private readonly draftStreamFactory: typeof createDraftStreamController;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
 	private stalenessConfig: DiscordStalenessConfig;
@@ -859,7 +949,13 @@ export class MessageManager {
 	 * @param {ICompatRuntime} runtime - The agent runtime instance (with cross-core compat).
 	 * @throws {Error} If the Discord client is not initialized
 	 */
-	constructor(discordService: IDiscordService, runtime: ICompatRuntime) {
+	constructor(
+		discordService: IDiscordService,
+		runtime: ICompatRuntime,
+		options: {
+			draftStreamFactory?: typeof createDraftStreamController;
+		} = {},
+	) {
 		// Guard against null client - fail fast with a clear error
 		if (!discordService.client) {
 			const errorMsg =
@@ -873,6 +969,8 @@ export class MessageManager {
 
 		this.client = discordService.client;
 		this.runtime = runtime;
+		this.draftStreamFactory =
+			options.draftStreamFactory ?? createDraftStreamController;
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
@@ -1630,6 +1728,7 @@ export class MessageManager {
 				...(aliasedAuthor ? {} : { userName, name }),
 				source: "discord",
 				channelId: message.channel.id,
+				serverId: messageServerId,
 				// Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
 				messageServerId: messageServerId
 					? stringToUuid(messageServerId)
@@ -2075,7 +2174,7 @@ export class MessageManager {
 				this.discordService.trackStatusReaction?.(message.id, statusReactions);
 			}
 			const draftStream = this.draftStreamingEnabled
-				? createDraftStreamController({
+				? this.draftStreamFactory({
 						log: (entry) =>
 							this.runtime.logger.debug(
 								{ src: "plugin:discord", agentId: this.runtime.agentId },
@@ -2361,6 +2460,9 @@ export class MessageManager {
 					// native Discord components, and strip their markers from the prose.
 					const rendered = buildDiscordReplyPayload(this.runtime, content);
 					const hasComponents = rendered.components.length > 0;
+					const interactionIdentity = hasComponents
+						? JSON.stringify(rendered.components)
+						: undefined;
 					let textContent = normalizeDiscordMessageText(rendered.text);
 					if (textContent.trim().length === 0 && hasComponents) {
 						textContent = INTERACTION_ONLY_FALLBACK_TEXT;
@@ -2406,7 +2508,7 @@ export class MessageManager {
 					// twice in response to the same inbound message (e.g.
 					// planner follow-up repeating action output).
 					if (hasText && content.inReplyTo) {
-						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
+						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}::${interactionIdentity ?? ""}`;
 						const callbackDedup = message as DiscordMessage & {
 							_elizaSentReplyKeys?: Set<string>;
 							_elizaSentFactSignatures?: Array<Set<string>>;
@@ -2424,6 +2526,7 @@ export class MessageManager {
 						// lacks) through, regardless of delivery order.
 						const factSignature = numericFactSignatureTokens(textContent);
 						const repeatsPriorFact =
+							!hasComponents &&
 							factSignature !== null &&
 							callbackDedup._elizaSentFactSignatures.some((prior) =>
 								isSubsetOrEqual(factSignature, prior),
@@ -2440,10 +2543,7 @@ export class MessageManager {
 									reason: repeatsPriorFact
 										? "fact-signature"
 										: "identical-text",
-									textPreview: textContent
-										.replace(/\s+/g, " ")
-										.trim()
-										.slice(0, 200),
+									textPreview: buildDuplicateTextPreview(textContent),
 								},
 								"Suppressing duplicate callback reply",
 							);
@@ -2465,6 +2565,7 @@ export class MessageManager {
 						attachmentUrls: content.attachments
 							?.map((media) => media.url)
 							.filter((url): url is string => typeof url === "string"),
+						interactionIdentity,
 					};
 					let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
 					while (outboundDedupe.kind === "in_flight") {
@@ -2481,10 +2582,7 @@ export class MessageManager {
 								agentId: this.runtime.agentId,
 								channelId: channel.id,
 								messageId: message.id,
-								textPreview: textContent
-									.replace(/\s+/g, " ")
-									.trim()
-									.slice(0, 200),
+								textPreview: buildDuplicateTextPreview(textContent),
 							},
 							"Suppressing duplicate Discord outbound delivery",
 						);
@@ -2576,10 +2674,9 @@ export class MessageManager {
 						const dmComponents = hasComponents
 							? buildDiscordComponents(rendered.components)
 							: undefined;
-						const dmMessage = await runResponseDispatch(() =>
-							user.send(buildDmSendOptions(textContent, files, dmComponents)),
+						messages = await runResponseDispatch(() =>
+							sendDmInChunks(user, textContent, files, dmComponents),
 						);
-						messages = [dmMessage];
 					} else {
 						if (!message.id) {
 							this.runtime.logger.warn(
@@ -2944,6 +3041,46 @@ export class MessageManager {
 					generationTimedOut &&
 					!!messageId &&
 					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
+				const designedAbortReason = designedTurnAbortReason(generationError);
+				if (designedAbortReason) {
+					typingController.stop();
+					statusReactions?.setDone();
+					await draftStream?.discard();
+					if (speakerLease) {
+						await releaseSpeakerLease(
+							this.runtime,
+							speakerLease,
+							"designed-turn-abort",
+						);
+					}
+					this.runtime.logger.info(
+						{
+							src: "plugin:discord",
+							agentId: this.runtime.agentId,
+							messageId: message.id,
+							memoryId: messageId,
+							roomId,
+							reason: designedAbortReason,
+						},
+						"Suppressing Discord failure reply for a designed turn abort",
+					);
+					if (!inboundMemoryCommitted) {
+						inboundMemoryCommitted =
+							await this.releaseMessageProcessingIfInboundNotPersisted(
+								message.id,
+								inboundMemoryId,
+							);
+					}
+					// A designed abort is terminal only once the inbound message is
+					// durable. If generation was cancelled before ingress persisted,
+					// leave the durable turn DISPATCHED and release the local admission
+					// slot so a gateway redelivery / crash sweep can retry without data
+					// loss. Marking REPLIED first made that retry impossible.
+					if (inboundMemoryCommitted) {
+						turnRecord = await this.closeTurnAsIngestOnly(turnRecord);
+					}
+					return;
+				}
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",

@@ -24,7 +24,10 @@ import { Hono } from "hono";
 import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
 import type { Bindings } from "@/types/cloud-worker-env";
 
-const cleanupExpiredSessions = mock(async () => {});
+const cleanupExpiredSessions = mock(async () => ({
+  deletedSessions: 0,
+  revokedOrphanKeys: 0,
+}));
 const cleanupSpy = spyOn(
   cliAuthSessionsService,
   "cleanupExpiredSessions",

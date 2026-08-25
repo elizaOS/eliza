@@ -71,6 +71,7 @@ export class GenerationsService {
     options?: {
       userId?: string;
       type?: string;
+      requireStorageUrl?: boolean;
       limit?: number;
       offset?: number;
     },

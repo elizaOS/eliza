@@ -317,7 +317,12 @@ function dedupeAndSortPendingActions(
     seen.add(action.id);
     deduped.push(action);
   }
-  return deduped.sort((a, b) => b.createdAt - a.createdAt);
+  return deduped.sort((a, b) => {
+    const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+    const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+    if (bTime !== aTime) return bTime - aTime;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export async function handleApprovalRoute(

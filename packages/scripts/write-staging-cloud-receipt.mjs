@@ -5,10 +5,13 @@
  * timing, and outcome values, while Cloud annotations are fixed here. Bearer
  * credentials, model replies, and raw HTTP bodies can never enter the file.
  */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { parseDeployedRendererProof } from "../cloud/scripts/pages-deployment-authority.mjs";
 
-const EXPECTED_ARGUMENTS = new Set([
+const REQUIRED_ARGUMENTS = new Set([
   "output",
   "source-sha",
   "run-id",
@@ -16,7 +19,10 @@ const EXPECTED_ARGUMENTS = new Set([
   "outcome",
   "started-ms",
   "completed-ms",
+  "first-turn-latency-ms",
+  "continuity-evidence",
 ]);
+const OPTIONAL_ARGUMENTS = new Set(["deployed-proof-file"]);
 
 function fail(message) {
   throw new Error(`[staging-cloud-receipt] ${message}`);
@@ -31,7 +37,7 @@ function parseArguments(argv) {
       fail("arguments must be --name value pairs");
     }
     const name = flag.slice(2);
-    if (!EXPECTED_ARGUMENTS.has(name)) {
+    if (!REQUIRED_ARGUMENTS.has(name) && !OPTIONAL_ARGUMENTS.has(name)) {
       fail(`unsupported argument: ${flag}`);
     }
     if (values.has(name)) {
@@ -40,7 +46,7 @@ function parseArguments(argv) {
     values.set(name, value);
   }
 
-  for (const name of EXPECTED_ARGUMENTS) {
+  for (const name of REQUIRED_ARGUMENTS) {
     if (!values.has(name)) {
       fail(`missing argument: --${name}`);
     }
@@ -88,8 +94,31 @@ export function createStagingCloudReceipt(argv) {
     fail("completed-ms must not precede started-ms");
   }
 
-  return {
-    schemaVersion: 1,
+  const latencyValue = values.get("first-turn-latency-ms");
+  let firstTurnLatencyMs = null;
+  if (outcome === "success") {
+    if (latencyValue === "unavailable") {
+      fail("successful outcome requires first-turn-latency-ms");
+    }
+    firstTurnLatencyMs = positiveInteger(latencyValue, "first-turn-latency-ms");
+    if (firstTurnLatencyMs > completedAtMs - startedAtMs) {
+      fail("first-turn-latency-ms must not exceed the whole lane duration");
+    }
+  } else if (latencyValue !== "unavailable") {
+    fail("failed outcome must mark first-turn-latency-ms unavailable");
+  }
+
+  const continuityValue = values.get("continuity-evidence");
+  const continuityVerified = continuityValue === "verified";
+  if (outcome === "success" && !continuityVerified) {
+    fail("successful outcome requires verified continuity-evidence");
+  }
+  if (outcome === "failure" && continuityValue !== "unavailable") {
+    fail("failed outcome must mark continuity-evidence unavailable");
+  }
+
+  const receipt = {
+    schemaVersion: 2,
     lane: "app-live-e2e-cloud-staging",
     sourceSha,
     workflow: {
@@ -102,12 +131,87 @@ export function createStagingCloudReceipt(argv) {
       completedAtMs,
       durationMs: completedAtMs - startedAtMs,
     },
+    measurements: {
+      firstTurnLatencyDefinition:
+        "composer-send-click-to-settled-valid-assistant-turn: starts immediately before the UI send click; ends after the same fresh non-empty assistant row settles and passes the liveness contract; not first-token latency",
+      firstTurnLatencyMs,
+    },
+    continuity: {
+      verified: continuityVerified,
+      challengeTurnCount: continuityVerified ? 1 : null,
+      noAdditionalChatSendAfterChallenge: continuityVerified ? true : null,
+      personalIdentityEndpointPassed: continuityVerified ? true : null,
+      reloadHistoryPassed: continuityVerified ? true : null,
+      freshContextHistoryPassed: continuityVerified ? true : null,
+      personalIdentityReused: continuityVerified ? true : null,
+      runtimeBindingReused: continuityVerified ? true : null,
+      apiBaseReused: continuityVerified ? true : null,
+      forbiddenAgentMutationCount: continuityVerified ? 0 : null,
+    },
+    cleanup: {
+      cleanupDisposition: continuityVerified
+        ? "no-test-owned-agent"
+        : "unavailable",
+      conversationHistoryDisposition: continuityVerified
+        ? "preserved"
+        : "unavailable",
+    },
     annotations: {
       cloudApiOrigin: "https://api-staging.eliza.app",
       cloudEnvironment: "staging",
       rendererSource: "local-checkout",
       deployedRendererTested: false,
-      loginProvisionChatPassed: outcome === "success",
+      loginPersonalIdentityChatPassed: outcome === "success",
+      historyContinuityPassed: continuityVerified,
+    },
+  };
+
+  const deployedProofPath = values.get("deployed-proof-file");
+  if (!deployedProofPath) return receipt;
+  if (outcome !== "success") {
+    fail("deployed proof requires a successful outcome");
+  }
+  const deployedProofRaw = readFileSync(resolve(deployedProofPath), "utf8");
+  let deployedProofValue;
+  try {
+    deployedProofValue = JSON.parse(deployedProofRaw);
+  } catch {
+    // error-policy:J3 a malformed proof file cannot become deployed evidence.
+    fail("deployed-proof-file must contain valid JSON");
+  }
+  const deployedProof = parseDeployedRendererProof(deployedProofValue);
+  const runId = positiveInteger(values.get("run-id"), "run-id");
+  const runAttempt = positiveInteger(values.get("run-attempt"), "run-attempt");
+  if (
+    deployedProof.sourceSha !== sourceSha ||
+    deployedProof.workflow.runId !== runId ||
+    deployedProof.workflow.runAttempt !== runAttempt
+  ) {
+    fail("deployed proof does not match the receipt source/run identity");
+  }
+  if (deployedProof.latency.firstTurnLatencyMs !== firstTurnLatencyMs) {
+    fail("deployed proof latency does not match the receipt measurement");
+  }
+
+  return {
+    ...receipt,
+    schemaVersion: 3,
+    deployment: {
+      proofSha256: createHash("sha256").update(deployedProofRaw).digest("hex"),
+      cloudflarePagesAlias: deployedProof.authority.aliasUrl,
+      deploymentUrl: deployedProof.authority.deploymentUrl,
+      deploymentIdSha256: deployedProof.authority.deploymentIdSha256,
+      rendererBuildId: deployedProof.preflight.renderer.buildId,
+      rendererManifestCommit: deployedProof.sourceSha,
+      publicPreflightPassed: true,
+      remoteBrowserSmokePassed: true,
+      publicPostflightPassed: true,
+    },
+    annotations: {
+      ...receipt.annotations,
+      rendererSource: "cloudflare-pages-alias",
+      deployedRendererTested: true,
+      cloudflarePagesAlias: deployedProof.authority.aliasUrl,
     },
   };
 }

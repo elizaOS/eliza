@@ -12,6 +12,7 @@ import {
   type MockAppOptions,
   MockAppProvider,
 } from "../../storybook/mock-providers";
+import { Input } from "../ui/input";
 import { ConfigField } from "./config-field";
 
 const mockAppValue = {
@@ -24,14 +25,14 @@ const mockAppValue = {
 } satisfies MockAppOptions;
 
 const sampleRenderer: FieldRenderer = (props: FieldRenderProps) => (
-  <input
+  <Input
     type="text"
+    variant="config"
     value={String(props.value ?? "")}
     onChange={() => {}}
     placeholder={props.hint.placeholder}
     aria-label={props.hint.label ?? props.key}
     readOnly={props.readonly}
-    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
   />
 );
 

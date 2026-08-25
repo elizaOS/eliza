@@ -65,9 +65,7 @@ export const ENTITY_OPS = [
   "read",
   "list",
   "log_interaction",
-  "set_identity",
   "set_relationship",
-  "merge",
 ] as const;
 export type EntityOp = (typeof ENTITY_OPS)[number];
 

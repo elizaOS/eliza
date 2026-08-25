@@ -1,7 +1,9 @@
-// Persists users records for cloud services through the shared DB boundary.
+/** Persists user records and identity transitions through the shared database boundary. */
+
 import { ElizaError } from "@elizaos/core";
 import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -17,6 +19,9 @@ import {
 } from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
+
+const stewardAuthorityIdentity = alias(userIdentities, "steward_authority_identity");
+const canonicalStewardIdentity = alias(userIdentities, "canonical_steward_identity");
 
 export type { NewUser, User, UserIdentity };
 
@@ -226,6 +231,7 @@ export type FindPendingPhoneTelegramConvergenceResult =
       user: User;
       organization: Organization;
     }
+  | { status: "canonical_user"; user: UserWithOrganization }
   | { status: "not_found" }
   | { status: "identity_projection_conflict" };
 
@@ -669,6 +675,21 @@ export class UsersRepository {
   }
 
   /**
+   * Primary-storage Telegram identity read for account-link decisions. A
+   * just-created first-message account must be visible before a verified web
+   * login decides whether it may bind another Cloud identity.
+   */
+  async findByTelegramIdWithOrganizationForWrite(
+    telegramId: string,
+  ): Promise<UserWithOrganization | undefined> {
+    const identity = await dbWrite.query.userIdentities.findFirst({
+      where: eq(userIdentities.telegram_id, telegramId),
+    });
+    if (!identity) return undefined;
+    return this.findWithOrganizationForWrite(identity.user_id);
+  }
+
+  /**
    * Finds a user by phone number (E.164 format, via identity table).
    */
   async findByPhoneNumber(phoneNumber: string): Promise<User | undefined> {
@@ -825,6 +846,14 @@ export class UsersRepository {
    */
   async listByOrganization(organizationId: string): Promise<User[]> {
     return await this.listUsersByPredicate(dbRead, eq(users.organization_id, organizationId));
+  }
+
+  /**
+   * Lists organization membership from the primary database for decisions that
+   * immediately gate an identity or authority mutation.
+   */
+  async listByOrganizationForWrite(organizationId: string): Promise<User[]> {
+    return await this.listUsersByPredicate(dbWrite, eq(users.organization_id, organizationId));
   }
 
   async resolveIdentity(
@@ -1501,6 +1530,73 @@ export class UsersRepository {
    * constraint rather than required retry authority.
    */
   async findPendingPhoneTelegramPersonalAccountConvergence(input: {
+    phoneNumber?: string;
+    stewardUserId: string;
+  }): Promise<FindPendingPhoneTelegramConvergenceResult> {
+    const stewardSubject = dbWrite.$with("steward_subject").as((qb) =>
+      qb
+        .select({
+          stewardUserId: sql<string>`${input.stewardUserId}`.as("requested_steward_subject_id"),
+        })
+        .from(sql`(select 1)`),
+    );
+    const [inspection] = await dbWrite
+      .with(stewardSubject)
+      .select({
+        canonicalUser: users,
+        organization: organizations,
+        authorityUserId: stewardAuthorityIdentity.user_id,
+        canonicalIdentityStewardUserId: canonicalStewardIdentity.steward_user_id,
+        pendingReceiptToken: personalAccountConvergences.token,
+      })
+      .from(stewardSubject)
+      .leftJoin(users, eq(users.steward_user_id, stewardSubject.stewardUserId))
+      .leftJoin(
+        stewardAuthorityIdentity,
+        eq(stewardAuthorityIdentity.steward_user_id, stewardSubject.stewardUserId),
+      )
+      .leftJoin(canonicalStewardIdentity, eq(canonicalStewardIdentity.user_id, users.id))
+      .leftJoin(organizations, eq(organizations.id, users.organization_id))
+      .leftJoin(
+        personalAccountConvergences,
+        and(
+          eq(personalAccountConvergences.target_user_id, users.id),
+          eq(personalAccountConvergences.steward_user_id, stewardSubject.stewardUserId),
+          eq(personalAccountConvergences.status, "pending_alias"),
+        ),
+      )
+      .limit(1);
+
+    // The projection remains session authority while legacy canonical-only rows
+    // converge. Accept the repairable canonical-only case, but never choose one
+    // owner while the same Steward subject projects to another.
+    if (!inspection?.canonicalUser) {
+      return inspection?.authorityUserId
+        ? { status: "identity_projection_conflict" }
+        : { status: "not_found" };
+    }
+    if (
+      (inspection.authorityUserId && inspection.authorityUserId !== inspection.canonicalUser.id) ||
+      (inspection.canonicalIdentityStewardUserId &&
+        inspection.canonicalIdentityStewardUserId !== input.stewardUserId)
+    ) {
+      return { status: "identity_projection_conflict" };
+    }
+    if (!inspection.pendingReceiptToken) {
+      return {
+        status: "canonical_user",
+        user: { ...inspection.canonicalUser, organization: inspection.organization },
+      };
+    }
+
+    return await this.validatePendingPhoneTelegramPersonalAccountConvergence(input);
+  }
+
+  /**
+   * Revalidates a detected pending receipt within the original primary
+   * transaction so rare alias recovery retains its existing snapshot checks.
+   */
+  private async validatePendingPhoneTelegramPersonalAccountConvergence(input: {
     phoneNumber?: string;
     stewardUserId: string;
   }): Promise<FindPendingPhoneTelegramConvergenceResult> {
@@ -2832,8 +2928,12 @@ export class UsersRepository {
     database: typeof dbRead,
     predicate: SQL<unknown>,
   ): Promise<UserWithOrganization | undefined> {
-    const user = await this.findUserByPredicate(database, predicate);
-    return user ? await this.attachOrganization(database, user) : undefined;
+    return (await database.query.users.findFirst({
+      where: predicate,
+      with: {
+        organization: true,
+      },
+    })) as UserWithOrganization | undefined;
   }
 
   private async findUserWithOrganizationById(
@@ -2851,38 +2951,6 @@ export class UsersRepository {
       database,
       eq(users.steward_user_id, stewardUserId),
     );
-  }
-
-  private async attachOrganization(
-    database: typeof dbRead,
-    user: User,
-  ): Promise<UserWithOrganization> {
-    const organizationId = user.organization_id;
-
-    if (!organizationId) {
-      return {
-        ...user,
-        organization: null,
-      };
-    }
-
-    // Keep organization hydration on the same relational query path used by the
-    // pre-regression auth lookup. Direct table selects changed numeric formatting
-    // for credit_balance in the failing regression case.
-    const relationalUser = (await database.query.users.findFirst({
-      columns: {
-        id: true,
-      },
-      where: eq(users.id, user.id),
-      with: {
-        organization: true,
-      },
-    })) as { organization: Organization | null } | undefined;
-
-    return {
-      ...user,
-      organization: relationalUser?.organization ?? null,
-    };
   }
 
   /**
@@ -2968,6 +3036,39 @@ export class UsersRepository {
    */
   async delete(id: string): Promise<void> {
     await dbWrite.delete(users).where(eq(users.id, id));
+  }
+
+  /**
+   * Removes a sole-user personal organization as one database transaction.
+   * Deleting the organization first lets its declared cascades erase the user
+   * and associated content. Any restrictive retention FK aborts the entire
+   * transaction, so a retry can never observe a half-deleted account.
+   */
+  async deletePersonalOrganizationAtomically(
+    userId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      const members = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.organization_id, organizationId))
+        .for("update");
+      if (!members.some((member) => member.id === userId)) {
+        throw new Error("Account deletion user is not a member of its personal organization");
+      }
+      if (members.length !== 1) {
+        throw new Error("Account deletion requires a sole-user personal organization");
+      }
+
+      const deleted = await tx
+        .delete(organizations)
+        .where(eq(organizations.id, organizationId))
+        .returning({ id: organizations.id });
+      if (deleted.length !== 1) {
+        throw new Error("Personal organization disappeared during account deletion");
+      }
+    });
   }
 }
 

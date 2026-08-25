@@ -169,9 +169,7 @@ export function listWhatsAppAccountIds(runtime: IAgentRuntime): string[] {
   // Check if default account is configured
   const envToken = runtime.getSetting("WHATSAPP_ACCESS_TOKEN") as string | undefined;
   const envPhoneId = runtime.getSetting("WHATSAPP_PHONE_NUMBER_ID") as string | undefined;
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
 
   const baseConfigured = Boolean(config.accessToken?.trim() && config.phoneNumberId?.trim());
   const envConfigured = Boolean(envToken?.trim() && envPhoneId?.trim());
@@ -309,9 +307,7 @@ export function resolveWhatsAppAccountConfig(
   const envWebhookToken = runtime.getSetting("WHATSAPP_WEBHOOK_VERIFY_TOKEN") as string | undefined;
   const envDmPolicy = runtime.getSetting("WHATSAPP_DM_POLICY") as string | undefined;
   const envGroupPolicy = runtime.getSetting("WHATSAPP_GROUP_POLICY") as string | undefined;
-  const envAuthDir =
-    (runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined) ??
-    (runtime.getSetting("WHATSAPP_SESSION_PATH") as string | undefined);
+  const envAuthDir = runtime.getSetting("WHATSAPP_AUTH_DIR") as string | undefined;
   const envTransport = runtime.getSetting("WHATSAPP_AUTH_METHOD") as string | undefined;
 
   const envConfig: WhatsAppAccountRuntimeConfig = {

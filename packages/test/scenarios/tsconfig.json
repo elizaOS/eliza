@@ -11,6 +11,9 @@
       "@elizaos/scenario-runner/scenario-assertions": [
         "../../scenario-runner/src/scenario-assertions.ts"
       ],
+      "@elizaos/scenario-runner/action-families": [
+        "../../scenario-runner/src/action-families.ts"
+      ],
       "@elizaos/scenario-runner/missing-input-terminal-relay": [
         "../../scenario-runner/src/missing-input-terminal-relay.ts"
       ]

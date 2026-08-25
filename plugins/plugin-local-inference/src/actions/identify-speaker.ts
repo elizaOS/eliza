@@ -64,7 +64,9 @@ export function extractSpeakerName(text: string): string | null {
 	for (const pattern of SPEAKER_NAME_PATTERNS) {
 		const m = pattern.exec(text);
 		if (m?.[1]) {
-			const cleaned = m[1].replace(/[.,;:!?]+$/, "").trim();
+			let end = m[1].length;
+			while (end > 0 && ".,;:!?".includes(m[1][end - 1] ?? "")) end -= 1;
+			const cleaned = m[1].slice(0, end).trim();
 			if (cleaned.length > 0) return cleaned;
 		}
 	}

@@ -19,7 +19,6 @@ import {
 	emptyPersonalitySlot,
 	FORMALITY_VALUES,
 	GLOBAL_PERSONALITY_SCOPE,
-	MAX_CUSTOM_DIRECTIVES,
 	PERSONALITY_SLOT_TABLE,
 	type PersonalityAuditEntry,
 	type PersonalityGatedTrait,
@@ -546,8 +545,6 @@ export class PersonalityStore extends Service {
 			actorId: args.actorId,
 			build: (before) => {
 				const next = [...before.custom_directives, args.directive];
-				// FIFO eviction at MAX_CUSTOM_DIRECTIVES
-				while (next.length > MAX_CUSTOM_DIRECTIVES) next.shift();
 				return {
 					...before,
 					custom_directives: next,

@@ -1,17 +1,16 @@
-// Pins the error-surfacing contract of the Meta ad provider: a failed provider
-// fetch must surface as a structured {success:false}/{valid:false} failure (the
-// shape the advertising service reads to REFUND credits and to reject invalid
-// credentials), and must stay distinct from a legitimately-empty result (valid
-// account with no insights → success with zero spend). Deterministic — global
-// fetch is mocked; no live Meta Graph API call and no monetary value is asserted
-// beyond the zero the source already fixes for the empty-insights case.
+/**
+ * Pins the Meta ad provider's error-surfacing and bounded-request contracts.
+ * Deterministic fetch mocks distinguish provider failures from legitimate
+ * empty results, verify that deadlines compose with caller cancellation, and
+ * pin that a deadline abort still reaches the caller as a structured failure.
+ */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("../../../utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 
-const { metaAdsProvider } = await import("./meta");
+const { metaAdsProvider, metaFetch } = await import("./meta");
 
 const originalFetch = globalThis.fetch;
 
@@ -124,5 +123,64 @@ describe("metaAdsProvider.getCampaignMetrics failure vs legitimately-empty", () 
     // distinction from the failure branch, not any derived monetary amount.
     expect(result.success).toBe(true);
     expect(result.metrics?.spend).toBe(0);
+  });
+});
+
+describe("a deadline abort reaches the caller as a structured provider failure", () => {
+  test("getCampaignMetrics returns {success:false} when a bounded hop aborts", async () => {
+    // metaFetch always attaches a deadline signal, so the hop aborts through that
+    // signal rather than waiting out the real 30s bound in the test.
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as typeof fetch;
+
+    const result = await metaAdsProvider.getCampaignMetrics(credentials, "camp_1");
+
+    // The advertising service reads !result.success to refund credits; an
+    // AbortError escaping graphApiRequest unhandled would skip that refund.
+    expect(result.success).toBe(false);
+    expect(result.error).toBeTruthy();
+    expect(result.metrics).toBeUndefined();
+  });
+});
+
+describe("metaFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung hop at the deadline while the caller signal remains active", async () => {
+    const caller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      metaFetch("https://graph.facebook.com/v24.0/me", { signal: caller.signal }, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(caller.signal.aborted).toBe(false);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("aborts a hung hop when the caller cancels before the deadline", async () => {
+    const caller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const pending = metaFetch("https://graph.facebook.com/v24.0/me", {
+      signal: caller.signal,
+    });
+    caller.abort();
+
+    await expect(pending).rejects.toThrow(/aborted/i);
   });
 });

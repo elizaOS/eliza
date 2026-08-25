@@ -109,6 +109,23 @@ describe("pendingApprovalsProvider", () => {
     expect(text).not.toContain("+15555550123");
   });
 
+  it("renders every pending approval instead of replacing overflow with a count", () => {
+    const approvals = Array.from({ length: 7 }, (_, index) =>
+      approval({
+        id: `approval-${index + 1}`,
+        reason: `decision-${index + 1}`,
+      }),
+    );
+
+    const text = renderPendingApprovalsText(approvals);
+
+    for (const request of approvals) {
+      expect(text).toContain(`id=${request.id}`);
+      expect(text).toContain(request.reason);
+    }
+    expect(text).not.toContain("(+");
+  });
+
   it("reads only the current owner's pending queue rows", async () => {
     mocks.queue.list.mockResolvedValue([approval()]);
     const result = await pendingApprovalsProvider.get(runtime(), message(), {});
@@ -121,7 +138,7 @@ describe("pendingApprovalsProvider", () => {
       subjectUserId: OWNER_ID,
       state: "pending",
       action: null,
-      limit: 20,
+      limit: null,
     });
     expect(result.text).toContain("RESOLVE_REQUEST");
     expect(result.values?.pendingApprovalCount).toBe(1);

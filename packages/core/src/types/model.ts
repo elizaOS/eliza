@@ -234,7 +234,6 @@ export const MODEL_SETTINGS = {
 	TEXT_MEGA_PRESENCE_PENALTY: "TEXT_MEGA_PRESENCE_PENALTY",
 
 	// RESPONSE_HANDLER specific settings
-	RESPONSE_HANDLER_MAX_TOKENS: "RESPONSE_HANDLER_MAX_TOKENS",
 	RESPONSE_HANDLER_TEMPERATURE: "RESPONSE_HANDLER_TEMPERATURE",
 	RESPONSE_HANDLER_TOP_P: "RESPONSE_HANDLER_TOP_P",
 	RESPONSE_HANDLER_TOP_K: "RESPONSE_HANDLER_TOP_K",
@@ -581,9 +580,9 @@ export interface GenerateTextParams {
 	 * autonomous work (scheduled prompt tasks, prompt-batcher drains) so the
 	 * local lane can (a) dispatch waiting interactive turns first, (b) bound
 	 * how long the job waits for the lane before failing back to its
-	 * scheduler, and (c) cap the job's `maxTokens`/prompt size by device RAM
-	 * class. Unset means `"interactive"` (user-facing turns are never
-	 * deprioritized or clamped). Cloud adapters ignore this field.
+	 * scheduler, and (c) reject output requests unsupported by the device RAM
+	 * class before dispatch. Unset means `"interactive"` (user-facing turns are
+	 * never deprioritized or rewritten). Cloud adapters ignore this field.
 	 *
 	 * Producers: `PromptDispatcher` (prompt batcher).
 	 * Consumers: the mobile/AOSP local text handlers via
@@ -1633,6 +1632,12 @@ export interface ModelHandler<
  * `AgentRuntime.getModelRegistrations()` and `MODEL_REGISTERED` events.
  */
 export interface ModelRegistrationMetadata {
+	/**
+	 * Provider-declared hard input-context ceiling. When present, the runtime
+	 * uses it for the final prepared-request rejection gate instead of inferring
+	 * a limit from the display model id.
+	 */
+	contextWindowTokens?: number;
 	/**
 	 * Concrete model id to display for this registration when callers ask what
 	 * model is powering a slot.

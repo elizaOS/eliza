@@ -1,6 +1,6 @@
 # @elizaos/plugin-coding-tools
 
-Native Claude-Code-style coding tools (FILE, SHELL, WORKTREE) for Eliza agents running in code/terminal/automation contexts.
+Native coding tools (READ, WRITE, EDIT, FILE, SHELL, WORKTREE) for Eliza agents running in code/terminal/automation contexts.
 
 ## Purpose / role
 
@@ -10,14 +10,15 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Actions
 
-- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit and relative `path` values for grep/glob/ls resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
+- **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c` and returns the complete accepted redacted stdout/stderr to the planner; output above the explicit 1,000,000-character capture ceiling is rejected with no partial result. `read_output_artifact` remains available for scoped artifacts retained by earlier runtimes. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
 
-- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects the last 10 commands (stdout/stderr/exit code), cwd, allowed directory, and recent file operations into context; fires only in `terminal`/`code` contexts.
-- **AVAILABLE_CODING_TOOLS** — injects the list of available tool names (`FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
+- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects complete conversation-scoped command history (redacted stdout/stderr/exit code), cwd, allowed directory, and file operations into context; fires only in `terminal`/`code` contexts.
+- **AVAILABLE_CODING_TOOLS** — injects the available focused and umbrella tool names (`READ`, `WRITE`, `EDIT`, `FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
 
 ### Services
 
@@ -25,9 +26,9 @@ Adds filesystem operations, shell command execution, and git worktree management
 |---|---|---|
 | `ShellService` | `"shell"` | Core shell executor (formerly @elizaos/plugin-shell): `executeCommand()` (simple), `exec()` (PTY, background, yield, session tracking), `processAction()` session management. Lives in `src/shell/`. |
 | `ExecApprovalService` | `"exec_approval"` | Command approval gating: file-backed allowlist, routes unapproved commands through the elizaOS `ApprovalService` UI. Lives in `src/shell/approvals/`. |
-| `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy. Validates every path before read/write. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`. |
+| `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy for FILE, WORKTREE, and the SHELL working directory. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`; these do not confine paths referenced by a shell command. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
-| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
+| `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit and Glob/Grep/LS resolve relative paths against it; Shell uses it when no explicit `cwd` is given. Worktree push/pop mutates it. |
 | `BackgroundShellService` | `CODING_TOOLS_BACKGROUND_SHELL` | Per-conversation background shell process manager. Owns stable handles, stdin writes, bounded stdout/stderr rings, SIGTERM→SIGKILL termination, and teardown reaping. |
 | `RipgrepService` | `CODING_TOOLS_RIPGREP` | Wraps `@vscode/ripgrep` binary. Used by `grep` operation. Always excludes VCS dirs. 30 s hard cap. |
 
@@ -44,6 +45,7 @@ plugins/plugin-coding-tools/
     types.ts                      Service-type constants, ToolFailure/ToolResult types, CODING_TOOLS_CONTEXTS
     actions/
       file.ts                     FILE umbrella action — routes to per-op handlers
+      direct-file-actions.ts      strict READ / WRITE / EDIT action wrappers
       bash.ts                     SHELL action implementation
       worktree.ts                 WORKTREE umbrella action
       read.ts / write.ts / edit.ts  FILE sub-handlers for read/write/edit
@@ -95,16 +97,15 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 
 | Env var | Default | Description |
 |---|---|---|
-| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. When set, paths outside these roots are rejected. |
-| `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the default blocklist. |
+| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. This does not restrict paths that a SHELL command reads or writes. |
+| `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the configurable default blocklist; unconditional device and process/thread descriptor exclusions remain enforced. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Comma-separated paths to **add** to the default blocklist. |
 | `CODING_TOOLS_SHELL` | (auto-detected) | Override the shell binary used by SHELL action. Takes priority over `SHELL`. Useful on Android/AOSP where the default shell path may not be executable. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
-| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
-| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Pre-stat byte cap on FILE action=read. Larger files are rejected. |
-| `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
+| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Default line page size for revision-bound FILE reads; responses include exact continuation state. |
+| `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Byte cap for selected FILE read content. Larger files are paged with bounded line or byte reads. |
 
 The folded `ShellService` also retains compatibility settings for external
 consumers of `runtime.getService("shell").exec()` / `executeCommand()`. The
@@ -120,6 +121,15 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 | `SHELL_JOB_TTL_MS` | `1800000` | Exact decimal finished-session retention window, `60000..10800000`. |
 | `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
 | `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
+
+Foreground SHELL results accepted by the one-million-character complete-capture
+boundary are returned in full after redaction. A larger result fails explicitly
+and exposes no partial prefix. The action never substitutes a preview, summary,
+or optional artifact handle for model-facing stdout/stderr. For compatibility,
+`action=read_output_artifact` can still retrieve bounded pages from an unexpired
+opaque artifact issued by an earlier runtime, but only when its persisted agent
+and conversation scope match the requesting turn; state-root paths remain
+private.
 
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.
@@ -159,6 +169,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 
 - **READ/WRITE/EDIT paths may be absolute or relative.** Relative paths resolve against `SessionCwdService.getCwd(message.roomId)`; the resolved absolute path must still pass `SandboxService.validatePath`. A missing session-cwd service is an explicit failure.
 - **Always validate paths through `SandboxService.validatePath`** before any filesystem access. Never bypass this.
+- **SHELL is trusted host execution, not filesystem confinement.** `CODING_TOOLS_WORKSPACE_ROOTS` validates SHELL's `cwd` only. Commands may address paths outside those roots, so the OWNER role and deployment host/container boundary must be trusted.
 - **Read before write**: `FileStateService.assertWritable` will reject a write if the file was modified externally since the last read. The agent must re-read first.
 - **`conversationId` = `message.roomId`** (string-coerced). Missing `roomId` is a hard failure.
 - **Never throw from a handler** — return `failureToActionResult({ reason, message })` instead.

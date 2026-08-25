@@ -36,7 +36,7 @@ import {
   resolveTwitterAccountConfig,
 } from "../client/accounts.js";
 import type { AuthenticatedTwitterSession } from "../client/auth.js";
-import { SearchMode } from "../client/index.js";
+import { SearchMode, type Tweet } from "../client/index.js";
 import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
 import { TwitterDirectMessageClient } from "../direct-messages";
 import { TwitterDiscoveryClient } from "../discovery";
@@ -44,6 +44,7 @@ import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
+import { countTwitterWeightedLength } from "../tweet-length";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
@@ -149,15 +150,15 @@ function normalizeXConnectorQuery(value: string): string {
   return value.trim().replace(/^@/, "").toLowerCase();
 }
 
-function clampLimit(
-  value: number | undefined,
-  defaultValue: number,
-  max: number,
-): number {
-  if (!Number.isFinite(value)) {
-    return defaultValue;
+function explicitConnectorLimit(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ElizaError("X connector limit must be a positive integer", {
+      code: "X_CONNECTOR_LIMIT_INVALID",
+      context: { value },
+    });
   }
-  return Math.min(Math.max(1, Math.floor(value as number)), max);
+  return value;
 }
 
 function readContentString(
@@ -354,7 +355,10 @@ export class XService extends Service {
       }
 
       const defaultState = await resolveTwitterAccountConfig(runtime);
-      await validateTwitterConfig(runtime, defaultState);
+      const validatedDefaultState = {
+        ...defaultState,
+        ...(await validateTwitterConfig(runtime, defaultState)),
+      };
       service.defaultAccountId = resolveDefaultXAccountId(
         runtime,
         defaultState,
@@ -363,7 +367,7 @@ export class XService extends Service {
 
       service.twitterClient = await service.getTwitterClientForAccount(
         service.defaultAccountId,
-        { startAutonomousClients: true, state: defaultState },
+        { startAutonomousClients: true, state: validatedDefaultState },
       );
 
       logger.log("✅ Twitter service started successfully");
@@ -421,8 +425,11 @@ export class XService extends Service {
     }
 
     const startPromise = (async () => {
-      await validateTwitterConfig(runtime, state);
-      const instance = new TwitterClientInstance(runtime, state);
+      const validatedState = {
+        ...state,
+        ...(await validateTwitterConfig(runtime, state)),
+      };
+      const instance = new TwitterClientInstance(runtime, validatedState);
       await instance.client.init();
 
       if (options.startAutonomousClients) {
@@ -810,9 +817,17 @@ export class XService extends Service {
     if (!text) {
       throw new Error("X post connector requires non-empty text content.");
     }
-    if (text.length > X_MAX_POST_LENGTH) {
-      throw new Error(
-        `X post connector requires text <= ${X_MAX_POST_LENGTH} characters; received ${text.length}.`,
+    const weightedLength = countTwitterWeightedLength(text);
+    if (weightedLength > X_MAX_POST_LENGTH) {
+      throw new ElizaError(
+        `X post connector requires text <= ${X_MAX_POST_LENGTH} weighted characters; received ${weightedLength}.`,
+        {
+          code: "X_POST_LENGTH_EXCEEDED",
+          context: {
+            weightedLength,
+            maxWeightedLength: X_MAX_POST_LENGTH,
+          },
+        },
       );
     }
 
@@ -828,6 +843,7 @@ export class XService extends Service {
         "replyTo",
         "inReplyToTweetId",
       ]);
+      const quotedPostId = readContentString(content, ["quotedPostId"]);
       const postService = new TwitterPostService(base);
       const post = await postService.createPost(
         {
@@ -838,6 +854,7 @@ export class XService extends Service {
           ),
           text,
           ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
+          ...(quotedPostId ? { quotedPostId } : {}),
         },
         profile,
       );
@@ -980,7 +997,7 @@ export class XService extends Service {
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
 
-    const limit = clampLimit(params.limit, 20, 100);
+    const limit = explicitConnectorLimit(params.limit);
     const postService = new TwitterPostService(base);
     const targetUserId =
       params.userId ??
@@ -1043,14 +1060,33 @@ export class XService extends Service {
       context.metadata,
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
+    const limit = explicitConnectorLimit(params.limit);
     return base.withAuthenticatedSession(async ({ profile }) => {
-      const result = await base.fetchSearchTweets(
-        query,
-        clampLimit(params.limit, 20, 100),
-        SearchMode.Latest,
-        params.cursor,
-      );
-      return result.tweets.flatMap((tweet) => {
+      const tweets: Tweet[] = [];
+      const seenCursors = new Set<string>();
+      let cursor = params.cursor;
+      while (limit === undefined || tweets.length < limit) {
+        const result = await base.fetchSearchTweets(
+          query,
+          limit === undefined ? 100 : Math.min(100, limit - tweets.length),
+          SearchMode.Latest,
+          cursor,
+        );
+        tweets.push(...result.tweets);
+        if (limit !== undefined && tweets.length >= limit) break;
+        const next = result.next;
+        if (!next) break;
+        if (seenCursors.has(next)) {
+          throw new ElizaError("X search pagination repeated a cursor", {
+            code: "X_SEARCH_PAGINATION_STALLED",
+            context: { cursor: next },
+            severity: "fatal",
+          });
+        }
+        seenCursors.add(next);
+        cursor = next;
+      }
+      return tweets.flatMap((tweet) => {
         // Normalize once per row: a present-but-unusable timestamp fails the
         // row closed instead of surfacing a healthy-looking memory with an
         // undefined or "now" creation time (#18965).
@@ -1100,20 +1136,20 @@ export class XService extends Service {
       (typeof target?.entityId === "string" ? target.entityId : undefined) ??
       target?.channelId ??
       target?.threadId;
-    const messages = await this.listRecentDirectMessages(
-      accountId,
-      clampLimit(params.limit, 25, 50),
-    ).catch((error) => {
-      // error-policy:J7 a DM fetch failure (expired token, rate limit) must
-      // surface to the agent rather than reading as an empty inbox; degrade to
-      // no messages after reporting.
-      runtime.reportError("XService.fetchConnectorMessages", error, {
-        accountId,
-      });
-      return [];
-    });
+    const limit = explicitConnectorLimit(params.limit);
+    const messages = await this.listRecentDirectMessages(accountId).catch(
+      (error) => {
+        // error-policy:J7 a DM fetch failure (expired token, rate limit) must
+        // surface to the agent rather than reading as an empty inbox; degrade to
+        // no messages after reporting.
+        runtime.reportError("XService.fetchConnectorMessages", error, {
+          accountId,
+        });
+        return [];
+      },
+    );
 
-    return messages
+    const matches = messages
       .filter((message) => !targetUserId || message.senderId === targetUserId)
       .map((message) =>
         this.buildXDirectMessageMemory(
@@ -1123,6 +1159,7 @@ export class XService extends Service {
           accountId,
         ),
       );
+    return limit === undefined ? matches : matches.slice(0, limit);
   }
 
   async resolveConnectorTargets(
@@ -1163,7 +1200,7 @@ export class XService extends Service {
     _context: MessageConnectorQueryContext,
   ): Promise<MessageConnectorTarget[]> {
     const accountId = this.resolveAccountId(_context.target, _context);
-    const messages = await this.listRecentDirectMessages(accountId, 25).catch(
+    const messages = await this.listRecentDirectMessages(accountId).catch(
       (error) => {
         // error-policy:J7 a DM fetch failure must surface to the agent rather
         // than reading as no recent targets; degrade to an empty list after
@@ -1320,7 +1357,7 @@ export class XService extends Service {
 
   private async listRecentDirectMessages(
     accountId: string,
-    limit: number,
+    limit?: number,
   ): Promise<
     Array<{
       id: string;
@@ -1342,7 +1379,7 @@ export class XService extends Service {
         );
       }
       const iterator = await session.client.v2.listDmEvents({
-        max_results: Math.min(Math.max(1, limit), 50),
+        max_results: limit === undefined ? 50 : Math.min(limit, 50),
         "dm_event.fields": [
           "id",
           "created_at",
@@ -1392,7 +1429,7 @@ export class XService extends Service {
             ? event.participant_ids
             : [],
         });
-        if (messages.length >= limit) {
+        if (limit !== undefined && messages.length >= limit) {
           break;
         }
       }

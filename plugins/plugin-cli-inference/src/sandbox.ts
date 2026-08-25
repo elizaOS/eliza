@@ -14,6 +14,7 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, resolve, sep } from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Env keys that may be forwarded to a sub-agent verbatim. */
 const SAFE_ENV_KEYS: ReadonlySet<string> = new Set([
@@ -229,5 +230,5 @@ export function redactSensitive(text: string): string {
  * then cap the length so a noisy CLI cannot blow up an error message / log line.
  */
 export function redactStderr(stderr: string): string {
-  return redactSensitive(stderr).slice(0, 2000);
+  return truncateWellFormed(toWellFormedUnicode(redactSensitive(stderr)), 2000);
 }

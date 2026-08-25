@@ -1,12 +1,24 @@
 /**
  * Vitest setup file that stubs @elizaos/core with a deterministic in-memory
- * double — no-op trajectory hooks, a byte-capped `captureSkillInvocationIO`,
+ * double — no-op trajectory hooks, lossless `captureSkillInvocationIO`,
  * and a minimal Service base class — so unit tests run without the full runtime.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { vi } from "vitest";
 
-vi.mock("@elizaos/core", () => {
+vi.mock("@elizaos/core", async () => {
+	// Use the real spawn-environment policy: a stub cannot prove that injection
+	// primitives are removed at the production boundary.
+	const { sanitizeSpawnEnv } = await import(
+		"../../../../packages/core/src/security/spawn-env-policy"
+	);
+	const { toWellFormedUnicode, truncateWellFormed } = await import(
+		"../../../../packages/core/src/utils/well-formed"
+	);
+	const streamingContext = new AsyncLocalStorage<
+		{ abortSignal?: AbortSignal } | undefined
+	>();
 	const logger = {
 		debug: vi.fn(),
 		error: vi.fn(),
@@ -15,9 +27,6 @@ vi.mock("@elizaos/core", () => {
 		success: vi.fn(),
 		warn: vi.fn(),
 	};
-
-	const TRUNCATION_SUFFIX = "...[truncated]";
-	const DEFAULT_FIELD_CAP_BYTES = 64 * 1024;
 
 	const encodeTrajectoryFieldValue = (value: unknown): string => {
 		if (typeof value === "string") return value;
@@ -29,53 +38,18 @@ vi.mock("@elizaos/core", () => {
 		}
 	};
 
-	const applyTrajectoryFieldCap = (
-		field: "args" | "result",
-		value: string,
-		capBytes: number,
-	) => {
-		const byteLength = Buffer.byteLength(value, "utf8");
-		if (byteLength <= capBytes) {
-			return { value, marker: null as null | object };
-		}
-		const suffixBytes = Buffer.byteLength(TRUNCATION_SUFFIX, "utf8");
-		const sliceBudget = Math.max(0, capBytes - suffixBytes);
-		let preview = Buffer.from(value, "utf8")
-			.subarray(0, sliceBudget)
-			.toString("utf8");
-		while (
-			Buffer.byteLength(preview, "utf8") + suffixBytes > capBytes &&
-			preview.length > 0
-		) {
-			preview = preview.slice(0, -1);
-		}
-		return {
-			value: `${preview}${TRUNCATION_SUFFIX}`,
-			marker: { field, originalBytes: byteLength, capBytes },
-		};
-	};
-
 	const captureSkillInvocationIO = (input: {
 		args?: unknown;
 		result?: unknown;
 		capBytes?: number;
 	}): { args?: string; result?: string; truncated?: unknown[] } => {
-		const cap = input.capBytes ?? DEFAULT_FIELD_CAP_BYTES;
 		const out: { args?: string; result?: string; truncated?: unknown[] } = {};
-		const markers: unknown[] = [];
 		if (input.args !== undefined) {
-			const encoded = encodeTrajectoryFieldValue(input.args);
-			const { value, marker } = applyTrajectoryFieldCap("args", encoded, cap);
-			out.args = value;
-			if (marker) markers.push(marker);
+			out.args = encodeTrajectoryFieldValue(input.args);
 		}
 		if (input.result !== undefined) {
-			const encoded = encodeTrajectoryFieldValue(input.result);
-			const { value, marker } = applyTrajectoryFieldCap("result", encoded, cap);
-			out.result = value;
-			if (marker) markers.push(marker);
+			out.result = encodeTrajectoryFieldValue(input.result);
 		}
-		if (markers.length > 0) out.truncated = markers;
 		return out;
 	};
 
@@ -140,9 +114,17 @@ vi.mock("@elizaos/core", () => {
 		// immediate "confirmed" so handlers run to completion in one call.
 		requireConfirmation: vi.fn(async () => ({ status: "confirmed" })),
 		getTrajectoryContext: vi.fn(() => undefined),
+		getStreamingContext: () => streamingContext.getStore(),
+		runWithStreamingContext: <T>(
+			context: { abortSignal?: AbortSignal } | undefined,
+			fn: () => T,
+		): T => streamingContext.run(context, fn),
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],
 		unwrapUserMessageText,
+		sanitizeSpawnEnv,
+		toWellFormedUnicode,
+		truncateWellFormed,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";

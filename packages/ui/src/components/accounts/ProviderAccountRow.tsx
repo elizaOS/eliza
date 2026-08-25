@@ -107,10 +107,7 @@ function StatusDot({
         ? "bg-destructive"
         : "bg-muted/40";
   return (
-    <span
-      className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone)}
-      aria-hidden
-    />
+    <span className={cn("size-1.5 shrink-0 rounded-full", tone)} aria-hidden />
   );
 }
 
@@ -184,7 +181,12 @@ export function ProviderAccountRow({
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   const accounts = provider?.accounts ?? [];
   const sorted = useMemo(
-    () => [...accounts].sort((a, b) => a.priority - b.priority),
+    () =>
+      [...accounts].sort(
+        (a, b) =>
+          (Number.isFinite(a.priority) ? a.priority : 0) -
+          (Number.isFinite(b.priority) ? b.priority : 0),
+      ),
     [accounts],
   );
   // A table earns its keep only for a genuinely multi-account pool; small
@@ -224,20 +226,20 @@ export function ProviderAccountRow({
     >
       {/* ── Header row: the single calm summary line ── */}
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <button
+        <Button
+          variant="transparent"
+          size="content"
+          align="start"
           type="button"
           onClick={onToggle}
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left",
-            connected ? "cursor-pointer" : "cursor-default",
-          )}
+          className={cn("min-w-0 flex-1")}
         >
           {connected ? (
             <ChevronRight
               className={cn(
-                "h-3.5 w-3.5 shrink-0 text-muted transition-transform",
+                "size-3.5 shrink-0 text-muted transition-transform",
                 expanded && "rotate-90",
               )}
               aria-hidden
@@ -247,7 +249,7 @@ export function ProviderAccountRow({
           )}
           <span
             className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-md border",
+              "flex size-8 shrink-0 items-center justify-center rounded-md border",
               connected
                 ? "border-border/50 bg-bg-accent text-txt-strong"
                 : "border-border/40 bg-bg-accent/40 text-muted",
@@ -255,7 +257,7 @@ export function ProviderAccountRow({
           >
             <ProviderMark
               providerId={option.id}
-              className="h-4 w-4"
+              className="size-4"
               title={option.name}
             />
           </span>
@@ -265,7 +267,7 @@ export function ProviderAccountRow({
                 {option.name}
               </span>
               {connected ? (
-                <span className="flex items-center gap-1.5 text-[11px] text-muted">
+                <span className="flex items-center gap-1.5 text-xs-tight text-muted">
                   <StatusDot state={connState} />
                   {connState === "connected-attention"
                     ? t("accounts.row.attention", {
@@ -284,9 +286,8 @@ export function ProviderAccountRow({
                 <span
                   key={chip.key}
                   className={cn(
-                    "rounded px-1.5 py-px text-[10px] font-medium",
-                    chip.tone === "chat" &&
-                      "bg-accent-subtle text-accent-muted",
+                    "rounded px-1.5 py-px text-2xs font-medium",
+                    chip.tone === "chat" && "bg-accent-subtle text-txt-strong",
                     chip.tone === "coding" && "bg-bg-accent text-muted-strong",
                     chip.tone === "muted" && "bg-bg-accent text-muted",
                   )}
@@ -296,7 +297,7 @@ export function ProviderAccountRow({
               ))}
               {connected && activeAccount && selection.reason ? (
                 <span
-                  className="text-[10px] text-muted"
+                  className="text-2xs text-muted"
                   title={t("accounts.row.selectionTooltip", {
                     defaultValue:
                       "The pool serves this account next. Reset-soonest spends the budget that refunds first.",
@@ -318,7 +319,7 @@ export function ProviderAccountRow({
               ) : null}
             </span>
           </span>
-        </button>
+        </Button>
 
         {/* Right-aligned inline actions — no separate modal world. */}
         <div className="flex shrink-0 items-center gap-1.5">
@@ -327,7 +328,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveChatProvider ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-[11px]"
               disabled={isActiveChatProvider || !onSelectChatProvider}
               onClick={() => onSelectChatProvider?.(option.id)}
               title={t("accounts.row.useForChat.tooltip", {
@@ -346,7 +346,6 @@ export function ProviderAccountRow({
               type="button"
               variant={isActiveSubscription ? "secondary" : "ghost"}
               size="sm"
-              className="h-7 px-2 text-[11px]"
               disabled={
                 (isActiveSubscription && !cloudCallsDisabled) ||
                 !onSelectSubscription
@@ -369,7 +368,6 @@ export function ProviderAccountRow({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-[11px] text-muted hover:text-txt-strong"
             onClick={() => onAdd(option.id)}
           >
             {connected
@@ -383,7 +381,7 @@ export function ProviderAccountRow({
       {connected && expanded ? (
         <div className="grid gap-2 border-t border-border/40 px-3 pb-3 pt-2.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted">
+            <span className="text-xs-tight font-medium uppercase tracking-wider text-muted">
               {t("accounts.row.accountsLabel", {
                 defaultValue: "Accounts in pool",
               })}

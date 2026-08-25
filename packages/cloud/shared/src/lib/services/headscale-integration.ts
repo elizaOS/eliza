@@ -12,8 +12,9 @@
  *  4. cleanupContainerVPN(nodeName) — removes the VPN node when the container dies
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
-import { HeadscaleClient, headscaleClient } from "./headscale-client";
+import { HeadscaleClient, type HeadscaleNode, headscaleClient } from "./headscale-client";
 
 /** Initial polling interval when waiting for VPN registration (ms). */
 const POLL_INTERVAL_INITIAL_MS = 1_000;
@@ -62,6 +63,73 @@ export interface PrepareContainerVPNInput {
    * `waitForVPNRegistration` from accepting the stale node's IP.
    */
   reclaimStaleNode?: boolean;
+  /**
+   * Require a post-delete strict inventory proving both the deleted node id
+   * and the deterministic hostname are absent before a replacement key is
+   * minted. Exact-success provisioning enables this because an ambiguous
+   * Headscale DELETE must retain its fence across concurrent renames.
+   */
+  requireExactNodeRetirement?: boolean;
+}
+
+export type HeadscaleRegistrationRenameCompletion =
+  | { readonly outcome: "not-needed" }
+  | { readonly outcome: "succeeded" }
+  | { readonly outcome: "conflict-proven"; readonly cause: unknown }
+  | { readonly outcome: "unresolved"; readonly cause: unknown };
+
+export interface HeadscaleVpnRegistration {
+  readonly ip: string;
+  readonly nodeId: string;
+  /** Exact observation of the optional collision-name reconciliation. */
+  readonly rename: HeadscaleRegistrationRenameCompletion;
+}
+
+const MAX_HEADSCALE_NODE_ID = "18446744073709551615";
+
+/** Headscale route parameters are positive canonical uint64 decimal strings. */
+export function isCanonicalHeadscaleNodeId(value: unknown): value is string {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return false;
+  return (
+    value.length < MAX_HEADSCALE_NODE_ID.length ||
+    (value.length === MAX_HEADSCALE_NODE_ID.length && value <= MAX_HEADSCALE_NODE_ID)
+  );
+}
+
+/** The Docker provider builds an HTTP URL from Headscale's first address. */
+export function isCanonicalHeadscaleIpv4(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const octets = value.split(".");
+  return (
+    octets.length === 4 &&
+    octets.every((octet) => /^(?:0|[1-9]\d{0,2})$/.test(octet) && Number.parseInt(octet, 10) <= 255)
+  );
+}
+
+/** This deployment's Headscale IPv4 pool is Tailscale CGNAT 100.64.0.0/10. */
+export function isCanonicalHeadscaleTailnetIpv4(value: unknown): value is string {
+  if (!isCanonicalHeadscaleIpv4(value)) return false;
+  const [firstOctet, secondOctet] = value.split(".").map((octet) => Number.parseInt(octet, 10));
+  return firstOctet === 100 && secondOctet !== undefined && secondOctet >= 64 && secondOctet <= 127;
+}
+
+/** Reject untrusted Headscale response identities before route mutation. */
+export function assertCanonicalHeadscaleNode(node: HeadscaleNode): void {
+  if (!isCanonicalHeadscaleNodeId(node.id)) {
+    throw new ElizaError(
+      `[headscale-integration] invalid Headscale node id: ${JSON.stringify(node.id)}`,
+      {
+        code: "HEADSCALE_NODE_ID_INVALID",
+        context: { nodeId: typeof node.id === "string" ? node.id : null },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
+function isProvenHeadscaleRenameConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Headscale API POST \S+ failed: 409(?:\s|$)/.test(message);
 }
 
 export class HeadscaleIntegration {
@@ -124,6 +192,7 @@ export class HeadscaleIntegration {
       let previousNodeId: string | undefined;
       const existingNode = await this.client.getNodeByNameStrict(tsHostname);
       if (existingNode) {
+        assertCanonicalHeadscaleNode(existingNode);
         if (input.reclaimStaleNode === false) {
           previousNodeId = existingNode.id;
           logger.info(
@@ -131,6 +200,22 @@ export class HeadscaleIntegration {
           );
         } else {
           await this.client.deleteNode(existingNode.id);
+          if (input.requireExactNodeRetirement) {
+            const remainingNodes = await this.client.listNodesStrict();
+            for (const node of remainingNodes) assertCanonicalHeadscaleNode(node);
+            if (
+              remainingNodes.some((node) => node.id === existingNode.id || node.name === tsHostname)
+            ) {
+              throw new ElizaError(
+                `[headscale-integration] cannot prove stale Headscale node ${existingNode.id} retired before exact reprovision`,
+                {
+                  code: "HEADSCALE_EXACT_NODE_RETIREMENT_UNPROVEN",
+                  context: { nodeId: existingNode.id, nodeName: tsHostname },
+                  severity: "fatal",
+                },
+              );
+            }
+          }
           logger.info(
             `[headscale-integration] removed stale VPN node ${existingNode.id} before reprovisioning ${agentId}`,
           );
@@ -181,7 +266,8 @@ export class HeadscaleIntegration {
    * @param nodeName  Headscale node name the container registers under
    *                  (TS_HOSTNAME = inferTailscaleHostname; NOT the bare agentId).
    * @param timeoutMs Maximum time to wait (default {@link DEFAULT_REGISTRATION_TIMEOUT_MS}, 180 s; env-overridable via `VPN_REGISTRATION_TIMEOUT_MS`).
-   * @returns The first VPN IP address, or `null` if the timeout was reached.
+   * @returns The first VPN IP and exact node id together with explicit rename
+   *          completion evidence, or `null` if registration was not observed.
    */
   async waitForVPNRegistration(
     nodeName: string,
@@ -193,7 +279,7 @@ export class HeadscaleIntegration {
        *  the exact race the reclaim-mode deletion used to guard against. */
       excludeNodeId?: string;
     },
-  ): Promise<{ ip: string; nodeId: string } | null> {
+  ): Promise<HeadscaleVpnRegistration | null> {
     logger.info(
       `[headscale-integration] waiting for VPN registration: ${nodeName} (timeout ${timeoutMs}ms)`,
     );
@@ -217,8 +303,17 @@ export class HeadscaleIntegration {
           createdAfter: pollStart,
         });
 
-        if (node && node.ipAddresses.length > 0 && node.id !== options?.excludeNodeId) {
-          const ip = node.ipAddresses[0];
+        if (node) assertCanonicalHeadscaleNode(node);
+        const nodeId = typeof node?.id === "string" ? node.id : "";
+        const firstIp = Array.isArray(node?.ipAddresses) ? node.ipAddresses[0] : undefined;
+        const ip = typeof firstIp === "string" ? firstIp : "";
+        if (
+          node &&
+          nodeId &&
+          isCanonicalHeadscaleTailnetIpv4(ip) &&
+          nodeId !== options?.excludeNodeId
+        ) {
+          let rename: HeadscaleRegistrationRenameCompletion = { outcome: "not-needed" };
           if (node.name !== nodeName) {
             // The adopted node otherwise keeps its collision suffix forever,
             // and the base hostname is how later lifecycle steps find this
@@ -228,21 +323,26 @@ export class HeadscaleIntegration {
             // suffixed name then simply persists and the createdAt gate above
             // keeps future polls correct.
             try {
-              await this.client.renameNode(node.id, nodeName);
+              await this.client.renameNode(nodeId, nodeName);
+              rename = { outcome: "succeeded" };
             } catch (error: unknown) {
-              // error-policy:J6 best-effort name reconciliation; registration is
-              // already secured and a rename rejection (expected during the
-              // blue/green overlap) must never fail the upgrade.
+              // error-policy:J2 translate the rename into explicit completion
+              // evidence. Only a returned HTTP 409 proves the expected live-name
+              // conflict; timeouts, transport failures, 5xx, and unknown errors
+              // remain unresolved because the rename may have committed.
               const msg = error instanceof Error ? error.message : String(error);
+              rename = isProvenHeadscaleRenameConflict(error)
+                ? { outcome: "conflict-proven", cause: error }
+                : { outcome: "unresolved", cause: error };
               logger.warn(
-                `[headscale-integration] could not rename node ${node.id} back to ${nodeName}: ${msg}`,
+                `[headscale-integration] could not rename node ${nodeId} back to ${nodeName}: ${msg}`,
               );
             }
           }
           logger.info(
             `[headscale-integration] VPN registered for ${nodeName}: ${ip} (node name ${node.name})`,
           );
-          return { ip, nodeId: node.id };
+          return { ip, nodeId, rename };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

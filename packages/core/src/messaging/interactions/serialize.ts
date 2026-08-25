@@ -13,6 +13,7 @@ import type {
 	InteractionBlock,
 	TaskInteraction,
 } from "../../types/interactions";
+import { trimEndWhitespace } from "../../utils/string-boundaries";
 
 function serializeForm(block: FormInteraction): string {
 	const body = {
@@ -73,5 +74,5 @@ export function appendInteractionBlock(
 	const marker = serializeInteractionBlock(block);
 	if (!marker) return text;
 	if (!text.trim()) return marker;
-	return `${text.replace(/\s+$/, "")}\n\n${marker}`;
+	return `${trimEndWhitespace(text)}\n\n${marker}`;
 }

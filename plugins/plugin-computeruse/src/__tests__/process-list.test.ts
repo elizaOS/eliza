@@ -63,6 +63,11 @@ describe("process-list — parsePsOutput (darwin parser)", () => {
     expect(parsePsOutput("")).toEqual([]);
     expect(parsePsOutput("   \n   foo\n").length).toBe(0);
   });
+
+  it("parses a process after adversarial column whitespace", () => {
+    const output = `42${"\t".repeat(100_000)}/usr/local/bin/eliza`;
+    expect(parsePsOutput(output)).toEqual([{ pid: 42, name: "eliza" }]);
+  });
 });
 
 describe("process-list — parseWindowsProcessJson", () => {

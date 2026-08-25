@@ -192,15 +192,28 @@ function normalizePlatform(value: unknown): string | undefined {
 	return trimmed ? trimmed.toLowerCase() : undefined;
 }
 
-function normalizeDurationMinutes(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-		return Math.floor(value);
+/**
+ * Parse a caller-supplied mute duration.
+ *
+ * Returns `undefined` when the field is absent or explicitly `null` (an untimed
+ * mute is intended) and `null` when some other value was supplied that is not a
+ * usable duration. The two cases must stay distinct: flooring a sub-minute
+ * value to `0` made it falsy, and a falsy duration is how this action encodes
+ * "mute with no expiry" — so a request to mute for 30 seconds silently became a
+ * permanent mute.
+ */
+function normalizeDurationMinutes(value: unknown): number | undefined | null {
+	if (value === undefined || value === null) return undefined;
+	const parsed = typeof value === "string" ? Number(value) : value;
+	if (
+		typeof parsed !== "number" ||
+		!Number.isSafeInteger(parsed) ||
+		parsed <= 0 ||
+		Number.isNaN(new Date(Date.now() + parsed * 60_000).getTime())
+	) {
+		return null;
 	}
-	if (typeof value === "string") {
-		const parsed = Number(value);
-		if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
-	}
-	return undefined;
+	return parsed;
 }
 
 function getMessageText(message: Memory): string {
@@ -443,6 +456,13 @@ async function applyOp(args: {
 	durationMinutes?: number;
 }): Promise<ActionResult> {
 	try {
+		// Compute the expiry before mutating participant state. Validation normally
+		// guarantees this conversion, but keeping the fallible Date boundary first
+		// prevents a near-limit value from leaving an unintended untimed mute.
+		const untilIso =
+			args.op === "mute"
+				? muteUntilIsoFromDuration(args.durationMinutes)
+				: undefined;
 		await args.runtime.updateParticipantUserState(
 			args.roomId,
 			args.runtime.agentId,
@@ -452,9 +472,7 @@ async function applyOp(args: {
 		// (services/message/mute-state.ts) can auto-unmute at the ISO time.
 		// An untimed mute clears any stale expiry from a previous timed one;
 		// unmute always clears it.
-		let untilIso: string | undefined;
 		if (args.op === "mute") {
-			untilIso = muteUntilIsoFromDuration(args.durationMinutes);
 			await setRoomMuteUntil(args.runtime, args.roomId, untilIso ?? null);
 		} else if (args.op === "unmute") {
 			await setRoomMuteUntil(args.runtime, args.roomId, null);
@@ -573,7 +591,7 @@ async function applyServerScopedOp(args: {
 		world.id,
 		op === "mute" ? { ...(untilIso ? { untilIso } : {}) } : null,
 	);
-	const serverName = world.name ?? `Server-${String(world.id).substring(0, 8)}`;
+	const serverName = world.name ?? `Server-${String(world.id)}`;
 	await runtime.createMemory(
 		{
 			entityId: message.entityId,
@@ -788,7 +806,22 @@ export const roomOpAction: Action = {
 		const platform = normalizePlatform(params.platform);
 		const explicitRoomId = normalizeString(params.roomId);
 		const chatName = normalizeString(params.chatName);
-		const durationMinutes = normalizeDurationMinutes(params.durationMinutes);
+		const durationMinutes =
+			op === "mute"
+				? normalizeDurationMinutes(params.durationMinutes)
+				: undefined;
+		if (durationMinutes === null) {
+			return {
+				text: "durationMinutes must be a positive whole number of minutes.",
+				values: { success: false, error: "ROOM_DURATION_INVALID" },
+				data: {
+					actionName: "ROOM",
+					error: "ROOM_DURATION_INVALID",
+					durationMinutes: params.durationMinutes,
+				},
+				success: false,
+			};
+		}
 		const scope = normalizeScope(params.scope);
 
 		if (scope === "server") {
@@ -860,9 +893,7 @@ export const roomOpAction: Action = {
 				});
 			}
 			const roomName =
-				targetRoom.name ??
-				chatName ??
-				`Room-${String(targetRoom.id).substring(0, 8)}`;
+				targetRoom.name ?? chatName ?? `Room-${String(targetRoom.id)}`;
 			const result = await applyOp({
 				runtime,
 				message,
@@ -930,7 +961,7 @@ export const roomOpAction: Action = {
 			};
 		}
 
-		const roomName = room.name ?? `Room-${String(roomId).substring(0, 8)}`;
+		const roomName = room.name ?? `Room-${String(roomId)}`;
 
 		if (!proceed) {
 			return {

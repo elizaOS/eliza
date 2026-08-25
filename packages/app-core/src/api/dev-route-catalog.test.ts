@@ -187,6 +187,11 @@ describe("buildRouteCatalog", () => {
       expect(modal.id.length).toBeGreaterThan(0);
       expect(modal.trigger.length).toBeGreaterThan(0);
     }
+
+    const retiredModalId = ["signal", "qr"].join("-");
+    expect(catalog.modals.map((modal) => modal.id)).not.toContain(
+      retiredModalId,
+    );
   });
 });
 

@@ -51,7 +51,9 @@ import { createRuntimeAccountStoragePolicy } from "@elizaos/auth/account-storage
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
 import { resetDefaultAccountPoolAfterCredentialReset } from "../services/account-pool";
+import { AuthStore } from "../services/auth-store";
 import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
+import { findActiveSession } from "./auth/sessions";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -198,7 +200,6 @@ import {
   getCloudSecret,
 } from "@elizaos/shared/elizacloud/cloud-secrets";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "../security/hydrate-wallet-keys-from-platform-store";
 import { isNodePlatformSecureStoreDefaultAvailable } from "../security/platform-secure-store-node";
 import { deleteWalletSecretsFromOsStore } from "../security/wallet-os-store-actions";
 
@@ -1069,7 +1070,6 @@ export async function startApiServer(
   // passes through to upstream which checks this env var).
   ensureCloudTtsApiKeyAlias();
   hydrateWalletOsStoreFlagFromConfig();
-  await hydrateWalletKeysFromNodePlatformSecureStore();
 
   const compatState: CompatRuntimeState = {
     current: (args[0]?.runtime as AgentRuntime | undefined) ?? null,
@@ -1093,6 +1093,42 @@ export async function startApiServer(
         }
         await next();
       });
+    },
+    authorizeWebSocket: async (request, url) => {
+      const sessionToken =
+        url.searchParams.get("token")?.trim() ||
+        url.searchParams.get("apiKey")?.trim() ||
+        url.searchParams.get("api_key")?.trim() ||
+        extractAuthToken(request)?.trim() ||
+        null;
+      if (sessionToken) {
+        const db = compatState.current?.adapter?.db;
+        if (db) {
+          try {
+            const store = new AuthStore(
+              db as ConstructorParameters<typeof AuthStore>[0],
+            );
+            if (await findActiveSession(store, sessionToken)) {
+              return true;
+            }
+          } catch (error) {
+            // error-policy:J1 WebSocket admission is the protocol boundary;
+            // an unavailable auth store rejects the session instead of
+            // degrading to an authenticated socket.
+            logger.error(
+              `[eliza][auth] WebSocket session lookup failed: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            compatState.current?.reportError(
+              "appCore.webSocketSessionAuth",
+              error,
+              { phase: "upgrade" },
+            );
+          }
+        }
+      }
+      return (await callerOptions?.authorizeWebSocket?.(request, url)) === true;
     },
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);

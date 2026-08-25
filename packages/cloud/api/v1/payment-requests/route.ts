@@ -17,9 +17,11 @@ import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@/db/schemas/payment-requests"
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { toPaymentRequestDto } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -77,8 +79,6 @@ const ListQuerySchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
-
 function paymentContext(value: z.infer<typeof PaymentContextSchema>) {
   return { kind: value } as const;
 }
@@ -97,7 +97,7 @@ function paymentMetadata(input: z.infer<typeof CreatePaymentRequestSchema>) {
   };
 }
 
-app.post("/", async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
@@ -143,7 +143,7 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      paymentRequest: result.paymentRequest,
+      paymentRequest: toPaymentRequestDto(result.paymentRequest),
       hostedUrl: result.hostedUrl,
     });
   } catch (error) {
@@ -155,7 +155,7 @@ app.post("/", async (c) => {
   }
 });
 
-app.get("/", async (c) => {
+app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
@@ -186,7 +186,10 @@ app.get("/", async (c) => {
       offset: parsed.data.offset,
     });
 
-    return c.json({ success: true, paymentRequests });
+    return c.json({
+      success: true,
+      paymentRequests: paymentRequests.map(toPaymentRequestDto),
+    });
   } catch (error) {
     logger.error("[PaymentRequests API] Failed to list payment requests", {
       error,

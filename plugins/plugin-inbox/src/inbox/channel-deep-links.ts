@@ -23,8 +23,6 @@ export function buildDeepLink(
     case "telegram":
     case "telegram-account":
       return buildTelegramLink(meta, opts.messageId);
-    case "signal":
-      return buildSignalLink(meta);
     case "imessage":
       return buildIMessageLink(meta);
     case "whatsapp":
@@ -72,14 +70,6 @@ function buildTelegramLink(
         ? `https://t.me/c/${normalized}/${messageId}`
         : `https://t.me/c/${normalized}`;
     }
-  }
-  return null;
-}
-
-function buildSignalLink(room: Record<string, unknown>): string | null {
-  const phoneNumber = str(room.phoneNumber) || str(room.identifier);
-  if (phoneNumber) {
-    return `signal://signal.me/#p/${phoneNumber}`;
   }
   return null;
 }

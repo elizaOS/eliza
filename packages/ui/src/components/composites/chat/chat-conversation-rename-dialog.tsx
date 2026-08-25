@@ -87,7 +87,6 @@ export function ChatConversationRenameDialog({
               }
             }}
             disabled={saveDisabled || suggestDisabled}
-            className="text-txt"
           />
         </div>
 
@@ -98,11 +97,10 @@ export function ChatConversationRenameDialog({
               variant="outline"
               size="sm"
               data-testid="conv-rename-suggest"
-              className="gap-1.5 border-border"
               onClick={() => void onSuggest()}
               disabled={suggestDisabled || saveDisabled}
             >
-              <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <Sparkles className="size-3.5 shrink-0" aria-hidden />
               {suggesting ? suggestPendingLabel : suggestLabel}
             </Button>
           ) : (

@@ -135,24 +135,23 @@ describe("contribute-to-eliza skill structure", () => {
     assert.doesNotMatch(source, /\[TODO[:\]]/);
   });
 
-  it("encodes both modes, disclosure, security, sync, proof, and authority", () => {
+  it("encodes both modes, optional disclosure, security, sync, proof, and authority", () => {
     const source = readFileSync(skillPath, "utf8");
 
     assert.match(source, /Mode A: finish a scoped issue/);
     assert.match(source, /Mode B: independently review and repair/);
     assert.match(source, /AI provider\/model: <provider> \/ <exact-model-id>/);
-    assert.match(
-      source,
-      /every issue body, issue comment, PR body, PR comment, and review body/i,
-    );
+    assert.match(source, /disclosure is optional/i);
+    assert.match(source, /must never block GitHub work/i);
+    assert.match(source, /Missing model identity is not a blocker/i);
     assert.match(source, /— \[<lane-tag>\]/);
-    assert.match(source, /lane signature must be immediately before/i);
+    assert.match(source, /lane signature immediately precedes/i);
     assert.match(source, /eliza-computer-attribution:v1/);
     assert.match(source, /Contribution skill revision:/);
     assert.match(source, /PROVENANCE\.json/);
     assert.match(source, /source\.sha256/);
     assert.match(source, /revisionStatus.*committed/);
-    assert.match(source, /never substitute.*guessed SHA/i);
+    assert.match(source, /never substitute[\s\S]*guessed SHA/i);
     assert.match(source, /packages\/docs\/security\.md/);
     assert.match(source, /origin\/develop/);
     assert.match(source, /package-local `AGENTS\.md` or `CLAUDE\.md`/);
@@ -597,7 +596,7 @@ describe("live report parsing", () => {
     }
   });
 
-  it("audits only claims or explicit AI provenance and accepts human-only claims", () => {
+  it("audits only invalid voluntary provenance and accepts unattributed claims", () => {
     const comments = [
       comment(1, "human", "Ordinary human discussion needs no footer."),
       comment(
@@ -675,7 +674,7 @@ describe("live report parsing", () => {
           index,
         })),
       ).map((finding) => finding.id),
-      [3, 4, 6],
+      [4],
     );
   });
 

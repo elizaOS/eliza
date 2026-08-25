@@ -15,9 +15,6 @@ import {
   TASK_AGENT_FRAMEWORK_LABELS,
 } from "../services/task-agent-frameworks.js";
 
-const MAX_FRAMEWORK_LINES = 12;
-const MAX_FRAMEWORK_DATA = 12;
-
 export const codingAgentExamplesProvider: Provider = {
   name: "CODING_AGENT_EXAMPLES",
   description:
@@ -46,10 +43,8 @@ export const codingAgentExamplesProvider: Provider = {
         runtime,
         acpService,
       );
-      const frameworks = frameworkState.frameworks.slice(0, MAX_FRAMEWORK_DATA);
-      const frameworkLines = frameworks
-        .slice(0, MAX_FRAMEWORK_LINES)
-        .map(formatTaskAgentFrameworkLine);
+      const frameworks = frameworkState.frameworks;
+      const frameworkLines = frameworks.map(formatTaskAgentFrameworkLine);
 
       const compactText = [
         "task_agent_action_examples:",

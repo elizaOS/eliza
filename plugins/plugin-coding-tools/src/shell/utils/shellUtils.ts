@@ -286,10 +286,61 @@ export function deriveSessionName(command: string): string | undefined {
   return `${stripQuotes(verb)} ${cleaned}`;
 }
 
-function tokenizeCommand(command: string): string[] {
-  const matches =
-    command.match(/(?:[^\s"']+|"(?:\\.|[^"])*"|'(?:\\.|[^'])*')+/g) ?? [];
-  return matches.map((token) => stripQuotes(token)).filter(Boolean);
+// The derived session name only ever surfaces the leading verb and one
+// truncated target token, so tokenization never needs to look past a short
+// prefix. Bounding the input also bounds the unmatched-quote fallback below:
+// without it, many unmatched quote delimiters (each escaping the next quote)
+// would make every fallback rescan the remaining suffix, going quadratic.
+const TOKENIZE_LIMIT = 2048;
+
+function tokenizeCommand(rawCommand: string): string[] {
+  const command = rawCommand.slice(0, TOKENIZE_LIMIT);
+  const tokens: string[] = [];
+  let token = "";
+  let cursor = 0;
+  const flush = () => {
+    if (!token) return;
+    const stripped = stripQuotes(token);
+    if (stripped) tokens.push(stripped);
+    token = "";
+  };
+
+  while (cursor < command.length) {
+    const char = command[cursor];
+    if (/\s/.test(char)) {
+      flush();
+      cursor += 1;
+      continue;
+    }
+    if (char !== '"' && char !== "'") {
+      token += char;
+      cursor += 1;
+      continue;
+    }
+
+    const quote = char;
+    let quoteEnd = cursor + 1;
+    while (quoteEnd < command.length) {
+      if (command[quoteEnd] === "\\" && quoteEnd + 1 < command.length) {
+        quoteEnd += 2;
+        continue;
+      }
+      if (command[quoteEnd] === quote) break;
+      quoteEnd += 1;
+    }
+    if (quoteEnd === command.length) {
+      // The former matcher skipped an unmatched delimiter and resumed at the
+      // following text. Preserve that behavior without repeatedly exploring
+      // alternate quoted/unquoted parses.
+      flush();
+      cursor += 1;
+      continue;
+    }
+    token += command.slice(cursor, quoteEnd + 1);
+    cursor = quoteEnd + 1;
+  }
+  flush();
+  return tokens;
 }
 
 function stripQuotes(value: string): string {

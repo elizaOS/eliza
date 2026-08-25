@@ -51,8 +51,11 @@ import {
   type PgliteManagerCache,
   type PgliteSingletonCache,
 } from "./pglite/manager-cache";
+import { identityPersonLinkRoutes } from "./routes/identity-person-link";
 import * as schema from "./schema";
 import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+import { SqlMembershipService } from "./services/sql-membership";
+import { SqlPrincipalService } from "./services/sql-principal";
 import { resolvePgliteDir } from "./utils";
 import { stringToUuid } from "./utils/string-to-uuid";
 
@@ -174,7 +177,8 @@ export const plugin: Plugin = {
   description: "A plugin for SQL database access with dynamic schema migrations",
   priority: 0,
   schema: schema,
-  services: [AdvancedMemoryStorageService],
+  services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
+  routes: [...identityPersonLinkRoutes],
   init: async (_, runtime: IAgentRuntime) => {
     const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
     runtime.logger.info(
@@ -265,6 +269,11 @@ export {
 } from "./rls";
 export * from "./schema";
 export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export { SqlMembershipService } from "./services/sql-membership";
+export {
+  computeIdentityRequestDigest,
+  SqlPrincipalService,
+} from "./services/sql-principal";
 export * from "./types";
 export { schema };
 

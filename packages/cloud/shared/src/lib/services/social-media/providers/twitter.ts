@@ -12,8 +12,30 @@ import type {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { TWITTER_API_BASE, TWITTER_UPLOAD_BASE } from "../../../utils/twitter-api";
-import { downloadSocialMediaBytes } from "../media-download";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
+
+const TWITTER_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every X/Twitter REST hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function twitterFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TWITTER_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 // Wrapped with retry logic for social media provider
 async function twitterApiRequest<T>(
@@ -24,7 +46,7 @@ async function twitterApiRequest<T>(
   const url = endpoint.startsWith("http") ? endpoint : `${TWITTER_API_BASE}${endpoint}`;
   const { data } = await withRetry<T>(
     () =>
-      fetch(url, {
+      twitterFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -41,9 +63,10 @@ async function twitterApiRequest<T>(
 async function uploadMedia(accessToken: string, media: MediaAttachment): Promise<string> {
   let mediaData: Buffer;
   if (media.data) {
+    assertSocialMediaBytesWithinBudget(media.data.length, { platform: "twitter" });
     mediaData = media.data;
   } else if (media.base64) {
-    mediaData = Buffer.from(media.base64, "base64");
+    mediaData = decodeSocialMediaBase64(media.base64, { platform: "twitter" });
   } else if (media.url) {
     mediaData = await downloadSocialMediaBytes(media.url);
   } else {
@@ -57,7 +80,7 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
     formData.append("media_data", mediaData.toString("base64"));
     formData.append("media_category", mediaType);
 
-    const response = await fetch(`${TWITTER_UPLOAD_BASE}/media/upload.json`, {
+    const response = await twitterFetch(`${TWITTER_UPLOAD_BASE}/media/upload.json`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -82,10 +105,13 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
     media_category: mediaType,
   });
 
-  const initResponse = await fetch(`${TWITTER_UPLOAD_BASE}/media/upload.json?${initParams}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const initResponse = await twitterFetch(
+    `${TWITTER_UPLOAD_BASE}/media/upload.json?${initParams}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
 
   if (!initResponse.ok) {
     throw new Error("Media upload INIT failed");
@@ -108,11 +134,14 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
     const chunkBytes = Uint8Array.from(chunk);
     formData.append("media", new Blob([chunkBytes]));
 
-    const appendResponse = await fetch(`${TWITTER_UPLOAD_BASE}/media/upload.json?${appendParams}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: formData,
-    });
+    const appendResponse = await twitterFetch(
+      `${TWITTER_UPLOAD_BASE}/media/upload.json?${appendParams}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+      },
+    );
 
     if (!appendResponse.ok) {
       throw new Error(`Media upload APPEND failed at segment ${segmentIndex}`);
@@ -125,7 +154,7 @@ async function uploadMedia(accessToken: string, media: MediaAttachment): Promise
     media_id: mediaId,
   });
 
-  const finalizeResponse = await fetch(
+  const finalizeResponse = await twitterFetch(
     `${TWITTER_UPLOAD_BASE}/media/upload.json?${finalizeParams}`,
     {
       method: "POST",
@@ -159,9 +188,12 @@ async function waitForProcessing(
       media_id: mediaId,
     });
 
-    const response = await fetch(`${TWITTER_UPLOAD_BASE}/media/upload.json?${statusParams}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    const response = await twitterFetch(
+      `${TWITTER_UPLOAD_BASE}/media/upload.json?${statusParams}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
 
     const data = (await response.json()) as {
       processing_info?: {

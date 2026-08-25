@@ -15,18 +15,17 @@ interface PromptCardProps {
 export function PromptCard({ prompt, onClick, className }: PromptCardProps) {
   return (
     <Button
-      variant="ghost"
+      variant="choice"
+      size="card"
+      align="start"
       type="button"
       onClick={onClick}
-      className={cn(
-        "group relative rounded-sm border border-border bg-bg-elevated p-4 text-left hover:border-border-strong hover:bg-bg-hover transition-colors",
-        className,
-      )}
+      className={cn("group relative", className)}
     >
       <p className="text-sm text-muted-foreground group-hover:text-txt">
         {prompt}
       </p>
-      <ArrowUp className="absolute bottom-4 right-4 h-4 w-4 text-muted-foreground group-hover:text-txt" />
+      <ArrowUp className="absolute bottom-4 right-4 size-4 text-muted-foreground group-hover:text-txt" />
     </Button>
   );
 }

@@ -134,8 +134,8 @@ plugins/plugin-cli-inference/
 
 ## GenerateTextParams -> CLI mapping (HARD REQ: forward BOTH system AND messages/prompt)
 
-- **claude:** `[claude, -p <flattened body>, --system-prompt <params.system FULL REPLACE>, --exclude-dynamic-system-prompt-sections, --output-format text, --model <ELIZA_CLI_CLAUDE_MODEL || claude-opus-4-8>]`, stdin `/dev/null`, cwd = isolated empty tmpdir, env = `filterEnv(process.env)`.
-- **codex:** `[codex, exec, -m <ELIZA_CLI_CODEX_MODEL || gpt-5.5>, -s read-only, --skip-git-repo-check, -C <cwd>, --color never, --json, <system folded on top of flattened body>]`.
+- **claude:** `[claude, -p, --system-prompt-file <isolated complete system file>, --output-format text, --model <ELIZA_CLI_CLAUDE_MODEL || claude-opus-4-8>]`, with the complete body streamed from an isolated stdin file so OS argv limits cannot shorten or reject it.
+- **codex:** `[codex, exec, -m <ELIZA_CLI_CODEX_MODEL || gpt-5.5>, -s read-only, --skip-git-repo-check, -C <cwd>, --color never, --json, -]`, with the complete system-plus-body prompt streamed from an isolated stdin file.
 
 `prompt-flatten` re-routes system/developer roles to the system slot and flattens user/assistant/tool turns into the body; messages are NEVER dropped (would strip skills/memory/recent-convo/grammar).
 
@@ -147,7 +147,8 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CLAUDE_MODEL` | No | `claude-opus-4-8` | claude large-tier model (`--model` / SDK large tier) |
 | `ELIZA_CLI_CLAUDE_PLANNER_MODEL` | No | (falls back to large) | `claude-sdk` small/planner tier model (e.g. sonnet) |
 | `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default / allowlist lookup) | path to the claude executable: drives the `claude-sdk` session AND pins the cold `claude` spawn (deploys outside the SOC2 launcher allowlist) |
-| `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk`: restart a warm session after N turns (bounds context) |
+| `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk` / `codex-sdk`: restart a warm session after a positive safe-integer number of turns (bounds context) |
+| `ELIZA_CLI_SDK_TURN_TIMEOUT_MS` | No | `90000` | `claude-sdk`: per-turn timeout from `1` through `2147483647` ms; falls back to `ELIZA_CLI_TIMEOUT_MS` when unset; the exact literal `0` is the only unbounded-turn opt-out |
 | `ELIZA_CLI_CLAUDE_EFFORT` | No | (SDK default: high) | `claude-sdk`: reasoning effort forwarded to the SDK `effort` option (`low`/`medium`/`high`/`xhigh`/`max`); an unsupported level for the model is silently downgraded by the SDK |
 | `ELIZA_CLI_CLAUDE_PLANNER_EFFORT` | No | (falls back to `ELIZA_CLI_CLAUDE_EFFORT`) | `claude-sdk`: effort for the ROUTE-mode planner tier, so routing depth tunes independently of reply depth |
 | `ELIZA_CLI_CLAUDE_ALL_TIERS` | No | (unset = large tiers only) | `claude-sdk`: also serve the high-frequency triage tiers (TEXT_SMALL/NANO/MEDIUM) on this route so the ENTIRE text brain runs on the one subscription (no cerebras/gemma fallthrough). Higher subscription usage; triage defaults to the cheaper large-tier model, not the planner tier |
@@ -156,11 +157,13 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CODEX_PLANNER_MODEL` | No | (falls back to large) | `codex-sdk` small/planner tier model |
 | `ELIZA_CLI_CODEX_REASONING_EFFORT` | No | (sdk default) | `codex-sdk`: `modelReasoningEffort` (minimal..xhigh) |
 | `ELIZA_CLI_CODEX_BIN` | No | (sdk bundled / allowlist lookup) | path to the system codex binary: REQUIRED for `codex-sdk` (bundled 0.80.0 rejects current models); also pins the cold `codex` spawn |
-| `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | per-call spawn timeout (SIGTERM on expiry; CLI backends) |
+| `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | per-call spawn timeout from `1` through `2147483647` ms (SIGTERM on expiry; cold CLI backends), also the `claude-sdk` turn-timeout fallback when its dedicated setting is absent |
 
 ## Errors
 
 Handlers THROW on non-zero exit / timeout (`+SIGTERM`) / empty stdout so `useModel` + AccountPool failover treat them as provider failures — never swallow-and-return-empty. stderr is redacted via `SENSITIVE_ENV_RE` before it reaches the error message or log.
+
+For the active backend, an explicitly present numeric timeout/restart setting must satisfy the contract above. Blank, malformed, non-safe, zero (except the exact SDK turn-timeout opt-out), and negative values throw `CLI_INFERENCE_INVALID_CONFIGURATION` before any process or warm session is created. Timer-backed general and SDK turn timeouts also reject values above `2147483647`, which Node would otherwise clamp to about 1 ms; the turn-count restart cadence remains a positive safe integer. Only a truly absent setting selects a fallback/default; settings unused by the active backend are ignored. Each warm-cache entry records its effective bounds; a configuration change disposes and replaces the session under the same logical cache/rotation identity, so stale lifecycle or account-affinity state cannot be reused or accumulated.
 
 ## Commands
 
@@ -175,9 +178,9 @@ bun run --cwd plugins/plugin-cli-inference build
 
 - **Node-only.** `index.browser.ts` is a stub; the real handlers use `node:child_process`.
 - **Isolated cwd per call.** Created with `mkdtemp` under `tmpdir()`, validated by `resolveSafeCwd`, removed in a `finally`. Keeps the CLI out of real projects (suppresses Claude Code repo-context identity).
-- **`/dev/null` stdin is REQUIRED** — without it the CLI waits ~3s for stdin.
+- **Prompt files are ephemeral and private.** Cold CLI prompts are written mode `0600` inside the per-call isolated temp directory, streamed through stdin (and `--system-prompt-file` for Claude), and removed in `finally` with the directory.
 - **sandbox.ts is the canonical copy** of the `SAFE_ENV_KEYS` allowlist and `SENSITIVE_ENV_RE` redaction pattern for spawned CLI subprocesses.
-- **Multi-account pool auth + rotation (SDK backends only).** The `claude-sdk` / `codex-sdk` chat brain consults the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core` (in `src/account-rotation.ts`) POOL-FIRST: the FIRST warm-session auth selects a healthy pooled account and materializes its subprocess-only SDK env (`CLAUDE_CODE_OAUTH_TOKEN` / per-account `CODEX_HOME`), so an app-connected subscription is used immediately — the ambient `~/.claude` / `CLAUDE_CODE_OAUTH_TOKEN` credential is only the fallback when the pool is empty or selection fails. On a subscription-limit throw it then rotates to the next healthy pooled account before falling to provider failover — see issue #11180. Rotation evicts the warm session so it re-auths as the new account and retries transparently without mutating the parent `process.env`. Only rate-limit-class errors rotate; non-limit errors rethrow straight to failover. Default ON when a pool is present; opt out with `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0`. The COLD `claude --print` / `codex exec` CLIs still own one on-disk cred set (pool auth is SDK-only; the bare-CLI shim is issue #11180 Gap B).
+- **Multi-account pool auth + rotation (SDK backends only).** The `claude-sdk` / `codex-sdk` chat brain consults the shared `CODING_AGENT_SELECTOR_BRIDGE_SYMBOL` bridge accessor from `@elizaos/core` (in `src/account-rotation.ts`) POOL-FIRST: the FIRST warm-session auth selects a healthy pooled account and materializes its subprocess-only SDK env (`CLAUDE_CODE_OAUTH_TOKEN` / per-account `CODEX_HOME`), so an app-connected subscription is used immediately — the ambient `~/.claude` / `CLAUDE_CODE_OAUTH_TOKEN` credential is only the fallback when the pool is empty or selection fails. A subscription-limit throw marks the account rate-limited; a typed 401/403 from a selected account marks it as needing reauthentication. Both cases evict the warm session, select another healthy pooled account, and retry before provider failover. Ambient authentication failures and other errors rethrow without mutating the pool. Default ON when a pool is present; opt out with `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION=0`. The COLD `claude --print` / `codex exec` CLIs still own one on-disk cred set (pool auth is SDK-only; the bare-CLI shim is issue #11180 Gap B).
 - See the root `CLAUDE.md` for repo-wide architecture rules, logger conventions, and ESM requirements.
 
 ## Verification

@@ -62,6 +62,7 @@ app.get("/", async (c) => {
         {
           userId: user.id,
           type,
+          requireStorageUrl: true,
           limit: fetchLimit,
           offset,
         },

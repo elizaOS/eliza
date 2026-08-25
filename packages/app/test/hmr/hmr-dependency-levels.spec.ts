@@ -91,6 +91,10 @@ const LEVELS = [
     file: "plugins/plugin-messages/src/components/MessagesView.tsx",
   },
   {
+    name: "plugin view maps",
+    file: "plugins/plugin-maps/src/components/MapsView.tsx",
+  },
+  {
     name: "plugin view phone",
     file: "plugins/plugin-phone/src/components/PhoneView.tsx",
   },

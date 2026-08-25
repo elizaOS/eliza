@@ -1,7 +1,6 @@
 /**
  * FILE `grep` handler: content search over the workspace via RipgrepService,
- * rooted at an explicit path or the conversation's SessionCwdService cwd. Output is
- * capped by `head_limit` (default `CODING_TOOLS_GREP_HEAD_LIMIT`).
+ * rooted at an explicit path or the conversation's SessionCwdService cwd.
  */
 import {
   type ActionResult,
@@ -16,10 +15,10 @@ import {
   failureToActionResult,
   readBoolParam,
   readNumberParam,
-  readPositiveIntSetting,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type {
   RipgrepMode,
   RipgrepOptions,
@@ -33,8 +32,6 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
-
-const DEFAULT_HEAD_LIMIT = 250;
 
 function isValidMode(value: string | undefined): value is RipgrepMode {
   return (
@@ -90,8 +87,14 @@ export async function grepHandler(
 
   try {
     const requestedPath = readStringParam(options, "path");
-    const targetPath =
-      requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+    let targetPath: string;
+    if (requestedPath === undefined) {
+      targetPath = (await session.getExistingCwd(conversationId)).cwd;
+    } else {
+      const input = resolveInputPath(runtime, conversationId, requestedPath);
+      if (!input.ok) return failureToActionResult(input.failure);
+      targetPath = input.value;
+    }
 
     const validation = await sandbox.validatePath(conversationId, targetPath);
     if (validation.ok === false) {
@@ -151,34 +154,25 @@ export async function grepHandler(
     if (result.exitCode !== 0) {
       return failureToActionResult({
         reason: "command_failed",
-        message: `ripgrep exited ${result.exitCode}: ${result.output.slice(0, 500)}`,
+        message: `ripgrep exited ${result.exitCode}: ${result.output}`,
       });
     }
 
-    const headLimitRequested = readNumberParam(options, "head_limit");
-    const headLimitDefault = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_GREP_HEAD_LIMIT",
-      DEFAULT_HEAD_LIMIT,
-    );
-    const headLimit =
-      headLimitRequested === undefined
-        ? headLimitDefault
-        : Math.max(0, Math.floor(headLimitRequested));
+    if (result.truncated) {
+      return failureToActionResult({
+        reason: "io_error",
+        message:
+          "ripgrep returned incomplete output; narrow the query instead of using a partial result",
+      });
+    }
 
     const rawLines =
       result.output.length === 0
         ? []
         : result.output.replace(/\n$/, "").split("\n");
 
-    let outputLines = rawLines;
-    let headTruncated = false;
-    if (headLimit > 0 && rawLines.length > headLimit) {
-      outputLines = rawLines.slice(0, headLimit);
-      headTruncated = true;
-    }
-
-    const truncated = headTruncated || result.truncated;
+    const outputLines = rawLines;
+    const truncated = false;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
     coreLogger.debug(
@@ -196,7 +190,7 @@ export async function grepHandler(
     const messageText = error instanceof Error ? error.message : String(error);
     return failureToActionResult({
       reason: "internal",
-      message: `grep failed: ${messageText.slice(0, 500)}`,
+      message: `grep failed: ${messageText}`,
     });
   }
 }

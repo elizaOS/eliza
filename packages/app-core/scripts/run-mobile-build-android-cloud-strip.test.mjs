@@ -22,12 +22,17 @@ import { describe, expect, it } from "vitest";
 import {
   ANDROID_CLOUD_REWRITTEN_JAVA_FILES,
   ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+  ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
 } from "./run-mobile-build.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const androidMainJavaRoot = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/main/java/ai/elizaos/app",
+);
+const androidTestJavaRoot = path.resolve(
+  scriptsDir,
+  "../platforms/android/app/src/test/java/ai/elizaos/app",
 );
 
 /** Every committed main-sourceset .java basename that references ElizaAgentService. */
@@ -87,5 +92,29 @@ describe("android-cloud ElizaAgentService strip coverage (#15106)", () => {
     // or rewritten to compile without it (rewrite) for the cloud target, or
     // auditAndroidCloudSource rejects the tree.
     expect(unaccounted).toEqual([]);
+  });
+
+  it("accounts for every JVM test that references source-stripped runtime code", () => {
+    const strippedClassNames = ANDROID_CLOUD_STRIPPED_JAVA_FILES.map((file) =>
+      file.replace(/\.java$/, ""),
+    );
+    const testFiles = fs
+      .readdirSync(androidTestJavaRoot, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".java"))
+      .map((entry) => entry.name)
+      .sort();
+    const referencesStrippedCode = testFiles.filter((file) => {
+      const source = fs.readFileSync(
+        path.join(androidTestJavaRoot, file),
+        "utf8",
+      );
+      return strippedClassNames.some((className) =>
+        new RegExp(`\\b${className}\\b`).test(source),
+      );
+    });
+
+    expect(ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES).toEqual(
+      referencesStrippedCode,
+    );
   });
 });

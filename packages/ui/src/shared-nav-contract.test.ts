@@ -29,6 +29,7 @@ import { withBuiltinShellViews } from "./hooks/useAvailableViews";
 // against the live TAB_PATHS-derived registry so neither side can drift alone.
 const BUILTIN_NAV_PATHS: Record<string, string> = {
   settings: "/settings",
+  vault: "/vault",
   chat: "/chat",
   character: "/character",
   automations: "/automations",

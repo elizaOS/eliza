@@ -106,8 +106,8 @@ async function handleTelegramWebhook(
     return Response.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Replay dedupe on Telegram's monotonic `update_id` (matches the crypto/
-  // stripe/bluebubbles webhooks). Telegram re-delivers an update until it gets a
+  // Replay dedupe on Telegram's monotonic `update_id` (matches other signed
+  // provider webhooks). Telegram re-delivers an update until it gets a
   // 200, so without this a slow handler causes the same message to be routed to
   // the agent multiple times (duplicate reply + double credit spend). Scoped per
   // org so two orgs' independent update_id sequences can't collide. (finding L4)
@@ -135,8 +135,8 @@ async function handleTelegramWebhook(
   // throws we must roll it back — otherwise the marker "poisons" this update_id
   // and Telegram's retry is short-circuited as a duplicate, dropping the update
   // forever. On failure: delete the marker and re-throw so the route returns a
-  // 5xx and the provider retry re-processes (matches the crypto/stripe/
-  // bluebubbles rollback-on-failed-enqueue pattern). (finding L4)
+  // 5xx and the provider retry re-processes (matches the shared webhook
+  // rollback-on-failed-enqueue pattern). (finding L4)
   try {
     // Handle my_chat_member updates (bot added/removed from chats)
     if ("my_chat_member" in update) {

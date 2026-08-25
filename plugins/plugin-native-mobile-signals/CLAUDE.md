@@ -15,6 +15,7 @@ This package registers one Capacitor plugin: **`MobileSignals`**.
 | `checkPermissions()` | Returns current permission status, capabilities, screen-time status, and required setup actions. |
 | `requestPermissions(options?)` | Triggers native permission request flows (health, screen time, notifications). |
 | `openSettings(options?)` | Opens a specific native settings page (app, health, battery optimization, etc.). |
+| `presentScreenTimeReport()` | Presents the authorized iOS DeviceActivity report; other platforms return an explicit unavailable result. |
 | `startMonitoring(options?)` | Starts event streaming; returns initial device + health snapshots. |
 | `stopMonitoring()` | Stops event streaming and removes all native listeners. |
 | `getSnapshot()` | One-shot async read of current device + health state without streaming. |
@@ -99,10 +100,27 @@ Screen Time / DeviceActivity features require additional entitlements and Xcode 
 
 1. `App.entitlements` contains `com.apple.developer.family-controls`.
 2. Xcode project sets `CODE_SIGN_ENTITLEMENTS = App/App.entitlements`.
-3. `DeviceActivityMonitorExtension` and `DeviceActivityReportExtension` app-extension targets exist and are embedded.
-4. `ElizaosCapacitorMobileSignals.podspec` links `FamilyControls` and `DeviceActivity` frameworks.
+3. Both DeviceActivity extensions have the Family Controls entitlement and their targets select the matching entitlement files.
+4. `DeviceActivityMonitorExtension` and `DeviceActivityReportExtension` app-extension targets exist and are embedded.
+5. `ElizaosCapacitorMobileSignals.podspec` links `FamilyControls` and `DeviceActivity` frameworks.
 
-Without these, `screenTime.supported` will be `false` and `screenTime.authorization.status` will be `"unavailable"`.
+On iOS, `screenTime.supported` means only that the process is a physical-device
+host whose entitlement is not conclusively missing. Use `availability`,
+`provisioning.status`, extension inspection, authorization, and
+`reportAvailable` for the actionable state; unsigned runtime inspection is
+reported as `unknown`, never fabricated as verified or missing.
+
+Apple provides DeviceActivity results only inside a sandboxed report extension.
+The host exposes `presentScreenTimeReport()` after Family Controls authorization;
+the extension aggregates and renders category totals without exporting them.
+`reportAvailable` requires that authorized physical-device path. `coarseSummaryAvailable`,
+`thresholdEventsAvailable`, and `rawUsageExportAvailable` must remain `false`
+until a lawful host surface or a concrete scheduled threshold-event signal
+exists. Never move report data through app groups or the network.
+
+Android reports `host-summary-available` or `usage-access-required`; it never
+sets iOS-only `reportAvailable`. Its host-readable aggregate is represented by
+`coarseSummaryAvailable` and the nested `android` fields.
 
 ## Android requirements
 
@@ -128,6 +146,7 @@ Extend `MobileSignalsSnapshot` or `MobileSignalsHealthSnapshot` in `src/definiti
 - **Instrumented test (issue #9967).** The `PACKAGE_USAGE_STATS` reads (AppOps `GET_USAGE_STATS` check + `UsageStatsManager.queryUsageStats`) live in `UsageStatsReader`; the plugin delegates to it (single source) so an on-device `androidTest` can drive the real provider. The permission is special-access, so the harness grants it host-side (`appops set <pkg> android:get_usage_stats allow`) and the usage tests `Assume`-skip when absent — verified positive on an API-34 emulator (real foreground-usage history).
 - This is a **Capacitor plugin**, not an elizaOS action/provider/service plugin. There is no `Plugin` object registered with `AgentRuntime`. It is consumed by a Capacitor-enabled mobile/web app.
 - The web fallback (`src/web.ts`) always returns `status: "not-applicable"` for `checkPermissions` and `false` for health capabilities. Do not add health data to the web path.
+- `reportAvailable` requires a bundled authorized extension and the real host presenter. Host-readable summary and threshold-event flags remain false on iOS.
 - `rawUsageExportAvailable` is permanently `false` in `MobileSignalsScreenTimeStatus` — this is intentional (Apple does not expose raw usage export).
 - On iOS, Screen Time features require Apple's restricted `com.apple.developer.family-controls` entitlement, which must be provisioned by Apple. The `validate:ios-screen-time` script is the canonical check.
 - `dist/` is committed for publishing but should be regenerated via `build` before any release.

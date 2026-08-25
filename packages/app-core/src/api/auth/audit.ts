@@ -18,6 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RuntimeEnvRecord } from "@elizaos/shared";
 import type { AuthStore } from "../../services/auth-store";
 import { resolveElizaStateDir } from "../../services/cloud-jwks-store";
@@ -44,7 +45,9 @@ export interface AuditEmitterOptions {
 
 function truncateUserAgent(value: string | null): string | null {
   if (!value) return null;
-  return value.length > 200 ? value.slice(0, 200) : value;
+  return value.length > 200
+    ? truncateWellFormed(toWellFormedUnicode(value), 200)
+    : value;
 }
 
 /**

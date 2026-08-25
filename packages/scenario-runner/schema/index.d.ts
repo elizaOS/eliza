@@ -23,6 +23,12 @@ export type CapturedAction = {
 
 export type ScenarioTurnExecution = {
   actionsCalled: CapturedAction[];
+  /** Registered action validation outcome; this is evidence, never an action call. */
+  validation?: {
+    actionName: string;
+    accepted: boolean;
+    expected: "accepted" | "rejected";
+  };
   responseText?: string;
   statusCode?: number;
   responseBody?: unknown;
@@ -108,6 +114,16 @@ export type ScenarioContext = {
    */
   primaryRoomId?: string;
   primaryUserId?: string;
+  /** Runtime IDs keyed by the logical identifiers authored in `rooms`. */
+  roomIds?: Record<string, string>;
+  worldIds?: Record<string, string>;
+  /** Canonical principal IDs keyed by `rooms[].entity`. */
+  entityIds?: Record<string, string>;
+  /** Distinct connector principal IDs keyed by `rooms[].account`. */
+  accountEntityIds?: Record<string, string>;
+  /** Per-room topology for seeds that need the room's account principal/world. */
+  roomWorldIds?: Record<string, string>;
+  roomEntityIds?: Record<string, string>;
   actionsCalled: CapturedAction[];
   turns?: ScenarioTurnExecution[];
   approvalRequests?: CapturedApprovalRequest[];
@@ -161,6 +177,8 @@ export type ScenarioSeedStep =
   | {
       type: "memory";
       name?: string;
+      /** Logical `rooms[].id`, or an already-resolved runtime room UUID. */
+      roomId?: string;
       content?: Record<string, unknown>;
     }
   | {
@@ -261,8 +279,25 @@ export type ScenarioTurn = {
   content?: Record<string, unknown>;
   /** For `action` turns, the registered action to invoke directly. */
   actionName?: string;
+  /**
+   * Expected result of the registered action's validation phase. Defaults to
+   * `"accepted"`. Use `"rejected"` to prove invalid input is refused through
+   * the runtime action registry without calling the handler.
+   */
+  expectedValidation?: "accepted" | "rejected";
   /** For multi-room scenarios, the `rooms[].id` this turn is sent to. */
   room?: string;
+  /**
+   * Optional authenticated sender for a message turn in a shared room. The
+   * executor materializes a distinct connector principal and stamps bot
+   * authorship as trusted memory metadata; never simulate speakers with text
+   * labels inside one user's message.
+   */
+  sender?: {
+    id: string;
+    name: string;
+    kind: "human" | "bot";
+  };
   method?: string;
   path?: string;
   body?: unknown;
@@ -278,6 +313,13 @@ export type ScenarioTurn = {
   redactResponseFields?: string[];
   expectedStatus?: number;
   durationMs?: number;
+  /**
+   * For `wait` turns, a bounded state predicate. The executor evaluates it
+   * immediately and then until it returns true or the turn timeout expires.
+   */
+  until?: (ctx: ScenarioContext) => boolean | Promise<boolean>;
+  /** Poll interval for a state-backed `wait` turn. Defaults to 25 ms. */
+  pollIntervalMs?: number;
   /** Per-turn override of the executor's turn timeout (ms). */
   timeoutMs?: number;
   worker?: string;
@@ -514,7 +556,18 @@ export type ScenarioDeferral = {
 /** A room a multi-room scenario message turn can target (`turns[].room`). */
 export type ScenarioRoomSpec = {
   id?: string;
+  /** Logical world key. Rooms with the same key share a deterministic world. */
+  world?: string;
+  /**
+   * Connector-account key. Preserves the legacy behavior of coalescing rooms
+   * that use the same account when no explicit canonical entity is supplied.
+   */
   account?: string;
+  /**
+   * Canonical logical entity key. Distinct connector accounts naming the same
+   * entity become separate principals linked through the real identity graph.
+   */
+  entity?: string;
   title?: string;
   source?: string;
   channelType?: string;
@@ -534,8 +587,10 @@ export type ScenarioPersonalityExpect = {
 
 /** Runtime capabilities that must be ready before scenario turns execute. */
 export type ScenarioRequirements = {
-  /** Plugin packages that the runner may load when they are not registered. */
+  /** Import specifiers for plugin packages the runner loads before execution. */
   plugins?: readonly string[];
+  /** Plugin names that this scenario's seed registers locally. */
+  fixturePlugins?: readonly string[];
   /**
    * Service types whose startup must complete successfully before execution.
    * Services omitted here are optional even when a required plugin declares them.
@@ -550,6 +605,67 @@ export type ScenarioRequirements = {
   /** Host platform the scenario needs (e.g. `macos`); other platforms defer it. */
   os?: string;
 };
+
+/** Serializable text matcher shared by in-process and wire model fixtures. */
+export type ScenarioModelTextMatcher =
+  | { exact: string }
+  | { includes: string }
+  | { pattern: string; flags?: string };
+
+export type ScenarioModelToolCall = {
+  id?: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+export type ScenarioTextModelType =
+  | "TEXT_NANO"
+  | "TEXT_SMALL"
+  | "TEXT_MEDIUM"
+  | "TEXT_LARGE"
+  | "TEXT_MEGA"
+  | "RESPONSE_HANDLER"
+  | "ACTION_PLANNER"
+  | "REASONING_SMALL"
+  | "REASONING_LARGE"
+  | "TEXT_COMPLETION";
+
+export type ScenarioModelFixture = {
+  name: string;
+  match: {
+    modelType: ScenarioTextModelType | readonly ScenarioTextModelType[];
+    input?: ScenarioModelTextMatcher;
+    prompt?: ScenarioModelTextMatcher;
+    toolNames?: readonly string[];
+    responseSchema?: unknown;
+  };
+  response?: {
+    text?: string;
+    json?: unknown;
+    toolCalls?: readonly ScenarioModelToolCall[];
+    finishReason?: string;
+    usage?: { promptTokens: number; completionTokens: number };
+  };
+  /** Defaults to exactly once for scenario manifests. */
+  cardinality?: number | "any" | { min?: number; max?: number };
+  behavior?: {
+    latencyMs?: number;
+    stream?: { chunkSize: number; intervalMs: number };
+    error?: { message: string; code?: string; status?: number; type?: string };
+    waitForAbort?: boolean;
+  };
+};
+
+export type ScenarioModelFixtureDeclaration =
+  | {
+      mode: "fixtures";
+      fixtures: readonly ScenarioModelFixture[];
+    }
+  | {
+      mode: "model-free";
+      /** Why the scenario intentionally never enters a model-backed path. */
+      reason: string;
+    };
 
 export type ScenarioDefinition = {
   id: string;
@@ -598,6 +714,8 @@ export type ScenarioDefinition = {
   isolation?: "per-scenario" | "shared-runtime" | "worker";
   /** Plugins and service capabilities required before the scenario runs. */
   requires?: ScenarioRequirements;
+  /** Strict model contract. There is no default/fallback completion. */
+  modelFixtures?: ScenarioModelFixtureDeclaration;
   rooms?: ScenarioRoomSpec[];
   /** Personality corpus metadata (live-only judge bridge). */
   scope?: "user" | "mixed";

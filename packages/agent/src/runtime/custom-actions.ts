@@ -21,6 +21,7 @@ import {
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
@@ -543,50 +544,48 @@ async function fetchWithPinnedTarget(
   });
 }
 
-/** Hard cap on the response body we read from a guarded GET. */
-const GUARDED_GET_MAX_BYTES = 256 * 1024;
+/** Real transport-resource boundary; complete bodies up to four MiB are preserved. */
+const GUARDED_HTTP_RESPONSE_BYTE_LIMIT = 4 * 1024 * 1024;
 // Redirect-hop cap for the guarded fetch: enough for a rename 301 plus a
 // canonicalization hop, small enough that a redirect loop dies fast.
 const GUARDED_GET_MAX_REDIRECTS = 3;
 
-/** Hard cap on the response body we read from a legacy `http` custom action. */
-const CUSTOM_ACTION_HTTP_MAX_CHARS = 4_000;
-
 /**
- * Read a fetch response body as text, streaming and stopping once `maxChars`
- * characters have been collected. Avoids buffering an unbounded (or hostile)
- * response into memory the way `response.text()` would before any slice.
+ * Read a fetch response body as text. Oversized hostile bodies fail explicitly
+ * instead of returning a partial value that could be mistaken for complete
+ * action output.
  */
-async function readBodyTextCapped(
+async function readCompleteBodyWithinByteLimit(
   response: Response,
-  maxChars: number,
+  byteLimit = GUARDED_HTTP_RESPONSE_BYTE_LIMIT,
 ): Promise<string> {
   if (!response.body) return "";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = "";
+  let receivedBytes = 0;
   try {
-    while (text.length < maxChars) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      text += decoder.decode(value, { stream: true });
-      if (text.length >= maxChars) {
-        text = text.slice(0, maxChars);
+      receivedBytes += value.byteLength;
+      if (receivedBytes > byteLimit) {
         await reader.cancel();
-        break;
+        throw new Error(
+          `HTTP response is ${receivedBytes} bytes and exceeds the ${byteLimit}-byte transport safety boundary; no partial body was returned`,
+        );
       }
+      text += decoder.decode(value, { stream: true });
     }
   } finally {
     reader.releaseLock();
   }
-  return text;
+  return toWellFormedUnicode(text);
 }
 
 export interface GuardedHttpGetOptions {
   /** Request timeout in milliseconds. Defaults to the custom-action cap. */
   timeoutMs?: number;
-  /** Maximum number of body characters to read. Defaults to {@link GUARDED_GET_MAX_BYTES}. */
-  maxChars?: number;
   /** Optional extra request headers (e.g. Accept). */
   headers?: Record<string, string>;
 }
@@ -596,7 +595,7 @@ export interface GuardedHttpGetResult {
   ok: boolean;
   /** HTTP status code, or 0 when the request was blocked before sending. */
   status: number;
-  /** Truncated response body text (empty when blocked). */
+  /** Complete response body text (empty when blocked). */
   text: string;
   /** True when the URL was rejected by the SSRF / scheme guard. */
   blocked: boolean;
@@ -642,7 +641,6 @@ async function performGuardedHttpRequest(
   opts: GuardedHttpRequestOptions,
 ): Promise<GuardedHttpGetResult> {
   const timeoutMs = opts.timeoutMs ?? CUSTOM_ACTION_FETCH_TIMEOUT_MS;
-  const maxChars = opts.maxChars ?? GUARDED_GET_MAX_BYTES;
 
   let parsed: URL;
   try {
@@ -751,7 +749,7 @@ async function performGuardedHttpRequest(
       continue;
     }
 
-    const text = await readBodyTextCapped(response, maxChars);
+    const text = await readCompleteBodyWithinByteLimit(response);
     return { ok: response.ok, status: response.status, text, blocked: false };
   }
   // Unreachable: every iteration inside the cap returns or continues.
@@ -840,10 +838,7 @@ function buildHandler(
               "Blocked: redirects are not allowed for HTTP custom actions",
           };
         }
-        const text = await readBodyTextCapped(
-          response,
-          CUSTOM_ACTION_HTTP_MAX_CHARS,
-        );
+        const text = await readCompleteBodyWithinByteLimit(response);
         return { ok: response.ok, output: text };
       };
 
@@ -885,7 +880,10 @@ function buildHandler(
       return async (params) => {
         const result = await runCodeHandler(handler.code, params);
         const output = result !== undefined ? String(result) : "Done";
-        return { ok: true, output: output.slice(0, 4000) };
+        return {
+          ok: true,
+          output: toWellFormedUnicode(output),
+        };
       };
 
     default:

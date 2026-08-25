@@ -4,15 +4,19 @@
  * settings, tab-context, and session methods onto the LifeOpsService base.
  */
 import type {
-  BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionBeginRequest,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
   CreateBrowserBridgeCompanionPairingRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
@@ -41,11 +45,19 @@ export interface BrowserBridgeService {
   createBrowserCompanionPairing(
     request: CreateBrowserBridgeCompanionPairingRequest,
   ): Promise<BrowserBridgeCompanionPairingResponse>;
+  resetBrowserCompanionRevocation(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse>;
+  preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse>;
   listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
   createBrowserSession(
@@ -63,7 +75,13 @@ export interface BrowserBridgeService {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateLifeOpsBrowserSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  beginBrowserSessionActionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: BrowserBridgeCompanionSessionBeginRequest,
   ): Promise<LifeOpsBrowserSession>;
   completeBrowserSessionFromCompanion(
     companionId: string,
@@ -71,10 +89,6 @@ export interface BrowserBridgeService {
     sessionId: string,
     request: CompleteLifeOpsBrowserSessionRequest,
   ): Promise<LifeOpsBrowserSession>;
-  autoPairBrowserCompanion(
-    request: CreateBrowserBridgeCompanionAutoPairRequest,
-    apiBaseUrl: string,
-  ): Promise<BrowserBridgeCompanionAutoPairResponse>;
   revokeBrowserCompanion(
     companionId: string,
   ): Promise<BrowserBridgeCompanionRevokeResponse>;

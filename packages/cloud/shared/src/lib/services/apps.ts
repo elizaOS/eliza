@@ -4,6 +4,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
+import { writeTransaction } from "../../db/helpers";
 import {
   type App,
   type AppUser,
@@ -455,19 +456,9 @@ export class AppsService {
       throw new Error("Failed to generate unique slug");
     }
 
-    const { limit } = await this.assertCanCreateForOrganization(data.organization_id);
-
-    const { apiKey, plainKey } = await apiKeysService.create({
-      name: `${data.name} - App API Key`,
-      description: `API key for app: ${data.name}`,
-      organization_id: data.organization_id,
-      user_id: data.created_by_user_id,
-      rate_limit: 10000,
-    });
-
-    let app: App | undefined;
-    try {
-      app = await appsRepository.createIfOrganizationBelowLimit(
+    const limit = getMaxAppsPerOrg();
+    const created = await writeTransaction(async (tx) => {
+      const provisionalApp = await appsRepository.createIfOrganizationBelowLimit(
         {
           name: data.name,
           description: data.description,
@@ -476,46 +467,58 @@ export class AppsService {
           created_by_user_id: data.created_by_user_id,
           app_url: data.app_url,
           allowed_origins: data.allowed_origins || [data.app_url],
-          api_key_id: apiKey.id,
           logo_url: data.logo_url,
           website_url: data.website_url,
           contact_email: data.contact_email,
         },
         limit,
+        tx,
       );
-    } catch (error) {
-      // error-policy:J2 — remove the provisional API key, then preserve the
-      // original atomic app-create failure for the caller.
-      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
-        // error-policy:J6 — key rollback is best-effort after the primary app
-        // create failure and cannot replace that failure.
-        logger.warn("[Apps] Failed to clean up API key after app create failure", {
-          apiKeyId: apiKey.id,
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-        });
-      });
-      throw error;
-    }
 
-    if (!app) {
-      await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
-        // error-policy:J6 — key rollback is best-effort after the authoritative
-        // cap rejection; the typed cap error remains the result.
-        logger.warn("[Apps] Failed to clean up API key after app cap rejection", {
-          apiKeyId: apiKey.id,
-          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-        });
-      });
-      throw new AppCreationLimitError(data.organization_id, limit);
-    }
+      if (!provisionalApp) {
+        throw new AppCreationLimitError(data.organization_id, limit);
+      }
 
-    logger.info(`Created app: ${app.name} (${app.id})`, {
-      appId: app.id,
-      slug: app.slug,
-      organizationId: app.organization_id,
+      const { apiKey, plainKey } = await apiKeysService.create(
+        {
+          name: `${data.name} - App API Key`,
+          description: `API key for app: ${data.name}`,
+          organization_id: data.organization_id,
+          user_id: data.created_by_user_id,
+          rate_limit: 10000,
+        },
+        tx,
+      );
+
+      const app = await appsRepository.attachInitialApiKey(
+        provisionalApp.id,
+        data.organization_id,
+        apiKey.id,
+        tx,
+      );
+
+      if (!app) {
+        throw new ElizaError("App lost its initial API-key attachment compare-and-set", {
+          code: "APP_INITIAL_API_KEY_ATTACH_FAILED",
+          context: {
+            appId: provisionalApp.id,
+            apiKeyId: apiKey.id,
+            organizationId: data.organization_id,
+          },
+          severity: "fatal",
+        });
+      }
+
+      return { app, apiKey: plainKey };
     });
 
-    return { app, apiKey: plainKey };
+    logger.info(`Created app: ${created.app.name} (${created.app.id})`, {
+      appId: created.app.id,
+      slug: created.app.slug,
+      organizationId: created.app.organization_id,
+    });
+
+    return created;
   }
 
   async update(id: string, data: Partial<NewApp>): Promise<App | undefined> {
@@ -524,7 +527,20 @@ export class AppsService {
     // row, otherwise we could miss a slug that was changed in a prior write.
     const existing = await appsRepository.findById(id);
 
-    const updated = await appsRepository.update(id, data);
+    const revokesMobileAuth = data.is_active === false || data.is_approved === false;
+    let updated: App | undefined;
+    if (revokesMobileAuth) {
+      const mutation = await appsRepository.updateWithMobileAuthRevocation(id, data);
+      updated = mutation.app;
+      if (mutation.revokedKeyHashes.length > 0) {
+        logger.info("[Apps] Revoked mobile credentials for inactive app", {
+          appId: id,
+          credentialsRevoked: mutation.revokedKeyHashes.length,
+        });
+      }
+    } else {
+      updated = await appsRepository.update(id, data);
+    }
 
     if (updated) {
       // If the slug changed, evict the old slug key as well.
@@ -546,10 +562,39 @@ export class AppsService {
     return updated;
   }
 
-  async delete(id: string): Promise<void> {
-    const app = await appsRepository.findById(id);
+  async claimDeploymentStart(
+    id: string,
+    generation: string,
+    data: { last_deployed_at: Date; metadata?: Record<string, unknown> },
+  ): Promise<App | undefined> {
+    return await appsRepository.claimDeploymentStart(id, generation, data);
+  }
 
-    // Invalidate cache before delete
+  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+    return await appsRepository.findByDeploymentGeneration(id, generation);
+  }
+
+  async updateDeploymentGeneration(
+    id: string,
+    generation: string | null,
+    data: Partial<NewApp>,
+    expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+  ): Promise<App | undefined> {
+    return await appsRepository.updateDeploymentGeneration(id, generation, data, expectedStatuses);
+  }
+
+  async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
+    return await appsRepository.isDeploymentGenerationCurrent(id, generation);
+  }
+
+  async delete(id: string): Promise<void> {
+    // Revocation is the deletion security boundary. External teardown can be
+    // slow or fail independently, so credentials stop working before it starts.
+    const mutation = await appsRepository.prepareDeleteWithMobileAuthRevocation(id);
+    const app = mutation.app;
+
+    // The primary transaction's row is the only safe teardown input. A replica
+    // miss must not skip the ordinary app key or external resource cleanup.
     if (app) {
       await this.invalidateCache(id, app.api_key_id ?? undefined, app.slug ?? undefined);
     }
@@ -610,9 +655,11 @@ export class AppsService {
       await apiKeysService.delete(app.api_key_id);
     }
 
-    await appsRepository.delete(id);
+    await appsRepository.finalizeDelete(id);
 
-    logger.info(`Deleted app: ${id}`);
+    logger.info(`Deleted app: ${id}`, {
+      mobileCredentialsRevoked: mutation.revokedKeyHashes.length,
+    });
   }
 
   /**

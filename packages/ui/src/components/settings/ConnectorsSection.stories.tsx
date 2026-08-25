@@ -36,15 +36,6 @@ const populatedPlugins: PluginInfo[] = [
     configured: false,
   }),
   connector({
-    id: "signal",
-    name: "Signal",
-    enabled: true,
-    configured: false,
-    validationErrors: [
-      { field: "phoneNumber", message: "Phone number is required" },
-    ],
-  }),
-  connector({
     id: "whatsapp",
     name: "WhatsApp",
     enabled: true,
@@ -105,12 +96,12 @@ export const WithValidationError: Story = {
     mockApp({
       plugins: [
         connector({
-          id: "signal",
-          name: "Signal",
+          id: "telegram",
+          name: "Telegram",
           enabled: true,
           configured: false,
           validationErrors: [
-            { field: "phoneNumber", message: "Phone number is required" },
+            { field: "botToken", message: "Bot token is required" },
           ],
         }),
       ],

@@ -31,6 +31,7 @@ import torch  # noqa: E402
 from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 
 from format_for_training import format_record  # type: ignore  # noqa: E402
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
 from training.optimizer import (  # noqa: E402
     build_apollo_mini_optimizer,
     build_apollo_optimizer,
@@ -67,12 +68,12 @@ def _load_batch(tokenizer, train_file: Path, n: int, max_len: int) -> dict:
         )
         for r in records
     ]
-    enc = tokenizer(
+    enc = tokenize_with_explicit_limit(
+        tokenizer,
         texts,
+        max_tokens=max_len,
         return_tensors="pt",
         padding=True,
-        truncation=True,
-        max_length=max_len,
     )
     enc["labels"] = enc["input_ids"].clone()
     enc["labels"][enc["attention_mask"] == 0] = -100

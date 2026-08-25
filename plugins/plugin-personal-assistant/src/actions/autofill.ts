@@ -14,6 +14,7 @@ import {
   resolveActionArgs,
   type State,
   type SubactionsMap,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
@@ -209,7 +210,7 @@ async function dispatchToExtension(
     return {
       dispatched: false,
       via: "device-bus",
-      detail: text.slice(0, 500),
+      detail: toWellFormedUnicode(text),
     };
   }
   return { dispatched: true, via: "device-bus" };

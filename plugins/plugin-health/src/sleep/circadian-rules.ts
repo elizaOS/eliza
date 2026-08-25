@@ -301,7 +301,17 @@ const RULES: readonly Rule[] = [
         ): candidate is { signal: LifeOpsActivitySignal; ageMs: number } =>
           candidate !== null,
       )
-      .sort((left, right) => left.ageMs - right.ageMs)[0];
+      .sort((left, right) => {
+        const leftAge =
+          typeof left.ageMs === "number" && Number.isFinite(left.ageMs)
+            ? left.ageMs
+            : 0;
+        const rightAge =
+          typeof right.ageMs === "number" && Number.isFinite(right.ageMs)
+            ? right.ageMs
+            : 0;
+        return leftAge - rightAge;
+      })[0];
     if (!latest) return null;
     if (latest.signal.state !== "active" || latest.ageMs > 5 * 60_000) {
       return null;

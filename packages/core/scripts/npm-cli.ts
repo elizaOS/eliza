@@ -1,4 +1,4 @@
-/** Resolves the npm CLI invocation used by Core build verification across supported platforms. */
+/** Resolves a Node-hosted npm CLI invocation for Core build verification across supported platforms. */
 import { existsSync } from "node:fs";
 import path from "node:path";
 
@@ -34,12 +34,29 @@ export function resolveNpmCliInvocation(
 	options: ResolveNpmCliOptions = {},
 ): NpmCliInvocation {
 	const platform = options.platform ?? process.platform;
+	const fileExists = options.fileExists ?? existsSync;
+	const pathValue = options.pathValue ?? process.env.PATH ?? "";
 	if (platform !== "win32") {
+		let nodeExecutable: string | undefined;
+		let npmScript: string | undefined;
+		for (const rawEntry of pathValue.split(":")) {
+			const entry = normalizePathEntry(rawEntry);
+			if (entry.length === 0) continue;
+			const nodeCandidate = path.posix.join(entry, "node");
+			const npmCandidate = path.posix.join(entry, "npm");
+			if (!nodeExecutable && fileExists(nodeCandidate)) {
+				nodeExecutable = nodeCandidate;
+			}
+			if (!npmScript && fileExists(npmCandidate)) {
+				npmScript = npmCandidate;
+			}
+			if (nodeExecutable && npmScript) {
+				return { command: nodeExecutable, args: [npmScript, ...args] };
+			}
+		}
 		return { command: "npm", args: [...args] };
 	}
 
-	const fileExists = options.fileExists ?? existsSync;
-	const pathValue = options.pathValue ?? process.env.PATH ?? "";
 	for (const rawEntry of pathValue.split(";")) {
 		const entry = normalizePathEntry(rawEntry);
 		if (entry.length === 0) continue;

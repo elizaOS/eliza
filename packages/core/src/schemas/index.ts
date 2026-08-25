@@ -5,8 +5,8 @@
  * database-agnostic format. Use buildBaseTables(adapter) to convert them
  * into concrete Drizzle table objects for a specific dialect.
  *
- * This module also exports advanced memory schemas (longTermMemories,
- * sessionSummaries, memoryAccessLogs) which are part of the enhanced
+ * This module also exports advanced memory schemas (longTermMemories and
+ * memoryAccessLogs) which are part of the enhanced
  * memory subsystem.
  */
 
@@ -14,7 +14,6 @@
 import {
 	longTermMemories,
 	memoryAccessLogs,
-	sessionSummaries,
 } from "../features/advanced-memory/schemas/index.ts";
 import type { BuildTableFn, DialectAdapter } from "../types/schema-builder.ts";
 import { agentSchema } from "./agent.ts";
@@ -36,6 +35,13 @@ export type {
 	FactCandidateStatus,
 } from "./entity-identity.ts";
 
+import {
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
+} from "./identity-authority.ts";
 import { logSchema } from "./log.ts";
 import { memorySchema } from "./memory.ts";
 import { messageSchema } from "./message.ts";
@@ -62,6 +68,11 @@ export {
 	entityMergeCandidateSchema,
 	entitySchema,
 	factCandidateSchema,
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
 	logSchema,
 	// Advanced memory schemas
 	longTermMemories,
@@ -76,14 +87,13 @@ export {
 	relationshipSchema,
 	roomSchema,
 	serverSchema,
-	sessionSummaries,
 	taskSchema,
 	worldSchema,
 };
 
 /**
  * Type for the object returned by buildBaseTables().
- * Represents all 20 core database tables as ORM table objects.
+ * Represents all 20 portable core database tables as ORM table objects.
  */
 export interface BaseTables {
 	agent: unknown;

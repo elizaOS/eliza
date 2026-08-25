@@ -8,8 +8,7 @@ import {
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
 import type { OverlayAppContext } from "@elizaos/shared";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Input } from "@elizaos/ui/components/ui/input";
+import { Button, Input } from "@elizaos/ui";
 import {
   ArrowLeft,
   Bell,
@@ -260,13 +259,13 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       <header className="flex shrink-0 items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 items-center gap-3">
           <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 shrink-0 text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="icon-sm"
+            className="shrink-0"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
           </Button>
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold text-txt">
@@ -277,15 +276,14 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
           </div>
         </div>
         <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 text-muted hover:text-txt"
+          variant="ghostMuted"
+          size="icon-sm"
           onClick={() => void refresh()}
           disabled={loading}
           aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
           data-testid="device-settings-refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
       </header>
 
@@ -306,8 +304,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Sun className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Sun className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Brightness</h2>
@@ -328,20 +326,21 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
               </div>
               <Input
                 type="range"
+                variant="nativeRange"
                 min={0}
                 max={100}
                 value={percent(brightness)}
                 onChange={(event) =>
                   setBrightness(clampUnit(Number(event.target.value) / 100))
                 }
-                className="h-auto w-full border-0 bg-transparent p-0 accent-info"
+                className="w-full"
                 aria-label="Brightness"
                 data-testid="device-settings-brightness"
               />
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="inline-flex items-center gap-1.5 text-xs text-muted">
                   <CheckCircle2
-                    className={`h-3.5 w-3.5 ${
+                    className={`size-3.5 ${
                       deviceSettings?.canWriteSettings
                         ? "text-ok"
                         : "text-muted"
@@ -379,8 +378,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Settings className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Settings className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Android</h2>
@@ -394,7 +393,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("settings", "System settings")}
                 data-testid="device-settings-open-system"
               >
-                <MonitorCog className="mr-2 h-4 w-4" />
+                <MonitorCog className="mr-2 size-4" />
                 System settings
               </Button>
               <Button
@@ -403,7 +402,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("display", "Display settings")}
                 data-testid="device-settings-open-display"
               >
-                <Sun className="mr-2 h-4 w-4" />
+                <Sun className="mr-2 size-4" />
                 Display
               </Button>
               <Button
@@ -412,7 +411,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("sound", "Sound settings")}
                 data-testid="device-settings-open-sound"
               >
-                <Volume2 className="mr-2 h-4 w-4" />
+                <Volume2 className="mr-2 size-4" />
                 Sound
               </Button>
               <Button
@@ -421,7 +420,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 onClick={() => void openSetting("network", "Network settings")}
                 data-testid="device-settings-open-network"
               >
-                <Wifi className="mr-2 h-4 w-4" />
+                <Wifi className="mr-2 size-4" />
                 Network
               </Button>
             </div>
@@ -429,8 +428,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <Volume2 className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <Volume2 className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">Volume</h2>
@@ -452,9 +451,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
                         {volume.stream === "notification" ? (
-                          <Bell className="h-4 w-4 text-muted" />
+                          <Bell className="size-4 text-muted" />
                         ) : (
-                          <Volume2 className="h-4 w-4 text-muted" />
+                          <Volume2 className="size-4 text-muted" />
                         )}
                         <div className="text-sm font-medium text-txt">
                           {label}
@@ -467,6 +466,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                     <div className="mt-3 flex items-center gap-3">
                       <Input
                         type="range"
+                        variant="nativeRange"
                         min={0}
                         max={volume.max}
                         value={value}
@@ -479,7 +479,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                             ),
                           }))
                         }
-                        className="h-auto min-w-0 flex-1 border-0 bg-transparent p-0 accent-info"
+                        className="min-w-0 flex-1"
                         aria-label={`${label} volume`}
                         data-testid={`device-settings-volume-${volume.stream}`}
                       />
@@ -507,8 +507,8 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
 
           <section className="py-2">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center">
-                <ShieldCheck className="h-5 w-5 text-muted" />
+              <span className="flex size-9 items-center justify-center">
+                <ShieldCheck className="size-5 text-muted" />
               </span>
               <div>
                 <h2 className="text-sm font-semibold text-txt">
@@ -534,9 +534,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                       </div>
                     </div>
                     {role.held ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-ok" />
+                      <CheckCircle2 className="size-4 shrink-0 text-ok" />
                     ) : (
-                      <SlidersHorizontal className="h-4 w-4 shrink-0 text-muted" />
+                      <SlidersHorizontal className="size-4 shrink-0 text-muted" />
                     )}
                   </div>
                   <Button

@@ -56,6 +56,8 @@ interface CleanupOptions {
   continueOnError?: boolean;
   /** Container-teardown backend (DB repo + jobs writer). Injected in tests. */
   containerTeardown?: AppContainerTeardownDeps;
+  /** Keep the app row until the async daemon has actually removed every container. */
+  requireContainerTeardownCompletion?: boolean;
 }
 
 /**
@@ -225,6 +227,7 @@ export async function cleanupAppResources(
     deleteGitHubRepo: shouldDeleteGitHub = true,
     continueOnError = true,
     containerTeardown = defaultContainerTeardownDeps(),
+    requireContainerTeardownCompletion = false,
   } = options;
 
   const errors: string[] = [];
@@ -258,7 +261,14 @@ export async function cleanupAppResources(
   cleaned.containersTornDown = containerResult.tornDown;
   errors.push(...containerResult.errors);
 
+  if (requireContainerTeardownCompletion && containerResult.tornDown > 0) {
+    errors.push("Container teardown was queued and must complete before app deletion");
+  }
+
   if (containerResult.errors.length > 0 && !continueOnError) {
+    return { success: false, errors, cleaned };
+  }
+  if (requireContainerTeardownCompletion && containerResult.tornDown > 0) {
     return { success: false, errors, cleaned };
   }
 
@@ -316,6 +326,12 @@ export async function deleteAppWithCleanup(
 ): Promise<CleanupResult> {
   // First, delete external resources
   const cleanupResult = await cleanupAppResources(appId, options);
+
+  // Fail-closed callers (including account erasure) need the durable app row
+  // to remain discoverable for a retry whenever external cleanup is pending.
+  if (!cleanupResult.success && options.continueOnError === false) {
+    return cleanupResult;
+  }
 
   // Then delete the app record (which triggers CASCADE deletes for DB records)
   try {

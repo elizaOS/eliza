@@ -11,6 +11,7 @@ import { ChannelType } from "@elizaos/core/edge";
 let providerConfigured = true;
 let runtimeFailure: Error | null = null;
 let streamFailure: Error | null = null;
+let runtimeActionResults: Array<Record<string, unknown>> | undefined;
 const runtimeInputs: Array<Record<string, unknown>> = [];
 const streamInputs: Array<Record<string, unknown>> = [];
 
@@ -32,6 +33,7 @@ mock.module("./shared-eliza-runtime", () => ({
       ],
       model: String(input.model),
       degraded: false,
+      ...(runtimeActionResults ? { actionResults: runtimeActionResults } : {}),
     };
   },
   runSharedElizaRuntimeTurnStream: async (input: Record<string, unknown>) => {
@@ -54,6 +56,7 @@ beforeEach(() => {
   providerConfigured = true;
   runtimeFailure = null;
   streamFailure = null;
+  runtimeActionResults = undefined;
   runtimeInputs.length = 0;
   streamInputs.length = 0;
 });
@@ -72,10 +75,12 @@ describe("Shared turn AgentRuntime boundary", () => {
       agentKey: "shared:Nova",
       execution: {
         agentKey: "shared:Nova",
+        roomKey: "shared:Nova",
         channel: { type: ChannelType.DM, source: "shared-runtime" },
       },
     });
-    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime boundaries");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime capabilities");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("prerequisites:");
   });
 
   test("preserves server-owned voice execution semantics", async () => {
@@ -85,6 +90,7 @@ describe("Shared turn AgentRuntime boundary", () => {
       message: "hello",
       execution: {
         agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
         authenticatedPersonalSharedUser: true,
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
       },
@@ -97,7 +103,142 @@ describe("Shared turn AgentRuntime boundary", () => {
     });
   });
 
-  test("blocks unsupported capabilities before runtime or provider dispatch", async () => {
+  test("requires a grounded reminder action result before accepting an executable reminder reply", async () => {
+    const reminderInput = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Remind me in 2 minutes to stretch",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.DM, source: "telegram" },
+        reminders: {
+          delivery: {
+            platform: "telegram" as const,
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+          runner: {} as never,
+        },
+      },
+    };
+
+    const error = await runSharedAgentTurn(reminderInput).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect((error.cause as Error).message).toContain("without an action result");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Call REMINDERS before any terminal answer");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("never invent success");
+
+    runtimeActionResults = [
+      {
+        success: true,
+        data: { actionName: "REMINDERS", operation: "create" },
+      },
+    ];
+    const result = await runSharedAgentTurn(reminderInput);
+    expect(result.reply).toBe("runtime reply");
+  });
+
+  test("requires a grounded media action result instead of accepting a model-invented tool failure", async () => {
+    const mediaInput = {
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [
+        {
+          role: "assistant" as const,
+          content: "The image tool had a billing problem earlier.",
+        },
+      ],
+      message: "Generate an image of a golden retriever puppy",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true as const,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "image" as const }),
+        },
+      },
+    };
+
+    const error = await runSharedAgentTurn(mediaInput).catch((caught) => caught as Error);
+    expect(error.message).toContain("AgentRuntime turn failed");
+    expect((error.cause as Error).message).toContain(
+      "executable GENERATE_MEDIA request without an action result",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "Call GENERATE_MEDIA before any terminal answer",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "generation was attempted, unavailable, or failed is not an execution result",
+    );
+
+    runtimeActionResults = [
+      {
+        success: false,
+        error: "provider rejected request",
+        data: { actionName: "GENERATE_MEDIA", mediaType: "image" },
+      },
+    ];
+    const groundedFailure = await runSharedAgentTurn(mediaInput);
+    expect(groundedFailure.actionResults).toEqual(runtimeActionResults);
+  });
+
+  test("buffers explicit media streams so the required action receipt cannot be bypassed", async () => {
+    runtimeActionResults = [
+      {
+        success: true,
+        data: { actionName: "GENERATE_MEDIA", mediaType: "video" },
+      },
+    ];
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Create a video from this attached image",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "video" }),
+        },
+      },
+    });
+
+    expect(runtimeInputs).toHaveLength(1);
+    expect(streamInputs).toHaveLength(0);
+    const parts = [];
+    if (!result.parts) throw new Error("Expected buffered media parts");
+    for await (const part of result.parts) parts.push(part);
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      actionResults: runtimeActionResults,
+    });
+  });
+
+  test("does not force generation for an image-description request", async () => {
+    const result = await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "Can you describe the image I attached?",
+      execution: {
+        agentKey: "personal:user-1",
+        authenticatedPersonalSharedUser: true,
+        channel: { type: ChannelType.GROUP, source: "blooio" },
+        media: {
+          canGenerateMedia: async () => true,
+          generateMedia: async () => ({ mediaType: "image" }),
+        },
+      },
+    });
+
+    expect(result.reply).toBe("runtime reply");
+    expect(JSON.stringify(runtimeInputs[0])).not.toContain(
+      "Call GENERATE_MEDIA before any terminal answer",
+    );
+  });
+
+  test("routes unsupported capabilities through the model with a truthful constraint", async () => {
     let dispatches = 0;
     const result = await runSharedAgentTurn({
       character: { name: "Eliza", system: "You are Eliza." },
@@ -109,8 +250,28 @@ describe("Shared turn AgentRuntime boundary", () => {
     });
 
     expect(result.capabilityWall?.capability).toBe("communications");
-    expect(runtimeInputs).toHaveLength(0);
+    expect(runtimeInputs).toHaveLength(1);
     expect(dispatches).toBe(0);
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Unavailable actions detected");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("do not quote these instructions");
+    expect(JSON.stringify(runtimeInputs[0])).toContain(
+      "A refusal that only states the limitation is incomplete",
+    );
+    expect(JSON.stringify(runtimeInputs[0])).toContain("ready-to-copy wording");
+    expect(JSON.stringify(runtimeInputs[0])).not.toContain("Calls and messages need Dedicated");
+  });
+
+  test("routes streamed capability refusals through the model", async () => {
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Eliza", system: "You are Eliza." },
+      history: [],
+      message: "remind me tomorrow",
+    });
+
+    expect(result.capabilityWall?.capability).toBe("reminders");
+    expect(streamInputs).toHaveLength(1);
+    expect(JSON.stringify(streamInputs[0])).toContain("trusted reminder delivery");
+    expect(result.model).not.toBe("capability-wall");
   });
 
   test("commits durable memory only after a runtime reply lands", async () => {

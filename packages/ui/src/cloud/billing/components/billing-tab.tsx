@@ -25,18 +25,41 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ComponentType, FormEvent } from "react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { ApiError, api } from "../../lib/api-client";
 import { isSafeNavigationUrl } from "../../lib/navigation-url";
 import { useCloudT } from "../../shell/CloudI18nProvider";
+import {
+  type BillingSnapshotV2View,
+  useBillingSnapshotV2,
+} from "../data/billing-snapshot";
+import {
+  browserCardCheckoutIntentCoordinator,
+  type CardCheckoutBindResult,
+  CardCheckoutIntentCoordinationError,
+  type CardCheckoutIntentCoordinator,
+  type CardCheckoutIntentHandle,
+} from "../lib/card-checkout-intent";
+import { formatExactUsd } from "../lib/format-exact-usd";
 import type {
   BillingUser,
-  CreditBalanceResponse,
   CryptoStatusResponse,
   InvoiceDisplay,
 } from "../types";
+import {
+  ActiveComputeCardView,
+  type BillingSnapshotViewState,
+} from "./active-compute-card";
 import { AutoTopUpCard } from "./auto-top-up-card";
 
 // Lazy-loaded so its @solana/spl-token + @solana/web3.js imports — which eval
@@ -52,10 +75,10 @@ const DirectCryptoCreditCard = lazy(() =>
 );
 
 import { Button } from "../../../components/ui/button";
-import { PayAsYouGoCard } from "./pay-as-you-go-card";
 
 interface BillingTabProps {
   user: BillingUser;
+  checkoutIntentCoordinator?: CardCheckoutIntentCoordinator;
 }
 
 const AMOUNT_LIMITS = {
@@ -67,6 +90,136 @@ type PaymentMethod = "card" | "crypto";
 
 const AMOUNT_HINT_ID = "purchase-amount-hint";
 const AMOUNT_ERROR_ID = "purchase-amount-error";
+const CARD_CHECKOUT_ERROR_ID = "card-checkout-error";
+
+function toSnapshotViewState(query: {
+  data: BillingSnapshotV2View | undefined;
+  isError: boolean;
+  isFetching: boolean;
+  isRefetchError: boolean;
+  fetchStatus: "fetching" | "paused" | "idle";
+}): BillingSnapshotViewState {
+  if (query.data) {
+    return {
+      kind: "ready",
+      snapshot: query.data,
+      refreshing: query.isFetching,
+      refreshPaused: query.fetchStatus === "paused",
+      refreshFailed: query.isRefetchError,
+    };
+  }
+  if (query.fetchStatus === "paused") return { kind: "paused" };
+  if (query.isError) {
+    return { kind: "error", retrying: query.isFetching };
+  }
+  return { kind: "loading" };
+}
+
+function BalanceValue({ state }: { state: BillingSnapshotViewState }) {
+  const t = useCloudT();
+
+  if (state.kind === "loading") {
+    return (
+      <span
+        role="status"
+        aria-label={t("cloud.billing.compute.balanceLoading", {
+          defaultValue: "Loading balance",
+        })}
+        className="inline-block h-12 w-44 max-w-full animate-pulse bg-bg-accent motion-reduce:animate-none"
+      />
+    );
+  }
+  if (state.kind === "paused" || state.kind === "error") {
+    return t("cloud.billing.compute.balanceUnavailable", {
+      defaultValue: "Balance unavailable",
+    });
+  }
+
+  const { balance } = state.snapshot;
+  if (balance.status === "available") {
+    return formatExactUsd(balance.value.balance.value);
+  }
+  if (balance.status === "unknown_policy") {
+    return t("cloud.billing.compute.pendingPolicy", {
+      defaultValue: "Pending policy",
+    });
+  }
+  if (balance.status === "not_applicable") {
+    return t("cloud.billing.compute.notApplicable", {
+      defaultValue: "Not applicable",
+    });
+  }
+  return t("cloud.billing.compute.balanceUnavailable", {
+    defaultValue: "Balance unavailable",
+  });
+}
+
+function observedTimestamp(value: string): string {
+  return value
+    .replace("T", " ")
+    .replace(/\.\d+Z$/, " UTC")
+    .replace(/Z$/, " UTC");
+}
+
+function BalanceFreshness({ state }: { state: BillingSnapshotViewState }) {
+  const t = useCloudT();
+  if (state.kind !== "ready" || state.snapshot.balance.status !== "available") {
+    return null;
+  }
+
+  const observedAt = observedTimestamp(state.snapshot.balance.observedAt);
+  if (state.refreshPaused) {
+    return (
+      <p className="text-center text-xs text-warn">
+        {t("cloud.billing.compute.balanceRefreshPaused", {
+          observedAt,
+          defaultValue:
+            "Balance refresh paused. Showing the value observed at {{observedAt}}.",
+        })}
+      </p>
+    );
+  }
+  if (state.refreshFailed) {
+    return (
+      <p className="text-center text-xs text-warn">
+        {t("cloud.billing.compute.balanceRefreshFailed", {
+          observedAt,
+          defaultValue:
+            "Could not refresh balance. Showing the value observed at {{observedAt}}.",
+        })}
+      </p>
+    );
+  }
+  if (state.refreshing) {
+    return (
+      <p className="text-center text-xs text-muted-strong">
+        {t("cloud.billing.compute.balanceRefreshing", {
+          observedAt,
+          defaultValue:
+            "Refreshing balance. Showing the value observed at {{observedAt}}.",
+        })}
+      </p>
+    );
+  }
+  return (
+    <p className="text-center font-mono text-xs text-muted">
+      {t("cloud.billing.compute.balanceObservedAt", {
+        observedAt,
+        defaultValue: "Balance observed {{observedAt}}",
+      })}
+    </p>
+  );
+}
+
+function canRetryBalance(
+  state: BillingSnapshotViewState,
+): state is Extract<BillingSnapshotViewState, { kind: "ready" }> {
+  return (
+    state.kind === "ready" &&
+    state.snapshot.balance.status === "unavailable" &&
+    state.snapshot.balance.error.retryable
+  );
+}
 
 // Status is never conveyed by color alone: every branch pairs a lucide glyph
 // with the verbatim status text so screen-reader and monochrome users read the
@@ -77,14 +230,14 @@ function getInvoiceStatusPresentation(status: string): {
 } {
   const normalized = status.trim().toLowerCase();
   if (["paid", "succeeded", "complete", "completed"].includes(normalized)) {
-    return { Icon: CheckCircle, className: "text-green-400" };
+    return { Icon: CheckCircle, className: "text-status-success" };
   }
   if (
     ["failed", "uncollectible", "void", "canceled", "cancelled"].includes(
       normalized,
     )
   ) {
-    return { Icon: XCircle, className: "text-red-400" };
+    return { Icon: XCircle, className: "text-destructive" };
   }
   if (["pending", "open", "processing", "draft"].includes(normalized)) {
     return { Icon: Clock, className: "text-txt-strong" };
@@ -92,37 +245,53 @@ function getInvoiceStatusPresentation(status: string): {
   return { Icon: AlertCircle, className: "text-muted-strong" };
 }
 
-export function BillingTab({ user }: BillingTabProps) {
+export function BillingTab({
+  user,
+  checkoutIntentCoordinator = browserCardCheckoutIntentCoordinator,
+}: BillingTabProps) {
   const t = useCloudT();
   const navigate = useNavigate();
+  const billingSnapshot = useBillingSnapshotV2(user.organization_id);
+  const billingSnapshotState = toSnapshotViewState(billingSnapshot);
   const [invoices, setInvoices] = useState<InvoiceDisplay[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [purchaseAmount, setPurchaseAmount] = useState("");
+
   // Tracks whether a submit has been attempted so an empty submission (which
   // never populates purchaseAmount) still marks the field invalid and renders
   // the adjacent inline error instead of only emitting a transient toast.
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [isProcessingCheckout, setIsProcessingCheckout] = useState(false);
+  const [cardCheckoutError, setCardCheckoutError] = useState<string | null>(
+    null,
+  );
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatusResponse | null>(
     null,
   );
+  const activeCheckoutPrincipalRef = useRef<{
+    organizationId: string;
+    initiatedByUserId: string;
+  } | null>(null);
+  const checkoutAttemptRef = useRef(0);
 
-  const [balance, setBalance] = useState(
-    Number(user.organization.credit_balance),
-  );
+  useLayoutEffect(() => {
+    const principal = {
+      organizationId: user.organization_id,
+      initiatedByUserId: user.id,
+    };
+    activeCheckoutPrincipalRef.current = principal;
+    setIsProcessingCheckout(false);
+    setCardCheckoutError(null);
 
-  const fetchBalance = useCallback(async (fresh = false) => {
-    try {
-      const data = await api<CreditBalanceResponse>(
-        fresh ? "/api/credits/balance?fresh=true" : "/api/credits/balance",
-      );
-      setBalance(data.balance);
-    } catch {
-      // Keep the seeded balance on transient failures.
-    }
-  }, []);
+    return () => {
+      if (activeCheckoutPrincipalRef.current === principal) {
+        activeCheckoutPrincipalRef.current = null;
+      }
+      checkoutAttemptRef.current += 1;
+    };
+  }, [user.id, user.organization_id]);
 
   const fetchInvoices = useCallback(async () => {
     setLoadingInvoices(true);
@@ -133,6 +302,7 @@ export function BillingTab({ user }: BillingTabProps) {
       );
       setInvoices(data.invoices ?? []);
     } catch (error) {
+      // error-policy:J4 Invoice transport failure becomes a visible error state.
       setInvoicesError(
         error instanceof Error
           ? error.message
@@ -148,6 +318,7 @@ export function BillingTab({ user }: BillingTabProps) {
       const data = await api<CryptoStatusResponse>("/api/crypto/status");
       setCryptoStatus(data);
     } catch {
+      // error-policy:J4 Optional crypto discovery degrades to the card-only UI.
       // Crypto is optional; absence just hides the crypto payment path.
     }
   }, []);
@@ -155,10 +326,46 @@ export function BillingTab({ user }: BillingTabProps) {
   useEffect(() => {
     queueMicrotask(() => {
       void fetchInvoices();
-      void fetchBalance(true);
       void fetchCryptoStatus();
     });
-  }, [fetchInvoices, fetchBalance, fetchCryptoStatus]);
+  }, [fetchInvoices, fetchCryptoStatus]);
+
+  const describeCardCheckoutCoordinationFailure = (error: unknown) => {
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_STALE_AMOUNT_CONFLICT"
+    ) {
+      return t("cloud.billingTab.checkoutIntentAmountConflict", {
+        defaultValue:
+          "A previous checkout for another amount still needs reconciliation. Retry that amount, or contact support before starting a different checkout.",
+      });
+    }
+
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_SESSION_MISMATCH"
+    ) {
+      return t("cloud.billingTab.checkoutSessionConflict", {
+        defaultValue:
+          "Checkout returned conflicting sessions and was stopped. Do not retry payment; contact support.",
+      });
+    }
+
+    if (
+      error instanceof CardCheckoutIntentCoordinationError &&
+      error.code === "CARD_CHECKOUT_COORDINATION_INVALID_INPUT"
+    ) {
+      return t("cloud.billingTab.checkoutCoordinationInvalid", {
+        defaultValue:
+          "Checkout returned invalid coordination data and was stopped. Try again; if this continues, contact support.",
+      });
+    }
+
+    return t("cloud.billingTab.checkoutCoordinationUnavailable", {
+      defaultValue:
+        "Card checkout could not be coordinated safely. Try again; if this continues, update your browser or Android System WebView, or use another supported browser.",
+    });
+  };
 
   const handleBuyCredits = async () => {
     const amount = parseFloat(purchaseAmount);
@@ -224,6 +431,7 @@ export function BillingTab({ user }: BillingTabProps) {
         );
         window.location.href = data.payLink;
       } catch (error) {
+        // error-policy:J4 Crypto checkout failure is surfaced through the UI toast boundary.
         toast.error(
           error instanceof ApiError
             ? error.message
@@ -236,15 +444,90 @@ export function BillingTab({ user }: BillingTabProps) {
       return;
     }
 
+    // Card checkout only. The server uses exact whole cents in its request
+    // digest, so reject anything it would reject before reserving an intent.
+    const amountCents = amount * 100;
+    if (!Number.isSafeInteger(amountCents)) {
+      toast.error(
+        t("cloud.billingTab.exactCentAmount", {
+          defaultValue: "Amount must use exact whole cents",
+        }),
+      );
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    setCardCheckoutError(null);
+
+    const checkoutAttempt = checkoutAttemptRef.current + 1;
+    checkoutAttemptRef.current = checkoutAttempt;
+    const checkoutPrincipal = {
+      organizationId: user.organization_id,
+      initiatedByUserId: user.id,
+    };
+    const isCurrentCheckoutAttempt = () => {
+      const activePrincipal = activeCheckoutPrincipalRef.current;
+      return (
+        checkoutAttemptRef.current === checkoutAttempt &&
+        activePrincipal?.organizationId === checkoutPrincipal.organizationId &&
+        activePrincipal.initiatedByUserId ===
+          checkoutPrincipal.initiatedByUserId
+      );
+    };
+
+    // Membership refreshes deliberately unmount this surface. Never let a
+    // response captured under an earlier user/org bind or navigate after that
+    // authority has disappeared, and never let an older submit win locally.
+    if (!isCurrentCheckoutAttempt()) {
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    // The durable coordinator owns one intent slot per organization and
+    // serializes every mutation across tabs. It fails closed before the POST
+    // if storage or Web Locks cannot provide that guarantee.
+    let requestIntent: CardCheckoutIntentHandle;
     try {
-      const data = await api<{ url?: string }>(
+      requestIntent = await checkoutIntentCoordinator.reserve({
+        organizationId: checkoutPrincipal.organizationId,
+        initiatedByUserId: checkoutPrincipal.initiatedByUserId,
+        amountCents,
+      });
+    } catch (error) {
+      // error-policy:J4 Coordination failure becomes a persistent checkout alert.
+      if (!isCurrentCheckoutAttempt()) return;
+      setCardCheckoutError(describeCardCheckoutCoordinationFailure(error));
+      setIsProcessingCheckout(false);
+      return;
+    }
+
+    if (!isCurrentCheckoutAttempt()) return;
+
+    try {
+      const data = await api<{ sessionId?: unknown; url?: unknown }>(
         "/api/stripe/create-checkout-session",
         {
           method: "POST",
-          json: { amount, returnUrl: "settings" },
+          json: {
+            amount,
+            expectedOrganizationId: checkoutPrincipal.organizationId,
+            expectedUserId: checkoutPrincipal.initiatedByUserId,
+            returnUrl: "settings",
+          },
+          headers: { "Idempotency-Key": requestIntent.idempotencyKey },
         },
       );
-      if (!data.url) {
+      if (!isCurrentCheckoutAttempt()) return;
+      if (typeof data.sessionId !== "string" || data.sessionId.length === 0) {
+        toast.error(
+          t("cloud.billingTab.noCheckoutSession", {
+            defaultValue: "No checkout session returned",
+          }),
+        );
+        setIsProcessingCheckout(false);
+        return;
+      }
+      if (typeof data.url !== "string" || data.url.length === 0) {
         toast.error(
           t("cloud.billingTab.noCheckoutUrl", {
             defaultValue: "No checkout URL returned",
@@ -264,8 +547,73 @@ export function BillingTab({ user }: BillingTabProps) {
         setIsProcessingCheckout(false);
         return;
       }
+
+      let binding: CardCheckoutBindResult;
+      try {
+        if (!isCurrentCheckoutAttempt()) return;
+        binding = await checkoutIntentCoordinator.bindSession({
+          organizationId: requestIntent.organizationId,
+          initiatedByUserId: requestIntent.initiatedByUserId,
+          amountCents: requestIntent.amountCents,
+          idempotencyKey: requestIntent.idempotencyKey,
+          sessionId: data.sessionId,
+        });
+      } catch (error) {
+        // error-policy:J4 Binding failure becomes a persistent checkout alert.
+        if (!isCurrentCheckoutAttempt()) return;
+        setCardCheckoutError(describeCardCheckoutCoordinationFailure(error));
+        setIsProcessingCheckout(false);
+        return;
+      }
+
+      if (!isCurrentCheckoutAttempt()) return;
+
+      if (binding.status === "superseded") {
+        setCardCheckoutError(
+          t("cloud.billingTab.checkoutIntentSuperseded", {
+            defaultValue:
+              "This checkout was superseded or already completed. Check the other tab before trying again.",
+          }),
+        );
+        setIsProcessingCheckout(false);
+        return;
+      }
+
+      // Keep the bound intent until this exact session verifies with
+      // success:true. Redirects, cancellations, and back navigation are not
+      // authoritative payment outcomes.
+      if (!isCurrentCheckoutAttempt()) return;
       window.location.href = data.url;
     } catch (error) {
+      // error-policy:J4 Checkout transport failures become visible retry guidance.
+      if (!isCurrentCheckoutAttempt()) return;
+      // Preserve the idempotency key across ambiguous outcomes: the server may
+      // have created the durable order before the response was lost. Only an
+      // exact 400 is definitive for this route; auth, conflict, throttling,
+      // server, and transport failures all keep the key for safe replay.
+      // Known edge: if the HTTP status was received but the response body
+      // stream itself fails mid-read, the transport error escapes as a
+      // non-ApiError — including after a 4xx. That case conservatively
+      // PRESERVES the key: we cannot prove the server's 4xx semantics were
+      // for this request, so treating it as ambiguous is the safe direction
+      // (worst case, the retry hits the server's own key/digest conflict).
+      if (error instanceof ApiError && error.status === 400) {
+        try {
+          await checkoutIntentCoordinator.clearDefinitiveRejection({
+            organizationId: requestIntent.organizationId,
+            initiatedByUserId: requestIntent.initiatedByUserId,
+            amountCents: requestIntent.amountCents,
+            idempotencyKey: requestIntent.idempotencyKey,
+          });
+        } catch (coordinationError) {
+          // error-policy:J4 Failed exact cleanup becomes a persistent coordination alert.
+          if (!isCurrentCheckoutAttempt()) return;
+          setCardCheckoutError(
+            describeCardCheckoutCoordinationFailure(coordinationError),
+          );
+        }
+      }
+      if (!isCurrentCheckoutAttempt()) return;
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -295,10 +643,13 @@ export function BillingTab({ user }: BillingTabProps) {
   const amountValue = Number.isNaN(parsedAmountValue)
     ? null
     : parsedAmountValue;
+  const amountUsesExactCents =
+    amountValue !== null && Number.isSafeInteger(amountValue * 100);
   const isValidAmount =
     amountValue !== null &&
     amountValue >= AMOUNT_LIMITS.MIN &&
-    amountValue <= AMOUNT_LIMITS.MAX;
+    amountValue <= AMOUNT_LIMITS.MAX &&
+    amountUsesExactCents;
   const showAmountError =
     (purchaseAmount.length > 0 || submitAttempted) && !isValidAmount;
   const amountDescribedBy = showAmountError
@@ -313,7 +664,7 @@ export function BillingTab({ user }: BillingTabProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-muted" />
+            <div className="size-2 rounded-full bg-muted" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.billingTab.creditBalance", {
                 defaultValue: "Credit Balance",
@@ -325,14 +676,36 @@ export function BillingTab({ user }: BillingTabProps) {
             <div className="w-full lg:w-[400px] flex">
               <div className="bg-surface border border-brand-surface flex-1 flex items-center justify-center py-6 lg:py-8">
                 <div className="flex flex-col items-center justify-center gap-1 px-4">
-                  <p className="text-[40px] font-mono text-txt-strong tracking-tight tabular-nums">
-                    ${balance.toFixed(2)}
-                  </p>
+                  <div
+                    aria-live="polite"
+                    className="break-words text-center font-mono text-2xl tracking-tight text-txt-strong tabular-nums [overflow-wrap:anywhere] sm:text-[2.5rem]"
+                  >
+                    <BalanceValue state={billingSnapshotState} />
+                  </div>
                   <p className="text-sm text-muted text-center">
                     {t("cloud.billingTab.remainingBalance", {
                       defaultValue: "Remaining balance",
                     })}
                   </p>
+                  <BalanceFreshness state={billingSnapshotState} />
+                  {canRetryBalance(billingSnapshotState) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        void billingSnapshot.refetch();
+                      }}
+                      disabled={billingSnapshotState.refreshing}
+                    >
+                      {billingSnapshotState.refreshing
+                        ? t("cloud.billing.compute.retrying", {
+                            defaultValue: "Retrying…",
+                          })
+                        : t("cloud.billing.compute.balanceRetry", {
+                            defaultValue: "Retry balance",
+                          })}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -359,31 +732,31 @@ export function BillingTab({ user }: BillingTabProps) {
                 {cryptoStatus?.enabled && (
                   <div className="flex gap-2">
                     <Button
-                      variant="ghost"
+                      variant="choice"
                       type="button"
-                      onClick={() => setPaymentMethod("card")}
+                      disabled={isProcessingCheckout}
+                      onClick={() => {
+                        setPaymentMethod("card");
+                        setCardCheckoutError(null);
+                      }}
                       aria-pressed={paymentMethod === "card"}
-                      className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
-                        paymentMethod === "card"
-                          ? "bg-txt border-txt text-bg"
-                          : "bg-transparent border-border text-muted hover:border-border-strong"
-                      }`}
+                      data-state={paymentMethod === "card" ? "on" : "off"}
                     >
-                      <CreditCard className="h-4 w-4" />
+                      <CreditCard className="size-4" />
                       {t("cloud.billingTab.card", { defaultValue: "Card" })}
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="choice"
                       type="button"
-                      onClick={() => setPaymentMethod("crypto")}
+                      disabled={isProcessingCheckout}
+                      onClick={() => {
+                        setPaymentMethod("crypto");
+                        setCardCheckoutError(null);
+                      }}
                       aria-pressed={paymentMethod === "crypto"}
-                      className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
-                        paymentMethod === "crypto"
-                          ? "bg-txt border-txt text-bg"
-                          : "bg-transparent border-border text-muted hover:border-border-strong"
-                      }`}
+                      data-state={paymentMethod === "crypto" ? "on" : "off"}
                     >
-                      <Wallet className="h-4 w-4" />
+                      <Wallet className="size-4" />
                       {t("cloud.billingTab.crypto", { defaultValue: "Crypto" })}
                     </Button>
                   </div>
@@ -415,9 +788,16 @@ export function BillingTab({ user }: BillingTabProps) {
                         value={purchaseAmount}
                         onChange={(e) => {
                           setPurchaseAmount(e.target.value);
+                          setCardCheckoutError(null);
                           if (submitAttempted) setSubmitAttempted(false);
+                          // The durable intent is intentionally not cleared on
+                          // each keystroke. The coordinator rotates atomically
+                          // only when a complete different amount is submitted.
                         }}
-                        className="pl-7 bg-surface border border-border text-txt h-11 font-mono tabular-nums"
+                        variant="form"
+                        density="relaxed"
+                        adornment="leading"
+                        className="font-mono tabular-nums"
                         placeholder="0.00"
                         disabled={isProcessingCheckout}
                         aria-describedby={amountDescribedBy}
@@ -428,10 +808,10 @@ export function BillingTab({ user }: BillingTabProps) {
                       <div
                         id={AMOUNT_ERROR_ID}
                         role="alert"
-                        className="mt-1.5 flex items-center gap-2 text-sm text-red-400"
+                        className="mt-1.5 flex items-center gap-2 text-sm text-destructive"
                       >
                         <AlertCircle
-                          className="h-4 w-4 shrink-0"
+                          className="size-4 shrink-0"
                           aria-hidden="true"
                         />
                         <span className="font-mono">
@@ -441,10 +821,16 @@ export function BillingTab({ user }: BillingTabProps) {
                                 min: AMOUNT_LIMITS.MIN,
                                 defaultValue: "Minimum amount is $" + "{{min}}",
                               })
-                            : t("cloud.billingTab.maxAmount", {
-                                max: AMOUNT_LIMITS.MAX,
-                                defaultValue: "Maximum amount is $" + "{{max}}",
-                              })}
+                            : amountValue > AMOUNT_LIMITS.MAX
+                              ? t("cloud.billingTab.maxAmount", {
+                                  max: AMOUNT_LIMITS.MAX,
+                                  defaultValue:
+                                    "Maximum amount is $" + "{{max}}",
+                                })
+                              : t("cloud.billingTab.exactCentAmount", {
+                                  defaultValue:
+                                    "Amount must use exact whole cents",
+                                })}
                         </span>
                       </div>
                     )}
@@ -456,12 +842,12 @@ export function BillingTab({ user }: BillingTabProps) {
                       type="submit"
                       variant="primary"
                       disabled={isProcessingCheckout}
-                      className="h-11 px-6 w-full sm:w-auto flex-shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
+                      className="h-11 px-6 w-full sm:w-auto shrink-0 font-mono text-base whitespace-nowrap sm:mt-[26px] disabled:border disabled:border-border disabled:bg-surface disabled:text-muted disabled:opacity-100"
                     >
                       {isProcessingCheckout ? (
                         <>
                           <Loader2
-                            className="h-4 w-4 animate-spin"
+                            className="size-4 animate-spin"
                             aria-hidden="true"
                           />
                           {t("cloud.billingTab.processing", {
@@ -481,9 +867,24 @@ export function BillingTab({ user }: BillingTabProps) {
                   )}
                 </form>
 
+                {cardCheckoutError ? (
+                  <div
+                    id={CARD_CHECKOUT_ERROR_ID}
+                    role="alert"
+                    aria-live="assertive"
+                    className="flex max-w-2xl items-start gap-2 border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive"
+                  >
+                    <AlertCircle
+                      className="mt-0.5 size-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span className="font-mono">{cardCheckoutError}</span>
+                  </div>
+                ) : null}
+
                 {isValidAmount && purchaseAmount && amountValue !== null && (
-                  <div className="flex items-center gap-2 text-sm text-green-400">
-                    <CheckCircle className="h-4 w-4" />
+                  <div className="flex items-center gap-2 text-sm text-status-success">
+                    <CheckCircle className="size-4" />
                     <span className="font-mono">
                       {t("cloud.billingTab.willBeAdded", {
                         amount: amountValue.toFixed(2),
@@ -502,8 +903,10 @@ export function BillingTab({ user }: BillingTabProps) {
                         status={cryptoStatus}
                         accountWalletAddress={user.wallet_address ?? null}
                         onSuccess={async () => {
-                          await fetchBalance(true);
-                          await fetchInvoices();
+                          await Promise.all([
+                            billingSnapshot.refetch(),
+                            fetchInvoices(),
+                          ]);
                         }}
                       />
                     </Suspense>
@@ -514,10 +917,14 @@ export function BillingTab({ user }: BillingTabProps) {
         </div>
       </BrandCard>
 
-      {/* Pay-as-you-go from earnings — toggle for whether app earnings absorb container bills */}
-      <PayAsYouGoCard />
+      <ActiveComputeCardView
+        state={billingSnapshotState}
+        onRetry={() => {
+          void billingSnapshot.refetch();
+        }}
+      />
 
-      {/* Card Auto Top-Up — backstop when both earnings + credits run low */}
+      {/* Card auto top-up keeps the consumer billing path explicit and visible. */}
       <AutoTopUpCard />
 
       {/* Invoices Card */}
@@ -527,7 +934,7 @@ export function BillingTab({ user }: BillingTabProps) {
         <div className="relative z-10 space-y-6">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-muted" />
+              <div className="size-2 rounded-full bg-muted" />
               <h3 className="text-base font-mono text-txt uppercase">
                 {t("cloud.billingTab.invoices", { defaultValue: "Invoices" })}
               </h3>
@@ -574,13 +981,13 @@ export function BillingTab({ user }: BillingTabProps) {
 
             {loadingInvoices ? (
               <div className="flex items-center justify-center p-8 border border-brand-surface sm:border-t-0">
-                <Loader2 className="h-6 w-6 animate-spin text-muted" />
+                <Loader2 className="size-6 animate-spin text-muted" />
               </div>
             ) : invoicesError ? (
-              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-red-500/5">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <div className="flex items-start gap-3 p-8 border border-brand-surface sm:border-t-0 bg-destructive-subtle/50">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
                 <div className="space-y-1">
-                  <p className="text-xs md:text-sm text-red-300 font-mono">
+                  <p className="text-xs md:text-sm text-destructive font-mono">
                     {t("cloud.billingTab.invoiceLoadFailed", {
                       defaultValue: "Invoice history could not be loaded",
                     })}
@@ -638,7 +1045,7 @@ export function BillingTab({ user }: BillingTabProps) {
                         className={`inline-flex items-center gap-1.5 text-xs md:text-sm font-mono uppercase ${statusClassName}`}
                       >
                         <StatusIcon
-                          className="h-4 w-4 shrink-0"
+                          className="size-4 shrink-0"
                           aria-hidden={true}
                         />
                         <span>{invoice.status}</span>
@@ -654,7 +1061,6 @@ export function BillingTab({ user }: BillingTabProps) {
                         variant="ghost"
                         type="button"
                         onClick={() => handleViewInvoice(invoice)}
-                        className="text-xs md:text-sm font-mono text-txt-strong underline uppercase hover:text-txt transition-colors"
                       >
                         {t("cloud.billingTab.view", { defaultValue: "View" })}
                       </Button>

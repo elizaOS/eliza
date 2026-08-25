@@ -76,10 +76,6 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     ).toEqual([
       { slug: "builtin-camera", applicability: "native-platform-gated" },
       {
-        slug: "plugin-documents-gui",
-        applicability: "unregistered-remote-bundle",
-      },
-      {
         slug: "plugin-lifeops-live-test-gui",
         applicability: "unregistered-remote-bundle",
       },
@@ -97,13 +93,19 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     }
   });
 
-  it("expects the local-agent Cloud route to return to the launcher", () => {
+  it("expects the production Cloud plugin bundle's signed-out state", () => {
     const policy = resolveViewOcrPolicy("plugin-cloud-gui");
     expect(policy).toEqual({
       kind: "expectation",
       expectation: {
-        requireAll: ["Settings", "Wallet"],
-        requireAny: ["Projects", "Calendar", "Automations"],
+        requireAll: ["Eliza Cloud"],
+        requireAny: [
+          "credits",
+          "hosted agents",
+          "API keys",
+          "billing",
+          "Connect in Settings",
+        ],
       },
     });
   });

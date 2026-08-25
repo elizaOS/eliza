@@ -25,14 +25,8 @@ vi.mock("./views-routes.ts", () => ({
   getViewsBroadcastWs: () => null,
 }));
 
-vi.mock("@elizaos/core", () => ({
-  logger: { error: vi.fn(), warn: vi.fn() },
-  readJsonBody: vi.fn(),
-  resolveCanonicalOwnerId: (runtime: {
-    getSetting?: (key: string) => unknown;
-  }) => runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") ?? null,
-  sendJson: vi.fn(),
-  stringToUuid: (value: string) => {
+vi.mock("@elizaos/core", () => {
+  const stringToUuid = (value: string) => {
     let hash = 2166136261;
     for (const character of value) {
       hash ^= character.charCodeAt(0);
@@ -40,8 +34,19 @@ vi.mock("@elizaos/core", () => ({
     }
     const seed = (hash >>> 0).toString(16).padStart(8, "0");
     return `${seed}-${seed.slice(0, 4)}-4${seed.slice(1, 4)}-a${seed.slice(1, 4)}-${seed}${seed.slice(0, 4)}`;
-  },
-}));
+  };
+  return {
+    deterministicOwnerEntityId: (agentId: string) =>
+      stringToUuid(`${agentId}-admin-entity`),
+    logger: { error: vi.fn(), warn: vi.fn() },
+    readJsonBody: vi.fn(),
+    resolveCanonicalOwnerId: (runtime: {
+      getSetting?: (key: string) => unknown;
+    }) => runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") ?? null,
+    sendJson: vi.fn(),
+    stringToUuid,
+  };
+});
 
 const {
   buildPendantSessionRouteContext,
@@ -305,6 +310,36 @@ describe("handlePendantSessionRoutes", () => {
     expect(context.url.searchParams.getAll("tag")).toEqual(["one", "two"]);
     expect(context.state.adminEntityId).toBe(ownerId);
     await expect(context.readJsonBody(req, context.res)).resolves.toBe(body);
+  });
+
+  it("falls back to the agent-id owner seed (not the character name) when no owner is configured", async () => {
+    const agentId = uuid();
+    const { deterministicOwnerEntityId, stringToUuid } = await import(
+      "@elizaos/core"
+    );
+    const req = {
+      method: "GET",
+      url: "/api/pendant/sessions",
+      headers: { host: "127.0.0.1" },
+    } as unknown as http.IncomingMessage;
+    const runtime = {
+      agentId,
+      character: { name: "Test Agent" },
+      getSetting: () => null,
+    } as never;
+
+    const context = buildPendantSessionRouteContext(
+      req,
+      {} as http.ServerResponse,
+      runtime,
+    );
+
+    expect(context.state.adminEntityId).toBe(
+      deterministicOwnerEntityId(agentId),
+    );
+    expect(context.state.adminEntityId).not.toBe(
+      stringToUuid("Test Agent-admin-entity"),
+    );
   });
 
   it("supports capturer append observed by follower and follower pause observed by capturer", async () => {

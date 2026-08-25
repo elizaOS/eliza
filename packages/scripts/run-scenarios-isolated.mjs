@@ -16,14 +16,16 @@
  *     crashes, zero rate-limit accumulation inside a single runtime.
  *
  * Usage:
- *   bun packages/scripts/run-scenarios-isolated.mjs <scenarios-dir> [--report <path>]
+ *   bun packages/scripts/run-scenarios-isolated.mjs <scenarios-dir>
+ *     [--file-glob <glob>] [--artifacts-dir <path>] [--report <path>]
  *
  * Env:
  *   Same as the underlying CLI (GROQ_API_KEY / OPENAI_API_KEY / etc.).
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,6 +42,13 @@ export function resolveScenarioIsolatedPaths() {
 }
 
 const { repoRoot: REPO_ROOT, cli: CLI } = resolveScenarioIsolatedPaths();
+const SOURCE_CLI_ARGS = [
+  "--conditions",
+  "eliza-source",
+  "--tsconfig-override",
+  path.join(REPO_ROOT, "tsconfig.json"),
+  CLI,
+];
 
 if (process.argv.includes("--print-paths")) {
   console.log(JSON.stringify({ repoRoot: REPO_ROOT, cli: CLI }));
@@ -54,11 +63,43 @@ if (args.length === 0) {
 
 const dir = path.resolve(args[0]);
 let reportPath = null;
+let artifactsDir = null;
+let workers = Math.min(4, Math.max(1, os.availableParallelism()));
+let timeoutMs = 15 * 60 * 1000;
+const forwardedArgs = [];
+const listSelectionArgs = [];
 for (let i = 1; i < args.length; i += 1) {
   if (args[i] === "--report" && args[i + 1]) {
     reportPath = path.resolve(args[i + 1]);
     i += 1;
+  } else if (args[i] === "--workers" && args[i + 1]) {
+    workers = Number(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--timeout-ms" && args[i + 1]) {
+    timeoutMs = Number(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--artifacts-dir" && args[i + 1]) {
+    artifactsDir = path.resolve(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--file-glob" && args[i + 1]) {
+    listSelectionArgs.push(args[i + 1]);
+    i += 1;
+  } else if (args[i] === "--lane" && args[i + 1]) {
+    listSelectionArgs.push(args[i], args[i + 1]);
+    forwardedArgs.push(args[i], args[i + 1]);
+    i += 1;
+  } else {
+    forwardedArgs.push(args[i]);
   }
+}
+
+if (!Number.isSafeInteger(workers) || workers < 1 || workers > 32) {
+  console.error("[isolated] --workers must be an integer from 1 through 32");
+  process.exit(2);
+}
+if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1_000) {
+  console.error("[isolated] --timeout-ms must be an integer of at least 1000");
+  process.exit(2);
 }
 
 if (!fs.existsSync(dir)) {
@@ -67,11 +108,15 @@ if (!fs.existsSync(dir)) {
 }
 
 // 1. List scenario IDs from the target dir.
-const listed = spawnSync("bun", [CLI, "list", dir], {
-  cwd: REPO_ROOT,
-  encoding: "utf8",
-  stdio: ["inherit", "pipe", "inherit"],
-});
+const listed = spawnSync(
+  "bun",
+  [...SOURCE_CLI_ARGS, "list", dir, ...listSelectionArgs],
+  {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    stdio: ["inherit", "pipe", "inherit"],
+  },
+);
 if (listed.status !== 0) {
   console.error(`[isolated] scenario listing failed (exit ${listed.status})`);
   process.exit(listed.status ?? 1);
@@ -85,60 +130,167 @@ console.error(
   `[isolated] running ${ids.length} scenario(s) in isolated processes`,
 );
 
-// 2. Run each scenario in its own child process, collect per-run reports.
-const perRunReports = [];
+// 2. Run each scenario in a unique directory and bounded worker process.
+let temporaryRunRoot = false;
+let runRoot;
+if (artifactsDir) {
+  if (fs.existsSync(artifactsDir) && fs.readdirSync(artifactsDir).length > 0) {
+    console.error(
+      `[isolated] --artifacts-dir must be absent or empty: ${artifactsDir}`,
+    );
+    process.exit(2);
+  }
+  fs.mkdirSync(artifactsDir, { recursive: true });
+  runRoot = artifactsDir;
+} else {
+  temporaryRunRoot = true;
+  runRoot = fs.mkdtempSync(path.join(os.tmpdir(), "scenario-isolated-run-"));
+}
+const perRunReports = new Array(ids.length).fill(null);
 const startedAtIso = new Date().toISOString();
 let passed = 0;
 let failed = 0;
 let skipped = 0;
+const activeChildren = new Set();
+let interruptedSignal = null;
 
-for (const id of ids) {
-  const tmpReport = path.join(
-    "/tmp",
-    `scenario-isolated-${id.replace(/[^a-z0-9._-]/gi, "_")}.json`,
-  );
-  fs.rmSync(tmpReport, { force: true });
-  const child = spawnSync(
-    "bun",
-    [CLI, "run", dir, "--scenario", id, "--report", tmpReport],
-    {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      stdio: ["inherit", "inherit", "inherit"],
-      env: process.env,
-    },
-  );
-  if (child.status !== 0) {
-    const cause =
-      child.status === null
-        ? `signal ${child.signal ?? "unknown"}`
-        : `exit ${child.status}`;
-    console.error(`[isolated] ${id} failed (${cause})`);
-    failed += 1;
-    continue;
-  }
-  if (!fs.existsSync(tmpReport)) {
-    console.error(`[isolated] ${id} produced no report (exit ${child.status})`);
-    failed += 1;
-    continue;
-  }
-  try {
-    const r = JSON.parse(fs.readFileSync(tmpReport, "utf8"));
-    perRunReports.push(r);
-    const s = (r.scenarios ?? [])[0];
-    if (!s) {
+function stopChildren(signal) {
+  interruptedSignal = signal;
+  for (const child of activeChildren) child.kill("SIGTERM");
+}
+
+process.once("SIGINT", () => stopChildren("SIGINT"));
+process.once("SIGTERM", () => stopChildren("SIGTERM"));
+
+function runOne(id, index) {
+  return new Promise((resolve) => {
+    const safeId = id.replace(/[^a-z0-9._-]/gi, "_");
+    const scenarioDir = path.join(
+      runRoot,
+      `${String(index).padStart(5, "0")}-${safeId}`,
+    );
+    fs.mkdirSync(scenarioDir, { recursive: true });
+    const tmpReport = path.join(scenarioDir, "report.json");
+    const stdout = fs.openSync(path.join(scenarioDir, "stdout.log"), "wx");
+    const stderr = fs.openSync(path.join(scenarioDir, "stderr.log"), "wx");
+    let logsClosed = false;
+    const closeLogs = () => {
+      if (logsClosed) return;
+      logsClosed = true;
+      fs.closeSync(stdout);
+      fs.closeSync(stderr);
+    };
+    const child = spawn(
+      "bun",
+      [
+        ...SOURCE_CLI_ARGS,
+        "run",
+        dir,
+        "--scenario",
+        id,
+        "--report",
+        tmpReport,
+        "--run-dir",
+        scenarioDir,
+        ...forwardedArgs,
+      ],
+      {
+        cwd: REPO_ROOT,
+        stdio: ["ignore", stdout, stderr],
+        env: process.env,
+      },
+    );
+    activeChildren.add(child);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+    }, timeoutMs);
+    timer.unref();
+
+    child.once("error", (error) => {
+      clearTimeout(timer);
+      activeChildren.delete(child);
+      closeLogs();
+      resolve({ id, index, ok: false, cause: `spawn error ${error.message}` });
+    });
+    child.once("close", (status, signal) => {
+      clearTimeout(timer);
+      activeChildren.delete(child);
+      closeLogs();
+      if (status === null || timedOut || (status !== 0 && status !== 1)) {
+        const cause = timedOut
+          ? `timeout after ${timeoutMs}ms`
+          : status === null
+            ? `signal ${signal ?? "unknown"}`
+            : `exit ${status}`;
+        resolve({ id, index, ok: false, cause });
+        return;
+      }
+      if (!fs.existsSync(tmpReport)) {
+        resolve({
+          id,
+          index,
+          ok: false,
+          cause: `produced no report (exit ${status})`,
+        });
+        return;
+      }
+      try {
+        resolve({
+          id,
+          index,
+          ok: true,
+          report: JSON.parse(fs.readFileSync(tmpReport, "utf8")),
+        });
+      } catch (error) {
+        resolve({
+          id,
+          index,
+          ok: false,
+          cause: `report parse failed: ${error.message}`,
+        });
+      }
+    });
+  });
+}
+
+let nextIndex = 0;
+async function worker() {
+  while (nextIndex < ids.length && interruptedSignal === null) {
+    const index = nextIndex;
+    nextIndex += 1;
+    const id = ids[index];
+    const result = await runOne(id, index);
+    if (!result.ok) {
+      console.error(`[isolated] ${id} failed (${result.cause})`);
       failed += 1;
-    } else if (s.status === "passed") {
+      continue;
+    }
+    perRunReports[index] = result.report;
+    const scenario = (result.report.scenarios ?? [])[0];
+    if (!scenario || scenario.id !== id) {
+      console.error(
+        `[isolated] ${id} returned a missing or mismatched scenario record`,
+      );
+      failed += 1;
+    } else if (scenario.status === "passed") {
       passed += 1;
-    } else if (s.status === "skipped") {
+    } else if (scenario.status === "skipped") {
       skipped += 1;
     } else {
       failed += 1;
     }
-  } catch (err) {
-    console.error(`[isolated] ${id} report parse failed: ${err.message}`);
-    failed += 1;
   }
+}
+
+await Promise.all(
+  Array.from({ length: Math.min(workers, ids.length) }, () => worker()),
+);
+
+if (interruptedSignal !== null) {
+  failed += ids.length - passed - failed - skipped;
 }
 
 const completedAtIso = new Date().toISOString();
@@ -146,11 +298,12 @@ const completedAtIso = new Date().toISOString();
 // 3. Aggregate into a single report.
 const aggregate = {
   runId: `isolated-${Date.now()}`,
-  providerName: perRunReports[0]?.providerName ?? "unknown",
+  artifactsDir: temporaryRunRoot ? null : runRoot,
+  providerName: perRunReports.find(Boolean)?.providerName ?? "unknown",
   startedAtIso,
   completedAtIso,
   totals: { passed, failed, skipped, total: ids.length },
-  scenarios: perRunReports.flatMap((r) => r.scenarios ?? []),
+  scenarios: perRunReports.flatMap((r) => r?.scenarios ?? []),
 };
 
 if (reportPath) {
@@ -168,4 +321,14 @@ for (const s of aggregate.scenarios) {
   console.error(`  ${icon} ${s.id} (${s.durationMs}ms)`);
 }
 
-process.exit(failed > 0 ? 1 : 0);
+if (temporaryRunRoot) {
+  fs.rmSync(runRoot, { recursive: true, force: true });
+} else {
+  console.error(`[isolated] retained artifacts at ${runRoot}`);
+}
+
+if (interruptedSignal !== null) {
+  process.kill(process.pid, interruptedSignal);
+} else {
+  process.exit(failed > 0 ? 1 : 0);
+}

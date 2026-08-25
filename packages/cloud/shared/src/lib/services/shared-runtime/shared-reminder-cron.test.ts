@@ -47,10 +47,13 @@ const createSharedScheduledTaskRunner = mock(
   }),
 );
 
+const { sharedGroupReminderMessageText } = await import("@elizaos/plugin-scheduling/edge");
+
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
   listDueScheduledTaskRefs,
   listRecoverableScheduledTaskRefs,
   SHARED_REMINDER_MAX_TEXT_LENGTH: 2000,
+  sharedGroupReminderMessageText,
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
@@ -58,6 +61,9 @@ mock.module("@elizaos/plugin-scheduling/edge", () => ({
     if (delivery.platform === "blooio") return delivery;
     if (delivery.platform === "discord") return delivery;
     return undefined;
+  },
+  isSharedGroupReminderDelivery(delivery: Record<string, unknown>) {
+    return delivery.kind === "group";
   },
 }));
 mock.module("./shared-scheduling", () => ({
@@ -144,6 +150,50 @@ describe("Shared reminder cron", () => {
       },
       { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
     );
+  });
+
+  test("uses edge-owned Telegram delivery with a durable provider receipt", async () => {
+    const telegramDispatch = mock(async () => ({
+      ok: true as const,
+      acceptedAt: "2026-08-20T19:30:00.100Z",
+      providerMessageIds: ["9010"],
+    }));
+    globalThis.fetch = mock(async () => {
+      throw new Error("Railway egress must not run");
+    }) as typeof fetch;
+    const dispatcher = sharedReminderDispatcher(
+      {
+        SHARED_RUNTIME_CONVERSATIONS: env.SHARED_RUNTIME_CONVERSATIONS,
+      } as never,
+      "personal:00000000-0000-5000-8000-000000000000",
+      { telegramDispatch },
+    );
+
+    const result = await dispatcher.dispatch({
+      taskId: "edge-reminder",
+      promptInstructions: "time to stretch",
+      firedAtIso: "2026-08-20T19:30:00.000Z",
+      metadata: {
+        dispatchIdempotencyKey: "edge-reminder:2026-08-20T19:30:00.000Z",
+        delivery: {
+          platform: "telegram",
+          project: "eliza-app",
+          chatId: "123456789",
+        },
+      },
+    });
+
+    expect(telegramDispatch).toHaveBeenCalledWith({
+      project: "eliza-app",
+      chatId: "123456789",
+      text: "time to stretch",
+      idempotencyKey: "edge-reminder:2026-08-20T19:30:00.000Z",
+    });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      ok: true,
+      metadata: { providerMessageIds: ["9010"] },
+    });
   });
 
   test("fails closed before egress when trusted delivery metadata is absent", async () => {

@@ -2,7 +2,7 @@ ext {
     mavenCentralMirrorUrl = 'https://maven-central.storage-download.googleapis.com/maven2/'
     minSdkVersion = 26
     compileSdkVersion = 36
-    targetSdkVersion = 35
+    targetSdkVersion = 36
     androidxActivityVersion = '1.8.0'
     androidxAppCompatVersion = '1.7.1'
     androidxCoordinatorLayoutVersion = '1.3.0'

@@ -3,13 +3,88 @@
  * approval presets, session status and lifecycle events, spawn options, and the
  * `SessionStore` contract the persistence tiers implement.
  */
-export type AgentType =
-  | "elizaos"
-  | "pi-agent"
-  | "opencode"
-  | "claude"
-  | "codex"
-  | string;
+export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
+
+/** Declares whether a subscription coding-agent session has an active user. */
+export type SubscriptionExecutionMode = "user-attended" | "unattended";
+
+export const SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY =
+  "subscriptionExecutionAuthorization";
+
+export interface SubscriptionExecutionAuthorization {
+  version: 1;
+  mode: "user-attended";
+  source: "interactive-message";
+  requestId: string;
+  subjectId: string;
+  issuedAtMs: number;
+  expiresAtMs: number;
+}
+
+const SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS = 2 * 60 * 1_000;
+
+/** Minted only while handling a concrete user-authored message. */
+export function createSubscriptionExecutionAuthorization(
+  requestId: string,
+  subjectId: string,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const normalizedRequestId = requestId.trim();
+  const normalizedSubjectId = subjectId.trim();
+  if (!normalizedRequestId || !normalizedSubjectId || !Number.isFinite(nowMs)) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: normalizedRequestId,
+    subjectId: normalizedSubjectId,
+    issuedAtMs: nowMs,
+    expiresAtMs: nowMs + SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS,
+  };
+}
+
+/** Validate a short-lived attendance capability at its consumption boundary. */
+export function subscriptionExecutionAuthorizationFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+  nowMs = Date.now(),
+): SubscriptionExecutionAuthorization | undefined {
+  const candidate =
+    metadata?.[SUBSCRIPTION_EXECUTION_AUTHORIZATION_METADATA_KEY];
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return undefined;
+  }
+  const record = candidate as Record<string, unknown>;
+  if (
+    record.version !== 1 ||
+    record.mode !== "user-attended" ||
+    record.source !== "interactive-message" ||
+    typeof record.requestId !== "string" ||
+    !record.requestId.trim() ||
+    typeof record.subjectId !== "string" ||
+    !record.subjectId.trim() ||
+    typeof record.issuedAtMs !== "number" ||
+    typeof record.expiresAtMs !== "number" ||
+    !Number.isFinite(record.issuedAtMs) ||
+    !Number.isFinite(record.expiresAtMs) ||
+    record.expiresAtMs - record.issuedAtMs !==
+      SUBSCRIPTION_EXECUTION_AUTHORIZATION_TTL_MS ||
+    nowMs < record.issuedAtMs ||
+    nowMs >= record.expiresAtMs
+  ) {
+    return undefined;
+  }
+  return {
+    version: 1,
+    mode: "user-attended",
+    source: "interactive-message",
+    requestId: record.requestId.trim(),
+    subjectId: record.subjectId.trim(),
+    issuedAtMs: record.issuedAtMs,
+    expiresAtMs: record.expiresAtMs,
+  };
+}
 
 export type ApprovalPreset =
   | "readonly"
@@ -48,6 +123,7 @@ export type SessionEventName =
   | "plan"
   | "reconnected"
   | "account_switched"
+  | "parent_agent_failure"
   | string;
 
 /**
@@ -155,6 +231,11 @@ export interface SpawnOptions {
    */
   slotClass?: SessionSlotClass;
   /**
+   * Proof minted by an interactive product boundary. Kimi Code fails closed
+   * when this is omitted; the exact object is persisted for valid recovery.
+   */
+  subscriptionExecutionAuthorization?: SubscriptionExecutionAuthorization;
+  /**
    * When true, spawnSession places this session in a per-session subdir of
    * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
    * Set by the orchestrator only when the workdir resolved to a configured
@@ -215,6 +296,71 @@ export interface SendOptions {
   model?: string;
 }
 
+/** Authoritative failed-turn receipt carried by an ACP prompt result. */
+export interface AcpTerminalFailure {
+  kind: string;
+  code?: string;
+  transient: boolean;
+  message: string;
+}
+
+/**
+ * Read the elizaOS terminal-failure extension from an ACP prompt result.
+ * Presence is authoritative: malformed receipts fail the protocol boundary
+ * instead of being dropped and allowing surrounding prose to imply success.
+ */
+export function readAcpTerminalFailure(
+  promptResult: unknown,
+): AcpTerminalFailure | undefined {
+  if (
+    !promptResult ||
+    typeof promptResult !== "object" ||
+    Array.isArray(promptResult)
+  ) {
+    return undefined;
+  }
+  const metadata = (promptResult as Record<string, unknown>)._meta;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const candidate = (metadata as Record<string, unknown>).terminalFailure;
+  if (candidate === undefined) return undefined;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new TypeError("ACP terminalFailure must be an object");
+  }
+  const record = candidate as Record<string, unknown>;
+  const kind =
+    typeof record.kind === "string" && record.kind.trim()
+      ? record.kind.trim()
+      : undefined;
+  const message =
+    typeof record.message === "string" && record.message.trim()
+      ? record.message
+      : undefined;
+  const code =
+    record.code === undefined
+      ? undefined
+      : typeof record.code === "string" && record.code.trim()
+        ? record.code.trim()
+        : null;
+  if (
+    !kind ||
+    !message ||
+    typeof record.transient !== "boolean" ||
+    code === null
+  ) {
+    throw new TypeError(
+      "ACP terminalFailure requires kind, message, transient, and an optional non-empty code",
+    );
+  }
+  return {
+    kind,
+    ...(code ? { code } : {}),
+    transient: record.transient,
+    message,
+  };
+}
+
 export interface PromptResult {
   sessionId: string;
   response: string;
@@ -224,14 +370,25 @@ export interface PromptResult {
   exitCode?: number | null;
   signal?: NodeJS.Signals | null;
   error?: string;
+  terminalFailure?: AcpTerminalFailure;
 }
 
 export interface AvailableAgentInfo {
   adapter: AgentType;
   agentType: AgentType;
   installed: boolean;
+  unavailableReason?: string;
   installCommand?: string;
   docsUrl?: string;
+  billingSource?: {
+    kind: "included-plan" | "api-payg";
+    label: string;
+    mayUsePaidOverage?: boolean;
+    disclosure?: string;
+  };
+  executionPolicy?: {
+    requiresUserAttended: boolean;
+  };
   auth?: {
     status?: "authenticated" | "unauthenticated" | "unknown" | string;
     detail?: string;

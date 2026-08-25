@@ -15,7 +15,7 @@
  * through `runtime.reportError`; a genuinely empty result renders a designed
  * empty brief, distinct from an unreachable one.
  */
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, toWellFormedUnicode } from "@elizaos/core";
 import type {
   AppRunSummary,
   RegistryAppInfo,
@@ -36,9 +36,9 @@ async function renderCharacterLiveState(
   lines.push(`- Name: ${character.name ?? "(unnamed)"}`);
   const bio = (character as { bio?: unknown }).bio;
   if (typeof bio === "string" && bio.trim().length > 0) {
-    lines.push(`- Bio: ${bio.trim().slice(0, 200)}`);
+    lines.push(`- Bio: ${toWellFormedUnicode(bio.trim())}`);
   } else if (Array.isArray(bio) && bio.length > 0) {
-    lines.push(`- Bio entries: ${bio.length}`);
+    lines.push(`- Bio: ${bio.map(String).map(toWellFormedUnicode).join("; ")}`);
   }
   const exampleCount = Array.isArray(character.messageExamples)
     ? character.messageExamples.length
@@ -146,7 +146,7 @@ async function renderBrowserLiveState(
     const lines: string[] = [
       `Live browser state: bridge=${snapshot.mode}, ${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"}.`,
     ];
-    for (const tab of snapshot.tabs.slice(0, 6)) {
+    for (const tab of snapshot.tabs) {
       const flags = tab.visible ? "[visible]" : "";
       lines.push(`- ${tab.title || "(untitled)"} — ${tab.url} ${flags}`.trim());
     }
@@ -175,7 +175,7 @@ async function renderBrowserLiveState(
         lines.push(
           `Agent Browser Bridge companion: connected (${connected.length} profile${connected.length === 1 ? "" : "s"}).`,
         );
-        for (const companion of connected.slice(0, 3)) {
+        for (const companion of connected) {
           const browser = companion.browser === "safari" ? "Safari" : "Chrome";
           const profile = companion.profileLabel?.trim() || "Default";
           const version = companion.extensionVersion
@@ -231,12 +231,14 @@ async function renderAppsLiveState(): Promise<string | null> {
 
   if (activeRuns.length > 0) {
     lines.push("Running apps:");
-    for (const run of activeRuns.slice(0, 8)) {
+    for (const run of activeRuns) {
       const health = run.health.state ? ` health=${run.health.state}` : "";
       const viewer = run.viewerAttachment
         ? ` viewer=${run.viewerAttachment}`
         : "";
-      const summary = run.summary ? ` — ${run.summary.slice(0, 140)}` : "";
+      const summary = run.summary
+        ? ` — ${toWellFormedUnicode(run.summary)}`
+        : "";
       lines.push(
         `- ${run.displayName} (${run.appName}) status=${run.status}${health}${viewer}${summary}`,
       );
@@ -247,10 +249,10 @@ async function renderAppsLiveState(): Promise<string | null> {
 
   if (apps.length > 0) {
     lines.push("Catalog sample:");
-    for (const app of apps.slice(0, 12)) {
+    for (const app of apps) {
       const capabilities =
         app.capabilities.length > 0
-          ? ` capabilities=${app.capabilities.slice(0, 4).join(", ")}`
+          ? ` capabilities=${app.capabilities.join(", ")}`
           : "";
       lines.push(
         `- ${app.displayName} (${app.name}) category=${app.category}${capabilities}`,
@@ -263,8 +265,7 @@ async function renderAppsLiveState(): Promise<string | null> {
 
 function shortAddress(address: string | null | undefined): string {
   if (!address) return "(not configured)";
-  if (address.length <= 14) return address;
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  return toWellFormedUnicode(address);
 }
 
 function readyLabel(value: boolean | undefined): string {
@@ -339,7 +340,7 @@ async function renderWalletLiveState(): Promise<string | null> {
     lines.push(
       `- Token inventory: ${assetLines.length} asset${assetLines.length === 1 ? "" : "s"}.`,
     );
-    for (const asset of assetLines.slice(0, 10)) {
+    for (const asset of assetLines) {
       lines.push(`  - ${asset}`);
     }
   }
@@ -372,7 +373,7 @@ async function renderAutomationsLiveState(
     const lines: string[] = [
       `Live automations state: ${tasks.length} task${tasks.length === 1 ? "" : "s"}.`,
     ];
-    for (const task of tasks.slice(0, 8)) {
+    for (const task of tasks) {
       const name = task.name;
       const tagList =
         Array.isArray(task.tags) && task.tags.length > 0
@@ -391,7 +392,6 @@ async function renderAutomationsLiveState(
 }
 
 const KNOWLEDGE_LIVE_STATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-const KNOWLEDGE_LIVE_STATE_SCAN_LIMIT = 500;
 const ATTACHMENT_DOCUMENT_TAG = "attachment";
 const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
 const TRANSCRIPT_DOCUMENT_TAG = "transcript";
@@ -450,8 +450,6 @@ async function renderKnowledgeLiveState(
       // Scope to THIS agent so a shared/multi-agent adapter does not count
       // another agent's attachment/transcript records into this page's context.
       agentId: runtime.agentId,
-      count: KNOWLEDGE_LIVE_STATE_SCAN_LIMIT,
-      offset: 0,
     });
     for (const memory of batch) {
       if (memory.agentId && memory.agentId !== runtime.agentId) continue;
@@ -513,8 +511,6 @@ async function renderTranscriptsLiveState(
     const batch = await runtime.getMemories({
       tableName: "documents",
       agentId: runtime.agentId,
-      count: KNOWLEDGE_LIVE_STATE_SCAN_LIMIT,
-      offset: 0,
     });
     for (const memory of batch) {
       if (memory.agentId && memory.agentId !== runtime.agentId) continue;

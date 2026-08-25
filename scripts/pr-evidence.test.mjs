@@ -1,8 +1,7 @@
 /**
- * Tests for the pr-evidence uploader's overflow logic: the pure release-
- * selection rule plus the upload/rollover pipeline (uploadAssets, attach,
- * createOverflowReleaseIfAbsent) driven through an injected `gh` runner.
- * Deterministic: no network or real `gh` process is touched.
+ * Exercises the PR-evidence CLI's bounded child runner and release rollover.
+ * The buffering regression uses a real local Node child; release operations
+ * use an injected `gh` runner, so the suite never touches GitHub.
  */
 
 import assert from "node:assert/strict";
@@ -24,6 +23,7 @@ import {
   prEvidenceReleaseIndex,
   prEvidenceTagForIndex,
   renderRow,
+  runBufferedUtf8,
   selectPrEvidenceTarget,
   uploadAssets,
 } from "./pr-evidence.mjs";
@@ -51,6 +51,20 @@ function attributionFooter({ separator = true } = {}) {
   ];
   return lines.join("\n");
 }
+
+describe("bounded child-process output", () => {
+  it("captures output above Node's default one-mebibyte ceiling", () => {
+    const payloadBytes = 1_100_000;
+    const sentinel = "<complete>";
+    const output = runBufferedUtf8(process.execPath, [
+      "-e",
+      `process.stdout.write("x".repeat(${payloadBytes})); process.stdout.write("${sentinel}");`,
+    ]);
+
+    assert.equal(output.length, payloadBytes + sentinel.length);
+    assert.ok(output.endsWith(sentinel));
+  });
+});
 
 describe("pr-evidence tag <-> sequence index", () => {
   it("maps the primary tag to index 1 and overflow tags to their number", () => {

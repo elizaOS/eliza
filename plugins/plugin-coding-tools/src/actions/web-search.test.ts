@@ -141,16 +141,16 @@ describe("coding-tools WEB_SEARCH", () => {
     expect(result.data).toMatchObject({ provider: "exa" });
   });
 
-  it("caps result output before returning it to the model", async () => {
+  it("returns complete provider output to the model", async () => {
     mockSearchProviders({ parallel: mcpJson("y".repeat(20_000)) });
 
     const result = await runSearch({ query: "large result" });
 
     expect(result.success).toBe(true);
-    expect((result.text ?? "").length).toBeLessThanOrEqual(4_012);
+    expect(result.text).toBe("y".repeat(20_000));
     expect(result.data).toMatchObject({
       provider: "parallel",
-      truncated: true,
+      truncated: false,
     });
   });
 

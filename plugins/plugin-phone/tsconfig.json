@@ -63,13 +63,14 @@
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
-      "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],
       "@elizaos/capacitor-phone": [
         "../../plugins/plugin-native-phone/src/index.ts"
       ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-secure-store": [
+        "../../plugins/plugin-native-secure-store/src/index.ts"
       ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"

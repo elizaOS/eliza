@@ -75,12 +75,6 @@
   },
   "agentConfig": {
     "pluginParameters": {
-      "IMESSAGE_CLI_PATH": {
-        "type": "string",
-        "description": "Path to CLI binary",
-        "required": false,
-        "sensitive": false
-      },
       "IMESSAGE_DB_PATH": {
         "type": "string",
         "description": "Path to database file",
@@ -125,11 +119,6 @@
       }
     },
     "configUiHints": {
-      "IMESSAGE_CLI_PATH": {
-        "label": "CLI path",
-        "order": 1,
-        "group": "connection"
-      },
       "IMESSAGE_DB_PATH": {
         "label": "Database path",
         "order": 2,

@@ -17,6 +17,11 @@
  * metadata is gated until the Gemma drafter GGUFs are actually hosted.
  */
 
+import {
+  trimBoundaryCharacters,
+  trimEndCharacters,
+  trimStartCharacters,
+} from "../utils/string-boundaries.js";
 import { type HfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
 import type {
   CatalogModel,
@@ -686,8 +691,10 @@ export function buildHuggingFaceResolveUrlCandidatesForPath(
   model: CatalogModel,
   filePath: string,
 ): HfResolveUrlCandidate[] {
-  const cleanFilePath = filePath.replace(/^\/+/, "");
-  const cleanPrefix = model.hfPathPrefix?.replace(/^\/+|\/+$/g, "");
+  const cleanFilePath = trimStartCharacters(filePath, "/");
+  const cleanPrefix = model.hfPathPrefix
+    ? trimBoundaryCharacters(model.hfPathPrefix, "/")
+    : undefined;
   const pathWithPrefix =
     cleanPrefix &&
     cleanFilePath !== cleanPrefix &&
@@ -696,8 +703,10 @@ export function buildHuggingFaceResolveUrlCandidatesForPath(
       : cleanFilePath;
   if (model.hub === "modelscope") {
     const base =
-      process.env.ELIZA_MODELSCOPE_BASE_URL?.trim().replace(/\/+$/, "") ||
-      "https://www.modelscope.cn";
+      trimEndCharacters(
+        process.env.ELIZA_MODELSCOPE_BASE_URL?.trim() ?? "",
+        "/",
+      ) || "https://www.modelscope.cn";
     const encodedPath = pathWithPrefix
       .split("/")
       .map((segment) => encodeURIComponent(segment))

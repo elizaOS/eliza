@@ -27,15 +27,6 @@ export const SHARED_RECALL_EDGE_COMPATIBILITY = {
 export const SHARED_RECALL_EMBEDDING_MODEL = "bge-small-en-v1.5";
 export const SHARED_RECALL_EMBEDDING_DIMENSIONS = 384;
 export const SHARED_RECALL_EMBED_TIMEOUT_MS = 5_000;
-export const SHARED_RECALL_DEFAULT_TOP_K = 5;
-export const SHARED_RECALL_DEFAULT_MAX_CHARS = 1_200;
-
-/**
- * Per-row content clip applied before block assembly so one pathological row
- * cannot consume the whole character budget and starve every later match.
- */
-const ROW_CONTENT_CLIP_CHARS = 240;
-
 const RECALL_BLOCK_HEADER =
   "Recalled from earlier in this conversation (matches beyond the recent window):";
 
@@ -66,9 +57,9 @@ export interface BuildSharedRecallContextInput {
   embed: (text: string) => Promise<number[]>;
   /** Vector search over the tenant transcript store, ranked best match first. */
   storeSearch: (vector: number[]) => Promise<SharedRecallRow[]>;
-  /** Maximum recalled rows rendered; defaults to {@link SHARED_RECALL_DEFAULT_TOP_K}. */
+  /** @deprecated Recall rendering is complete; this option is ignored. */
   topK?: number;
-  /** Character cap on the whole block; defaults to {@link SHARED_RECALL_DEFAULT_MAX_CHARS}. */
+  /** @deprecated Recall rendering is complete; this option is ignored. */
   maxChars?: number;
 }
 
@@ -249,19 +240,13 @@ export async function embedTextViaSidecar(
   return embedding;
 }
 
-function clipRowContent(content: string): string {
-  const trimmed = content.trim();
-  if (trimmed.length <= ROW_CONTENT_CLIP_CHARS) return trimmed;
-  return `${trimmed.slice(0, ROW_CONTENT_CLIP_CHARS - 1)}…`;
-}
-
 function formatRecallRow(row: SharedRecallRow): string {
   const date =
     typeof row.createdAt === "number" && Number.isFinite(row.createdAt) && row.createdAt > 0
       ? ` ${new Date(row.createdAt).toISOString().slice(0, 10)}`
       : "";
   const label = row.role ? `${row.role}${date}` : `message${date}`;
-  return `- [${label}] ${clipRowContent(row.content)}`;
+  return `- [${label}] ${row.content.trim()}`;
 }
 
 function isRenderableRow(row: SharedRecallRow): boolean {
@@ -272,9 +257,9 @@ function isRenderableRow(row: SharedRecallRow): boolean {
  * Builds the semantic-recall provider block for one Shared turn, or null when
  * recall contributes nothing: flag off, the lexical path already hit, a blank
  * query, no store matches, or every match already sits in the recent window.
- * Rows keep the store's ranking; output is bounded by `topK` rows and
- * `maxChars` characters. Embed/search failures propagate typed — the turn
- * boundary owns whether recall loss degrades or fails the turn.
+ * Rows keep the store's ranking and complete content. Embed/search failures
+ * propagate typed — the turn boundary owns whether recall loss degrades or
+ * fails the turn.
  */
 export async function buildSharedRecallContext(
   input: BuildSharedRecallContextInput,
@@ -294,11 +279,8 @@ export async function buildSharedRecallContext(
     seenContents.add(message.content.trim());
   }
 
-  const topK = Math.max(1, Math.floor(input.topK ?? SHARED_RECALL_DEFAULT_TOP_K));
-  const maxChars = Math.max(
-    RECALL_BLOCK_HEADER.length,
-    Math.floor(input.maxChars ?? SHARED_RECALL_DEFAULT_MAX_CHARS),
-  );
+  void input.topK;
+  void input.maxChars;
 
   const fresh: SharedRecallRow[] = [];
   for (const row of rows) {
@@ -308,18 +290,8 @@ export async function buildSharedRecallContext(
     if (seenContents.has(content)) continue;
     seenContents.add(content);
     fresh.push(row);
-    if (fresh.length >= topK) break;
   }
   if (fresh.length === 0) return null;
 
-  let block = RECALL_BLOCK_HEADER;
-  let rendered = 0;
-  for (const row of fresh) {
-    const candidate = `${block}\n${formatRecallRow(row)}`;
-    if (candidate.length > maxChars) break;
-    block = candidate;
-    rendered += 1;
-  }
-  if (rendered === 0) return null;
-  return block;
+  return `${RECALL_BLOCK_HEADER}\n${fresh.map(formatRecallRow).join("\n")}`;
 }

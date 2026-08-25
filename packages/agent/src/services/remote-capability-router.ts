@@ -59,6 +59,7 @@ import {
   type TerminalRunParams,
 } from "@elizaos/core";
 import { parsePositiveInteger } from "@elizaos/shared";
+import { trimEndCharacters } from "../utils/string-boundaries.ts";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
@@ -558,7 +559,7 @@ async function invokeLocalRouter(
     case "pty.command.run":
       return (await router.pty.runCommand(
         params as TerminalRunParams,
-      )) as JsonValue;
+      )) as unknown as JsonValue;
     case "git.status":
       return (await router.git.status(params as GitStatusParams)) as JsonValue;
     case "git.diff":
@@ -1116,7 +1117,7 @@ function parseEnvironment(
 }
 
 function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  return trimEndCharacters(value, "/");
 }
 
 function isValidRemotePluginModuleId(value: unknown): value is string {

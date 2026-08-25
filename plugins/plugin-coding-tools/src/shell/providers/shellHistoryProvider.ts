@@ -1,8 +1,9 @@
 /**
- * SHELL_HISTORY provider — injects recent shell activity into agent context: the
- * last commands with stdout/stderr/exit codes, the current and allowed working
- * directories, and recent file operations. Fires only in terminal/code contexts
- * and reads its state from ShellService.
+ * SHELL_HISTORY provider injects the complete conversation-scoped shell
+ * activity into terminal/code context without changing the service-owned
+ * history. It includes command streams, exit codes, working directories, and
+ * file operations so planner context never presents a bounded projection as
+ * the underlying execution record.
  */
 import {
   addHeader,
@@ -18,17 +19,26 @@ import { redactShellText } from "../redaction";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
 
-const MAX_OUTPUT_LENGTH = 8000;
-const TRUNCATE_SEGMENT_LENGTH = 4000;
-
 const spec = requireProviderSpec("SHELL_HISTORY");
+
+function renderFileOperation(
+  runtime: IAgentRuntime,
+  op: FileOperation,
+): string {
+  const target = redactShellText(runtime, op.target);
+  if (op.secondaryTarget) {
+    const secondary = redactShellText(runtime, op.secondaryTarget);
+    return `- ${op.type}: ${target} → ${secondary}`;
+  }
+  return `- ${op.type}: ${target}`;
+}
 
 export const shellHistoryProvider: Provider = {
   name: spec.name,
   description:
-    "Provides recent shell command history, current working directory, and file operations within the restricted environment",
+    "Provides complete shell command history, current working directory, and file operations within the restricted environment",
   descriptionCompressed:
-    "Recent shell history, cwd, and file ops in restricted env.",
+    "Complete shell history, cwd, and file ops in restricted env.",
   position: 99,
   contexts: ["terminal", "code"],
   contextGate: { anyOf: ["terminal", "code"] },
@@ -63,7 +73,7 @@ export const shellHistoryProvider: Provider = {
           data: { historyCount: 0, cwd: "N/A", allowedDir: "N/A" },
         };
       }
-      const history = shellService.getCommandHistory(conversationId, 10);
+      const history = shellService.getCommandHistory(conversationId);
       const cwd = redactShellText(
         runtime,
         shellService.getCurrentDirectory(conversationId),
@@ -85,32 +95,22 @@ export const shellHistoryProvider: Provider = {
             );
 
             if (stdout) {
-              if (stdout.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Output: ${stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stdout.substring(stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
-              } else {
-                entryStr += `\n  Output: ${stdout}`;
-              }
+              entryStr += `\n  Output: ${stdout}`;
             }
 
             if (stderr) {
-              if (stderr.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Error: ${stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stderr.substring(stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
-              } else {
-                entryStr += `\n  Error: ${stderr}`;
-              }
+              entryStr += `\n  Error: ${stderr}`;
             }
 
             entryStr += `\n  Exit Code: ${entry.exitCode}`;
 
             if (entry.fileOperations && entry.fileOperations.length > 0) {
-              entryStr += "\n  File Operations:";
-              entry.fileOperations.forEach((op: FileOperation) => {
-                if (op.secondaryTarget) {
-                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
-                } else {
-                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)}`;
-                }
-              });
+              entryStr += `\n  File Operations:\n${entry.fileOperations
+                .map(
+                  (op: FileOperation) =>
+                    `    ${renderFileOperation(runtime, op)}`,
+                )
+                .join("\n")}`;
             }
 
             return entryStr;
@@ -118,35 +118,10 @@ export const shellHistoryProvider: Provider = {
           .join("\n\n");
       }
 
-      const recentFileOps = history
-        .filter(
-          (entry: CommandHistoryEntry) =>
-            entry.fileOperations && entry.fileOperations.length > 0,
-        )
-        .flatMap((entry: CommandHistoryEntry) => entry.fileOperations ?? [])
-        .slice(-5);
-
-      let fileOpsText = "";
-      if (recentFileOps.length > 0) {
-        fileOpsText =
-          "\n\n" +
-          addHeader(
-            "# Recent File Operations",
-            recentFileOps
-              .map((op: FileOperation) => {
-                if (op.secondaryTarget) {
-                  return `- ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
-                }
-                return `- ${op.type}: ${redactShellText(runtime, op.target)}`;
-              })
-              .join("\n"),
-          );
-      }
-
       const text = `Current Directory: ${cwd}
 Allowed Directory: ${allowedDir}
 
-${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
+${addHeader("# Shell History", historyText)}`;
 
       return {
         values: {

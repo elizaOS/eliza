@@ -51,7 +51,7 @@ export function OwnerOnlyNotice({
 }): React.JSX.Element {
   return (
     <div className="flex items-center gap-2 rounded-sm border border-border/45 bg-card/30 px-3 py-6 text-xs text-muted">
-      <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <Lock className="size-3.5 shrink-0" aria-hidden />
       <span>{message}</span>
     </div>
   );

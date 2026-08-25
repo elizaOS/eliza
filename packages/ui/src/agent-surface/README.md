@@ -8,19 +8,23 @@ focus-aware, fillable, clickable, and visible to the agent.
 ## How it fits together
 
 ```
-DynamicViewLoader (host)
- └─ AgentSurfaceProvider viewId/viewType         ← owns one ViewAgentRegistry
-     ├─ <YourView/>  ── useAgentElement(...) ────► registers elements
-     └─ AgentElementOverlay                       ← draws indicators on highlight
+DynamicViewLoader / ShellViewAgentSurface (host)
+ └─ AgentSurfaceProvider viewId/viewType          ← owns one ViewAgentRegistry
+     ├─ <YourView/>  ── useAgentElement(...) ─────► registers elements
+     └─ AgentElementOverlay                        ← draws indicators on highlight
                          ▲
    view-interact handler ┘  POST /api/views/:id/interact → WS → here
        routes agent-surface capabilities to handleAgentSurfaceCapability(registry, …)
 ```
 
-The provider + overlay are mounted by `DynamicViewLoader` for **every** view, so
-a view only has to call `useAgentElement`. `@elizaos/ui` and `react` are
-externalised in the view bundle (see `packages/scripts/view-bundle-vite.config.ts`),
-so the hook resolves to the host singleton and shares the loader's React context.
+The provider + overlay are mounted by `DynamicViewLoader` for served bundles
+and by `ShellViewAgentSurface` for builtins, registered app-shell pages, overlay
+apps, and dedicated app windows. App-shell and overlay owners come from the
+generated registry inventory in `app-shell-registry.ts`; duplicate view ids
+fail before either renderer mounts. A view only has to call `useAgentElement`.
+`@elizaos/ui` and `react` are externalised in served view bundles (see
+`packages/scripts/view-bundle-vite.config.ts`), so the hook resolves to the host
+singleton and shares the loader's React context.
 
 ### Teardown-safe notifications (#20728, #20974)
 

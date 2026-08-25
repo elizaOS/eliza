@@ -55,14 +55,7 @@ export function ProviderCard({
   variant = "pill",
 }: ProviderCardProps) {
   const stateLabel = current ? "Active" : status.label;
-  // Serving (current) owns the orange fill. An open-but-not-serving tile is
-  // only inspected — a quiet border, never the same accent chrome, so Cloud
-  // can stay expanded without looking like it is answering chat (#20045).
-  const tileChrome = current
-    ? "border-accent/40 bg-accent/8 hover:bg-accent/16"
-    : selected
-      ? "border-txt/20 bg-card hover:bg-surface"
-      : "border-border bg-card hover:bg-surface";
+  const presentation = current ? "current" : selected ? "selected" : "idle";
   const iconChrome = current
     ? "text-accent"
     : selected
@@ -82,20 +75,20 @@ export function ProviderCard({
     return (
       <Button
         ref={ref}
-        variant="ghost"
+        variant={current ? "surfaceAccent" : selected ? "outline" : "choice"}
+        size="card"
+        align="start"
         aria-current={current ? "true" : undefined}
         aria-pressed={selected}
+        data-provider-presentation={presentation}
         aria-label={`${label}, ${stateLabel}`}
         onClick={() => onSelect(id)}
         title={`${label} · ${stateLabel}`}
         {...agentProps}
-        className={cn(
-          "h-auto w-full items-start justify-start gap-3 rounded-md border p-3 text-left transition-colors",
-          tileChrome,
-        )}
+        className="w-full"
       >
         <Icon
-          className={cn("mt-0.5 h-5 w-5 shrink-0", iconChrome)}
+          className={cn("mt-0.5 size-5 shrink-0", iconChrome)}
           aria-hidden
         />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -105,14 +98,14 @@ export function ProviderCard({
             </span>
             {current ? (
               <span className="flex shrink-0 items-center gap-1 text-xs text-accent">
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                <CheckCircle2 className="size-3.5" aria-hidden />
                 Active
               </span>
             ) : (
               <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 rounded-full",
+                    "size-1.5 rounded-full",
                     STATUS_DOT_CLASSES[status.tone],
                   )}
                   aria-hidden
@@ -134,33 +127,25 @@ export function ProviderCard({
   return (
     <Button
       ref={ref}
-      variant="ghost"
+      variant={current ? "surfaceAccent" : selected ? "outline" : "choice"}
+      size="pillDense"
       aria-current={current ? "true" : undefined}
       aria-pressed={selected}
+      data-provider-presentation={presentation}
       aria-label={`${label}, ${stateLabel}`}
       onClick={() => onSelect(id)}
       title={`${label} · ${stateLabel}`}
       {...agentProps}
-      className={cn(
-        "min-h-[2.25rem] max-w-full gap-2 rounded-full border px-3 py-1.5 text-left text-sm transition-colors",
-        current
-          ? "border-accent/40 bg-accent/8 text-txt-strong hover:bg-accent/16"
-          : selected
-            ? "border-txt/20 bg-card text-txt hover:bg-surface"
-            : "border-border bg-card text-txt hover:bg-surface",
-      )}
+      className="max-w-full"
     >
-      <Icon className={cn("h-4 w-4 shrink-0", iconChrome)} aria-hidden />
+      <Icon className={cn("size-4 shrink-0", iconChrome)} aria-hidden />
       <span className="truncate font-medium">{label}</span>
       {current ? (
-        <CheckCircle2
-          className="h-3.5 w-3.5 shrink-0 text-accent"
-          aria-hidden
-        />
+        <CheckCircle2 className="size-3.5 shrink-0 text-accent" aria-hidden />
       ) : (
         <span
           className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
+            "size-1.5 shrink-0 rounded-full",
             STATUS_DOT_CLASSES[status.tone],
           )}
           aria-hidden

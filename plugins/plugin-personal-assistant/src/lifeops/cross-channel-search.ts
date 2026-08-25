@@ -21,7 +21,13 @@
 // can't import its runtime helpers from here. We type-shape the parts we
 // touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, Service, UUID } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+} from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
   groupId: UUID;
@@ -87,7 +93,6 @@ export const CROSS_CHANNEL_SEARCH_CHANNELS = [
   "discord",
   "imessage",
   "whatsapp",
-  "signal",
   "x",
   "x-dm",
   "calendly",
@@ -122,7 +127,7 @@ export type CrossChannelSearchQuery = {
   channels?: CrossChannelSearchChannel[];
   /** Optional worldId scope for memory search. */
   worldId?: UUID;
-  /** Per-channel hit cap (default 10). */
+  /** @deprecated Results are complete; model-facing search is not capped. */
   limit?: number;
 };
 
@@ -173,8 +178,8 @@ export type CrossChannelSearchResult = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DEFAULT_PER_CHANNEL_LIMIT = 10;
 const MEMORY_MATCH_THRESHOLD = 0.55;
+const MEMORY_SEARCH_PAGE_SIZE = 500;
 
 const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   gmail: "gmail",
@@ -183,7 +188,6 @@ const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   discord: "discord",
   imessage: "imessage",
   whatsapp: "whatsapp",
-  signal: "signal",
   x: "x",
   "x-dm": "x",
   calendly: "calendly",
@@ -240,8 +244,6 @@ function classifyMemoryChannel(
       return "imessage";
     case "whatsapp":
       return "whatsapp";
-    case "signal":
-      return "signal";
     case "x":
     case "twitter":
       return "x";
@@ -325,17 +327,6 @@ type CrossChannelNativeSearchService = GmailSearchService & {
     chatId?: string;
     limit?: number;
   }) => Promise<IMessageSearchResult[]>;
-  readSignalInbound?: (limit?: number) => Promise<
-    Array<{
-      id: string;
-      threadId?: string | null;
-      roomName?: string | null;
-      speakerName?: string | null;
-      senderNumber?: string | null;
-      createdAt: number;
-      text: string;
-    }>
-  >;
   pullWhatsAppRecent?: (limit?: number) => Promise<{
     count: number;
     messages: Array<{
@@ -393,7 +384,6 @@ async function searchGmail(
   unsupported: CrossChannelSearchUnsupported[];
   degraded: CrossChannelSearchDegraded[];
 }> {
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const lifeOps = getLifeOpsSearchService(runtime);
   if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
     return {
@@ -411,7 +401,6 @@ async function searchGmail(
   const requestUrl = new URL("http://127.0.0.1/api/lifeops/gmail/search");
   const feed = await lifeOps.getGmailSearch(requestUrl, {
     query: query.query,
-    maxResults: limit,
   });
 
   const hits: CrossChannelSearchHit[] = [];
@@ -429,7 +418,7 @@ async function searchGmail(
       text: msg.snippet,
       citation: {
         platform: "gmail",
-        label: msg.subject || msg.snippet.slice(0, 80),
+        label: msg.subject || toWellFormedUnicode(msg.snippet),
         url: msg.htmlLink ?? undefined,
       },
     });
@@ -457,17 +446,16 @@ async function searchTelegram(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const messages = await lifeOps.searchTelegramMessages({
     query: query.query,
-    limit,
   });
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of messages) {
     if (!withinTimeWindow(msg.timestamp ?? undefined, query.timeWindow)) {
       continue;
     }
-    const sourceRef = msg.id ?? msg.dialogId ?? msg.content.slice(0, 48);
+    const sourceRef =
+      msg.id ?? msg.dialogId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "telegram",
       id: `telegram:${sourceRef}`,
@@ -510,7 +498,8 @@ async function searchDiscord(
     if (!withinTimeWindow(msg.timestamp ?? undefined, query.timeWindow)) {
       continue;
     }
-    const sourceRef = msg.id ?? msg.channelId ?? msg.content.slice(0, 48);
+    const sourceRef =
+      msg.id ?? msg.channelId ?? toWellFormedUnicode(msg.content);
     hits.push({
       channel: "discord",
       id: `discord:${sourceRef}`,
@@ -547,10 +536,8 @@ async function searchIMessages(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const messages = await lifeOps.searchIMessages({
     query: query.query,
-    limit,
   });
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of messages) {
@@ -573,54 +560,6 @@ async function searchIMessages(
   return { hits, unsupported: [] };
 }
 
-async function searchSignal(
-  runtime: IAgentRuntime,
-  query: CrossChannelSearchQuery,
-): Promise<{
-  hits: CrossChannelSearchHit[];
-  unsupported: CrossChannelSearchUnsupported[];
-}> {
-  const lifeOps = getLifeOpsSearchService(runtime);
-  if (!lifeOps || typeof lifeOps.readSignalInbound !== "function") {
-    return {
-      hits: [],
-      unsupported: [
-        {
-          channel: "signal",
-          reason: "Signal passive read is not available on LifeOpsService",
-        },
-      ],
-    };
-  }
-
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const needle = query.query.trim().toLowerCase();
-  const messages = await lifeOps.readSignalInbound(limit + 25);
-  const hits: CrossChannelSearchHit[] = [];
-  for (const msg of messages) {
-    const timestamp = normalizeIsoFromMs(msg.createdAt);
-    if (!withinTimeWindow(timestamp, query.timeWindow)) {
-      continue;
-    }
-    if (needle && !msg.text.toLowerCase().includes(needle)) {
-      continue;
-    }
-    hits.push({
-      channel: "signal",
-      id: `signal:${msg.id}`,
-      sourceRef: msg.id,
-      timestamp,
-      speaker: msg.speakerName ?? msg.senderNumber ?? "unknown",
-      text: msg.text,
-      citation: {
-        platform: "signal",
-        label: msg.roomName ?? msg.threadId ?? "Signal",
-      },
-    });
-  }
-  return { hits: hits.slice(0, limit), unsupported: [] };
-}
-
 async function searchWhatsApp(
   runtime: IAgentRuntime,
   query: CrossChannelSearchQuery,
@@ -641,9 +580,8 @@ async function searchWhatsApp(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const recent = await lifeOps.pullWhatsAppRecent(limit + 25);
+  const recent = await lifeOps.pullWhatsAppRecent();
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of recent.messages) {
     const text = msg.text?.trim();
@@ -669,7 +607,7 @@ async function searchWhatsApp(
       },
     });
   }
-  return { hits: hits.slice(0, limit), unsupported: [] };
+  return { hits, unsupported: [] };
 }
 
 function searchableCalendarText(event: LifeOpsCalendarEvent): string {
@@ -784,8 +722,7 @@ async function searchXPostsChannel(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const posts = await lifeOps.searchXPosts(query.query, { limit });
+  const posts = await lifeOps.searchXPosts(query.query);
   const hits: CrossChannelSearchHit[] = [];
   for (const post of posts) {
     if (!withinTimeWindow(post.createdAtSource, query.timeWindow)) {
@@ -828,9 +765,8 @@ async function searchXDms(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
   const needle = query.query.trim().toLowerCase();
-  const dms = await lifeOps.getXDms({ limit: limit + 10 });
+  const dms = await lifeOps.getXDms();
   const hits: CrossChannelSearchHit[] = [];
   for (const dm of dms) {
     if (!withinTimeWindow(dm.receivedAt, query.timeWindow)) {
@@ -852,7 +788,7 @@ async function searchXDms(
       },
     });
   }
-  return { hits: hits.slice(0, limit), unsupported: [] };
+  return { hits, unsupported: [] };
 }
 
 async function embedQuery(
@@ -896,16 +832,33 @@ async function searchAgentMemory(
     };
   }
 
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const searchParams: Parameters<IAgentRuntime["searchMemories"]>[0] = {
-    embedding,
-    tableName: "messages",
-    match_threshold: MEMORY_MATCH_THRESHOLD,
-    limit: limit + 10,
-    worldId: query.worldId,
-  };
-
-  const memories = await runtime.searchMemories(searchParams);
+  const memories: Memory[] = [];
+  const seenIds = new Set<UUID>();
+  for (let offset = 0; ; offset += MEMORY_SEARCH_PAGE_SIZE) {
+    const page = await runtime.searchMemories({
+      embedding,
+      tableName: "messages",
+      match_threshold: MEMORY_MATCH_THRESHOLD,
+      limit: MEMORY_SEARCH_PAGE_SIZE,
+      offset,
+      worldId: query.worldId,
+    });
+    const ids = page.map((memory) => memory.id);
+    const invalidId = ids.some((id) => !id);
+    const repeatedId = ids.some((id) => id && seenIds.has(id));
+    if (invalidId || repeatedId) {
+      throw new ElizaError(
+        "Cross-channel memory pagination returned an unstable page",
+        {
+          code: "CROSS_CHANNEL_MEMORY_PAGINATION_STALLED",
+          context: { offset, pageSize: page.length, invalidId, repeatedId },
+        },
+      );
+    }
+    for (const id of ids) seenIds.add(id as UUID);
+    memories.push(...page);
+    if (page.length < MEMORY_SEARCH_PAGE_SIZE) break;
+  }
   const hits = await memoriesToHits(runtime, memories, query);
   return { hits, degraded: [] };
 }
@@ -957,10 +910,10 @@ async function memoriesToHits(
       sourceRef: memId,
       timestamp: iso,
       speaker: speakerEntity ?? "unknown",
-      text: text.slice(0, 600),
+      text: toWellFormedUnicode(text),
       citation: {
         platform: KNOWN_PLATFORM_FOR_CHANNEL[channel],
-        label: roomRecord?.name ?? `room:${(roomId ?? "").slice(0, 8)}`,
+        label: roomRecord?.name ?? `room:${roomId ?? ""}`,
       },
     });
   }
@@ -1080,7 +1033,6 @@ async function searchClusterMemories(
 
   const memories = await fn({
     primaryEntityId: person.primaryEntityId,
-    count: (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * 2,
     worldId: query.worldId,
   });
   const hits = await memoriesToHits(runtime, memories, query);
@@ -1228,25 +1180,6 @@ export async function runCrossChannelSearch(
     );
   }
 
-  if (isChannelEnabled("signal", channels)) {
-    tasks.push(
-      (async () => {
-        try {
-          const r = await searchSignal(runtime, query);
-          allHits.push(...r.hits);
-          unsupported.push(...r.unsupported);
-        } catch (err) {
-          degraded.push({
-            channel: "signal",
-            reason: `Signal search failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          });
-        }
-      })(),
-    );
-  }
-
   if (isChannelEnabled("whatsapp", channels)) {
     tasks.push(
       (async () => {
@@ -1383,18 +1316,13 @@ export async function runCrossChannelSearch(
     new Set(merged.map((h) => h.channel)),
   ) as CrossChannelSearchChannel[];
 
-  const finalLimit =
-    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) *
-    CROSS_CHANNEL_SEARCH_CHANNELS.length;
-  const limited = merged.slice(0, finalLimit);
-
   logger.debug(
-    `[cross-channel-search] query="${query.query}" hits=${limited.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
+    `[cross-channel-search] query="${query.query}" hits=${merged.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
   );
 
   return {
     query: query.query,
-    hits: limited,
+    hits: merged,
     unsupported,
     degraded,
     channelsWithHits,

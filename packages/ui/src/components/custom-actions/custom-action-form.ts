@@ -61,8 +61,7 @@ export function toNonEmptyString(value: unknown): string | undefined {
 }
 
 export function normalizeActionName(value: string): string {
-  const safe = value.length > 256 ? value.slice(0, 256) : value;
-  return safe
+  return value
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9_]+/g, "_")

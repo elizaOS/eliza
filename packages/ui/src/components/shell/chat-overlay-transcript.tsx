@@ -4,6 +4,7 @@
  * this module owns transcript-only presentation policy.
  */
 
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import type { ChatTurnStatus } from "../../api/client-types-chat";
 import { splitLeadingSlashCommand } from "../../chat/slash-menu";
 import {
@@ -11,6 +12,7 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
 import { cn } from "../../lib/utils";
+import { CapabilityHandoffBlock } from "../chat/CapabilityHandoffBlock";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import {
@@ -18,6 +20,7 @@ import {
   SensitiveRequestBlock,
 } from "../chat/MessageContent";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
+import { useParsedSegments } from "../chat/use-parsed-segments";
 import { ChatMessage } from "../composites/chat/chat-message";
 import type {
   ChatMessageData,
@@ -54,19 +57,30 @@ function OverlayAssistantTurnBody({
   message: ChatMessageData;
   turnStatus: ChatTurnStatus | null;
 }) {
+  // Liveness consumes this marker as a prose-reply signal, so derive it from
+  // the same normalized segments InlineWidgetText renders, not widget chrome.
+  const renderedSegments = useParsedSegments(
+    stripUnclaimedInteractionMarkup(message.text),
+    false,
+  );
+  const hasRenderedProse = renderedSegments.some(
+    (segment) => segment.kind === "text" && Boolean(segment.text.trim()),
+  );
   const attachmentsNode = message.attachments?.length ? (
     <MessageAttachments attachments={message.attachments} />
   ) : null;
   const pending =
     !message.text.trim() &&
     !message.attachments?.length &&
-    !message.secretRequest;
+    !message.secretRequest &&
+    !message.capabilityHandoff;
   const phase = pending ? "status" : "reply";
   return (
     <div
       className="grid min-h-[1.4375rem] w-full min-w-0"
       data-testid="overlay-assistant-turn-body"
       data-phase={phase}
+      data-has-message-text={hasRenderedProse ? "true" : "false"}
     >
       {pending ? (
         <div className="col-start-1 row-start-1 flex min-h-[1.4375rem] items-center">
@@ -79,6 +93,11 @@ function OverlayAssistantTurnBody({
           {message.secretRequest ? (
             <div className="pointer-events-auto">
               <SensitiveRequestBlock request={message.secretRequest} />
+            </div>
+          ) : null}
+          {message.capabilityHandoff ? (
+            <div className="pointer-events-auto">
+              <CapabilityHandoffBlock request={message.capabilityHandoff} />
             </div>
           ) : null}
         </div>
@@ -105,18 +124,17 @@ export function renderOverlayMessageBody(
           WALLPAPER_FLOAT_SHADOW,
         )}
       >
-        <div className="mb-1 text-[14px] font-medium">
+        <div className="mb-1 text-sm font-medium">
           Connect a provider to chat
         </div>
-        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
+        <div className="mb-2.5 whitespace-pre-wrap text-sm-tight leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
           {message.text}
         </div>
         <Button
-          variant="ghost"
-          size="sm"
+          variant="outlineMuted"
+          size="pill"
           data-testid="chat-no-provider-settings"
           onClick={() => onOpenSettings?.()}
-          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
         >
           Open Settings
         </Button>
@@ -135,16 +153,15 @@ export function renderOverlayMessageBody(
           WALLPAPER_FLOAT_SHADOW,
         )}
       >
-        <div className="mb-1 text-[14px] font-medium">Out of credits</div>
-        <div className="mb-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
+        <div className="mb-1 text-sm font-medium">Out of credits</div>
+        <div className="mb-2.5 whitespace-pre-wrap text-sm-tight leading-relaxed text-muted-strong [overflow-wrap:anywhere]">
           {message.text}
         </div>
         <Button
-          variant="ghost"
-          size="sm"
+          variant="outlineMuted"
+          size="pill"
           data-testid="chat-insufficient-credits-add"
           onClick={() => onOpenSettings?.()}
-          className="h-auto rounded-full border border-border-strong bg-surface px-3 py-1.5 text-[13px] font-medium text-txt transition-colors hover:bg-bg-hover"
         >
           Add credits
         </Button>
@@ -193,9 +210,12 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     text: m.content,
     ...(Number.isFinite(m.createdAt) ? { timestamp: m.createdAt } : {}),
     ...(m.source ? { source: m.source } : {}),
+    ...(m.interrupted ? { interrupted: true } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
+    ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
+    ...(m.capabilityHandoff ? { capabilityHandoff: m.capabilityHandoff } : {}),
   };
   shellMessageDataCache.set(m, data);
   return data;
@@ -246,6 +266,20 @@ export function selectFirstRunDisplayMessages(
   const latest = firstRunMessages.at(-1);
   if (!latest) return [];
   const previous = firstRunMessages.at(-2);
+
+  // A free-text answer is additive context, not a replacement for the live
+  // setup control. Keep the most recent choice-bearing turn immediately above
+  // the concise conductor reply so "choose/sign in above" remains actionable.
+  // Earlier choices stay hidden after the conductor advances because each
+  // step seeds a newer choice-bearing turn.
+  if (latest.id.startsWith("first-run:reply:choice:")) {
+    const activeChoice = firstRunMessages
+      .slice()
+      .reverse()
+      .find((message) => message.content.includes("[CHOICE:"));
+    if (activeChoice && activeChoice !== latest) return [activeChoice, latest];
+  }
+
   if (
     (previous?.id === "first-run:greeting" &&
       latest.id === "first-run:cloud-oauth") ||

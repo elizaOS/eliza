@@ -1,5 +1,6 @@
 /** Verifies the LifeOps scheduler tick processes scheduled work and surfaces subsystem failures rather than swallowing them. Deterministic vitest with the scheduled-work path mocked. */
-import type { IAgentRuntime, TaskWorker, UUID } from "@elizaos/core";
+import type { IAgentRuntime, Task, TaskWorker, UUID } from "@elizaos/core";
+import { TaskService } from "@elizaos/core/node";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { escalateUnacknowledgedIntents } from "./intent-sync.js";
 import {
@@ -43,6 +44,10 @@ vi.mock("./scheduler-task.js", () => ({
   resolveLifeOpsTaskIntervalMs: vi.fn(() => 60_000),
 }));
 
+vi.mock("./app-state.js", () => ({
+  loadLifeOpsAppState: vi.fn(async () => ({ enabled: true })),
+}));
+
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
     async processScheduledWork() {
@@ -67,7 +72,7 @@ describe("registerLifeOpsTaskWorker", () => {
   it("keeps the task identity valid without executing when scheduler is disabled", async () => {
     let registered: TaskWorker | undefined;
     const disabledRuntime = {
-      getTaskWorker: () => undefined,
+      getTaskWorker: () => registered,
       registerTaskWorker: (worker: TaskWorker) => {
         registered = worker;
       },
@@ -81,6 +86,52 @@ describe("registerLifeOpsTaskWorker", () => {
         name: "LIFEOPS_SCHEDULER",
       }),
     ).resolves.toBe(false);
+  });
+
+  it("keeps a persisted due row out of TaskService until the claim schema is ready", async () => {
+    let registered: TaskWorker | undefined;
+    let ready = false;
+    const task: Task = {
+      id: "00000000-0000-0000-0000-0000000000ef" as UUID,
+      name: "LIFEOPS_SCHEDULER",
+      tags: ["queue", "repeat"],
+      metadata: { updateInterval: 1, updatedAt: 0 },
+    };
+    const gatedRuntime = {
+      agentId: AGENT_ID,
+      getTaskWorker: () => registered,
+      registerTaskWorker: (worker: TaskWorker) => {
+        registered = worker;
+      },
+      getTask: vi.fn(async () => task),
+      updateTask: vi.fn(async () => undefined),
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      },
+    } as unknown as IAgentRuntime;
+
+    registerLifeOpsTaskWorker(gatedRuntime, {
+      isWorkflowClaimSchemaReady: () => ready,
+    });
+
+    const execute = vi.fn(registered?.execute);
+    if (!registered) throw new Error("expected LifeOps worker registration");
+    registered.execute = execute;
+    const taskService = new TaskService(gatedRuntime);
+
+    await taskService.runTick([task]);
+    expect(execute).not.toHaveBeenCalled();
+    await expect(
+      registered?.execute(gatedRuntime, {}, { name: "LIFEOPS_SCHEDULER" }),
+    ).rejects.toThrow(/claim schema is not ready/i);
+    execute.mockClear();
+
+    ready = true;
+    await taskService.runTick([task]);
+    expect(execute).toHaveBeenCalledOnce();
   });
 });
 

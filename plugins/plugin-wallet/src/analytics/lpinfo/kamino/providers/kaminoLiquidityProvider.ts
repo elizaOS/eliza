@@ -10,8 +10,6 @@ import type {
   KaminoStrategy,
 } from "../services/kaminoLiquidityService";
 
-const KAMINO_LIQUIDITY_TEXT_LIMIT = 4000;
-
 function asPromptRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
@@ -187,7 +185,7 @@ export const kaminoLiquidityProvider: Provider = {
       kaminoLiquidity: liquidityInfo,
     };
 
-    const text = `${liquidityInfo}\n`.slice(0, KAMINO_LIQUIDITY_TEXT_LIMIT);
+    const text = `${liquidityInfo}\n`;
 
     return {
       data,

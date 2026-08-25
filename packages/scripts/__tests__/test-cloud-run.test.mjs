@@ -34,6 +34,7 @@ import {
   PREFLIGHT_STEPS,
   parseBatchTimeoutArg,
   parsePositiveDuration,
+  readProcessIdentity,
   runBatches,
   runCommandWithWatchdog,
   runPreflightStep,
@@ -555,6 +556,55 @@ describe("watchdog configuration", () => {
       command: "taskkill",
       args: ["/PID", "321", "/T", "/F"],
     });
+  });
+
+  it("captures Windows process identity through the bounded Get-Process path", () => {
+    let invocation;
+    const identity = readProcessIdentity(321, {
+      platform: "win32",
+      spawnSyncFn: (command, args, options) => {
+        invocation = { command, args, options };
+        return { status: 0, stdout: "638915887234567890" };
+      },
+    });
+
+    expect(identity).toBe("win-creation:638915887234567890");
+    expect(invocation.command).toBe("powershell.exe");
+    expect(invocation.args).toContain("-NoProfile");
+    expect(invocation.args.at(-1)).toContain("Get-Process -Id 321");
+    expect(invocation.args.at(-1)).not.toContain("Get-CimInstance");
+    expect(invocation.options).toMatchObject({
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10_000,
+      maxBuffer: 4096,
+    });
+  });
+
+  it("rejects missing or malformed Windows process identities", () => {
+    for (const result of [
+      { status: 3, stdout: "" },
+      { status: 0, stdout: "not-ticks" },
+      { status: 0, stdout: "" },
+      { status: 0, stdout: "123\n456" },
+      { status: 0, stdout: "123", error: new Error("timed out") },
+    ]) {
+      expect(
+        readProcessIdentity(321, {
+          platform: "win32",
+          spawnSyncFn: () => result,
+        }),
+      ).toBeUndefined();
+    }
+
+    expect(
+      readProcessIdentity(321, {
+        platform: "win32",
+        spawnSyncFn: () => {
+          throw new Error("PowerShell unavailable");
+        },
+      }),
+    ).toBeUndefined();
   });
 
   it("signals the POSIX process group with TERM then KILL", async () => {

@@ -42,7 +42,7 @@ export interface EndpointCardProps<
 
 function getPricingTextStyle(pricing: ApiEndpointCardPricing | undefined) {
   if (!pricing) return "text-neutral-500";
-  if (pricing.isFree) return "text-green-400";
+  if (pricing.isFree) return "text-status-success";
   if (pricing.isVariable) return "text-txt";
   return "text-txt";
 }
@@ -69,14 +69,16 @@ export function EndpointCard<
 }: EndpointCardProps<TEndpoint>) {
   return (
     <Button
-      variant="ghost"
+      variant="outlineAccent"
+      size="card"
+      align="start"
       type="button"
       onClick={() => onSelect(endpoint)}
-      className="group relative w-full min-w-0 overflow-hidden rounded-sm border border-white/5 bg-neutral-900/50 p-4 text-left transition-all hover:border-white/10 hover:bg-neutral-900/70"
+      className="group relative w-full min-w-0 overflow-hidden"
     >
       <div className="absolute right-4 top-4 opacity-0 transition-all duration-200 group-hover:opacity-100">
         <div className="flex items-center gap-1 text-xs font-medium text-txt-strong">
-          Test <ChevronRight className="h-3 w-3" />
+          Test <ChevronRight className="size-3" />
         </div>
       </div>
 
@@ -98,7 +100,7 @@ export function EndpointCard<
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase",
+              "rounded-sm px-2 py-0.5 text-2xs font-bold uppercase",
               getMethodColor(endpoint.method),
             )}
           >
@@ -118,9 +120,9 @@ export function EndpointCard<
               )}
             >
               {endpoint.pricing.isFree ? (
-                <Sparkles className="h-3 w-3" />
+                <Sparkles className="size-3" />
               ) : (
-                <Coins className="h-3 w-3" />
+                <Coins className="size-3" />
               )}
               <span className="font-medium">
                 {formatPricing
@@ -139,7 +141,7 @@ export function EndpointCard<
 
           <div className="flex items-center gap-2">
             {endpoint.deprecated && (
-              <span className="text-[10px] font-medium text-red-400">
+              <span className="text-2xs font-medium text-destructive">
                 Deprecated
               </span>
             )}
@@ -148,13 +150,13 @@ export function EndpointCard<
                 {endpoint.tags.slice(0, 2).map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-sm bg-white/10 px-1.5 py-0.5 text-[10px] text-neutral-300"
+                    className="rounded-sm bg-white/10 px-1.5 py-0.5 text-2xs text-neutral-300"
                   >
                     {tag}
                   </span>
                 ))}
                 {endpoint.tags.length > 2 && (
-                  <span className="text-[10px] text-neutral-400">
+                  <span className="text-2xs text-neutral-400">
                     +{endpoint.tags.length - 2}
                   </span>
                 )}

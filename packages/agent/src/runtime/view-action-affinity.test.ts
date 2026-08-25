@@ -1,8 +1,7 @@
 /**
  * Covers view-action affinity: the derived view→action map, the active-view
  * context/element snapshot lifecycle, the awareness block rendered into planner
- * prompts, the drift/coverage validators, and the end-to-end weave with
- * prompt-compaction. Deterministic — synthetic plugin views registered in the
+ * prompts and the drift/coverage validators. Deterministic — synthetic plugin views registered in the
  * live views-registry, plus a source-static git-grep drift guard over
  * plugins/ and packages/agent/src.
  */
@@ -16,11 +15,6 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import {
-  buildFullParamActionSet,
-  compactActionsForIntent,
-} from "./prompt-compaction.ts";
-import {
-  ACTIVE_VIEW_ELEMENT_RENDER_CAP,
   applyActiveViewAwareness,
   clearActiveViewContext,
   getActiveViewContext,
@@ -191,14 +185,6 @@ describe("view-action-affinity", () => {
     expect(viewScopedActionNames("lifeops").has("PERSONAL_ASSISTANT")).toBe(
       true,
     );
-  });
-
-  it("merges view-scoped actions into the full-param set", () => {
-    const set = buildFullParamActionSet([], viewScopedActionNames("wallet"));
-    // Universal actions are always present…
-    expect(set.has("REPLY")).toBe(true);
-    // …and the active view's scoped action is kept full.
-    expect(set.has("EVM_SWAP")).toBe(true);
   });
 
   it("flags drift when a mapped action is not registered", () => {
@@ -452,13 +438,15 @@ describe("active-view element snapshot", () => {
     expect(block).toContain('"Amount" = "5"');
   });
 
-  it("caps the rendered element list and notes the remainder", () => {
-    const many = Array.from(
-      { length: ACTIVE_VIEW_ELEMENT_RENDER_CAP + 5 },
-      (_unused, i) => ({ id: `el-${i}`, role: "button", label: `E${i}` }),
-    );
+  it("renders every active-view element", () => {
+    const many = Array.from({ length: 45 }, (_unused, i) => ({
+      id: `el-${i}`,
+      role: "button",
+      label: `E${i}`,
+    }));
     const block = renderActiveViewContextBlock({ ...VIEW, elements: many });
-    expect(block).toContain("…and 5 more — call list-elements for the rest.");
+    expect(block).toContain(`- el-${many.length - 1} [button]`);
+    expect(block).not.toContain("more — call list-elements");
   });
 
   it("omits the elements section when none are reported", () => {
@@ -527,72 +515,6 @@ describe("view related action names resolve to declared actions in source", () =
   }, 30000);
 });
 
-describe("compactActionsForIntent with view-scoped actions", () => {
-  const PROMPT = [
-    "# Available Actions",
-    "- REPLY: respond to the user",
-    "  parameters: { text: string }",
-    "- EVM_SWAP: swap tokens on an EVM chain",
-    "  parameters: { fromToken: string, amount: number }",
-    "- WHATEVER: some unrelated action",
-    "  parameters: { foo: string }",
-    "",
-    "# Received Message",
-    "12:00 User: hello there",
-  ].join("\n");
-
-  it("summarizes an action's params when neither intent nor view keeps it", () => {
-    const out = compactActionsForIntent(PROMPT);
-    // EVM_SWAP param schema is dropped for plain chat with no active view…
-    expect(out).toContain("- EVM_SWAP: swap tokens on an EVM chain");
-    expect(out).not.toContain("fromToken: string, amount: number");
-    // …REPLY (universal) keeps its params.
-    expect(out).toContain("text: string");
-  });
-
-  it("keeps the active view's scoped action at full param detail", () => {
-    const out = compactActionsForIntent(
-      PROMPT,
-      viewScopedActionNames("wallet"),
-    );
-    // The wallet view scopes EVM_SWAP → its params survive compaction.
-    expect(out).toContain("fromToken: string, amount: number");
-    // The unrelated action still loses param detail.
-    expect(out).not.toContain("foo: string");
-  });
-
-  // Mirrors the exact pipeline installPromptOptimizations runs on a planner
-  // prompt: read the active view, weight its scoped actions through
-  // compactActionsForIntent, then inject the awareness block. Locks the
-  // integration contract the prompt-optimization wiring implements.
-  it("end-to-end: active view weights its action AND injects awareness", () => {
-    setActiveViewContext({
-      viewId: "wallet",
-      viewLabel: "Wallet",
-      viewType: "gui",
-      viewPath: "/wallet",
-    });
-    const active = getActiveViewContext();
-    let prompt = compactActionsForIntent(
-      PROMPT,
-      viewScopedActionNames(active?.viewId),
-    );
-    if (active && prompt.includes("# Available Actions")) {
-      prompt = applyActiveViewAwareness(prompt, active);
-    }
-    // Weighting: the wallet view's EVM_SWAP keeps full params…
-    expect(prompt).toContain("fromToken: string, amount: number");
-    // …unrelated action stays summarized…
-    expect(prompt).not.toContain("foo: string");
-    // …and awareness is injected once, before the action catalogue.
-    expect(prompt).toContain("# Active View");
-    expect(prompt.indexOf("# Active View")).toBeLessThan(
-      prompt.indexOf("# Available Actions"),
-    );
-    expect(prompt.match(/# Active View/g)).toHaveLength(1);
-  });
-});
-
 describe("applyActiveViewAwareness", () => {
   const PROMPT = "intro text\n\n# Available Actions\n- REPLY: respond\n";
 
@@ -619,14 +541,14 @@ describe("applyActiveViewAwareness", () => {
     expect(twice.match(/# Active View/g)?.length).toBe(1);
   });
 
-  it("replaces a truncated Active View header with a full element snapshot (#17918)", () => {
+  it("replaces an incomplete Active View header with a full element snapshot (#17918)", () => {
     const withElements = {
       ...AWARE_VIEW,
       elements: [{ id: "save-ledger", role: "button", label: "Save ledger" }],
     };
-    const truncated =
+    const incomplete =
       "intro text\n\n# Active View\nThe user is looking at a view with no elements section.\n\n# Available Actions\n- REPLY: respond\n";
-    const out = applyActiveViewAwareness(truncated, withElements);
+    const out = applyActiveViewAwareness(incomplete, withElements);
     expect(out).toContain("# Active View");
     expect(out).toContain("Addressable elements currently in this view");
     expect(out).toContain("save-ledger [button]");

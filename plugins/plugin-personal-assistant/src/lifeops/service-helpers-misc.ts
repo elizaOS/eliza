@@ -4,6 +4,7 @@
  * small pure utilities shared across the domains.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,
@@ -174,7 +175,16 @@ export function normalizeReminderSteps(value: unknown): LifeOpsReminderStep[] {
       label,
     } satisfies LifeOpsReminderStep;
   });
-  steps.sort((left, right) => left.offsetMinutes - right.offsetMinutes);
+  steps.sort((left, right) => {
+    const leftOffset = Number.isFinite(left.offsetMinutes)
+      ? left.offsetMinutes
+      : 0;
+    const rightOffset = Number.isFinite(right.offsetMinutes)
+      ? right.offsetMinutes
+      : 0;
+    if (leftOffset !== rightOffset) return leftOffset - rightOffset;
+    return left.label.localeCompare(right.label);
+  });
   return steps;
 }
 
@@ -228,6 +238,24 @@ export function buildWindowStartDate(
   });
 }
 
+/**
+ * Orders candidate windows by local start minute. A non-finite start minute
+ * sorts as 0 rather than poisoning the comparator with NaN, which would leave
+ * the whole sort order unspecified; equal starts fall back to the window name
+ * so the ordering stays deterministic.
+ */
+export function compareWindowStarts(
+  left: Pick<LifeOpsWindowPolicy["windows"][number], "name" | "startMinute">,
+  right: Pick<LifeOpsWindowPolicy["windows"][number], "name" | "startMinute">,
+): number {
+  const leftMinute = Number.isFinite(left.startMinute) ? left.startMinute : 0;
+  const rightMinute = Number.isFinite(right.startMinute)
+    ? right.startMinute
+    : 0;
+  if (leftMinute !== rightMinute) return leftMinute - rightMinute;
+  return left.name.localeCompare(right.name);
+}
+
 export function resolveUpcomingWindowStart(
   timeZone: string,
   windowPolicy: LifeOpsWindowPolicy,
@@ -238,7 +266,7 @@ export function resolveUpcomingWindowStart(
 ): Date {
   const matchingWindows = windowPolicy.windows
     .filter((window) => candidateNames.includes(window.name))
-    .sort((left, right) => left.startMinute - right.startMinute);
+    .sort(compareWindowStarts);
   const candidateMinutes =
     matchingWindows.length > 0
       ? matchingWindows.map((window) => window.startMinute)
@@ -316,13 +344,17 @@ export function sortOverviewOccurrences(
   occurrences: LifeOpsOccurrenceView[],
 ): LifeOpsOccurrenceView[] {
   return [...occurrences].sort((left, right) => {
-    const leftStart = new Date(left.relevanceStartAt).getTime();
-    const rightStart = new Date(right.relevanceStartAt).getTime();
+    const leftRaw = new Date(left.relevanceStartAt).getTime();
+    const rightRaw = new Date(right.relevanceStartAt).getTime();
+    const leftStart = Number.isFinite(leftRaw) ? leftRaw : 0;
+    const rightStart = Number.isFinite(rightRaw) ? rightRaw : 0;
     if (leftStart !== rightStart) {
       return leftStart - rightStart;
     }
-    if (left.priority !== right.priority) {
-      return left.priority - right.priority;
+    const leftPri = Number.isFinite(left.priority) ? left.priority : 0;
+    const rightPri = Number.isFinite(right.priority) ? right.priority : 0;
+    if (leftPri !== rightPri) {
+      return leftPri - rightPri;
     }
     return left.title.localeCompare(right.title);
   });
@@ -398,11 +430,15 @@ export function buildActiveReminders(
       });
     }
   }
-  reminders.sort(
-    (left, right) =>
-      new Date(left.scheduledFor).getTime() -
-      new Date(right.scheduledFor).getTime(),
-  );
+  reminders.sort((left, right) => {
+    const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+      ? new Date(left.scheduledFor).getTime()
+      : 0;
+    const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+      ? new Date(right.scheduledFor).getTime()
+      : 0;
+    return leftTime - rightTime;
+  });
   return reminders;
 }
 
@@ -451,11 +487,15 @@ export function buildActiveCalendarEventReminders(
       });
     }
   }
-  reminders.sort(
-    (left, right) =>
-      new Date(left.scheduledFor).getTime() -
-      new Date(right.scheduledFor).getTime(),
-  );
+  reminders.sort((left, right) => {
+    const leftTime = Number.isFinite(new Date(left.scheduledFor).getTime())
+      ? new Date(left.scheduledFor).getTime()
+      : 0;
+    const rightTime = Number.isFinite(new Date(right.scheduledFor).getTime())
+      ? new Date(right.scheduledFor).getTime()
+      : 0;
+    return leftTime - rightTime;
+  });
   return reminders;
 }
 
@@ -699,9 +739,7 @@ export function normalizeGeneratedLifeOpsAssistantText(
   if (!cleaned) {
     return null;
   }
-  return cleaned.length > 280
-    ? `${cleaned.slice(0, 277).trimEnd()}...`
-    : cleaned;
+  return toWellFormedUnicode(cleaned);
 }
 
 export function formatNearbyReminderTitlesForPrompt(titles: string[]): string {

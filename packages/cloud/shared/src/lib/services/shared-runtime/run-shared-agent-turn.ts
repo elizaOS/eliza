@@ -30,17 +30,37 @@ import {
 } from "@elizaos/core/edge";
 import type { ScheduledTaskRunner, SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { TodoStore } from "@elizaos/plugin-todos/edge";
+import { runWebSearchEdge } from "@elizaos/plugin-web-search/edge";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
+import { logger } from "../../utils/logger";
+import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+  type SharedCapabilityFlags,
+  sharedCapabilityTransportForSource,
+} from "./shared-capability-catalog";
 import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
 } from "./shared-capability-wall";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import {
+  finalizeSharedRealtimeReply,
+  hasSharedRealtimeIntent,
+  requireTraceableRealtimeSearch,
+  resolveSharedRealtimeRequirement,
+  sharedRealtimePromptPolicy,
+} from "./shared-realtime-grounding";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
-import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
+import { sharedPublicWebGrounding } from "./shared-runtime-history-policy";
+import type {
+  SharedProviderTimingReceipt,
+  SharedRuntimeTimingReceipt,
+} from "./shared-runtime-timing";
 
 export type { SharedRuntimeChannel } from "./shared-runtime-channel";
 export {
@@ -60,6 +80,8 @@ export interface SharedTurnMessage {
    * stream. Model history keeps the text but annotates it as incomplete.
    */
   interrupted?: boolean;
+  /** Bounded public-read authority retained for relevant follow-up turns. */
+  grounding?: SharedRuntimePublicGrounding;
 }
 
 export interface SharedAgentCharacter {
@@ -131,6 +153,8 @@ export interface RunSharedAgentTurnInput {
   /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
     agentKey: string;
+    /** Trusted canonical conversation identity used for runtime room/world projection. */
+    roomKey: string;
     /** Trusted transport semantics projected into the runtime connection and memories. */
     channel: SharedRuntimeChannel;
     /**
@@ -161,6 +185,7 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
   return (
     input.execution ?? {
       agentKey: `shared:${input.character.name}`,
+      roomKey: `shared:${input.character.name}`,
       channel: { type: "DM", source: "shared-runtime" },
     }
   );
@@ -186,8 +211,12 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
+  /** Complete current-turn evidence for internal persistence; transports must never serialize it. */
+  internalGrounding?: SharedRuntimePublicGrounding;
   /** Typed refusal for a tool or device action Shared cannot execute. */
   capabilityWall?: SharedCapabilityWall;
+  /** Privacy-bounded provider timing exposed to Shared transports. */
+  timing?: SharedProviderTimingReceipt;
   /** Unsupported clauses that follow an enabled primary reminder or Todo. */
   blockedSecondaryCapabilities?: SharedCapabilityWall[];
 }
@@ -201,6 +230,8 @@ export type SharedAgentTurnStreamPart =
       usage?: SharedAgentTurnUsage;
       /** Applied plugin effects that must land with the terminal turn. */
       actionResults?: ActionResult[];
+      /** Privacy-bounded provider timing exposed on the terminal stream frame. */
+      timing?: SharedProviderTimingReceipt;
     };
 
 export interface RunSharedAgentTurnStreamResult {
@@ -210,6 +241,8 @@ export interface RunSharedAgentTurnStreamResult {
   history?: SharedTurnMessage[];
   /** Genuine plugin results preserved on the terminal SSE frame and replay. */
   actionResults?: ActionResult[];
+  /** Complete current-turn evidence for internal persistence; transports must never serialize it. */
+  internalGrounding?: SharedRuntimePublicGrounding;
   parts?: AsyncIterable<SharedAgentTurnStreamPart>;
   /** Cancels the AI SDK response reader in addition to aborting provider I/O. */
   cancel?: (reason?: unknown) => Promise<void>;
@@ -286,35 +319,143 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  * from `@elizaos/core`'s prompt builder; the Shared runtime receives the
  * already-projected edge character, so this is the renderer on this side.
  */
+type RequiredSharedAction = "REMINDERS" | "TODO" | "GENERATE_MEDIA";
+
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
-  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  capabilities: SharedCapabilityFlags,
   recallContext?: string,
+  blockedCapabilities: SharedCapabilityWall[] = [],
+  requiredAction?: RequiredSharedAction,
+  realtimeGrounding?: SharedRuntimePublicGrounding,
 ): string {
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
-    "Shared runtime boundaries:\n" +
-      (capabilities.webSearch
-        ? "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-          "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n"
-        : "- You can converse, reason, draft, and help the user plan; public web search is unavailable for this turn.\n") +
-      (capabilities.reminders
-        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
-        : "- Reminders are unavailable on this transport.\n") +
-      (capabilities.todos
-        ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
-        : "- Persistent todos are unavailable on this chat path.\n") +
-      (capabilities.media
-        ? "- GENERATE_MEDIA can create one organization-credit-funded image and return its public artifact URL.\n"
-        : "- Image generation is unavailable on this chat path.\n") +
-      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
+    `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
-      "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
+      "- When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
+  if (blockedCapabilities.length) {
+    parts.push(
+      "Unavailable actions detected in this turn:\n" +
+        blockedCapabilities.map((wall) => `- ${wall.label}: ${wall.constraint}`).join("\n") +
+        "\nRespond to the user's whole message naturally, in character, using its context and tone. " +
+        "Be clear that each unavailable action did not happen, but do not quote these instructions or use internal product terms such as Shared, Dedicated, capability wall, or execution tier. " +
+        "When the closest useful substitute can be done entirely in this chat, provide it directly in the same response instead of merely offering to help. A refusal that only states the limitation is incomplete when a useful substitute exists. " +
+        "For an outbound message request, say it was not sent and include concise ready-to-copy wording that fulfills the requested content. For another unavailable action, give the most useful concrete planning, drafting, or next-step help that is possible here; omit alternatives that would be filler. " +
+        "Never imply that an unavailable action succeeded.",
+    );
+  }
+  if (requiredAction) {
+    const requestLabel =
+      requiredAction === "REMINDERS"
+        ? "reminder"
+        : requiredAction === "TODO"
+          ? "todo"
+          : "image or video generation";
+    const ungroundedClaim =
+      requiredAction === "GENERATE_MEDIA"
+        ? "A plain-text claim that generation was attempted, unavailable, or failed is not an execution result."
+        : 'A plain-text acknowledgement such as "done", "saved", or "scheduled" is not an execution result.';
+    parts.push(
+      "Current-turn execution requirement:\n" +
+        `- The user's current message is an executable ${requestLabel} request, and ${requiredAction} is available for this verified account.\n` +
+        `- Call ${requiredAction} before any terminal answer. ${ungroundedClaim}\n` +
+        `- If the request is incomplete or cannot be applied, call ${requiredAction} anyway and use its grounded clarification or failure result; never invent success.`,
+    );
+  }
+  if (realtimeGrounding) parts.push(sharedRealtimePromptPolicy(realtimeGrounding));
   if (recallContext?.trim()) parts.push(recallContext.trim());
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
+}
+
+function requiredActionForResolution(
+  resolution: SharedCapabilityResolution | null,
+): Exclude<RequiredSharedAction, "GENERATE_MEDIA"> | undefined {
+  if (resolution?.kind !== "enabled-primary") return undefined;
+  if (resolution.primary.capability === "reminders") return "REMINDERS";
+  if (resolution.primary.capability === "todos") return "TODO";
+  return undefined;
+}
+
+function isExplicitSharedMediaGenerationRequest(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+  if (!normalized) return false;
+  const mediaNoun =
+    "(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip)";
+  return (
+    new RegExp(
+      `\\b(?:generate|make|draw|create|render|paint|produce|design|animate)\\b[^.!?]{0,160}\\b${mediaNoun}s?\\b`,
+      "iu",
+    ).test(normalized) ||
+    /\b(?:turn|convert|transform)\b[^.!?]{0,160}\b(?:image|picture|photo|attachment)\b[^.!?]{0,80}\b(?:into|to)\b[^.!?]{0,40}\b(?:video|animation|clip)\b/iu.test(
+      normalized,
+    )
+  );
+}
+
+function requiredActionForTurn(
+  input: RunSharedAgentTurnInput,
+  resolution: SharedCapabilityResolution | null,
+  actionsEnabled: boolean,
+): RequiredSharedAction | undefined {
+  const capabilityAction = requiredActionForResolution(resolution);
+  if (capabilityAction) return capabilityAction;
+  const intentText = input.capabilityText ?? input.message;
+  if (
+    actionsEnabled &&
+    input.execution?.media &&
+    isExplicitSharedMediaGenerationRequest(intentText)
+  ) {
+    return "GENERATE_MEDIA";
+  }
+  return undefined;
+}
+
+function hasRequiredActionResult(
+  turn: RunSharedAgentTurnResult,
+  actionName: RequiredSharedAction,
+): boolean {
+  return Boolean(turn.actionResults?.some((result) => result.data?.actionName === actionName));
+}
+
+function isWebSearchActionResult(result: ActionResult): boolean {
+  return result.data?.actionName === "WEB_SEARCH";
+}
+
+function sharedRealtimeTransportReceipt(
+  grounding: SharedRuntimePublicGrounding,
+  deliveredReply: string,
+): ActionResult {
+  if (grounding.kind === "web_search_unavailable") {
+    return {
+      success: false,
+      text: deliveredReply,
+      error: "Live public data is temporarily unavailable.",
+      data: {
+        actionName: "WEB_SEARCH",
+        query: grounding.query,
+        observedAt: grounding.observedAt,
+        deliveredReply,
+        groundingStatus: "unavailable",
+      },
+    };
+  }
+  return {
+    success: true,
+    text: deliveredReply,
+    data: {
+      actionName: "WEB_SEARCH",
+      query: grounding.query,
+      provider: grounding.provider,
+      observedAt: grounding.observedAt,
+      deliveredReply,
+      groundingStatus: "verified",
+    },
+  };
 }
 
 export function appendSharedTurn(
@@ -323,12 +464,19 @@ export function appendSharedTurn(
   reply: string,
   messageIds?: RunSharedAgentTurnInput["messageIds"],
   messageRole: "system" | "user" = "user",
+  grounding?: SharedRuntimePublicGrounding,
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
     { id: messageIds?.user, role: messageRole, content: userMessage, createdAt: sentAt },
-    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
+    {
+      id: messageIds?.assistant,
+      role: "assistant",
+      content: reply,
+      createdAt: sentAt + 1,
+      ...(grounding ? { grounding } : {}),
+    },
   ];
 }
 
@@ -354,8 +502,7 @@ export function appendSharedInput(
  * Durable commit of the landed user/assistant pair into the tenant-scoped
  * memory table. Runs only when the caller attached a flag-gated
  * `execution.memory` store, and only for turns a model/runtime actually
- * produced — the capability-wall and degraded paths are transport UX, not
- * model conversation, and stay out of the memory rows.
+ * produced. Degraded no-model responses stay out of the memory rows.
  *
  * WHY a plain await and not waitUntil: this module is deliberately
  * executionCtx-independent (it also runs outside Cloudflare Workers), so no
@@ -386,57 +533,28 @@ function capabilityResolution(
   return resolveSharedCapabilityIntent(input.capabilityText ?? input.message, capabilities);
 }
 
-function appendBlockedCapabilityReplies(reply: string, blocked: SharedCapabilityWall[]): string {
-  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
-  return additions.length ? `${reply.trim()}\n\n${additions.join("\n\n")}` : reply;
-}
-
-function blockedCapabilityReplySuffix(reply: string, blocked: SharedCapabilityWall[]): string {
-  const additions = blocked.map((wall) => wall.reply).filter((text) => !reply.includes(text));
-  return additions.length ? `\n\n${additions.join("\n\n")}` : "";
-}
-
-function withBlockedSecondaryCapabilities(
+function withCapabilityResolution(
   result: RunSharedAgentTurnResult,
-  input: RunSharedAgentTurnInput,
-  blocked: SharedCapabilityWall[],
+  capabilityWall: SharedCapabilityWall | undefined,
+  blockedSecondary: SharedCapabilityWall[],
 ): RunSharedAgentTurnResult {
-  if (!blocked.length) return result;
-  const reply = appendBlockedCapabilityReplies(result.reply, blocked);
   return {
     ...result,
-    reply,
-    responded: true,
-    history: appendSharedTurn(
-      input.history,
-      input.message.trim(),
-      reply,
-      input.messageIds,
-      input.messageRole,
-    ),
-    blockedSecondaryCapabilities: blocked,
+    ...(capabilityWall ? { capabilityWall } : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
   };
 }
 
-function withBlockedSecondaryStream(
+function withStreamCapabilityResolution(
   result: RunSharedAgentTurnStreamResult,
-  blocked: SharedCapabilityWall[],
+  capabilityWall: SharedCapabilityWall | undefined,
+  blockedSecondary: SharedCapabilityWall[],
 ): RunSharedAgentTurnStreamResult {
-  if (!blocked.length || !result.parts) return result;
-  const source = result.parts;
-  const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-    for await (const part of source) {
-      if (part.type === "text-delta") {
-        yield part;
-        continue;
-      }
-      const suffix = blockedCapabilityReplySuffix(part.text, blocked);
-      const text = `${part.text.trim()}${suffix}`;
-      if (suffix) yield { type: "text-delta", text: suffix };
-      yield { ...part, text };
-    }
-  })();
-  return { ...result, parts, blockedSecondaryCapabilities: blocked };
+  return {
+    ...result,
+    ...(capabilityWall ? { capabilityWall } : {}),
+    ...(blockedSecondary.length ? { blockedSecondaryCapabilities: blockedSecondary } : {}),
+  };
 }
 /**
  * Run one shared (container-free) turn for a simple agent. Returns a degraded
@@ -449,6 +567,7 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+  const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -458,25 +577,10 @@ export async function runSharedAgentTurn(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
-  if (capabilityWall) {
-    return {
-      reply: capabilityWall.reply,
-      history: appendSharedTurn(
-        input.history,
-        message,
-        capabilityWall.reply,
-        input.messageIds,
-        input.messageRole,
-      ),
-      model: "capability-wall",
-      degraded: false,
-      capabilityWall,
-    };
-  }
-
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
@@ -489,11 +593,50 @@ export async function runSharedAgentTurn(
     };
   }
 
+  const realtimeRequirement =
+    actionsEnabled && publicSearchText
+      ? resolveSharedRealtimeRequirement(publicSearchText, input.history)
+      : undefined;
+  const trustedRealtimeIntent =
+    actionsEnabled && publicSearchText
+      ? hasSharedRealtimeIntent(publicSearchText, input.history)
+      : false;
+  const untrustedRealtimeIntent =
+    actionsEnabled && !publicSearchText ? hasSharedRealtimeIntent(message, input.history) : false;
+  let realtimeActionResults: ActionResult[] | undefined;
+  let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
+  if (realtimeRequirement) {
+    let searchResult: ActionResult;
+    try {
+      searchResult = await runWebSearchEdge(realtimeRequirement.query);
+    } catch (error) {
+      // error-policy:J4 current-data lookup failures become an explicit,
+      // visibly unavailable receipt; the model never receives fake success.
+      logger.warn("[runSharedAgentTurn] current public-data preflight failed", {
+        errorType: error instanceof Error ? error.name : typeof error,
+        domain: realtimeRequirement.domain,
+      });
+      searchResult = {
+        success: false,
+        text: "Live public data is temporarily unavailable.",
+        error: "Live public data is temporarily unavailable.",
+        data: {
+          actionName: "WEB_SEARCH",
+          query: realtimeRequirement.query,
+          observedAt: Date.now(),
+        },
+      };
+    }
+    const traceableResult = requireTraceableRealtimeSearch(searchResult, realtimeRequirement.query);
+    realtimeActionResults = [traceableResult];
+    realtimeGrounding = sharedPublicWebGrounding(realtimeActionResults);
+  }
+
   let turn: RunSharedAgentTurnResult;
   try {
     const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
-    turn = withBlockedSecondaryCapabilities(
+    turn = withCapabilityResolution(
       await runSharedElizaRuntimeTurn({
         ...input,
         character: {
@@ -501,21 +644,41 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled,
+              webSearch: Boolean(realtimeRequirement),
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
+            capabilityWall ? [capabilityWall] : blockedSecondary,
+            requiredAction,
+            realtimeGrounding,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
+        ...(realtimeGrounding ? { realtimeGrounding } : {}),
+        ...(realtimeActionResults ? { preflightActionResults: realtimeActionResults } : {}),
       }),
-      input,
+      capabilityWall,
       blockedSecondary,
     );
+    if (realtimeActionResults) {
+      const runtimeActionResults = (turn.actionResults ?? []).filter(
+        (result) => !isWebSearchActionResult(result),
+      );
+      turn = { ...turn, actionResults: [...realtimeActionResults, ...runtimeActionResults] };
+    }
+    if (requiredAction && !hasRequiredActionResult(turn, requiredAction)) {
+      throw new Error(
+        `Eliza Shared runtime completed an executable ${requiredAction} request without an action result`,
+      );
+    }
   } catch (error) {
     // error-policy:J2 the runtime is the sole inference engine; preserve its
     // cause while adding the agent/model identity used by billing boundaries.
@@ -523,6 +686,59 @@ export async function runSharedAgentTurn(
       `[shared-runtime] AgentRuntime turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
     );
+  }
+  if (realtimeRequirement) {
+    const groundedReply = finalizeSharedRealtimeReply(turn.reply, realtimeGrounding);
+    const history = [...turn.history];
+    let replaced = false;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].role !== "assistant") continue;
+      history[index] = {
+        ...history[index],
+        content: groundedReply,
+        ...(realtimeGrounding ? { grounding: realtimeGrounding } : {}),
+      };
+      replaced = true;
+      break;
+    }
+    if (!replaced) {
+      history.push({
+        id: input.messageIds?.assistant,
+        role: "assistant",
+        content: groundedReply,
+        createdAt: Date.now(),
+        ...(realtimeGrounding ? { grounding: realtimeGrounding } : {}),
+      });
+    }
+    const actionResults = [
+      ...(realtimeGrounding
+        ? [sharedRealtimeTransportReceipt(realtimeGrounding, groundedReply)]
+        : []),
+      ...(turn.actionResults ?? []).filter((result) => !isWebSearchActionResult(result)),
+    ];
+    turn = {
+      ...turn,
+      reply: groundedReply,
+      responded: true,
+      history,
+      ...(actionResults.length ? { actionResults } : {}),
+      ...(realtimeGrounding ? { internalGrounding: realtimeGrounding } : {}),
+    };
+  } else if (trustedRealtimeIntent || untrustedRealtimeIntent) {
+    const groundedReply = finalizeSharedRealtimeReply(turn.reply, undefined);
+    const history = [...turn.history];
+    const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
+    if (assistantIndex >= 0) {
+      history[assistantIndex] = { ...history[assistantIndex], content: groundedReply };
+    } else {
+      history.push({
+        id: input.messageIds?.assistant,
+        role: "assistant",
+        content: groundedReply,
+        createdAt: Date.now(),
+      });
+    }
+    turn = { ...turn, reply: groundedReply, responded: true, history };
   }
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
@@ -541,6 +757,7 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnStreamInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+  const publicSearchText = input.capabilityText?.trim();
 
   const actionsEnabled = input.messageRole !== "system";
   const remindersEnabled = actionsEnabled && Boolean(input.execution?.reminders);
@@ -550,25 +767,10 @@ export async function runSharedAgentTurnStream(
     todos: todosEnabled,
   };
   const resolution = capabilityResolution(input, capabilities);
+  const requiredAction = requiredActionForTurn(input, resolution, actionsEnabled);
   const capabilityWall = resolution?.kind === "blocked-primary" ? resolution.blocked : undefined;
   const blockedSecondary =
     resolution?.kind === "enabled-primary" ? resolution.blockedSecondary : [];
-  if (capabilityWall) {
-    const reply = capabilityWall.reply;
-    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
-      yield { type: "text-delta", text: reply };
-      yield { type: "finish", text: reply };
-    })();
-    return {
-      model: "capability-wall",
-      degraded: false,
-      reply,
-      history: appendSharedTurn(input.history, message, reply, input.messageIds, input.messageRole),
-      parts,
-      capabilityWall,
-    };
-  }
-
   const modelId = resolveSharedAgentTurnModel(input.character.model);
 
   if (!modelId) {
@@ -581,10 +783,41 @@ export async function runSharedAgentTurnStream(
     };
   }
 
+  // Current-data answers are buffered until their complete grounded reply has
+  // passed validation; streaming an unverified numeric claim cannot be undone.
+  if (
+    requiredAction === "GENERATE_MEDIA" ||
+    (actionsEnabled &&
+      ((publicSearchText && hasSharedRealtimeIntent(publicSearchText, input.history)) ||
+        (!publicSearchText && hasSharedRealtimeIntent(message, input.history))))
+  ) {
+    const turn = await runSharedAgentTurn(input);
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      if (turn.reply) yield { type: "text-delta", text: turn.reply };
+      yield {
+        type: "finish",
+        text: turn.reply,
+        ...(turn.responded === false ? { responded: false } : {}),
+        ...(turn.usage ? { usage: turn.usage } : {}),
+        ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
+      };
+    })();
+    return {
+      model: turn.model,
+      degraded: turn.degraded,
+      reply: turn.reply,
+      history: turn.history,
+      ...(turn.actionResults?.length ? { actionResults: turn.actionResults } : {}),
+      ...(turn.internalGrounding ? { internalGrounding: turn.internalGrounding } : {}),
+      parts,
+    };
+  }
+
   try {
     const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
-    return withBlockedSecondaryStream(
+    return withStreamCapabilityResolution(
       await runSharedElizaRuntimeTurnStream({
         ...input,
         character: {
@@ -592,18 +825,27 @@ export async function runSharedAgentTurnStream(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: actionsEnabled,
+              // A current-data request already took the buffered path above.
+              // Ordinary streamed turns must never expose a public-network tool.
+              webSearch: false,
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(
+                execution.channel.source,
+                execution.channel.type,
+              ),
             },
             input.recallContext,
+            capabilityWall ? [capabilityWall] : blockedSecondary,
+            requiredAction,
           ),
         },
         execution,
         agentKey: execution.agentKey,
         model: modelId,
       }),
+      capabilityWall,
       blockedSecondary,
     );
   } catch (error) {

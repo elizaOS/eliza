@@ -230,6 +230,58 @@ describe("Instagram connector accounts", () => {
     expect(ownerSend).not.toHaveBeenCalled();
   });
 
+  it("rejects an unrecognized accountId on handleSendPost instead of posting as the default account", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => "comment-1");
+    Object.assign(service, {
+      defaultAccountId: "owner",
+      instagramConfig: { accountId: "owner", username: "owner", password: "pw" },
+      isRunning: true,
+      accountServices: new Map(),
+      postComment,
+    });
+    (service as { accountServices: Map<string, InstagramService> }).accountServices.set(
+      "owner",
+      service
+    );
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+
+    await expect(
+      service.handleSendPost(runtime, {
+        text: "hello-from-ghost",
+        accountId: "ghost-account",
+        metadata: { mediaId: "17895695668004550" },
+      } as Content)
+    ).rejects.toThrow(
+      "Instagram account 'ghost-account' is not available in this service instance"
+    );
+    expect(postComment).not.toHaveBeenCalled();
+  });
+
+  it("still posts when handleSendPost omits accountId", async () => {
+    const service = Object.create(InstagramService.prototype) as InstagramService;
+    const postComment = vi.fn(async () => "comment-ok");
+    Object.assign(service, {
+      defaultAccountId: "owner",
+      instagramConfig: { accountId: "owner", username: "owner", password: "pw" },
+      isRunning: true,
+      accountServices: new Map(),
+      postComment,
+    });
+    (service as { accountServices: Map<string, InstagramService> }).accountServices.set(
+      "owner",
+      service
+    );
+    const runtime = { agentId: "00000000-0000-0000-0000-000000000001" } as IAgentRuntime;
+    const result = await service.handleSendPost(runtime, {
+      text: "hello",
+      metadata: { mediaId: "17895695668004550" },
+    } as Content);
+
+    expect(postComment).toHaveBeenCalledWith("17895695668004550", "hello");
+    expect(result.metadata).toMatchObject({ accountId: "owner" });
+  });
+
   it("fails API operations explicitly instead of returning synthetic Instagram data", async () => {
     const service = Object.create(InstagramService.prototype) as InstagramService;
     Object.assign(service, {
@@ -311,4 +363,26 @@ describe("Instagram connector accounts", () => {
       expect(postComment).not.toHaveBeenCalled();
     }
   );
+
+  it("sorts connector messages safely when createdAt contains NaN", () => {
+    const memories = [
+      { id: "msg-nan", createdAt: NaN },
+      { id: "msg-newer", createdAt: 2000 },
+      { id: "msg-older", createdAt: 1000 },
+    ];
+
+    memories.sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+      return rightCreated - leftCreated || (left.id ?? "").localeCompare(right.id ?? "");
+    });
+
+    expect(memories[0]?.id).toBe("msg-newer");
+    expect(memories[1]?.id).toBe("msg-older");
+    expect(memories[2]?.id).toBe("msg-nan");
+  });
 });

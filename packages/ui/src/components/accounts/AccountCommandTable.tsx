@@ -45,8 +45,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
 import {
   type AccountSort,
   type AccountSortKey,
@@ -123,7 +132,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
         clamped == null ? "Unknown" : `${Math.round(clamped)}%`
       }`}
     >
-      <span className="w-6 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+      <span className="w-6 shrink-0 text-2xs font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="relative h-1.5 w-16 overflow-hidden rounded-full bg-bg-accent">
@@ -132,7 +141,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
           style={{ width: `${clamped ?? 0}%` }}
         />
       </div>
-      <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted">
+      <span className="w-8 shrink-0 text-right text-2xs tabular-nums text-muted">
         {clamped == null ? "Unknown" : `${Math.round(clamped)}%`}
       </span>
     </div>
@@ -161,23 +170,22 @@ function SortHeader({
       ? ArrowUp
       : ArrowDown;
   return (
-    <button
+    <Button
       type="button"
+      variant="mutedLink"
+      size="content"
       onClick={() => onSort(columnKey)}
-      className={cn(
-        "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted transition-colors hover:text-txt-strong",
-        align === "right" && "flex-row-reverse",
-      )}
+      className={cn(align === "right" && "flex-row-reverse")}
     >
       <span>{label}</span>
       <Icon
         className={cn(
-          "h-3 w-3 shrink-0",
+          "size-3 shrink-0",
           active ? "text-txt-strong" : "text-muted/60",
         )}
         aria-hidden
       />
-    </button>
+    </Button>
   );
 }
 
@@ -210,7 +218,7 @@ function HealthCell({ account, t }: HealthCellProps) {
     <div className="flex flex-col gap-0.5" title={tooltip.join(" · ")}>
       <StatusBadge label={label} tone={health.tone} withDot />
       {countdown ? (
-        <span className="text-[10px] tabular-nums text-warn">
+        <span className="text-2xs tabular-nums text-warn">
           {t("accounts.table.resetsIn", {
             defaultValue: `resets in ${countdown}`,
             countdown,
@@ -253,7 +261,12 @@ export function AccountCommandTable({
   // up/down always targets the correct neighbour even when the user has
   // sorted the table by health or usage.
   const priorityOrder = useMemo(
-    () => [...accounts].sort((a, b) => a.priority - b.priority),
+    () =>
+      [...accounts].sort(
+        (a, b) =>
+          (Number.isFinite(a.priority) ? a.priority : 0) -
+          (Number.isFinite(b.priority) ? b.priority : 0),
+      ),
     [accounts],
   );
 
@@ -333,15 +346,15 @@ export function AccountCommandTable({
           {actionError}
         </div>
       ) : null}
-      <table className="w-full min-w-[720px] border-collapse text-left">
-        <thead>
-          <tr className="border-b border-border/40 bg-bg-accent/40">
-            <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+      <Table className="min-w-[720px]">
+        <TableHeader>
+          <TableRow className="border-b border-border/40 bg-bg-accent/40">
+            <TableHead scope="col" className="px-3 py-2 font-normal">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.account", { defaultValue: "Account" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "health")}
               className="px-3 py-2 font-normal"
@@ -354,8 +367,8 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "usage")}
               className="px-3 py-2 font-normal"
@@ -368,13 +381,13 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            </TableHead>
+            <TableHead scope="col" className="px-3 py-2 font-normal">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.resets", { defaultValue: "Resets" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "priority")}
               className="px-3 py-2 font-normal"
@@ -387,13 +400,13 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
-            <th scope="col" className="px-3 py-2 font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            </TableHead>
+            <TableHead scope="col" className="px-3 py-2 font-normal">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.enabled", { defaultValue: "Enabled" })}
               </span>
-            </th>
-            <th
+            </TableHead>
+            <TableHead
               scope="col"
               aria-sort={ariaSortFor(sort, "lastUsed")}
               className="px-3 py-2 font-normal"
@@ -406,61 +419,61 @@ export function AccountCommandTable({
                 sort={sort}
                 onSort={handleSort}
               />
-            </th>
+            </TableHead>
             {showLeaseColumn ? (
-              <th scope="col" className="px-3 py-2 font-normal">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <TableHead scope="col" className="px-3 py-2 font-normal">
+                <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                   {t("accounts.table.col.leases", {
                     defaultValue: "Leases",
                   })}
                 </span>
-              </th>
+              </TableHead>
             ) : null}
-            <th scope="col" className="px-3 py-2 text-right font-normal">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            <TableHead scope="col" className="px-3 py-2 text-right font-normal">
+              <span className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {t("accounts.table.col.actions", {
                   defaultValue: "Actions",
                 })}
               </span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {loading ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-muted"
               >
                 <span className="inline-flex items-center gap-2">
-                  <Spinner className="h-3.5 w-3.5" />
+                  <Spinner className="size-3.5" />
                   {t("accounts.table.loading", {
                     defaultValue: "Loading accounts…",
                   })}
                 </span>
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : error ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-destructive"
                 role="alert"
               >
                 {error}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : rows.length === 0 ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 colSpan={columnCount}
                 className="px-3 py-6 text-center text-xs text-muted"
               >
                 {t("accounts.table.empty", {
                   defaultValue: "No accounts in this pool yet.",
                 })}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             rows.map((account) => {
               const rowSaving = saving.has(account.id);
@@ -474,7 +487,7 @@ export function AccountCommandTable({
               const repair = needsCredentialRepair(account);
               const lease = account.observability;
               return (
-                <tr
+                <TableRow
                   key={account.id}
                   data-testid={`account-row-${account.id}`}
                   data-active={isActive ? "true" : undefined}
@@ -484,7 +497,7 @@ export function AccountCommandTable({
                     isActive && "bg-accent/5",
                   )}
                 >
-                  <td className="px-3 py-2.5 align-middle">
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <div className="flex items-center gap-2">
                       {isActive ? (
                         <span
@@ -499,7 +512,8 @@ export function AccountCommandTable({
                       )}
                       <div className="flex min-w-0 flex-col">
                         {editingLabelId === account.id ? (
-                          <input
+                          <Input
+                            density="compact"
                             value={labelDraft}
                             disabled={rowSaving}
                             onChange={(event) =>
@@ -519,24 +533,27 @@ export function AccountCommandTable({
                               defaultValue: `Rename ${account.label}`,
                               label: account.label,
                             })}
-                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-xs font-medium text-txt-strong outline-none"
+                            className="min-w-0"
                           />
                         ) : (
-                          <button
+                          <Button
                             type="button"
+                            variant="link"
+                            size="content"
+                            align="start"
                             disabled={rowSaving}
                             onClick={() => beginLabelEdit(account)}
                             title={t("accounts.table.rename", {
                               defaultValue: "Rename account",
                             })}
-                            className="truncate text-left text-xs font-medium text-txt-strong hover:underline"
+                            className="truncate"
                           >
                             {account.label}
-                          </button>
+                          </Button>
                         )}
                         {account.email && account.email !== account.label ? (
                           <span
-                            className="truncate text-[10px] text-muted"
+                            className="truncate text-2xs text-muted"
                             title={account.email}
                           >
                             {account.email}
@@ -544,11 +561,11 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     </div>
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <HealthCell account={account} t={t} />
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     {hasWindowUsage ? (
                       <div className="flex flex-col gap-1">
                         <UsageBar
@@ -568,16 +585,16 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted">
+                      <span className="text-2xs text-muted">
                         {t("accounts.table.usage.notApplicable", {
                           defaultValue: "Not reported",
                         })}
                       </span>
                     )}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     {hasWindowUsage ? (
-                      <div className="flex flex-col gap-0.5 text-[10px] tabular-nums text-muted">
+                      <div className="flex flex-col gap-0.5 text-2xs tabular-nums text-muted">
                         <span title="All-model weekly reset">
                           7d: {resetIn ?? "Unknown"}
                         </span>
@@ -588,22 +605,20 @@ export function AccountCommandTable({
                         ) : null}
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted">
-                        Not reported
-                      </span>
+                      <span className="text-2xs text-muted">Not reported</span>
                     )}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <span
-                      className="text-[11px] tabular-nums text-muted"
+                      className="text-xs-tight tabular-nums text-muted"
                       title={t("accounts.table.priority.tooltip", {
                         defaultValue: "Lower value runs first",
                       })}
                     >
                       #{account.priority}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
                     <Checkbox
                       checked={account.enabled}
                       disabled={rowSaving}
@@ -617,20 +632,20 @@ export function AccountCommandTable({
                         label: account.label,
                       })}
                     />
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className="text-[11px] text-muted">
+                  </TableCell>
+                  <TableCell className="px-3 py-2.5 align-middle">
+                    <span className="text-xs-tight text-muted">
                       {account.lastUsedAt
                         ? formatRelativeTimeShort(account.lastUsedAt)
                         : "-"}
                     </span>
-                  </td>
+                  </TableCell>
                   {showLeaseColumn ? (
-                    <td className="px-3 py-2.5 align-middle">
+                    <TableCell className="px-3 py-2.5 align-middle">
                       <div className="flex flex-col gap-0.5">
                         <span
                           className={cn(
-                            "text-[11px] tabular-nums",
+                            "text-xs-tight tabular-nums",
                             lease && lease.activeLeaseCount > 0
                               ? "text-txt-strong"
                               : "text-muted",
@@ -642,23 +657,23 @@ export function AccountCommandTable({
                           {lease?.activeLeaseCount ?? 0}
                         </span>
                         {lease?.servedLastRequest ? (
-                          <span className="text-[9px] uppercase tracking-wider text-accent">
+                          <span className="text-3xs uppercase tracking-wider text-accent">
                             {t("accounts.table.leases.servedLast", {
                               defaultValue: "served last",
                             })}
                           </span>
                         ) : null}
                       </div>
-                    </td>
+                    </TableCell>
                   ) : null}
-                  <td className="px-3 py-2.5 text-right align-middle">
+                  <TableCell className="px-3 py-2.5 text-right align-middle">
                     <div className="inline-flex items-center gap-1.5">
                       {onMove ? (
                         <>
                           <Button
                             type="button"
                             variant="ghost"
-                            size="sm"
+                            size="icon-sm"
                             disabled={
                               rowSaving || priorityOrder[0]?.id === account.id
                             }
@@ -674,14 +689,13 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveUp.tooltip", {
                               defaultValue: "Raise priority",
                             })}
-                            className="h-7 w-7 p-0"
                           >
-                            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+                            <ChevronUp className="size-3.5" aria-hidden />
                           </Button>
                           <Button
                             type="button"
                             variant="ghost"
-                            size="sm"
+                            size="icon-sm"
                             disabled={
                               rowSaving ||
                               priorityOrder[priorityOrder.length - 1]?.id ===
@@ -699,9 +713,8 @@ export function AccountCommandTable({
                             title={t("accounts.table.moveDown.tooltip", {
                               defaultValue: "Lower priority",
                             })}
-                            className="h-7 w-7 p-0"
                           >
-                            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                            <ChevronDown className="size-3.5" aria-hidden />
                           </Button>
                         </>
                       ) : null}
@@ -714,10 +727,9 @@ export function AccountCommandTable({
                             rowSaving || saving.has(`test:${account.id}`)
                           }
                           onClick={() => runAction(() => onTest(account.id))}
-                          className="h-7 px-2 text-[11px]"
                         >
                           {saving.has(`test:${account.id}`) ? (
-                            <Spinner className="h-3 w-3" />
+                            <Spinner className="size-3" />
                           ) : (
                             t("accounts.table.test", { defaultValue: "Test" })
                           )}
@@ -727,7 +739,7 @@ export function AccountCommandTable({
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
+                          size="icon-sm"
                           disabled={
                             rowSaving || saving.has(`usage:${account.id}`)
                           }
@@ -741,12 +753,11 @@ export function AccountCommandTable({
                           title={t("accounts.table.refresh.tooltip", {
                             defaultValue: "Refresh usage",
                           })}
-                          className="h-7 w-7 p-0"
                         >
                           {saving.has(`usage:${account.id}`) ? (
-                            <Spinner className="h-3 w-3" />
+                            <Spinner className="size-3" />
                           ) : (
-                            <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                            <RotateCw className="size-3.5" aria-hidden />
                           )}
                         </Button>
                       ) : null}
@@ -757,9 +768,8 @@ export function AccountCommandTable({
                           size="sm"
                           disabled={rowSaving}
                           onClick={() => onReauthenticate(account)}
-                          className="h-7 gap-1 px-2 text-[11px] text-bg"
                         >
-                          <KeyRound className="h-3 w-3" aria-hidden />
+                          <KeyRound className="size-3" aria-hidden />
                           {account.source === "oauth"
                             ? t("accounts.table.reauth", {
                                 defaultValue: "Reauth",
@@ -771,8 +781,8 @@ export function AccountCommandTable({
                       ) : null}
                       <Button
                         type="button"
-                        variant="ghost"
-                        size="sm"
+                        variant="destructive"
+                        size="icon-sm"
                         disabled={rowSaving}
                         onClick={() => requestDelete(account.id)}
                         aria-label={t("accounts.table.remove", {
@@ -782,18 +792,17 @@ export function AccountCommandTable({
                         title={t("accounts.table.remove", {
                           defaultValue: "Remove account",
                         })}
-                        className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
                       >
-                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        <Trash2 className="size-3.5" aria-hidden />
                       </Button>
                     </div>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               );
             })
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
 
       <Dialog
         open={confirmingDelete}
@@ -837,7 +846,7 @@ export function AccountCommandTable({
               onClick={confirmDelete}
             >
               {deleteBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("accounts.table.delete.confirm", {
                   defaultValue: "Remove account",

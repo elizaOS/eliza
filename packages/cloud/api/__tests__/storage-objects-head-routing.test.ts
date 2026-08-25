@@ -13,6 +13,8 @@ const ROUTE_MOUNT = `${ROUTE_PREFIX}/:*{.+}`;
 const OBJECT_PATH = "voice/message.ogg";
 const GET_COST = 0.00011;
 const OBJECT_BYTES = new TextEncoder().encode("asset");
+const OBJECT_SHA256 =
+  "d59386e0ae435e292fbe0ebcdb954b75ed5fb3922091277cb19f798fc5d50718";
 const MODIFIED_AT = new Date("2026-08-17T12:00:00.000Z");
 
 const requireUserOrApiKeyWithOrg = mock();
@@ -180,8 +182,11 @@ test("PUT uses the authenticated native BLOB path with server-owned pricing", as
       method: "PUT",
       headers: {
         "content-type": "audio/ogg",
+        "content-length": String(OBJECT_BYTES.byteLength),
+        "x-content-length": String(OBJECT_BYTES.byteLength),
         "idempotency-key": "logical-upload-1",
         "X-Storage-Object-Key": OBJECT_PATH,
+        "X-Content-SHA256": OBJECT_SHA256,
       },
       body: OBJECT_BYTES,
     },
@@ -195,12 +200,92 @@ test("PUT uses the authenticated native BLOB path with server-owned pricing", as
     organizationId: ORGANIZATION_ID,
     logicalKey: OBJECT_PATH,
     idempotencyKey: "logical-upload-1",
-    body: expect.any(ArrayBuffer),
+    body: expect.any(ReadableStream),
+    sizeBytes: OBJECT_BYTES.byteLength,
+    contentSha256: OBJECT_SHA256,
     contentType: "audio/ogg",
     priceUsd: 0.3,
   });
   expect(tryReserveBytes).not.toHaveBeenCalled();
   expect(deductCredits).not.toHaveBeenCalled();
+});
+
+test("PUT rejects missing integrity metadata before pricing or reading the body", async () => {
+  const response = await app.request(
+    `${ROUTE_PREFIX}/_`,
+    {
+      method: "PUT",
+      headers: {
+        "x-content-length": "5",
+        "idempotency-key": "missing-digest-1",
+        "X-Storage-Object-Key": OBJECT_PATH,
+      },
+      body: OBJECT_BYTES,
+    },
+    { BLOB: bucket },
+  );
+  expect(response.status).toBe(400);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePut).not.toHaveBeenCalled();
+});
+
+test("PUT delegates large declared streams instead of imposing a Worker heap ceiling", async () => {
+  const bytes = 512 * 1024 * 1024;
+  getServiceMethodCost.mockResolvedValue(0);
+  executeNativeStoragePut.mockResolvedValue({
+    key: OBJECT_PATH,
+    size: bytes,
+    contentType: "video/mp4",
+    etag: "large-etag",
+  });
+  const response = await app.request(
+    `${ROUTE_PREFIX}/_`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "video/mp4",
+        "x-content-length": String(bytes),
+        "idempotency-key": "large-stream-1",
+        "X-Storage-Object-Key": OBJECT_PATH,
+        "X-Content-SHA256": "a".repeat(64),
+      },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(OBJECT_BYTES);
+          controller.close();
+        },
+      }),
+    },
+    { BLOB: bucket },
+  );
+  expect(response.status).toBe(201);
+  expect(executeNativeStoragePut).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sizeBytes: bytes,
+      body: expect.any(ReadableStream),
+    }),
+  );
+});
+
+test("PUT rejects conflicting transport and caller-declared lengths", async () => {
+  const response = await app.request(
+    `${ROUTE_PREFIX}/_`,
+    {
+      method: "PUT",
+      headers: {
+        "content-length": "4",
+        "x-content-length": "5",
+        "idempotency-key": "conflicting-length-1",
+        "X-Storage-Object-Key": OBJECT_PATH,
+        "X-Content-SHA256": OBJECT_SHA256,
+      },
+      body: OBJECT_BYTES,
+    },
+    { BLOB: bucket },
+  );
+  expect(response.status).toBe(400);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePut).not.toHaveBeenCalled();
 });
 
 test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", async () => {
@@ -270,8 +355,11 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
       method: "PUT",
       headers: {
         "content-type": "audio/ogg",
+        "content-length": String(OBJECT_BYTES.byteLength),
+        "x-content-length": String(OBJECT_BYTES.byteLength),
         "idempotency-key": "overwrite-2",
         "X-Storage-Object-Key": OBJECT_PATH,
+        "X-Content-SHA256": OBJECT_SHA256,
       },
       body: OBJECT_BYTES,
     },

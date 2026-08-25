@@ -626,7 +626,6 @@ class LazyTeeWalletProvider extends WalletProvider {
 }
 
 const spec = requireProviderSpec("wallet");
-const MAX_EVM_CHAIN_BALANCES = 20;
 
 export const evmWalletProvider: Provider = {
   name: spec.name,
@@ -680,17 +679,13 @@ export const evmWalletProvider: Provider = {
       }
 
       const agentName = state?.agentName ?? "The agent";
-      const chains = walletData.chains.slice(0, MAX_EVM_CHAIN_BALANCES);
+      const chains = walletData.chains;
       const balanceText = chains
         .map((chain) => `${chain.name}: ${chain.balance} ${chain.symbol}`)
         .join("\n");
-      const truncationText =
-        walletData.chains.length > chains.length
-          ? `\n... and ${walletData.chains.length - chains.length} more chains`
-          : "";
 
       return {
-        text: `${agentName}'s EVM Wallet Address: ${walletData.address}\n\nBalances:\n${balanceText}${truncationText}`,
+        text: `${agentName}'s EVM Wallet Address: ${walletData.address}\n\nBalances:\n${balanceText}`,
         data: {
           address: walletData.address,
           chains,
@@ -699,7 +694,7 @@ export const evmWalletProvider: Provider = {
         },
         values: {
           address: walletData.address,
-          chains: `${balanceText}${truncationText}`,
+          chains: balanceText,
         },
       };
     } catch (error) {

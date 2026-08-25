@@ -4,6 +4,9 @@ import { beforeAll, describe, expect, mock, test } from "bun:test";
 const TRANSPORT = "realtime-voice-client";
 
 mock.module("@elizaos/shared", () => ({
+  LOCAL_VOICE_RUNTIME_AGENT_HEADER: "X-Eliza-Local-Voice-Agent-Id",
+  LOCAL_VOICE_RUNTIME_CONVERSATION_HEADER:
+    "X-Eliza-Local-Voice-Conversation-Id",
   REALTIME_VOICE_CLIENT_TRANSPORT: TRANSPORT,
 }));
 mock.module("@/lib/voice-session/eliza-sse-bridge", () => ({
@@ -17,6 +20,7 @@ const VALID_BODY = JSON.stringify({
   },
   streamProtocol: "delta-v2",
 });
+const SCOPE = { agentId: "agent-a", conversationId: "conv-id" };
 
 function unusedDownstream(): typeof fetch {
   return (async () => {
@@ -38,6 +42,7 @@ describe("local runtime conversation fetch encoding", () => {
   test("unsupported path is untouched", async () => {
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
+      SCOPE,
       unusedDownstream(),
     );
     await expect(
@@ -59,6 +64,7 @@ describe("local runtime conversation fetch encoding", () => {
     }) as typeof fetch;
     const bridge = createLocalRuntimeConversationFetch(
       "http://127.0.0.1:31337",
+      SCOPE,
       downstream,
     );
     const response = await bridge(
@@ -80,6 +86,7 @@ describe("local runtime conversation fetch encoding", () => {
     async (token) => {
       const bridge = createLocalRuntimeConversationFetch(
         "http://127.0.0.1:31337",
+        SCOPE,
         unusedDownstream(),
       );
       try {

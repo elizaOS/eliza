@@ -5,8 +5,7 @@
  * `parseJsonModelRecord` / `parseJsonModelArray` add shape guards for the common
  * object / array cases.
  */
-const MODEL_CODE_FENCE_PATTERN =
-	/^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+import { unwrapWholeCodeFence } from "../utils/code-fence.ts";
 
 function stripModelWrappers(raw: string): string {
 	let candidate = raw.trim();
@@ -14,10 +13,9 @@ function stripModelWrappers(raw: string): string {
 	if (candidate.startsWith("<think>") && thinkEnd !== -1) {
 		candidate = candidate.slice(thinkEnd + "</think>".length).trim();
 	}
-	const fenced = candidate.match(MODEL_CODE_FENCE_PATTERN);
-	if (fenced) {
-		candidate = (fenced[1] ?? "").trim();
-	}
+	candidate = (
+		unwrapWholeCodeFence(candidate, ["json", "json5"]) ?? candidate
+	).trim();
 	return candidate;
 }
 

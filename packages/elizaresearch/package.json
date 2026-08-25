@@ -7,7 +7,8 @@
   "scripts": {
     "preview": "bunx serve@14 . -l 4173",
     "deploy": "bunx wrangler@4.122.0 deploy",
-    "test": "bun test ./lifecycle-alpha.test.mjs"
+    "mail:security": "node ./mail-security.mjs",
+    "test": "bun test ./lifecycle-alpha.test.mjs ./mail-security.test.mjs"
   },
   "elizaos": {
     "scripts": {

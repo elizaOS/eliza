@@ -27,10 +27,7 @@ import { AcpService } from "./acp-service.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
-import {
-  DEFAULT_MAX_RELAY_CHARS,
-  sanitizeCompletionRelay,
-} from "./transcript-sanitizer.js";
+import { sanitizeCompletionRelay } from "./transcript-sanitizer.js";
 import { type PromptResult, TERMINAL_SESSION_STATUSES } from "./types.js";
 
 export { SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
@@ -99,7 +96,11 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 // the handoff's generation token, honored only while handoff-pending.ts
 // still registers it in-flight; a stale marker is ignored AND cleared so the
 // stop synthesizes exactly as if the marker had never leaked.
-import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
+import {
+  ADMIN_STOP_META_KEY,
+  ADMIN_STOP_STAMPED_AT_META_KEY,
+  isAdminStopMarkerCurrent,
+} from "./admin-stop-marker.js";
 
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
@@ -763,10 +764,14 @@ export class SwarmCoordinatorService
     // reuses the same session (task_complete fires at the end of every turn, then
     // the session returns to a non-terminal status and accepts more input). Cancel
     // any pending post-terminal eviction so the still-live task state is not
-    // deleted mid-turn. Also refresh cached enrichment metadata: session metadata
-    // can be patched between turns, and a resumed turn must not reuse the prior
-    // turn's stale snapshot — so this must run BEFORE enrichment below.
-    if (!this.isTerminalEvent(event)) {
+    // deleted mid-turn. The nonterminal parent_agent_failure receipt is the
+    // exception: it describes a nested broker operation and does not prove the
+    // child session resumed, so it must preserve the preceding terminal turn's
+    // eviction and teardown-dedupe markers. Also refresh cached enrichment
+    // metadata for genuine resume events: session metadata can be patched
+    // between turns, and a resumed turn must not reuse the prior turn's stale
+    // snapshot — so this must run BEFORE enrichment below.
+    if (!this.isTerminalEvent(event) && event !== "parent_agent_failure") {
       this.cancelLegacyTaskEviction(sessionId);
       // Session resumed: the ceded-terminal marker belongs to the PREVIOUS
       // turn. A genuine user stop on this new turn — which the router never
@@ -826,6 +831,10 @@ export class SwarmCoordinatorService
     event: string,
     data: unknown,
   ): void {
+    // A parent-broker failure is diagnostic for one nested broker operation,
+    // not a child-session lifecycle transition. Preserve the live legacy task
+    // status while still allowing handleAcpEvent to fan out the typed receipt.
+    if (event === "parent_agent_failure") return;
     if (!isRecord(data)) {
       this.tasks.set(sessionId, { sessionId, status: event });
       return;
@@ -1008,12 +1017,31 @@ export class SwarmCoordinatorService
       // later genuine lineage completion still posts. An UNMARKED stop
       // (crash, subprocess death) still synthesizes — the #11689
       // never-silent-terminal invariant is the regression line.
+      //
+      // The stamp only authorizes suppression while fresh (#22981): a stamped
+      // stopSession that THREW leaves a surviving session wearing the marker,
+      // and honoring it later would silence that survivor's genuine crash —
+      // forever, since nothing clears it. Freshness keeps every duplicate
+      // teardown `stopped` from one admin action suppressed (they land within
+      // seconds) while a marker past the TTL — or one without a timestamp —
+      // is cleared and the stop synthesizes.
       const adminStop = readString(fresh, ADMIN_STOP_META_KEY);
       if (adminStop) {
-        logger.debug(
-          `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+        if (
+          isAdminStopMarkerCurrent(
+            readString(fresh, ADMIN_STOP_STAMPED_AT_META_KEY),
+            Date.now(),
+          )
+        ) {
+          logger.debug(
+            `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+          );
+          return;
+        }
+        logger.warn(
+          `[SwarmCoordinatorService] stale administrative-stop marker cleared; synthesizing stop (sessionId=${sessionId}, reason=${adminStop})`,
         );
-        return;
+        await this.clearStaleAdminStopMarker(sessionId);
       }
       // Handoff decided but successor spawn not yet settled: the stop is
       // teardown plumbing racing ahead of the successor stamp. Same semantics
@@ -1169,18 +1197,11 @@ export class SwarmCoordinatorService
     // `summary` ("App verification passed.") while `response` still holds the
     // raw ACP finalText spread from enrichedData. The verdict exists ONLY on
     // this record (the raw task_complete was withheld until validation), so it
-    // must not be shadowed by `response` in the read ladder: lead with it,
-    // then append the sanitized deliverable, budgeted so the combined text
-    // still fits the relay cap (buildTaskResultLine re-sanitizes defensively).
+    // must not be shadowed by `response` in the read ladder.
     const validatorVerdict = isCustomValidatorResult(record)
       ? (readString(record, "summary")?.trim() ?? "")
       : "";
-    const bodyBudget = validatorVerdict
-      ? DEFAULT_MAX_RELAY_CHARS - validatorVerdict.length - 2
-      : DEFAULT_MAX_RELAY_CHARS;
-    let sanitizedBody = rawSummary
-      ? sanitizeCompletionRelay(rawSummary, bodyBudget)
-      : "";
+    let sanitizedBody = rawSummary ? sanitizeCompletionRelay(rawSummary) : "";
     // A retried lineage can leave the planner's generic failed-tool apology as
     // the root session's finalText; next to a pass verdict it contradicts the
     // outcome ("verification passed" + "the runtime step failed"). Identity
@@ -1397,6 +1418,23 @@ export class SwarmCoordinatorService
    * future terminal for this session; the calling stop still synthesizes this
    * turn regardless of whether the clear lands.
    */
+  private async clearStaleAdminStopMarker(sessionId: string): Promise<void> {
+    const acp = this.acp();
+    if (typeof acp?.updateSessionMetadata !== "function") return;
+    try {
+      await acp.updateSessionMetadata(sessionId, {
+        [ADMIN_STOP_META_KEY]: null,
+        [ADMIN_STOP_STAMPED_AT_META_KEY]: null,
+      });
+      this.enrichmentMetadataCache.delete(sessionId);
+    } catch {
+      // error-policy:J6 best-effort marker cleanup while the stop already
+      // synthesizes; a missed clear re-runs on the session's next stopped and
+      // never suppresses a terminal (staleness is decided by the timestamp,
+      // not the marker's presence).
+    }
+  }
+
   private async clearStalePendingHandoffMarker(
     sessionId: string,
   ): Promise<void> {
@@ -1580,9 +1618,9 @@ export class SwarmCoordinatorService
         const acp = this.acp();
         const capturedOutput = acp
           ? typeof acp.getSessionTurnOutput === "function"
-            ? await acp.getSessionTurnOutput(sessionId, 2_000)
+            ? await acp.getSessionTurnOutput(sessionId)
             : typeof acp.getSessionOutput === "function"
-              ? await acp.getSessionOutput(sessionId, 2_000)
+              ? await acp.getSessionOutput(sessionId)
               : undefined
           : undefined;
         structuredProof = extractStructuredCompletionProof(capturedOutput);
@@ -1694,7 +1732,7 @@ export class SwarmCoordinatorService
     const acp = this.acp();
     if (!acp || typeof acp.sendPrompt !== "function") return false;
     const nextRetry = retryCount + 1;
-    const feedback = JSON.stringify(result, null, 2).slice(0, 12_000);
+    const feedback = JSON.stringify(result, null, 2);
     try {
       if (typeof acp.updateSessionMetadata === "function") {
         // The bump must land BEFORE the retry turn starts: the retried turn's

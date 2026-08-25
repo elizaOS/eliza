@@ -15,6 +15,26 @@ import { logger } from "../../../utils/logger";
 import { TELEGRAM_API_BASE } from "../../../utils/telegram-api";
 import { withRetry } from "../rate-limit";
 
+const TELEGRAM_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Telegram Bot API hop so a hung API cannot pin the publishing
+ * worker indefinitely. A caller-provided abort signal wins. `telegramApiRequest`
+ * runs inside `withRetry(..., { maxRetries: 3 })`, which replays the hop up to
+ * four times, so the bound has to be charged per attempt.
+ */
+export function telegramFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TELEGRAM_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 interface TelegramResponse<T> {
   ok: boolean;
   result?: T;
@@ -46,7 +66,7 @@ async function telegramApiRequest<T>(
   const url = `${TELEGRAM_API_BASE}/bot${token}/${method}`;
   const { data } = await withRetry<T>(
     () =>
-      fetch(url, {
+      telegramFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: params ? JSON.stringify(params) : undefined,

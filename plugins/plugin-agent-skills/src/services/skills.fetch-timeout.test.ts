@@ -296,11 +296,10 @@ describe("AgentSkillsService fetch timeouts", () => {
 			response.write("---\nname: stalled\ndescription: partial");
 			// Deliberately never finish the response body.
 		});
-		const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
-		vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(40));
 		const storage = new MemorySkillStore();
 		const localService = (await AgentSkillsService.start(createRuntime(), {
 			autoLoad: false,
+			fetchTimeoutMs: 40,
 			storage,
 		})) as AgentSkillsService;
 

@@ -188,10 +188,10 @@ export function AppIdentityTile({
         </div>
       )}
       {active && !imageOnly ? (
-        <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-card bg-ok " />
+        <span className="absolute right-1.5 top-1.5 size-2.5 rounded-full border border-card bg-ok " />
       ) : null}
       {!imageOnly ? (
-        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/12 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-black/12 to-transparent" />
       ) : null}
       {imageSrc && !imageOnly ? (
         <div
@@ -301,7 +301,7 @@ export function AppHero({
             }}
           />
           <div
-            className="pointer-events-none absolute -right-6 -bottom-8 h-[68%] w-[68%] text-white/[0.22]"
+            className="pointer-events-none absolute -right-6 -bottom-8  size-[68%] text-white/[0.22]"
             style={{ transform: `rotate(${iconRotation - 12}deg)` }}
           >
             <Icon className="h-full w-full" strokeWidth={1.25} />
@@ -311,7 +311,7 @@ export function AppHero({
       {!imageOnly ? (
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/60 via-black/20 to-transparent" />
         </>
       ) : null}
     </div>

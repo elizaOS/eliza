@@ -43,9 +43,62 @@ const DIRECT_CHAT_TYPES = new Set(["direct", "dm", "private"]);
 // Requiring the entire trimmed body to be the taught command preserves
 // whitespace-only client decoration without treating prose, signatures, or
 // reflowed history as approval intent.
-const APPROVAL_COMMAND_MESSAGE =
-  /^\s*(approve|reject)\s+household\s+approval\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\s*[:—-]\s*(.{1,500}))?\s*$/iu;
 const MESSAGE_LINE_BREAK = /[\n\v\f\r\u0085\u2028\u2029]/u;
+
+function parseApprovalCommand(
+  value: string,
+): HouseholdInboundApprovalCommand | null {
+  let cursor = 0;
+  const readWord = (): string => {
+    const start = cursor;
+    while (cursor < value.length && value[cursor]?.trim() !== "") cursor += 1;
+    return value.slice(start, cursor);
+  };
+  const skipWhitespace = (): boolean => {
+    const start = cursor;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+    return cursor > start;
+  };
+  const decision = readWord().toLowerCase();
+  if ((decision !== "approve" && decision !== "reject") || !skipWhitespace())
+    return null;
+  if (readWord().toLowerCase() !== "household" || !skipWhitespace())
+    return null;
+  if (readWord().toLowerCase() !== "approval" || !skipWhitespace()) return null;
+  const requestId = value.slice(cursor, cursor + 36);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      requestId,
+    )
+  )
+    return null;
+  cursor += requestId.length;
+  if (
+    cursor < value.length &&
+    value[cursor]?.trim() !== "" &&
+    value[cursor] !== ":" &&
+    value[cursor] !== "—" &&
+    value[cursor] !== "-"
+  ) {
+    return null;
+  }
+  skipWhitespace();
+  let reason: string | null = null;
+  if (cursor < value.length) {
+    if (value[cursor] !== ":" && value[cursor] !== "—" && value[cursor] !== "-")
+      return null;
+    cursor += 1;
+    skipWhitespace();
+    reason = value.slice(cursor).trimEnd();
+    if (reason.length < 1 || reason.length > 500) return null;
+    cursor = value.length;
+  }
+  return {
+    decision,
+    approvalRequestId: requestId.toLowerCase(),
+    reason,
+  };
+}
 
 export type HouseholdInboundApprovalDecision = "approve" | "reject";
 
@@ -180,18 +233,9 @@ export function parseHouseholdInboundApprovalCommand(
 ): HouseholdInboundApprovalCommand | null {
   const meaningfulText = text.trim();
   if (MESSAGE_LINE_BREAK.test(meaningfulText)) return null;
-  const match = APPROVAL_COMMAND_MESSAGE.exec(meaningfulText);
+  const match = parseApprovalCommand(meaningfulText);
   if (!match) return null;
-  const decision = match[1]?.toLowerCase();
-  const approvalRequestId = match[2]?.toLowerCase();
-  if ((decision !== "approve" && decision !== "reject") || !approvalRequestId) {
-    return null;
-  }
-  return {
-    decision,
-    approvalRequestId,
-    reason: match[3]?.trim() || null,
-  };
+  return match;
 }
 
 /**
