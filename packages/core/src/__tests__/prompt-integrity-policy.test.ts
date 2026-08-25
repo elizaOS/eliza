@@ -117,6 +117,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/:\s*50;/,
 	],
 	"plugins/plugin-inbox/src/inbox/repository.ts": [/opts\?\.limit\s*\?\?\s*50/],
+	"plugins/plugin-inbox/src/inbox/aggregate.ts": [
+		/DEFAULT_INBOX_LIMIT/,
+		/Math\.min\(Math\.floor\(request\.limit\),\s*500\)/,
+		/INBOX_CACHE_(?:WARM|READ|FULL)_LIMIT/,
+	],
 	"packages/cloud/api/v1/generate-prompts/route.ts": [/maxOutputTokens\s*:/],
 	"packages/training/scripts/rl/tokenization_utils.py": [
 		/masks\s*=\s*masks\[:/,

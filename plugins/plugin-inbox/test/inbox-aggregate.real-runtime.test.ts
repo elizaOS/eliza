@@ -300,9 +300,10 @@ describe("aggregate builders", () => {
     expect(normalizeInboxChannel(undefined)).toBeNull();
   });
 
-  it("resolveInboxRequest clamps limits, filters bogus channels, and defaults cache mode", () => {
+  it("resolveInboxRequest leaves omission complete and preserves explicit pagination", () => {
     const defaults = resolveInboxRequest({});
-    expect(defaults.limit).toBeGreaterThan(0);
+    expect(defaults.limit).toBeUndefined();
+    expect(defaults.cacheLimit).toBeUndefined();
     expect(defaults.cacheMode).toBe("read-through");
     expect(defaults.allowed.size).toBeGreaterThan(1);
 
@@ -311,7 +312,7 @@ describe("aggregate builders", () => {
       channels: ["gmail", "not-a-channel" as LifeOpsInboxChannel],
       cacheMode: "refresh",
     });
-    expect(resolved.limit).toBe(500);
+    expect(resolved.limit).toBe(100000);
     expect([...resolved.allowed]).toEqual(["gmail"]);
     expect(resolved.cacheMode).toBe("refresh");
 
