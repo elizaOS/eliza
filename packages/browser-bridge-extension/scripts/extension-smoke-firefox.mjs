@@ -259,7 +259,14 @@ async function runInstalledFirefoxSmoke() {
         throw new Error("extension URL resolver unavailable");
       return runtime.getURL("popup.html");
     });
-    await popupPage.goto(popupUrl, { waitUntil: "domcontentloaded" });
+    await popupPage.evaluate((url) => {
+      globalThis.location.assign(url);
+    }, popupUrl);
+    await popupPage.waitForFunction(
+      () => document.querySelector("#statusTitle") !== null,
+      undefined,
+      { timeout: 20_000 },
+    );
     await popupPage.waitForFunction(
       () =>
         document.querySelector("#statusTitle")?.textContent ===
