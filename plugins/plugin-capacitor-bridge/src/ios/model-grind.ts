@@ -61,6 +61,18 @@ export interface ModelGrindReport {
 
 const GRIND_PHRASE = "Eliza local voice end to end check, one two three.";
 
+function truncateText(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	let end = maxChars;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 function now(): number {
 	// performance.now() is monotonic; epoch via Date is only used for stamps.
 	return typeof performance !== "undefined"
@@ -258,7 +270,7 @@ export async function runModelGrind(
 			};
 			r.detail = {
 				outputTokens: outTokens,
-				sample: text.slice(0, 120),
+				sample: truncateText(text, 120),
 				mtp: res.specAccepted ?? res.mtpAccepted ?? null,
 			};
 			r.ok = outTokens > 0 && text.trim().length > 0;

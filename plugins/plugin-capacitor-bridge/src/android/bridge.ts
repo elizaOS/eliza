@@ -130,6 +130,18 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
 //   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
 let _logPath = "";
 
+function truncateText(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	let end = maxChars;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 function setupAndroidBridgeEnvironment(): string {
 	const rawHome =
 		process.env.HOME ||
@@ -393,7 +405,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] unhandledRejection: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "unhandledRejection",
-			message: msg.slice(0, 2000),
+			message: truncateText(msg, 2000),
 		});
 		console.error("[android-bridge] unhandled rejection:", msg);
 	});
@@ -403,7 +415,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		);
 		_appendDiagnostics("agent-fatal", {
 			kind: "uncaughtException",
-			message: (error.stack || error.message).slice(0, 2000),
+			message: truncateText(error.stack || error.message, 2000),
 		});
 		console.error(
 			"[android-bridge] uncaught exception:",
@@ -455,7 +467,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
 		_appendDiagnostics("agent-fatal", {
 			kind: "startEliza-threw",
-			message: msg.slice(0, 2000),
+			message: truncateText(msg, 2000),
 		});
 		throw err;
 	} finally {

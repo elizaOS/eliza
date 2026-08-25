@@ -171,4 +171,24 @@ describe("runModelGrind", () => {
 		);
 		expect(report.models.find((m) => m.model === "asr")?.ok).toBe(false);
 	});
+
+	it("preserves surrogate pairs in detail sample truncation", async () => {
+		// "x" + "🎉" * 70 -> 141 chars > 120 chars (bisects at 120)
+		const longEmojiText = "x" + "🎉".repeat(70);
+		const report = await runModelGrind(
+			baseDeps({
+				callIosHost: async () => ({ text: longEmojiText, outputTokens: 10 }),
+			}),
+		);
+		const text = report.models.find((m) => m.model === "text");
+		const sample = (text?.detail as { sample: string })?.sample;
+		expect(sample.length).toBe(119);
+		for (const char of sample) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
 });
