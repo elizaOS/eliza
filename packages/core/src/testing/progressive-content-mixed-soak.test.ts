@@ -36,7 +36,7 @@ function measuredResource() {
 
 function targets(families: readonly ProgressiveContentSoakFamily[]) {
 	const realizations = {
-		file: ["filesystem", "native-bytes"],
+		file: ["filesystem", "typed-rejection"],
 		document: ["document-store", "typed-rejection"],
 		memory: ["memory-store", "typed-rejection"],
 		email: ["message-store", "typed-rejection"],

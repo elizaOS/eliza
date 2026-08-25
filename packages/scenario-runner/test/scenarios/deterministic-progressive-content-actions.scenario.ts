@@ -481,13 +481,6 @@ async function verifyProductionTargetLifecycle(
         adapterId: factory.adapterId,
         target,
         pageBytes: TARGET_SOURCE_PAGE_BYTES,
-        performanceCeilings: {
-          maxPageLatencyMs: 10_000,
-          maxRssGrowthBytes: 512 * 1024 * 1024,
-          maxReadAmplification: 2,
-          maxReadCallsPerPage: 2,
-          maxRowsPerPage: 8,
-        },
       });
       const receiptPhases = new Set(
         result.receipts

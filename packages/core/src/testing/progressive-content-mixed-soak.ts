@@ -149,7 +149,7 @@ function validateTargets(
 			"mixed soak targets must cover each required family once",
 		);
 	const expected = {
-		file: ["filesystem", "native-bytes"],
+		file: ["filesystem", "typed-rejection"],
 		document: ["document-store", "typed-rejection"],
 		memory: ["memory-store", "typed-rejection"],
 		email: ["message-store", "typed-rejection"],
