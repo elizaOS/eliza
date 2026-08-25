@@ -622,6 +622,7 @@ export function CustomActionEditor({
                   }
                 >
                   <SelectTrigger
+                    aria-label="HTTP method"
                     className={`w-auto min-w-[6.5rem] ${editorInputClassName}`}
                   >
                     <SelectValue />
@@ -791,6 +792,7 @@ export function CustomActionEditor({
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
                   <Checkbox
                     checked={param.required}
+                    aria-label={t("secretsview.Required")}
                     onCheckedChange={(checked: boolean | "indeterminate") =>
                       updateParameter(paramIdx, "required", !!checked)
                     }
