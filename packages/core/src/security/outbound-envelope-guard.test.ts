@@ -3,6 +3,7 @@
  * passes, the replacement notice ships instead, and the block is reported with
  * a clamped preview. Deterministic — pure function over text + a reportError
  * spy.
+ * Consolidated from colocated and __tests__/outbound-envelope-guard suites.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -13,6 +14,7 @@ import {
 	ENVELOPE_LEAK_NOTICE,
 	guardOutboundEnvelopeAttachments,
 	guardOutboundEnvelopeText,
+	reportOutboundEnvelopeBlock,
 } from "./outbound-envelope-guard.ts";
 
 function makeRuntime() {
@@ -186,5 +188,18 @@ describe("createOutboundEnvelopeStreamLatch", () => {
 			expect(tripped(accumulated)).toBe(false);
 		}
 		expect(runtime.reportError).not.toHaveBeenCalled();
+	});
+});
+// --- Consolidated additional cases from __tests__/outbound-envelope-guard.test.ts ---
+// Unique: reportOutboundEnvelopeBlock bounded preview without re-broadcasting
+describe("reportOutboundEnvelopeBlock (merged from __tests__)", () => {
+	it("reports a bounded preview without re-broadcasting the full text", () => {
+		const runtime = { reportError: vi.fn() };
+		const long = "x".repeat(1000);
+		reportOutboundEnvelopeBlock(runtime as never, long, "pipeline");
+		const args = runtime.reportError.mock.calls[0];
+		expect(args[0]).toBe("outbound-envelope-guard");
+		expect(args[2].seam).toBe("pipeline");
+		expect(args[2].blockedPreview.length).toBeLessThanOrEqual(400);
 	});
 });
