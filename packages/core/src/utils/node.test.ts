@@ -46,6 +46,11 @@ describe("node utilities", () => {
 			expect(getLocalServerUrl("")).toBe("http://localhost:3000");
 		});
 
+		it("handles omitted and undefined path cleanly without appending undefined", () => {
+			expect(getLocalServerUrl()).toBe("http://localhost:3000");
+			expect(getLocalServerUrl(undefined)).toBe("http://localhost:3000");
+		});
+
 		it("respects SERVER_PORT environment variable", () => {
 			process.env.SERVER_PORT = "4567";
 			getEnvironment().clearCache();

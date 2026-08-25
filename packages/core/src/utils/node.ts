@@ -5,7 +5,7 @@
 
 import { getEnv } from "./environment";
 
-export function getLocalServerUrl(path: string): string {
+export function getLocalServerUrl(path?: string): string {
 	// The browser/app host advertises its API listener through ELIZA_API_PORT
 	// (or the legacy ELIZA_PORT alias). SERVER_PORT remains the standalone
 	// server fallback. Using only SERVER_PORT silently sent local attachment
@@ -14,7 +14,11 @@ export function getLocalServerUrl(path: string): string {
 		getEnv("ELIZA_API_PORT") ??
 		getEnv("ELIZA_PORT") ??
 		getEnv("SERVER_PORT", "3000");
-	const normalizedPath = path && !path.startsWith("/") ? `/${path}` : path;
+	const normalizedPath = path
+		? path.startsWith("/")
+			? path
+			: `/${path}`
+		: "";
 	return `http://localhost:${port}${normalizedPath}`;
 }
 
