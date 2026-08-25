@@ -82,4 +82,22 @@ describe("normalizeToolOutput — exec records (#11578)", () => {
     const record = { call_id: "c5", command: "true" };
     expect(normalizeToolOutput(record)).toBe("$ true → exit ?");
   });
+
+  it("preserves surrogate pairs when formatting long stdout tails", () => {
+    // "x" (1 char) + "🔥" (2 chars * 120 = 240 chars) -> bisects at 200
+    const record = {
+      call_id: "c6",
+      command: "echo test",
+      exit_code: 0,
+      stdout: "x" + "🔥".repeat(120),
+    };
+    const out = normalizeToolOutput(record);
+    for (const char of out) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

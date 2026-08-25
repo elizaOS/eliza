@@ -232,6 +232,18 @@ const LEASE_REVOKE_EVENTS: ReadonlySet<SessionEventName> = new Set([
   "cancelled",
 ]);
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function isIncompletePromptStopReason(stopReason: string | undefined): boolean {
   const reason = (stopReason ?? "").toLowerCase();
   return (
@@ -3883,7 +3895,7 @@ export class AcpService extends Service {
       // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
-        line: line.slice(0, 200),
+        line: truncateText(line, 200),
       });
       return null;
     }
@@ -4843,7 +4855,7 @@ export class AcpService extends Service {
       return "acpx session was not found. This is likely an internal session bookkeeping error.";
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
-    if (stderr.trim()) return stderr.trim().slice(0, 500);
+    if (stderr.trim()) return truncateText(stderr.trim(), 500);
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
@@ -5451,7 +5463,7 @@ function execRecordOutputTail(record: Record<string, unknown>): string {
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
   const joined = candidates.join("\n").trim();
-  return joined.length > 200 ? `${joined.slice(0, 200)}…` : joined;
+  return joined.length > 200 ? `${truncateText(joined, 200)}…` : joined;
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
@@ -5524,7 +5536,7 @@ function capStderr(text: string): string {
 }
 
 function preview(text: string): string {
-  return text.replace(/\s+/g, " ").slice(0, 80);
+  return truncateText(text.replace(/\s+/g, " "), 80);
 }
 
 function errorMessage(err: unknown): string {
