@@ -280,4 +280,114 @@ describe("buildSkillCommandSpecs", () => {
     const specs = buildSkillCommandSpecs(entries);
     assert.strictEqual(specs[0].dispatch, undefined);
   });
+
+  it("compacts multi-line whitespace and trims fields in formatted prompt", () => {
+    const skills: Skill[] = [
+      {
+        name: "  multi   line  \n skill  ",
+        description: "  A \n\t description  with   extra \r\n spaces  ",
+        filePath: "  /path/to/\n  SKILL.md  ",
+      },
+    ];
+    const result = formatSkillsForPrompt(skills);
+    assert.ok(result.includes("- name: multi line skill"));
+    assert.ok(result.includes("description: A description with extra spaces"));
+    assert.ok(result.includes("location: /path/to/ SKILL.md"));
+  });
+
+  it("falls back to default command name when sanitized name is empty", () => {
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: "!!! @@@ ###", description: "Symbol-only name" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.strictEqual(specs[0].name, "skill");
+    assert.strictEqual(specs[0].skillName, "!!! @@@ ###");
+  });
+
+  it("strips duplicate and leading/trailing underscores from sanitized command names", () => {
+    const entries: SkillEntry[] = [
+      {
+        skill: {
+          name: "___MY---Awesome___Skill___",
+          description: "Decorated name",
+        },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.strictEqual(specs[0].name, "my_awesome_skill");
+  });
+
+  it("handles collisions on long names by truncating base to fit numeric suffix", () => {
+    const longName = "a".repeat(35);
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: longName, description: "First long skill" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+      {
+        skill: { name: longName, description: "Second long skill" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.strictEqual(specs.length, 2);
+    assert.strictEqual(specs[0].name, "a".repeat(32));
+    assert.strictEqual(specs[1].name, `${"a".repeat(30)}_1`);
+    assert.strictEqual(specs[0].name.length, 32);
+    assert.strictEqual(specs[1].name.length, 32);
+  });
+
+  it("treats reserved command names case-insensitively", () => {
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: "admin", description: "Admin skill" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries, new Set(["ADMIN", "HeLp"]));
+    assert.strictEqual(specs[0].name, "admin_1");
+  });
+
+  it("supports snake_case dispatch frontmatter aliases and case-insensitive dispatch values", () => {
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: "aliased", description: "Uses snake_case dispatch" },
+        frontmatter: {
+          command_dispatch: "TOOL",
+          command_tool: "executeAction",
+        },
+        metadata: {},
+        invocation: {},
+      },
+      {
+        skill: { name: "empty-tool", description: "Tool is blank" },
+        frontmatter: {
+          command_dispatch: "tool",
+          command_tool: "   ",
+        },
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    assert.ok(specs[0].dispatch);
+    assert.strictEqual(specs[0].dispatch?.kind, "tool");
+    assert.strictEqual(specs[0].dispatch?.toolName, "executeAction");
+    assert.strictEqual(specs[0].dispatch?.argMode, "raw");
+    assert.strictEqual(specs[1].dispatch, undefined);
+  });
 });
