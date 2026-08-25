@@ -98,4 +98,50 @@ describe("READ progressive-content conformance", () => {
     ).toBe("CONTENT_NOT_FOUND");
     expect(await fs.readdir(targetRoot)).toEqual([".blocked"]);
   });
+
+  it.each([
+    ["binary", Buffer.from([0, 0xff, 1]), "CONTENT_BINARY_UNSUPPORTED", 0],
+    [
+      "invalid-utf8",
+      Buffer.from([0x61, 0xff, 0x62]),
+      "CONTENT_INVALID_UTF8",
+      1,
+    ],
+  ] as const)(
+    "rejects %s without retaining a target file",
+    async (format, bytes, code, expectedReads) => {
+      const targetRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "coding-file-rejection-"),
+      );
+      roots.push(targetRoot);
+      let reads = 0;
+      const factory = await createProgressiveFileTargetFactory({
+        targetRoot,
+        agentId: "file-rejection-agent",
+      });
+      await expect(
+        factory.create({
+          object: {
+            id: `coding-file-${format}-object`,
+            family: "file",
+            byteLength: bytes.byteLength,
+            sourceSha256: createHash("sha256").update(bytes).digest("hex"),
+            sourceRevision: `${format}-revision`,
+            format,
+            authorizationScope: "file-rejection-room",
+            canaries: [],
+          },
+          source: {
+            byteLength: bytes.byteLength,
+            async read() {
+              reads += 1;
+              return bytes;
+            },
+          },
+        }),
+      ).rejects.toMatchObject({ code });
+      expect(reads).toBe(expectedReads);
+      expect(await fs.readdir(targetRoot)).toEqual([".blocked"]);
+    },
+  );
 });
