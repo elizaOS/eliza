@@ -196,6 +196,11 @@ describe("publicJobErrorSummary — API boundary", () => {
 
   test.each([
     "Provider https://api.eliza.app?debug=/srv/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/workspace/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/app/eliza/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/data/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=/nix/store/secret/agents/9c1/config.json",
+    "Provider https://api.eliza.app?debug=//internal-host/agents/9c1/config.json",
     "Provider https://api.eliza.app(/srv/eliza/agents/9c1/config.json)",
     "Provider https://api.eliza.app,C:\\eliza\\agents\\9c1\\config.json",
     "Provider https://api.eliza.app?debug=%2Fsrv%2Feliza%2Fagents%2F9c1%2Fconfig.json",

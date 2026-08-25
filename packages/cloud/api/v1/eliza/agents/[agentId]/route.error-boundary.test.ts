@@ -98,6 +98,11 @@ test.each([
   "ENOENT [/srv/eliza/agents/agent-1/config.json]",
   "ENOENT: //srv/eliza/agents/agent-1/config.json",
   "Provider https://api.eliza.app?debug=/srv/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/workspace/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/app/eliza/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/data/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=/nix/store/secret/agents/agent-1/config.json",
+  "Provider https://api.eliza.app?debug=//internal-host/agents/agent-1/config.json",
   "Provider https://api.eliza.app(/srv/eliza/agents/agent-1/config.json)",
   "Provider https://api.eliza.app,C:\\eliza\\agents\\agent-1\\config.json",
 ])(

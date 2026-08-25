@@ -32,8 +32,8 @@ const FILE_URL_PATTERN = /\bfile:\/\//iu;
 const DRIVE_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])[A-Za-z]:[\\/][^\s'"`<>]*/u;
 const UNC_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\\\\[^\\\s'"`<>]+\\[^\s'"`<>]*/u;
 const POSIX_PATH_PATTERN = /(?:^|[^A-Za-z0-9_.~%-])\/+[^\s'"`<>]+/u;
-const URL_METADATA_HOST_ROOT_PATTERN =
-  /(?:^|[=([{,;\s])\/+\b(?:dev|etc|home|media|mnt|opt|private|proc|root|run|srv|sys|tmp|usr|var|users|volumes)(?:[\\/]|$)/iu;
+const PUBLIC_URL_METADATA_PATH_PATTERN = /^\/(?:v1\/chat|callback)(?:[/?#].*)?$/iu;
+const ABSOLUTE_HOST_PATH_PATTERN = /^(?:\/{1,2}|[A-Za-z]:[\\/]|\\\\)/u;
 
 function decodeUrlMetadata(value: string): string | null {
   try {
@@ -54,15 +54,18 @@ function networkUrlContainsHostPath(urlToken: string): boolean {
     return true;
   }
 
-  const candidates = [url.pathname, url.hash.slice(1), ...url.searchParams.values()];
+  // The URL pathname is public route data; only query and fragment metadata
+  // can carry an adjacent host path that must be withheld.
+  const candidates = [url.hash.slice(1), ...url.searchParams.values()];
   return candidates.some((candidate) => {
     const decoded = decodeUrlMetadata(candidate);
     if (decoded === null) return true;
+    if (PUBLIC_URL_METADATA_PATH_PATTERN.test(decoded)) return false;
     return (
       FILE_URL_PATTERN.test(decoded) ||
       DRIVE_PATH_PATTERN.test(decoded) ||
       UNC_PATH_PATTERN.test(decoded) ||
-      URL_METADATA_HOST_ROOT_PATTERN.test(decoded)
+      ABSOLUTE_HOST_PATH_PATTERN.test(decoded)
     );
   });
 }
