@@ -78,6 +78,7 @@ import {
 	isAliasedDiscordEntityId,
 } from "./identity";
 import { formatInboundEnvelope } from "./inbound-envelope";
+import { discordInstallationAllowsTraffic } from "./installation-adapter";
 import { buildDiscordReplyPayload } from "./interactions";
 import {
 	appendCoalescedDiscordMetadata,
@@ -2275,6 +2276,32 @@ export class MessageManager {
 			const verifyFencedOutboundSend = async (
 				outcome: "normal" | "failure-reply",
 			): Promise<boolean> => {
+				// Canonical installation lifecycle traffic gate (#23107): a
+				// terminal installation record (removed/revoked/failed) must stop
+				// outbound traffic. Grandfathered scopes (no record / no service)
+				// flow; the record's presence opts the guild into the gate.
+				if (messageServerId) {
+					const allowsTraffic = discordInstallationAllowsTraffic(this.runtime, {
+						connectorAccountId: createUniqueUuid(
+							this.runtime,
+							"discord-default-account",
+						),
+						externalWorldId: messageServerId,
+					});
+					if (!allowsTraffic) {
+						this.runtime.logger.warn(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								channelId: message.channel.id,
+								guildId: messageServerId,
+								sendPath: outcome,
+							},
+							"Installation lifecycle: guild installation is terminal; blocking outbound send",
+						);
+						return false;
+					}
+				}
 				if (!speakerLease || !message.id) {
 					return true;
 				}

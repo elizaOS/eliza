@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildDiscordInstallationContribution,
 	DISCORD_INSTALLATION_SCOPE_REQUIREMENTS,
+	discordInstallationAllowsTraffic,
 	registerDiscordInstallationContribution,
 	reportDiscordGuildJoined,
 	reportDiscordGuildRemoved,
@@ -188,6 +189,11 @@ describe("discord installation reporting", () => {
 				connectorAccountId: stringToUuid("acct"),
 				externalWorldId: "g1",
 			},
+			// Same epoch as the live record so the epoch guards pass and the
+			// STALE_GENERATION verdict comes from the generation fence itself
+			// (an undefined reinstallVersion would be rejected by the integer
+			// check instead — a false positive, not the fence under test).
+			reinstallVersion: 1,
 			observedGeneration: 1,
 			observedAt: "2026-08-25T13:00:00Z",
 			idempotencyKey: "discord:g1:late-replay-join",
@@ -322,5 +328,56 @@ describe("discord installation reporting", () => {
 		expect(service.getContribution("discord")?.activation.installUrl).toContain(
 			"123",
 		);
+	});
+});
+
+describe("discord installation traffic gate", () => {
+	it("a terminal installation record stops outbound traffic", async () => {
+		const service = new InstallationLifecycleService();
+		const runtime = makeRuntime(service);
+		const input = {
+			connectorAccountId: stringToUuid("acct"),
+			externalWorldId: "g1",
+		};
+		// Before any record: grandfathered, traffic flows.
+		expect(discordInstallationAllowsTraffic(runtime, input)).toBe(true);
+		await reportDiscordGuildJoined(runtime, {
+			...input,
+			guildName: "G1",
+			worldId: stringToUuid("w1"),
+		});
+		// Non-terminal, non-ready record: onboarding traffic continues (the
+		// strict ready gate is the next tranche's boundary).
+		expect(discordInstallationAllowsTraffic(runtime, input)).toBe(true);
+		await reportDiscordGuildRemoved(runtime, input);
+		// THE ROUND-1 DEFECT: removal was recorded but traffic kept flowing —
+		// the lifecycle was observational only. A terminal record must gate.
+		expect(discordInstallationAllowsTraffic(runtime, input)).toBe(false);
+	});
+
+	it("a guild with no installation record (grandfathered) never gates", () => {
+		const service = new InstallationLifecycleService();
+		const runtime = makeRuntime(service);
+		expect(
+			discordInstallationAllowsTraffic(runtime, {
+				connectorAccountId: stringToUuid("acct"),
+				externalWorldId: "never-seen",
+			}),
+		).toBe(true);
+	});
+
+	it("a missing installation service never gates (connector keeps running)", () => {
+		const runtime = makeRuntime(new InstallationLifecycleService());
+		// Simulate the service being absent: getService returns undefined.
+		const bareRuntime = {
+			...runtime,
+			getService: () => undefined,
+		} as unknown as typeof runtime;
+		expect(
+			discordInstallationAllowsTraffic(bareRuntime, {
+				connectorAccountId: stringToUuid("acct"),
+				externalWorldId: "g1",
+			}),
+		).toBe(true);
 	});
 });

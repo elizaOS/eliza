@@ -123,6 +123,10 @@ const discordPlugin: Plugin = {
 				typeof applicationId === "string" ? applicationId : null,
 			);
 		} catch (err) {
+			// error-policy:J4 user-facing degrade — registration failure
+			// degrades install diagnostics to the manual-activation catalog
+			// path below (the load-promise retry still runs); it must not
+			// abort plugin init over a diagnostics contribution.
 			logger.warn(
 				{
 					src: "plugin:discord",
@@ -141,6 +145,10 @@ const discordPlugin: Plugin = {
 				);
 			})
 			.catch((err) => {
+				// error-policy:J4 user-facing degrade — when the installation
+				// service never starts, Discord install diagnostics degrade to
+				// truthful manual steps (the same catalog path as an unknown
+				// application id); the connector still boots and runs.
 				logger.warn(
 					{
 						src: "plugin:discord",

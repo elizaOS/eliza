@@ -7,9 +7,10 @@
  */
 
 import { ElizaError } from "../errors";
-import type { UUID } from "../types/primitives";
+import type { JsonObject, UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
+import { stableStringify } from "../utils/deterministic";
 import {
 	type ConnectorInstallationContribution,
 	validateInstallationContribution,
@@ -29,10 +30,38 @@ import {
  * no-ops; keys must therefore be epoch-scoped by callers (reinstallVersion)
  * so a removal key from installation N can never satisfy a removal of
  * installation N+1. The service enforces the second half of that contract:
- * a replayed receipt whose record no longer matches the live epoch is NOT
- * returned as idempotent — the event is applied against the live record.
+ * a replayed receipt whose record belongs to a different installation epoch
+ * is NOT returned as idempotent — the event is applied against the live
+ * record.
  */
-type ReceiptLog = Map<string, InstallationTransitionReceipt>;
+type ReceiptLog = Map<string, LogEntry>;
+
+interface LogEntry {
+	receipt: InstallationTransitionReceipt;
+	/**
+	 * Canonical payload fingerprint for collision detection: the same
+	 * idempotency key must always carry the same payload. A key collision
+	 * with a different payload is a provider integrity violation, not an
+	 * idempotent replay, and fails loudly.
+	 */
+	fingerprint: string;
+}
+
+/**
+ * Fingerprint of the event's semantic payload. Deliberately excludes the
+ * idempotency key (the lookup dimension), observedAt (redelivery re-stamps
+ * the clock), and observedGeneration/reinstallVersion (the observer's view
+ * legitimately differs when an event is redelivered against an advanced
+ * record — the cross-epoch guard below decides that case, not the
+ * fingerprint). One key carrying two different transitions is a provider
+ * integrity violation.
+ */
+function eventFingerprint(event: InstallationTransitionEvent): string {
+	return stableStringify({
+		scope: event.scope,
+		transition: event.transition,
+	});
+}
 
 function scopeKey(scope: InstallationScope): string {
 	return `${scope.agentId}:${scope.connectorId}:${scope.connectorAccountId}:${scope.externalWorldId}`;
@@ -68,25 +97,39 @@ export class InstallationLifecycleService extends Service {
 			);
 		}
 		const key = scopeKey(event.scope);
-		const log =
-			this.receipts.get(key) ??
-			new Map<string, InstallationTransitionReceipt>();
+		const log = this.receipts.get(key) ?? new Map<string, LogEntry>();
 		const record = this.records.get(key);
 		const prior = log.get(event.idempotencyKey);
 		if (prior) {
+			// Payload collision guard: one idempotency key must always carry
+			// one payload. A different payload under a cached key is a
+			// provider integrity violation and fails loudly instead of
+			// laundering a different transition through the cached receipt.
+			if (prior.fingerprint !== eventFingerprint(event)) {
+				throw new ElizaError(
+					`Installation idempotency key collision for ${event.idempotencyKey}: the cached receipt carries a different payload.`,
+					{
+						code: "INSTALLATION_IDEMPOTENCY_COLLISION",
+						context: {
+							scope: event.scope,
+							idempotencyKey: event.idempotencyKey,
+						},
+					},
+				);
+			}
 			// Cross-epoch replay guard: a receipt cached under this key only
 			// short-circuits when its record belongs to the LIVE installation
-			// epoch. A removal receipt from a prior (removed/revoked/failed)
-			// installation must not satisfy an event against the recreated
-			// record — fall through and apply for real.
+			// epoch — a terminal record stays terminal (a redelivered
+			// guildDelete replays its removal receipt instead of falling
+			// through to INVALID_TRANSITION), while a receipt from a prior
+			// (removed/revoked/failed) installation must not satisfy an event
+			// against the recreated record — it falls through and applies for
+			// real.
 			const sameEpoch =
 				record !== undefined &&
-				prior.record.reinstallVersion === record.reinstallVersion &&
-				prior.record.state !== "removed" &&
-				prior.record.state !== "revoked" &&
-				prior.record.state !== "failed";
+				prior.receipt.record.reinstallVersion === record.reinstallVersion;
 			if (sameEpoch) {
-				return { ...prior, idempotentReplay: true };
+				return { ...prior.receipt, idempotentReplay: true };
 			}
 		}
 		let receipt: InstallationTransitionReceipt;
@@ -101,13 +144,17 @@ export class InstallationLifecycleService extends Service {
 		} else {
 			receipt = applyInstallationTransition(record ?? null, event);
 		}
-		if (receipt.accepted) {
+		if (receipt.accepted || receipt.rejection?.persistRecord === true) {
+			// Attempt burns arrive as REJECTED receipts carrying a mutated
+			// record; persist the record either way so exhaustion sticks.
 			this.records.set(key, receipt.record);
-			// Same-key/different-payload guard: overwriting a cached receipt
-			// for a changed payload would let a collision launder a different
-			// transition under the same key; keep the FIRST receipt per key.
+			// Same-key/different-payload guard is enforced above at lookup;
+			// keep the FIRST receipt per key (first-write-wins).
 			if (!log.has(event.idempotencyKey)) {
-				log.set(event.idempotencyKey, receipt);
+				log.set(event.idempotencyKey, {
+					receipt,
+					fingerprint: eventFingerprint(event),
+				});
 			}
 			this.receipts.set(key, log);
 		}

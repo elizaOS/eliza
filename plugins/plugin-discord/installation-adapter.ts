@@ -157,6 +157,45 @@ function resolveService(
 }
 
 /**
+ * Traffic gate for a guild scope: returns true when Discord traffic may flow.
+ * Installs that never reached the lifecycle service (service missing, or no
+ * record — e.g. a guild joined before this feature shipped, or a record
+ * wiped by restart) run in grandfathered observability mode and traffic
+ * continues. The enforced boundary in this tranche is the issue's removal
+ * criterion: a terminal record (removed/revoked/failed) stops all outbound
+ * traffic. Strict ready-gating (state === "ready") activates when the
+ * claim-issuance and capability-proof minting seams land in the next
+ * tranche — enforcing it today would silence every onboarding guild because
+ * nothing drives a record to ready yet.
+ */
+export function discordInstallationAllowsTraffic(
+	runtime: IAgentRuntime,
+	input: {
+		connectorAccountId: UUID;
+		externalWorldId: string;
+	},
+): boolean {
+	const service = resolveService(runtime);
+	if (!service) return true;
+	const scope: InstallationScope = {
+		agentId: runtime.agentId,
+		connectorId: "discord",
+		connectorAccountId: input.connectorAccountId,
+		externalWorldId: input.externalWorldId,
+	};
+	const record = service.get(scope);
+	if (!record) return true;
+	if (
+		record.state === "removed" ||
+		record.state === "revoked" ||
+		record.state === "failed"
+	) {
+		return false;
+	}
+	return true;
+}
+
+/**
  * Report the agent joining a guild (guildCreate seam). Synthesizes the
  * honest evidence prefix (invite_created + provider_authorized are
  * connector-observed, not OAuth-proven) then the join itself, and enqueues
@@ -211,7 +250,11 @@ export async function reportDiscordGuildJoined(
 		) {
 			return record.reinstallVersion + 1;
 		}
-		return record?.reinstallVersion ?? 0;
+		// A scope with no record yet starts at epoch 1 (the reducer's initial
+		// creation epoch), NOT 0: an epoch-0 event against the freshly created
+		// epoch-1 record would be fenced as a stale epoch and the whole join
+		// prefix would silently reject.
+		return record?.reinstallVersion ?? 1;
 	};
 	// Stable per-guild keys per reinstall epoch: a discord.js guildCreate replay
 	// (reconnect) hits the idempotency log and is a no-op, while a genuine

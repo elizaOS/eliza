@@ -17,6 +17,7 @@ import {
 import {
 	applyInstallationTransition,
 	INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
+	type InstallationCapability,
 	type InstallationScope,
 	type InstallationTransitionEvent,
 	isStaleAgainstRemoval,
@@ -327,7 +328,14 @@ describe("installation lifecycle state machine", () => {
 		).record;
 		const recreated = recreateInstallationAfterRemoval(
 			removed,
-			event({ kind: "invite_created" }, 99, "2026-08-25T15:00:00Z"),
+			event(
+				{ kind: "invite_created" },
+				99,
+				"2026-08-25T15:00:00Z",
+				"recreate-after-removal",
+				// Re-creation must carry the NEXT epoch (record is at 1).
+				removed.reinstallVersion + 1,
+			),
 		);
 		expect(recreated.accepted).toBe(true);
 		expect(recreated.record.reinstallVersion).toBe(2);
@@ -669,7 +677,14 @@ describe("InstallationLifecycleService (in-memory host)", () => {
 		const record = service.get(scope);
 		expect(record?.state).toBe("removed");
 		const recreated = service.apply(
-			event({ kind: "invite_created" }, 1, "2026-08-25T13:00:00Z", "e3"),
+			event(
+				{ kind: "invite_created" },
+				1,
+				"2026-08-25T13:00:00Z",
+				"e3",
+				// Re-creation carries the next epoch (record is at 1).
+				2,
+			),
 		);
 		expect(recreated.accepted).toBe(true);
 		expect(recreated.record.reinstallVersion).toBe(2);
@@ -983,5 +998,501 @@ describe("round-1: service input guards", () => {
 			contractVersion: 999,
 		} as unknown as InstallationTransitionEvent;
 		expect(() => service.apply(foreign)).toThrowError(/contract version/i);
+	});
+});
+
+describe("round-2: persisted attempt burning and claim exhaustion", () => {
+	function driveToPendingClaim(service: InstallationLifecycleService) {
+		for (const transition of [
+			{ kind: "invite_created" } as const,
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+			{
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: [],
+			} as const,
+			{
+				kind: "owner_claim_issued",
+				claimId: "c1",
+				claimSecretHash: "real-hash",
+				expiresAt: "2026-08-25T13:00:00Z",
+			} as const,
+		]) {
+			const receipt = service.apply(
+				next(
+					service.get(scope),
+					transition,
+					OBSERVED_AT,
+					`drive-${transition.kind}-${Math.random()}`,
+				),
+			);
+			if (!receipt.accepted)
+				throw new Error(
+					`drive failed: ${transition.kind} -> ${receipt.rejection?.code}`,
+				);
+		}
+		return service.get(scope);
+	}
+
+	it("persists a burned attempt on secret mismatch and reaches exhaustion through the service", () => {
+		const service = new InstallationLifecycleService();
+		const pending = driveToPendingClaim(service);
+		expect(pending?.state).toBe("owner_claim_pending");
+
+		const wrongSecret = (i: number) =>
+			next(
+				service.get(scope),
+				{
+					kind: "owner_claim_redeemed",
+					claimId: "c1",
+					claimSecretHash: `wrong-${i}`,
+					claimedByEntityId: stringToUuid("owner"),
+				},
+				OBSERVED_AT,
+				`wrong-${i}-${Math.random()}`,
+			);
+		// Burn 4 of 5 attempts: each mismatch is REJECTED but persisted.
+		for (let i = 0; i < 4; i++) {
+			const receipt = service.apply(wrongSecret(i));
+			expect(receipt.accepted).toBe(false);
+			expect(receipt.rejection?.code).toBe("CLAIM_SECRET_MISMATCH");
+			expect(receipt.rejection?.persistRecord).toBe(true);
+			// THE ROUND-1 DEFECT: the stored record must actually carry the
+			// decremented count or attempts never exhaust (unlimited guessing).
+			expect(service.get(scope)?.ownerClaim?.attemptsRemaining).toBe(4 - i);
+		}
+		// The 5th wrong attempt exhausts: accepted failure terminal.
+		const exhausted = service.apply(wrongSecret(4));
+		expect(exhausted.accepted).toBe(true);
+		expect(exhausted.record.state).toBe("failed");
+		expect(exhausted.record.removalReason).toBe(
+			"owner claim attempts exhausted",
+		);
+		// Further redemption attempts are fenced by the terminal state.
+		const postExhaustion = service.apply(wrongSecret(5));
+		expect(postExhaustion.accepted).toBe(false);
+	});
+
+	it("an expired claim rejects with CLAIM_EXPIRED without burning an attempt", () => {
+		const service = new InstallationLifecycleService();
+		driveToPendingClaim(service);
+		// Claim expires 12:30; redemption observed 13:00: expired.
+		const before = service.get(scope)?.ownerClaim?.attemptsRemaining;
+		const receipt = service.apply(
+			next(
+				service.get(scope),
+				{
+					kind: "owner_claim_redeemed",
+					claimId: "c1",
+					claimSecretHash: "wrong",
+					claimedByEntityId: stringToUuid("owner"),
+				},
+				"2026-08-25T13:00:00Z",
+				`expired-${Math.random()}`,
+			),
+		);
+		expect(receipt.accepted).toBe(false);
+		expect(receipt.rejection?.code).toBe("CLAIM_EXPIRED");
+		// Expiry is checked BEFORE the secret: no attempt burned.
+		expect(service.get(scope)?.ownerClaim?.attemptsRemaining).toBe(before);
+	});
+
+	it("rejects owner_claim_issued with an unparseable expiresAt (fail closed at ingestion)", () => {
+		const service = new InstallationLifecycleService();
+		for (const transition of [
+			{ kind: "invite_created" } as const,
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+			{
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: [],
+			} as const,
+		]) {
+			service.apply(
+				next(
+					service.get(scope),
+					transition,
+					OBSERVED_AT,
+					`drv-${Math.random()}`,
+				),
+			);
+		}
+		const receipt = service.apply(
+			next(
+				service.get(scope),
+				{
+					kind: "owner_claim_issued",
+					claimId: "c1",
+					claimSecretHash: "h",
+					expiresAt: "not-a-timestamp",
+				},
+				OBSERVED_AT,
+				`badexpiry-${Math.random()}`,
+			),
+		);
+		expect(receipt.accepted).toBe(false);
+		expect(receipt.rejection?.code).toBe("INVALID_TRANSITION");
+		expect(receipt.record.state).toBe("permissions_verifying");
+	});
+});
+
+describe("round-2: terminal receipt replay and stale terminal recreation", () => {
+	function driveToJoined(service: InstallationLifecycleService) {
+		for (const transition of [
+			{ kind: "invite_created" } as const,
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+		]) {
+			const receipt = service.apply(
+				next(
+					service.get(scope),
+					transition,
+					OBSERVED_AT,
+					`drive-${transition.kind}-${Math.random()}`,
+				),
+			);
+			if (!receipt.accepted)
+				throw new Error(
+					`drive failed: ${transition.kind} -> ${receipt.rejection?.code}`,
+				);
+		}
+		return service.get(scope);
+	}
+
+	function driveToRemoved(service: InstallationLifecycleService) {
+		const joined = driveToJoined(service);
+		if (!joined) throw new Error("driveToJoined returned null");
+		const receipt = service.apply(
+			next(
+				joined,
+				{ kind: "removal", reason: "kicked" },
+				OBSERVED_AT,
+				`drive-removal-${Math.random()}`,
+			),
+		);
+		if (!receipt.accepted) throw new Error("drive removal failed");
+		return service.get(scope);
+	}
+
+	it("a repeated removal against the live terminal epoch replays idempotently", () => {
+		const service = new InstallationLifecycleService();
+		const joined = driveToJoined(service);
+		if (!joined) throw new Error("driveToJoined returned null");
+		// The genuine removal lands under a fixed key (provider event id).
+		const first = service.apply(
+			next(
+				joined,
+				{ kind: "removal", reason: "kicked" },
+				OBSERVED_AT,
+				"remove-once",
+			),
+		);
+		expect(first.accepted).toBe(true);
+		// The redelivered guildDelete: same key, same payload, record now
+		// terminal — must replay the cached receipt, not INVALID_TRANSITION.
+		const replayed = service.apply(
+			next(
+				service.get(scope),
+				{ kind: "removal", reason: "kicked" },
+				OBSERVED_AT,
+				"remove-once",
+			),
+		);
+		// THE ROUND-1 DEFECT: a redelivered guildDelete fell through to the
+		// reducer and returned INVALID_TRANSITION instead of a replay.
+		expect(replayed.idempotentReplay).toBe(true);
+		expect(replayed.accepted).toBe(true);
+		expect(replayed.record.state).toBe("removed");
+	});
+
+	it("an old-epoch invite cannot recreate a terminal installation", () => {
+		const service = new InstallationLifecycleService();
+		const removed = driveToRemoved(service);
+		if (!removed) throw new Error("driveToRemoved returned null");
+		// A delayed invite from the dead installation (right epoch number but
+		// observed BEFORE the removal): fenced as a stale re-delivery.
+		const staleInvite = service.apply({
+			...next(
+				removed,
+				{ kind: "invite_created", externalGroupLabel: "G" },
+				OBSERVED_AT,
+				"stale-invite",
+			),
+			reinstallVersion: removed.reinstallVersion + 1,
+			observedAt: "2026-08-25T11:00:00Z", // before removal (12:00)
+		});
+		expect(staleInvite.accepted).toBe(false);
+		expect(staleInvite.rejection?.code).toBe("STALE_EPOCH");
+		expect(service.get(scope)?.state).toBe("removed");
+	});
+
+	it("a genuine re-invite after the removal recreates with cleared epoch evidence", () => {
+		const service = new InstallationLifecycleService();
+		const removed = driveToRemoved(service);
+		if (!removed) throw new Error("driveToRemoved returned null");
+		const recreated = service.apply({
+			...next(
+				removed,
+				{ kind: "invite_created", externalGroupLabel: "G2" },
+				OBSERVED_AT,
+				"genuine-reinvite",
+			),
+			reinstallVersion: removed.reinstallVersion + 1,
+			observedAt: "2026-08-25T13:00:00Z", // after removal (12:00)
+		});
+		expect(recreated.accepted).toBe(true);
+		expect(recreated.record.reinstallVersion).toBe(2);
+		expect(recreated.record.state).toBe("invite_created");
+		// Epoch evidence reset: stale authorization evidence from epoch 1 must
+		// not leak into the recreated record.
+		expect(recreated.record.providerAuthorizationEvidence).toBeNull();
+		expect(recreated.record.requiredCapabilities).toEqual([]);
+		expect(recreated.record.worldId).toBeNull();
+	});
+
+	it("a far-future epoch invite cannot skip the removal sequence", () => {
+		const service = new InstallationLifecycleService();
+		const removed = driveToRemoved(service);
+		if (!removed) throw new Error("driveToRemoved returned null");
+		const skipped = service.apply({
+			...next(removed, { kind: "invite_created" }, OBSERVED_AT, "future-epoch"),
+			reinstallVersion: removed.reinstallVersion + 2,
+			observedAt: "2026-08-25T13:00:00Z",
+		});
+		expect(skipped.accepted).toBe(false);
+		expect(skipped.rejection?.code).toBe("STALE_EPOCH");
+	});
+});
+
+describe("round-2: future epochs and payload collisions", () => {
+	it("rejects a same-generation mutation from a future epoch", () => {
+		const service = new InstallationLifecycleService();
+		service.apply(event({ kind: "invite_created" }, 1));
+		let record = service.get(scope);
+		record = applyInstallationTransition(
+			record,
+			next(record, {
+				kind: "provider_authorized",
+				evidence: "connector_observed",
+			}),
+		).record;
+		const futureEpoch = service.apply({
+			...next(record, { kind: "agent_joined", worldId: stringToUuid("w") }),
+			reinstallVersion: 5,
+			idempotencyKey: "future-epoch-join",
+		});
+		expect(futureEpoch.accepted).toBe(false);
+		expect(futureEpoch.rejection?.code).toBe("STALE_EPOCH");
+	});
+
+	it("throws on a same-key/different-payload idempotency collision", () => {
+		const service = new InstallationLifecycleService();
+		service.apply({
+			...event({ kind: "invite_created" }, 1),
+			idempotencyKey: "dup-key",
+		});
+		expect(() =>
+			service.apply({
+				...event(
+					{ kind: "provider_authorized", evidence: "connector_observed" },
+					1,
+				),
+				idempotencyKey: "dup-key",
+			}),
+		).toThrowError(/collision/i);
+	});
+
+	it("a legitimate replay with a re-stamped observedAt and advanced numbers replays idempotently", () => {
+		const service = new InstallationLifecycleService();
+		service.apply({
+			...event({ kind: "invite_created" }, 1),
+			idempotencyKey: "invite-1",
+		});
+		const replay = service.apply({
+			...event({ kind: "invite_created" }, 1),
+			idempotencyKey: "invite-1",
+			observedAt: "2026-08-25T12:05:00Z", // redelivery re-stamps the clock
+		});
+		expect(replay.idempotentReplay).toBe(true);
+	});
+});
+
+describe("round-2: claim-before-proof does not strand the record", () => {
+	it("capability_proof is legal from owner_claim_pending and reaches ready after redemption", () => {
+		const service = new InstallationLifecycleService();
+		service.apply(event({ kind: "invite_created" }, 1));
+		let record = service.get(scope);
+		for (const transition of [
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+			{
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive", "send"],
+				optionalCapabilities: [],
+			} as const,
+			{
+				kind: "owner_claim_issued",
+				claimId: "c1",
+				claimSecretHash: "h",
+				expiresAt: "2026-08-25T13:00:00Z",
+			} as const,
+		]) {
+			const receipt = service.apply(next(record, transition));
+			expect(receipt.accepted).toBe(true);
+			record = receipt.record;
+		}
+		// THE ROUND-1 STRANDING DEFECT: a claim issued during
+		// permissions_verifying moved the record to owner_claim_pending,
+		// where capability proofs were illegal — permanently stranded.
+		const pending = record;
+		expect(pending?.state).toBe("owner_claim_pending");
+		// Proofs are now legal while the claim is pending…
+		const proof = service.apply(
+			next(pending, {
+				kind: "capability_proof",
+				capability: "receive",
+				required: true,
+				proof: { permissions: 2048 },
+				verifiedAt: OBSERVED_AT,
+			}),
+		);
+		expect(proof.accepted).toBe(true);
+		// …and redemption completes readiness instead of stranding.
+		const redeemed = service.apply(
+			next(proof.record, {
+				kind: "owner_claim_redeemed",
+				claimId: "c1",
+				claimSecretHash: "h",
+				claimedByEntityId: stringToUuid("owner"),
+			}),
+		);
+		expect(redeemed.accepted).toBe(true);
+		expect(redeemed.record.state).toBe("owner_claim_pending"); // send still unproven
+		const sendProof = service.apply(
+			next(redeemed.record, {
+				kind: "capability_proof",
+				capability: "send",
+				required: true,
+				proof: { permissions: 2048 },
+				verifiedAt: OBSERVED_AT,
+			}),
+		);
+		expect(sendProof.accepted).toBe(true);
+		expect(sendProof.record.state).toBe("ready");
+		expect(service.readyForTraffic(scope)).toBe(true);
+	});
+});
+
+describe("round-2: capability catalog and proof guards", () => {
+	function driveToVerifying() {
+		const service = new InstallationLifecycleService();
+		service.apply(event({ kind: "invite_created" }, 1));
+		let record = service.get(scope);
+		for (const transition of [
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+		]) {
+			record = service.apply(next(record, transition)).record;
+		}
+		return { service, record };
+	}
+
+	it("rejects proofs for undeclared capabilities", () => {
+		const { service, record } = driveToVerifying();
+		service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: [],
+			}),
+		);
+		const undeclared = service.apply(
+			next(service.get(scope), {
+				kind: "capability_proof",
+				capability: "interactions",
+				required: true,
+				proof: {},
+				verifiedAt: OBSERVED_AT,
+			}),
+		);
+		expect(undeclared.accepted).toBe(false);
+		expect(undeclared.rejection?.code).toBe("INVALID_TRANSITION");
+	});
+
+	it("rejects proofs whose required flag contradicts the declared catalog", () => {
+		const { service, record } = driveToVerifying();
+		service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: ["history"],
+			}),
+		);
+		const smuggled = service.apply(
+			next(service.get(scope), {
+				kind: "capability_proof",
+				capability: "receive",
+				required: false, // declared required: caller cannot downgrade
+				proof: {},
+				verifiedAt: OBSERVED_AT,
+			}),
+		);
+		expect(smuggled.accepted).toBe(false);
+		expect(smuggled.rejection?.code).toBe("INVALID_TRANSITION");
+	});
+
+	it("rejects proofs with malformed verifiedAt timestamps", () => {
+		const { service, record } = driveToVerifying();
+		service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: [],
+			}),
+		);
+		const malformed = service.apply(
+			next(service.get(scope), {
+				kind: "capability_proof",
+				capability: "receive",
+				required: true,
+				proof: {},
+				verifiedAt: "yesterday",
+			}),
+		);
+		expect(malformed.accepted).toBe(false);
+		expect(malformed.rejection?.code).toBe("INVALID_TRANSITION");
+	});
+
+	it("rejects malformed permissions_verifying catalogs (unknown, duplicate, overlap)", () => {
+		const { service, record } = driveToVerifying();
+		const unknown = service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: [
+					"receive",
+					"telepathy" as InstallationCapability,
+				],
+				optionalCapabilities: [],
+			}),
+		);
+		expect(unknown.accepted).toBe(false);
+		const duplicate = service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive", "receive"],
+				optionalCapabilities: [],
+			}),
+		);
+		expect(duplicate.accepted).toBe(false);
+		const overlap = service.apply(
+			next(record, {
+				kind: "permissions_verifying",
+				requiredCapabilities: ["receive"],
+				optionalCapabilities: ["receive"],
+			}),
+		);
+		expect(overlap.accepted).toBe(false);
 	});
 });

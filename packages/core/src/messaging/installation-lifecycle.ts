@@ -183,6 +183,13 @@ export interface InstallationTransitionReceipt {
 	rejection?: {
 		code: InstallationRejectionCode;
 		message: string;
+		/**
+		 * True when the rejected receipt still carries a record mutation the
+		 * host MUST persist (a burned owner-claim attempt). Without this flag
+		 * a host that stores only accepted receipts would discard the
+		 * decremented attempt count and the claim would never exhaust.
+		 */
+		persistRecord?: boolean;
 	};
 }
 
@@ -203,6 +210,10 @@ const TRANSITIONS: Record<
 	owner_claim_pending: [
 		"owner_claim_issued",
 		"owner_claim_redeemed",
+		// Capability proofs stay legal while the claim is pending so an early
+		// claim (issued during permissions_verifying) cannot strand the
+		// record: proofs land, the claim redeems, and readiness recomputes.
+		"capability_proof",
 		"removal",
 		"failure",
 	],
@@ -325,6 +336,13 @@ export function applyInstallationTransition(
 			`Event from installation epoch ${event.reinstallVersion} is fenced by the live epoch ${record.reinstallVersion} (stale-event resurrection guard).`,
 		);
 	}
+	if (record !== null && event.reinstallVersion > record.reinstallVersion) {
+		return reject(
+			record,
+			"STALE_EPOCH",
+			`Event from installation epoch ${event.reinstallVersion} is ahead of the live epoch ${record.reinstallVersion}; only the immediately next epoch may re-create a terminal installation.`,
+		);
+	}
 	if (record !== null && event.observedGeneration < record.generation) {
 		return reject(
 			record,
@@ -412,14 +430,84 @@ export function applyInstallationTransition(
 			next.state = "agent_joined";
 			next.worldId = event.transition.worldId;
 			break;
-		case "permissions_verifying":
+		case "permissions_verifying": {
+			const { requiredCapabilities, optionalCapabilities } = event.transition;
+			// The catalog is authoritative from here on: reject unknown capability
+			// names, duplicates within a list, and overlap between the lists so
+			// readiness math (and the proof guards above) stay well-defined.
+			const known = new Set<string>(INSTALLATION_CAPABILITIES);
+			const seen = new Set<string>();
+			for (const capability of requiredCapabilities) {
+				if (!known.has(capability)) {
+					return reject(
+						record,
+						"INVALID_TRANSITION",
+						`Unknown required capability ${capability}; capabilities come from INSTALLATION_CAPABILITIES.`,
+					);
+				}
+				if (seen.has(capability)) {
+					return reject(
+						record,
+						"INVALID_TRANSITION",
+						`Duplicate capability ${capability} in the permissions_verifying catalog.`,
+					);
+				}
+				seen.add(capability);
+			}
+			for (const capability of optionalCapabilities) {
+				if (!known.has(capability)) {
+					return reject(
+						record,
+						"INVALID_TRANSITION",
+						`Unknown optional capability ${capability}; capabilities come from INSTALLATION_CAPABILITIES.`,
+					);
+				}
+				if (seen.has(capability)) {
+					return reject(
+						record,
+						"INVALID_TRANSITION",
+						`Capability ${capability} appears as both required and optional.`,
+					);
+				}
+				seen.add(capability);
+			}
 			next.state = "permissions_verifying";
-			next.requiredCapabilities = event.transition.requiredCapabilities;
-			next.optionalCapabilities = event.transition.optionalCapabilities;
+			next.requiredCapabilities = requiredCapabilities;
+			next.optionalCapabilities = optionalCapabilities;
 			next.capabilityReadiness = [];
 			break;
+		}
 		case "capability_proof": {
 			const { capability, required, proof, verifiedAt } = event.transition;
+			// Proof guards: the proof must name a capability the connector actually
+			// declared (the catalog from permissions_verifying), its required flag
+			// must match the declaration (callers cannot smuggle required:false on
+			// a declared-required capability), and the timestamp must parse.
+			if (
+				!record.requiredCapabilities.includes(capability) &&
+				!record.optionalCapabilities.includes(capability)
+			) {
+				return reject(
+					record,
+					"INVALID_TRANSITION",
+					`Capability proof for undeclared capability ${capability}; the permissions_verifying catalog is authoritative.`,
+				);
+			}
+			const declaredRequired = record.requiredCapabilities.includes(capability);
+			if (required !== declaredRequired) {
+				return reject(
+					record,
+					"INVALID_TRANSITION",
+					`Capability proof required flag for ${capability} does not match the declared catalog (declared ${declaredRequired}).`,
+				);
+			}
+			if (Number.isNaN(Date.parse(verifiedAt))) {
+				return reject(
+					record,
+					"INVALID_TRANSITION",
+					`Capability proof verifiedAt for ${capability} is not a parseable timestamp.`,
+				);
+			}
 			const retained = record.capabilityReadiness.filter(
 				(r) => r.capability !== capability,
 			);
@@ -437,7 +525,16 @@ export function applyInstallationTransition(
 			}
 			break;
 		}
-		case "owner_claim_issued":
+		case "owner_claim_issued": {
+			// Fail closed at ingestion: an unparseable expiry would otherwise
+			// compare as NaN at redemption time and fail open.
+			if (Number.isNaN(Date.parse(event.transition.expiresAt))) {
+				return reject(
+					record,
+					"INVALID_TRANSITION",
+					"owner_claim_issued expiresAt is not a parseable timestamp.",
+				);
+			}
 			next.state = "owner_claim_pending";
 			next.ownerClaim = {
 				claimId: event.transition.claimId,
@@ -447,6 +544,7 @@ export function applyInstallationTransition(
 				claimedByEntityId: null,
 			};
 			break;
+		}
 		case "owner_claim_redeemed": {
 			const claim = record.ownerClaim;
 			const observedMs = Date.parse(event.observedAt);
@@ -473,8 +571,17 @@ export function applyInstallationTransition(
 			}
 			// Secret verification: the presenter must prove knowledge of the
 			// one-time secret by presenting its hash; a mismatch burns an attempt
-			// rather than silently succeeding. Expired or malformed timestamps
-			// reject instead of failing open through NaN comparisons.
+			// rather than silently succeeding. Expiry is checked BEFORE the
+			// secret so an expired claim never burns attempts, and malformed
+			// timestamps reject instead of failing open through NaN comparisons.
+			const claimExpiryMs = Date.parse(claim.expiresAt);
+			if (
+				!Number.isFinite(observedMs) ||
+				!Number.isFinite(claimExpiryMs) ||
+				observedMs >= claimExpiryMs
+			) {
+				return reject(record, "CLAIM_EXPIRED", "Owner claim expired.");
+			}
 			if (claim.claimSecretHash !== event.transition.claimSecretHash) {
 				next.ownerClaim = {
 					...claim,
@@ -485,17 +592,21 @@ export function applyInstallationTransition(
 					next.removalReason = "owner claim attempts exhausted";
 					return accept(next, false);
 				}
-				return reject(
-					next,
-					"CLAIM_SECRET_MISMATCH",
-					"Owner claim secret hash mismatch; one attempt burned.",
-				);
-			}
-			if (
-				!Number.isFinite(observedMs) ||
-				observedMs >= Date.parse(claim.expiresAt)
-			) {
-				return reject(record, "CLAIM_EXPIRED", "Owner claim expired.");
+				// The burned attempt MUST reach the host's store even though the
+				// transition is rejected — hosts that persist only accepted
+				// receipts would otherwise discard the decrement (unlimited
+				// guessing).
+				return {
+					contractVersion: INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
+					accepted: false,
+					record: next,
+					idempotentReplay: false,
+					rejection: {
+						code: "CLAIM_SECRET_MISMATCH",
+						message: "Owner claim secret hash mismatch; one attempt burned.",
+						persistRecord: true,
+					},
+				};
 			}
 			next.ownerClaim = {
 				...claim,
@@ -574,11 +685,49 @@ export function recreateInstallationAfterRemoval(
 			"Re-creation must start from invite_created.",
 		);
 	}
+	if (!installationScopeEquals(record, event.scope)) {
+		return reject(
+			record,
+			"NO_INSTALLATION",
+			"Event scope does not match the terminal installation record.",
+		);
+	}
 	if (record.contractVersion !== event.contractVersion) {
 		return reject(
 			record,
 			"CONTRACT_VERSION_MISMATCH",
 			"Contract version mismatch; migrate before replaying.",
+		);
+	}
+	// Re-creation must advance exactly one epoch: an old-epoch invite (a
+	// delayed re-delivery from the dead installation) is fenced, and a
+	// far-future epoch number cannot skip ahead of the removal sequence.
+	if (event.reinstallVersion !== record.reinstallVersion + 1) {
+		return reject(
+			record,
+			"STALE_EPOCH",
+			`Re-creating invite must carry epoch ${record.reinstallVersion + 1} (terminal record is at ${record.reinstallVersion}).`,
+		);
+	}
+	// Removal ordering: a re-invite observed strictly BEFORE the removal that
+	// terminated the previous installation is a delayed re-delivery of an old
+	// invite and is fenced. The same-millisecond case is allowed: sequential
+	// adapter flows mint observedAt per event, so an invite at the exact
+	// removal instant is a fresh join, not a stale redelivery.
+	const removalMs = Date.parse(record.removedAt ?? record.updatedAt);
+	const inviteMs = Date.parse(event.observedAt);
+	if (!Number.isFinite(removalMs) || !Number.isFinite(inviteMs)) {
+		return reject(
+			record,
+			"INVALID_TRANSITION",
+			"Re-creating invite requires parseable observedAt and removal timestamps.",
+		);
+	}
+	if (inviteMs < removalMs) {
+		return reject(
+			record,
+			"STALE_EPOCH",
+			"Re-creating invite was observed at or before the removal fence; stale re-delivery is fenced.",
 		);
 	}
 	const created: GroupInstallationRecord = {
@@ -588,6 +737,12 @@ export function recreateInstallationAfterRemoval(
 		state: "invite_created",
 		externalGroupLabel:
 			event.transition.externalGroupLabel ?? record.externalGroupLabel,
+		// Epoch evidence reset: authorization, capability catalogs, readiness,
+		// world binding, and claim state belong to the dead installation and
+		// must not leak into epoch N+1 as fabricated proof.
+		providerAuthorizationEvidence: null,
+		requiredCapabilities: [],
+		optionalCapabilities: [],
 		capabilityReadiness: [],
 		worldId: null,
 		ownerClaim: null,
