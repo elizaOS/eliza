@@ -6,7 +6,11 @@
  */
 import { EventEmitter } from "node:events";
 import type { Boom } from "@hapi/boom";
-import makeWASocket, { DisconnectReason, type WASocket } from "@whiskeysockets/baileys";
+import makeWASocket, {
+  DisconnectReason,
+  type GroupMetadata,
+  type WASocket,
+} from "@whiskeysockets/baileys";
 import pino from "pino";
 import type { ConnectionStatus } from "../types";
 import type { BaileysAuthManager } from "./auth";
@@ -59,6 +63,17 @@ export class BaileysConnection extends EventEmitter {
 
       if (connection === "open") {
         this.reconnectAttempts = 0;
+        void socket
+          .groupFetchAllParticipating()
+          .then((groups) => {
+            if (this.socket !== socket || this.connectionStatus !== "open") return;
+            this.emit("group-snapshot", Object.values(groups));
+          })
+          .catch((error: unknown) => {
+            if (this.socket !== socket || this.connectionStatus !== "open") return;
+            // error-policy:J1 The socket event boundary exposes an explicitly incomplete roster.
+            this.emit("group-snapshot-error", error);
+          });
         return;
       }
 
@@ -75,6 +90,7 @@ export class BaileysConnection extends EventEmitter {
       }
 
       if (!shouldReconnect) {
+        this.emit("source-terminated", "logged_out");
         return;
       }
 
@@ -83,6 +99,7 @@ export class BaileysConnection extends EventEmitter {
       }
 
       if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.emit("source-terminated", "reconnect_exhausted");
         this.emit("error", new Error("Max reconnection attempts reached"));
         return;
       }
@@ -111,6 +128,29 @@ export class BaileysConnection extends EventEmitter {
       if (this.socket !== socket) return;
       this.emit("messages", messages);
     });
+
+    socket.ev.on("groups.upsert", (groups) => {
+      if (this.socket !== socket) return;
+      this.emit("groups-upsert", groups);
+    });
+
+    socket.ev.on("groups.update", (groups) => {
+      if (this.socket !== socket) return;
+      this.emit("groups-update", groups);
+    });
+
+    socket.ev.on("group-participants.update", (update) => {
+      if (this.socket !== socket) return;
+      this.emit("group-participants", update);
+    });
+  }
+
+  async getGroupMetadata(groupId: string): Promise<GroupMetadata> {
+    const socket = this.socket;
+    if (!socket || this.connectionStatus !== "open") {
+      throw new Error("Cannot query WhatsApp group metadata while Baileys is disconnected");
+    }
+    return socket.groupMetadata(groupId);
   }
 
   getSocket(): WASocket | undefined {

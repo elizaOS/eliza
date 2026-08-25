@@ -10,6 +10,7 @@ WhatsApp plugin for elizaOS. Connects Eliza agents to WhatsApp via the **WhatsAp
 - Interactive message content extraction (button replies, list replies)
 - Location and reaction message handling
 - Baileys QR-code pairing with session persistence
+- Canonical Baileys group membership snapshots and participant role/removal deltas
 - Multi-account support (multiple WhatsApp numbers per agent)
 - DM and group access policies (open / allowlist / pairing / disabled)
 - Webhook verification and `X-Hub-Signature-256` security for Cloud API
@@ -56,6 +57,13 @@ The plugin also auto-enables when a `connectors.whatsapp` block is present in ag
 | `WHATSAPP_AUTH_METHOD` | No | Force transport: `cloudapi` or `baileys` (overrides auto-detection) |
 
 **Transport detection:** `WHATSAPP_AUTH_METHOD` wins when set. Otherwise: `WHATSAPP_AUTH_DIR` present → Baileys; `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` present → Cloud API. Pairing derives `<state-dir>/connectors/whatsapp/accounts/<accountId>` automatically. Manual paths must match that exact authority; broad or arbitrary paths are rejected.
+
+Baileys personal mode publishes complete group rosters on reconnect and validates
+participant add/promote/demote events with a fresh group-metadata point query.
+Explicit remove events revoke immediately. Failed, incomplete, stale, or
+disconnected roster state only degrades membership health and never fabricates
+an empty roster. Cloud API webhook senders remain observed message evidence;
+the webhook contract does not claim a complete group roster or point query.
 
 ### Access Control
 

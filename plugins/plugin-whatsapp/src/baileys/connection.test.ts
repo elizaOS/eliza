@@ -10,6 +10,13 @@ const sockets: FakeSocket[] = [];
 class FakeSocket {
   readonly ev = new EventEmitter();
   readonly ws = { close: vi.fn() };
+  readonly groupFetchAllParticipating = vi.fn(async () => ({}));
+  readonly groupMetadata = vi.fn(async (id: string) => ({
+    id,
+    subject: id,
+    owner: undefined,
+    participants: [],
+  }));
 }
 
 vi.mock("@whiskeysockets/baileys", () => ({
@@ -122,5 +129,52 @@ describe("BaileysConnection socket replacement", () => {
 
     expect(authManager.save).toHaveBeenCalledTimes(1);
     expect(messages).toHaveBeenCalledWith(["current"]);
+  });
+
+  it("publishes only the active socket's complete group snapshot and participant events", async () => {
+    const authManager = {
+      initialize: vi.fn(async () => ({})),
+      save: vi.fn(async () => undefined),
+    };
+    const connection = new BaileysConnection(authManager as never);
+    const snapshots = vi.fn();
+    const participantUpdates = vi.fn();
+    connection.on("group-snapshot", snapshots);
+    connection.on("group-participants", participantUpdates);
+
+    await connection.connect();
+    await connection.connect();
+    const currentGroup = {
+      id: "current@g.us",
+      subject: "Current",
+      owner: undefined,
+      participants: [],
+    };
+    sockets[0]?.groupFetchAllParticipating.mockResolvedValue({ stale: currentGroup });
+    sockets[0]?.ev.emit("connection.update", { connection: "open" });
+    sockets[0]?.ev.emit("group-participants.update", {
+      id: "stale@g.us",
+      author: "one@s.whatsapp.net",
+      participants: [],
+      action: "remove",
+    });
+    await Promise.resolve();
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(participantUpdates).not.toHaveBeenCalled();
+
+    sockets[1]?.groupFetchAllParticipating.mockResolvedValue({ current: currentGroup });
+    sockets[1]?.ev.emit("connection.update", { connection: "open" });
+    const update = {
+      id: "current@g.us",
+      author: "one@s.whatsapp.net",
+      participants: [{ id: "two@s.whatsapp.net" }],
+      action: "add",
+    };
+    sockets[1]?.ev.emit("group-participants.update", update);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(snapshots).toHaveBeenCalledWith([currentGroup]);
+    expect(participantUpdates).toHaveBeenCalledWith(update);
   });
 });
