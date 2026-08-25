@@ -892,9 +892,10 @@ export async function openChatDb(
     listMessages(options = {}): ChatDbMessage[] {
       if (closed) return [];
       const chatId = options.chatId?.trim();
-      const requestedLimit =
-        typeof options.limit === "number" && Number.isFinite(options.limit) ? options.limit : 50;
-      const limit = Math.max(1, Math.trunc(requestedLimit));
+      const limit =
+        typeof options.limit === "number" && Number.isFinite(options.limit)
+          ? Math.max(1, Math.trunc(options.limit))
+          : -1;
 
       let rows: RawMessageRow[];
       try {

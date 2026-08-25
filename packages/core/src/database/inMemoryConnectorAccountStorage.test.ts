@@ -14,6 +14,22 @@ import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 
 describe("InMemoryDatabaseAdapter connector account storage", () => {
+	it("returns every account when pagination was not requested", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		for (let index = 0; index < 501; index += 1) {
+			await adapter.upsertConnectorAccount({
+				agentId,
+				provider: "github",
+				accountKey: `github-user-${index}`,
+			});
+		}
+
+		await expect(
+			adapter.listConnectorAccounts({ agentId, provider: "github" }),
+		).resolves.toHaveLength(501);
+	});
+
 	it("implements the connector account storage surface through IDatabaseAdapter", async () => {
 		const adapter: IDatabaseAdapter = new InMemoryDatabaseAdapter();
 		await adapter.initialize();

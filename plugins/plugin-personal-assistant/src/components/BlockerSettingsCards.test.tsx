@@ -42,9 +42,22 @@ vi.mock("@elizaos/ui", () => ({
       {children}
     </button>
   ),
-  // AppBlockerSettingsCard renders both the search box and the block-duration
-  // checkboxes through `<Input>`, so the mock must forward every prop (type,
-  // checked, value, onChange, id, aria-*) for the text and checkbox-role queries.
+  Checkbox: ({
+    checked,
+    onCheckedChange,
+    ...props
+  }: React.InputHTMLAttributes<HTMLInputElement> & {
+    onCheckedChange?: (checked: boolean) => void;
+  }) => (
+    <input
+      type="checkbox"
+      checked={Boolean(checked)}
+      onChange={(event) => onCheckedChange?.(event.target.checked)}
+      {...props}
+    />
+  ),
+  // The mock forwards native input props so text, numeric, and accessibility
+  // queries exercise the same DOM contract as the canonical adapter.
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => (
     <input {...props} />
   ),

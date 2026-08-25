@@ -35,102 +35,11 @@ describe("macOS AX helper packaging", () => {
     expect(source).not.toContain("AXIsProcessTrustedWithOptions");
     expect(source).toContain("postToPid(pid)");
     expect(source).not.toContain("CGEventPost(.cghidEventTap");
-    expect(source).not.toContain(".post(tap:");
-    expect(source).not.toContain("mouseEventSource:");
-    expect(source).not.toContain("scrollWheelEvent2Source:");
-    expect(source).toContain("CGWindowListCopyWindowInfo");
-    expect(source).toContain('expected["windowId"]');
-    expect(source).toContain('result["focusedWindowId"]');
-    expect(source).toContain('"targetWindowId": Int(currentWindowId)');
-    expect(source).toContain("eligibleWindowCount == 1");
-    expect(source).toContain("if candidates.count == 1");
-    expect(source).toContain("if titleMatches.count == 1");
-    expect(source).toContain(
-      "Process-scoped keyboard event refused because the PID has multiple eligible windows",
-    );
     expect(source).toContain("snapshotPasteboard");
     expect(source).toContain("restorePasteboard");
     expect(source).toContain("AXUIElementPerformAction");
     expect(source).toContain("AXUIElementSetAttributeValue");
     expect(source).toContain("redactSensitive");
     expect(source).toContain("[redacted]");
-  });
-
-  it("keeps global physical input behind opt-in and a distinct approval", () => {
-    const defaults = readFileSync(
-      `${packageRoot}/src/app-control/defaults.ts`,
-      "utf8",
-    );
-    const service = readFileSync(
-      `${packageRoot}/src/services/computer-use-service.ts`,
-      "utf8",
-    );
-    expect(defaults).toContain(
-      'OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS === "1"',
-    );
-    expect(service).toContain(
-      'process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"',
-    );
-    expect(service).toContain('"app_physical_pointer_fallback"');
-    expect(service).toContain("requestApproval(");
-  });
-
-  it("keeps private window dispatch out of the shared signed helper", () => {
-    const source = readFileSync(
-      `${packageRoot}/native/macos-ax-helper.swift`,
-      "utf8",
-    );
-    expect(source).not.toContain("SkyLight");
-    expect(source).not.toContain("SLEvent");
-    expect(source).not.toContain("SLPS");
-    expect(source).not.toContain("PrivateFrameworks");
-    expect(source).not.toContain("dlopen");
-    expect(source).not.toContain("dlsym");
-  });
-
-  it("isolates the private recipe in the direct-only component without global posting", () => {
-    const directOnlyRoot = `${packageRoot}/../../packages/app-core/platforms/electrobun/direct-only/computeruse-exact-window`;
-    const spi = readFileSync(
-      `${directOnlyRoot}/ExperimentalExactWindowSPI.swift`,
-      "utf8",
-    );
-    const protocol = readFileSync(
-      `${directOnlyRoot}/ExperimentalExactWindowProtocol.swift`,
-      "utf8",
-    );
-    expect(spi).toContain("SLEventPostToPid");
-    expect(spi).toContain("SLEventSetIntegerValueField");
-    expect(spi).toContain("CGEventSetWindowLocation");
-    expect(spi).toContain("SLPSPostEventRecordTo");
-    expect(spi).toContain("GetProcessForPID");
-    expect(spi).toContain(".optionIncludingWindow");
-    expect(spi).toContain("target.windowId");
-    expect(spi).toContain("pointerAfter == pointerBefore");
-    for (const field of [0, 1, 3, 7, 40, 51, 58, 91, 92]) {
-      expect(spi).toContain(`field: ${field}`);
-    }
-    expect(spi).toContain("target.windowPoint");
-    expect(spi).toContain("target.expectedBounds");
-    expect(spi).toContain("beginSyntheticTargetFocus(target: target)");
-    expect(spi).toContain("try validate(target)");
-    expect(spi).toContain("elementValidation: .immutableIdentity");
-    expect(spi).toContain("let preparedEvents = try recipe.map");
-    expect(spi).toContain(
-      "The approved accessibility element changed after focus",
-    );
-    expect(spi).toContain("AXUIElementCreateApplication(target.pid)");
-    expect(spi).toContain("let actions = actionNames(element)");
-    expect(spi).toContain("let enabled = boolAttribute(element");
-    expect(spi).toContain("let focused = boolAttribute(element");
-    expect(spi).not.toContain("default defaultValue");
-    expect(protocol).toContain("try revalidate()");
-    expect(protocol).toContain("release.kind == .up");
-    expect(protocol).toContain("post: (ExperimentalEventStep) -> Void");
-    expect(spi).not.toContain("CGEventPost");
-    expect(spi).not.toContain(".post(tap:");
-    expect(spi).not.toContain("NSRunningApplication.activate");
-    expect(spi).not.toContain("AXRaise");
-    expect(protocol).toContain("pointKind: .primer");
-    expect(protocol).toContain("kind: .scroll");
   });
 });

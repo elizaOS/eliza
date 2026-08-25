@@ -11,7 +11,10 @@ This package is the single source of truth for prompt templates used by the runt
 ```
 packages/prompts/
 ├── src/
-│   └── index.ts      # TypeScript prompt template exports
+│   ├── index.ts      # TypeScript prompt template exports
+│   └── prompt-compression.ts # lossless compatibility helper
+├── dist/             # generated JavaScript, declarations, and publish manifest
+├── tsconfig.json     # package-owned source typecheck
 ├── specs/            # Merged action/provider specs (JSON) + generated plugins.generated.json
 └── scripts/          # Spec + docs generators
     ├── generate-action-docs.js
@@ -36,9 +39,19 @@ Some plugins keep **hand-edited** `actions.json` / `evaluators.json` / `provider
 ## Building
 
 ```bash
-# Generate plugin action spec + action docs
+# Compile the publishable package, generate the plugin action spec, and action docs
 bun run build
+
+# Compile only the native-Node package artifact
+bun run build:package
 ```
+
+Bun workspace tooling resolves the maintained TypeScript source through the
+`bun` export condition, and workspace TypeScript consumers resolve source types
+before `dist/` exists. The generated publish manifest rewrites those type paths
+to declarations in `dist/`; native Node and the release path resolve compiled
+JavaScript from the tarball packed out of that publish directory. TypeScript
+source is not published as runtime code.
 
 ## Usage
 

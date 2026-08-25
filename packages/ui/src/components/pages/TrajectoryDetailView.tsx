@@ -688,9 +688,8 @@ export function TrajectoryDetailView({
               <Button
                 ref={clearStageFilter.ref}
                 onClick={() => setActiveStage(null)}
-                variant="ghost"
-                size="icon-sm"
-                className="size-5 rounded-sm p-0.5 hover:bg-muted/10"
+                variant="ghostMuted"
+                size="disclosure"
                 {...clearStageFilter.agentProps}
               >
                 <X className="size-3" />

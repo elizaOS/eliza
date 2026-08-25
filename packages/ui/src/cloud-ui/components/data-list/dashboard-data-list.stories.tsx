@@ -3,6 +3,14 @@
  */
 import type { Meta, StoryObj } from "@storybook/react";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
+import {
   DashboardDataList,
   DashboardDataListCard,
   DashboardDataListDesktop,
@@ -55,24 +63,28 @@ export const Default: Story = {
           ))}
         </DashboardDataListMobile>
         <DashboardDataListDesktop>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-widest text-white/70">
-                <th className="p-3">Name</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Region</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-white/10 text-left text-[11px] uppercase tracking-widest text-white/70">
+                <TableHead className="p-3">Name</TableHead>
+                <TableHead className="p-3">Status</TableHead>
+                <TableHead className="p-3">Region</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {sampleRows.map((row) => (
-                <tr key={row.id} className="border-b border-white/5">
-                  <td className="p-3">{row.name}</td>
-                  <td className="p-3 text-white/70">{row.status}</td>
-                  <td className="p-3 text-white/50">{row.region}</td>
-                </tr>
+                <TableRow key={row.id} className="border-b border-white/5">
+                  <TableCell className="p-3">{row.name}</TableCell>
+                  <TableCell className="p-3 text-white/70">
+                    {row.status}
+                  </TableCell>
+                  <TableCell className="p-3 text-white/50">
+                    {row.region}
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </DashboardDataListDesktop>
       </>
     ),

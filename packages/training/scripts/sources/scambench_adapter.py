@@ -364,7 +364,7 @@ def adapt_row(
     }
     reasoning = (row.get("reasoning_trace") or "").strip()
     if reasoning:
-        extra_md["upstream_reasoning_trace"] = reasoning[:1000]
+        extra_md["upstream_reasoning_trace"] = reasoning
 
     rec = build(
         roomName="scambench-room",

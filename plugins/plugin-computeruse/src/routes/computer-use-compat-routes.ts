@@ -10,7 +10,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { ModelType, resolveAliasedEnvValue } from "@elizaos/core";
-import type { AppControlRouteCapability } from "../app-control/route-policy.js";
 import type { AppDescriptor, AppState } from "../app-control/types.js";
 import { ComputerUseSessionError } from "../sessions/session-manager.js";
 import type {
@@ -223,7 +222,6 @@ type ComputerUseSessionServiceLike = {
     available: boolean;
     adapter: string;
     permission: string;
-    routes: AppControlRouteCapability[];
   };
   createSession(
     input: CreateComputerUseSessionInput,
@@ -337,7 +335,6 @@ function computerUseReadiness(
       available: false,
       adapter: "unavailable",
       permission: "helper_unavailable",
-      routes: [],
     },
     vision: {
       available: Boolean(

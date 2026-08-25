@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "bun:test";
 */
 import {
   ChannelType,
+  type CodingActionProfile,
   type Content,
   ElizaError,
   FAILED_TOOL_FALLBACK_MESSAGE,
@@ -30,6 +31,7 @@ const { beforeEach, describe, expect, it } = runnerApi as unknown as TestApi;
 
 interface HandleMessageOptions {
   codingMode?: boolean;
+  codingActionProfile?: CodingActionProfile;
   abortSignal?: AbortSignal;
   onStreamChunk?: StreamChunkCallback;
 }
@@ -102,6 +104,7 @@ describe("AgentClient streaming", () => {
       text: "say hello",
       identity: makeIdentity(),
       codingMode: true,
+      codingActionProfile: { kind: "pi" },
       abortSignal: abortController.signal,
       onDelta: (delta) => deltas.push(delta),
     });
@@ -109,6 +112,7 @@ describe("AgentClient streaming", () => {
     expect(response).toBe("hello");
     expect(deltas).toEqual(["hel", "lo"]);
     expect(seenOptions?.codingMode).toBe(true);
+    expect(seenOptions?.codingActionProfile).toEqual({ kind: "pi" });
     expect(seenOptions?.abortSignal).toBe(abortController.signal);
     expect(typeof seenOptions?.onStreamChunk).toBe("function");
   });

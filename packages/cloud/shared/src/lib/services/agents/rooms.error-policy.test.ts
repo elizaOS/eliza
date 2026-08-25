@@ -106,6 +106,38 @@ describe("RoomsService fail-closed error policy (#13415)", () => {
       expect(result?.messages).toEqual([]);
     });
 
+    test("keeps repeated visible messages and requests no hidden default page", async () => {
+      const { roomsService } = await import("./rooms");
+      repoState.roomFindById = async () => ({ id: ROOM_ID, agentId: null });
+      const calls: unknown[][] = [];
+      repoState.memoriesFindMessages = async (...args) => {
+        calls.push(args);
+        return [
+          {
+            id: "message-2",
+            entityId: USER_ID,
+            agentId: ROOM_ID,
+            roomId: ROOM_ID,
+            createdAt: 2,
+            content: { text: "repeat", source: "user" },
+          },
+          {
+            id: "message-1",
+            entityId: USER_ID,
+            agentId: ROOM_ID,
+            roomId: ROOM_ID,
+            createdAt: 1,
+            content: { text: "repeat", source: "user" },
+          },
+        ];
+      };
+
+      const result = await roomsService.getRoomWithMessages(ROOM_ID);
+
+      expect(result?.messages).toHaveLength(2);
+      expect(calls).toEqual([[ROOM_ID, { afterTimestamp: undefined }]]);
+    });
+
     test("a message-load failure on an existing room PROPAGATES (not swallowed to empty)", async () => {
       const { roomsService } = await import("./rooms");
       repoState.roomFindById = async () => ({ id: ROOM_ID, agentId: null });

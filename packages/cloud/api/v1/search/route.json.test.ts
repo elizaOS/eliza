@@ -1,7 +1,12 @@
 /** Verifies the hosted-search JSON boundary with deterministic auth and provider mocks. */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const executeHostedGoogleSearch = mock(async () => ({ results: [] }));
+const executeHostedGoogleSearch = mock(
+  async (
+    _request: { query: string; maxResults?: number },
+    _context: unknown,
+  ) => ({ results: [] }),
+);
 const requireAuthOrApiKeyWithOrg = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
   apiKey: { id: "key-1" },
@@ -66,5 +71,18 @@ describe("POST /api/v1/search malformed JSON", () => {
     });
     expect(response.status).toBe(200);
     expect(executeHostedGoogleSearch).toHaveBeenCalled();
+  });
+
+  test("passes through an explicit result count above the former hidden cap", async () => {
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query: "complete grounding", maxResults: 25 }),
+    });
+    expect(response.status).toBe(200);
+    expect(executeHostedGoogleSearch.mock.calls[0]?.[0]).toMatchObject({
+      query: "complete grounding",
+      maxResults: 25,
+    });
   });
 });

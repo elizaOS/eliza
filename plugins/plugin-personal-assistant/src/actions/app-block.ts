@@ -188,7 +188,6 @@ async function resolveAppBlockPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage = getMessageText(args.message).trim();

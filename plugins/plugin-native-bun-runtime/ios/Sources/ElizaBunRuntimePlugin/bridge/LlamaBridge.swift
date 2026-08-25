@@ -150,7 +150,7 @@ public final class LlamaBridge {
         }
         let contextId = opts.objectForKeyedSubscript("context_id")?.toNumber()?.intValue ?? -1
         let prompt = opts.objectForKeyedSubscript("prompt")?.toString() ?? ""
-        let maxTokens = opts.objectForKeyedSubscript("max_tokens")?.toNumber()?.intValue ?? 256
+        let maxTokens = opts.objectForKeyedSubscript("max_tokens")?.toNumber()?.intValue ?? Int(Int32.max)
         let temperature = opts.objectForKeyedSubscript("temperature")?.toNumber()?.doubleValue ?? 0.7
         let topP = opts.objectForKeyedSubscript("top_p")?.toNumber()?.doubleValue ?? 0.95
         let stop = opts.objectForKeyedSubscript("stop")?.toStringArray() ?? []
@@ -196,6 +196,8 @@ public final class LlamaBridge {
                     "prompt_tokens": promptTokens,
                     "output_tokens": outputTokens,
                     "duration_ms": Int(result.durationMs > 0 ? result.durationMs : Double(durationMs)),
+                    "finish_reason": result.finishReason,
+                    "incomplete": result.incomplete,
                 ]])
             }
         }

@@ -2,6 +2,7 @@
  * Storybook stories demonstrating the cloud ThemeProvider.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../../../components/ui/button";
 import { ThemeProvider } from "./theme-provider";
 import { useTheme } from "./theme-provider.hooks";
 
@@ -22,16 +23,6 @@ function ThemeConsumer() {
     gap: 8,
     marginTop: 12,
   };
-  const btnStyle = (active: boolean): React.CSSProperties => ({
-    padding: "6px 12px",
-    borderRadius: 8,
-    border: "1px solid rgba(127,127,127,0.4)",
-    background: active ? "#ff7a1a" : "transparent",
-    color: active ? "#0b0b0c" : "inherit",
-    cursor: "pointer",
-    fontSize: 13,
-  });
-
   return (
     <div style={cardStyle}>
       <div style={{ fontWeight: 600, fontSize: 14 }}>Theme Provider</div>
@@ -47,27 +38,30 @@ function ThemeConsumer() {
         </div>
       </div>
       <div style={btnRow}>
-        <button
+        <Button
           type="button"
-          style={btnStyle(theme === "light")}
+          variant={theme === "light" ? "default" : "outline"}
+          size="short"
           onClick={() => setTheme("light")}
         >
           Light
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          style={btnStyle(theme === "dark")}
+          variant={theme === "dark" ? "default" : "outline"}
+          size="short"
           onClick={() => setTheme("dark")}
         >
           Dark
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          style={btnStyle(theme === "system")}
+          variant={theme === "system" ? "default" : "outline"}
+          size="short"
           onClick={() => setTheme("system")}
         >
           System
-        </button>
+        </Button>
       </div>
     </div>
   );

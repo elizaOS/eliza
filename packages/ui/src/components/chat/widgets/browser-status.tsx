@@ -129,8 +129,9 @@ export function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               onClick={() => handleTabClick(tab)}
               title={tab.url ?? label}
               data-testid={`chat-widget-browser-tab-${tab.id}`}
-              variant="ghost"
-              className="flex h-auto w-full items-center justify-start gap-2 whitespace-normal rounded-sm p-0.5 text-left font-normal transition-colors hover:bg-bg-hover/40"
+              variant="sectionToggle"
+              size="content"
+              align="start"
             >
               <span
                 className={`size-1.5 shrink-0 rounded-full ${status.dotClass}`}

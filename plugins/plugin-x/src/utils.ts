@@ -16,7 +16,6 @@ import {
   fetchRemoteMedia,
   logger,
   type Memory,
-  truncateToCompleteSentence,
   type UUID,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
@@ -137,44 +136,6 @@ export async function fetchMediaData(
       };
     }),
   );
-}
-
-/**
- * Handles sending a note tweet with optional media data.
- *
- * @param {ClientBase} client - The client object used for sending the note tweet.
- * @param {string} content - The content of the note tweet.
- * @param {string} [tweetId] - Optional Tweet ID to reply to.
- * @param {MediaData[]} [mediaData] - Optional media data to attach to the note tweet.
- * @returns {Promise<Object>} - The result of the note tweet operation.
- * @throws {Error} - If the note tweet operation fails.
- */
-async function _handleNoteTweet(
-  client: ClientBase,
-  content: string,
-  tweetId?: string,
-  mediaData?: MediaData[],
-) {
-  // Twitter API v2 handles long tweets automatically
-  // Just use the regular sendTweet method
-  const result = await client.twitterClient.sendTweet(
-    content,
-    tweetId,
-    mediaData,
-  );
-
-  // Check if the result was successful
-  if (!result?.ok) {
-    // Tweet failed. Falling back to truncated Tweet.
-    const truncateContent = truncateToCompleteSentence(
-      content,
-      TWEET_MAX_LENGTH,
-    );
-    return await sendStandardTweet(client, truncateContent, tweetId);
-  }
-
-  // Return the result directly
-  return result;
 }
 
 /**

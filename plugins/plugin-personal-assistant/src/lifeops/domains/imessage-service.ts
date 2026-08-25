@@ -493,16 +493,14 @@ export class IMessageDomain {
     const rows = nativeService.getMessages
       ? await nativeService.getMessages({
           chatId: opts.chatId,
-          limit: Math.max(opts.limit ?? 100, 100),
+          limit: opts.limit,
         })
-      : await nativeService.getRecentMessages?.(
-          Math.max(opts.limit ?? 100, 100),
-        );
+      : await nativeService.getRecentMessages?.(opts.limit);
     const query = opts.query.trim().toLowerCase();
-    return (rows ?? [])
+    const matches = (rows ?? [])
       .map(nativeMessageToLifeOps)
-      .filter((message) => message.text.toLowerCase().includes(query))
-      .slice(0, opts.limit ?? 100);
+      .filter((message) => message.text.toLowerCase().includes(query));
+    return opts.limit === undefined ? matches : matches.slice(0, opts.limit);
   }
 
   async getIMessageDeliveryStatus(

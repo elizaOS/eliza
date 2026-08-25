@@ -61,7 +61,6 @@ export const tokenBalanceProvider: Provider = {
         purpose: "provider",
         template: prompt,
         modelType: ModelType.TEXT_SMALL,
-        maxTokens: 100,
       });
 
       const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;

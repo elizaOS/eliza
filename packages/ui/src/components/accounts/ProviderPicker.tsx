@@ -25,6 +25,8 @@ import {
 } from "react";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state/app-store";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   ACCOUNT_PROVIDER_OPTIONS,
   type AccountProviderCategory,
@@ -140,15 +142,16 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
           className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted"
           aria-hidden
         />
-        <input
+        <Input
           ref={inputRef}
+          adornment="leading"
+          density="compact"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
-          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-base text-txt-strong outline-none sm:text-sm placeholder:text-muted"
           aria-label={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
@@ -183,18 +186,17 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                     {CATEGORY_LABEL[option.category]}
                   </div>
                 ) : null}
-                <button
+                <Button
+                  variant="selection"
+                  size="row"
+                  align="start"
+                  data-state={active ? "on" : "off"}
                   type="button"
                   data-index={index}
                   role="option"
                   aria-selected={active}
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => onPick(option.id)}
-                  className={cn(
-                    "flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors",
-                    active ? "bg-bg-accent" : "hover:bg-bg-accent/60",
-                    option.unavailable && "bg-bg-muted",
-                  )}
                 >
                   <span
                     className={cn(
@@ -223,7 +225,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                       {t("accounts.add.enterHint", { defaultValue: "\u21b5" })}
                     </kbd>
                   ) : null}
-                </button>
+                </Button>
               </div>
             );
           })

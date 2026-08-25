@@ -3,7 +3,12 @@
  * webhook payload normalization, `Bot` dedup/gating and delivery failure
  * propagation, and `ReplyDispatcher` chunking. No live proxy service.
  */
-import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  MessageConnectorTarget,
+  TargetInfo,
+  UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";
@@ -51,6 +56,32 @@ describe("@elizaos/plugin-wechat", () => {
     expect(recent).toHaveLength(30);
     expect(runtime.getMemories).toHaveBeenCalledTimes(30);
     expect(messages).toHaveLength(30);
+  });
+
+  it("returns complete stored history when no limit was requested", async () => {
+    const roomId = "00000000-0000-4000-8000-000000000001" as UUID;
+    const memories = Array.from({ length: 501 }, (_, index) => ({
+      roomId,
+      content: { text: `message ${index}` },
+      createdAt: index,
+    }));
+    const runtime = {
+      registerMessageConnector: vi.fn(),
+      getMemories: vi.fn(async () => memories),
+    } as unknown as IAgentRuntime;
+    registerWechatMessageConnector(runtime, {}, async () => []);
+    const registration = vi.mocked(runtime.registerMessageConnector).mock
+      .calls[0][0];
+
+    const result = await registration.fetchMessages?.(
+      { runtime, target: { source: "wechat", roomId } as TargetInfo },
+      {},
+    );
+
+    expect(result).toHaveLength(501);
+    expect(runtime.getMemories).toHaveBeenCalledWith(
+      expect.not.objectContaining({ limit: expect.anything() }),
+    );
   });
   it("normalizes supported direct and group webhook payloads", () => {
     expect(

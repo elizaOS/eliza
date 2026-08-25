@@ -123,8 +123,8 @@ def iter_discord_chat() -> Iterator[dict[str, Any]]:
                 ):
                     continue
                 yield {
-                    "speaker": speaker[:40],
-                    "content": content[:600],
+                    "speaker": speaker,
+                    "content": content,
                     "channel": channel,
                     "source": "discord-chat",
                 }
@@ -158,7 +158,7 @@ def iter_discord_dialogues() -> Iterator[dict[str, Any]]:
             speaker = u_handle if role == "user" else a_handle
             yield {
                 "speaker": speaker,
-                "content": content[:600],
+                "content": content,
                 "channel": channel,
                 "source": "discord-dialogues",
             }
@@ -181,7 +181,7 @@ def iter_telegram() -> Iterator[dict[str, Any]]:
             speaker = f"tg_{abs(int(ch)) % 9999:04d}"
             yield {
                 "speaker": speaker,
-                "content": sent[:600],
+                "content": sent,
                 "channel": f"telegram-{abs(int(ch)) % 9999:04d}",
                 "source": "telegram-filtered-messages",
             }
@@ -580,7 +580,7 @@ def synthesize_one(
 
     rec = build(
         roomName=stable_id(
-            "routing-v2", agent, signal_kind, current["content"][:140], action,
+            "routing-v2", agent, signal_kind, current["content"], action,
         ),
         agentId=agent,
         memoryEntries=memory,

@@ -23,6 +23,7 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
+import { Button } from "../ui/button";
 import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
@@ -537,8 +538,11 @@ export const NotificationRow = memo(function NotificationRow({
         onPointerCancel={onPointerEnd}
         className="eliza-notif-row-inner eliza-notif-row-surface eliza-notif-glass group relative z-[2] flex min-h-0 flex-col overflow-hidden rounded-2xl"
       >
-        <button
+        <Button
           type="button"
+          variant="surface"
+          size="row"
+          align="start"
           data-testid="notification-row"
           data-notification-stack-key={stackKey}
           data-notification-stack-opener={stackKey ? "" : undefined}
@@ -559,7 +563,7 @@ export const NotificationRow = memo(function NotificationRow({
               onExpandStack(stackKey, event.detail === 0);
             } else onOpen(notification);
           }}
-          className="eliza-notif-row-content flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left"
+          className="eliza-notif-row-content min-w-0"
         >
           <NotificationSourceIcon
             source={notification.source}
@@ -584,7 +588,7 @@ export const NotificationRow = memo(function NotificationRow({
               </span>
             ) : null}
           </span>
-        </button>
+        </Button>
       </div>
       {stackPeeks
         ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {
@@ -595,9 +599,11 @@ export const NotificationRow = memo(function NotificationRow({
               collapsedOffsetPx +
               (openOffsetPx - collapsedOffsetPx) * stackPeeks.expansionProgress;
             return (
-              <button
+              <Button
                 key={`${notification.id}-stack-peek-${layer}`}
                 type="button"
+                variant="transparent"
+                size="fill"
                 data-testid={
                   stackPeeks.testIdVisible
                     ? "notification-stack-peek"
@@ -649,7 +655,7 @@ export const NotificationRow = memo(function NotificationRow({
                     visibility={index === 0 ? stackPreviewVisibility : 0}
                   />
                 ) : null}
-              </button>
+              </Button>
             );
           })
         : null}

@@ -17,7 +17,7 @@ export interface ApiContextOptions {
  * Build API documentation context for LLM prompts
  */
 export async function buildApiContext(options: ApiContextOptions = {}): Promise<string> {
-  const { categories = [], tags = [], limit = 50, includeExamples = true } = options;
+  const { categories = [], tags = [], limit, includeExamples = true } = options;
 
   let filteredEndpoints = API_ENDPOINTS;
 
@@ -35,8 +35,12 @@ export async function buildApiContext(options: ApiContextOptions = {}): Promise<
     );
   }
 
-  // Limit results
-  filteredEndpoints = filteredEndpoints.slice(0, limit);
+  if (limit !== undefined) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      throw new Error("API context limit must be a positive safe integer when provided");
+    }
+    filteredEndpoints = filteredEndpoints.slice(0, limit);
+  }
 
   if (filteredEndpoints.length === 0) {
     return "No relevant APIs found.";
@@ -121,7 +125,7 @@ export async function buildApiContext(options: ApiContextOptions = {}): Promise<
       }
       if (endpoint.method === "POST" && endpoint.parameters?.body) {
         const exampleBody: Record<string, unknown> = {};
-        for (const param of endpoint.parameters.body.slice(0, 3)) {
+        for (const param of endpoint.parameters.body) {
           if (param.example !== undefined) {
             exampleBody[param.name] = param.example;
           } else if (param.defaultValue !== undefined) {

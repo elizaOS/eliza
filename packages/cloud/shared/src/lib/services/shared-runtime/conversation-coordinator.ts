@@ -317,6 +317,7 @@ export async function coordinateSharedBridge(
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
       }),
+      ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
   );
   await requireCoordinatorResponse(response, "conversation");

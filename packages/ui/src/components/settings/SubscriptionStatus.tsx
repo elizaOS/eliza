@@ -186,15 +186,12 @@ function SubscriptionTab({
   return (
     <Button
       ref={ref}
-      variant="ghost"
-      size="sm"
+      variant="selection"
+      size="compact"
+      data-state={active ? "on" : "off"}
       onClick={onSelect}
       aria-label={label}
-      className={`-mb-px border-b-2 px-1 pb-2 text-xs font-medium transition-colors ${
-        active
-          ? "border-accent text-txt"
-          : "border-transparent text-muted hover:text-txt"
-      }`}
+      className="-mb-px"
       {...agentProps}
     >
       {label}
@@ -328,7 +325,8 @@ function SubscriptionProviderPanel({
             <Input
               ref={oauthCodeRef}
               type={oauthInputType}
-              className="h-9 rounded-sm bg-card text-xs"
+              variant="config"
+              density="compact"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
@@ -686,6 +684,8 @@ export function SubscriptionStatus({
         ref={setupTokenRef}
         id="subscription-setup-token-input"
         type="password"
+        variant="config"
+        density="compact"
         placeholder={t("subscriptionstatus.skAntOat01")}
         value={setupTokenValue}
         onChange={(e) => {
@@ -693,7 +693,6 @@ export function SubscriptionStatus({
           setSetupTokenSuccess(false);
           setAnthropicError("");
         }}
-        className="h-9 rounded-sm bg-card font-mono text-xs"
         aria-label={t("settings.subscription.setupToken")}
         {...setupTokenAgentProps}
       />

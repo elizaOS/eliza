@@ -398,7 +398,6 @@ export class PlanningService extends Service {
 		const planningResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: planningPrompt,
 			temperature: 0.3,
-			maxTokens: 2000,
 		});
 
 		const parsedPlan = this.parsePlanningResponse(
@@ -591,7 +590,6 @@ export class PlanningService extends Service {
 		const adaptationResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
 			prompt: adaptationPrompt,
 			temperature: 0.4,
-			maxTokens: 1500,
 		});
 
 		const adaptedPlan = this.parseAdaptationResponse(

@@ -51,7 +51,6 @@ export interface NativeAppSnapshot {
   permission: AppControlPermissionState;
   elements: NativeAppElement[];
   axText: string;
-  focusedWindowId?: number;
   focusedWindowBounds?: AppElementBounds;
 }
 
@@ -72,7 +71,6 @@ export interface AppState {
   screenshotMimeType?: "image/png";
   displayId?: number;
   screenshotBounds?: AppElementBounds;
-  focusedWindowId?: number;
   elements: AppElement[];
   axText: string;
   diff?: AppStateDiff;
@@ -103,66 +101,17 @@ export interface AppActionRequest {
   secondaryAction?: string;
   /** Canonical policy must explicitly permit the last-resort pointer path. */
   allowPhysicalFallback?: boolean;
-  /** Explicitly selects the disabled-by-default direct-only experimental route. */
+  /** Explicit opt-in for the direct-only exact-window experiment. */
   allowExperimentalExactWindow?: boolean;
 }
 
 export type AppActionExecutionMode =
   | "semantic_ax"
-  | "process_pid_keyboard_cgevent"
-  | "experimental_direct_exact_window"
+  | "set_of_marks"
+  | "ocr"
   | "guarded_physical"
-  | "agent_overlay";
-
-export interface AppPointerPosition {
-  x: number;
-  y: number;
-}
-
-export interface PhysicalFallbackApprovalReceipt {
-  approvalId: string;
-  requestedAt: string;
-  approvedAt: string;
-  mode: string;
-}
-
-export interface PhysicalFallbackApprovalRequest {
-  appId: string;
-  kind: "click" | "scroll";
-  element_index: number;
-  groundingMode: "set_of_marks" | "ocr" | "element_bounds";
-  target: AppPointerPosition;
-}
-
-export interface ExperimentalExactWindowApprovalReceipt {
-  approvalId: string;
-  requestedAt: string;
-  approvedAt: string;
-  mode: string;
-}
-
-export interface ExperimentalExactWindowApprovalRequest {
-  appId: string;
-  kind: "click" | "scroll";
-  element_index: number;
-  observationId: string;
-  targetPid: number;
-  targetWindowId: number;
-  windowBounds: AppElementBounds;
-  targetBounds: AppElementBounds;
-}
-
-export interface NativeAppActionResult {
-  success: boolean;
-  targetPid: number;
-  targetWindowId: number;
-  error?: string;
-  clipboardRestored?: boolean;
-  executionMode?:
-    | "semantic_ax"
-    | "process_pid_keyboard_cgevent"
-    | "experimental_direct_exact_window";
-}
+  | "agent_overlay"
+  | "experimental_direct_exact_window";
 
 export interface AppExactWindowDispatchResult {
   success: boolean;
@@ -171,8 +120,8 @@ export interface AppExactWindowDispatchResult {
   targetPid: number;
   targetWindowId: number;
   targetWindowBounds: AppElementBounds;
-  pointerBefore: AppPointerPosition;
-  pointerAfter: AppPointerPosition;
+  pointerBefore: { x: number; y: number };
+  pointerAfter: { x: number; y: number };
   error?: string;
 }
 
@@ -190,30 +139,24 @@ export interface AppExactWindowPointerDispatcher {
   ): Promise<AppExactWindowDispatchResult>;
 }
 
+export interface NativeAppActionResult {
+  success: boolean;
+  error?: string;
+  clipboardRestored?: boolean;
+}
+
 export interface AppActionReceipt {
   receiptId: string;
   appId: string;
   kind: AppActionKind;
   beforeStateId: string;
   afterStateId: string;
-  targetPid: number;
-  targetWindowId: number;
   executionMode: AppActionExecutionMode;
   element_index?: number;
   completedAt: string;
   changed: boolean;
-  /** True only when Eliza invoked the global physical input driver. */
-  physicalPointerInput: boolean;
-  /** Coordinate comparison; movement without input is external or unknown. */
   physicalPointerMoved: boolean;
-  pointerObservation: "unchanged" | "changed" | "unavailable";
-  pointerBefore?: AppPointerPosition;
-  pointerAfter?: AppPointerPosition;
-  groundingMode?: "set_of_marks" | "ocr" | "element_bounds";
-  physicalFallbackApproval?: PhysicalFallbackApprovalReceipt;
-  experimentalExactWindowApproval?: ExperimentalExactWindowApprovalReceipt;
   clipboardRestored?: boolean;
-  targetWindowBounds?: AppElementBounds;
   targetBounds?: AppElementBounds;
 }
 
@@ -233,7 +176,6 @@ export interface AppControlAdapter {
     app: AppDescriptor,
     element: NativeAppElement | undefined,
     request: AppActionRequest,
-    expectedWindowId: number,
     signal?: AbortSignal,
   ): Promise<NativeAppActionResult>;
 }
@@ -262,20 +204,6 @@ export interface PhysicalPointerDriver {
     amount: number,
   ): Promise<void>;
 }
-
-export interface AppPointerObserver {
-  getPosition(): Promise<AppPointerPosition>;
-}
-
-export type PhysicalFallbackAuthorizer = (
-  request: PhysicalFallbackApprovalRequest,
-  signal?: AbortSignal,
-) => Promise<PhysicalFallbackApprovalReceipt>;
-
-export type ExperimentalExactWindowAuthorizer = (
-  request: ExperimentalExactWindowApprovalRequest,
-  signal?: AbortSignal,
-) => Promise<ExperimentalExactWindowApprovalReceipt>;
 
 export interface AppStateCapture {
   capture(

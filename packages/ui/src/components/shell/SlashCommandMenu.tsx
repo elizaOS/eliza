@@ -308,7 +308,7 @@ export function SlashCommandMenu({
       {error ? (
         <div
           className={cn(
-            "mx-2 mb-1 rounded-lg border border-amber-400/25 bg-amber-400/5 px-2.5 py-1 text-2xs text-amber-200/80",
+            "mx-2 mb-1 rounded-lg border border-warn/25 bg-warn/5 px-2.5 py-1 text-2xs text-warn/80",
             WALLPAPER_FLOAT_SHADOW,
           )}
           role="status"
@@ -340,11 +340,10 @@ export function SlashCommandMenu({
               if (e.pointerType !== "touch") e.preventDefault();
             }}
             onClick={() => onPick(index)}
-            variant="ghost"
-            className={cn(
-              "flex h-auto w-full items-center justify-start gap-3 whitespace-normal rounded-none px-3.5 py-2 text-left font-normal transition-colors hover:bg-white/8",
-              index === state.activeIndex ? "bg-white/15" : "hover:bg-white/8",
-            )}
+            variant="transparent"
+            size="content"
+            align="start"
+            className="h-auto w-full gap-3 rounded-none bg-transparent px-3.5 py-2 font-normal whitespace-normal hover:bg-bg-hover data-[active=true]:bg-bg-muted"
           >
             <span
               className={cn(

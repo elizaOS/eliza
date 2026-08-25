@@ -995,10 +995,12 @@ export function ConversationsSidebar({
                 </div>
               ) : (
                 <Button
-                  variant="outline"
+                  variant="outlineMuted"
+                  size="compact"
+                  align="start"
                   data-testid="conversations-search-messages"
                   onClick={() => setMessageSearchOpen(true)}
-                  className="h-auto w-full justify-start gap-2 rounded-lg border-border/60 px-2.5 py-1.5 text-sm font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  className="w-full"
                 >
                   <Search className="size-3.5" />
                   {t("conversations.searchMessages", {
@@ -1236,9 +1238,10 @@ function CollapsibleChannelSection({
         <div className="mb-1 flex items-center gap-1 pl-1 pr-2">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="h-6 min-w-0 flex-1 justify-start gap-1.5 rounded-sm px-2 text-2xs text-muted hover:text-txt"
+            variant="ghostMuted"
+            size="micro"
+            align="start"
+            className="min-w-0 flex-1"
             onClick={() => onToggleSectionMute(serverMuted ? "unmute" : "mute")}
             title={sectionMuteLabel}
             aria-label={sectionMuteLabel}
@@ -1255,9 +1258,9 @@ function CollapsibleChannelSection({
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="ghostMuted"
                   size="icon-sm"
-                  className="size-6 shrink-0 rounded-sm text-muted hover:text-txt"
+                  className="shrink-0"
                   aria-label={t("conversations.muteServerDuration", {
                     defaultValue: "Mute server duration",
                   })}
@@ -1361,9 +1364,9 @@ function CollapsibleChannelSection({
                 <DropdownMenuTrigger asChild>
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="ghostMuted"
                     size="icon-sm"
-                    className="size-7 shrink-0 rounded-sm text-muted hover:text-txt"
+                    className="shrink-0"
                     aria-label={
                       row.muted
                         ? t("conversations.unmuteChannel", {

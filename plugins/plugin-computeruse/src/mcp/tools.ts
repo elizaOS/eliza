@@ -110,24 +110,17 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
       },
-      allowExperimentalExactWindow: {
-        type: "boolean",
-        description:
-          "Explicitly request the disabled-by-default direct-only experimental exact-window route after semantic AX refusal.",
-      },
     },
     required: ["app", "stateId", "element_index"],
   },
   {
     name: "computer_app_key",
-    description:
-      "Post a key to the indexed element only when the exact window is bound, the PID has no competing eligible window, and target-element readback can verify delivery.",
+    description: "Post a key and optional modifiers to one app process.",
     command: "app_key",
     destructive: true,
     properties: {
       app: APP,
       stateId: STATE_ID,
-      element_index: ELEMENT_INDEX,
       key: { type: "string", description: "Key name." },
       modifiers: {
         type: "array",
@@ -135,21 +128,20 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         items: { type: "string" },
       },
     },
-    required: ["app", "stateId", "element_index", "key"],
+    required: ["app", "stateId", "key"],
   },
   {
     name: "computer_app_type",
     description:
-      "Post Unicode text to the indexed element only when a single eligible process window and target-bound readback make delivery verifiable.",
+      "Post Unicode text to one app process without moving the pointer.",
     command: "app_type",
     destructive: true,
     properties: {
       app: APP,
       stateId: STATE_ID,
-      element_index: ELEMENT_INDEX,
       text: { type: "string", description: "Text to type." },
     },
-    required: ["app", "stateId", "element_index", "text"],
+    required: ["app", "stateId", "text"],
   },
   {
     name: "computer_app_paste",
@@ -160,14 +152,13 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
     properties: {
       app: APP,
       stateId: STATE_ID,
-      element_index: ELEMENT_INDEX,
       text: { type: "string", description: "Content to paste." },
       format: {
         type: "string",
         description: "text | markdown | html",
       },
     },
-    required: ["app", "stateId", "element_index", "text"],
+    required: ["app", "stateId", "text"],
   },
   {
     name: "computer_app_scroll",
@@ -185,11 +176,6 @@ export const COMPUTERUSE_MCP_TOOLS: readonly ComputerUseMcpTool[] = [
         type: "boolean",
         description:
           "Request the approval-gated last-resort physical pointer fallback.",
-      },
-      allowExperimentalExactWindow: {
-        type: "boolean",
-        description:
-          "Explicitly request the disabled-by-default direct-only experimental exact-window route after semantic AX refusal.",
       },
     },
     required: ["app", "stateId", "element_index"],

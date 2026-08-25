@@ -5,8 +5,9 @@
  * native always-on-top app window.
  */
 
+import { Button } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
-import { openDesktopAppWindow } from "@elizaos/ui/bridge";
+import { isElectrobunRuntime, openDesktopAppWindow } from "@elizaos/ui/bridge";
 import {
   type ReactElement,
   useCallback,
@@ -162,6 +163,7 @@ export interface ComputerUseSessionsViewProps {
   openFloatingWindow?: () => Promise<boolean>;
   snapshotPollMs?: number;
   framePollMs?: number;
+  desktopRuntime?: boolean;
 }
 
 const defaultApi: ComputerUseSessionsViewApi = {
@@ -242,26 +244,6 @@ function statusTone(status: SessionSnapshot["status"]): string {
   return "bg-orange-500/15 text-orange-700 dark:text-orange-300";
 }
 
-function ReadinessPill({
-  available,
-  label,
-}: {
-  available: boolean;
-  label: string;
-}) {
-  return (
-    <span
-      className={`rounded-full px-2 py-1 text-[11px] ${
-        available
-          ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-          : "bg-destructive/10 text-destructive"
-      }`}
-    >
-      {label}: {available ? "ready" : "unavailable"}
-    </span>
-  );
-}
-
 function frameDataUrl(frame: SessionFrame): string {
   return `data:${frame.mimeType};base64,${frame.data}`;
 }
@@ -324,7 +306,7 @@ function AgentTargetOverlay({
       }}
     >
       <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
-        Agent target · {pointerProvenanceLabel(target)}
+        Agent target
       </span>
     </span>
   );
@@ -381,6 +363,7 @@ export function ComputerUseSessionsView({
   openFloatingWindow = defaultOpenFloatingWindow,
   snapshotPollMs = SNAPSHOT_POLL_MS,
   framePollMs = FRAME_POLL_MS,
+  desktopRuntime = isElectrobunRuntime(),
 }: ComputerUseSessionsViewProps = {}): ReactElement {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [frames, setFrames] = useState<Record<string, SessionFrame>>({});
@@ -431,8 +414,6 @@ export function ComputerUseSessionsView({
   );
 
   const sessions = state.kind === "ready" ? state.snapshot.sessions : [];
-  const readiness = state.kind === "ready" ? state.snapshot.readiness : null;
-  const events = state.kind === "ready" ? state.snapshot.events : [];
   const frameSessionKey = sessions
     .map((session) => `${session.id}:${session.status}`)
     .join("|");
@@ -566,60 +547,16 @@ export function ComputerUseSessionsView({
   return (
     <section className="flex h-full min-h-0 w-full flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div>
-          <h1 className="text-base font-semibold">Computer sessions</h1>
-          {!shortLandscape ? (
-            <p className="text-xs text-muted-foreground">
-              macOS has one true system pointer. Orange target boxes are an
-              agent-only overlay; independent targets use virtual cursors and
-              live frames. Guarded coordinate actions may use the physical
-              pointer only after policy approval.
-            </p>
-          ) : null}
-        </div>
-        <button
-          className="min-h-11 rounded-lg bg-orange-500 px-4 text-sm font-medium text-white hover:bg-orange-600"
-          data-agent-id="computer-sessions-open-floating"
-          onClick={() => void openFloating()}
-          type="button"
-        >
-          Open floating
-        </button>
-        {readiness ? (
-          <fieldset className="flex w-full flex-wrap gap-2">
-            <legend className="sr-only">Computer use readiness</legend>
-            <ReadinessPill
-              available={readiness.capture.available}
-              label="Capture"
-            />
-            <ReadinessPill
-              available={readiness.input.available}
-              label="Input"
-            />
-            <ReadinessPill
-              available={readiness.browser.available}
-              label="Browser"
-            />
-            <ReadinessPill
-              available={readiness.vision.available}
-              label="Vision"
-            />
-            {readiness.accessibility ? (
-              <>
-                <ReadinessPill
-                  available={readiness.accessibility.available}
-                  label="AX helper"
-                />
-                <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
-                  Accessibility permission:{" "}
-                  {readiness.accessibility.permission.replaceAll("_", " ")}
-                </span>
-              </>
-            ) : null}
-            <span className="rounded-full bg-muted px-2 py-1 text-[11px] text-foreground">
-              Approval: {readiness.approvalMode.replaceAll("_", " ")}
-            </span>
-          </fieldset>
+        <h1 className="text-base font-semibold">Computer sessions</h1>
+        {desktopRuntime ? (
+          <Button
+            size="touch"
+            data-agent-id="computer-sessions-open-floating"
+            onClick={() => void openFloating()}
+            type="button"
+          >
+            Open floating
+          </Button>
         ) : null}
       </header>
 
@@ -636,13 +573,14 @@ export function ComputerUseSessionsView({
       ) : state.kind === "error" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-sm text-destructive">{state.message}</p>
-          <button
-            className="min-h-11 rounded-lg border border-border px-4 text-sm hover:bg-orange-500/10"
+          <Button
+            variant="outline"
+            size="touch"
             onClick={() => void loadSessions()}
             type="button"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : sessions.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -656,18 +594,16 @@ export function ComputerUseSessionsView({
               className="flex gap-2 overflow-x-auto px-3 py-2"
             >
               {sessions.map((session) => (
-                <button
-                  className={`min-h-11 shrink-0 rounded-lg px-3 text-xs ${
-                    selected?.id === session.id
-                      ? "bg-orange-500 text-white"
-                      : "bg-card text-muted-foreground"
-                  }`}
+                <Button
+                  variant={selected?.id === session.id ? "default" : "surface"}
+                  size="touch"
+                  className="shrink-0"
                   key={session.id}
                   onClick={() => setSelectedId(session.id)}
                   type="button"
                 >
                   {session.label}
-                </button>
+                </Button>
               ))}
             </nav>
           ) : null}
@@ -703,69 +639,39 @@ export function ComputerUseSessionsView({
                       {selected.status}
                     </span>
                     {selected.status === "paused" ? (
-                      <button
-                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => void controlSession(selected, "resume")}
                         type="button"
                       >
                         Resume
-                      </button>
+                      </Button>
                     ) : selected.status === "idle" ? (
-                      <button
-                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => void controlSession(selected, "pause")}
                         type="button"
                       >
                         Pause
-                      </button>
+                      </Button>
                     ) : null}
-                    <button
-                      className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                    <Button
+                      variant="dangerGhost"
+                      size="sm"
                       data-agent-id={`computer-session-stop-${selected.id}`}
                       disabled={selected.status === "stopping"}
                       onClick={() => void controlSession(selected, "stop")}
                       type="button"
                     >
                       Stop
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <p className="truncate">
-                  Sequence {selected.sequence}
-                  {selected.cursor
-                    ? ` · Cursor ${Math.round(selected.cursor.x)}, ${Math.round(selected.cursor.y)}`
-                    : " · Cursor pending"}
-                </p>
-                {selected.lastReceipt ? (
-                  <p className="truncate">
-                    {selected.lastReceipt.executionMode.replaceAll("_", " ")}
-                    {` · PID ${selected.lastReceipt.targetPid} · window ${selected.lastReceipt.targetWindowId}`}
-                    {selected.lastReceipt.clipboardRestored
-                      ? " · clipboard restored"
-                      : ""}
-                    {` · ${pointerProvenanceLabel(selected.lastReceipt)}`}
-                    {selected.lastReceipt.physicalFallbackApproval
-                      ? ` · approval ${selected.lastReceipt.physicalFallbackApproval.approvalId}`
-                      : ""}
-                  </p>
-                ) : null}
-                {frames[selected.id]?.provenance ? (
-                  <p
-                    className="truncate"
-                    title={frames[selected.id]?.provenance.sha256}
-                  >
-                    Observation {frames[selected.id]?.provenance.sequence} ·{" "}
-                    {frames[selected.id]?.provenance.source} ·{" "}
-                    {frames[selected.id]?.provenance.sha256.slice(0, 10)}
-                  </p>
-                ) : null}
-                <p className="truncate">
-                  {selected.lastOutcome
-                    ? `Outcome: ${selected.lastOutcome.status}${
-                        selected.lastOutcome.errorCode
-                          ? ` · ${selected.lastOutcome.errorCode}`
-                          : ""
-                      }`
+                  {selected.lastError
+                    ? `Error: ${selected.lastError}`
                     : selected.lastCommand
                       ? `Last: ${selected.lastCommand}`
                       : "Waiting for first action"}
@@ -786,8 +692,11 @@ export function ComputerUseSessionsView({
                     key={session.id}
                   >
                     <div className="flex min-h-11 items-start justify-between gap-2">
-                      <button
-                        className="min-w-0 flex-1 text-left"
+                      <Button
+                        variant="selection"
+                        size="row"
+                        align="start"
+                        className="min-w-0 flex-1"
                         data-agent-id={`computer-session-select-${session.id}`}
                         onClick={() => setSelectedId(session.id)}
                         type="button"
@@ -803,7 +712,7 @@ export function ComputerUseSessionsView({
                               : ""}
                           </p>
                         </div>
-                      </button>
+                      </Button>
                       <div className="flex shrink-0 items-center gap-2">
                         <span
                           className={`rounded-full px-2 py-1 text-[11px] ${statusTone(session.status)}`}
@@ -811,35 +720,38 @@ export function ComputerUseSessionsView({
                           {session.status}
                         </span>
                         {session.status === "paused" ? (
-                          <button
-                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() =>
                               void controlSession(session, "resume")
                             }
                             type="button"
                           >
                             Resume
-                          </button>
+                          </Button>
                         ) : session.status === "idle" ? (
-                          <button
-                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() =>
                               void controlSession(session, "pause")
                             }
                             type="button"
                           >
                             Pause
-                          </button>
+                          </Button>
                         ) : null}
-                        <button
-                          className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                        <Button
+                          variant="dangerGhost"
+                          size="sm"
                           data-agent-id={`computer-session-stop-${session.id}`}
                           disabled={session.status === "stopping"}
                           onClick={() => void controlSession(session, "stop")}
                           type="button"
                         >
                           Stop
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
@@ -848,71 +760,15 @@ export function ComputerUseSessionsView({
                       session={session}
                     />
 
-                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <span>Sequence {session.sequence}</span>
-                      <span className="text-right">
-                        {session.cursor
-                          ? `Cursor ${Math.round(session.cursor.x)}, ${Math.round(session.cursor.y)}`
-                          : "Cursor pending"}
-                      </span>
-                      <span className="col-span-2 truncate">
+                    <div className="text-xs text-muted-foreground">
+                      <span className="block truncate">
                         {session.lastError
                           ? `Error: ${session.lastError}`
                           : session.lastCommand
                             ? `Last: ${session.lastCommand}`
                             : "Waiting for first action"}
                       </span>
-                      {frames[session.id]?.provenance ? (
-                        <span
-                          className="col-span-2 truncate"
-                          title={frames[session.id]?.provenance.sha256}
-                        >
-                          Observation {frames[session.id]?.provenance.sequence}{" "}
-                          · {frames[session.id]?.provenance.source} ·{" "}
-                          {frames[session.id]?.provenance.sha256.slice(0, 10)}
-                        </span>
-                      ) : null}
-                      {session.lastOutcome ? (
-                        <span className="col-span-2 truncate">
-                          Outcome: {session.lastOutcome.status}
-                          {session.lastOutcome.errorCode
-                            ? ` · ${session.lastOutcome.errorCode}`
-                            : ""}
-                        </span>
-                      ) : null}
-                      {session.lastReceipt ? (
-                        <span className="col-span-2 truncate">
-                          {session.lastReceipt.executionMode.replaceAll(
-                            "_",
-                            " ",
-                          )}
-                          {session.lastReceipt.clipboardRestored
-                            ? " · clipboard restored"
-                            : ""}
-                          {` · PID ${session.lastReceipt.targetPid} · window ${session.lastReceipt.targetWindowId}`}
-                          {` · ${pointerProvenanceLabel(session.lastReceipt)}`}
-                        </span>
-                      ) : null}
                     </div>
-                    {selected?.id === session.id ? (
-                      <ol
-                        className="space-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground"
-                        aria-label={`${session.label} action history`}
-                      >
-                        {events
-                          .filter((event) => event.sessionId === session.id)
-                          .slice(-4)
-                          .map((event) => (
-                            <li key={event.eventId} className="truncate">
-                              {event.type}
-                              {event.command ? ` · ${event.command}` : ""}
-                              {event.outcomeStatus
-                                ? ` · ${event.outcomeStatus}`
-                                : ""}
-                            </li>
-                          ))}
-                      </ol>
-                    ) : null}
                   </article>
                 ),
               )}

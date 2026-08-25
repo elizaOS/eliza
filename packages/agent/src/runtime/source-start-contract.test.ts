@@ -6,7 +6,6 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -15,32 +14,9 @@ const AGENT_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
-const REPO_ROOT = path.resolve(AGENT_ROOT, "../..");
-const PLUGIN_SQL_SOURCE_ROOT = path.join(REPO_ROOT, "plugins/plugin-sql/src");
 
 describe("standalone source-checkout start contract", () => {
   it("runs the agent and its required SQL plugin against workspace source", () => {
-    const agentPackage = JSON.parse(
-      readFileSync(path.join(AGENT_ROOT, "package.json"), "utf8"),
-    ) as { scripts?: Record<string, string> };
-    const pluginSqlTsconfig = JSON.parse(
-      readFileSync(path.join(PLUGIN_SQL_SOURCE_ROOT, "tsconfig.json"), "utf8"),
-    ) as { compilerOptions?: { paths?: Record<string, string[]> } };
-    const pluginSqlTypecheckConfig = JSON.parse(
-      readFileSync(
-        path.join(PLUGIN_SQL_SOURCE_ROOT, "tsconfig.typecheck.json"),
-        "utf8",
-      ),
-    ) as { compilerOptions?: { paths?: Record<string, string[]> } };
-
-    expect(agentPackage.scripts?.start).toBe(
-      "bun --no-install --conditions=eliza-source src/bin.ts",
-    );
-    expect(pluginSqlTsconfig.compilerOptions?.paths).toBeUndefined();
-    expect(
-      pluginSqlTypecheckConfig.compilerOptions?.paths?.["@elizaos/core"],
-    ).toEqual(["../../../packages/core/dist/index.d.ts"]);
-
     const imported = spawnSync(
       "bun",
       [

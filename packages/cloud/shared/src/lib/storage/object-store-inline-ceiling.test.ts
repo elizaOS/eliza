@@ -7,7 +7,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { ObjectNamespaces } from "./object-namespace";
 import {
-  clampInlineDiagnosticText,
   InlinePayloadTooLargeError,
   inlinePayloadCeilingBytes,
   offloadJsonField,
@@ -43,10 +42,6 @@ const baseParams = {
   objectId: "job-1",
   createdAt: new Date("2026-01-01T00:00:00Z"),
 };
-
-function byteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
 
 beforeEach(() => {
   for (const key of ENV_KEYS) delete process.env[key];
@@ -86,21 +81,6 @@ describe("inline payload ceiling", () => {
     });
   });
 
-  test("a diagnostic field opted into clamping is bounded and marked", async () => {
-    const value = "x".repeat(5000);
-    const field = await offloadTextField({
-      ...baseParams,
-      field: "error",
-      value,
-      oversizeInline: "clamp",
-    });
-    expect(field.storage).toBe("inline");
-    expect(field.key).toBeNull();
-    const stored = field.value ?? "";
-    expect(byteLength(stored)).toBeLessThanOrEqual(2048);
-    expect(stored).toContain("truncated: 5000-byte payload");
-  });
-
   test("oversize structured payloads are refused, never truncated", async () => {
     const value = { dump: "x".repeat(5000) };
     await expect(
@@ -111,34 +91,6 @@ describe("inline payload ceiling", () => {
         inlineValueWhenOffloaded: null,
       }),
     ).rejects.toBeInstanceOf(InlinePayloadTooLargeError);
-  });
-
-  test("clamping preserves whole characters for multi-byte payloads", () => {
-    process.env.SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES = "1024";
-    const clamped = clampInlineDiagnosticText("é".repeat(4000));
-    expect(byteLength(clamped)).toBeLessThanOrEqual(1024);
-    expect(clamped.includes("�")).toBe(false);
-  });
-
-  test("clamping never allocates a payload-sized TextEncoder copy", () => {
-    const originalTextEncoder = globalThis.TextEncoder;
-    Object.defineProperty(globalThis, "TextEncoder", {
-      configurable: true,
-      value: class {
-        encode(): never {
-          throw new Error("TextEncoder.encode must not run at the ceiling boundary");
-        }
-      },
-    });
-    try {
-      const clamped = clampInlineDiagnosticText("x".repeat(5000));
-      expect(clamped).toContain("truncated: 5000-byte payload");
-    } finally {
-      Object.defineProperty(globalThis, "TextEncoder", {
-        configurable: true,
-        value: originalTextEncoder,
-      });
-    }
   });
 
   test("a ceiling below the 1024-byte floor falls back to the 1 MiB default", () => {

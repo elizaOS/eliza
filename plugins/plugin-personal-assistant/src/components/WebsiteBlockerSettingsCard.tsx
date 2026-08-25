@@ -5,7 +5,7 @@
  */
 import type { PermissionStatus } from "@elizaos/shared";
 // Leaf subpath, not the root barrel — see AppBlockerSettingsCard.
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import { useAppSelector } from "@elizaos/ui/state";
 import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types/website-blocker-settings-card";
@@ -183,9 +183,8 @@ export function WebsiteBlockerSettingsCard({
           <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
             <Button
               type="button"
-              size="sm"
+              size="formAction"
               variant="default"
-              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
               onClick={() => void primary.action()}
             >
               <Settings className="mr-1.5 size-4" aria-hidden />

@@ -13,7 +13,6 @@ import {
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 
 function parseReflectionObject(raw: string): Record<string, unknown> | null {
@@ -25,8 +24,7 @@ function parseReflectionObject(raw: string): Record<string, unknown> | null {
 }
 
 function promptLine(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > 0 ? normalized : "(empty)";
+  return value.length > 0 ? value : "(empty)";
 }
 
 function readBoolean(value: unknown): boolean {
@@ -102,7 +100,7 @@ export async function reflectOnSendConfirmation(
     }
     return {
       confirmed: false,
-      reasoning: `Could not parse reflection: ${truncateWellFormed(toWellFormedUnicode(raw), 100)}`,
+      reasoning: `Could not parse reflection: ${toWellFormedUnicode(raw)}`,
     };
   } catch (error) {
     logger.warn(
@@ -187,7 +185,7 @@ export async function reflectOnAutoReply(
 
     return {
       approved: false,
-      reasoning: `Could not parse reflection: ${truncateWellFormed(toWellFormedUnicode(raw), 100)}`,
+      reasoning: `Could not parse reflection: ${toWellFormedUnicode(raw)}`,
     };
   } catch (error) {
     logger.warn(

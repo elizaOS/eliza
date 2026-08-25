@@ -6,66 +6,31 @@
 
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ComputerUseSessionManager } from "../sessions/session-manager.js";
 import type {
   ComputerUseSessionAction,
   CreateComputerUseSessionInput,
 } from "../sessions/types.js";
 
-const mockedEnv = vi.hoisted(() => ({
-  apiToken: undefined as string | undefined,
-}));
-
 vi.mock("@elizaos/core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@elizaos/core")>()),
-  resolveAliasedEnvValue: (name: string) =>
-    name === "ELIZA_API_TOKEN" ? mockedEnv.apiToken : undefined,
+  resolveAliasedEnvValue: () => undefined,
 }));
 
 const { handleComputerUseCompatRoutes } = await import(
   "./computer-use-compat-routes.js"
 );
 
-afterEach(() => {
-  mockedEnv.apiToken = undefined;
-});
-
 function sessionService() {
   let id = 0;
   const manager = new ComputerUseSessionManager({
     idFactory: () => `session-${++id}`,
-    executor: async (_target, sessionAction) =>
-      sessionAction.command === "app_click"
-        ? {
-            success: true,
-            data: {
-              receipt: {
-                receiptId: "remote-receipt-1",
-                appId: "fixture.app",
-                kind: "click",
-                beforeStateId: "fixture.app:before",
-                afterStateId: "fixture.app:after",
-                targetPid: 42,
-                targetWindowId: 701,
-                executionMode: "semantic_ax",
-                completedAt: "2026-08-23T00:00:01.000Z",
-                changed: true,
-                physicalPointerInput: false,
-                physicalPointerMoved: false,
-                pointerObservation: "unchanged",
-                pointerBefore: { x: 692, y: 765 },
-                pointerAfter: { x: 692, y: 765 },
-              },
-            },
-          }
-        : {
-            success: true,
-            cursorPosition:
-              sessionAction.command === "mouse_move"
-                ? { x: 20, y: 30 }
-                : undefined,
-          },
+    executor: async (_target, sessionAction) => ({
+      success: true,
+      cursorPosition:
+        sessionAction.command === "mouse_move" ? { x: 20, y: 30 } : undefined,
+    }),
     frameProvider: async () => ({ mimeType: "image/png", data: "cG5n" }),
   });
   return {
@@ -77,7 +42,6 @@ function sessionService() {
       app: { id: app, name: "Fixture", pid: 42, active: true },
       capturedAt: "2026-08-23T00:00:00.000Z",
       permission: "ready" as const,
-      focusedWindowId: 701,
       elements: [],
       axText: "fixture AX tree",
       ...(options?.disableDiff ? {} : { diff: undefined }),
@@ -86,7 +50,6 @@ function sessionService() {
       available: true,
       adapter: "fixture-ax",
       permission: "ready",
-      routes: [],
     }),
     createSession: (input: CreateComputerUseSessionInput) =>
       manager.create(input),
@@ -131,7 +94,6 @@ async function request(options: {
   body?: Record<string, unknown>;
   service: ReturnType<typeof sessionService>;
   remoteAddress?: string;
-  headers?: Record<string, string>;
 }): Promise<{ status: number; body: Record<string, unknown> }> {
   const socket = new Socket();
   Object.defineProperty(socket, "remoteAddress", {
@@ -145,10 +107,7 @@ async function request(options: {
   });
   req.method = options.method;
   req.url = options.path;
-  Object.defineProperty(req, "headers", {
-    value: options.headers ?? {},
-    configurable: true,
-  });
+  Object.defineProperty(req, "headers", { value: {}, configurable: true });
   if (options.body) {
     (req as IncomingMessage & { body?: unknown }).body = options.body;
   }
@@ -318,7 +277,6 @@ describe("computer-use session compatibility routes", () => {
   });
 
   it("fails closed when the socket peer is not local and no token is configured", async () => {
-    mockedEnv.apiToken = undefined;
     const response = await request({
       path: "/api/computer-use/sessions",
       method: "GET",
@@ -326,71 +284,6 @@ describe("computer-use session compatibility routes", () => {
       remoteAddress: "8.8.8.8",
     });
     expect(response).toEqual({ status: 401, body: { error: "Unauthorized" } });
-  });
-
-  it("carries a phone-authenticated semantic app action and pointer-free receipt through the remote API", async () => {
-    mockedEnv.apiToken = "fixture-remote-token";
-    const service = sessionService();
-    const remote = {
-      remoteAddress: "192.0.2.44",
-      headers: { authorization: "Bearer fixture-remote-token" },
-    };
-    const created = await request({
-      ...remote,
-      path: "/api/computer-use/sessions",
-      method: "POST",
-      body: { label: "phone-to-mac", target: { kind: "host" } },
-      service,
-    });
-    expect(created.status).toBe(201);
-    const sessionId = (created.body.session as { id: string }).id;
-    const observed = await request({
-      ...remote,
-      path: `/api/computer-use/sessions/${sessionId}/frame`,
-      method: "GET",
-      service,
-    });
-    const provenance = (
-      observed.body.frame as {
-        provenance: { observationId: string; sequence: number };
-      }
-    ).provenance;
-    const executed = await request({
-      ...remote,
-      path: `/api/computer-use/sessions/${sessionId}/actions`,
-      method: "POST",
-      body: {
-        actionId: "phone-open-chat",
-        expectedSequence: 0,
-        command: "app_click",
-        parameters: {
-          app: "fixture.app",
-          stateId: "fixture.app:before",
-          element_index: 1,
-        },
-        observationId: provenance.observationId,
-        observationSequence: provenance.sequence,
-      },
-      service,
-    });
-    expect(executed).toMatchObject({
-      status: 200,
-      body: {
-        session: {
-          lastReceipt: {
-            receiptId: "remote-receipt-1",
-            targetPid: 42,
-            targetWindowId: 701,
-            executionMode: "semantic_ax",
-            physicalPointerInput: false,
-            physicalPointerMoved: false,
-            pointerObservation: "unchanged",
-          },
-          lastOutcome: { observationId: expect.any(String) },
-        },
-        result: { verificationObservation: { sequence: 2 } },
-      },
-    });
   });
 
   it("rejects malformed session path encoding before service access", async () => {

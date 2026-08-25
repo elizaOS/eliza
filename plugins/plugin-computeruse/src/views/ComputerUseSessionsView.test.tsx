@@ -119,6 +119,7 @@ describe("ComputerUseSessionsView", () => {
     render(
       <ComputerUseSessionsView
         api={api}
+        desktopRuntime={false}
         snapshotPollMs={60_000}
         framePollMs={60_000}
       />,
@@ -134,12 +135,15 @@ describe("ComputerUseSessionsView", () => {
       await screen.findByAltText("Chrome research latest frame"),
     ).toBeTruthy();
     expect(screen.getByLabelText("Virtual cursor at 640, 360")).toBeTruthy();
-    expect(screen.getByText("Capture: ready")).toBeTruthy();
-    expect(screen.getByText("Vision: ready")).toBeTruthy();
     expect(
-      screen.getByText(/Observation 5 · browser · 8f8cbb7dcf/),
-    ).toBeTruthy();
-    expect(screen.getByText("observation.captured")).toBeTruthy();
+      screen.queryByText(/Sessions connect and update automatically/),
+    ).toBeNull();
+    expect(screen.queryByText(/Sequence 4/)).toBeNull();
+    expect(screen.queryByText(/Cursor 640/)).toBeNull();
+    expect(screen.queryByText("Capture: ready")).toBeNull();
+    expect(screen.queryByText(/Observation 5/)).toBeNull();
+    expect(screen.queryByText("observation.captured")).toBeNull();
+    expect(screen.queryByText("Open floating")).toBeNull();
     expect(
       screen.getByTitle("Linux guest viewer").getAttribute("sandbox"),
     ).toBe("allow-scripts");
@@ -151,6 +155,7 @@ describe("ComputerUseSessionsView", () => {
     render(
       <ComputerUseSessionsView
         api={api}
+        desktopRuntime
         framePollMs={60_000}
         openFloatingWindow={openFloatingWindow}
         snapshotPollMs={60_000}
@@ -196,7 +201,9 @@ describe("ComputerUseSessionsView", () => {
     expect(
       await screen.findByAltText("Chrome research latest frame"),
     ).toBeTruthy();
-    expect(screen.getByText("Sequence 4 · Cursor 640, 360")).toBeTruthy();
+    expect(screen.queryByText(/Sequence 4/)).toBeNull();
+    expect(screen.queryByText(/Cursor 640/)).toBeNull();
+    expect(screen.getByLabelText("Virtual cursor at 640, 360")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
   });
