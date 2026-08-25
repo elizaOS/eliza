@@ -269,7 +269,7 @@ describe("ShellControllerAuthority data paths", () => {
     other.release();
   });
 
-  it("truncates error messages with surrogate safety", async () => {
+  it("preserves complete error messages with surrogate safety", async () => {
     const authority = new ShellControllerAuthority();
     const owner = authority.register("main", vi.fn());
     const follower = authority.register("tray", vi.fn());
@@ -306,8 +306,7 @@ describe("ShellControllerAuthority data paths", () => {
     const res = await outcomePromise;
     expect(res.ok).toBe(false);
     expect(typeof res.error).toBe("string");
-    expect(res.error?.length).toBeLessThanOrEqual(2000);
-    expect(res.error?.endsWith("😀")).toBe(false);
-    expect(res.error?.endsWith("a")).toBe(true);
+    expect(res.error).toBe(longError);
+    expect(res.error?.endsWith("b".repeat(10))).toBe(true);
   });
 });

@@ -229,6 +229,7 @@ describeMacOS("SSH runtime RPC disposable tunnel", () => {
       remoteApiPort: apiPort,
       expectedFingerprint: hostKeyFingerprint,
       identityFile,
+      credentialRef: runtimeId,
     };
     const first = await desktopStartSshRuntime(input);
     await expect(desktopStartSshRuntime(input)).resolves.toEqual(first);
@@ -236,6 +237,7 @@ describeMacOS("SSH runtime RPC disposable tunnel", () => {
     await expect(
       desktopSshRuntimeRequest({
         runtimeId,
+        credentialRef: runtimeId,
         path: "/api/health?probe=ssh",
         method: "GET",
         headers: {
@@ -255,6 +257,7 @@ describeMacOS("SSH runtime RPC disposable tunnel", () => {
     await expect(
       desktopSshRuntimeRequest({
         runtimeId,
+        credentialRef: runtimeId,
         path: "/api/settings",
         method: "GET",
         headers: {},
@@ -269,6 +272,7 @@ describeMacOS("SSH runtime RPC disposable tunnel", () => {
     await expect(
       desktopSshRuntimeRequest({
         runtimeId,
+        credentialRef: runtimeId,
         path: "/api/health",
         method: "GET",
         headers: {},
