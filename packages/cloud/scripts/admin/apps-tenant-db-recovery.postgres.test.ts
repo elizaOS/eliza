@@ -122,9 +122,12 @@ async function buildBackupFixture(
     `CREATE ROLE ${tenantRole};\nALTER ROLE ${tenantRole} WITH LOGIN PASSWORD 'tenantpw23453';\n`,
   );
   writeFileSync(join(setDir, "dbmap.tsv"), `${dumpId}\t${databaseName}\n`);
-  sh(`sha256sum manifest.json globals.sql dbmap.tsv dumps/* > checksums.sha256`, {
-    cwd: setDir,
-  });
+  sh(
+    `sha256sum manifest.json globals.sql dbmap.tsv dumps/* > checksums.sha256`,
+    {
+      cwd: setDir,
+    },
+  );
   sh(
     `tar -czf backup.tar.gz manifest.json checksums.sha256 globals.sql dbmap.tsv dumps`,
     {
@@ -278,257 +281,262 @@ async function provisionTarget(targetDb: string, capabilityFile: string) {
   }
 }
 
-describe("restore drill authority on real PostgreSQL (#23453)", () => {
-  beforeAll(async () => {
-    if (!ENABLED) return;
-    admin = new Client({ connectionString: BASE_URL });
-    await admin.connect();
-    // Idempotent setup: drop any leftover objects from a prior run, then
-    // re-run cleanly (the drill itself is one-shot by design).
-    const leftovers = await admin.query(
-      `SELECT datname FROM pg_database WHERE datname LIKE '${TEST_PREFIX}%'`,
-    );
-    for (const row of leftovers.rows) {
-      await admin.query(`DROP DATABASE IF EXISTS ${row.datname} WITH (FORCE)`);
-    }
-    const leftoverRoles = await admin.query(
-      `SELECT rolname FROM pg_roles WHERE rolname LIKE '${TEST_PREFIX}%'`,
-    );
-    for (const row of leftoverRoles.rows) {
-      await admin.query(`DROP ROLE IF EXISTS ${row.rolname}`);
-    }
-    if (POOLER_ENABLED) {
-      startPgbouncer([`${TEST_PREFIX}tenant_a`, `${TEST_PREFIX}tenant_b`]);
-    }
-  });
-
-  afterAll(async () => {
-    if (!ENABLED) return;
-    if (POOLER_ENABLED) {
-      // pkill needs a shell (signal-by-pattern); the pattern is a hardcoded
-      // constant, not interpolated input, so shell injection is unreachable.
-      try {
-        execSync("pkill -f drill-pgbouncer || true");
-      } catch {
-        // pgbouncer may already have exited
-      }
-    }
-    for (const fn of cleanups) {
-      try {
-        fn();
-      } catch {
-        // best-effort temp cleanup
-      }
-    }
-    try {
-      await admin.query(`ALTER SYSTEM RESET eliza.restore_target_id`);
-      await admin.query(`ALTER SYSTEM RESET eliza.restore_capability`);
-      await admin.query(`SELECT pg_reload_conf()`);
-    } catch {
-      // settings may already be reset by the drill's consume step
-    }
-    await admin.end();
-  });
-
-  test("end-to-end drill: verify, guarded restore, linear isolation, consume", async () => {
-    const sourceDb = `${TEST_PREFIX}src`;
-    const targetDb = `${TEST_PREFIX}target`;
-    const databaseName = `${TEST_PREFIX}tenant_a`;
-    const tenantRole = `${TEST_PREFIX}tenant_a`;
-    await admin.query(`CREATE DATABASE ${sourceDb}`);
-    cleanups.push(() =>
-      spawnSync("psql", [
-        "-c",
-        `DROP DATABASE IF EXISTS ${targetDb} WITH (FORCE)`,
-      ]),
-    );
-    const src = new Client({ connectionString: dbUrl(sourceDb) });
-    await src.connect();
-    await src.query(`CREATE TABLE evidence (id int, note text)`);
-    await src.query(`INSERT INTO evidence VALUES (1, 'tenant-data-23453')`);
-    await src.end();
-
-    const fixture = await buildBackupFixture(
-      sourceDb,
-      databaseName,
-      tenantRole,
-    );
-    fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
-    await admin.query(`CREATE DATABASE ${targetDb}`);
-    await provisionTarget(targetDb, fixture.capabilityFile);
-
-    const targetDsn = dbUrl(targetDb);
-    const result = spawnSync(
-      "bun",
-      [
-        "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
-        "--set-dir",
-        fixture.setDir,
-        "--target-dsn",
-        targetDsn,
-        "--target-id",
-        TARGET_ID,
-        "--capability-file",
-        fixture.capabilityFile,
-        "--pooler-endpoint",
-        "127.0.0.1:6432",
-        "--tenant-probes-file",
-        fixture.probesFile,
-        "--passphrase-file",
-        fixture.passphraseFile,
-        "--rpo-hours",
-        "26",
-        "--rto-minutes",
-        "60",
-      ],
-      {
-        encoding: "utf-8",
-        env: {
-          ...process.env,
-          ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
-          DRILL_TENANT_PW: fixture.tenantPassword,
-        },
-        maxBuffer: 64 * 1024 * 1024,
-      },
-    );
-    // NOTE: the pooler endpoint is probed only for the cross-reject
-    // sample; with a single tenant there is no cross pair, so no pooler
-    // connection is attempted.
-    if (result.status !== 0) {
-      throw new Error(
-        `drill exited ${result.status}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+describe.if(ENABLED)(
+  "restore drill authority on real PostgreSQL (#23453)",
+  () => {
+    beforeAll(async () => {
+      admin = new Client({ connectionString: BASE_URL });
+      await admin.connect();
+      // Idempotent setup: drop any leftover objects from a prior run, then
+      // re-run cleanly (the drill itself is one-shot by design).
+      const leftovers = await admin.query(
+        `SELECT datname FROM pg_database WHERE datname LIKE '${TEST_PREFIX}%'`,
       );
-    }
-    expect(result.status).toBe(0);
-    const report = JSON.parse(result.stdout);
-    expect(report.schemaVersion).toBe(2);
-    expect(report.rpoSource).toBe("manifest");
-    expect(report.isolation.plan).toBe("linear");
-    expect(report.isolation.passed).toBe(report.isolation.total);
-    expect(report.objectives.met).toBe(true);
-
-    // Restored tenant data is real.
-    const check = new Client({
-      connectionString: dbUrl(databaseName),
+      for (const row of leftovers.rows) {
+        await admin.query(
+          `DROP DATABASE IF EXISTS ${row.datname} WITH (FORCE)`,
+        );
+      }
+      const leftoverRoles = await admin.query(
+        `SELECT rolname FROM pg_roles WHERE rolname LIKE '${TEST_PREFIX}%'`,
+      );
+      for (const row of leftoverRoles.rows) {
+        await admin.query(`DROP ROLE IF EXISTS ${row.rolname}`);
+      }
+      if (POOLER_ENABLED) {
+        startPgbouncer([`${TEST_PREFIX}tenant_a`, `${TEST_PREFIX}tenant_b`]);
+      }
     });
-    await check.connect();
-    const rows = await check.query(`SELECT note FROM evidence WHERE id = 1`);
-    expect(rows.rows[0].note).toBe("tenant-data-23453");
-    await check.end();
 
-    // Tenant role can connect to its own restored database (own-connect
-    // probe already ran through the drill; verify role survives).
-    const roleConn = await admin.query(
-      `SELECT rolname FROM pg_roles WHERE rolname = '${tenantRole}'`,
-    );
-    expect(roleConn.rows).toHaveLength(1);
-  }, 120_000);
+    afterAll(async () => {
+      if (!ENABLED) return;
+      if (POOLER_ENABLED) {
+        // pkill needs a shell (signal-by-pattern); the pattern is a hardcoded
+        // constant, not interpolated input, so shell injection is unreachable.
+        try {
+          execSync("pkill -f drill-pgbouncer || true");
+        } catch {
+          // pgbouncer may already have exited
+        }
+      }
+      for (const fn of cleanups) {
+        try {
+          fn();
+        } catch {
+          // best-effort temp cleanup
+        }
+      }
+      try {
+        await admin.query(`ALTER SYSTEM RESET eliza.restore_target_id`);
+        await admin.query(`ALTER SYSTEM RESET eliza.restore_capability`);
+        await admin.query(`SELECT pg_reload_conf()`);
+      } catch {
+        // settings may already be reset by the drill's consume step
+      }
+      await admin.end();
+    });
 
-  test("substituted archive is refused even with a valid nonce", async () => {
-    const sourceDb = `${TEST_PREFIX}src2`;
-    const targetDb = `${TEST_PREFIX}target2`;
-    const databaseName = `${TEST_PREFIX}tenant_b`;
-    const tenantRole = `${TEST_PREFIX}tenant_b`;
-    await admin.query(`CREATE DATABASE ${sourceDb}`);
-    const src = new Client({ connectionString: dbUrl(sourceDb) });
-    await src.connect();
-    await src.query(`CREATE TABLE t (id int)`);
-    await src.end();
-
-    const fixture = await buildBackupFixture(
-      sourceDb,
-      databaseName,
-      tenantRole,
-    );
-    // Capability pins the REAL archive; then substitute a different archive.
-    fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
-    sh(`echo tampered > ${join(fixture.setDir, "backup.tar.gz.enc")}`);
-    await admin.query(`CREATE DATABASE ${targetDb}`);
-    await provisionTarget(targetDb, fixture.capabilityFile);
-
-    const targetDsn = dbUrl(targetDb);
-    const result = spawnSync(
-      "bun",
-      [
-        "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
-        "--set-dir",
-        fixture.setDir,
-        "--target-dsn",
-        targetDsn,
-        "--target-id",
-        TARGET_ID,
-        "--capability-file",
-        fixture.capabilityFile,
-        "--pooler-endpoint",
-        "127.0.0.1:6432",
-        "--tenant-probes-file",
-        fixture.probesFile,
-        "--passphrase-file",
-        fixture.passphraseFile,
-      ],
-      {
-        encoding: "utf-8",
-        env: {
-          ...process.env,
-          ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
-          DRILL_TENANT_PW: fixture.tenantPassword,
-        },
-      },
-    );
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("sidecar");
-  });
-
-  test("replay after consumption fails closed", async () => {
-    // Provision fresh twins on the cluster, consume them through the real
-    // consume step, then prove: (a) cluster settings are gone, and (b) a
-    // re-verify of the same capability refuses on the empty twin.
-    const capFile = mintCapabilityFile("f".repeat(64));
-    const cap = await import("./restore-capability").then((m) =>
-      m.parseRestoreCapability(readFileSync(capFile, "utf-8").trim()),
-    );
-    const targetDb = `${TEST_PREFIX}target3`;
-    await admin.query(`CREATE DATABASE ${targetDb}`);
-    await provisionTarget(targetDb, capFile);
-
-    const mod = await import("./apps-tenant-db-recovery");
-    const work = mkdtempSync(join(tmpdir(), "nonce-replay-"));
-    expect(() =>
-      mod.verifyRestoreAuthority(
-        dbUrl(targetDb),
-        TARGET_ID,
-        cap,
-        SIGNING_KEY,
-        Date.now(),
-      ),
-    ).not.toThrow();
-    mod.consumeRestoreAuthority(dbUrl(targetDb), TARGET_ID, cap, work);
-
-    // Direct assertion first: the cluster-level settings are unset now.
-    const fresh = new Client({ connectionString: BASE_URL });
-    await fresh.connect();
-    const settings = await fresh.query(
-      `SELECT COALESCE(current_setting('eliza.restore_target_id', true), '') AS tid, COALESCE(current_setting('eliza.restore_capability', true), '') AS cap`,
-    );
-    expect(settings.rows[0].tid).toBe("");
-    expect(settings.rows[0].cap).toBe("");
-    await fresh.end();
-    // And the real verify path fails closed against the spent target.
-    let code = "";
-    try {
-      mod.verifyRestoreAuthority(
-        dbUrl(targetDb),
-        TARGET_ID,
-        cap,
-        SIGNING_KEY,
-        Date.now(),
+    test("end-to-end drill: verify, guarded restore, linear isolation, consume", async () => {
+      const sourceDb = `${TEST_PREFIX}src`;
+      const targetDb = `${TEST_PREFIX}target`;
+      const databaseName = `${TEST_PREFIX}tenant_a`;
+      const tenantRole = `${TEST_PREFIX}tenant_a`;
+      await admin.query(`CREATE DATABASE ${sourceDb}`);
+      cleanups.push(() =>
+        spawnSync("psql", [
+          "-c",
+          `DROP DATABASE IF EXISTS ${targetDb} WITH (FORCE)`,
+        ]),
       );
-    } catch (error) {
-      code = (error as { code?: string }).code ?? "";
-    }
-    expect(code).toBe("REFUSED_TARGET_AUTHORITY");
-  });
-});
+      const src = new Client({ connectionString: dbUrl(sourceDb) });
+      await src.connect();
+      await src.query(`CREATE TABLE evidence (id int, note text)`);
+      await src.query(`INSERT INTO evidence VALUES (1, 'tenant-data-23453')`);
+      await src.end();
+
+      const fixture = await buildBackupFixture(
+        sourceDb,
+        databaseName,
+        tenantRole,
+      );
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+
+      const targetDsn = dbUrl(targetDb);
+      const result = spawnSync(
+        "bun",
+        [
+          "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+          "--set-dir",
+          fixture.setDir,
+          "--target-dsn",
+          targetDsn,
+          "--target-id",
+          TARGET_ID,
+          "--capability-file",
+          fixture.capabilityFile,
+          "--pooler-endpoint",
+          "127.0.0.1:6432",
+          "--tenant-probes-file",
+          fixture.probesFile,
+          "--passphrase-file",
+          fixture.passphraseFile,
+          "--rpo-hours",
+          "26",
+          "--rto-minutes",
+          "60",
+        ],
+        {
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+            DRILL_TENANT_PW: fixture.tenantPassword,
+          },
+          maxBuffer: 64 * 1024 * 1024,
+        },
+      );
+      // NOTE: the pooler endpoint is probed only for the cross-reject
+      // sample; with a single tenant there is no cross pair, so no pooler
+      // connection is attempted — own-connect proves out on the direct
+      // surface only (drill databases are absent from any pooler config).
+      if (result.status !== 0) {
+        throw new Error(
+          `drill exited ${result.status}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}`,
+        );
+      }
+      expect(result.status).toBe(0);
+      const report = JSON.parse(result.stdout);
+      expect(report.schemaVersion).toBe(2);
+      expect(report.rpoSource).toBe("manifest");
+      expect(report.isolation.plan).toBe("linear");
+      expect(report.isolation.passed).toBe(report.isolation.total);
+      expect(report.objectives.met).toBe(true);
+
+      // Restored tenant data is real.
+      const check = new Client({
+        connectionString: dbUrl(databaseName),
+      });
+      await check.connect();
+      const rows = await check.query(`SELECT note FROM evidence WHERE id = 1`);
+      expect(rows.rows[0].note).toBe("tenant-data-23453");
+      await check.end();
+
+      // Tenant role can connect to its own restored database (own-connect
+      // probe already ran through the drill; verify role survives).
+      const roleConn = await admin.query(
+        `SELECT rolname FROM pg_roles WHERE rolname = '${tenantRole}'`,
+      );
+      expect(roleConn.rows).toHaveLength(1);
+    }, 120_000);
+
+    test("substituted archive is refused even with a valid nonce", async () => {
+      const sourceDb = `${TEST_PREFIX}src2`;
+      const targetDb = `${TEST_PREFIX}target2`;
+      const databaseName = `${TEST_PREFIX}tenant_b`;
+      const tenantRole = `${TEST_PREFIX}tenant_b`;
+      await admin.query(`CREATE DATABASE ${sourceDb}`);
+      const src = new Client({ connectionString: dbUrl(sourceDb) });
+      await src.connect();
+      await src.query(`CREATE TABLE t (id int)`);
+      await src.end();
+
+      const fixture = await buildBackupFixture(
+        sourceDb,
+        databaseName,
+        tenantRole,
+      );
+      // Capability pins the REAL archive; then substitute a different archive.
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      sh(`echo tampered > ${join(fixture.setDir, "backup.tar.gz.enc")}`);
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+
+      const targetDsn = dbUrl(targetDb);
+      const result = spawnSync(
+        "bun",
+        [
+          "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+          "--set-dir",
+          fixture.setDir,
+          "--target-dsn",
+          targetDsn,
+          "--target-id",
+          TARGET_ID,
+          "--capability-file",
+          fixture.capabilityFile,
+          "--pooler-endpoint",
+          "127.0.0.1:6432",
+          "--tenant-probes-file",
+          fixture.probesFile,
+          "--passphrase-file",
+          fixture.passphraseFile,
+        ],
+        {
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+            DRILL_TENANT_PW: fixture.tenantPassword,
+          },
+        },
+      );
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("sidecar");
+    });
+
+    test("replay after consumption fails closed", async () => {
+      // Provision fresh twins on the cluster, consume them through the real
+      // consume step, then prove: (a) cluster settings are gone, and (b) a
+      // re-verify of the same capability refuses on the empty twin.
+      const capFile = mintCapabilityFile("f".repeat(64));
+      const cap = await import("./restore-capability").then((m) =>
+        m.parseRestoreCapability(readFileSync(capFile, "utf-8").trim()),
+      );
+      const targetDb = `${TEST_PREFIX}target3`;
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, capFile);
+
+      const mod = await import("./apps-tenant-db-recovery");
+      const work = mkdtempSync(join(tmpdir(), "nonce-replay-"));
+      expect(() =>
+        mod.verifyRestoreAuthority(
+          dbUrl(targetDb),
+          TARGET_ID,
+          cap,
+          SIGNING_KEY,
+          Date.now(),
+        ),
+      ).not.toThrow();
+      mod.consumeRestoreAuthority(dbUrl(targetDb), TARGET_ID, cap, work);
+
+      // Direct assertion first: the cluster-level settings are unset now.
+      const fresh = new Client({ connectionString: BASE_URL });
+      await fresh.connect();
+      const settings = await fresh.query(
+        `SELECT COALESCE(current_setting('eliza.restore_target_id', true), '') AS tid, COALESCE(current_setting('eliza.restore_capability', true), '') AS cap`,
+      );
+      expect(settings.rows[0].tid).toBe("");
+      expect(settings.rows[0].cap).toBe("");
+      await fresh.end();
+      // And the real verify path fails closed against the spent target.
+      let code = "";
+      try {
+        mod.verifyRestoreAuthority(
+          dbUrl(targetDb),
+          TARGET_ID,
+          cap,
+          SIGNING_KEY,
+          Date.now(),
+        );
+      } catch (error) {
+        code = (error as { code?: string }).code ?? "";
+      }
+      expect(code).toBe("REFUSED_TARGET_AUTHORITY");
+    });
+  },
+);
 
 if (!ENABLED) {
   describe("restore drill authority on real PostgreSQL (#23453) [gated]", () => {

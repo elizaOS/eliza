@@ -751,11 +751,11 @@ export function evaluateObjectives(
 }
 
 /**
- * Linear isolation plan (#23453): one own-connect per tenant through both
- * surfaces, plus ONE pairwise cross-reject sample (the first two tenants)
- * retained as a cross-check of the ACL assertion. Cross-tenant denial for
- * the remaining pairs is proven by the admin-side ACL assertion instead of
- * O(n^2) probe pairs.
+ * Linear isolation plan (#23453): one own-connect per tenant on the direct
+ * surface, plus ONE pairwise cross-reject sample (the first two tenants)
+ * through both surfaces, retained as a cross-check of the ACL assertion.
+ * Cross-tenant denial for the remaining pairs is proven by the admin-side
+ * ACL assertion instead of O(n^2) probe pairs.
  */
 export interface IsolationCheck {
   kind: "own-connect" | "cross-reject";
@@ -1354,6 +1354,14 @@ export function executeDrill(options: CliOptions): DrillReport {
         );
       }
       for (const surface of surfaces) {
+        // Own-connect is proven on the direct surface only: the drill target
+        // is disposable, so its databases are deliberately absent from the
+        // pooler's routing config and an own-connect through the pooler can
+        // never succeed by design. The pooler surface still carries the
+        // cross-reject sample, which is the property it exists to prove.
+        if (check.kind === "own-connect" && surface.name !== "direct") {
+          continue;
+        }
         const env = tenantConnectionEnv(
           surface.endpoint,
           objectDb,
@@ -1423,6 +1431,15 @@ export function executeDrill(options: CliOptions): DrillReport {
       },
     );
 
+    // Executed probe count: own-connect runs once (direct surface only);
+    // each cross-reject sample runs once per surface (direct + pooler);
+    // plus one admin-side ACL assertion per restored database.
+    const ownConnectCount = checks.filter((c) => c.kind === "own-connect")
+      .length;
+    const total =
+      ownConnectCount +
+      (checks.length - ownConnectCount) * surfaces.length +
+      dbMap.length;
     const report: DrillReport = {
       schemaVersion: REPORT_SCHEMA_VERSION,
       startedAt: startedAt.toISOString(),
@@ -1432,7 +1449,7 @@ export function executeDrill(options: CliOptions): DrillReport {
       databaseCount: sidecar.databaseCount,
       checksummedFiles,
       isolation: {
-        total: checks.length * surfaces.length + dbMap.length,
+        total,
         passed,
         plan: "linear",
       },
