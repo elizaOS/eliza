@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/** Runs each progressive-content benchmark repetition in a fresh child process and atomically publishes its report. */
+/** Runs the fixed six-family progressive-content benchmark matrix in fresh child processes. */
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -8,106 +8,80 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   buildProgressiveContentBenchmarkReport,
   PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS,
   PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES,
   runProgressiveContentBenchmarkProcessSample,
 } from "../core/src/testing/progressive-content-benchmark.ts";
-
-export const PROGRESSIVE_CONTENT_BENCHMARK_FACTORY_SCHEMA_VERSION =
-  "elizaos.progressive-content.benchmark-factory.v1";
+import { PROGRESSIVE_CONTENT_TARGET_FAMILIES } from "../core/src/testing/progressive-content-target.ts";
+import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
+import {
+  createProgressiveContentProductionFactories,
+  createProgressiveContentProductionTarget,
+} from "./lib/progressive-content-production-targets.mjs";
 
 const THIS_FILE = fileURLToPath(import.meta.url);
+export const PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY = {
+  file: "typed-rejection",
+  document: "typed-rejection",
+  memory: "typed-rejection",
+  email: "typed-rejection",
+  attachment: "native-bytes",
+  "tool-output": "native-bytes",
+};
 
 export function parseProgressiveContentBenchmarkArgs(argv) {
   const options = {};
   for (const arg of argv) {
-    if (arg.startsWith("--factory-module="))
-      options.factoryModule = arg.slice(17);
+    if (arg.startsWith("--corpus-root=")) options.corpusRoot = arg.slice(14);
     else if (arg.startsWith("--out=")) options.out = arg.slice(6);
     else if (arg.startsWith("--commit=")) options.commit = arg.slice(9);
     else if (arg.startsWith("--worker-out=")) options.workerOut = arg.slice(13);
+    else if (arg.startsWith("--work-root=")) options.workRoot = arg.slice(12);
+    else if (arg.startsWith("--family=")) options.family = arg.slice(9);
     else if (arg.startsWith("--source-bytes="))
       options.sourceBytes = Number(arg.slice(15));
     else if (arg.startsWith("--repetition="))
       options.repetition = Number(arg.slice(13));
     else throw new Error(`unsupported benchmark argument: ${arg}`);
   }
-  for (const key of ["factoryModule", "out", "commit"]) {
-    if (!options[key] && !(key === "out" && options.workerOut))
+  const worker = options.workerOut !== undefined;
+  for (const key of [
+    "corpusRoot",
+    "commit",
+    ...(worker ? ["workRoot"] : ["out"]),
+  ]) {
+    if (!options[key])
       throw new Error(
         `--${key.replace(/[A-Z]/g, (value) => `-${value.toLowerCase()}`)} is required`,
       );
   }
   if (!/^[0-9a-f]{40}$/u.test(options.commit))
     throw new Error("--commit must be an exact lowercase Git SHA");
-  const worker = options.workerOut !== undefined;
   if (
     worker &&
-    (!Number.isSafeInteger(options.sourceBytes) ||
+    (!PROGRESSIVE_CONTENT_TARGET_FAMILIES.includes(options.family) ||
+      !Number.isSafeInteger(options.sourceBytes) ||
       options.sourceBytes <= 0 ||
       !Number.isSafeInteger(options.repetition) ||
       options.repetition <= 0)
   )
     throw new Error(
-      "benchmark workers require positive source-bytes and repetition",
+      "benchmark workers require a supported family and positive source-bytes/repetition",
     );
   if (
     !worker &&
-    (options.sourceBytes !== undefined || options.repetition !== undefined)
+    (options.family !== undefined ||
+      options.sourceBytes !== undefined ||
+      options.repetition !== undefined ||
+      options.workRoot !== undefined)
   )
-    throw new Error("source-bytes and repetition are worker-only arguments");
-  return { ...options, worker };
-}
-
-function plainObject(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-export function validateProgressiveContentBenchmarkFactory(value) {
-  if (
-    !plainObject(value) ||
-    value.schemaVersion !==
-      PROGRESSIVE_CONTENT_BENCHMARK_FACTORY_SCHEMA_VERSION ||
-    value.production !== true ||
-    typeof value.adapterId !== "string" ||
-    !value.adapterId ||
-    /(?:fixture|mock|stub|test)/iu.test(value.adapterId) ||
-    typeof value.productionMethod !== "string" ||
-    !value.productionMethod ||
-    /(?:fixture|mock|stub|test)/iu.test(value.productionMethod) ||
-    typeof value.create !== "function" ||
-    typeof value.measureResources !== "function"
-  )
-    throw new TypeError(
-      "benchmark factory must declare a production adapter, method, create function, and complete resource sampler",
+    throw new Error(
+      "family, source-bytes, repetition, and work-root are worker-only arguments",
     );
-  return value;
-}
-
-async function readPrivateModule(file) {
-  const handle = await fs.open(
-    file,
-    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
-  );
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o022) !== 0)
-      throw new Error("benchmark factory must be a non-writable regular file");
-  } finally {
-    await handle.close();
-  }
-}
-
-async function loadFactory(file) {
-  const resolved = path.resolve(file);
-  await readPrivateModule(resolved);
-  const imported = await import(pathToFileURL(resolved).href);
-  return validateProgressiveContentBenchmarkFactory(
-    imported.default ?? imported,
-  );
+  return { ...options, worker };
 }
 
 async function atomicPrivateWrite(file, bytes) {
@@ -129,44 +103,131 @@ async function atomicPrivateWrite(file, bytes) {
   await fs.chmod(resolved, 0o600);
 }
 
+async function readManifestUnchecked(corpusRoot) {
+  const handle = await fs.open(
+    path.join(path.resolve(corpusRoot), "manifest.json"),
+    fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1)
+      throw new Error("benchmark corpus manifest is not a regular file");
+    return JSON.parse(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Select exactly one text-capable scale object for a family/size coordinate. */
+export function selectProgressiveContentBenchmarkObject(
+  manifest,
+  family,
+  sourceBytes,
+) {
+  const binaryPolicy = PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY[family];
+  if (!binaryPolicy) throw new Error(`unsupported benchmark family: ${family}`);
+  const matches = manifest.objects.filter(
+    (object) =>
+      object.family === family &&
+      object.byteLength === sourceBytes &&
+      (binaryPolicy === "native-bytes" ||
+        (object.format !== "binary" && object.format !== "invalid-utf8")),
+  );
+  if (matches.length !== 1)
+    throw new Error(
+      `benchmark corpus requires exactly one ${family}:${sourceBytes} native-readable object; found ${matches.length}`,
+    );
+  return matches[0];
+}
+
+async function countFileDescriptors() {
+  for (const directory of ["/proc/self/fd", "/dev/fd"]) {
+    try {
+      return (await fs.readdir(directory)).length;
+    } catch {
+      // Try the next operating-system-specific descriptor view.
+    }
+  }
+  throw new Error("process file-descriptor inventory is unavailable");
+}
+
+async function benchmarkResources(target, authoritativeStore) {
+  const memory = process.memoryUsage();
+  const snapshot = target
+    ? await target.inspect()
+    : { ownedBytes: 0, databaseRows: 0, walBytes: 0 };
+  const databaseBacked = [
+    "document-store",
+    "message-store",
+    "memory-store",
+  ].includes(authoritativeStore);
+  return {
+    rssBytes: memory.rss,
+    heapUsedBytes: memory.heapUsed,
+    externalBytes: memory.external,
+    arrayBuffersBytes: memory.arrayBuffers,
+    fileDescriptors: await countFileDescriptors(),
+    databaseBytes: databaseBacked ? snapshot.ownedBytes : 0,
+    databaseRows: databaseBacked ? snapshot.databaseRows : 0,
+    walBytes: databaseBacked ? snapshot.walBytes : 0,
+  };
+}
+
 async function runWorker(options) {
-  const factory = await loadFactory(options.factoryModule);
+  const manifest = await readManifestUnchecked(options.corpusRoot);
+  const object = selectProgressiveContentBenchmarkObject(
+    manifest,
+    options.family,
+    options.sourceBytes,
+  );
+  const factories = await createProgressiveContentProductionFactories({
+    workRoot: options.workRoot,
+  });
+  const factory = factories.find(({ family }) => family === options.family);
+  if (!factory)
+    throw new Error(`fixed production factory is absent for ${options.family}`);
+  if (
+    factory.binaryPolicy !==
+    PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY[options.family]
+  )
+    throw new Error(
+      `fixed production binary policy changed for ${options.family}`,
+    );
   const sample = await runProgressiveContentBenchmarkProcessSample({
+    family: factory.family,
+    adapterId: factory.adapterId,
+    productionMethod: factory.productionMethod,
     sourceBytes: options.sourceBytes,
     repetition: options.repetition,
     processId: process.pid,
     freshProcess: true,
-    createTarget: async () => {
-      const target = await factory.create({
-        sourceBytes: options.sourceBytes,
-        repetition: options.repetition,
-      });
-      if (
-        !plainObject(target) ||
-        target.family === undefined ||
-        target.read === undefined
-      )
-        throw new TypeError("benchmark factory returned an invalid target");
-      return target;
-    },
-    measureResources: (target) => factory.measureResources({ target }),
+    createTarget: () =>
+      createProgressiveContentProductionTarget({
+        corpusRoot: options.corpusRoot,
+        object,
+        factories,
+      }),
+    measureResources: (target) =>
+      benchmarkResources(target, factory.authoritativeStore),
   });
   const bytes = Buffer.from(`${JSON.stringify(sample)}\n`);
   await atomicPrivateWrite(options.workerOut, bytes);
   return { outputSha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-async function spawnWorker(options, sourceBytes, repetition, output) {
+async function spawnWorker(options, coordinate, output, workRoot) {
   return await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
       [
         THIS_FILE,
-        `--factory-module=${path.resolve(options.factoryModule)}`,
+        `--corpus-root=${path.resolve(options.corpusRoot)}`,
         `--worker-out=${output}`,
+        `--work-root=${workRoot}`,
         `--commit=${options.commit}`,
-        `--source-bytes=${sourceBytes}`,
-        `--repetition=${repetition}`,
+        `--family=${coordinate.family}`,
+        `--source-bytes=${coordinate.sourceBytes}`,
+        `--repetition=${coordinate.repetition}`,
       ],
       { stdio: "inherit" },
     );
@@ -200,43 +261,60 @@ async function readWorkerSample(file) {
   }
 }
 
-/** Execute the required 15-worker matrix and publish one run-bound benchmark artifact. */
+/** Execute the fixed 90-worker matrix and publish one run-bound benchmark artifact. */
 export async function runProgressiveContentBenchmark(options) {
-  await loadFactory(options.factoryModule);
+  const manifest = await verifyProgressiveContentCorpus(options.corpusRoot);
+  if (manifest.profile !== "scale")
+    throw new Error("benchmark requires the verified scale corpus profile");
+  for (const family of PROGRESSIVE_CONTENT_TARGET_FAMILIES)
+    for (const sourceBytes of PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES)
+      selectProgressiveContentBenchmarkObject(manifest, family, sourceBytes);
   const temporaryRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "eliza-progressive-benchmark-"),
   );
   await fs.chmod(temporaryRoot, 0o700);
   const samples = [];
   try {
-    for (const sourceBytes of PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES) {
-      for (
-        let repetition = 1;
-        repetition <= PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS;
-        repetition += 1
-      ) {
-        const output = path.join(
-          temporaryRoot,
-          `${sourceBytes}-${repetition}.json`,
-        );
-        const childPid = await spawnWorker(
-          options,
-          sourceBytes,
-          repetition,
-          output,
-        );
-        const sample = await readWorkerSample(output);
-        if (sample.processId !== childPid)
-          throw new Error(
-            `benchmark worker PID mismatch: expected ${childPid}, received ${sample.processId}`,
+    for (const family of PROGRESSIVE_CONTENT_TARGET_FAMILIES) {
+      for (const sourceBytes of PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES) {
+        for (
+          let repetition = 1;
+          repetition <= PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS;
+          repetition += 1
+        ) {
+          const coordinate = { family, sourceBytes, repetition };
+          const basename = `${family}-${sourceBytes}-${repetition}`;
+          const output = path.join(temporaryRoot, `${basename}.json`);
+          const workRoot = path.join(temporaryRoot, `${basename}-work`);
+          const childPid = await spawnWorker(
+            options,
+            coordinate,
+            output,
+            workRoot,
           );
-        samples.push(sample);
+          const sample = await readWorkerSample(output);
+          if (sample.processId !== childPid)
+            throw new Error(
+              `benchmark worker PID mismatch: expected ${childPid}, received ${sample.processId}`,
+            );
+          if (
+            sample.family !== family ||
+            sample.sourceBytes !== sourceBytes ||
+            sample.repetition !== repetition
+          )
+            throw new Error(
+              `benchmark worker coordinate mismatch for ${basename}`,
+            );
+          samples.push(sample);
+        }
       }
     }
     const report = buildProgressiveContentBenchmarkReport({ samples });
     const result = {
       ...report,
       commit: options.commit,
+      corpusManifestSha256: manifest.manifestSha256,
+      generatorRevision: manifest.generatorRevision,
       environment: {
         runtime: "bun",
         runtimeVersion: process.versions.bun ?? process.version,
