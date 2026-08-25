@@ -520,9 +520,12 @@ export function readStoredMediaByteRange(
   if (path.dirname(filePath) !== root || !fs.existsSync(filePath)) return null;
   let descriptor: number | undefined;
   try {
-    descriptor = fs.openSync(filePath, "r");
+    descriptor = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+    );
     const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile()) return null;
+    if (!stat.isFile() || stat.nlink !== 1) return null;
     const start = Math.min(offset, stat.size);
     const length = Math.min(limit, stat.size - start);
     const bytes = Buffer.allocUnsafe(length);

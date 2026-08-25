@@ -90,8 +90,32 @@ export interface ShellOutputArtifactPage {
   sourceSegmentsRead?: number;
 }
 
+export interface ShellOutputArtifactBytePage {
+  handle: string;
+  stream: ShellOutputArtifactStream;
+  bytes: Buffer;
+  startOffset: number;
+  endOffset: number;
+  nextOffset: number;
+  totalBytes: number;
+  complete: boolean;
+  createdAt: string;
+  expiresAt: string;
+  contentRevision: string;
+  sourceBytesRead: number;
+  sourceSegmentsRead: number;
+}
+
 export type ShellOutputArtifactReadResult =
   | { ok: true; value: ShellOutputArtifactPage }
+  | {
+      ok: false;
+      reason: "invalid_handle" | "unavailable" | "expired" | "corrupt";
+      message: string;
+    };
+
+export type ShellOutputArtifactByteReadResult =
+  | { ok: true; value: ShellOutputArtifactBytePage }
   | {
       ok: false;
       reason: "invalid_handle" | "unavailable" | "expired" | "corrupt";
@@ -146,6 +170,57 @@ interface PersistedShellOutputManifestV2 extends UnsignedShellOutputManifestV2 {
   mac: string;
 }
 
+interface ShellOutputByteSegmentDescriptor {
+  file: string;
+  startByte: number;
+  endByte: number;
+  bytes: number;
+  sha256: string;
+}
+
+interface UnsignedShellOutputManifestV3 {
+  version: 3;
+  encoding: "native-bytes";
+  handle: string;
+  createdAt: string;
+  expiresAt: string;
+  leaseRevision: 1;
+  owner: { agentId: string; conversationId: string };
+  contentRevision: string;
+  stream: ShellOutputArtifactStream;
+  byteLength: number;
+  segments: ShellOutputByteSegmentDescriptor[];
+  outcome: {
+    exitCode: number;
+    timedOut: boolean;
+    signal: NodeJS.Signals | null;
+  };
+}
+
+interface PersistedShellOutputManifestV3 extends UnsignedShellOutputManifestV3 {
+  mac: string;
+}
+
+export interface PersistShellOutputByteArtifactOptions {
+  chunks: AsyncIterable<Uint8Array>;
+  stream?: ShellOutputArtifactStream;
+  exitCode: number;
+  timedOut: boolean;
+  signal: NodeJS.Signals | null;
+  ownerAgentId: string;
+  ownerConversationId: string;
+}
+
+export interface ShellOutputByteArtifact {
+  handle: string;
+  stream: ShellOutputArtifactStream;
+  byteLength: number;
+  createdAt: string;
+  expiresAt: string;
+  retentionMs: number;
+  contentRevision: string;
+}
+
 function sha256(value: string | Uint8Array): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -179,7 +254,7 @@ async function artifactMacKey(root: string): Promise<Buffer> {
 }
 
 function manifestMac(
-  manifest: UnsignedShellOutputManifestV2,
+  manifest: UnsignedShellOutputManifestV2 | UnsignedShellOutputManifestV3,
   key: Uint8Array,
 ): string {
   return createHmac("sha256", key)
@@ -329,6 +404,75 @@ function verifyManifestMac(
 ): void {
   const expected = Buffer.from(
     manifestMac(unsignedManifest(manifest), key),
+    "hex",
+  );
+  const actual = Buffer.from(manifest.mac, "hex");
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new Error("artifact manifest authentication failed");
+  }
+}
+
+function parseManifestV3(value: unknown): PersistedShellOutputManifestV3 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("artifact manifest is not an object");
+  }
+  const manifest = value as PersistedShellOutputManifestV3;
+  if (
+    manifest.version !== 3 ||
+    manifest.encoding !== "native-bytes" ||
+    typeof manifest.handle !== "string" ||
+    typeof manifest.createdAt !== "string" ||
+    typeof manifest.expiresAt !== "string" ||
+    manifest.leaseRevision !== 1 ||
+    !manifest.owner ||
+    typeof manifest.owner.agentId !== "string" ||
+    typeof manifest.owner.conversationId !== "string" ||
+    typeof manifest.contentRevision !== "string" ||
+    typeof manifest.mac !== "string" ||
+    (manifest.stream !== "stdout" && manifest.stream !== "stderr") ||
+    !Number.isSafeInteger(manifest.byteLength) ||
+    manifest.byteLength < 0 ||
+    !Array.isArray(manifest.segments) ||
+    !manifest.outcome ||
+    !Number.isSafeInteger(manifest.outcome.exitCode) ||
+    typeof manifest.outcome.timedOut !== "boolean"
+  ) {
+    throw new Error("byte artifact manifest fields are invalid");
+  }
+  let offset = 0;
+  for (const segment of manifest.segments) {
+    if (
+      !SEGMENT_FILE_PATTERN.test(segment.file) ||
+      segment.startByte !== offset ||
+      !Number.isSafeInteger(segment.endByte) ||
+      segment.endByte <= segment.startByte ||
+      segment.bytes !== segment.endByte - segment.startByte ||
+      segment.bytes > SEGMENT_MAX_BYTES ||
+      !/^[0-9a-f]{64}$/.test(segment.sha256)
+    ) {
+      throw new Error("byte artifact segment descriptor is invalid");
+    }
+    offset = segment.endByte;
+  }
+  if (offset !== manifest.byteLength) {
+    throw new Error("byte artifact stream descriptor is incomplete");
+  }
+  return manifest;
+}
+
+function unsignedManifestV3(
+  manifest: PersistedShellOutputManifestV3,
+): UnsignedShellOutputManifestV3 {
+  const { mac: _mac, ...unsigned } = manifest;
+  return unsigned;
+}
+
+function verifyManifestV3Mac(
+  manifest: PersistedShellOutputManifestV3,
+  key: Uint8Array,
+): void {
+  const expected = Buffer.from(
+    manifestMac(unsignedManifestV3(manifest), key),
     "hex",
   );
   const actual = Buffer.from(manifest.mac, "hex");
@@ -533,6 +677,8 @@ async function sweepExpiredArtifacts(
         );
         if ((parsed as { version?: unknown }).version === 2) {
           verifyManifestMac(parseManifestV2(parsed), key);
+        } else if ((parsed as { version?: unknown }).version === 3) {
+          verifyManifestV3Mac(parseManifestV3(parsed), key);
         }
         const expiry = parsed as { expiresAt?: unknown };
         if (
@@ -698,6 +844,387 @@ export async function persistShellOutputArtifact(
   }
 }
 
+/**
+ * Publish one native-byte tool stream in the canonical private shell-artifact
+ * store. This format is intentionally not exposed through the text page API;
+ * callers must use the byte-coordinate reader below.
+ */
+export async function persistShellOutputByteArtifact(
+  options: PersistShellOutputByteArtifactOptions,
+): Promise<ShellOutputByteArtifact> {
+  const retentionMs = resolveShellJobTtlMs();
+  const createdAtMs = Date.now();
+  const root = await ensureArtifactRoot();
+  const key = await artifactMacKey(root);
+  await sweepExpiredArtifacts(root, createdAtMs, key);
+  const handle = `${ARTIFACT_PREFIX}${randomUUID()}`;
+  const pendingDirectory = path.join(root, `.pending-${randomUUID()}`);
+  const artifactDirectory = path.join(root, handle);
+  const stream = options.stream ?? "stdout";
+  const digest = createHash("sha256");
+  const segments: ShellOutputByteSegmentDescriptor[] = [];
+  let byteLength = 0;
+  await fs.mkdir(pendingDirectory, { mode: 0o700 });
+  try {
+    for await (const value of options.chunks) {
+      if (!(value instanceof Uint8Array)) {
+        throw new TypeError(
+          "shell-output byte chunks must be Uint8Array values",
+        );
+      }
+      const chunk = Buffer.from(
+        value.buffer,
+        value.byteOffset,
+        value.byteLength,
+      );
+      for (let offset = 0; offset < chunk.byteLength; ) {
+        const bytes = chunk.subarray(
+          offset,
+          Math.min(offset + SEGMENT_MAX_BYTES, chunk.byteLength),
+        );
+        const index = segments.length;
+        const file = `${stream}-${String(index).padStart(6, "0")}.seg`;
+        await fs.writeFile(path.join(pendingDirectory, file), bytes, {
+          flag: "wx",
+          mode: 0o600,
+        });
+        const startByte = byteLength;
+        byteLength += bytes.byteLength;
+        digest.update(bytes);
+        segments.push({
+          file,
+          startByte,
+          endByte: byteLength,
+          bytes: bytes.byteLength,
+          sha256: sha256(bytes),
+        });
+        offset += bytes.byteLength;
+      }
+    }
+    const createdAt = new Date(createdAtMs).toISOString();
+    const expiresAt = new Date(createdAtMs + retentionMs).toISOString();
+    const contentRevision = `sha256:${digest.digest("hex")}`;
+    const unsigned: UnsignedShellOutputManifestV3 = {
+      version: 3,
+      encoding: "native-bytes",
+      handle,
+      createdAt,
+      expiresAt,
+      leaseRevision: 1,
+      owner: {
+        agentId: options.ownerAgentId,
+        conversationId: options.ownerConversationId,
+      },
+      contentRevision,
+      stream,
+      byteLength,
+      segments,
+      outcome: {
+        exitCode: options.exitCode,
+        timedOut: options.timedOut,
+        signal: options.signal,
+      },
+    };
+    const manifest: PersistedShellOutputManifestV3 = {
+      ...unsigned,
+      mac: manifestMac(unsigned, key),
+    };
+    await fs.writeFile(
+      path.join(pendingDirectory, "manifest.json"),
+      `${JSON.stringify(manifest)}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    await fs.rename(pendingDirectory, artifactDirectory);
+    return {
+      handle,
+      stream,
+      byteLength,
+      createdAt,
+      expiresAt,
+      retentionMs,
+      contentRevision,
+    };
+  } catch (error) {
+    // error-policy:J6 the unpublished opaque handle was never returned.
+    await fs.rm(pendingDirectory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function readByteSegments(input: {
+  directory: string;
+  segments: readonly ShellOutputByteSegmentDescriptor[];
+  totalBytes: number;
+  offset: number;
+  limit: number;
+}): Promise<{
+  bytes: Buffer;
+  startOffset: number;
+  endOffset: number;
+  sourceBytesRead: number;
+  sourceSegmentsRead: number;
+}> {
+  const startOffset = Math.min(input.offset, input.totalBytes);
+  if (startOffset === input.totalBytes) {
+    return {
+      bytes: Buffer.alloc(0),
+      startOffset,
+      endOffset: startOffset,
+      sourceBytesRead: 0,
+      sourceSegmentsRead: 0,
+    };
+  }
+  const selected: Buffer[] = [];
+  let selectedBytes = 0;
+  let sourceBytesRead = 0;
+  let sourceSegmentsRead = 0;
+  const desiredEnd = Math.min(input.totalBytes, startOffset + input.limit);
+  for (const segment of input.segments) {
+    if (segment.endByte <= startOffset) continue;
+    if (segment.startByte >= desiredEnd) break;
+    const bytes = await readRegularFile(
+      path.join(input.directory, segment.file),
+      segment.bytes,
+    );
+    if (sha256(bytes) !== segment.sha256) {
+      throw new Error("artifact segment hash mismatch");
+    }
+    const relativeStart = Math.max(0, startOffset - segment.startByte);
+    const relativeEnd = Math.min(
+      bytes.byteLength,
+      desiredEnd - segment.startByte,
+    );
+    const slice = bytes.subarray(relativeStart, relativeEnd);
+    selected.push(slice);
+    selectedBytes += slice.byteLength;
+    sourceBytesRead += bytes.byteLength;
+    sourceSegmentsRead += 1;
+  }
+  return {
+    bytes: Buffer.concat(selected, selectedBytes),
+    startOffset,
+    endOffset: startOffset + selectedBytes,
+    sourceBytesRead,
+    sourceSegmentsRead,
+  };
+}
+
+/** Read at most 64 KiB from one owner-scoped shell artifact in byte coordinates. */
+export async function readShellOutputArtifactBytePage(options: {
+  handle: string;
+  stream: ShellOutputArtifactStream;
+  offset: number;
+  limit: number;
+  requesterAgentId: string;
+  requesterConversationId: string;
+}): Promise<ShellOutputArtifactByteReadResult> {
+  if (!ARTIFACT_HANDLE_PATTERN.test(options.handle)) {
+    return {
+      ok: false,
+      reason: "invalid_handle",
+      message: "invalid shell-output artifact handle",
+    };
+  }
+  if (
+    !Number.isSafeInteger(options.offset) ||
+    options.offset < 0 ||
+    !Number.isSafeInteger(options.limit) ||
+    options.limit < 1 ||
+    options.limit > 64 * 1024
+  ) {
+    throw new TypeError("shell-output byte range is invalid");
+  }
+  const root = path.join(resolveStateDir(), ...ARTIFACT_ROOT_SEGMENTS);
+  const artifactDirectory = path.join(root, options.handle);
+  try {
+    const [realRoot, realArtifactDirectory] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(artifactDirectory),
+    ]);
+    if (path.dirname(realArtifactDirectory) !== realRoot) {
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "shell-output artifact is unavailable for this conversation",
+      };
+    }
+    const parsed: unknown = JSON.parse(
+      (
+        await readRegularFile(path.join(realArtifactDirectory, "manifest.json"))
+      ).toString("utf8"),
+    );
+    const version = (parsed as { version?: unknown }).version;
+    let createdAt: string;
+    let expiresAt: string;
+    let contentRevision: string;
+    let totalBytes: number;
+    let segments: ShellOutputByteSegmentDescriptor[];
+    if (version === 3) {
+      const manifest = parseManifestV3(parsed);
+      verifyManifestV3Mac(manifest, await artifactMacKey(root));
+      if (
+        manifest.handle !== options.handle ||
+        manifest.stream !== options.stream ||
+        manifest.owner.agentId !== options.requesterAgentId ||
+        manifest.owner.conversationId !== options.requesterConversationId
+      ) {
+        return {
+          ok: false,
+          reason: "unavailable",
+          message: "shell-output artifact is unavailable for this conversation",
+        };
+      }
+      createdAt = manifest.createdAt;
+      expiresAt = manifest.expiresAt;
+      contentRevision = manifest.contentRevision;
+      totalBytes = manifest.byteLength;
+      segments = manifest.segments;
+    } else if (version === 2) {
+      const manifest = parseManifestV2(parsed);
+      verifyManifestMac(manifest, await artifactMacKey(root));
+      if (
+        manifest.handle !== options.handle ||
+        manifest.owner.agentId !== options.requesterAgentId ||
+        manifest.owner.conversationId !== options.requesterConversationId
+      ) {
+        return {
+          ok: false,
+          reason: "unavailable",
+          message: "shell-output artifact is unavailable for this conversation",
+        };
+      }
+      const descriptor = manifest[options.stream];
+      validateSegments(descriptor);
+      let byteOffset = 0;
+      segments = descriptor.segments.map((segment) => {
+        const mapped = {
+          file: segment.file,
+          startByte: byteOffset,
+          endByte: byteOffset + segment.bytes,
+          bytes: segment.bytes,
+          sha256: segment.sha256,
+        };
+        byteOffset = mapped.endByte;
+        return mapped;
+      });
+      createdAt = manifest.createdAt;
+      expiresAt = manifest.expiresAt;
+      contentRevision = manifest.contentRevision;
+      totalBytes = descriptor.bytes;
+    } else {
+      throw new Error("legacy artifact has no bounded byte ledger");
+    }
+    const expiresAtMs = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMs)) {
+      throw new Error("artifact expiry is invalid");
+    }
+    if (expiresAtMs <= Date.now()) {
+      return {
+        ok: false,
+        reason: "expired",
+        message: "shell-output artifact has expired",
+      };
+    }
+    const page = await readByteSegments({
+      directory: realArtifactDirectory,
+      segments,
+      totalBytes,
+      offset: options.offset,
+      limit: options.limit,
+    });
+    return {
+      ok: true,
+      value: {
+        handle: options.handle,
+        stream: options.stream,
+        ...page,
+        nextOffset: page.endOffset,
+        totalBytes,
+        complete: page.endOffset >= totalBytes,
+        createdAt,
+        expiresAt,
+        contentRevision,
+      },
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "shell-output artifact is unavailable for this conversation",
+      };
+    }
+    logger.warn(
+      { handle: options.handle, error },
+      "[CodingTools] Failed to read shell-output artifact bytes",
+    );
+    return {
+      ok: false,
+      reason: "corrupt",
+      message: "shell-output artifact bytes could not be read safely",
+    };
+  }
+}
+
+/** Delete one exact artifact only after validating its persisted owner binding. */
+export async function deleteShellOutputArtifact(options: {
+  handle: string;
+  requesterAgentId: string;
+  requesterConversationId: string;
+}): Promise<boolean> {
+  if (!ARTIFACT_HANDLE_PATTERN.test(options.handle)) return false;
+  const root = path.join(resolveStateDir(), ...ARTIFACT_ROOT_SEGMENTS);
+  const artifactDirectory = path.join(root, options.handle);
+  try {
+    const [realRoot, realArtifactDirectory] = await Promise.all([
+      fs.realpath(root),
+      fs.realpath(artifactDirectory),
+    ]);
+    const stat = await fs.lstat(artifactDirectory);
+    if (
+      path.dirname(realArtifactDirectory) !== realRoot ||
+      !stat.isDirectory() ||
+      stat.isSymbolicLink()
+    ) {
+      return false;
+    }
+    const parsed: unknown = JSON.parse(
+      (
+        await readRegularFile(path.join(realArtifactDirectory, "manifest.json"))
+      ).toString("utf8"),
+    );
+    const version = (parsed as { version?: unknown }).version;
+    let owner: { agentId: string; conversationId: string };
+    if (version === 3) {
+      const manifest = parseManifestV3(parsed);
+      verifyManifestV3Mac(manifest, await artifactMacKey(root));
+      owner = manifest.owner;
+    } else if (version === 2) {
+      const manifest = parseManifestV2(parsed);
+      verifyManifestMac(manifest, await artifactMacKey(root));
+      owner = manifest.owner;
+    } else if (version === 1) {
+      owner = (parsed as PersistedShellOutputManifestV1).owner;
+    } else {
+      return false;
+    }
+    if (
+      owner.agentId !== options.requesterAgentId ||
+      owner.conversationId !== options.requesterConversationId
+    ) {
+      return false;
+    }
+    await fs.rm(realArtifactDirectory, { recursive: true });
+    return true;
+  } catch (error) {
+    // error-policy:J3 absence is the explicit already-deleted result.
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /** Resolve one bounded artifact page after owner authorization and integrity checks. */
 export async function readShellOutputArtifactPage(options: {
   handle: string;
@@ -787,6 +1314,26 @@ export async function readShellOutputArtifactPage(options: {
           createdAt: manifest.createdAt,
           expiresAt: manifest.expiresAt,
         },
+      };
+    }
+    if ((parsed as { version?: unknown }).version === 3) {
+      const manifest = parseManifestV3(parsed);
+      verifyManifestV3Mac(manifest, await artifactMacKey(root));
+      if (
+        manifest.handle !== options.handle ||
+        manifest.owner.agentId !== options.requesterAgentId ||
+        manifest.owner.conversationId !== options.requesterConversationId
+      ) {
+        return {
+          ok: false,
+          reason: "unavailable",
+          message: "shell-output artifact is unavailable for this conversation",
+        };
+      }
+      return {
+        ok: false,
+        reason: "unavailable",
+        message: "native-byte shell-output artifacts require byte paging",
       };
     }
     const manifest = parseManifestV2(parsed);
