@@ -3,6 +3,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_MUTANTS,
+} from "../../core/src/testing/progressive-content-mutants.ts";
+import {
   buildContentContextResult,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
@@ -393,14 +397,18 @@ function evidence() {
       })),
     },
     "mutant-kills.json": {
+      schemaVersion: PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION,
       status: "passed",
-      required: 9,
-      executed: 9,
-      killed: 9,
+      required: PROGRESSIVE_CONTENT_MUTANTS.length,
+      executed: PROGRESSIVE_CONTENT_MUTANTS.length,
+      killed: PROGRESSIVE_CONTENT_MUTANTS.length,
       killRate: 1,
-      results: Array.from({ length: 9 }, () => ({
+      results: PROGRESSIVE_CONTENT_MUTANTS.map(([id, seam, killingVector]) => ({
+        id,
+        seam,
+        killingVector,
         status: "killed",
-        failureVectors: ["source-work"],
+        failureVectors: [killingVector],
       })),
     },
     "source-work.json": {
@@ -667,6 +675,26 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/semantic/u);
+  });
+
+  it("rejects invented mutant identities even when every row claims a kill", () => {
+    const original = evidence();
+    const report = JSON.parse(
+      new TextDecoder().decode(original.bytes["mutant-kills.json"]),
+    ) as {
+      results: Array<Record<string, unknown>>;
+    };
+    report.results[0] = {
+      id: "invented-mutant",
+      seam: "invented.seam",
+      killingVector: "source-work",
+      status: "killed",
+      failureVectors: ["source-work"],
+    };
+    const changed = replaceArtifact(original, "mutant-kills.json", report);
+    expect(() =>
+      validateContentContextResult(changed.result, changed.bytes),
+    ).toThrow(/mutant report does not prove executable kills/u);
   });
 
   it.each([
