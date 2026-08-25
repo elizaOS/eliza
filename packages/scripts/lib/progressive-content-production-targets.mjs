@@ -49,6 +49,7 @@ export async function createProgressiveContentBenchmarkFactory(input) {
     const factories =
       await sqlModule.createProgressivePostgresSqlTargetFactories({
         connectionString: input.postgresUrl,
+        idNamespace: input.idNamespace,
       });
     const factory = factories.find(({ family }) => family === input.family);
     if (!factory) {

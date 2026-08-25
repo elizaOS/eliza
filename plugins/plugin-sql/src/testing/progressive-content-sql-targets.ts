@@ -83,14 +83,15 @@ function targetUuid(objectId: string, label: string): UUID {
   return uuidv5(`${objectId}:${label}`, TARGET_NAMESPACE) as UUID;
 }
 
-function idsFor(objectId: string): TargetIds {
+function idsFor(objectId: string, namespace = ""): TargetIds {
+  const identity = namespace ? `${objectId}:${namespace}` : objectId;
   return {
-    agentId: targetUuid(objectId, "agent"),
-    requesterId: targetUuid(objectId, "requester"),
-    unauthorizedId: targetUuid(objectId, "unauthorized"),
-    roomId: targetUuid(objectId, "room"),
-    isolatedRoomId: targetUuid(objectId, "isolated-room"),
-    objectId: targetUuid(objectId, "object"),
+    agentId: targetUuid(identity, "agent"),
+    requesterId: targetUuid(identity, "requester"),
+    unauthorizedId: targetUuid(identity, "unauthorized"),
+    roomId: targetUuid(identity, "room"),
+    isolatedRoomId: targetUuid(identity, "isolated-room"),
+    objectId: targetUuid(identity, "object"),
   };
 }
 
@@ -416,6 +417,7 @@ function targetFactory(input: {
   readonly family: ProgressiveSqlFamily;
   readonly adapterIdPrefix: "plugin-sql-pglite" | "plugin-sql-postgres";
   readonly createBackend: (objectId: string) => Promise<ProgressiveSqlBackend>;
+  readonly idNamespace?: string;
   readonly injectBeforeParentCommit?: () => Promise<void>;
 }): ProgressiveContentTargetFactory {
   const stores = {
@@ -440,7 +442,7 @@ function targetFactory(input: {
       if (object.format === "binary") {
         throw new ProgressiveSqlTargetError("CONTENT_BINARY_UNSUPPORTED");
       }
-      const ids = idsFor(object.id);
+      const ids = idsFor(object.id, input.idNamespace);
       const backend = await input.createBackend(object.id);
       let opened = await backend.open(ids.agentId);
       let adapter = opened.adapter;
@@ -762,14 +764,19 @@ export async function createProgressiveSqlTargetFactories(input: {
 /** Create SQL-owned target factories backed by one caller-owned PostgreSQL database. */
 export async function createProgressivePostgresSqlTargetFactories(input: {
   readonly connectionString: string;
+  readonly idNamespace?: string;
 }): Promise<readonly ProgressiveContentTargetFactory[]> {
-  const bootstrapAgentId = targetUuid(input.connectionString, "migration-bootstrap");
+  const bootstrapAgentId = targetUuid(
+    `${input.connectionString}:${input.idNamespace ?? ""}`,
+    "migration-bootstrap"
+  );
   const bootstrap = await openPostgresAdapter(input.connectionString, bootstrapAgentId, true);
   await bootstrap.close();
   return SQL_FAMILIES.map((family) =>
     targetFactory({
       family,
       adapterIdPrefix: "plugin-sql-postgres",
+      idNamespace: input.idNamespace,
       async createBackend() {
         return {
           cleanupIdentityPrefix: "postgres",
