@@ -14,9 +14,12 @@ import {
 	deriveAvailableContexts,
 	getActiveRoutingContexts,
 	getActiveRoutingContextsForTurn,
+	getContextRoutingFromMessage,
+	inferContextRoutingFromMessage,
 	inferContextRoutingFromText,
 	mergeContextRouting,
 	routingContextsOverlap,
+	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./context-routing.ts";
 
@@ -326,5 +329,143 @@ describe("mergeContextRouting", () => {
 			(context) => `${context}`.toLowerCase() === "knowledge",
 		).length;
 		expect(countKnowledge).toBe(1);
+	});
+});
+describe("getContextRoutingFromMessage boundary guards", () => {
+	it("returns empty when message is nullish or content missing", () => {
+		expect(getContextRoutingFromMessage(null as unknown as Memory)).toEqual({});
+		expect(
+			getContextRoutingFromMessage(undefined as unknown as Memory),
+		).toEqual({});
+		expect(getContextRoutingFromMessage({} as unknown as Memory)).toEqual({});
+		expect(
+			getContextRoutingFromMessage({ content: null } as unknown as Memory),
+		).toEqual({});
+		expect(
+			getContextRoutingFromMessage({ content: undefined } as unknown as Memory),
+		).toEqual({});
+	});
+
+	it("returns empty when metadata is nullish or non-object", () => {
+		expect(
+			getContextRoutingFromMessage({
+				content: { text: "hi", metadata: null },
+			} as unknown as Memory),
+		).toEqual({});
+		expect(
+			getContextRoutingFromMessage({
+				content: { text: "hi", metadata: "bad" },
+			} as unknown as Memory),
+		).toEqual({});
+	});
+
+	it("parses valid routing metadata from message", () => {
+		expect(
+			getContextRoutingFromMessage({
+				content: {
+					text: "hi",
+					metadata: {
+						__responseContext: {
+							primaryContext: "code",
+							secondaryContexts: ["browser"],
+						},
+					},
+				},
+			} as unknown as Memory),
+		).toMatchObject({ primaryContext: "code" });
+	});
+});
+
+describe("setContextRoutingMetadata boundary guards", () => {
+	it("does not throw when message or content is nullish", () => {
+		expect(() =>
+			setContextRoutingMetadata(null as unknown as Memory, {
+				primaryContext: "code",
+			}),
+		).not.toThrow();
+		expect(() =>
+			setContextRoutingMetadata(undefined as unknown as Memory, {
+				primaryContext: "code",
+			}),
+		).not.toThrow();
+		expect(() =>
+			setContextRoutingMetadata({} as unknown as Memory, {
+				primaryContext: "code",
+			}),
+		).not.toThrow();
+		expect(() =>
+			setContextRoutingMetadata({ content: null } as unknown as Memory, {
+				primaryContext: "code",
+			}),
+		).not.toThrow();
+	});
+
+	it("does not throw when metadata is null and still sets routing", () => {
+		const message = {
+			content: { text: "hi", metadata: null },
+		} as unknown as Memory;
+		expect(() =>
+			setContextRoutingMetadata(message, { primaryContext: "code" }),
+		).not.toThrow();
+		expect(
+			(message.content.metadata as Record<string, unknown>).__responseContext,
+		).toBeDefined();
+	});
+
+	it("preserves existing non-routing metadata", () => {
+		const message = {
+			content: { text: "hi", metadata: { existing: "keep" } },
+		} as unknown as Memory;
+		setContextRoutingMetadata(message, { primaryContext: "browser" });
+		expect((message.content.metadata as Record<string, unknown>).existing).toBe(
+			"keep",
+		);
+	});
+});
+
+describe("inferContextRoutingFromMessage boundary guards", () => {
+	it("returns general when message or content is nullish", () => {
+		expect(
+			inferContextRoutingFromMessage(
+				null as unknown as Pick<Memory, "content">,
+			),
+		).toMatchObject({ primaryContext: "general" });
+		expect(
+			inferContextRoutingFromMessage(
+				undefined as unknown as Pick<Memory, "content">,
+			),
+		).toMatchObject({ primaryContext: "general" });
+		expect(
+			inferContextRoutingFromMessage({} as unknown as Pick<Memory, "content">),
+		).toMatchObject({ primaryContext: "general" });
+		expect(
+			inferContextRoutingFromMessage({
+				content: null,
+			} as unknown as Pick<Memory, "content">),
+		).toMatchObject({ primaryContext: "general" });
+	});
+
+	it("handles string content directly", () => {
+		expect(
+			inferContextRoutingFromMessage({
+				content: "fix the bug in the repository",
+			} as unknown as Pick<Memory, "content">).primaryContext,
+		).toBe("code");
+	});
+
+	it("handles content.text as string", () => {
+		expect(
+			inferContextRoutingFromMessage({
+				content: { text: "navigate to the website" },
+			} as unknown as Pick<Memory, "content">).primaryContext,
+		).toBe("browser");
+	});
+
+	it("returns general when content.text is non-string", () => {
+		expect(
+			inferContextRoutingFromMessage({
+				content: { text: 123 },
+			} as unknown as Pick<Memory, "content">).primaryContext,
+		).toBe("general");
 	});
 });

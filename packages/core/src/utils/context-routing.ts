@@ -162,7 +162,12 @@ export function getContextRoutingFromState(
 export function getContextRoutingFromMessage(
 	message: Memory,
 ): ContextRoutingDecision {
-	const metadata = message.content.metadata;
+	const metadata = (
+		message as unknown as
+			| { content?: { metadata?: unknown } }
+			| null
+			| undefined
+	)?.content?.metadata;
 	if (!metadata || typeof metadata !== "object") {
 		return {};
 	}
@@ -253,14 +258,13 @@ export function setContextRoutingMetadata(
 	message: Memory,
 	routing: ContextRoutingDecision,
 ): void {
-	const existingMetadata =
-		message.content && typeof message.content.metadata === "object"
-			? (message.content.metadata as Record<string, ContentValue>)
-			: {};
-
-	if (!message.content || typeof message.content !== "object") {
+	if (!message?.content || typeof message.content !== "object") {
 		return;
 	}
+	const existingMetadata =
+		message.content.metadata && typeof message.content.metadata === "object"
+			? (message.content.metadata as Record<string, ContentValue>)
+			: {};
 
 	const routingMetadata: Record<string, ContentValue> = {};
 	if (routing.primaryContext) {
@@ -466,11 +470,15 @@ export function inferContextRoutingFromText(
 export function inferContextRoutingFromMessage(
 	message: Pick<Memory, "content">,
 ): ContextRoutingDecision {
+	const content = (
+		message as unknown as { content?: unknown } | null | undefined
+	)?.content;
 	return inferContextRoutingFromText(
-		typeof message.content === "string"
-			? message.content
-			: typeof message.content.text === "string"
-				? message.content.text
+		typeof content === "string"
+			? content
+			: typeof (content as Record<string, unknown> | null | undefined)?.text ===
+					"string"
+				? ((content as Record<string, unknown>).text as string)
 				: "",
 	);
 }
