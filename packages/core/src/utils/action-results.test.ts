@@ -26,10 +26,23 @@ describe("estimateActionResultTokens", () => {
 });
 
 describe("getActionResultActionName", () => {
-	it("reads data.actionName, else 'Unknown Action'", () => {
+	it("reads data.actionName, data.action, or top-level action fields, else 'Unknown Action'", () => {
 		expect(
 			getActionResultActionName(result({ data: { actionName: "FOO" } })),
 		).toBe("FOO");
+		expect(
+			getActionResultActionName(result({ data: { action: "BAR" } })),
+		).toBe("BAR");
+		expect(
+			getActionResultActionName(
+				result({ actionName: "BAZ" } as Partial<ActionResult>),
+			),
+		).toBe("BAZ");
+		expect(
+			getActionResultActionName(
+				result({ action: "QUX" } as Partial<ActionResult>),
+			),
+		).toBe("QUX");
 		expect(
 			getActionResultActionName(result({ data: { actionName: "  " } })),
 		).toBe("Unknown Action");

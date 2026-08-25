@@ -65,7 +65,12 @@ export function estimateActionResultTokens(text: string): number {
 }
 
 export function getActionResultActionName(result: ActionResult): string {
-	const actionNameValue = result.data?.actionName;
+	const record = result as unknown as Record<string, unknown>;
+	const actionNameValue =
+		result.data?.actionName ??
+		result.data?.action ??
+		record.actionName ??
+		record.action;
 	return typeof actionNameValue === "string" && actionNameValue.trim()
 		? actionNameValue.trim()
 		: "Unknown Action";
