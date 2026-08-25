@@ -153,4 +153,68 @@ describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition prob
 		expect(ensureDim).toHaveBeenCalledWith(384);
 		expect(warnSpy).not.toHaveBeenCalled();
 	});
+
+	it("rejects trailing junk and non-canonical dimension strings", async () => {
+		for (const junk of [
+			"1536abc",
+			" 1536abc ",
+			"0x10",
+			"1536.5",
+			"1e3",
+			"010",
+			"  ",
+		]) {
+			const { runtime, ensureDim } = makeRuntime({
+				hasModel: true,
+				embeddingDimension: junk,
+			});
+			await ensureEmbeddingDimension(runtime);
+			expect(
+				ensureDim,
+				`junk ${junk} should be rejected`,
+			).not.toHaveBeenCalled();
+		}
+	});
+
+	it("rejects non-integer and unsafe numeric dimensions", async () => {
+		for (const val of [
+			1536.5,
+			0,
+			-1,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.MAX_SAFE_INTEGER + 1,
+		]) {
+			const { runtime, ensureDim } = makeRuntime({
+				hasModel: true,
+				embeddingDimension: val as unknown as string,
+			});
+			await ensureEmbeddingDimension(runtime);
+			expect(
+				ensureDim,
+				`numeric ${String(val)} should be rejected`,
+			).not.toHaveBeenCalled();
+		}
+	});
+
+	it("accepts trimmed canonical integer with surrounding whitespace", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "  1536  ",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+	});
+
+	it("rejects plural trailing junk even when singular is valid", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "384",
+			embeddingDimensions: "1536abc",
+		});
+		await ensureEmbeddingDimension(runtime);
+		// plural junk is invalid, so singular 384 wins
+		expect(ensureDim).toHaveBeenCalledWith(384);
+		expect(warnSpy).not.toHaveBeenCalled();
+	});
 });
