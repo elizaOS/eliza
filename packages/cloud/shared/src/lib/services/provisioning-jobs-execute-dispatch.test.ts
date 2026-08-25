@@ -8,58 +8,19 @@
  *
  * The only stubs are the genuine boundaries the daemon dispatch sits on:
  * `jobsRepository`, the lifecycle-ownership preflight, and
- * `elizaSandboxService`. Suspend cases additionally expose a deterministic
- * durable-intent reader because authority and lifecycle fencing are resolved
- * before transport dispatch.
+ * `elizaSandboxService`. Suspend cases additionally replace the service's
+ * durable-authority boundary per test because authority and lifecycle fencing
+ * are resolved before transport dispatch. No module-global DB mock is used, so
+ * this suite remains safe inside the composed PGlite lane.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-
-const realHelpers = { ...realHelpersNs };
-let suspendAuthorityRows: Array<{
-  authorization: "user_request" | "billing_request";
-  lifecycleRevision: number;
-}> = [];
-const dispatchDbWrite = {
-  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
-  select: () => ({
-    from: () => ({
-      where: () => ({
-        limit: async () => suspendAuthorityRows,
-      }),
-    }),
-  }),
-  update: () => ({
-    set: () => ({
-      where: async () => [],
-    }),
-  }),
-};
-let ProvisioningJobService: typeof import("./provisioning-jobs").ProvisioningJobService;
-let provisioningJobService: InstanceType<typeof ProvisioningJobService>;
-
-beforeAll(async () => {
-  mock.module("../../db/helpers", () => ({
-    ...realHelpers,
-    dbWrite: dispatchDbWrite,
-  }));
-  const module = await import("./provisioning-jobs.ts?execute-dispatch-harness");
-  ProvisioningJobService = module.ProvisioningJobService;
-  provisioningJobService = new ProvisioningJobService({
-    acquireProviderAdmission: async () => true,
-    releaseProviderAdmission: async () => undefined,
-  });
-});
-
-afterAll(() => {
-  mock.module("../../db/helpers", () => realHelpers);
-});
+import { ProvisioningJobService, provisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -137,16 +98,39 @@ function harness(
     lifecycleRevision: number;
   },
 ) {
-  if (job.type === JOB_TYPES.AGENT_SUSPEND) {
-    suspendAuthorityRows = [
-      suspendIntent ?? {
-        authorization:
-          job.data.authorization === "billing_request" ? "billing_request" : "user_request",
-        lifecycleRevision:
-          typeof job.data.lifecycleRevision === "number" ? job.data.lifecycleRevision : 0,
-      },
-    ];
-  }
+  const authoritySpy =
+    job.type === JOB_TYPES.AGENT_SUSPEND
+      ? spyOn(
+          service as unknown as {
+            resolveAgentSuspendAuthority(job: Job): Promise<{
+              authorization: "user_request" | "billing_request";
+              lifecycleRevision?: number;
+              intentBound: boolean;
+            }>;
+          },
+          "resolveAgentSuspendAuthority",
+        ).mockResolvedValue({
+          ...(suspendIntent ?? {
+            authorization:
+              job.data.authorization === "billing_request" ? "billing_request" : "user_request",
+            lifecycleRevision:
+              typeof job.data.lifecycleRevision === "number" ? job.data.lifecycleRevision : 0,
+          }),
+          intentBound: suspendIntent !== undefined,
+        })
+      : undefined;
+  const snapshotMarkerSpy =
+    job.type === JOB_TYPES.AGENT_SNAPSHOT
+      ? spyOn(
+          service as unknown as {
+            recordSnapshotAttemptMarkers(
+              agentId: string,
+              outcome: "success" | "unsupported" | "other",
+            ): Promise<void>;
+          },
+          "recordSnapshotAttemptMarkers",
+        ).mockResolvedValue(undefined)
+      : undefined;
   const conflictSpy = spyOn(
     service as unknown as {
       assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
@@ -167,6 +151,8 @@ function harness(
   ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
   const claimSpy = {
     mockRestore() {
+      authoritySpy?.mockRestore();
+      snapshotMarkerSpy?.mockRestore();
       conflictSpy.mockRestore();
       ordinaryClaimSpy.mockRestore();
       sharedClaimSpy.mockRestore();

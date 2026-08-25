@@ -1687,6 +1687,15 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Keep durable suspend-authority resolution behind the service boundary so
+   * dispatch harnesses can replace that one read per test without swapping the
+   * process-wide DB helper module used by composed PGlite suites.
+   */
+  private async resolveAgentSuspendAuthority(job: Job): Promise<ResolvedAgentSuspendAuthority> {
+    return resolveAgentSuspendAuthority(job);
+  }
+
+  /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
    * per-(org,agent) advisory lock, verifies the sandbox exists, runs an
    * optional caller-supplied validation, reuses any in-flight job of
@@ -5210,7 +5219,7 @@ export class ProvisioningJobService {
 
   private async executeAgentSuspend(job: Job): Promise<void> {
     const data = readAgentSuspendJobData(job);
-    const authority = await resolveAgentSuspendAuthority(job);
+    const authority = await this.resolveAgentSuspendAuthority(job);
 
     if (data.organizationId !== job.organization_id) {
       throw new Error(
