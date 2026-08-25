@@ -2356,6 +2356,13 @@ export class SignalService extends Service implements ISignalService {
         }
       }
 
+      if (splitIndex > 0 && splitIndex < remaining.length) {
+        const code = remaining.charCodeAt(splitIndex - 1);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          splitIndex -= 1;
+        }
+      }
+
       messages.push(remaining.slice(0, splitIndex));
       remaining = remaining.slice(splitIndex);
     }
