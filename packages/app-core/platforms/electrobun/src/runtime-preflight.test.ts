@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   probeExternalAgent,
   resolveDesktopRuntimeForBoot,
+  resolveQualifiedExternalToken,
 } from "./runtime-preflight";
 
 const remoteDeployment = {
@@ -16,11 +17,13 @@ type EndpointResponse = {
   body: string;
   contentType?: string;
   requiredBearer?: string;
+  location?: string;
 };
 
 function sendResponse(res: ServerResponse, response: EndpointResponse): void {
   res.writeHead(response.status ?? 200, {
     "content-type": response.contentType ?? "application/json",
+    ...(response.location ? { location: response.location } : {}),
   });
   res.end(response.body);
 }
@@ -102,6 +105,31 @@ describe("probeExternalAgent", () => {
     );
   });
 
+  it("rejects redirects without forwarding the persisted bearer", async () => {
+    await withProbeServer(
+      { "/redirect-target": readyElizaEndpoints["/api/status"] },
+      async (redirectBase, redirectRequests) => {
+        await withProbeServer(
+          {
+            ...readyElizaEndpoints,
+            "/api/status": {
+              status: 302,
+              body: "",
+              location: `${redirectBase}/redirect-target`,
+            },
+          },
+          async (base, requests) => {
+            await expect(
+              probeExternalAgent(base, "remote-secret"),
+            ).resolves.toBe(false);
+            expect(requests).toEqual(["/api/health", "/api/status"]);
+            expect(redirectRequests).toEqual([]);
+          },
+        );
+      },
+    );
+  });
+
   it.each([
     [
       "authentication challenge",
@@ -179,6 +207,52 @@ describe("resolveDesktopRuntimeForBoot", () => {
     expect(probe).toHaveBeenCalledWith(
       "http://127.0.0.1:2250",
       "remote-secret",
+    );
+    expect(
+      resolveQualifiedExternalToken(result, "http://127.0.0.1:2250/api/chat"),
+    ).toBe("remote-secret");
+    expect(
+      resolveQualifiedExternalToken(result, "http://127.0.0.1:2251/api/chat"),
+    ).toBeUndefined();
+  });
+
+  it("carries the qualified bearer from real preflight into a protected application request", async () => {
+    await withProbeServer(
+      {
+        ...readyElizaEndpoints,
+        "/api/status": {
+          ...readyElizaEndpoints["/api/status"],
+          requiredBearer: "remote-secret",
+        },
+        "/api/application": {
+          body: '{"ok":true}',
+          requiredBearer: "remote-secret",
+        },
+      },
+      async (base, requests) => {
+        const result = await resolveDesktopRuntimeForBoot({
+          env: {},
+          deployment: {
+            runtime: "remote",
+            remoteApiBase: base,
+            remoteAccessToken: "remote-secret",
+          },
+        });
+        const token = resolveQualifiedExternalToken(
+          result,
+          `${base}/api/application`,
+        );
+        const response = await fetch(`${base}/api/application`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        expect(response.status).toBe(200);
+        expect(requests).toEqual([
+          "/api/health",
+          "/api/status",
+          "/api/application",
+        ]);
+      },
     );
   });
 
