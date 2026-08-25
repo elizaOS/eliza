@@ -82,6 +82,10 @@ function commonSuffixLength(
   return length;
 }
 
+function isSingleNonWhitespaceCodePoint(value: string): boolean {
+  return /^\S$/u.test(value);
+}
+
 function isLikelySnapshotReplacement(
   existing: string,
   incoming: string,
@@ -114,11 +118,10 @@ export function mergeStreamingText(existing: string, incoming: string): string {
   // Normalize unicode for comparison, but return original incoming when selected.
   const existingNorm = existing.normalize("NFC");
   const incomingNorm = incoming.normalize("NFC");
+  const isSingleCodePointDelta = isSingleNonWhitespaceCodePoint(incoming);
 
   if (incomingNorm === existingNorm) {
-    return incoming.length === 1 && /\S/u.test(incoming)
-      ? `${existing}${incoming}`
-      : incoming;
+    return isSingleCodePointDelta ? `${existing}${incoming}` : incoming;
   }
 
   // Common case: the stream sends the full text-so-far.
@@ -141,9 +144,16 @@ export function mergeStreamingText(existing: string, incoming: string): string {
   // the first). Defer all non-whitespace single-char deltas to the overlap
   // loop, which appends them; genuine regressive snapshots are multi-character
   // and still caught here.
-  const isSingleCharDelta = incoming.length === 1 && /\S/u.test(incoming);
-  if (existingNorm.startsWith(incomingNorm) && !isSingleCharDelta) {
+  if (existingNorm.startsWith(incomingNorm) && !isSingleCodePointDelta) {
     return existing;
+  }
+
+  // Legacy frames cannot distinguish a one-code-point snapshot from a delta.
+  // Once the cumulative and regressive cases above are excluded, preserve the
+  // documented lossless-delta contract before UTF-16 overlap heuristics can
+  // misclassify astral characters as multi-character snapshot replacements.
+  if (isSingleCodePointDelta) {
+    return `${existing}${incoming}`;
   }
 
   // Use trimmed existing for overlap detection so trailing whitespace
@@ -167,9 +177,9 @@ export function mergeStreamingText(existing: string, incoming: string): string {
     if (!match) continue;
 
     if (overlap === incomingNorm.length) {
-      // Preserve repeated single-character deltas like "l" + "l", but avoid
-      // replaying larger suffix fragments already present in the buffer.
-      return incoming.length === 1 ? `${existing}${incoming}` : existing;
+      // Single-code-point deltas returned above; a larger suffix fragment
+      // already present in the buffer is a replay.
+      return existing;
     }
 
     const suffix = sliceAfterNormalizedOverlap(incoming, incomingNorm, overlap);
