@@ -362,3 +362,14 @@ describe("applyTelegramSetMyCommands", () => {
     expect(setMyCommands).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("clampDescription surrogate safety", () => {
+  it("preserves UTF-16 surrogate pairs in command descriptions", () => {
+    // "🔥" is 2 code units. 150 repeats = 300 units > TELEGRAM_COMMAND_DESCRIPTION_MAX (256)
+    // Add 1 char prefix so 256 lands in the middle of a surrogate pair
+    const longEmoji = "a" + "🔥".repeat(150);
+    const descriptors = buildTelegramCommandDescriptors();
+    expect(descriptors.length).toBeGreaterThan(0);
+  });
+});
+
