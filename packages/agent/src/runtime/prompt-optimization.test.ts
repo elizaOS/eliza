@@ -424,6 +424,7 @@ describe("installPromptOptimizations", () => {
       models: {
         providers: {
           test: {
+            baseUrl: "https://provider.example/v1",
             models: [
               {
                 id: "metadata-capped-model",
@@ -438,7 +439,7 @@ describe("installPromptOptimizations", () => {
           },
         },
       },
-    } as ElizaConfig);
+    });
     await callModel(runtime, ModelType.TEXT_LARGE, {
       prompt: "preserve the provider's complete output",
       model: "metadata-capped-model",
