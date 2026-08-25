@@ -19,6 +19,7 @@ import { type HeadscaleNode, headscaleClient } from "../headscale-client";
 import { headscaleIntegration } from "../headscale-integration";
 import {
   type SandboxCreateConfig,
+  type SandboxExactDockerTarget,
   type SandboxHandle,
   SandboxReplacementCleanupUnresolvedError,
   SandboxReplacementCreateSettlementCleanupUnresolvedError,
@@ -34,14 +35,18 @@ const NODE: DockerNode = {
   ssh_port: 22,
   capacity: 8,
   enabled: true,
+  placement_state: "open",
   status: "healthy",
   allocated_count: 2,
   last_health_check: null,
   ssh_user: "root",
   host_key_fingerprint: "SHA256:replacement-node",
+  fleet_kind: "robot",
+  infrastructure_provider: "hetzner",
+  provider_server_id: null,
   node_incarnation: NODE_INCARNATION,
   current_node_history_id: NODE_HISTORY_ID,
-  metadata: {},
+  metadata: { architecture: "amd64", environment: "local" },
   created_at: new Date("2026-07-23T00:00:00.000Z"),
   updated_at: new Date("2026-07-23T00:00:00.000Z"),
 };
@@ -62,6 +67,50 @@ const HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS = [
   "ELIZA_CLOUD_AGENT_BASE_DOMAIN",
   "CONTAINERS_PUBLIC_BASE_DOMAIN",
 ] as const;
+const HEALTHY_EXACT_TARGET_PSI = [
+  "some avg10=1.02 avg60=0.98 avg300=1.11 total=499893023295",
+  "full avg10=0.87 avg60=0.79 avg300=0.81 total=457451749125",
+].join("\n");
+const STARVED_EXACT_TARGET_PSI = [
+  "some avg10=75.21 avg60=82.04 avg300=82.69 total=493046940717",
+  "full avg10=72.89 avg60=78.50 avg300=78.61 total=450805502651",
+].join("\n");
+
+function exactTargetReadinessProbe(options?: {
+  architecture?: string;
+  psi?: string;
+  memoryTotalMb?: number;
+  memoryAvailableMb?: number;
+  committedMemoryMb?: number[];
+}): string {
+  const totalMb = options?.memoryTotalMb ?? 65_536;
+  const availableMb = options?.memoryAvailableMb ?? 60_000;
+  const committedMemoryMb = options?.committedMemoryMb ?? [];
+  return [
+    `docker-id-exact|${options?.architecture ?? "x86_64"}`,
+    "---IO-PRESSURE---",
+    options?.psi ?? HEALTHY_EXACT_TARGET_PSI,
+    "---MEMINFO---",
+    `MemTotal:       ${totalMb * 1024} kB`,
+    `MemAvailable:   ${availableMb * 1024} kB`,
+    "---MEM-COMMITTED---",
+    ...committedMemoryMb.map((memoryMb) => String(memoryMb * 1024 * 1024)),
+    "---MEM-COMMITTED-STATUS---",
+    "ok",
+  ].join("\n");
+}
+
+function exactDockerTarget(
+  overrides: Partial<SandboxExactDockerTarget> = {},
+): SandboxExactDockerTarget {
+  return {
+    nodeRecordId: NODE.id,
+    nodeId: NODE.node_id,
+    nodeIncarnation: NODE_INCARNATION,
+    nodeHistoryId: NODE_HISTORY_ID,
+    ...overrides,
+  };
+}
 
 function inspectLine(id: string, attempt: string, name = CONTAINER_NAME): string {
   return `${id}|${attempt}|/${name}|${CONTAINER_CREATED_AT}\n`;
@@ -296,8 +345,629 @@ afterEach(() => {
 
 describe("DockerSandboxProvider replacement cleanup", () => {
   test("advertises exact-success replacement settlement support", () => {
-    expect(replacementProvider().replacementCreateSettlementCapability).toBe("exact-success");
+    const provider = replacementProvider();
+    expect(provider.replacementCreateSettlementCapability).toBe("exact-success");
+    expect(provider.exactDockerTargetCapability).toBe("immutable-node-occurrence");
   });
+
+  test("rejects an exact Docker target without exact-success ownership before provider work", async () => {
+    const provider = replacementProvider();
+    const primary = spyOn(dockerNodesRepository, "findByIdOnPrimary");
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const autoscale = spyOn(
+      provider as unknown as {
+        provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+      },
+      "provisionAutoscaledNodeForAgent",
+    );
+    const ssh = spyOn(DockerSSHClient, "getClient");
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_REQUIRES_EXACT_SUCCESS",
+      context: { nodeRecordId: NODE.id, nodeId: NODE.node_id },
+    });
+    expect(primary).not.toHaveBeenCalled();
+    expect(discovery).not.toHaveBeenCalled();
+    expect(autoscale).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  test("uses the exact primary target without discovery, autoscale, fallback, or capacity mutation", async () => {
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+    const readiness = spyOn(dockerNodeManager, "ensureExactNodeReady").mockResolvedValue(true);
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const autoscale = spyOn(
+      provider as unknown as {
+        provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+      },
+      "provisionAutoscaledNodeForAgent",
+    );
+    const findAll = spyOn(dockerNodesRepository, "findAll");
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated");
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated");
+    const portsFailure = new Error("stop after exact target selection");
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockRejectedValue(
+      portsFailure,
+    );
+    const ssh = spyOn(DockerSSHClient, "getClient");
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBe(portsFailure);
+    expect(targetRead).toHaveBeenCalledTimes(2);
+    expect(targetRead).toHaveBeenCalledWith(NODE.id);
+    expect(readiness).toHaveBeenCalledWith(
+      NODE,
+      expect.objectContaining({
+        expectedNodeIncarnation: NODE_INCARNATION,
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: expect.any(Number),
+      }),
+    );
+    expect(ports).toHaveBeenCalledWith(NODE.node_id);
+    expect(discovery).not.toHaveBeenCalled();
+    expect(autoscale).not.toHaveBeenCalled();
+    expect(findAll).not.toHaveBeenCalled();
+    expect(increment).not.toHaveBeenCalled();
+    expect(decrement).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  test("rejects an exact target whose disabled memory ceiling would skip live admission", async () => {
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary");
+    const readiness = spyOn(dockerNodeManager, "ensureExactNodeReady");
+    const persistIntent = mock(async () => {});
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+          container: { memoryMb: 0 },
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: persistIntent,
+          onReplacementCreated: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_MEMORY_CEILING_REQUIRED",
+      context: { containerMemoryMb: 0 },
+    });
+    expect(targetRead).not.toHaveBeenCalled();
+    expect(readiness).not.toHaveBeenCalled();
+    expect(persistIntent).not.toHaveBeenCalled();
+  });
+
+  test("attests an exact Robot boot occurrence before intent or candidate creation", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    delete process.env.ENVIRONMENT;
+    const typedRobotNode: DockerNode = {
+      ...NODE,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+    };
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(
+      typedRobotNode,
+    );
+    const attest = spyOn(dockerNodesRepository, "attestNodeIncarnation").mockResolvedValue(
+      typedRobotNode,
+    );
+    const updateStatus = spyOn(dockerNodesRepository, "updateStatus").mockResolvedValue();
+    const portsFailure = new Error("stop after exact Robot boot attestation");
+    spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockRejectedValue(portsFailure);
+    const ssh = {
+      connect: mock(async () => {}),
+      exec: mock(async (command: string) => {
+        if (command.startsWith("docker info --format")) return exactTargetReadinessProbe();
+        if (command === "cat /proc/sys/kernel/random/boot_id") {
+          return `${NODE_INCARNATION}\n`;
+        }
+        throw new Error(`unexpected candidate effect: ${command}`);
+      }),
+      execStdin: mock(async () => {
+        throw new Error("unexpected candidate stdin effect");
+      }),
+    };
+    spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
+    const persistIntent = mock(async () => {});
+
+    let error: unknown;
+    try {
+      error = await provider
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            exactDockerTarget: exactDockerTarget(),
+            container: { memoryMb: 3_072 },
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: persistIntent,
+            onReplacementCreated: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+    } finally {
+      if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+      else process.env.ENVIRONMENT = savedEnvironment;
+    }
+
+    expect(error).toBe(portsFailure);
+    expect(targetRead).toHaveBeenCalledTimes(2);
+    expect(attest).toHaveBeenCalledTimes(1);
+    expect(attest).toHaveBeenCalledWith({
+      id: typedRobotNode.id,
+      nodeId: typedRobotNode.node_id,
+      expectedIncarnation: typedRobotNode.node_incarnation,
+      expectedHostKeyFingerprint: typedRobotNode.host_key_fingerprint,
+      observedIncarnation: NODE_INCARNATION,
+    });
+    expect(updateStatus).not.toHaveBeenCalled();
+    expect(persistIntent).not.toHaveBeenCalled();
+    expect(ssh.execStdin).not.toHaveBeenCalled();
+    expect(
+      ssh.exec.mock.calls.find(([command]) => command.startsWith("docker info --format"))?.[0],
+    ).toContain("docker ps -aq");
+  });
+
+  test("rejects exact target occurrence drift before ports, preparation, or SSH effects", async () => {
+    const driftedNode = {
+      ...NODE,
+      node_incarnation: "55555555-5555-4555-8555-555555555555",
+    };
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(
+      driftedNode,
+    );
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const autoscale = spyOn(
+      provider as unknown as {
+        provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+      },
+      "provisionAutoscaledNodeForAgent",
+    );
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const steward = spyOn(stewardTenantConfig, "ensureStewardTenant");
+    const headscale = spyOn(headscaleIntegration, "prepareContainerVPN");
+    const ssh = spyOn(DockerSSHClient, "getClient");
+    const persistIntent = mock(async () => {});
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: persistIntent,
+          onReplacementCreated: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_DRIFT",
+      context: {
+        nodeRecordId: NODE.id,
+        nodeId: NODE.node_id,
+        driftedKey: "nodeIncarnation",
+      },
+    });
+    expect(targetRead).toHaveBeenCalledWith(NODE.id);
+    expect(discovery).not.toHaveBeenCalled();
+    expect(autoscale).not.toHaveBeenCalled();
+    expect(ports).not.toHaveBeenCalled();
+    expect(steward).not.toHaveBeenCalled();
+    expect(headscale).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+    expect(persistIntent).not.toHaveBeenCalled();
+  });
+
+  test("re-reads primary after live attestation and rejects resulting occurrence drift", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    delete process.env.ENVIRONMENT;
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary")
+      .mockResolvedValueOnce(NODE)
+      .mockResolvedValueOnce({
+        ...NODE,
+        node_incarnation: "55555555-5555-4555-8555-555555555555",
+      });
+    const readiness = spyOn(dockerNodeManager, "ensureExactNodeReady").mockResolvedValue(true);
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const steward = spyOn(stewardTenantConfig, "ensureStewardTenant");
+    const headscale = spyOn(headscaleIntegration, "prepareContainerVPN");
+    const ssh = spyOn(DockerSSHClient, "getClient");
+    const persistIntent = mock(async () => {});
+
+    let error: unknown;
+    try {
+      error = await provider
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            exactDockerTarget: exactDockerTarget(),
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: persistIntent,
+            onReplacementCreated: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+    } finally {
+      if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+      else process.env.ENVIRONMENT = savedEnvironment;
+    }
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_DRIFT",
+      context: { driftedKey: "nodeIncarnation" },
+    });
+    expect(targetRead).toHaveBeenCalledTimes(2);
+    expect(readiness).toHaveBeenCalledTimes(1);
+    expect(ports).not.toHaveBeenCalled();
+    expect(steward).not.toHaveBeenCalled();
+    expect(headscale).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+    expect(persistIntent).not.toHaveBeenCalled();
+  });
+
+  test("rejects host-route drift between live attestation and the primary re-read", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    delete process.env.ENVIRONMENT;
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary")
+      .mockResolvedValueOnce(NODE)
+      .mockResolvedValueOnce({ ...NODE, hostname: "192.0.2.99" });
+    const readiness = spyOn(dockerNodeManager, "ensureExactNodeReady").mockResolvedValue(true);
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const steward = spyOn(stewardTenantConfig, "ensureStewardTenant");
+    const headscale = spyOn(headscaleIntegration, "prepareContainerVPN");
+    const persistIntent = mock(async () => {});
+
+    let error: unknown;
+    try {
+      error = await provider
+        .create(
+          replacementCreateConfig({
+            replacementAttemptId: ATTEMPT_ID,
+            exactDockerTarget: exactDockerTarget(),
+            onReplacementCreateAttemptStarted: async () => {},
+            onReplacementCreateIntent: persistIntent,
+            onReplacementCreated: async () => {},
+            onReplacementCreateSettled: async () => {},
+          }),
+        )
+        .catch((caught: unknown) => caught);
+    } finally {
+      if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+      else process.env.ENVIRONMENT = savedEnvironment;
+    }
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_HOST_AUTHORITY_DRIFT",
+      context: { driftedKey: "hostname" },
+    });
+    expect(targetRead).toHaveBeenCalledTimes(2);
+    expect(readiness).toHaveBeenCalledTimes(1);
+    expect(ports).not.toHaveBeenCalled();
+    expect(steward).not.toHaveBeenCalled();
+    expect(headscale).not.toHaveBeenCalled();
+    expect(persistIntent).not.toHaveBeenCalled();
+  });
+
+  test("rejects an unpinned exact target before candidate-specific effects", async () => {
+    const provider = replacementProvider();
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue({
+      ...NODE,
+      host_key_fingerprint: null,
+    });
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const steward = spyOn(stewardTenantConfig, "ensureStewardTenant");
+    const ssh = spyOn(DockerSSHClient, "getClient");
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_SSH_AUTHORITY_INVALID",
+    });
+    expect(discovery).not.toHaveBeenCalled();
+    expect(ports).not.toHaveBeenCalled();
+    expect(steward).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  test("rejects an ineligible exact target instead of reselecting another node", async () => {
+    const provider = replacementProvider();
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue({
+      ...NODE,
+      placement_state: "cordoned",
+    });
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const autoscale = spyOn(
+      provider as unknown as {
+        provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+      },
+      "provisionAutoscaledNodeForAgent",
+    );
+    const findAll = spyOn(dockerNodesRepository, "findAll");
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const ssh = spyOn(DockerSSHClient, "getClient");
+
+    const error = await provider
+      .create(
+        replacementCreateConfig({
+          replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
+          onReplacementCreateAttemptStarted: async () => {},
+          onReplacementCreateIntent: async () => {},
+          onReplacementCreated: async () => {},
+          onReplacementCreateSettled: async () => {},
+        }),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      code: "SANDBOX_EXACT_DOCKER_TARGET_INELIGIBLE",
+      context: { placementState: "cordoned" },
+    });
+    expect(discovery).not.toHaveBeenCalled();
+    expect(autoscale).not.toHaveBeenCalled();
+    expect(findAll).not.toHaveBeenCalled();
+    expect(ports).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  test("fails closed on both unlabeled and mismatched exact-target environments", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    process.env.ENVIRONMENT = "staging";
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary")
+      .mockResolvedValueOnce({ ...NODE, metadata: { architecture: "amd64" } })
+      .mockResolvedValueOnce({
+        ...NODE,
+        metadata: { architecture: "amd64", environment: "production" },
+      });
+    const readiness = spyOn(dockerNodeManager, "ensureExactNodeReady");
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+    const ssh = spyOn(DockerSSHClient, "getClient");
+
+    try {
+      for (const targetEnvironment of [null, "production"] as const) {
+        const error = await provider
+          .create(
+            replacementCreateConfig({
+              replacementAttemptId: ATTEMPT_ID,
+              exactDockerTarget: exactDockerTarget(),
+              onReplacementCreateAttemptStarted: async () => {},
+              onReplacementCreateIntent: async () => {},
+              onReplacementCreated: async () => {},
+              onReplacementCreateSettled: async () => {},
+            }),
+          )
+          .catch((caught: unknown) => caught);
+
+        expect(error).toMatchObject({
+          code: "SANDBOX_EXACT_DOCKER_TARGET_ENVIRONMENT_MISMATCH",
+          context: {
+            configuredEnvironment: "staging",
+            targetEnvironment,
+          },
+        });
+      }
+    } finally {
+      if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+      else process.env.ENVIRONMENT = savedEnvironment;
+    }
+
+    expect(targetRead).toHaveBeenCalledTimes(2);
+    expect(readiness).not.toHaveBeenCalled();
+    expect(discovery).not.toHaveBeenCalled();
+    expect(ports).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
+  });
+
+  for (const scenario of [
+    {
+      name: "a rebooted target occurrence",
+      bootId: "55555555-5555-4555-8555-555555555555",
+      probe: exactTargetReadinessProbe(),
+    },
+    {
+      name: "an actually incompatible architecture",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe({ architecture: "aarch64" }),
+    },
+    {
+      name: "a missing live architecture",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace("|x86_64", "|"),
+    },
+    {
+      name: "a malformed live architecture",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe({ architecture: "mips64" }),
+    },
+    {
+      name: "live IO pressure",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe({ psi: STARVED_EXACT_TARGET_PSI }),
+    },
+    {
+      name: "a missing live IO pressure signal",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(HEALTHY_EXACT_TARGET_PSI, ""),
+    },
+    {
+      name: "a malformed live IO pressure signal",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(
+        HEALTHY_EXACT_TARGET_PSI,
+        "full avg10=unknown avg60=unknown",
+      ),
+    },
+    {
+      name: "insufficient live memory",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe({
+        memoryTotalMb: 7_745,
+        memoryAvailableMb: 2_058,
+        committedMemoryMb: [3_072, 3_072],
+      }),
+    },
+    {
+      name: "missing live meminfo",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(/MemTotal:[^\n]*\nMemAvailable:[^\n]*/, ""),
+    },
+    {
+      name: "malformed live meminfo",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(
+        /MemTotal:[^\n]*\nMemAvailable:[^\n]*/,
+        "MemTotal: unknown\nMemAvailable: unknown",
+      ),
+    },
+    {
+      name: "a missing Docker committed-memory status",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace("---MEM-COMMITTED-STATUS---\nok", ""),
+    },
+    {
+      name: "a malformed Docker committed-memory status",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(
+        "---MEM-COMMITTED-STATUS---\nok",
+        "---MEM-COMMITTED-STATUS---\nunknown",
+      ),
+    },
+    {
+      name: "a failed Docker committed-memory enumeration",
+      bootId: NODE_INCARNATION,
+      probe: exactTargetReadinessProbe().replace(
+        "---MEM-COMMITTED-STATUS---\nok",
+        "---MEM-COMMITTED-STATUS---\nfailed",
+      ),
+    },
+  ]) {
+    test(`rejects ${scenario.name} without selection or candidate effects`, async () => {
+      const savedEnvironment = process.env.ENVIRONMENT;
+      delete process.env.ENVIRONMENT;
+      const provider = replacementProvider();
+      const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(NODE);
+      const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+      const autoscale = spyOn(
+        provider as unknown as {
+          provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+        },
+        "provisionAutoscaledNodeForAgent",
+      );
+      const findAll = spyOn(dockerNodesRepository, "findAll");
+      spyOn(dockerNodesRepository, "attestNodeIncarnation").mockResolvedValue(NODE);
+      const updateStatus = spyOn(dockerNodesRepository, "updateStatus").mockResolvedValue();
+      const increment = spyOn(dockerNodesRepository, "incrementAllocated");
+      const decrement = spyOn(dockerNodesRepository, "decrementAllocated");
+      const ports = spyOn(dockerPortAllocation, "getUsedDockerHostPorts");
+      const steward = spyOn(stewardTenantConfig, "ensureStewardTenant");
+      const headscale = spyOn(headscaleIntegration, "prepareContainerVPN");
+      const readinessCommands: string[] = [];
+      const ssh = {
+        connect: mock(async () => {}),
+        exec: mock(async (command: string) => {
+          readinessCommands.push(command);
+          if (command.startsWith("docker info --format")) return scenario.probe;
+          if (command === "cat /proc/sys/kernel/random/boot_id") {
+            return `${scenario.bootId}\n`;
+          }
+          throw new Error(`unexpected candidate effect: ${command}`);
+        }),
+        execStdin: mock(async () => {
+          throw new Error("unexpected candidate stdin effect");
+        }),
+      };
+      const getSsh = spyOn(DockerSSHClient, "getClient").mockReturnValue(
+        ssh as unknown as DockerSSHClient,
+      );
+      const persistIntent = mock(async () => {});
+
+      let error: unknown;
+      try {
+        error = await provider
+          .create(
+            replacementCreateConfig({
+              replacementAttemptId: ATTEMPT_ID,
+              exactDockerTarget: exactDockerTarget(),
+              container: { memoryMb: 3_072 },
+              onReplacementCreateAttemptStarted: async () => {},
+              onReplacementCreateIntent: persistIntent,
+              onReplacementCreated: async () => {},
+              onReplacementCreateSettled: async () => {},
+            }),
+          )
+          .catch((caught: unknown) => caught);
+      } finally {
+        if (savedEnvironment === undefined) delete process.env.ENVIRONMENT;
+        else process.env.ENVIRONMENT = savedEnvironment;
+      }
+
+      expect(error).toMatchObject({ code: "SANDBOX_EXACT_DOCKER_TARGET_NOT_READY" });
+      expect(targetRead).toHaveBeenCalledTimes(2);
+      expect(discovery).not.toHaveBeenCalled();
+      expect(autoscale).not.toHaveBeenCalled();
+      expect(findAll).not.toHaveBeenCalled();
+      expect(ports).not.toHaveBeenCalled();
+      expect(steward).not.toHaveBeenCalled();
+      expect(headscale).not.toHaveBeenCalled();
+      expect(persistIntent).not.toHaveBeenCalled();
+      expect(increment).not.toHaveBeenCalled();
+      expect(decrement).not.toHaveBeenCalled();
+      expect(updateStatus).not.toHaveBeenCalled();
+      expect(getSsh).toHaveBeenCalledTimes(1);
+      expect(ssh.connect).toHaveBeenCalledTimes(1);
+      expect(ssh.execStdin).not.toHaveBeenCalled();
+      expect(readinessCommands[0]).toContain("docker info --format");
+      expect(readinessCommands).toContain("cat /proc/sys/kernel/random/boot_id");
+    });
+  }
 
   test("rejects a non-canonical caller attempt ID before provider work", async () => {
     const provider = replacementProvider();
@@ -1584,7 +2254,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect(error).toMatchObject({
       replacementAttemptId: ATTEMPT_ID,
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
     });
     expect((error as Error).cause).toBeInstanceOf(AggregateError);
     expect(((error as Error).cause as AggregateError).errors).toContain(pullFailure);
@@ -1827,8 +2497,26 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       delete process.env[key];
     }
 
-    spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
+    const exactNode = { ...NODE, metadata: { environment: "development" } };
+    const provider = replacementProvider();
+    const targetRead = spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(
+      exactNode,
+    );
+    const attest = spyOn(dockerNodesRepository, "attestNodeIncarnation").mockResolvedValue(
+      exactNode,
+    );
+    const discovery = spyOn(dockerNodeManager, "getAvailableNode");
+    const autoscale = spyOn(
+      provider as unknown as {
+        provisionAutoscaledNodeForAgent: () => Promise<DockerNode | null>;
+      },
+      "provisionAutoscaledNodeForAgent",
+    );
+    const findAll = spyOn(dockerNodesRepository, "findAll");
     spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
+    const updateStatus = spyOn(dockerNodesRepository, "updateStatus").mockResolvedValue();
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated");
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated");
     spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
       tenantId: "tenant-test",
       isNew: false,
@@ -1841,8 +2529,16 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     );
     const commands: string[] = [];
     const ssh = {
+      connect: mock(async () => {}),
       exec: mock(async (command: string) => {
         commands.push(command);
+        if (command.startsWith("docker info --format")) return exactTargetReadinessProbe();
+        if (command === "cat /proc/sys/kernel/random/boot_id") {
+          return `${NODE_INCARNATION}\n`;
+        }
+        if (command.includes("docker inspect --format")) {
+          return `${CONTAINER_ID}|${ATTEMPT_ID}|/${CONTAINER_NAME}|true\n`;
+        }
         return "";
       }),
       execStdin: mock(async (command: string) => {
@@ -1858,10 +2554,12 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const events: string[] = [];
 
     try {
-      const handle = await replacementProvider().create(
+      const handle = await provider.create(
         replacementCreateConfig({
           replacementAttemptId: ATTEMPT_ID,
+          exactDockerTarget: exactDockerTarget(),
           dockerImage: "eliza-agent:test",
+          container: { memoryMb: 3_072 },
           environmentVars: {
             ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
           },
@@ -1874,7 +2572,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           },
           onReplacementCreated: async (candidate) => {
             events.push("created");
-            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID.slice(0, 12));
+            expect(candidate.metadata?.containerId).toBe(CONTAINER_ID);
           },
           onReplacementCreateSettled: async () => {
             events.push("settled");
@@ -1884,19 +2582,202 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
       expect(handle.metadata).toMatchObject({
         replacementAttemptId: ATTEMPT_ID,
-        containerId: CONTAINER_ID.slice(0, 12),
+        containerId: CONTAINER_ID,
         replacementSecretCleanupVersion: 1,
       });
       expect(handle.metadata?.vpnNodeId).toBeUndefined();
       expect(events).toEqual(["started", "intent", "created", "settled"]);
       expect(prepareVpn).not.toHaveBeenCalled();
       expect(waitForVpn).not.toHaveBeenCalled();
-      expect(commands.some((command) => command.includes("docker create"))).toBe(true);
+      const dockerCreateCommand = commands.find((command) => command.includes("docker create"));
+      const dockerStartCommand = commands.find((command) => command.includes("docker start"));
+      const finalProofCommand = commands.find((command) =>
+        command.includes("docker inspect --format"),
+      );
+      for (const command of [dockerCreateCommand, dockerStartCommand, finalProofCommand]) {
+        expect(command).toContain("observed_boot_id=$(cat '/proc/sys/kernel/random/boot_id'");
+        expect(command).toContain(NODE_INCARNATION);
+      }
+      expect(dockerStartCommand).toContain(CONTAINER_ID);
+      expect(finalProofCommand).toContain(CONTAINER_ID);
+      expect(finalProofCommand).toContain("ai.elizaos.replacement-attempt");
+      expect(finalProofCommand).toContain(".State.Running");
       expect(
         commands.some((command) =>
           command.includes("tailscale --socket=/tmp/tailscaled.sock ip -4"),
         ),
       ).toBe(false);
+      expect(targetRead).toHaveBeenCalledTimes(3);
+      expect(discovery).not.toHaveBeenCalled();
+      expect(autoscale).not.toHaveBeenCalled();
+      expect(findAll).not.toHaveBeenCalled();
+      expect(attest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: NODE.id,
+          nodeId: NODE.node_id,
+          expectedIncarnation: NODE_INCARNATION,
+          observedIncarnation: NODE_INCARNATION,
+        }),
+      );
+      expect(updateStatus).not.toHaveBeenCalled();
+      expect(increment).not.toHaveBeenCalled();
+      expect(decrement).not.toHaveBeenCalled();
+    } finally {
+      for (const [key, value] of savedEnvironment) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
+  test("never settles after an exact-node reboot or a stopped final candidate", async () => {
+    const controlledEnvironment = [
+      "ENVIRONMENT",
+      "HEADSCALE_API_KEY",
+      ...HEADSCALE_ENDPOINT_ENVIRONMENT_KEYS,
+      "STEWARD_API_URL",
+      "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK",
+      "AGENT_TOKEN_PRIVATE_KEY_PEM",
+      "ELIZA_AGENT_TOKEN_PRIVATE_KEY_PEM",
+      "ELIZA_CLOUD_SERVICE_TOKEN",
+      "AGENT_TOKEN_SERVICE_TOKEN",
+      "STEWARD_ENABLE_TRADE_PLUGIN",
+    ] as const;
+    const savedEnvironment = new Map(
+      controlledEnvironment.map((key) => [key, process.env[key]] as const),
+    );
+    process.env.ENVIRONMENT = "development";
+    process.env.STEWARD_API_URL = "https://steward.example.test";
+    for (const key of controlledEnvironment.filter(
+      (key) => key !== "ENVIRONMENT" && key !== "STEWARD_API_URL",
+    )) {
+      delete process.env[key];
+    }
+
+    const rebootedIncarnation = "55555555-5555-4555-8555-555555555555";
+    const exactNode = {
+      ...NODE,
+      metadata: { architecture: "amd64", environment: "development" },
+    };
+    const provider = replacementProvider();
+    spyOn(dockerNodesRepository, "findByIdOnPrimary").mockResolvedValue(exactNode);
+    spyOn(dockerNodesRepository, "attestNodeIncarnation").mockResolvedValue(exactNode);
+    spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated");
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated");
+    const updateStatus = spyOn(dockerNodesRepository, "updateStatus").mockResolvedValue();
+    spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
+      tenantId: "tenant-test",
+      isNew: false,
+    });
+
+    let activeWindow: "before-create" | "before-start" | "after-start" | "stopped-after-start" =
+      "before-create";
+    let observedBoot = NODE_INCARNATION;
+    const guardedStages = new Set<string>();
+    const events: string[] = [];
+    const hasExpectedBootFence = (command: string): boolean =>
+      command.includes("observed_boot_id=$(cat '/proc/sys/kernel/random/boot_id'") &&
+      command.includes(NODE_INCARNATION);
+    const rejectOnReboot = (command: string, stage: string): void => {
+      if (hasExpectedBootFence(command)) guardedStages.add(`${activeWindow}:${stage}`);
+      if (hasExpectedBootFence(command) && observedBoot !== NODE_INCARNATION) {
+        throw new Error(`ELIZA_REPLACEMENT_BOOT_ID_MISMATCH:${stage}`);
+      }
+    };
+    const ssh = {
+      connect: mock(async () => {}),
+      exec: mock(async (command: string) => {
+        if (command.startsWith("docker info --format")) return exactTargetReadinessProbe();
+        if (command === "cat /proc/sys/kernel/random/boot_id") return `${observedBoot}\n`;
+        if (command.includes("docker start")) {
+          rejectOnReboot(command, "start");
+          if (activeWindow === "after-start") observedBoot = rebootedIncarnation;
+          return `${CONTAINER_ID}\n`;
+        }
+        if (command.includes("docker inspect --format")) {
+          rejectOnReboot(command, "proof");
+          const running = activeWindow === "stopped-after-start" ? "false" : "true";
+          return `${CONTAINER_ID}|${ATTEMPT_ID}|/${CONTAINER_NAME}|${running}\n`;
+        }
+        return "";
+      }),
+      execStdin: mock(async (command: string) => {
+        if (command.includes("docker create")) {
+          rejectOnReboot(command, "create");
+          return CONTAINER_ID;
+        }
+        if (command.includes("steward-agent-register")) {
+          return JSON.stringify({ token: "steward-token" });
+        }
+        return "";
+      }),
+    };
+    spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
+
+    try {
+      for (const rebootWindow of [
+        "before-create",
+        "before-start",
+        "after-start",
+        "stopped-after-start",
+      ] as const) {
+        activeWindow = rebootWindow;
+        observedBoot = NODE_INCARNATION;
+        events.length = 0;
+        const persistSuccess = mock(async () => {
+          events.push("settled");
+        });
+
+        const error = await provider
+          .create(
+            replacementCreateConfig({
+              replacementAttemptId: ATTEMPT_ID,
+              exactDockerTarget: exactDockerTarget(),
+              dockerImage: "eliza-agent:test",
+              container: { memoryMb: 3_072 },
+              environmentVars: {
+                ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+              },
+              onReplacementCreateAttemptStarted: async () => {
+                events.push("started");
+              },
+              onReplacementCreateIntent: async () => {
+                events.push("intent");
+                if (rebootWindow === "before-create") observedBoot = rebootedIncarnation;
+              },
+              onReplacementCreated: async () => {
+                events.push("created");
+                if (rebootWindow === "before-start") observedBoot = rebootedIncarnation;
+              },
+              onReplacementCreateSettled: persistSuccess,
+            }),
+          )
+          .catch((caught: unknown) => caught);
+
+        expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+        expect(persistSuccess).not.toHaveBeenCalled();
+        expect(events[0]).toBe("started");
+        expect(events).toContain("intent");
+        expect(events).not.toContain("settled");
+      }
+
+      expect(guardedStages).toEqual(
+        new Set([
+          "before-create:create",
+          "before-start:create",
+          "before-start:start",
+          "after-start:create",
+          "after-start:start",
+          "after-start:proof",
+          "stopped-after-start:create",
+          "stopped-after-start:start",
+          "stopped-after-start:proof",
+        ]),
+      );
+      expect(updateStatus).not.toHaveBeenCalled();
+      expect(increment).not.toHaveBeenCalled();
+      expect(decrement).not.toHaveBeenCalled();
     } finally {
       for (const [key, value] of savedEnvironment) {
         if (value === undefined) delete process.env[key];
@@ -2140,18 +3021,18 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
     });
     expect(callbackHandles[1]?.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
       vpnNodeName: "replacement-11111111-111",
       vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
       previousVpnNodeId: PREVIOUS_VPN_NODE_ID,
     });
     expect(callbackHandles[2]?.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
       vpnNodeId: EXACT_VPN_NODE_ID,
       replacementAttemptId: ATTEMPT_ID,
     });
     expect(handle.metadata).toMatchObject({
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
       vpnNodeId: EXACT_VPN_NODE_ID,
       replacementAttemptId: ATTEMPT_ID,
     });
@@ -2163,7 +3044,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       nodeHostKeyFingerprint: NODE.host_key_fingerprint,
       replacementSecretCleanupVersion: 1,
       replacementAttemptId: ATTEMPT_ID,
-      containerId: CONTAINER_ID.slice(0, 12),
+      containerId: CONTAINER_ID,
       vpnNodeId: EXACT_VPN_NODE_ID,
       vpnNodeName: "replacement-11111111-111",
       vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,

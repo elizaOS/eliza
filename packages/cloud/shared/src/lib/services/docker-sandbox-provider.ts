@@ -63,7 +63,10 @@ import {
   getReplacementSecretArtifactsCleanupReceipt,
   getVolumePath,
   getVolumeVaultPassphrasePath,
+  inferNodeArchitectureFromMetadata,
+  isArchitectureCompatibleWithPlatform,
   parseDockerNodes,
+  requiredArchitectureForPlatform,
   requiresDockerHostGateway,
   resolveAgentContainerClass,
   resolveStewardContainerUrl,
@@ -95,6 +98,7 @@ import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import type {
   SandboxCreateConfig,
   SandboxDeletionStopOutcome,
+  SandboxExactDockerTarget,
   SandboxHandle,
   SandboxHealthOutcome,
   SandboxProvider,
@@ -249,6 +253,45 @@ function isCanonicalNodeAuthorityUuid(value: string | null | undefined): value i
   );
 }
 
+function freezeExactDockerTarget(target: SandboxExactDockerTarget): SandboxExactDockerTarget {
+  if (
+    !target ||
+    !isCanonicalNodeAuthorityUuid(target.nodeRecordId) ||
+    typeof target.nodeId !== "string" ||
+    target.nodeId.length === 0 ||
+    target.nodeId !== target.nodeId.trim() ||
+    !isCanonicalNodeAuthorityUuid(target.nodeIncarnation) ||
+    !isCanonicalNodeAuthorityUuid(target.nodeHistoryId)
+  ) {
+    throw new ElizaError("Exact Docker target must identify one canonical node occurrence", {
+      code: "SANDBOX_EXACT_DOCKER_TARGET_INVALID",
+      context: {
+        nodeRecordId:
+          target && typeof target.nodeRecordId === "string" ? target.nodeRecordId : null,
+        nodeId: target && typeof target.nodeId === "string" ? target.nodeId : null,
+      },
+      severity: "fatal",
+    });
+  }
+  return Object.freeze({
+    nodeRecordId: target.nodeRecordId,
+    nodeId: target.nodeId,
+    nodeIncarnation: target.nodeIncarnation,
+    nodeHistoryId: target.nodeHistoryId,
+  });
+}
+
+function isExactDockerTargetPlatformCompatible(
+  node: DockerNode,
+  requiredPlatform: string | undefined | null,
+): boolean {
+  if (!requiredArchitectureForPlatform(requiredPlatform)) return true;
+  return isArchitectureCompatibleWithPlatform(
+    inferNodeArchitectureFromMetadata(node.metadata),
+    requiredPlatform,
+  );
+}
+
 function isCanonicalReplacementContainerName(value: string): boolean {
   if (!value.startsWith("agent-")) return false;
   try {
@@ -312,19 +355,19 @@ function isCanonicalPublishedDockerContainerId(value: unknown): value is string 
 }
 
 /**
- * Keeps the remote boot-id comparison and the destructive mutation inside one
+ * Keeps the remote boot-id comparison and an exact-target command inside one
  * shell invocation. A successful earlier probe is not sufficient: the host can
- * reboot between stop and rm, so every mutation carries its own occurrence
- * fence.
+ * reboot before create/start/cleanup, so every occurrence-bound mutation
+ * carries its own fence.
  */
-function buildReplacementCleanupBootFencedCommand(
+function buildExactDockerBootFencedCommand(
   expectedNodeIncarnation: string,
-  destructiveCommand: string,
+  exactCommand: string,
 ): string {
   return [
     `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_REPLACEMENT_BOOT_ID_UNREADABLE' >&2; exit ${REPLACEMENT_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
     `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_REPLACEMENT_BOOT_ID_MISMATCH' >&2; exit ${REPLACEMENT_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
-    destructiveCommand,
+    exactCommand,
   ].join("; ");
 }
 
@@ -1499,6 +1542,7 @@ export async function registerAgentWithSteward(
 
 export class DockerSandboxProvider implements SandboxProvider {
   readonly replacementCreateSettlementCapability = "exact-success" as const;
+  readonly exactDockerTargetCapability = "immutable-node-occurrence" as const;
 
   /**
    * In-memory container metadata cache.
@@ -1556,6 +1600,21 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
     const exactSuccessMode = hasAttemptStartedCallback && hasSettlementCallback;
+    const exactDockerTarget =
+      config.exactDockerTarget === undefined
+        ? undefined
+        : freezeExactDockerTarget(config.exactDockerTarget);
+    if (exactDockerTarget && !exactSuccessMode) {
+      throw new ElizaError("Exact Docker targeting requires exact-success replacement callbacks", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_REQUIRES_EXACT_SUCCESS",
+        context: {
+          replacementAttemptId: requestedReplacementAttemptId ?? null,
+          nodeRecordId: exactDockerTarget.nodeRecordId,
+          nodeId: exactDockerTarget.nodeId,
+        },
+        severity: "fatal",
+      });
+    }
     if (exactSuccessMode && requestedReplacementAttemptId === undefined) {
       throw new ElizaError(
         "Exact sandbox replacement settlement requires a caller-owned attempt ID",
@@ -1769,6 +1828,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const createConfig: SandboxCreateConfig = {
       ...config,
       replacementAttemptId,
+      ...(exactDockerTarget ? { exactDockerTarget } : {}),
       environmentVars: applyRemoteDockerRuntimeMode(config.environmentVars),
       ...(persistReplacementIntent
         ? {
@@ -1865,7 +1925,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       // reporting provider success. The consumer's settlement transaction is
       // still the final CAS authority, but the provider must not knowingly
       // settle after a delete/reinsert or SSH-route mutation observed here.
-      await this.resolveReplacementCleanupNode(locator);
+      const cleanupNode = await this.resolveReplacementCleanupNode(locator);
+      if (exactDockerTarget) {
+        await this.assertExactReplacementCandidateProof(locator, cleanupNode);
+      }
     } catch (authorityError) {
       // error-policy:J2 retain the exact successful handle behind its locator.
       throw new SandboxReplacementCleanupUnresolvedError(locator, authorityError);
@@ -1893,6 +1956,197 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     return handle;
+  }
+
+  private async resolveExactDockerTarget(
+    target: SandboxExactDockerTarget,
+    options: {
+      requiredPlatform: string | undefined;
+      excludeNodeId: string | undefined;
+    },
+  ): Promise<DockerNode> {
+    const node = await dockerNodesRepository.findByIdOnPrimary(target.nodeRecordId);
+    if (!node) {
+      throw new ElizaError("Exact Docker target record is no longer registered", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_MISSING",
+        context: { nodeRecordId: target.nodeRecordId, nodeId: target.nodeId },
+        severity: "fatal",
+      });
+    }
+
+    const drifted = [
+      ["nodeRecordId", node.id, target.nodeRecordId],
+      ["nodeId", node.node_id, target.nodeId],
+      ["nodeIncarnation", node.node_incarnation, target.nodeIncarnation],
+      ["nodeHistoryId", node.current_node_history_id, target.nodeHistoryId],
+    ].find(([, actual, expected]) => actual !== expected);
+    if (drifted) {
+      throw new ElizaError("Exact Docker target occurrence changed", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_DRIFT",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          driftedKey: drifted[0],
+        },
+        severity: "fatal",
+      });
+    }
+
+    const configuredEnvironment = containersEnv.environment();
+    const targetEnvironment =
+      typeof node.metadata.environment === "string" ? node.metadata.environment : null;
+    if (targetEnvironment !== configuredEnvironment) {
+      throw new ElizaError("Exact Docker target belongs to a different environment", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_ENVIRONMENT_MISMATCH",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          configuredEnvironment,
+          targetEnvironment,
+        },
+        severity: "fatal",
+      });
+    }
+
+    if (
+      !node.hostname.trim() ||
+      !Number.isInteger(node.ssh_port) ||
+      node.ssh_port < 1 ||
+      node.ssh_port > 65_535 ||
+      !node.ssh_user.trim() ||
+      !node.host_key_fingerprint?.trim()
+    ) {
+      throw new ElizaError("Exact Docker target lacks pinned SSH authority", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_SSH_AUTHORITY_INVALID",
+        context: { nodeRecordId: target.nodeRecordId, nodeId: target.nodeId },
+        severity: "fatal",
+      });
+    }
+
+    const capacityProvisional =
+      node.metadata.capacityProvisional === true || node.metadata.capacityProvisional === "true";
+    const excluded = options.excludeNodeId === node.node_id;
+    const platformCompatible = isExactDockerTargetPlatformCompatible(
+      node,
+      options.requiredPlatform,
+    );
+    if (
+      !node.enabled ||
+      node.status !== "healthy" ||
+      node.placement_state !== "open" ||
+      capacityProvisional ||
+      excluded ||
+      !platformCompatible
+    ) {
+      throw new ElizaError("Exact Docker target is no longer eligible for placement", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_INELIGIBLE",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          enabled: node.enabled,
+          status: node.status,
+          placementState: node.placement_state,
+          capacityProvisional,
+          excluded,
+          platformCompatible,
+        },
+        severity: "fatal",
+      });
+    }
+
+    return node;
+  }
+
+  private assertExactDockerHostAuthorityStable(
+    expected: DockerNode,
+    actual: DockerNode,
+    target: SandboxExactDockerTarget,
+  ): void {
+    const drifted = [
+      ["hostname", expected.hostname, actual.hostname],
+      ["sshPort", expected.ssh_port, actual.ssh_port],
+      ["sshUser", expected.ssh_user, actual.ssh_user],
+      ["hostKeyFingerprint", expected.host_key_fingerprint, actual.host_key_fingerprint],
+    ].find(([, before, after]) => before !== after);
+    if (drifted) {
+      throw new ElizaError("Exact Docker target host authority changed during live attestation", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_HOST_AUTHORITY_DRIFT",
+        context: {
+          nodeRecordId: target.nodeRecordId,
+          nodeId: target.nodeId,
+          driftedKey: drifted[0],
+        },
+        severity: "fatal",
+      });
+    }
+  }
+
+  /**
+   * Last remote proof before exact-success settlement. The boot comparison and
+   * immutable Docker inspect share one shell invocation, so reconnecting after
+   * a reboot cannot make a successor occurrence look like the created target.
+   */
+  private async assertExactReplacementCandidateProof(
+    locator: SandboxReplacementCleanupLocator,
+    node: DockerNodeConnection,
+  ): Promise<void> {
+    if (
+      !isCanonicalNodeAuthorityUuid(locator.nodeIncarnation) ||
+      !isCanonicalPublishedDockerContainerId(locator.containerId) ||
+      !locator.replacementAttemptId
+    ) {
+      throw new ElizaError("Exact Docker candidate proof requires complete identity", {
+        code: "SANDBOX_EXACT_DOCKER_CANDIDATE_PROOF_IDENTITY_INVALID",
+        context: {
+          nodeId: locator.nodeId,
+          replacementAttemptId: locator.replacementAttemptId ?? null,
+          containerId: locator.containerId ?? null,
+        },
+        severity: "fatal",
+      });
+    }
+
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user,
+    );
+    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.State.Running}}`;
+    const proofOutput = await ssh.exec(
+      buildExactDockerBootFencedCommand(
+        locator.nodeIncarnation,
+        `docker inspect --format ${shellQuote(format)} ${shellQuote(locator.containerId)}`,
+      ),
+      DOCKER_CMD_TIMEOUT_MS,
+    );
+    const lines = proofOutput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const fields = lines.length === 1 ? lines[0]!.split("|") : [];
+    const [observedContainerId, observedAttemptId, observedName, observedRunning] = fields;
+    if (
+      fields.length !== 4 ||
+      observedContainerId !== locator.containerId ||
+      observedAttemptId !== locator.replacementAttemptId ||
+      observedName !== `/${locator.containerName}` ||
+      observedRunning !== "true"
+    ) {
+      throw new ElizaError("Exact Docker candidate proof does not match the created candidate", {
+        code: "SANDBOX_EXACT_DOCKER_CANDIDATE_PROOF_MISMATCH",
+        context: {
+          nodeId: locator.nodeId,
+          replacementAttemptId: locator.replacementAttemptId,
+          expectedContainerId: locator.containerId,
+          observedContainerId: observedContainerId ?? null,
+          observedAttemptId: observedAttemptId ?? null,
+          observedName: observedName ?? null,
+          observedRunning: observedRunning ?? null,
+        },
+        severity: "fatal",
+      });
+    }
   }
 
   private async createWithRetries(
@@ -1974,6 +2228,35 @@ export class DockerSandboxProvider implements SandboxProvider {
       validateEnvValue(key, value);
     }
     const providerManagesCapacity = !config.onReplacementCreateIntent;
+    const containerMemoryMb =
+      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
+    const exactRequiredArchitecture = requiredArchitectureForPlatform(imagePlatform);
+    if (config.exactDockerTarget && !exactRequiredArchitecture) {
+      throw new ElizaError("Exact Docker targeting requires a supported image architecture", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_PLATFORM_REQUIRED",
+        context: { imagePlatform: imagePlatform ?? null },
+        severity: "fatal",
+      });
+    }
+    if (
+      config.exactDockerTarget &&
+      (!Number.isFinite(containerMemoryMb) || containerMemoryMb <= 0)
+    ) {
+      throw new ElizaError("Exact Docker targeting requires a positive memory ceiling", {
+        code: "SANDBOX_EXACT_DOCKER_TARGET_MEMORY_CEILING_REQUIRED",
+        context: { containerMemoryMb },
+        severity: "fatal",
+      });
+    }
+    // Environment and immutable occurrence authority are safety boundaries,
+    // so exact callers validate them before unrelated route configuration can
+    // mask a cross-environment or stale-target rejection.
+    const preResolvedExactNode = config.exactDockerTarget
+      ? await this.resolveExactDockerTarget(config.exactDockerTarget, {
+          requiredPlatform: imagePlatform,
+          excludeNodeId: config.excludeNodeId,
+        })
+      : null;
 
     const env = currentHeadscaleRouteEnv();
     // Pass the same snapshot to requiresHeadscaleRoute so that both the
@@ -1992,32 +2275,68 @@ export class DockerSandboxProvider implements SandboxProvider {
       throw new Error(errorMessage);
     }
 
-    // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
-    // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
-    // DB round-trips without a transaction boundary; the UNIQUE port index and
+    // 2. Resolve an exact caller-owned occurrence, or select a target node via
+    // DockerNodeManager (least-loaded, DB-backed) for legacy placement.
+    // Exact targeting is deliberately a separate structural branch: it never
+    // discovers, autoscales, falls back to seed env, or reselects another node.
+    // Capacity remains owned by the durable intent callback below.
+    // Legacy getAvailableNode + incrementAllocated + getUsedDockerHostPorts are
+    // three sequential DB round-trips without a transaction boundary; the UNIQUE port index and
     // retry logic provide safety against concurrent capacity changes.
     // The ceiling admitted here is the same value applied to `docker create`
     // below, so a node can never be accepted against one number and loaded with
-    // another. Zero means the operator disabled ceilings entirely, which opts
-    // this container out of memory admission rather than admitting it for free.
-    const containerMemoryMb =
-      config.container?.memoryMb ?? containersEnv.agentContainerMemoryLimitMb();
-    let dbNode = await dockerNodeManager.getAvailableNode({
-      requiredPlatform: imagePlatform,
-      excludeNodeId: config.excludeNodeId,
-      ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
-    });
-    if (!dbNode) {
-      dbNode = await this.provisionAutoscaledNodeForAgent(
-        {
-          image: resolvedImage,
-          platform: imagePlatform,
-        },
-        remoteCompletionTracker,
+    // another. Legacy zero-ceiling callers retain their explicit opt-out;
+    // exact targeting rejects it above because it would skip live admission.
+    let dbNode: DockerNode | null;
+    if (config.exactDockerTarget) {
+      dbNode = preResolvedExactNode!;
+      const exactTargetReady = await dockerNodeManager.ensureExactNodeReady(dbNode, {
+        expectedNodeIncarnation: config.exactDockerTarget.nodeIncarnation,
+        requiredPlatform: imagePlatform!,
+        requiredMemoryMb: containerMemoryMb,
+      });
+      // The live probe may attest a new boot occurrence, and any concurrent
+      // route/pin/state mutation must be observed on primary before candidate
+      // preparation or the durable intent can run. Never reuse the pre-probe
+      // row and never fall through to another node.
+      const postAttestationNode = await this.resolveExactDockerTarget(config.exactDockerTarget, {
+        requiredPlatform: imagePlatform,
+        excludeNodeId: config.excludeNodeId,
+      });
+      this.assertExactDockerHostAuthorityStable(
+        dbNode,
+        postAttestationNode,
+        config.exactDockerTarget,
       );
+      dbNode = postAttestationNode;
+      if (!exactTargetReady) {
+        throw new ElizaError("Exact Docker target failed live placement readiness", {
+          code: "SANDBOX_EXACT_DOCKER_TARGET_NOT_READY",
+          context: {
+            nodeRecordId: config.exactDockerTarget.nodeRecordId,
+            nodeId: config.exactDockerTarget.nodeId,
+          },
+          severity: "ephemeral",
+        });
+      }
+    } else {
+      dbNode = await dockerNodeManager.getAvailableNode({
+        requiredPlatform: imagePlatform,
+        excludeNodeId: config.excludeNodeId,
+        ...(containerMemoryMb > 0 ? { requiredMemoryMb: containerMemoryMb } : {}),
+      });
+      if (!dbNode) {
+        dbNode = await this.provisionAutoscaledNodeForAgent(
+          {
+            image: resolvedImage,
+            platform: imagePlatform,
+          },
+          remoteCompletionTracker,
+        );
+      }
     }
 
-    if (remoteCompletionTracker) {
+    if (remoteCompletionTracker && !config.exactDockerTarget) {
       const selectedNodeId = dbNode?.node_id ?? null;
       const selectedRecordId = dbNode?.id ?? null;
       // Selection may have read a replica snapshot before TOFU persisted its
@@ -2514,6 +2833,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           ? { exactReplacement: { containerName, replacementAttemptId } }
           : {}),
       });
+      const occurrenceFencedDockerCreateCmd = config.exactDockerTarget
+        ? buildExactDockerBootFencedCommand(
+            config.exactDockerTarget.nodeIncarnation,
+            dockerCreateWithSecretEnvCmd,
+          )
+        : dockerCreateWithSecretEnvCmd;
 
       // Self-heal nodes missing the shared bridge network (Robot cores never
       // run the cloud-init bootstrap; the network can also be pruned away).
@@ -2575,7 +2900,7 @@ export class DockerSandboxProvider implements SandboxProvider {
               remoteCompletionTracker ? replacementAttemptId : undefined,
             );
             return ssh.execStdin(
-              dockerCreateWithSecretEnvCmd,
+              occurrenceFencedDockerCreateCmd,
               envTransport.secretInput,
               DOCKER_CMD_TIMEOUT_MS,
             );
@@ -2633,7 +2958,18 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      await ssh.exec(`docker start ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      const dockerStartCommand = `docker start ${shellQuote(
+        config.exactDockerTarget ? containerId : containerName,
+      )}`;
+      await ssh.exec(
+        config.exactDockerTarget
+          ? buildExactDockerBootFencedCommand(
+              config.exactDockerTarget.nodeIncarnation,
+              dockerStartCommand,
+            )
+          : dockerStartCommand,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
@@ -3285,7 +3621,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     const fenceMutation = (command: string): string =>
       expectedNodeIncarnation
-        ? buildReplacementCleanupBootFencedCommand(expectedNodeIncarnation, command)
+        ? buildExactDockerBootFencedCommand(expectedNodeIncarnation, command)
         : command;
     let stopErr: unknown;
     let rmErr: unknown;
@@ -3380,7 +3716,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // id-less absence settles only with a quiescent producer marker or a
         // durable exact candidate observation from an earlier cleanup pass.
         const cleanupReceipt = await exactCleanupSsh.exec(
-          buildReplacementCleanupBootFencedCommand(
+          buildExactDockerBootFencedCommand(
             locator.nodeIncarnation!,
             buildReplacementSecretArtifactsCleanupCommand(
               locator.containerName,
@@ -3476,7 +3812,7 @@ export class DockerSandboxProvider implements SandboxProvider {
           !observedCandidateId
         ) {
           const observationReceipt = await exactCleanupSsh.exec(
-            buildReplacementCleanupBootFencedCommand(
+            buildExactDockerBootFencedCommand(
               locator.nodeIncarnation!,
               buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
             ),

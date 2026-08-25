@@ -13,26 +13,46 @@ const realDockerNodeWorkloads = { ...realDockerNodeWorkloadsNs };
 const realDockerSsh = { ...realDockerSshNs };
 const realNodeDisk = { ...realNodeDiskNs };
 
+const NODE_INCARNATION = "00000000-0000-4000-8000-000000000099";
+const NODE_HISTORY_ID = "00000000-0000-4000-8000-000000000100";
 const events: string[] = [];
 const updateStatus = mock(async (_nodeId: string, status: string) => {
   events.push(`status:${status}`);
 });
 const invalidateNodeIncarnation = mock(async () => ({}));
+const attestNodeIncarnation = mock(async () => {
+  events.push("repo:attest-incarnation");
+  return {};
+});
 const sshConnect = mock(async () => {
   events.push("ssh:connect");
 });
-const sshExec = mock(async (command: string) => {
+const defaultSshExec = async (command: string) => {
   if (command === "cat /proc/sys/kernel/random/boot_id") {
-    return "00000000-0000-4000-8000-000000000099";
+    return NODE_INCARNATION;
+  }
+  if (command.startsWith("docker info --format") && command.includes("/proc/pressure/io")) {
+    return [
+      "DOCKER-ID-123|x86_64",
+      "---IO-PRESSURE---",
+      "full avg10=0.10 avg60=0.20 avg300=0.30 total=123",
+      "---MEMINFO---",
+      "MemTotal:       67108864 kB",
+      "MemAvailable:   62914560 kB",
+      "---MEM-COMMITTED---",
+      "---MEM-COMMITTED-STATUS---",
+      "ok",
+    ].join("\n");
   }
   return "DOCKER-ID-123|x86_64";
-});
+};
+const sshExec = mock(defaultSshExec);
 
 mock.module("../../db/repositories/docker-nodes", () => ({
   dockerNodesRepository: {
     updateStatus,
     invalidateNodeIncarnation,
-    attestNodeIncarnation: async () => ({}),
+    attestNodeIncarnation,
     setEmbeddingSidecarHealth: async () => undefined,
   },
 }));
@@ -43,10 +63,13 @@ mock.module("./docker-node-workloads", () => ({
 
 mock.module("./docker-ssh", () => ({
   DockerSSHClient: {
-    getClient: () => ({
-      connect: sshConnect,
-      exec: sshExec,
-    }),
+    getClient: () => {
+      events.push("ssh:get-client");
+      return {
+        connect: sshConnect,
+        exec: sshExec,
+      };
+    },
   },
 }));
 
@@ -77,6 +100,7 @@ function node(): DockerNode {
     ssh_user: "root",
     capacity: 8,
     enabled: true,
+    placement_state: "open",
     status: "unknown",
     allocated_count: 0,
     host_key_fingerprint: "SHA256:test",
@@ -129,8 +153,10 @@ beforeEach(() => {
   events.length = 0;
   updateStatus.mockClear();
   invalidateNodeIncarnation.mockClear();
+  attestNodeIncarnation.mockClear();
   sshConnect.mockClear();
   sshExec.mockClear();
+  sshExec.mockImplementation(defaultSshExec);
 });
 
 afterEach(() => {
@@ -157,5 +183,138 @@ describe("Docker node Hetzner health authority", () => {
     expect(events).toEqual(["provider:get:4242", "status:offline"]);
     expect(sshConnect).not.toHaveBeenCalled();
     expect(updateStatus).not.toHaveBeenCalledWith("node-health", "healthy");
+  });
+
+  test("keeps generic memory admission on its running-only Docker enumeration", async () => {
+    const manager = new DockerNodeManager(provider(server()));
+
+    await expect(manager.ensureNodeReady(node(), { requiredMemoryMb: 3_072 })).resolves.toBe(true);
+
+    const probeCommand = sshExec.mock.calls
+      .map(([command]) => command)
+      .find((command) => command.startsWith("docker info --format"));
+    expect(probeCommand).toContain("docker ps -q | xargs -r docker inspect");
+    expect(probeCommand).not.toContain("docker ps -aq");
+  });
+
+  test("attests an exact Cloud occurrence before SSH and skips logical status mutation", async () => {
+    const manager = new DockerNodeManager(provider(server()));
+    const exactNode: DockerNode = {
+      ...node(),
+      status: "healthy",
+      node_incarnation: NODE_INCARNATION,
+      current_node_history_id: NODE_HISTORY_ID,
+    };
+
+    await expect(
+      manager.ensureExactNodeReady(exactNode, {
+        expectedNodeIncarnation: NODE_INCARNATION,
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 3_072,
+      }),
+    ).resolves.toBe(true);
+
+    expect(events.slice(0, 3)).toEqual(["provider:get:4242", "ssh:get-client", "ssh:connect"]);
+    expect(attestNodeIncarnation).toHaveBeenCalledWith({
+      id: exactNode.id,
+      nodeId: exactNode.node_id,
+      expectedIncarnation: NODE_INCARNATION,
+      expectedHostKeyFingerprint: exactNode.host_key_fingerprint,
+      observedIncarnation: NODE_INCARNATION,
+    });
+    expect(events).toContain("repo:attest-incarnation");
+    expect(updateStatus).not.toHaveBeenCalled();
+    const probeCommand = sshExec.mock.calls
+      .map(([command]) => command)
+      .find((command) => command.startsWith("docker info --format"));
+    expect(probeCommand).toContain("docker ps -aq");
+  });
+
+  test("never mutates logical status when exact provider attestation fails", async () => {
+    const manager = new DockerNodeManager(provider(server(9999)));
+    const exactNode: DockerNode = {
+      ...node(),
+      status: "healthy",
+      node_incarnation: NODE_INCARNATION,
+      current_node_history_id: NODE_HISTORY_ID,
+    };
+
+    await expect(
+      manager.ensureExactNodeReady(exactNode, {
+        expectedNodeIncarnation: NODE_INCARNATION,
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 3_072,
+      }),
+    ).resolves.toBe(false);
+
+    expect(events).toEqual(["provider:get:4242"]);
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  test("never mutates logical status when the exact Docker ID is empty", async () => {
+    sshExec.mockImplementation(async (command: string) => {
+      if (command.startsWith("docker info --format")) {
+        return "|x86_64";
+      }
+      return defaultSshExec(command);
+    });
+    const manager = new DockerNodeManager(provider(server()));
+    const exactNode: DockerNode = {
+      ...node(),
+      status: "healthy",
+      node_incarnation: NODE_INCARNATION,
+      current_node_history_id: NODE_HISTORY_ID,
+    };
+
+    await expect(
+      manager.ensureExactNodeReady(exactNode, {
+        expectedNodeIncarnation: NODE_INCARNATION,
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 3_072,
+      }),
+    ).resolves.toBe(false);
+
+    expect(invalidateNodeIncarnation).toHaveBeenCalled();
+    expect(updateStatus).not.toHaveBeenCalled();
+  });
+
+  test("rejects an unbounded resident from exact memory admission", async () => {
+    sshExec.mockImplementation(async (command: string) => {
+      if (command === "cat /proc/sys/kernel/random/boot_id") {
+        return NODE_INCARNATION;
+      }
+      if (command.startsWith("docker info --format")) {
+        return [
+          "DOCKER-ID-123|x86_64",
+          "---IO-PRESSURE---",
+          "full avg10=0.10 avg60=0.20 avg300=0.30 total=123",
+          "---MEMINFO---",
+          "MemTotal:       67108864 kB",
+          "MemAvailable:   62914560 kB",
+          "---MEM-COMMITTED---",
+          "0",
+          "---MEM-COMMITTED-STATUS---",
+          "ok",
+        ].join("\n");
+      }
+      return defaultSshExec(command);
+    });
+    const manager = new DockerNodeManager(provider(server()));
+    const exactNode: DockerNode = {
+      ...node(),
+      status: "healthy",
+      node_incarnation: NODE_INCARNATION,
+      current_node_history_id: NODE_HISTORY_ID,
+    };
+
+    await expect(
+      manager.ensureExactNodeReady(exactNode, {
+        expectedNodeIncarnation: NODE_INCARNATION,
+        requiredPlatform: "linux/amd64",
+        requiredMemoryMb: 3_072,
+      }),
+    ).resolves.toBe(false);
+
+    expect(updateStatus).not.toHaveBeenCalled();
   });
 });

@@ -244,6 +244,7 @@ export const HOST_RESERVE_MB = 1024;
 /** Separates the meminfo and committed-ceiling sections in the readiness probe. */
 const READINESS_PROBE_MEMINFO_MARKER = "---MEMINFO---";
 const READINESS_PROBE_COMMITTED_MARKER = "---MEM-COMMITTED---";
+const READINESS_PROBE_COMMITTED_STATUS_MARKER = "---MEM-COMMITTED-STATUS---";
 
 /**
  * Slice one section out of the readiness probe's concatenated output.
@@ -307,6 +308,31 @@ export function parseNodeMemorySnapshot(
   }
 
   return { memTotalMb, memAvailableMb, declaredCeilingMb };
+}
+
+/**
+ * Exact placement cannot confuse "there are no resident containers" with a
+ * failed Docker enumeration. The remote probe emits this status only after
+ * both `docker ps` and every requested `docker inspect` completed.
+ */
+function hasCompleteCommittedMemoryEnumeration(
+  committedSection: string,
+  statusSection: string,
+): boolean {
+  if (statusSection.trim() !== "ok") return false;
+  return committedSection
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .every((line) => {
+      if (!/^\d+$/.test(line)) return false;
+      const bytes = Number(line);
+      // A resident container with no Docker memory ceiling (`0`) cannot be
+      // assigned a finite commitment. Exact replacement admission therefore
+      // fails closed instead of treating an unbounded stopped container as
+      // free capacity. An empty section still represents zero containers.
+      return Number.isSafeInteger(bytes) && bytes > 0;
+    });
 }
 
 export interface MemoryAdmissionVerdict {
@@ -549,6 +575,18 @@ export interface NodeSelectionOptions {
    * hand to `docker create`, so the admitted and applied ceilings cannot drift.
    */
   requiredMemoryMb?: number;
+  /**
+   * Exact caller-owned boot occurrence that a direct, non-selecting readiness
+   * probe must observe. Normal placement leaves this absent and retains its
+   * ordinary attestation behavior.
+   */
+  expectedNodeIncarnation?: string;
+}
+
+export interface ExactNodeReadinessOptions {
+  expectedNodeIncarnation: string;
+  requiredPlatform: string;
+  requiredMemoryMb: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -1150,7 +1188,36 @@ export class DockerNodeManager {
    * healthy rows from receiving new work when SSH credentials or the Docker
    * daemon are no longer valid.
    */
+  async ensureExactNodeReady(
+    node: DockerNode,
+    options: ExactNodeReadinessOptions,
+  ): Promise<boolean> {
+    if (
+      !requiredArchitectureForPlatform(options.requiredPlatform) ||
+      !Number.isFinite(options.requiredMemoryMb) ||
+      options.requiredMemoryMb <= 0
+    ) {
+      return false;
+    }
+    return this.ensureNodeReadyWithPolicy(
+      node,
+      {
+        ...options,
+        enforcePlacementIoPressure: true,
+      },
+      true,
+    );
+  }
+
   async ensureNodeReady(node: DockerNode, options: NodeSelectionOptions = {}): Promise<boolean> {
+    return this.ensureNodeReadyWithPolicy(node, options, false);
+  }
+
+  private async ensureNodeReadyWithPolicy(
+    node: DockerNode,
+    options: NodeSelectionOptions,
+    requireCompleteAttestation: boolean,
+  ): Promise<boolean> {
     try {
       if (isTypedHetznerCloudNode(node)) {
         await attestHetznerCloudNode(node, this.computeProvider());
@@ -1172,9 +1239,24 @@ export class DockerNodeManager {
       // The memory facts ride the same round trip: reading them separately would
       // race the placement they are meant to gate.
       if (typeof options.requiredMemoryMb === "number") {
+        const committedMemoryProbe = requireCompleteAttestation
+          ? [
+              // A stopped exact-target resident retains restart authority and
+              // its memory ceiling, so the exact reservation counts it too.
+              `echo '${READINESS_PROBE_COMMITTED_MARKER}'`,
+              "committed_status=failed",
+              "committed_memory=''",
+              `if container_ids=$(docker ps -aq 2>/dev/null); then if test -n "$container_ids"; then if committed_memory=$(printf '%s\\n' "$container_ids" | xargs docker inspect -f '{{.HostConfig.Memory}}' 2>/dev/null); then committed_status=ok; fi; else committed_status=ok; fi; fi`,
+              'if test "$committed_status" = ok && test -n "$committed_memory"; then printf \'%s\\n\' "$committed_memory"; fi',
+              `echo '${READINESS_PROBE_COMMITTED_STATUS_MARKER}'`,
+              "printf '%s\\n' \"$committed_status\"",
+            ].join("; ")
+          : // Generic placement keeps its established running-only,
+            // fail-open probe semantics byte-for-byte.
+            `echo '${READINESS_PROBE_COMMITTED_MARKER}'; docker ps -q | xargs -r docker inspect -f '{{.HostConfig.Memory}}' 2>/dev/null || true`;
         extraSections.push(
           `echo '${READINESS_PROBE_MEMINFO_MARKER}'; cat /proc/meminfo 2>/dev/null || true`,
-          `echo '${READINESS_PROBE_COMMITTED_MARKER}'; docker ps -q | xargs -r docker inspect -f '{{.HostConfig.Memory}}' 2>/dev/null || true`,
+          committedMemoryProbe,
         );
       }
       const probeCommand =
@@ -1186,21 +1268,56 @@ export class DockerNodeManager {
       const psiSection = readProbeSection(probeOutput, READINESS_PROBE_PSI_MARKER);
       const { dockerId, architecture } = parseDockerInfoProbe(dockerSection);
       if (dockerId.trim()) {
-        await this.attestBackupSourceBoot(node, ssh);
-        if (
-          !isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform) &&
-          requiredArchitectureForPlatform(options.requiredPlatform)
-        ) {
+        if (options.expectedNodeIncarnation) {
+          const observedIncarnation = parseLinuxBootId(
+            await ssh.exec(NODE_BOOT_ID_COMMAND, 10_000),
+          );
+          if (hasTypedBackupSourceClassification(node)) {
+            if (!node.host_key_fingerprint?.trim()) {
+              throw new Error("Exact node boot attestation requires a persisted SSH host-key pin");
+            }
+            await dockerNodesRepository.attestNodeIncarnation({
+              id: node.id,
+              nodeId: node.node_id,
+              expectedIncarnation: node.node_incarnation,
+              expectedHostKeyFingerprint: node.host_key_fingerprint,
+              observedIncarnation,
+            });
+          }
+          if (observedIncarnation !== options.expectedNodeIncarnation) {
+            logger.warn("[docker-node-manager] Exact node boot occurrence changed", {
+              nodeId: node.node_id,
+              expectedNodeIncarnation: options.expectedNodeIncarnation,
+              observedNodeIncarnation: observedIncarnation,
+            });
+            return false;
+          }
+        } else {
+          await this.attestBackupSourceBoot(node, ssh);
+        }
+        const requiredArchitecture = requiredArchitectureForPlatform(options.requiredPlatform);
+        const architectureCompatible = requireCompleteAttestation
+          ? Boolean(requiredArchitecture && architecture === requiredArchitecture)
+          : isArchitectureCompatibleWithPlatform(architecture, options.requiredPlatform);
+        if (!architectureCompatible) {
           logger.warn("[docker-node-manager] Node is reachable but incompatible with image", {
             nodeId: node.node_id,
             architecture,
             requiredPlatform: options.requiredPlatform,
+            completeAttestationRequired: requireCompleteAttestation,
           });
           return false;
         }
         const ioPressure = options.enforcePlacementIoPressure
           ? parseIoPressureFullAvg60(psiSection)
           : null;
+        if (requireCompleteAttestation && ioPressure === null) {
+          logger.warn(
+            "[docker-node-manager] Exact node refused: IO pressure facts are unavailable",
+            { nodeId: node.node_id },
+          );
+          return false;
+        }
         if (ioPressure !== null && ioPressure >= PLACEMENT_MAX_IO_PRESSURE_FULL_AVG60) {
           // No DB status write: IO overload is transient and node-status flips
           // are reserved for dead/unreachable daemons (see the canonical-node
@@ -1215,7 +1332,33 @@ export class DockerNodeManager {
         if (typeof options.requiredMemoryMb === "number") {
           const meminfoSection = readProbeSection(probeOutput, READINESS_PROBE_MEMINFO_MARKER);
           const committedSection = readProbeSection(probeOutput, READINESS_PROBE_COMMITTED_MARKER);
+          const committedStatusSection = readProbeSection(
+            probeOutput,
+            READINESS_PROBE_COMMITTED_STATUS_MARKER,
+          );
           const snapshot = parseNodeMemorySnapshot(meminfoSection, committedSection);
+          const completeCommittedEnumeration = hasCompleteCommittedMemoryEnumeration(
+            committedSection,
+            committedStatusSection,
+          );
+          const completeMemoryFacts = Boolean(
+            snapshot &&
+              Number.isSafeInteger(snapshot.memTotalMb) &&
+              Number.isSafeInteger(snapshot.memAvailableMb) &&
+              Number.isSafeInteger(snapshot.declaredCeilingMb) &&
+              snapshot.memAvailableMb >= 0 &&
+              snapshot.memAvailableMb <= snapshot.memTotalMb &&
+              completeCommittedEnumeration,
+          );
+          if (requireCompleteAttestation && !completeMemoryFacts) {
+            logger.warn("[docker-node-manager] Exact node refused: memory facts are incomplete", {
+              nodeId: node.node_id,
+              requiredMemoryMb: options.requiredMemoryMb,
+              hasSnapshot: Boolean(snapshot),
+              completeCommittedEnumeration,
+            });
+            return false;
+          }
           if (!snapshot) {
             // Admitting here is the deliberate direction, but it is the one
             // branch that restores pre-gate behaviour, so it must never be
@@ -1254,11 +1397,17 @@ export class DockerNodeManager {
             }
           }
         }
-        await dockerNodesRepository.updateStatus(node.node_id, "healthy");
+        // Exact-target callers already required `healthy` on their immutable
+        // primary row and re-read that row after this probe. A logical-node-id
+        // status write here could hit a delete/reinsert successor (ABA), so it
+        // remains exclusive to ordinary placement/health callers.
+        if (!requireCompleteAttestation) {
+          await dockerNodesRepository.updateStatus(node.node_id, "healthy");
+        }
         return true;
       }
       await this.invalidateBackupSourceBoot(node);
-      if (isAutoscaledNode(node)) {
+      if (!requireCompleteAttestation && isAutoscaledNode(node)) {
         await dockerNodesRepository.updateStatus(node.node_id, "degraded");
       } else {
         logger.warn(
@@ -1283,7 +1432,7 @@ export class DockerNodeManager {
       }
       // See healthCheckNode for rationale: canonical nodes are never marked
       // offline from a transient ssh failure during scheduling.
-      if (isAutoscaledNode(node)) {
+      if (!requireCompleteAttestation && isAutoscaledNode(node)) {
         await dockerNodesRepository.updateStatus(node.node_id, "offline").catch((updateError) => {
           logger.warn("[docker-node-manager] Failed to mark node offline", {
             nodeId: node.node_id,

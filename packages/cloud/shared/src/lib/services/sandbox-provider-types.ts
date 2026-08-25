@@ -237,6 +237,13 @@ export interface SandboxProvider {
    * unsupported.
    */
   readonly replacementCreateSettlementCapability?: "exact-success";
+  /**
+   * Declares that `exactDockerTarget` is enforced as an immutable Docker-node
+   * occurrence instead of being treated as a placement hint. Callers must
+   * check strictly for this value before handing a reserved restore or
+   * replacement target to an otherwise generic provider.
+   */
+  readonly exactDockerTargetCapability?: "immutable-node-occurrence";
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   /**
    * Tears down a sandbox for deletion and reports whether the provider proved
@@ -307,6 +314,20 @@ export interface SandboxContainerLaunchConfig {
   healthCheckPath?: string;
 }
 
+/**
+ * Caller-owned Docker placement authority for one exact node occurrence.
+ *
+ * The provider resolves `nodeRecordId` on the primary database and requires
+ * every other field to match that same record. It never discovers, autoscales,
+ * or reselects another node when this opt-in contract is present.
+ */
+export interface SandboxExactDockerTarget {
+  readonly nodeRecordId: string;
+  readonly nodeId: string;
+  readonly nodeIncarnation: string;
+  readonly nodeHistoryId: string;
+}
+
 export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
@@ -340,6 +361,13 @@ export interface SandboxCreateConfig {
    * Used for retry-on-failure to avoid re-selecting a node that just failed.
    */
   excludeNodeId?: string;
+  /**
+   * Pins this invocation to one immutable Docker-node occurrence. This is an
+   * exact-success-only contract: the caller owns `replacementAttemptId` and
+   * all durable replacement callbacks, including capacity reservation in
+   * `onReplacementCreateIntent`. Absence preserves legacy placement behavior.
+   */
+  exactDockerTarget?: SandboxExactDockerTarget;
   /**
    * When false, an existing Headscale node under the agent's deterministic
    * hostname is preserved and recorded instead of deleted pre-provision
