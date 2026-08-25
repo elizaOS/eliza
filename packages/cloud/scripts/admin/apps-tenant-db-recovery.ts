@@ -54,12 +54,13 @@
  *   SELECT pg_reload_conf();
  */
 
-import { spawnSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   statSync,
@@ -88,8 +89,16 @@ export const POOLER_PORT = 6432;
 /** Server-side twin settings: the disposable target id and its capability. */
 const SETTING_TARGET_ID = "eliza.restore_target_id";
 const SETTING_CAPABILITY = "eliza.restore_capability";
-/** Advisory key serializing capability claims against one restore target. */
+/** Advisory key held as a SESSION lock by the drill process for the whole run. */
 export const DRILL_ADVISORY_LOCK_KEY = 0x4552_5a44;
+/**
+ * Distinct advisory key for the transactional claim record. It MUST differ
+ * from DRILL_ADVISORY_LOCK_KEY: the session lock is held by a dedicated
+ * connection while the claim runs in another session, and two sessions
+ * requesting the same advisory key would deadlock (session lock held by the
+ * holder blocks the claim's xact lock until the 24h hold expires).
+ */
+export const DRILL_CLAIM_LOCK_KEY = 0x4552_5a45;
 const SIGNING_KEY_ENV = "ELIZA_RESTORE_CAPABILITY_KEY";
 
 export class RecoveryDrillError extends Error {
@@ -520,7 +529,7 @@ export function buildClaimExclusivitySql(
     .digest("hex");
   return guardPsqlScript(
     `BEGIN;
-SELECT pg_advisory_xact_lock(${DRILL_ADVISORY_LOCK_KEY});
+SELECT pg_advisory_xact_lock(${DRILL_CLAIM_LOCK_KEY});
 CREATE TABLE IF NOT EXISTS public.eliza_restore_drill_claim (
   capability_sha256 text PRIMARY KEY,
   claimed_at timestamptz NOT NULL DEFAULT now()
@@ -1190,6 +1199,31 @@ function assertTenantAcl(
   }
 }
 
+/**
+ * Durable same-capability retry marker: true when the target's claim table
+ * holds a row for exactly this capability's serialized bytes. Role remnants
+ * are exempted from the clean-target collision check ONLY when this returns
+ * true — a fresh target carrying archive-named roles still refuses.
+ */
+export function targetHasDrillClaim(
+  targetDsn: string,
+  capabilityEnvelope: string,
+): boolean {
+  const claimId = createHash("sha256").update(capabilityEnvelope).digest("hex");
+  const out = run("psql", [
+    "--no-psqlrc",
+    "--tuples-only",
+    "--no-align",
+    "--set",
+    "ON_ERROR_STOP=1",
+    "--dbname",
+    targetDsn,
+    "--command",
+    `SELECT count(*) FROM public.eliza_restore_drill_claim WHERE capability_sha256 = '${claimId}'`,
+  ]).trim();
+  return Number(out) > 0;
+}
+
 /** Quote a value as a SQL string literal for generated drill SQL. */
 export function quoteSqlLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
@@ -1209,49 +1243,151 @@ export const DRILL_LOCK_SETTLE_MS = 1500;
 /** How long the lock-holder may sleep: bounded so a crashed drill (killed
  * holder) cannot pin the lock longer than the capability TTL ceiling. */
 export const DRILL_LOCK_MAX_SECONDS = 24 * 60 * 60;
+/** Handshake row the holder writes on successful lock acquisition. */
+export const DRILL_LOCK_HANDSHAKE = "drill-lock-held";
+/** Refusal sentinel: a granted lock exists elsewhere, so this holder exits. */
+export const DRILL_LOCK_REFUSED = "drill-lock-refused";
 
-export function acquireDrillLock(targetDsn: string): ChildProcess {
-  let stderrTail = "";
+export interface DrillLock {
+  child: ChildProcess;
+  handshakePath: string;
+}
+
+/**
+ * Acquire the whole-run session lock with a PROVEN handshake: the holder
+ * writes a sentinel row to stdout only after pg_try_advisory_lock succeeds,
+ * stdout is redirected to a file (no event-loop dependency), and acquisition
+ * is only reported after the sentinel bytes are observed AND the holder
+ * process is confirmed alive. A refused lock emits a distinct refusal
+ * sentinel and exits (its pg_sleep result never runs), so refusal is
+ * observable on disk and never mistaken for acquisition.
+ * The sentinel and the hold-sleep MUST be separate --command args: psql
+ * pipelines each -c as its own PQexec, so the sentinel row streams to
+ * stdout (and onto disk) only after its statement completes, before the
+ * 24h sleep starts. A single -c would buffer both statements' results
+ * until the sleep finished. And the refusal branch must be a string, not
+ * 1/0: Postgres constant-folds an untaken ELSE 1/0 at plan time (the
+ * CASE result type becomes integer, erroring before pg_try_advisory_lock
+ * even runs), which would deadlock the drill on every attempt.
+ */
+export function acquireDrillLock(
+  targetDsn: string,
+  handshakePath: string,
+): DrillLock {
+  // stdout of the holder is redirected to the handshake file: the sentinel
+  // row lands on disk the moment the lock is granted, independent of the
+  // node event loop.
+  const outFd = openSync(handshakePath, "w");
   const child = spawn(
     "psql",
     [
       "--no-psqlrc",
       "--quiet",
+      "--tuples-only",
+      "--no-align",
       "--set",
       "ON_ERROR_STOP=1",
       "--dbname",
       targetDsn,
       "--command",
-      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN true ELSE 1/0 END;\nSELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
+      `SELECT CASE WHEN pg_try_advisory_lock(${DRILL_ADVISORY_LOCK_KEY}) THEN '${DRILL_LOCK_HANDSHAKE}' ELSE '${DRILL_LOCK_REFUSED}' END;`,
+      `SELECT pg_sleep(${DRILL_LOCK_MAX_SECONDS});`,
     ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    { stdio: ["ignore", outFd, "pipe"] },
   );
+  // Proof, not hope: poll the handshake file and the holder PID until the
+  // sentinel is on disk and the process still exists. A refused lock, bad
+  // DSN, or missing psql all exit before writing the sentinel.
+  const deadline = Date.now() + DRILL_LOCK_SETTLE_MS * 4;
+  let stderrTail = "";
   child.stderr?.on("data", (chunk: unknown) => {
     stderrTail = `${stderrTail}${String(chunk)}`.slice(-500);
   });
-  // Synchronous settle wait (Atomics.wait): a refused lock, bad DSN, or
-  // missing psql all surface as a fast process exit, which must be observed
-  // before the caller proceeds — a lock we are not holding must never let
-  // the drill start.
-  Atomics.wait(
-    new Int32Array(new SharedArrayBuffer(4)),
-    0,
-    0,
-    DRILL_LOCK_SETTLE_MS,
-  );
-  if (child.pid === undefined || child.exitCode !== null) {
+  let acquired = false;
+  while (Date.now() < deadline) {
+    Atomics.wait(
+      new Int32Array(new SharedArrayBuffer(4)),
+      0,
+      0,
+      DRILL_LOCK_SETTLE_MS / 4,
+    );
+    let observed = "";
+    try {
+      observed = readFileSync(handshakePath, "utf-8");
+    } catch {
+      // error-policy:J3 the sentinel file may not exist yet — keep polling.
+      observed = "";
+    }
+    if (observed.includes(DRILL_LOCK_HANDSHAKE)) {
+      acquired = true;
+      break;
+    }
+    if (observed.includes(DRILL_LOCK_REFUSED)) {
+      // Another session holds the advisory lock. The holder will exit on its
+      // own (ON_ERROR_STOP stops after the refusal row); no sentinel race.
+      child.kill("SIGKILL");
+      throw new RecoveryDrillError(
+        "LOCK_FAILED",
+        "drill lock is held by another session (refusal sentinel observed)",
+      );
+    }
+    // Holder died before writing the sentinel: the lock was NOT taken.
+    try {
+      if (child.pid !== undefined) process.kill(child.pid, 0);
+    } catch {
+      child.kill("SIGKILL");
+      throw new RecoveryDrillError(
+        "LOCK_FAILED",
+        `drill lock holder exited before confirming acquisition: ${stderrTail.trim().slice(0, 200)}`,
+      );
+    }
+  }
+  if (!acquired) {
     child.kill("SIGKILL");
     throw new RecoveryDrillError(
       "LOCK_FAILED",
-      `could not hold the drill advisory lock (psql exited early: ${stderrTail.trim().slice(0, 200)})`,
+      `drill lock acquisition was not confirmed within the settle window: ${stderrTail.trim().slice(0, 200)}`,
     );
   }
-  return child;
+  return { child, handshakePath };
 }
 
-export function releaseDrillLock(child: ChildProcess): void {
+/**
+ * Fail the drill if the lock holder has died mid-run: a released session
+ * lock means exclusivity no longer holds and destructive work must stop.
+ */
+export function assertDrillLockHeld(lock: DrillLock): void {
+  let observed = "";
+  try {
+    observed = readFileSync(lock.handshakePath, "utf-8");
+  } catch {
+    // error-policy:J3 a vanished sentinel means the holder is gone.
+    observed = "";
+  }
+  let alive = false;
+  try {
+    if (lock.child.pid !== undefined) process.kill(lock.child.pid, 0);
+    alive = true;
+  } catch {
+    alive = false;
+  }
+  if (!alive || !observed.includes(DRILL_LOCK_HANDSHAKE)) {
+    throw new RecoveryDrillError(
+      "LOCK_FAILED",
+      "drill lock holder exited mid-run; exclusivity no longer holds",
+    );
+  }
+}
+
+export function releaseDrillLock(lock: DrillLock): void {
   // SIGKILL drops the server session, which releases the session-level lock.
-  child.kill("SIGKILL");
+  lock.child.kill("SIGKILL");
+  try {
+    // error-policy:J6 best-effort cleanup of the handshake file.
+    rmSync(lock.handshakePath, { force: true });
+  } catch {
+    // error-policy:J6 handshake cleanup must not mask the drill outcome.
+  }
 }
 
 function guardedPsqlFile(
@@ -1353,11 +1489,22 @@ export function executeDrill(options: CliOptions): DrillReport {
     // Session-held exclusivity: a session-level advisory lock held on a
     // dedicated connection for the whole drill, plus the transactional claim,
     // so two drills against the same target cannot interleave destructive
-    // statements and consumption (#23453 review).
-    const lockConn = acquireDrillLock(options.targetDsn);
+    // statements and consumption (#23453 review). Acquisition is proven by a
+    // file handshake before any destructive work starts.
+    const drillLock = acquireDrillLock(
+      options.targetDsn,
+      join(work, "drill-lock-handshake.txt"),
+    );
     try {
+      // Expiry rechecked at the destructive boundary, immediately after the
+      // lock is proven held: a capability that expired during archive
+      // verification/hashing must not arm destructive SQL.
+      verifyRestoreCapability(capability, signingKey, Date.now());
+      assertDrillLockHeld(drillLock);
       // Transactional exclusivity: refuse a different capability on this target
-      // before any destructive statement runs.
+      // before any destructive statement runs. A durable claim record for
+      // THIS capability also marks the target as a same-capability retry, so
+      // role remnants from a failed prior run are exempted below.
       const claimScript = join(work, "claim-exclusivity.sql");
       writeFileSync(claimScript, buildClaimExclusivitySql(capability));
       guardedPsqlFile(
@@ -1365,6 +1512,10 @@ export function executeDrill(options: CliOptions): DrillReport {
         options.targetId,
         capabilityEnvelope,
         claimScript,
+      );
+      const isSameCapabilityRetry = targetHasDrillClaim(
+        options.targetDsn,
+        serializeRestoreCapability(capability),
       );
 
       run("openssl", [
@@ -1408,7 +1559,7 @@ export function executeDrill(options: CliOptions): DrillReport {
       assertNoGlobalRoleCollisions(
         globalsSql,
         authority.existingRoles,
-        archiveRoles,
+        isSameCapabilityRetry ? archiveRoles : [],
       );
       const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
       if (dbMap.length !== manifest.databaseCount) {
@@ -1668,7 +1819,7 @@ export function executeDrill(options: CliOptions): DrillReport {
       return report;
     } finally {
       // Release the session-held drill lock before the workspace is cleaned.
-      releaseDrillLock(lockConn);
+      releaseDrillLock(drillLock);
     }
   } finally {
     // Decrypted tenant data must not outlive the drill. If consumption did

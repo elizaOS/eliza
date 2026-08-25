@@ -18,7 +18,13 @@ import {
   execSync,
   spawnSync,
 } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pg from "pg";
@@ -481,6 +487,76 @@ describe.if(ENABLED)(
       );
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("sidecar");
+    });
+
+    test("substituted archive with a consistent sidecar is still refused by the capability pin", async () => {
+      // The sidecar is rewritten to MATCH the substituted archive, so only
+      // the signed capability pin (REFUSED_ARCHIVE_MISMATCH) can refuse it.
+      // Proves the drill cannot be downgraded to sidecar-only checking.
+      const sourceDb = `${TEST_PREFIX}src3`;
+      const targetDb = `${TEST_PREFIX}target4`;
+      const databaseName = `${TEST_PREFIX}tenant_c`;
+      const tenantRole = `${TEST_PREFIX}tenant_c`;
+      await admin.query(`CREATE DATABASE ${sourceDb}`);
+      const src = new Client({ connectionString: dbUrl(sourceDb) });
+      await src.connect();
+      await src.query(`CREATE TABLE t (id int)`);
+      await src.end();
+
+      const fixture = await buildBackupFixture(
+        sourceDb,
+        databaseName,
+        tenantRole,
+      );
+      // Capability pins the REAL archive...
+      fixture.capabilityFile = mintCapabilityFile(fixture.archiveSha256);
+      // ...then substitute a different, internally-consistent set: a fresh
+      // archive whose sidecar describes IT (not the pinned one).
+      sh(`echo tampered > ${join(fixture.setDir, "backup.tar.gz.enc")}`);
+      const substitutedArchivePath = join(fixture.setDir, "backup.tar.gz.enc");
+      const substitutedSha = sh(
+        `shasum -a 256 ${substitutedArchivePath} | cut -d' ' -f1`,
+      ).trim();
+      const substitutedBytes = statSync(substitutedArchivePath).size;
+      const sidecarPath = join(fixture.setDir, "backup.json");
+      const sidecar = JSON.parse(readFileSync(sidecarPath, "utf-8"));
+      sidecar.archive_sha256 = substitutedSha;
+      sidecar.archive_bytes = substitutedBytes;
+      writeFileSync(sidecarPath, JSON.stringify(sidecar));
+      await admin.query(`CREATE DATABASE ${targetDb}`);
+      await provisionTarget(targetDb, fixture.capabilityFile);
+
+      const result = spawnSync(
+        "bun",
+        [
+          "packages/cloud/scripts/admin/apps-tenant-db-recovery.ts",
+          "--set-dir",
+          fixture.setDir,
+          "--target-dsn",
+          dbUrl(targetDb),
+          "--target-id",
+          TARGET_ID,
+          "--capability-file",
+          fixture.capabilityFile,
+          "--pooler-endpoint",
+          "127.0.0.1:6432",
+          "--tenant-probes-file",
+          fixture.probesFile,
+          "--passphrase-file",
+          fixture.passphraseFile,
+        ],
+        {
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            ELIZA_RESTORE_CAPABILITY_KEY: SIGNING_KEY,
+            DRILL_TENANT_PW: fixture.tenantPassword,
+          },
+        },
+      );
+      expect(result.status).not.toBe(0);
+      // The capability pin is the only remaining check that can fail here.
+      expect(result.stderr).toContain("REFUSED_ARCHIVE_MISMATCH");
     });
 
     test("replay after consumption fails closed", async () => {
