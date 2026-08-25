@@ -141,7 +141,6 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       runtime: args.runtime,
       message: args.message,
       state: args.state,
-      limit: 8,
     })
   ).join("\n");
   const currentMessage = messageText(args.message).trim();

@@ -161,4 +161,38 @@ describe("NewsDataService RSS timeout", () => {
     expect(articles[0].title).toBe("BTC up");
     expect(articles[0].link).toBe("https://example.test/a");
   });
+
+  it("returns every RSS item when the caller does not request pagination", async () => {
+    const items = Array.from(
+      { length: 15 },
+      (_, index) =>
+        `<item><title>Article ${index}</title><link>https://example.test/${index}</link><guid>guid-${index}</guid></item>`,
+    ).join("");
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          makeResponse(
+            `<?xml version="1.0"?><rss><channel>${items}</channel></rss>`,
+          ),
+        ),
+    );
+
+    const articles = await makeService().getLatestNews();
+
+    expect(articles).toHaveLength(15);
+    expect(articles[14]?.title).toBe("Article 14");
+  });
+
+  it("rejects malformed explicit pagination limits", async () => {
+    const svc = makeService();
+
+    await expect(svc.getLatestNews({ limit: -1 })).rejects.toThrow(
+      "limit must be a non-negative safe integer",
+    );
+    await expect(svc.getLatestNews({ limit: 1.5 })).rejects.toThrow(
+      "limit must be a non-negative safe integer",
+    );
+  });
 });

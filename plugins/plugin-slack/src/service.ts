@@ -181,6 +181,26 @@ type SlackApiUserMember = {
   updated?: number;
 };
 
+type SlackApiConversation = {
+  id?: string;
+  name?: string;
+  is_channel?: boolean;
+  is_group?: boolean;
+  is_im?: boolean;
+  is_mpim?: boolean;
+  is_private?: boolean;
+  is_archived?: boolean;
+  is_general?: boolean;
+  is_shared?: boolean;
+  is_org_shared?: boolean;
+  is_member?: boolean;
+  topic?: { value?: string; creator?: string; last_set?: number };
+  purpose?: { value?: string; creator?: string; last_set?: number };
+  num_members?: number;
+  created?: number;
+  creator?: string;
+};
+
 const SLACK_CONNECTOR_CONTEXTS = ["social", "connectors"];
 const SLACK_CONNECTOR_CAPABILITIES = [
   "send_message",
@@ -303,13 +323,28 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeConnectorLimit(
   limit: number | undefined,
-  fallback: number,
-  max = 100,
-): number {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return fallback;
+): number | undefined {
+  if (limit === undefined) return undefined;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new RangeError(
+      "Slack connector limit must be a positive safe integer",
+    );
   }
-  return Math.max(1, Math.min(Math.floor(limit), max));
+  return limit;
+}
+
+function nextSlackCursor(
+  response: { response_metadata?: { next_cursor?: string } },
+  seen: Set<string>,
+  resource: string,
+): string | undefined {
+  const cursor = response.response_metadata?.next_cursor?.trim();
+  if (!cursor) return undefined;
+  if (seen.has(cursor)) {
+    throw new Error(`Slack ${resource} pagination repeated a cursor`);
+  }
+  seen.add(cursor);
+  return cursor;
 }
 
 // Define Slack event types inline to avoid import issues
@@ -2743,7 +2778,6 @@ export class SlackService extends Service implements ISlackService {
         const channels = await this.listChannels(
           {
             types: "public_channel,private_channel,mpim,im",
-            limit: 1000,
           },
           accountId,
         );
@@ -2778,8 +2812,7 @@ export class SlackService extends Service implements ISlackService {
       }
 
       try {
-        const usersResult = await client.users.list({ limit: 200 });
-        const members = (usersResult.members ?? []) as SlackApiUserMember[];
+        const members = await this.listAllConnectorUsers(accountId);
         for (const member of members) {
           const user: SlackUser = {
             id: member.id ?? "",
@@ -2881,7 +2914,6 @@ export class SlackService extends Service implements ISlackService {
       const channels = await this.listChannels(
         {
           types: "public_channel,private_channel,mpim,im",
-          limit: 1000,
         },
         accountId,
       );
@@ -2988,18 +3020,9 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    const messages = threadTs
-      ? await client.conversations.replies({
-          channel: channelId,
-          ts: threadTs,
-          limit: 10,
-        })
-      : {
-          messages: await this.readHistory(channelId, { limit: 10 }, accountId),
-        };
-    const rawMessages = (messages.messages ?? []) as Array<
-      SlackMessage | Record<string, unknown>
-    >;
+    const rawMessages = threadTs
+      ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
+      : await this.readHistory(channelId, undefined, accountId);
     const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
     for (const rawMessage of rawMessages.slice().reverse()) {
       const text = String((rawMessage as SlackMessage).text ?? "");
@@ -3255,27 +3278,27 @@ export class SlackService extends Service implements ISlackService {
       params.target,
       { ...params, accountId },
     );
-    const limit = normalizeConnectorLimit(params.limit, 25);
+    const limit = normalizeConnectorLimit(params.limit);
 
     const rawMessages = threadTs
-      ? (((
-          await client.conversations.replies({
-            channel: channelId,
-            ts: threadTs,
+      ? await this.readThreadReplies(
+          channelId,
+          threadTs,
+          {
             limit,
-            latest: params.before,
-            oldest: params.after,
+            before: params.before,
+            after: params.after,
             cursor: params.cursor,
-          })
-        ).messages as
-          | Array<SlackMessage | Record<string, unknown>>
-          | undefined) ?? [])
+          },
+          accountId,
+        )
       : await this.readHistory(
           channelId,
           {
             limit,
             before: params.before,
             after: params.after,
+            cursor: params.cursor,
           },
           accountId,
         );
@@ -3320,18 +3343,19 @@ export class SlackService extends Service implements ISlackService {
       return [];
     }
 
-    const requestedLimit = normalizeConnectorLimit(params.limit, 25);
+    const requestedLimit = normalizeConnectorLimit(params.limit);
     const memories = await this.fetchConnectorMessages(context, {
       ...params,
-      limit: Math.max(requestedLimit, 100),
+      limit: undefined,
     });
-    return memories
-      .filter((memory) => {
-        const text = String(memory.content.text ?? "").toLowerCase();
-        const name = String(memory.content.name ?? "").toLowerCase();
-        return text.includes(query) || name.includes(query);
-      })
-      .slice(0, requestedLimit);
+    const matches = memories.filter((memory) => {
+      const text = String(memory.content.text ?? "").toLowerCase();
+      const name = String(memory.content.name ?? "").toLowerCase();
+      return text.includes(query) || name.includes(query);
+    });
+    return requestedLimit === undefined
+      ? matches
+      : matches.slice(0, requestedLimit);
   }
 
   async reactConnectorMessage(
@@ -3451,8 +3475,7 @@ export class SlackService extends Service implements ISlackService {
 
     const client = this.getClientForAccount(accountId);
     if (!slackUserId && client) {
-      const usersResult = await client.users.list({ limit: 200 });
-      const members = (usersResult.members ?? []) as SlackApiUserMember[];
+      const members = await this.listAllConnectorUsers(accountId);
       const normalized = normalizeSlackConnectorQuery(lookup);
       const match = members.find((member) =>
         [
@@ -3927,7 +3950,12 @@ export class SlackService extends Service implements ISlackService {
 
   async readHistory(
     channelId: string,
-    options?: { limit?: number; before?: string; after?: string },
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+      cursor?: string;
+    },
     accountId?: string | null,
   ): Promise<SlackMessage[]> {
     const client = this.getClientForAccount(accountId);
@@ -3935,14 +3963,32 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await client.conversations.history({
-      channel: channelId,
-      limit: options?.limit || 100,
-      latest: options?.before,
-      oldest: options?.after,
-    });
+    const requestedLimit = normalizeConnectorLimit(options?.limit);
+    const rawMessages: Array<Record<string, unknown>> = [];
+    const seen = new Set<string>();
+    let cursor = options?.cursor;
+    if (cursor) seen.add(cursor);
+    do {
+      const result = await client.conversations.history({
+        channel: channelId,
+        limit: Math.min(15, requestedLimit ?? 15),
+        latest: options?.before,
+        oldest: options?.after,
+        cursor,
+      });
+      rawMessages.push(
+        ...((result.messages ?? []) as Array<Record<string, unknown>>),
+      );
+      if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
+        break;
+      cursor = nextSlackCursor(result, seen, "conversation history");
+    } while (cursor);
 
-    return (result.messages || []).map((msg) => ({
+    const selected =
+      requestedLimit === undefined
+        ? rawMessages
+        : rawMessages.slice(0, requestedLimit);
+    return selected.map((msg) => ({
       type: msg.type as string,
       subtype: msg.subtype as string | undefined,
       ts: msg.ts as string,
@@ -3961,6 +4007,63 @@ export class SlackService extends Service implements ISlackService {
     }));
   }
 
+  private async readThreadReplies(
+    channelId: string,
+    threadTs: string,
+    options?: {
+      limit?: number;
+      before?: string;
+      after?: string;
+      cursor?: string;
+    },
+    accountId?: string | null,
+  ): Promise<Array<SlackMessage | Record<string, unknown>>> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) throw new Error("Slack client not initialized");
+    const requestedLimit = normalizeConnectorLimit(options?.limit);
+    const messages: Array<SlackMessage | Record<string, unknown>> = [];
+    const seen = new Set<string>();
+    let cursor = options?.cursor;
+    if (cursor) seen.add(cursor);
+    do {
+      const result = await client.conversations.replies({
+        channel: channelId,
+        ts: threadTs,
+        limit: Math.min(15, requestedLimit ?? 15),
+        latest: options?.before,
+        oldest: options?.after,
+        cursor,
+      });
+      messages.push(
+        ...((result.messages ?? []) as Array<
+          SlackMessage | Record<string, unknown>
+        >),
+      );
+      if (requestedLimit !== undefined && messages.length >= requestedLimit)
+        break;
+      cursor = nextSlackCursor(result, seen, "thread replies");
+    } while (cursor);
+    return requestedLimit === undefined
+      ? messages
+      : messages.slice(0, requestedLimit);
+  }
+
+  private async listAllConnectorUsers(
+    accountId: string,
+  ): Promise<SlackApiUserMember[]> {
+    const client = this.getClientForAccount(accountId);
+    if (!client) return [];
+    const members: SlackApiUserMember[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const result = await client.users.list({ limit: 200, cursor });
+      members.push(...((result.members ?? []) as SlackApiUserMember[]));
+      cursor = nextSlackCursor(result, seen, "user list");
+    } while (cursor);
+    return members;
+  }
+
   async listChannels(
     options?: {
       types?: string;
@@ -3973,12 +4076,26 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const result = await client.conversations.list({
-      types: options?.types || "public_channel,private_channel",
-      limit: options?.limit || 1000,
-    });
-
-    return (result.channels || []).map((ch) => ({
+    const requestedLimit = normalizeConnectorLimit(options?.limit);
+    const rawChannels: SlackApiConversation[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const result = await client.conversations.list({
+        types: options?.types || "public_channel,private_channel",
+        limit: Math.min(200, requestedLimit ?? 200),
+        cursor,
+      });
+      rawChannels.push(...((result.channels ?? []) as SlackApiConversation[]));
+      if (requestedLimit !== undefined && rawChannels.length >= requestedLimit)
+        break;
+      cursor = nextSlackCursor(result, seen, "conversation list");
+    } while (cursor);
+    const selected =
+      requestedLimit === undefined
+        ? rawChannels
+        : rawChannels.slice(0, requestedLimit);
+    return selected.map((ch) => ({
       id: ch.id ?? "",
       name: ch.name || "",
       isChannel: ch.is_channel || false,

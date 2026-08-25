@@ -148,7 +148,6 @@ export function validateModelConfig(runtime?: IAgentRuntime): ModelConfig {
 			TEXT_MODEL: getSetting("TEXT_MODEL"),
 
 			MAX_INPUT_TOKENS: getNumericSetting("MAX_INPUT_TOKENS", "4000"),
-			MAX_OUTPUT_TOKENS: getNumericSetting("MAX_OUTPUT_TOKENS"),
 
 			EMBEDDING_DIMENSION: embeddingDimension,
 

@@ -86,6 +86,27 @@ function view(result: ActionResult): ReadView {
 }
 
 describe("MESSAGE stored-memory progressive read", () => {
+	it("returns the complete stored message when pagination was not requested", async () => {
+		const source = `${"a".repeat(1_000_000)}COMPLETE-END`;
+		const result = await read(
+			runtimeFor(async () => storedMemory(source)),
+			{},
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.text).toBe(source);
+		expect(view(result).slice).toMatchObject({
+			range: {
+				unit: "byte",
+				start: 0,
+				end: source.length,
+				total: source.length,
+			},
+			completeness: "complete",
+			hasMore: false,
+		});
+	});
+
 	it("reaches late evidence in a large memory through exact half-open pages", async () => {
 		const canary = "LATE-EVIDENCE-9f32";
 		const source = `${"a".repeat(1024 * 1024)}${canary}`;

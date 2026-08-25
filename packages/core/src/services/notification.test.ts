@@ -338,19 +338,18 @@ describe("NotificationService", () => {
 		expect(service.listIncludingExpired()).toHaveLength(1);
 	});
 
-	it("rejects a full inbox without evicting unrelated durable rows", async () => {
+	it("retains every durable row through the exact-import boundary", async () => {
 		for (let index = 0; index < 300; index += 1) {
 			await service.notify({ title: `Existing ${index}` });
 		}
-		expect(service.getAvailableCapacity()).toBe(0);
-		await expect(
-			service.notifyWithoutEviction({ title: "Must not evict" }),
-		).rejects.toThrow(/capacity is exhausted/);
+		expect(service.getAvailableCapacity()).toBe(Number.POSITIVE_INFINITY);
+		await service.notifyWithoutEviction({ title: "Must not evict" });
 		const stored = await runtime.getCache<AgentNotification[]>(
 			`notifications:${runtime.agentId}`,
 		);
-		expect(stored).toHaveLength(300);
+		expect(stored).toHaveLength(301);
 		expect(stored?.[0]?.title).toBe("Existing 0");
+		expect(stored?.at(-1)?.title).toBe("Must not evict");
 		expect(stored?.at(-1)?.title).toBe("Existing 299");
 	});
 
@@ -614,16 +613,14 @@ describe("NotificationService", () => {
 		).toEqual(["Expired", "Alive"]);
 	});
 
-	it("evicts oldest beyond the retention cap", async () => {
-		// Push more than the cap (300) and confirm the list stays bounded.
+	it("retains oldest and newest notifications beyond the former cap", async () => {
 		for (let i = 0; i < 320; i++) {
 			await service.notify({ title: `n${i}` });
 		}
 		const list = service.list();
-		expect(list.length).toBeLessThanOrEqual(300);
-		// Newest survived, oldest evicted.
+		expect(list).toHaveLength(320);
 		expect(list[0].title).toBe("n319");
-		expect(list.some((n) => n.title === "n0")).toBe(false);
+		expect(list.some((n) => n.title === "n0")).toBe(true);
 	});
 
 	it("notify reflects unread count in the broadcast after collapse", async () => {

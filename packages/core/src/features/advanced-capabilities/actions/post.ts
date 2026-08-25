@@ -505,10 +505,11 @@ async function handleRead(
 		params,
 	).target;
 	if (target) target.accountId = selected.connector.accountId ?? accountId;
+	const limit = limitParam(params);
 	const posts = await fetchFeed(context, {
 		feed: textParam(params.feed),
 		target,
-		limit: limitParam(params),
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),
@@ -569,9 +570,10 @@ async function handleSearch(
 		selected.connector.accountId ?? accountId,
 		selected.connector.account,
 	);
+	const limit = limitParam(params);
 	const posts = await searchPosts(context, {
 		query,
-		limit: limitParam(params),
+		...(limit === undefined ? {} : { limit }),
 		cursor: textParam(params.cursor),
 		before: textParam(params.before),
 		after: textParam(params.after),

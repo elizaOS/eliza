@@ -86,6 +86,25 @@ describe("executeBrowserAutofillLogin", () => {
     expect(JSON.stringify(result)).not.toContain("vault-password");
   });
 
+  it("preserves a complete evaluated-tab failure reason", async () => {
+    const reason = `browser-evaluation-failed:${"detail-".repeat(100)}`;
+    mocks.evaluateBrowserWorkspaceTab.mockResolvedValue({
+      ok: false,
+      reason,
+    });
+
+    const result = await executeBrowserAutofillLogin({} as never, undefined, {
+      parameters: {
+        domain: "example.com",
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.values).toMatchObject({ fillReason: reason });
+    expect(result.data).toMatchObject({ fillReason: reason });
+    expect(result.text).toContain(reason);
+  });
+
   it.each([
     undefined,
     {},

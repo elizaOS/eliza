@@ -3183,8 +3183,7 @@ async function runHistory(
           .filter(
             (task) =>
               !taskMatchesHistoryFilters(task, statuses, windowFilters, search),
-          )
-          .slice(0, 3);
+          );
         responseText = inFlight
           ? `Nothing has finished yet — I'm still working on ${inFlight.name}.`
           : excludedByFilters.length > 0

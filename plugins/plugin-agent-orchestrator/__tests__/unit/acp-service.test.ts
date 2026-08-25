@@ -3721,6 +3721,29 @@ describe("AcpService", () => {
     );
   });
 
+  it("preserves complete subprocess stderr in a failed prompt result", async () => {
+    const create = nextProc();
+    const service = new AcpService(runtime());
+    await service.start();
+    const spawned = service.spawnSession({
+      name: "complete-stderr",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    await waitForSpawn(create);
+    closeOk(create);
+    const { sessionId } = await spawned;
+
+    const prompt = nextProc();
+    const sent = service.sendPrompt(sessionId, "hi");
+    await waitForSpawn(prompt);
+    const completeStderr = `STDERR-BEGIN-${"x".repeat(100_000)}-STDERR-END`;
+    prompt.proc.stderr.emit("data", Buffer.from(completeStderr));
+    prompt.proc.emit("close", 2, null);
+
+    await expect(sent).resolves.toMatchObject({ error: completeStderr });
+  });
+
   it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
     const service = new AcpService(runtime());
     const classify = (
@@ -3938,6 +3961,32 @@ describe("AcpService.runHealthCheck state_lost guards", () => {
 
     expect(await service.getSession(id)).toBeUndefined();
     expect(turnOutputBuffers.has(id)).toBe(false);
+  });
+
+  it("retains complete session and turn output beyond the former event ceiling", async () => {
+    const service = new AcpService(runtime());
+    const sessionId = "00000000-0000-0000-0000-0000000000a4";
+    const turnOutputBuffers = Reflect.get(service, "turnOutputBuffers") as Map<
+      string,
+      string[]
+    >;
+    turnOutputBuffers.set(sessionId, []);
+    const appendOutput = Reflect.get(service, "appendOutput").bind(service) as (
+      id: string,
+      text: string,
+    ) => void;
+
+    for (let index = 0; index < 2_001; index += 1) {
+      appendOutput(sessionId, `${index}\n`);
+    }
+
+    const complete = Array.from(
+      { length: 2_001 },
+      (_, index) => `${index}\n`,
+    ).join("");
+    expect(await service.getSessionOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionTurnOutput(sessionId)).toBe(complete);
+    expect(await service.getSessionOutput(sessionId, 2)).toBe("1999\n2000\n");
   });
 
   it("enforces ELIZA_ACP_MAX_SESSIONS atomically under concurrent spawns", async () => {

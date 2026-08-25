@@ -82,8 +82,6 @@ export const LOCAL_INFERENCE_MODEL_TYPES = [
 	ModelType.TRANSCRIPTION,
 ] as const;
 
-const OMIT_MAX_TOKENS_LOCAL_BUDGET = 64_000;
-
 export type LocalInferenceUnavailableReason =
 	| "backend_unavailable"
 	| "capability_unavailable"
@@ -321,9 +319,7 @@ function textGenerationArgsFromParams(
 	return {
 		prompt: promptFromParams(params),
 		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
-		maxTokens: params.omitMaxTokens
-			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
-			: params.maxTokens,
+		maxTokens: params.maxTokens,
 		temperature: params.temperature,
 		topP: params.topP,
 		signal: params.signal,
@@ -583,7 +579,7 @@ function createTextHandler(modelType: string) {
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
 		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time and take the device-class budget clamps.
+		// bounded time without changing prompt or output capacity.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
 		let lockWaitMs: number | undefined;
@@ -645,7 +641,6 @@ function createPiiScrubHandler() {
 			() =>
 				generate.call(service, {
 					prompt,
-					maxTokens: 1024,
 					temperature: 0,
 				}),
 		);

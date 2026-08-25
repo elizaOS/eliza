@@ -47,6 +47,7 @@ if str(_HERE.parent) not in sys.path:
     sys.path.insert(0, str(_HERE.parent))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+from lib.generation_integrity import model_context_tokens  # noqa: E402
 
 from polarquant_apply import (  # type: ignore  # noqa: E402
     PolarQuantRecipe,
@@ -192,7 +193,11 @@ def _run_generation(
         inputs = tokenize_with_explicit_limit(
             tokenizer,
             prompt,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                model,
+                tokenizer,
+                source=f"test_polarquant.{label}",
+            ),
             return_tensors="pt",
         )
         inputs = {k: v.to(device) for k, v in inputs.items()}

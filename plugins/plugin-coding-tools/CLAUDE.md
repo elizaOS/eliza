@@ -104,9 +104,8 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
 | `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
 | `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
-| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read before truncation. |
+| `CODING_TOOLS_MAX_READ_LINES` | `2000` | Default line page size for revision-bound FILE reads; responses include exact continuation state. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | Byte cap for selected FILE read content. Larger files are paged with bounded line or byte reads. |
-| `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Default `head_limit` for GREP output. Set to 0 to disable. |
 
 The folded `ShellService` also retains compatibility settings for external
 consumers of `runtime.getService("shell").exec()` / `executeCommand()`. The

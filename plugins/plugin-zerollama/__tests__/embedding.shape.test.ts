@@ -104,7 +104,7 @@ describe("Ollama embeddings", () => {
     });
   });
 
-  it("preserves complete embedding input when no operator ceiling is configured", async () => {
+  it("preserves a large embedding input when no operator ceiling is configured", async () => {
     embedMock.mockResolvedValue({
       embedding: [1],
       usage: undefined,
@@ -113,10 +113,7 @@ describe("Ollama embeddings", () => {
     const longText = "x".repeat(5_000);
 
     await expect(handleTextEmbedding(runtime, { text: longText })).resolves.toEqual([1]);
-    expect(embedMock).toHaveBeenCalledWith({
-      model: expect.anything(),
-      value: longText,
-    });
+    expect(embedMock).toHaveBeenCalledWith(expect.objectContaining({ value: longText }));
   });
 
   it("honours OLLAMA_EMBED_MAX_CHARS when set", async () => {

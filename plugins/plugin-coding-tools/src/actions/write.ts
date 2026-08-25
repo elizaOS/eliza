@@ -192,12 +192,7 @@ export async function writeFileHandler(
     `${CODING_TOOLS_LOG_PREFIX} WRITE ${resolved} bytes=${bytes}`,
   );
 
-  const maxActionResultBytes = 2000;
-  const text =
-    `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`.slice(
-      0,
-      maxActionResultBytes,
-    );
+  const text = `Wrote ${bytes} byte${bytes === 1 ? "" : "s"} to ${resolved}`;
   if (callback) await callback({ text, source: "coding-tools" });
 
   // The write confirmation is the complete answer to a single-operation turn:

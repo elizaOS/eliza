@@ -444,8 +444,7 @@ function computeSpendingSummary(args: {
       totalUsd: Number(agg.total.toFixed(2)),
       transactionCount: agg.count,
     }))
-    .sort(compareSpendingCategoryByTotal)
-    .slice(0, 6);
+    .sort(compareSpendingCategoryByTotal);
 
   const topMerchants = Array.from(merchantTotals.entries())
     .map(([merchantNormalized, agg]) => ({
@@ -454,8 +453,7 @@ function computeSpendingSummary(args: {
       totalUsd: Number(agg.total.toFixed(2)),
       transactionCount: agg.count,
     }))
-    .sort(compareSpendingMerchantByTotal)
-    .slice(0, 10);
+    .sort(compareSpendingMerchantByTotal);
 
   const recurringSpendUsd = args.recurring.reduce((total, charge) => {
     if (charge.cadence === "irregular") {
@@ -558,11 +556,9 @@ export class FinancesService {
     request: AddPaymentSourceRequest,
   ): Promise<LifeOpsPaymentSource> {
     const kind = normalizeSourceKind(request.kind);
-    const label = requireNonEmptyString(request.label, "label").slice(0, 120);
-    const institution =
-      normalizeOptionalString(request.institution)?.slice(0, 120) ?? null;
-    const accountMask =
-      normalizeOptionalString(request.accountMask)?.slice(0, 16) ?? null;
+    const label = requireNonEmptyString(request.label, "label");
+    const institution = normalizeOptionalString(request.institution) ?? null;
+    const accountMask = normalizeOptionalString(request.accountMask) ?? null;
     if (
       kind === "plaid" &&
       request.metadata &&
@@ -724,7 +720,6 @@ export class FinancesService {
     const transactions = await this.listTransactions({
       sourceId: args.sourceId ?? null,
       sinceAt: new Date(Date.now() - sinceDays * MS_PER_DAY).toISOString(),
-      limit: 5000,
       onlyDebits: true,
     });
     return detectRecurringCharges(transactions);
@@ -746,7 +741,6 @@ export class FinancesService {
     const transactions = await this.listTransactions({
       sourceId: request.sourceId ?? null,
       sinceAt: new Date(Date.now() - windowDays * MS_PER_DAY).toISOString(),
-      limit: 5000,
     });
     const recurring = await this.getRecurringCharges({
       sourceId: request.sourceId ?? null,
@@ -852,10 +846,7 @@ export class FinancesService {
     confidence: number;
   }): Promise<{ inserted: boolean; transactionId: string }> {
     const source = await this.getOrCreateEmailPaymentSource();
-    const merchantRaw = requireNonEmptyString(args.merchant, "merchant").slice(
-      0,
-      200,
-    );
+    const merchantRaw = requireNonEmptyString(args.merchant, "merchant");
     const externalId = `email:${args.sourceMessageId}`;
     const transactionId = crypto
       .createHash("sha1")
@@ -873,7 +864,7 @@ export class FinancesService {
       amountUsd: Number(Math.abs(args.amountUsd).toFixed(2)),
       direction: "debit",
       merchantRaw,
-      merchantNormalized: merchantRaw.toLowerCase().slice(0, 200),
+      merchantNormalized: merchantRaw.toLowerCase(),
       description: null,
       category: "Bills",
       currency: args.currency || "USD",
@@ -913,7 +904,7 @@ export class FinancesService {
     const billId = requireNonEmptyString(args.billId, "billId");
     const transactions = await this.repository.listPaymentTransactions(
       this.agentId(),
-      { limit: 5000 },
+      {},
     );
     const target = transactions.find((tx) => tx.id === billId);
     if (!target) {
@@ -948,7 +939,7 @@ export class FinancesService {
         : 7;
     const transactions = await this.repository.listPaymentTransactions(
       this.agentId(),
-      { limit: 5000 },
+      {},
     );
     const target = transactions.find((tx) => tx.id === billId);
     if (!target) {
@@ -992,7 +983,6 @@ export class FinancesService {
       this.agentId(),
       {
         sourceId: emailSource.id,
-        limit: 200,
       },
     );
     const now = args.now ?? new Date();
@@ -1058,8 +1048,7 @@ export class FinancesService {
       lines.push(
         `Detected ${dashboard.recurring.length} recurring charge${dashboard.recurring.length === 1 ? "" : "s"} worth ~$${annualized.toFixed(2)}/yr.`,
       );
-      const topThree = dashboard.recurring.slice(0, 3);
-      for (const charge of topThree) {
+      for (const charge of dashboard.recurring) {
         lines.push(
           `- ${charge.merchantDisplay} (${charge.cadence}, $${charge.averageAmountUsd.toFixed(2)})`,
         );
@@ -1194,9 +1183,9 @@ export class FinancesService {
       id: existing?.id ?? crypto.randomUUID(),
       agentId: this.agentId(),
       kind: "plaid",
-      label: label.slice(0, 120),
-      institution: result.institution.institutionName.slice(0, 120),
-      accountMask: result.institution.primaryAccountMask?.slice(0, 16) ?? null,
+      label,
+      institution: result.institution.institutionName,
+      accountMask: result.institution.primaryAccountMask ?? null,
       status: "active",
       lastSyncedAt: existing?.lastSyncedAt ?? null,
       transactionCount: existing?.transactionCount ?? 0,
@@ -1642,9 +1631,8 @@ export class FinancesService {
     }
     return {
       ...args.source,
-      institution: args.status.institution.institutionName.slice(0, 120),
-      accountMask:
-        args.status.institution.primaryAccountMask?.slice(0, 16) ?? null,
+      institution: args.status.institution.institutionName,
+      accountMask: args.status.institution.primaryAccountMask ?? null,
       status:
         args.status.error ||
         args.updateReason ||
@@ -1902,7 +1890,7 @@ export class FinancesService {
             revokedMask && source.accountMask === revokedMask
               ? isRecord(replacementMask) &&
                 typeof replacementMask.mask === "string"
-                ? replacementMask.mask.slice(0, 16)
+                ? replacementMask.mask
                 : null
               : source.accountMask,
           status: "needs_attention",
@@ -2056,7 +2044,7 @@ export class FinancesService {
       id: crypto.randomUUID(),
       agentId: this.agentId(),
       kind: "paypal",
-      label: label.slice(0, 120),
+      label,
       institution: "PayPal",
       accountMask: null,
       status: exchange.capability.hasReporting ? "active" : "needs_attention",

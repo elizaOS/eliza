@@ -1,7 +1,7 @@
 /**
  * Solana-specific wallet provider: formats the cached `WalletPortfolio` (from
  * `SOLANA_WALLET_DATA_CACHE_KEY`) into planner context text and values —
- * total balance, top non-zero token holdings, and SOL/BTC/ETH prices. Reads
+ * total balance, all non-zero token holdings, and SOL/BTC/ETH prices. Reads
  * only from cache; it does not itself fetch RPC or Birdeye data.
  */
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
@@ -13,7 +13,6 @@ import { getWalletKey } from "../keypairUtils";
 import type { WalletPortfolio } from "../types";
 
 const spec = requireProviderSpec("solana-wallet");
-const MAX_PORTFOLIO_ITEMS = 20;
 
 export const walletProvider: Provider = {
   name: spec.name,
@@ -48,9 +47,7 @@ export const walletProvider: Provider = {
       const nonZeroItems = portfolio.items.filter((item) =>
         new BigNumber(item.uiAmount).isGreaterThan(0)
       );
-      const displayedItems = nonZeroItems.slice(0, MAX_PORTFOLIO_ITEMS);
-
-      displayedItems.forEach((item, index) => {
+      nonZeroItems.forEach((item, index) => {
         if (new BigNumber(item.uiAmount).isGreaterThan(0)) {
           values[`token_${index}_name`] = item.name;
           values[`token_${index}_symbol`] = item.symbol;
@@ -73,15 +70,12 @@ export const walletProvider: Provider = {
       if (nonZeroItems.length === 0) {
         text += "No tokens found with non-zero balance\n";
       } else {
-        for (const item of displayedItems) {
+        for (const item of nonZeroItems) {
           const valueUsd = new BigNumber(item.valueUsd).toFixed(2);
           const valueSol = item.valueSol ?? "0";
           text += `${item.name} (${item.symbol}): ${new BigNumber(item.uiAmount).toFixed(
             6
           )} ($${valueUsd} | ${valueSol} SOL)\n`;
-        }
-        if (nonZeroItems.length > displayedItems.length) {
-          text += `... and ${nonZeroItems.length - displayedItems.length} more token balances\n`;
         }
       }
 
@@ -95,9 +89,8 @@ export const walletProvider: Provider = {
       const data = {
         totalUsd: portfolio.totalUsd,
         totalSol: portfolio.totalSol,
-        items: displayedItems,
+        items: nonZeroItems,
         itemCount: portfolio.items.length,
-        displayedItemCount: displayedItems.length,
         prices: portfolio.prices,
         lastUpdated: portfolio.lastUpdated,
       };

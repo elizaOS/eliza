@@ -11,6 +11,7 @@ import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
 import { getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { executeWithRetry, formatModelError, sanitizeUrlForLogs } from "../utils/retry";
+import { resolveAnthropicMaxOutputTokens } from "./text";
 
 const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
   "Analyze this image and respond with:\nTitle: <short title>\nDescription: <detailed description>";
@@ -67,7 +68,7 @@ export async function handleImageDescription(
             ],
           },
         ],
-        maxOutputTokens: 1_024,
+        maxOutputTokens: resolveAnthropicMaxOutputTokens(runtime, modelName),
       })
     );
     assertModelOutputComplete({

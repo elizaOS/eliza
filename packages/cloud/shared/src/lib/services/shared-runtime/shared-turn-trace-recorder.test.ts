@@ -237,7 +237,7 @@ describe("recordSharedTurnTrace gating", () => {
   });
 });
 
-describe("buildTurnSummary compaction", () => {
+describe("buildTurnSummary", () => {
   const PROMPT_TEXT = "please book me a flight to Tokyo tomorrow morning";
   const REPLY_TEXT = "Here is the plan I drafted for your Tokyo trip";
 
@@ -296,7 +296,7 @@ describe("buildTurnSummary compaction", () => {
     expect(serialized).not.toContain("Tokyo");
   });
 
-  test("caps the action stage list so a pathological turn stays compact", () => {
+  test("records every action stage in a long turn", () => {
     const summary = buildTurnSummary({
       result: turnResult({
         actionResults: Array.from({ length: 40 }, (_, i) => ({
@@ -306,8 +306,8 @@ describe("buildTurnSummary compaction", () => {
       }),
       ...identity,
     });
-    // 1 model stage + the capped action stages.
-    expect(summary.stages.length).toBe(17);
+    expect(summary.stages.length).toBe(41);
+    expect(summary.stages.at(-1)).toEqual({ name: "action", tool: "ACTION_39" });
   });
 
   test("classifies capability-wall turns by capability label only", () => {

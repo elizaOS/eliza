@@ -139,7 +139,6 @@ async def call_model(
     messages: list[dict[str, str]],
     tools: list[dict] | None = None,
     temperature: float = 0.7,
-    max_tokens: int = 4096,
 ) -> dict[str, Any]:
     """Call an OpenAI-compatible model endpoint."""
     url = endpoint.rstrip("/") + "/chat/completions"
@@ -152,10 +151,6 @@ async def call_model(
         "messages": messages,
         "temperature": temperature,
     }
-    if model.startswith("gpt-5") or model.startswith("o"):
-        body["max_completion_tokens"] = max_tokens
-    else:
-        body["max_tokens"] = max_tokens
     if tools:
         body["tools"] = tools
 
@@ -264,7 +259,7 @@ async def run_episode(
         attacker_resp = await call_model(
             client, config.attacker_endpoint, config.attacker_api_key,
             config.attacker_model, attacker_messages,
-            temperature=0.7, max_tokens=500,
+            temperature=0.7,
         )
         first_msg = attacker_resp["content"].strip()
         # Remove the generation prompt
@@ -287,7 +282,7 @@ async def run_episode(
             attacker_resp = await call_model(
                 client, config.attacker_endpoint, config.attacker_api_key,
                 config.attacker_model, attacker_messages,
-                temperature=0.7, max_tokens=500,
+                temperature=0.7,
             )
             # Strip private thinking traces emitted by reasoning-capable models.
             attack_text = THINK_PATTERN.sub("", attacker_resp["content"]).strip()
@@ -308,7 +303,7 @@ async def run_episode(
             client, config.defender_endpoint, config.defender_api_key,
             config.defender_model, defender_messages,
             tools=DEFENDER_TOOLS,
-            temperature=0, max_tokens=4096,
+            temperature=0,
         )
 
         # Parse defender response
