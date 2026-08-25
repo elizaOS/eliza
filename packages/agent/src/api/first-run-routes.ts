@@ -673,6 +673,40 @@ export async function handleFirstRunRoutes(
         sessionPath: body.whatsappSessionPath.trim(),
       };
     }
+    // Twilio credentials feed the first-party personal-assistant voice/SMS
+    // actions and the @elizaos/plugin-phone transport — keep this first-run
+    // path even though the external @elizaos/plugin-twilio registry entry is
+    // unregistered (#24373).
+    if (
+      body.twilioAccountSid &&
+      typeof body.twilioAccountSid === "string" &&
+      body.twilioAccountSid.trim() &&
+      body.twilioAuthToken &&
+      typeof body.twilioAuthToken === "string" &&
+      body.twilioAuthToken.trim()
+    ) {
+      if (!config.env) config.env = {};
+      (config.env as Record<string, string>).TWILIO_ACCOUNT_SID = (
+        body.twilioAccountSid as string
+      ).trim();
+      (config.env as Record<string, string>).TWILIO_AUTH_TOKEN = (
+        body.twilioAuthToken as string
+      ).trim();
+      process.env.TWILIO_ACCOUNT_SID = (body.twilioAccountSid as string).trim();
+      process.env.TWILIO_AUTH_TOKEN = (body.twilioAuthToken as string).trim();
+      if (
+        body.twilioPhoneNumber &&
+        typeof body.twilioPhoneNumber === "string" &&
+        body.twilioPhoneNumber.trim()
+      ) {
+        (config.env as Record<string, string>).TWILIO_PHONE_NUMBER = (
+          body.twilioPhoneNumber as string
+        ).trim();
+        process.env.TWILIO_PHONE_NUMBER = (
+          body.twilioPhoneNumber as string
+        ).trim();
+      }
+    }
 
     const explicitFeatures = asRecord(body.features);
     if (explicitFeatures) {
