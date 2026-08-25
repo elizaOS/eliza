@@ -990,6 +990,12 @@ describe("pinned bundletool provisioning", () => {
     );
   });
 
+  it("packages the Background Runner JNI bridge in Cloud artifacts", () => {
+    expect(ANDROID_APP_GRADLE).toMatch(
+      /if \(project\.findProperty\('elizaCloudBuild'\) == 'true'\) \{\s*\/\/ Cloud builds strip the Background Runner plugin itself,[\s\S]*implementation\(name: "android-js-engine-release", ext: "aar"\)\s*\}/,
+    );
+  });
+
   it("passes an absolute JavaScript runtime to Gradle for the AAB finalizer", () => {
     const target = {
       env: {},
