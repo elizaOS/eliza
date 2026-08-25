@@ -241,20 +241,17 @@ export function ConfigField({
               />
             ) : usesEditDialog ? (
               <>
-                <button
+                <Button
                   type="button"
+                  variant="choice"
+                  size="compact"
+                  align="start"
                   disabled={renderProps.readonly}
                   onClick={() => {
                     setClearConfirming(false);
                     setEditOpen(true);
                   }}
-                  className={cn(
-                    "inline-flex max-w-[14rem] items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-left text-xs font-semibold text-txt-strong transition-colors",
-                    "hover:border-border-strong hover:bg-bg-hover",
-                    !isConfigValueFilled(renderProps.value) &&
-                      !renderProps.isSet &&
-                      "font-medium text-muted-strong",
-                  )}
+                  className="max-w-[14rem]"
                   aria-label={t("config-field.editLabel", {
                     defaultValue: "Edit {{label}}",
                     label,
@@ -263,7 +260,7 @@ export function ConfigField({
                 >
                   <span className="min-w-0 truncate">{chipLabel}</span>
                   <Pencil className="size-3 shrink-0 text-muted" aria-hidden />
-                </button>
+                </Button>
 
                 <Dialog
                   open={editOpen}
@@ -309,10 +306,12 @@ export function ConfigField({
                             })
                           }
                           onChange={(event) => setDraft(event.target.value)}
-                          className="min-h-40 resize-y border-border/60 bg-bg-muted font-mono text-sm"
+                          variant="configDialog"
+                          density="dialogEditor"
                         />
                       ) : (
                         <Input
+                          variant="config"
                           id={`${fieldId}-edit`}
                           type={
                             renderProps.fieldType === "password" ||
@@ -345,7 +344,6 @@ export function ConfigField({
                             renderProps.onChange(draft);
                             setEditOpen(false);
                           }}
-                          className="h-10 border-border/60 bg-bg-muted"
                         />
                       )}
                     </div>
@@ -396,9 +394,9 @@ export function ConfigField({
                           {canClearSecret ? (
                             <Button
                               type="button"
-                              variant="ghost"
+                              variant="surfaceDestructive"
                               size="sm"
-                              className="mr-auto text-danger hover:text-danger"
+                              className="mr-auto"
                               onClick={() => setClearConfirming(true)}
                             >
                               {t("common.clear", { defaultValue: "Clear" })}
@@ -408,7 +406,6 @@ export function ConfigField({
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="text-txt"
                             onClick={() => setEditOpen(false)}
                           >
                             {t("common.cancel", { defaultValue: "Cancel" })}

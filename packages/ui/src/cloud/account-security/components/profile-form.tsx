@@ -233,8 +233,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
         ) : null}
 
         {emailAdded && !user.email ? (
-          <Alert className="rounded-sm border-status-success bg-status-success-bg">
-            <AlertDescription className="text-status-success">
+          <Alert>
+            <AlertDescription>
               Email added successfully. It will appear here after the page
               refreshes.
             </AlertDescription>
@@ -262,26 +262,19 @@ export function ProfileForm({ user }: ProfileFormProps) {
           />
 
           {error ? (
-            <Alert
-              variant="destructive"
-              className="mt-2 rounded-sm border-status-danger bg-status-danger-bg"
-              data-testid="profile-error"
-            >
-              <AlertDescription className="text-status-danger">
-                {error}
-              </AlertDescription>
-            </Alert>
+            <div className="mt-2">
+              <Alert variant="destructive" data-testid="profile-error">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </div>
           ) : null}
 
           {success ? (
-            <Alert
-              className="mt-2 rounded-sm border-status-success bg-status-success-bg"
-              data-testid="profile-success"
-            >
-              <AlertDescription className="text-status-success">
-                {success}
-              </AlertDescription>
-            </Alert>
+            <div className="mt-2">
+              <Alert data-testid="profile-success">
+                <AlertDescription>{success}</AlertDescription>
+              </Alert>
+            </div>
           ) : null}
 
           <div className="flex items-center gap-3 pt-3">

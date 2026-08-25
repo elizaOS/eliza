@@ -819,7 +819,6 @@ export function AddAccountDialog({
                   subscriptionOAuthModeForHostname(window.location.hostname),
                 )
               }
-              className="h-10"
             >
               {activeProviderId === "openai-codex"
                 ? subscriptionOAuthModeForHostname(window.location.hostname) ===
@@ -842,9 +841,9 @@ export function AddAccountDialog({
               "localhost" ? (
               <Button
                 type="button"
-                variant="ghost"
+                variant="link"
+                size="content"
                 onClick={() => void startOAuth("device")}
-                className="h-8 text-xs text-muted hover:text-txt"
               >
                 Browser on a different machine? Use a device code instead
               </Button>
@@ -895,7 +894,7 @@ export function AddAccountDialog({
                       type="button"
                       variant="ghost"
                       size="sm"
-                      className="mx-auto mt-2 h-7 text-xs"
+                      className="mx-auto mt-2"
                       onClick={() => void copyDeviceCode(deviceCode)}
                     >
                       {deviceCodeCopied ? "Copied" : "Copy code"}
@@ -971,8 +970,8 @@ export function AddAccountDialog({
             <Button
               type="submit"
               variant="default"
+              size="sm"
               disabled={!oauthCode.trim()}
-              className="h-9"
             >
               {t("accounts.add.oauth.submitCode", {
                 defaultValue: "Submit code",
@@ -1006,10 +1005,10 @@ export function AddAccountDialog({
             <Button
               type="submit"
               variant="default"
+              size="sm"
               disabled={
                 step === "apikey-submitting" || !label.trim() || !apiKey.trim()
               }
-              className="h-9"
             >
               {step === "apikey-submitting" ? (
                 <Spinner className="size-3" />

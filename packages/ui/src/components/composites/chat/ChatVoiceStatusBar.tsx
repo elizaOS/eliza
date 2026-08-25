@@ -308,15 +308,10 @@ export function ChatVoiceStatusBar({
       {needsAudioUnlock ? (
         onUnlockAudio ? (
           <Button
-            variant="ghost"
-            size="sm"
+            variant="warningOutline"
+            size="micro"
             onClick={onUnlockAudio}
             data-testid="chat-voice-audio-unlock"
-            className={cn(
-              "h-auto gap-1 rounded-sm border px-2 py-0.5 font-medium transition-colors",
-              "border-warn/40 bg-warn/10 text-warn hover:bg-warn/20",
-              "    ",
-            )}
           >
             <VolumeX className="size-3" aria-hidden="true" />
             <span>Tap to enable sound</span>

@@ -48,8 +48,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../../../components/ui/table";
 import { useIntervalWhenDocumentVisible } from "../../../hooks/useDocumentVisibility";
-import { cn } from "../../../lib/utils";
 import { api } from "../../lib/api-client";
 
 interface AppAnalyticsProps {
@@ -374,16 +381,12 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             const Icon = tab.icon;
             return (
               <Button
-                variant="ghost"
+                variant="selection"
+                size="sm"
                 type="button"
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
-                  activeTab === tab.value
-                    ? "bg-surface text-txt"
-                    : "text-neutral-400 hover:text-txt",
-                )}
+                data-state={activeTab === tab.value ? "on" : "off"}
               >
                 <Icon className="size-4" />
                 <span className="hidden sm:inline">{tab.label}</span>
@@ -411,10 +414,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             </Select>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
               onClick={() => fetchAnalytics()}
               disabled={isLoading}
-              className="size-9 p-0"
             >
               <RefreshCw
                 className={`size-4 ${isLoading ? "animate-spin" : ""}`}
@@ -447,7 +449,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               <DashboardStatCard
                 label="Credits Used"
                 value={`$${parseFloat(totalStats.totalCreditsUsed || "0").toFixed(2)}`}
-                icon={<DollarSign className="size-5 text-green-400" />}
+                icon={<DollarSign className="size-5 text-status-success" />}
               />
             </div>
           )}
@@ -553,7 +555,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={(requestStats.byType?.pageview || 0).toLocaleString(
                     "en-US",
                   )}
-                  color="text-green-400"
+                  color="text-status-success"
                 />
                 <MiniStatCard
                   label="API Requests"
@@ -726,10 +728,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <h3 className="text-sm font-medium text-txt">Top Visitors</h3>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon-sm"
                     onClick={() => fetchRequestStats()}
                     disabled={isLoadingStats}
-                    className="size-8 p-0"
                   >
                     <RefreshCw
                       className={`size-4 ${isLoadingStats ? "animate-spin" : ""}`}
@@ -738,27 +739,27 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 </div>
                 {visitors.length > 0 ? (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border">
-                          <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-b border-border">
+                          <TableHead className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
                             IP Address
-                          </th>
-                          <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                          </TableHead>
+                          <TableHead className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
                             Requests
-                          </th>
-                          <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                          </TableHead>
+                          <TableHead className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
                             Last Seen
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                         {visitors.map((visitor, index) => (
-                          <tr
+                          <TableRow
                             key={visitor.ip}
                             className="border-b border-border hover:bg-bg-hover"
                           >
-                            <td className="py-2 px-3">
+                            <TableCell className="py-2 px-3">
                               <div className="flex items-center gap-2">
                                 <span className="text-neutral-500 text-xs w-4">
                                   {index + 1}
@@ -767,19 +768,19 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                   {visitor.ip}
                                 </code>
                               </div>
-                            </td>
-                            <td className="py-2 px-3 text-right text-txt text-xs tabular-nums">
+                            </TableCell>
+                            <TableCell className="py-2 px-3 text-right text-txt text-xs tabular-nums">
                               {visitor.requestCount.toLocaleString("en-US")}
-                            </td>
-                            <td className="py-2 px-3 text-right text-neutral-500 text-xs">
+                            </TableCell>
+                            <TableCell className="py-2 px-3 text-right text-neutral-500 text-xs">
                               {formatDistanceToNow(new Date(visitor.lastSeen), {
                                 addSuffix: true,
                               })}
-                            </td>
-                          </tr>
+                            </TableCell>
+                          </TableRow>
                         ))}
-                      </tbody>
-                    </table>
+                      </TableBody>
+                    </Table>
                   </div>
                 ) : (
                   <p className="text-center text-neutral-500 py-8 text-sm">
@@ -821,7 +822,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   value={sessionAnalytics.summary.totalPageViews.toLocaleString(
                     "en-US",
                   )}
-                  color="text-green-400"
+                  color="text-status-success"
                 />
                 <MiniStatCard
                   label="Pages/Session"
@@ -886,47 +887,47 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   </h3>
                   {sessionAnalytics.sessions.length > 0 ? (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-border">
-                            <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-b border-border">
+                            <TableHead className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
                               Entry
-                            </th>
-                            <th className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
+                            </TableHead>
+                            <TableHead className="text-left py-2 px-3 text-neutral-500 font-medium text-xs">
                               Exit
-                            </th>
-                            <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                            </TableHead>
+                            <TableHead className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
                               Views
-                            </th>
-                            <th className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
+                            </TableHead>
+                            <TableHead className="text-right py-2 px-3 text-neutral-500 font-medium text-xs">
                               Started
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
                           {sessionAnalytics.sessions.slice(0, 10).map((s) => (
-                            <tr
+                            <TableRow
                               key={s.sessionId}
                               className="border-b border-border hover:bg-bg-hover"
                             >
-                              <td className="py-2 px-3 text-txt text-xs max-w-[180px] truncate">
+                              <TableCell className="py-2 px-3 text-txt text-xs max-w-[180px] truncate">
                                 {s.entryPath}
-                              </td>
-                              <td className="py-2 px-3 text-neutral-300 text-xs max-w-[180px] truncate">
+                              </TableCell>
+                              <TableCell className="py-2 px-3 text-neutral-300 text-xs max-w-[180px] truncate">
                                 {s.exitPath}
-                              </td>
-                              <td className="py-2 px-3 text-right text-txt text-xs tabular-nums">
+                              </TableCell>
+                              <TableCell className="py-2 px-3 text-right text-txt text-xs tabular-nums">
                                 {s.pageViews.toLocaleString("en-US")}
-                              </td>
-                              <td className="py-2 px-3 text-right text-neutral-500 text-xs whitespace-nowrap">
+                              </TableCell>
+                              <TableCell className="py-2 px-3 text-right text-neutral-500 text-xs whitespace-nowrap">
                                 {formatDistanceToNow(new Date(s.startedAt), {
                                   addSuffix: true,
                                 })}
-                              </td>
-                            </tr>
+                              </TableCell>
+                            </TableRow>
                           ))}
-                        </tbody>
-                      </table>
+                        </TableBody>
+                      </Table>
                     </div>
                   ) : (
                     <p className="text-center text-neutral-500 py-8 text-sm">
@@ -955,10 +956,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
               </span>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon-sm"
                 onClick={() => fetchRequestLogs(logsPage)}
                 disabled={isLoadingLogs}
-                className="size-8 p-0"
               >
                 <RefreshCw
                   className={`size-4 ${isLoadingLogs ? "animate-spin" : ""}`}
@@ -974,41 +974,41 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           ) : requestLogs.length > 0 ? (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left p-2 text-neutral-500 font-medium">
+                <Table density="compact">
+                  <TableHeader>
+                    <TableRow className="border-b border-border">
+                      <TableHead className="text-left p-2 text-neutral-500 font-medium">
                         Time
-                      </th>
-                      <th className="text-left p-2 text-neutral-500 font-medium">
+                      </TableHead>
+                      <TableHead className="text-left p-2 text-neutral-500 font-medium">
                         Type
-                      </th>
-                      <th className="text-left p-2 text-neutral-500 font-medium">
+                      </TableHead>
+                      <TableHead className="text-left p-2 text-neutral-500 font-medium">
                         Source
-                      </th>
-                      <th className="text-left p-2 text-neutral-500 font-medium">
+                      </TableHead>
+                      <TableHead className="text-left p-2 text-neutral-500 font-medium">
                         IP
-                      </th>
-                      <th className="text-left p-2 text-neutral-500 font-medium">
+                      </TableHead>
+                      <TableHead className="text-left p-2 text-neutral-500 font-medium">
                         Details
-                      </th>
-                      <th className="text-center p-2 text-neutral-500 font-medium">
+                      </TableHead>
+                      <TableHead className="text-center p-2 text-neutral-500 font-medium">
                         Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {requestLogs.map((log) => (
-                      <tr
+                      <TableRow
                         key={log.id}
                         className="border-b border-border hover:bg-bg-hover"
                       >
-                        <td className="p-2 text-neutral-500 whitespace-nowrap">
+                        <TableCell className="p-2 text-neutral-500 whitespace-nowrap">
                           {formatDistanceToNow(new Date(log.created_at), {
                             addSuffix: true,
                           })}
-                        </td>
-                        <td className="p-2">
+                        </TableCell>
+                        <TableCell className="p-2">
                           <span
                             className="inline-flex px-1.5 py-0.5 rounded-sm text-2xs"
                             style={{
@@ -1018,8 +1018,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           >
                             {TYPE_LABELS[log.request_type] || log.request_type}
                           </span>
-                        </td>
-                        <td className="p-2">
+                        </TableCell>
+                        <TableCell className="p-2">
                           <span
                             className="inline-flex px-1.5 py-0.5 rounded-sm text-2xs"
                             style={{
@@ -1029,26 +1029,26 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                           >
                             {SOURCE_LABELS[log.source] || log.source}
                           </span>
-                        </td>
-                        <td className="p-2">
+                        </TableCell>
+                        <TableCell className="p-2">
                           <code className="text-neutral-500 font-mono">
                             {log.ip_address || "N/A"}
                           </code>
-                        </td>
-                        <td className="p-2 text-neutral-500 max-w-[150px] truncate">
+                        </TableCell>
+                        <TableCell className="p-2 text-neutral-500 max-w-[150px] truncate">
                           {log.request_type === "pageview"
                             ? log.metadata?.page_url || "/"
                             : log.model || "N/A"}
-                        </td>
-                        <td className="p-2 text-center">
+                        </TableCell>
+                        <TableCell className="p-2 text-center">
                           <span
-                            className={`inline-flex size-2 rounded-full ${log.status === "success" ? "bg-green-500" : log.status === "failed" ? "bg-red-500" : "bg-yellow-500"}`}
+                            className={`inline-flex size-2 rounded-full ${log.status === "success" ? "bg-status-success" : log.status === "failed" ? "bg-status-danger" : "bg-status-warning"}`}
                           />
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
 
               {totalPages > 1 && (
@@ -1059,21 +1059,19 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() => setLogsPage(Math.max(0, logsPage - 1))}
                       disabled={logsPage === 0 || isLoadingLogs}
-                      className="size-8 p-0"
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="icon-sm"
                       onClick={() =>
                         setLogsPage(Math.min(totalPages - 1, logsPage + 1))
                       }
                       disabled={logsPage >= totalPages - 1 || isLoadingLogs}
-                      className="size-8 p-0"
                     >
                       <ChevronRight className="size-4" />
                     </Button>

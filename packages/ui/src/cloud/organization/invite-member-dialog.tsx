@@ -145,11 +145,12 @@ export function InviteMemberDialog({
                 {inviteLink}
               </code>
               <Button
-                variant="ghost"
+                variant="outlineMuted"
+                size="icon-sm"
                 type="button"
                 onClick={handleCopyLink}
                 aria-label="Copy invite link"
-                className="p-2 hover:bg-surface transition-colors border border-border shrink-0"
+                className="shrink-0"
               >
                 <Copy className="size-4 text-muted" />
               </Button>
@@ -267,11 +268,11 @@ export function InviteMemberDialog({
 
               <DialogFooter className="gap-2 sm:gap-0 flex flex-col sm:flex-row">
                 <Button
-                  variant="ghost"
+                  variant="ghostMuted"
                   type="button"
                   onClick={handleClose}
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-txt-strong hover:bg-surface transition-colors disabled:opacity-50 order-2 sm:order-1"
+                  className="order-2 sm:order-1"
                 >
                   Cancel
                 </Button>

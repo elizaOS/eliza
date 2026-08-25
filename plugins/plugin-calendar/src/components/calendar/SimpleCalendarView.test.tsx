@@ -148,9 +148,8 @@ describe("SimpleCalendarView", () => {
         name: "Choose month and year. Current month is August 2026",
       }),
     );
-    fireEvent.change(screen.getByLabelText("Calendar year"), {
-      target: { value: "2027" },
-    });
+    fireEvent.click(screen.getByLabelText("Calendar year"));
+    fireEvent.click(screen.getByRole("option", { name: "2027" }));
     fireEvent.click(screen.getByRole("button", { name: "Mar" }));
 
     expect(goToDate).toHaveBeenCalledTimes(1);

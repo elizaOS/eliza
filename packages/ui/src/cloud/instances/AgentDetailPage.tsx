@@ -148,14 +148,7 @@ export default function AgentDetailPage() {
               <h1 className="text-2xl font-semibold text-txt-strong truncate font-mono">
                 {agentName}
               </h1>
-              {!isShared ? (
-                <Badge
-                  variant="outline"
-                  className="text-xs font-medium px-2 py-0.5"
-                >
-                  {agentType}
-                </Badge>
-              ) : null}
+              {!isShared ? <Badge variant="outline">{agentType}</Badge> : null}
             </div>
           </div>
         </div>

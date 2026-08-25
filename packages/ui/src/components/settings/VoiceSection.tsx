@@ -95,12 +95,12 @@ function VadSlider({
       <Input
         ref={ref}
         type="range"
+        variant="nativeRange"
         min={min}
         max={max}
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="h-auto border-0 bg-transparent p-0 accent-accent"
         data-testid={testId}
         aria-label={label}
         {...agentProps}

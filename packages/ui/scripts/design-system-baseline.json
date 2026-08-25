@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "counts": {
+    "atomic-duplicate": 0,
+    "raw-control": 0,
+    "direct-primitive-import": 0,
+    "deep-canonical-import": 0,
+    "variant-helper-bypass": 0,
+    "button-axis-reuse": 0,
+    "unstyled-canonical": 0,
+    "visual-override": 0,
+    "off-token-color": 0,
+    "token-role-misuse": 0,
+    "equivalent-recipe-divergence": 0
+  }
+}

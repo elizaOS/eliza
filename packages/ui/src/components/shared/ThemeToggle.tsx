@@ -36,7 +36,7 @@ export function ThemeToggle({
   const handleToggle = useCallback(() => {
     setUiTheme(isDark ? "light" : "dark");
   }, [isDark, setUiTheme]);
-  const resolvedClassName =
+  const _resolvedClassName =
     _variant === "titlebar"
       ? `inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] items-center justify-center rounded-sm border border-transparent !bg-transparent text-muted shadow-none  transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent ${className ?? ""}`
       : _variant === "cloud"
@@ -46,7 +46,7 @@ export function ThemeToggle({
   return (
     <Button
       size="icon"
-      variant="outline"
+      variant="outlineAccent"
       aria-label={
         _t
           ? _t(isDark ? "aria.switchToLight" : "aria.switchToDark")
@@ -56,7 +56,6 @@ export function ThemeToggle({
       }
       onClick={handleToggle}
       onPointerDown={(event) => event.stopPropagation()}
-      className={resolvedClassName}
       data-testid="theme-toggle"
       data-no-camera-drag="true"
     >

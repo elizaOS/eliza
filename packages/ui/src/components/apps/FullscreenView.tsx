@@ -289,9 +289,8 @@ export function DesktopGameWindowControls({
         {boundsLabel}
       </span>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-refresh",
@@ -308,9 +307,8 @@ export function DesktopGameWindowControls({
         })}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-focus",
@@ -339,9 +337,8 @@ export function DesktopGameWindowControls({
         {t("gameview.FocusWindow", { defaultValue: "Focus Window" })}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-show",
@@ -370,9 +367,8 @@ export function DesktopGameWindowControls({
         {t("gameview.ShowWindow", { defaultValue: "Show Window" })}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-hide",
@@ -401,9 +397,8 @@ export function DesktopGameWindowControls({
         {t("gameview.HideWindow", { defaultValue: "Hide Window" })}
       </Button>
       <Button
-        variant={alwaysOnTop ? "default" : "outline"}
-        size="sm"
-        className="h-7 gap-1.5 text-xs hover:border-accent"
+        variant={alwaysOnTop ? "default" : "outlineAccent"}
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-always-on-top",
@@ -453,9 +448,8 @@ export function DesktopGameWindowControls({
           : t("gameview.KeepOnTop", { defaultValue: "Keep On Top" })}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-native-snapshot",
@@ -493,9 +487,8 @@ export function DesktopGameWindowControls({
         {t("gameview.SnapshotWindow", { defaultValue: "Snapshot Window" })}
       </Button>
       <Button
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs hover:border-accent"
+        variant="outlineAccent"
+        size="tiny"
         onClick={() =>
           void runAction(
             "game-gpu-window",
@@ -539,9 +532,8 @@ export function DesktopGameWindowControls({
       {gpuWindowId && (
         <>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs hover:border-accent"
+            variant="outlineAccent"
+            size="tiny"
             onClick={() =>
               void runAction(
                 "game-gpu-show",
@@ -565,9 +557,8 @@ export function DesktopGameWindowControls({
             })}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs hover:border-accent"
+            variant="outlineAccent"
+            size="tiny"
             onClick={() =>
               void runAction(
                 "game-gpu-hide",
@@ -1515,17 +1506,15 @@ export function FullscreenView() {
           <span className="font-bold text-xs">{t("game.agentActivity")}</span>
           <span className="flex-1" />
           <Button
-            variant="outline"
-            size="sm"
-            className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
+            variant="outlineAccent"
+            size="micro"
             onClick={() => void loadLogs()}
           >
             {t("common.refresh")}
           </Button>
           <Button
-            variant="outline"
-            size="sm"
-            className="h-6 text-2xs px-2 py-0 border-border bg-card hover:border-accent"
+            variant="outlineAccent"
+            size="micro"
             onClick={() => setShowLogsPanel(false)}
           >
             {t("common.hide")}
@@ -1674,9 +1663,9 @@ export function FullscreenView() {
             {activeSessionState.suggestedPrompts.slice(0, 4).map((prompt) => (
               <Button
                 key={prompt}
-                variant="outline"
-                size="sm"
-                className="h-6 max-w-full text-2xs "
+                variant="outlineAccent"
+                size="micro"
+                className="max-w-full"
                 onClick={() => void sendChatCommand(prompt)}
                 disabled={sendingChat}
               >
@@ -1729,16 +1718,17 @@ export function FullscreenView() {
               }
             }}
             placeholder={t("game.chatPlaceholder")}
-            className="flex-1 h-8 text-xs bg-bg "
+            variant="form"
+            density="compact"
+            className="flex-1"
             disabled={sendingChat}
           />
           <Button
             variant="default"
-            size="sm"
+            size="dense"
             data-testid="game-command-send"
             onClick={handleSendChat}
             disabled={sendingChat || !chatInput.trim()}
-            className="h-8 font-bold tracking-wide"
           >
             {sendingChat ? "..." : t("common.send")}
           </Button>
@@ -2004,10 +1994,9 @@ export function FullscreenView() {
         </div>
         {sessionControlAction ? (
           <Button
-            variant="outline"
-            size="sm"
+            variant="outlineAccent"
+            size="tiny"
             data-testid="game-session-control"
-            className="h-7 text-xs hover:border-accent"
             onClick={() => void handleSessionControl()}
             disabled={sessionBusyAction === sessionControlAction}
           >
@@ -2022,28 +2011,25 @@ export function FullscreenView() {
         ) : null}
         {dashboardPanelEnabled && !isCompactLayout ? (
           <Button
-            variant={showLogsPanel ? "default" : "outline"}
-            size="sm"
+            variant={showLogsPanel ? "default" : "outlineAccent"}
+            size="tiny"
             data-testid="game-toggle-logs"
-            className="h-7 text-xs hover:border-accent"
             onClick={() => setShowLogsPanel(!showLogsPanel)}
           >
             {showLogsPanel ? "Hide game chat" : "Show game chat"}
           </Button>
         ) : null}
         <Button
-          variant={showDiagnostics ? "default" : "outline"}
-          size="sm"
-          className="h-7 text-xs hover:border-accent"
+          variant={showDiagnostics ? "default" : "outlineAccent"}
+          size="tiny"
           onClick={() => setShowDiagnostics((current) => !current)}
         >
           Details
         </Button>
         {canAttachViewer ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs hover:border-accent"
+            variant="outlineAccent"
+            size="tiny"
             onClick={() => void handleAttachViewer()}
             disabled={attachingViewer}
           >
@@ -2052,9 +2038,8 @@ export function FullscreenView() {
         ) : null}
         {canDetachViewer ? (
           <Button
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs hover:border-accent"
+            variant="outlineAccent"
+            size="tiny"
             onClick={() => void handleDetachViewer()}
             disabled={detachingViewer}
           >
@@ -2066,9 +2051,8 @@ export function FullscreenView() {
         ) : null}
         {hasViewer ? (
           <Button
-            variant={gameOverlayEnabled ? "default" : "outline"}
-            size="sm"
-            className="h-7 text-xs hover:border-accent"
+            variant={gameOverlayEnabled ? "default" : "outlineAccent"}
+            size="tiny"
             onClick={() => setState("gameOverlayEnabled", !gameOverlayEnabled)}
             title={
               gameOverlayEnabled
@@ -2082,8 +2066,7 @@ export function FullscreenView() {
         {renderOpenInNewTabButton("default", "h-7 text-xs ")}
         <Button
           variant="default"
-          size="sm"
-          className="h-7 text-xs "
+          size="tiny"
           disabled={stopping}
           onClick={handleStop}
         >
@@ -2091,8 +2074,7 @@ export function FullscreenView() {
         </Button>
         <Button
           variant="default"
-          size="sm"
-          className="h-7 text-xs "
+          size="tiny"
           onClick={() => {
             setState("tab", "apps");
             setState("appsSubTab", "browse");
@@ -2127,10 +2109,9 @@ export function FullscreenView() {
       {dashboardPanelEnabled && isCompactLayout ? (
         <div className="flex items-center gap-2 bg-card px-4 py-2">
           <Button
-            variant={mobileSurface === "game" ? "default" : "outline"}
-            size="sm"
+            variant={mobileSurface === "game" ? "default" : "outlineAccent"}
+            size="dense"
             data-testid="game-mobile-surface-game"
-            className="h-8 text-xs "
             onClick={() => setMobileSurface("game")}
           >
             {t("common.game", {
@@ -2138,10 +2119,11 @@ export function FullscreenView() {
             })}
           </Button>
           <Button
-            variant={mobileSurface === "dashboard" ? "default" : "outline"}
-            size="sm"
+            variant={
+              mobileSurface === "dashboard" ? "default" : "outlineAccent"
+            }
+            size="dense"
             data-testid="game-mobile-surface-dashboard"
-            className="h-8 text-xs "
             onClick={() => setMobileSurface("dashboard")}
           >
             {t("common.actions", {
@@ -2149,10 +2131,9 @@ export function FullscreenView() {
             })}
           </Button>
           <Button
-            variant={mobileSurface === "chat" ? "default" : "outline"}
-            size="sm"
+            variant={mobileSurface === "chat" ? "default" : "outlineAccent"}
+            size="dense"
             data-testid="game-mobile-surface-chat"
-            className="h-8 text-xs "
             onClick={() => setMobileSurface("chat")}
           >
             {t("nav.chat", {
