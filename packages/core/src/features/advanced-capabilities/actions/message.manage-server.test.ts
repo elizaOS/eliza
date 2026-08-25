@@ -23,6 +23,9 @@ const ROOM_ID = "00000000-0000-0000-0000-0000000000bb";
 const SENDER_ID = "00000000-0000-0000-0000-0000000000cc";
 const LINKED_ID = "00000000-0000-0000-0000-0000000000dd";
 const DESTINATION_WORLD_ID = "00000000-0000-0000-0000-0000000000ee";
+// Source world A: where the outer MESSAGE turn was already admitted as ADMIN
+// before the manage_server destination-authorization logic runs.
+const SOURCE_WORLD_ID = "00000000-0000-0000-0000-0000000000ab";
 const DESTINATION_ROOM_ID = "00000000-0000-0000-0000-0000000000ff";
 const ACCOUNT_ID = "primary";
 
@@ -84,6 +87,16 @@ function harness(options?: {
 	const runtime = createMockRuntime({
 		agentId: AGENT_ID,
 		logger: { debug() {}, info() {}, warn() {}, error() {} },
+		// #25284's per-op role admission resolves the caller's SOURCE world via
+		// getRoom/getWorld before delegating; model the suite's premise that the
+		// turn was already admitted as ADMIN in world A. Destination-world
+		// authorization stays the handler's own job (tests below prove it).
+		getRoom: async (roomId: UUID) => ({
+			id: roomId,
+			worldId: SOURCE_WORLD_ID as UUID,
+			agentId: AGENT_ID,
+			source: "discord",
+		}),
 		getMessageConnectors: () => [
 			{
 				source: "discord",
@@ -112,19 +125,29 @@ function harness(options?: {
 			},
 		],
 		getWorld: async (worldId: UUID) =>
-			worldId === DESTINATION_WORLD_ID
+			worldId === SOURCE_WORLD_ID
 				? {
-						id: DESTINATION_WORLD_ID as UUID,
+						id: SOURCE_WORLD_ID as UUID,
 						agentId: AGENT_ID as UUID,
 						messageServerId: stringToUuid(activeServerId),
-						metadata: authorizedEntityId
-							? {
-									roles: { [authorizedEntityId]: "ADMIN" },
-									roleSources: { [authorizedEntityId]: "manual" },
-								}
-							: {},
+						metadata: {
+							roles: { [SENDER_ID]: "ADMIN" },
+							roleSources: { [SENDER_ID]: "manual" },
+						},
 					}
-				: null,
+				: worldId === DESTINATION_WORLD_ID
+					? {
+							id: DESTINATION_WORLD_ID as UUID,
+							agentId: AGENT_ID as UUID,
+							messageServerId: stringToUuid(activeServerId),
+							metadata: authorizedEntityId
+								? {
+										roles: { [authorizedEntityId]: "ADMIN" },
+										roleSources: { [authorizedEntityId]: "manual" },
+									}
+								: {},
+						}
+					: null,
 		getRooms: async (worldId: UUID) =>
 			worldId === DESTINATION_WORLD_ID && options?.includeBinding !== false
 				? [
