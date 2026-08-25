@@ -1471,7 +1471,10 @@ export class TelegramService extends Service {
       const roomId = createUniqueUuid(
         this.runtime,
         this.scopedTelegramKey(
-          ctx.message && "message_thread_id" in ctx.message
+          // Thread derivation must match syncEntity byte-for-byte so first-
+          // update evidence lands in the same scope the existing-chat path
+          // uses (truthiness gate: thread id 0 means "no thread" here too).
+          ctx.message?.message_thread_id
             ? `${chatId}-${ctx.message.message_thread_id}`
             : chatId,
           accountId,
