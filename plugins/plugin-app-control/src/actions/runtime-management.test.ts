@@ -115,25 +115,25 @@ describe("RUNTIMES action", () => {
 		expect(manageRuntime).not.toHaveBeenCalled();
 	});
 
-	it.each(["confirm remove runtime-1", "yes, confirm remove runtime-1"])(
-		"accepts exact operation-bound confirmation: %s",
-		async (text) => {
-			const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
-				ok: true,
-				op: request.op,
-			}));
-			const action = createRuntimeManagementAction({ manageRuntime });
-			const result = await action.handler(
-				runtime,
-				{ content: { text } } as Memory,
-				undefined,
-				{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
-				callback(),
-			);
-			expect(result?.success).toBe(true);
-			expect(manageRuntime).toHaveBeenCalledTimes(1);
-		},
-	);
+	it.each([
+		"confirm remove runtime=runtime-1",
+		"yes, confirm remove runtime=runtime-1",
+	])("accepts exact operation-bound confirmation: %s", async (text) => {
+		const manageRuntime: RuntimeManagementFn = vi.fn(async (request) => ({
+			ok: true,
+			op: request.op,
+		}));
+		const action = createRuntimeManagementAction({ manageRuntime });
+		const result = await action.handler(
+			runtime,
+			{ content: { text } } as Memory,
+			undefined,
+			{ op: "remove", runtimeId: "runtime-1", confirm: "true" },
+			callback(),
+		);
+		expect(result?.success).toBe(true);
+		expect(manageRuntime).toHaveBeenCalledTimes(1);
+	});
 
 	it.each(["yes", "Yes, please", "confirm", "proceed", "go ahead", "do it"])(
 		"rejects generic approval that is not bound to the requested operation: %s",
@@ -172,7 +172,7 @@ describe("RUNTIMES action", () => {
 		const action = createRuntimeManagementAction({ manageRuntime });
 		const result = await action.handler(
 			runtime,
-			{ content: { text: "confirm pair host:mac" } } as Memory,
+			{ content: { text: "confirm pair target=host:mac" } } as Memory,
 			undefined,
 			{ op: "pair", targetId: "host:mac", confirm: "true" },
 			callback(),
@@ -203,7 +203,7 @@ describe("RUNTIMES action", () => {
 		const action = createRuntimeManagementAction({ manageRuntime });
 		const result = await action.handler(
 			runtime,
-			{ content: { text: "confirm remove runtime-2" } } as Memory,
+			{ content: { text: "confirm remove runtime=runtime-2" } } as Memory,
 			undefined,
 			{
 				op: "remove",
@@ -214,7 +214,7 @@ describe("RUNTIMES action", () => {
 		expect(result?.success).toBe(false);
 		expect(result?.values).toEqual(
 			expect.objectContaining({
-				confirmationText: "confirm remove runtime-1",
+				confirmationText: "confirm remove runtime=runtime-1",
 			}),
 		);
 		expect(manageRuntime).not.toHaveBeenCalled();
@@ -397,7 +397,7 @@ describe("RUNTIMES action", () => {
 				expect.objectContaining({
 					proposalId: "proposal-1",
 					proposalNonce: "nonce-1",
-					confirmationText: "confirm remove runtime-1",
+					confirmationText: "confirm remove runtime=runtime-1",
 				}),
 			);
 			expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
@@ -408,7 +408,7 @@ describe("RUNTIMES action", () => {
 				runtime,
 				{
 					content: {
-						text: "confirm remove runtime-1",
+						text: "confirm remove runtime=runtime-1",
 						metadata: { viewClientId: "origin-renderer" },
 					},
 				} as Memory,

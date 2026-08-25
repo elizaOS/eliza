@@ -22,6 +22,7 @@ import {
 	userRequestMessageText,
 } from "../params.js";
 import {
+	hasCompleteRuntimeManagementConfirmation,
 	isBoundRuntimeManagementConfirmation,
 	runtimeManagementConfirmationText,
 } from "./runtime-management-confirmation.js";
@@ -422,6 +423,15 @@ export function createRuntimeManagementAction(
 			const normalized = normalizeActionOptions(options) ?? {};
 			const requiresConfirmation = CONFIRMATION_REQUIRED.has(request.op);
 			const confirmationText = runtimeManagementConfirmationText(request);
+			if (
+				requiresConfirmation &&
+				!hasCompleteRuntimeManagementConfirmation(request)
+			) {
+				const reply =
+					"I need the complete target, endpoint, network, fingerprint, port, or pairing details before I can prepare that mutation for confirmation.";
+				await callback?.({ text: reply });
+				return { success: false, text: reply };
+			}
 			const userConfirmed = isBoundRuntimeManagementConfirmation(
 				userRequestMessageText(message),
 				request,

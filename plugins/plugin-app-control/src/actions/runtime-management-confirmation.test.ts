@@ -23,8 +23,8 @@ describe("runtime mutation confirmation", () => {
 	});
 
 	it.each([
-		"confirm revoke controller-one",
-		"yes, confirm revoke controller-one",
+		"confirm revoke runtime=controller-one",
+		"yes, confirm revoke runtime=controller-one",
 	])("accepts an unambiguous complete confirmation: %s", (text) => {
 		expect(isBoundRuntimeManagementConfirmation(text, request)).toBe(true);
 	});
@@ -44,7 +44,7 @@ describe("runtime mutation confirmation", () => {
 			),
 		).toBe(false);
 		expect(runtimeManagementConfirmationText(request)).toBe(
-			"confirm revoke controller-one",
+			"confirm revoke runtime=controller-one",
 		);
 	});
 
@@ -54,13 +54,60 @@ describe("runtime mutation confirmation", () => {
 			sessionId: "11111111-1111-4111-8111-111111111111",
 		};
 		expect(runtimeManagementConfirmationText(pairing)).toBe(
-			"confirm pairing 11111111-1111-4111-8111-111111111111",
+			"confirm pairing session=11111111-1111-4111-8111-111111111111",
 		);
 		expect(
 			isBoundRuntimeManagementConfirmation(
 				"confirm pairing 22222222-2222-4222-8222-222222222222",
 				pairing,
 			),
+		).toBe(false);
+	});
+
+	it("keeps effect-defining SSH fields in the human phrase", () => {
+		const good = {
+			op: "connect_ssh" as const,
+			runtimeId: "prod",
+			target: "admin@good.example",
+			sshPort: 22,
+			remoteApiPort: 2138,
+			expectedFingerprint: "SHA256:GOOD",
+			identityFile: "/Users/me/.ssh/good",
+		};
+		const evil = {
+			...good,
+			target: "root@evil.example",
+			sshPort: 2222,
+			expectedFingerprint: "SHA256:EVIL",
+			identityFile: "/tmp/attacker-key",
+		};
+		const phrase = runtimeManagementConfirmationText(good);
+		expect(phrase).toContain("target=admin@good.example");
+		expect(phrase).toContain("fingerprint=SHA256:GOOD");
+		expect(isBoundRuntimeManagementConfirmation(phrase, evil)).toBe(false);
+	});
+
+	it("distinguishes managed-network opt-in and rejects incomplete enrollment", () => {
+		const managed = {
+			op: "enroll_host" as const,
+			platform: "linux" as const,
+			managedNetwork: true,
+		};
+		const local = { ...managed, managedNetwork: false };
+		expect(runtimeManagementConfirmationText(managed)).not.toBe(
+			runtimeManagementConfirmationText(local),
+		);
+		expect(
+			isBoundRuntimeManagementConfirmation(
+				runtimeManagementConfirmationText(managed),
+				local,
+			),
+		).toBe(false);
+		expect(
+			isBoundRuntimeManagementConfirmation("confirm enroll host", {
+				op: "enroll_host",
+				platform: "linux",
+			}),
 		).toBe(false);
 	});
 });
