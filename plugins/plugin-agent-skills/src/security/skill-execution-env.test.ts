@@ -60,6 +60,67 @@ describe("buildSkillExecutionEnv", () => {
     expect(() => buildSkillExecutionEnv({ HOME: "/root" }, {})).toThrow(
       /no PATH/,
     );
+    expect(() =>
+      buildSkillExecutionEnv({ PATH: "   ", HOME: "/root" }, {}),
+    ).toThrow(/no PATH/);
+    expect(() =>
+      buildSkillExecutionEnv({ PATH: "\t\n", HOME: "/root" }, {}),
+    ).toThrow(/no PATH/);
+  });
+
+  it("passes all authorized host environment keys through", () => {
+    const hostEnv = {
+      PATH: "/usr/bin",
+      HOME: "/home/user",
+      TMPDIR: "/tmp/custom",
+      TMP: "/tmp/custom",
+      TEMP: "/tmp/custom",
+      SHELL: "/bin/zsh",
+      TERM: "xterm-256color",
+      USER: "eliza",
+      LOGNAME: "eliza",
+      LANG: "en_US.UTF-8",
+      LC_ALL: "en_US.UTF-8",
+      LC_CTYPE: "en_US.UTF-8",
+      TZ: "UTC",
+    };
+    const env = buildSkillExecutionEnv(hostEnv, {});
+    for (const [key, value] of Object.entries(hostEnv)) {
+      expect(env[key]).toBe(value);
+    }
+  });
+
+  it("passes all agent-scoped and skill-declared keys through", () => {
+    const authorizedKeys = {
+      PATH: "/usr/bin",
+      ELIZAOS_CLOUD_API_KEY: "cloud-key",
+      ELIZAOS_CLOUD_BASE_URL: "https://api.eliza.app",
+      ELIZA_CLOUD_BASE_URL: "https://api.eliza.app",
+      ELIZA_CLOUD_PUBLIC_URL: "https://public.eliza.app",
+      ELIZA_CLOUD_URL: "https://cloud.eliza.app",
+      ELIZA_APP_ID: "app-uuid-123",
+      GEMINI_API_KEY: "gemini-key",
+      OTTO_TMUX_SOCKET_DIR: "/tmp/otto-tmux",
+      NOTION_API_KEY: "notion-key",
+      TRELLO_API_KEY: "trello-key",
+      TRELLO_TOKEN: "trello-token",
+      THINGS_AUTH_TOKEN: "things-token",
+    };
+    const env = buildSkillExecutionEnv(authorizedKeys, {});
+    for (const [key, value] of Object.entries(authorizedKeys)) {
+      expect(env[key]).toBe(value);
+    }
+  });
+
+  it("ignores undefined values in processEnv and overlay", () => {
+    const env = buildSkillExecutionEnv(
+      { PATH: "/usr/bin", HOME: undefined, GEMINI_API_KEY: "valid" },
+      { NOTION_API_KEY: undefined as unknown as string, TRELLO_KEY: "set" },
+    );
+    expect(env.PATH).toBe("/usr/bin");
+    expect(env.GEMINI_API_KEY).toBe("valid");
+    expect(env).not.toHaveProperty("HOME");
+    expect(env).not.toHaveProperty("NOTION_API_KEY");
   });
 
   it("drops an unrecognised ambient key rather than passing it through", () => {
@@ -102,15 +163,21 @@ describe("buildSkillExecutionEnv", () => {
     // ship both, and a child reading the documented uppercase spelling would
     // still get the ambient value — silently using the wrong credential.
     const env = buildSkillExecutionEnv(
-      { PATH: "/usr/bin", GEMINI_API_KEY: "ambient" },
-      { Gemini_Api_Key: "from-skill-config" },
+      { PATH: "/usr/bin", GEMINI_API_KEY: "ambient", TRELLO_TOKEN: "ambient-token" },
+      { Gemini_Api_Key: "from-skill-config", trello_token: "overlay-token" },
     );
 
-    const spellings = Object.keys(env).filter(
+    const geminiKeys = Object.keys(env).filter(
       (key) => key.toUpperCase() === "GEMINI_API_KEY",
     );
-    expect(spellings).toHaveLength(1);
-    expect(env[spellings[0]]).toBe("from-skill-config");
+    expect(geminiKeys).toHaveLength(1);
+    expect(env[geminiKeys[0]]).toBe("from-skill-config");
+
+    const trelloKeys = Object.keys(env).filter(
+      (key) => key.toUpperCase() === "TRELLO_TOKEN",
+    );
+    expect(trelloKeys).toHaveLength(1);
+    expect(env[trelloKeys[0]]).toBe("overlay-token");
   });
 });
 
@@ -120,6 +187,10 @@ describe("isInheritableSkillEnvKey", () => {
     // reported ready and then spawned without the variable it declared.
     expect(isInheritableSkillEnvKey("GEMINI_API_KEY")).toBe(true);
     expect(isInheritableSkillEnvKey("gemini_api_key")).toBe(true);
+    expect(isInheritableSkillEnvKey("ELIZA_APP_ID")).toBe(true);
+    expect(isInheritableSkillEnvKey("eliza_app_id")).toBe(true);
+    expect(isInheritableSkillEnvKey("THINGS_AUTH_TOKEN")).toBe(true);
+    expect(isInheritableSkillEnvKey("things_auth_token")).toBe(true);
     expect(isInheritableSkillEnvKey("AGENT_SERVER_SHARED_SECRET")).toBe(false);
     expect(isInheritableSkillEnvKey("SOME_THIRD_PARTY_KEY")).toBe(false);
   });
