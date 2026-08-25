@@ -1647,9 +1647,20 @@ async function writeHostsFileContentWithElevation(
   }
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function normalizeWebsiteTarget(rawTarget: string): string | null {
-  const trimmed = rawTarget
-    .slice(0, 4096)
+  const trimmed = truncateText(rawTarget, 4096)
     .trim()
     .replace(/[),.!?]{1,64}$/g, "");
   if (!trimmed) return null;
@@ -1713,10 +1724,10 @@ function normalizeStringList(
         // planner output such as "['twitter.com', 'reddit.com']".
       }
     }
-    return trimmed
-      .slice(0, 10_000)
+    const bounded = truncateText(trimmed, 10_000);
+    return bounded
       .split(/[,\n]/)
-      .map((item) => item.trim().slice(0, 1024))
+      .map((item) => truncateText(item.trim(), 1024))
       .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
       .filter((item) => item.length > 0);
   }

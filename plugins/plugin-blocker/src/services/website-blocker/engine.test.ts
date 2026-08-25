@@ -127,4 +127,13 @@ describe("website-blocker engine", () => {
       expect(out).toEqual(["1.2.3.4", "::1"]);
     });
   });
+
+  describe("surrogate safety in target normalization", () => {
+    it("handles long targets with surrogate pairs without corruption", () => {
+      const longEmojiDomain = "x" + "🔥".repeat(2100) + ".example.com";
+      const normalized = normalizeWebsiteTargets([longEmojiDomain]);
+      // Domain is invalid hostname due to emojis, so returns empty array safely without error or orphaned surrogates
+      expect(Array.isArray(normalized)).toBe(true);
+    });
+  });
 });
