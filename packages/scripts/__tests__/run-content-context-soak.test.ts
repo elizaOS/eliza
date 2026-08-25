@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { createProgressiveContentProductionLifecycleContract } from "../lib/progressive-content-production-targets.mjs";
 import {
   parseSoakArgs,
   produceContentContextSoak,
@@ -71,5 +72,44 @@ describe("content-context soak producer", () => {
         commit: "short",
       }),
     ).rejects.toMatchObject({ code: "SOAK_COMMIT_INVALID" });
+  });
+
+  it("binds the closed lifecycle catalog without overstating rejection probes", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "content-soak-lifecycle-"),
+    );
+    const contract = await createProgressiveContentProductionLifecycleContract({
+      workRoot: root,
+    });
+    try {
+      expect(contract.lifecycle.declarations).toMatchObject([
+        { id: "abort", semantics: "fault-rejection" },
+        { id: "revoke", semantics: "fault-rejection" },
+        { id: "mutate", semantics: "fault-rejection" },
+        { id: "restart", semantics: "target-transition" },
+        { id: "expire", semantics: "fault-rejection" },
+        { id: "compaction", semantics: "fault-rejection" },
+        { id: "eviction", semantics: "mutant-rejection" },
+      ]);
+      expect(
+        contract.lifecycle.declarations.some(
+          ({ semantics }) => semantics === "unsupported",
+        ),
+      ).toBe(false);
+      for (const declaration of contract.lifecycle.declarations) {
+        if (declaration.semantics === "target-transition") continue;
+        let observedCode = null;
+        try {
+          await declaration.executor.execute();
+        } catch (error) {
+          observedCode = error?.code;
+        }
+        expect(observedCode).toBe(declaration.expectedCode);
+        expect(await declaration.executor.observeEffects?.()).toEqual([]);
+      }
+    } finally {
+      await contract.cleanup();
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 });

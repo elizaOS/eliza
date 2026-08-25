@@ -3,6 +3,10 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
+	PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
+	type ProgressiveContentFaultExecutor,
+} from "./progressive-content-faults";
+import {
 	analyzeProgressiveContentResourceDrift,
 	type ProgressiveContentResourceDrift,
 	type ProgressiveContentResourcePoint,
@@ -23,9 +27,80 @@ export const PROGRESSIVE_CONTENT_SOAK_FAMILIES = [
 	"tool-output",
 ] as const;
 export const PROGRESSIVE_CONTENT_SOAK_SAMPLE_EVERY_OPERATIONS = 1_000;
+export const PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_SCHEMA_VERSION =
+	"elizaos.progressive-content.soak-lifecycle.v1" as const;
+export const PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS = [
+	"abort",
+	"revoke",
+	"mutate",
+	"restart",
+	"expire",
+	"compaction",
+	"eviction",
+] as const;
+export const PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_REJECTIONS = {
+	abort: ["fault-rejection", "CONTENT_READ_CANCELLED"],
+	revoke: ["fault-rejection", "CONTENT_ACCESS_REVOKED"],
+	mutate: ["fault-rejection", "CONTENT_STALE_REVISION"],
+	expire: ["fault-rejection", "CONTENT_EXPIRED"],
+	compaction: ["fault-rejection", "CONTENT_MANIFEST_COMMIT_FAILED"],
+	eviction: ["mutant-rejection", "CONTENT_CONTINUITY_LEDGER_MISMATCH"],
+} as const;
 
 export type ProgressiveContentSoakFamily =
 	(typeof PROGRESSIVE_CONTENT_SOAK_FAMILIES)[number];
+export type ProgressiveContentSoakLifecycleId =
+	(typeof PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS)[number];
+export type ProgressiveContentSoakLifecycleSemantics =
+	| "target-transition"
+	| "fault-rejection"
+	| "mutant-rejection"
+	| "unsupported";
+
+export type ProgressiveContentSoakLifecycleDeclaration =
+	| {
+			readonly id: "restart";
+			readonly semantics: "target-transition";
+	  }
+	| {
+			readonly id: Exclude<ProgressiveContentSoakLifecycleId, "restart">;
+			readonly semantics: "fault-rejection" | "mutant-rejection";
+			readonly expectedCode: string;
+			readonly executor: ProgressiveContentFaultExecutor;
+	  }
+	| {
+			readonly id: Exclude<ProgressiveContentSoakLifecycleId, "restart">;
+			readonly semantics: "unsupported";
+			readonly reason: string;
+	  };
+
+export interface ProgressiveContentSoakLifecycleContract {
+	readonly declarations: readonly ProgressiveContentSoakLifecycleDeclaration[];
+}
+
+export interface ProgressiveContentSoakLifecycleResult {
+	readonly id: ProgressiveContentSoakLifecycleId;
+	readonly cycle: number;
+	readonly semantics: ProgressiveContentSoakLifecycleSemantics;
+	readonly status: "passed" | "failed" | "unsupported";
+	readonly targetFamily: ProgressiveContentSoakFamily | null;
+	readonly expectedCode: string | null;
+	readonly observedCode: string | null;
+	readonly beforeGeneration: string | null;
+	readonly afterGeneration: string | null;
+	readonly beforeSliceSha256: string | null;
+	readonly afterSliceSha256: string | null;
+	readonly observedEffects: readonly string[];
+	readonly reason: string | null;
+}
+
+export interface ProgressiveContentSoakLifecycleReport {
+	readonly schemaVersion: typeof PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_SCHEMA_VERSION;
+	readonly status: "passed" | "failed";
+	readonly required: readonly ProgressiveContentSoakLifecycleId[];
+	readonly completedCycles: number;
+	readonly results: readonly ProgressiveContentSoakLifecycleResult[];
+}
 
 export interface ProgressiveContentSoakTarget {
 	readonly family: ProgressiveContentSoakFamily;
@@ -84,6 +159,7 @@ export interface ProgressiveContentMixedSoakReport {
 	readonly warmupOperations: number;
 	readonly batches: number;
 	readonly failures: readonly string[];
+	readonly lifecycle: ProgressiveContentSoakLifecycleReport;
 	readonly families: readonly ProgressiveContentMixedSoakFamilyReport[];
 	readonly resourceSamples: readonly ProgressiveContentResourcePoint[];
 	readonly resourceDrift: ProgressiveContentResourceDrift;
@@ -174,6 +250,219 @@ function validateTargets(
 	}
 }
 
+function validateLifecycleContract(
+	contract: ProgressiveContentSoakLifecycleContract,
+): ReadonlyMap<
+	ProgressiveContentSoakLifecycleId,
+	ProgressiveContentSoakLifecycleDeclaration
+> {
+	if (
+		contract.declarations.length !==
+		PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.length
+	) {
+		throw new TypeError(
+			"mixed soak lifecycle requires exactly seven declarations",
+		);
+	}
+	const declarations = new Map<
+		ProgressiveContentSoakLifecycleId,
+		ProgressiveContentSoakLifecycleDeclaration
+	>();
+	for (const declaration of contract.declarations) {
+		if (
+			!PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.includes(declaration.id) ||
+			declarations.has(declaration.id)
+		) {
+			throw new TypeError(
+				"mixed soak lifecycle declarations are invalid or duplicated",
+			);
+		}
+		if (
+			declaration.id === "restart" &&
+			declaration.semantics !== "target-transition"
+		) {
+			throw new TypeError("restart must be a target-bound transition");
+		}
+		if (
+			declaration.semantics === "unsupported" &&
+			declaration.reason.trim().length === 0
+		) {
+			throw new TypeError(
+				"unsupported lifecycle declarations require a reason",
+			);
+		}
+		if (
+			(declaration.semantics === "fault-rejection" ||
+				declaration.semantics === "mutant-rejection") &&
+			declaration.expectedCode.trim().length === 0
+		) {
+			throw new TypeError(
+				"lifecycle rejection declarations require an expected code",
+			);
+		}
+		if (
+			declaration.id !== "restart" &&
+			declaration.semantics !== "unsupported"
+		) {
+			const expected = PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_REJECTIONS[
+				declaration.id
+			] as readonly ["fault-rejection" | "mutant-rejection", string];
+			if (
+				declaration.semantics !== expected[0] ||
+				declaration.expectedCode !== expected[1]
+			) {
+				throw new TypeError(
+					`${declaration.id} lifecycle declaration differs from the fixed rejection contract`,
+				);
+			}
+		}
+		declarations.set(declaration.id, declaration);
+	}
+	if (
+		PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.some((id) => !declarations.has(id))
+	) {
+		throw new TypeError(
+			"mixed soak lifecycle declarations lack fixed coverage",
+		);
+	}
+	return declarations;
+}
+
+function lifecycleErrorCode(error: unknown): string {
+	if (error && typeof error === "object") {
+		const code = (error as { code?: unknown }).code;
+		if (typeof code === "string" && code.length > 0) return code;
+	}
+	return `executor-error:${error instanceof Error ? error.name : "unknown"}`;
+}
+
+async function readLifecycleProbe(target: ProgressiveContentTarget) {
+	return target.read({
+		access: "authorized",
+		offset: 0,
+		limit: Math.min(64 * 1024, Math.max(1, target.object.byteLength)),
+		expectedRevision: target.object.revision,
+	});
+}
+
+async function executeLifecycleCycle(input: {
+	readonly cycle: number;
+	readonly declarations: ReadonlyMap<
+		ProgressiveContentSoakLifecycleId,
+		ProgressiveContentSoakLifecycleDeclaration
+	>;
+	readonly targets: readonly {
+		readonly family: ProgressiveContentSoakFamily;
+		readonly target: ProgressiveContentTarget;
+	}[];
+}): Promise<readonly ProgressiveContentSoakLifecycleResult[]> {
+	const restartTarget = input.targets[(input.cycle - 1) % input.targets.length];
+	if (!restartTarget) throw new TypeError("lifecycle restart target is absent");
+	const results: ProgressiveContentSoakLifecycleResult[] = [];
+	for (const id of PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS) {
+		const declaration = input.declarations.get(id);
+		if (!declaration)
+			throw new TypeError(`lifecycle declaration ${id} is absent`);
+		if (declaration.semantics === "unsupported") {
+			results.push({
+				id,
+				cycle: input.cycle,
+				semantics: "unsupported",
+				status: "unsupported",
+				targetFamily: null,
+				expectedCode: null,
+				observedCode: null,
+				beforeGeneration: null,
+				afterGeneration: null,
+				beforeSliceSha256: null,
+				afterSliceSha256: null,
+				observedEffects: [],
+				reason: declaration.reason,
+			});
+			continue;
+		}
+		if (declaration.semantics === "target-transition") {
+			let beforeGeneration: string | null = null;
+			let afterGeneration: string | null = null;
+			let beforeSliceSha256: string | null = null;
+			let afterSliceSha256: string | null = null;
+			let observedCode: string | null = null;
+			try {
+				const before = await restartTarget.target.inspect();
+				const beforePage = await readLifecycleProbe(restartTarget.target);
+				beforeGeneration = before.resolverGeneration;
+				beforeSliceSha256 = beforePage.view.slice.sliceSha256;
+				await restartTarget.target.restart();
+				const after = await restartTarget.target.inspect();
+				const afterPage = await readLifecycleProbe(restartTarget.target);
+				afterGeneration = after.resolverGeneration;
+				afterSliceSha256 = afterPage.view.slice.sliceSha256;
+			} catch (error) {
+				observedCode = lifecycleErrorCode(error);
+			}
+			const passed =
+				observedCode === null &&
+				beforeGeneration !== null &&
+				afterGeneration !== null &&
+				beforeGeneration !== afterGeneration &&
+				beforeSliceSha256 !== null &&
+				beforeSliceSha256 === afterSliceSha256;
+			results.push({
+				id,
+				cycle: input.cycle,
+				semantics: "target-transition",
+				status: passed ? "passed" : "failed",
+				targetFamily: restartTarget.family,
+				expectedCode: null,
+				observedCode,
+				beforeGeneration,
+				afterGeneration,
+				beforeSliceSha256,
+				afterSliceSha256,
+				observedEffects: [],
+				reason: passed ? null : "restart did not preserve the bound page",
+			});
+			continue;
+		}
+		let observedCode = "FAULT_NOT_OBSERVED";
+		let observedEffects: readonly string[] = [];
+		try {
+			await declaration.executor.execute();
+		} catch (error) {
+			observedCode = lifecycleErrorCode(error);
+		}
+		try {
+			observedEffects = (await declaration.executor.observeEffects?.()) ?? [];
+		} catch (error) {
+			observedEffects = [
+				`observer-error:${error instanceof Error ? error.name : "unknown"}`,
+			];
+		}
+		const forbidden = observedEffects.some((effect) =>
+			PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS.includes(
+				effect as (typeof PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS)[number],
+			),
+		);
+		const passed = observedCode === declaration.expectedCode && !forbidden;
+		results.push({
+			id,
+			cycle: input.cycle,
+			semantics: declaration.semantics,
+			status: passed ? "passed" : "failed",
+			targetFamily: null,
+			expectedCode: declaration.expectedCode,
+			observedCode,
+			beforeGeneration: null,
+			afterGeneration: null,
+			beforeSliceSha256: null,
+			afterSliceSha256: null,
+			observedEffects,
+			reason: passed ? null : "fault rejection or effect observation differed",
+		});
+	}
+	return results;
+}
+
 async function runRealPositiveLeakControl(
 	measure: () =>
 		| ProgressiveContentMixedResourceSample
@@ -200,8 +489,10 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		| ProgressiveContentMixedResourceSample
 		| Promise<ProgressiveContentMixedResourceSample>;
 	readonly policy: MixedSoakExecutionPolicy;
+	readonly lifecycle: ProgressiveContentSoakLifecycleContract;
 }): Promise<ProgressiveContentMixedSoakReport> {
 	validateTargets(input.targets);
+	const lifecycleDeclarations = validateLifecycleContract(input.lifecycle);
 	sha256(input.corpusManifestSha256, "corpusManifestSha256");
 	if (!/^[0-9a-f]{40}$/u.test(input.commit))
 		throw new TypeError("commit must be a full lowercase Git SHA");
@@ -260,6 +551,7 @@ export async function runProgressiveContentMixedSoakContract(input: {
 	const startedAt = input.policy.now();
 	let operations = 0;
 	let batches = 0;
+	const lifecycleResults: ProgressiveContentSoakLifecycleResult[] = [];
 	do {
 		const count = Math.min(
 			batchOperations,
@@ -312,6 +604,13 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		);
 		operations += count;
 		batches += 1;
+		lifecycleResults.push(
+			...(await executeLifecycleCycle({
+				cycle: batches,
+				declarations: lifecycleDeclarations,
+				targets: familyState,
+			})),
+		);
 		resourceSamples.push({
 			operation: operations,
 			elapsedMs: input.policy.now() - startedAt,
@@ -381,11 +680,28 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		failures.push(...resourceDrift.failures);
 	if (!positiveLeakControlDetected)
 		failures.push("positive leak control was not detected");
+	for (const result of lifecycleResults) {
+		if (result.status !== "passed") {
+			failures.push(
+				`lifecycle ${result.id} cycle ${result.cycle}: ${result.reason ?? result.status}`,
+			);
+		}
+	}
+	const lifecycle: ProgressiveContentSoakLifecycleReport = {
+		schemaVersion: PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_SCHEMA_VERSION,
+		status: lifecycleResults.every(({ status }) => status === "passed")
+			? "passed"
+			: "failed",
+		required: PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS,
+		completedCycles: batches,
+		results: lifecycleResults,
+	};
 	const evidenceEligible =
 		input.policy.clockSource === "system-monotonic" &&
 		requiredDurationMs === REQUIRED_PROGRESSIVE_CONTENT_SOAK_DURATION_MS &&
 		requiredOperations === REQUIRED_PROGRESSIVE_CONTENT_SOAK_OPERATIONS &&
-		batchOperations === PROGRESSIVE_CONTENT_SOAK_SAMPLE_EVERY_OPERATIONS;
+		batchOperations === PROGRESSIVE_CONTENT_SOAK_SAMPLE_EVERY_OPERATIONS &&
+		lifecycle.status === "passed";
 	return {
 		schemaVersion: PROGRESSIVE_CONTENT_MIXED_SOAK_SCHEMA_VERSION,
 		commit: input.commit,
@@ -401,6 +717,7 @@ export async function runProgressiveContentMixedSoakContract(input: {
 		warmupOperations,
 		batches,
 		failures,
+		lifecycle,
 		families: familyState.map((target) => ({
 			family: target.family,
 			adapterId: target.adapterId,
@@ -435,6 +752,7 @@ export function runProgressiveContentMixedSoak(input: {
 	readonly measureResources: () =>
 		| ProgressiveContentMixedResourceSample
 		| Promise<ProgressiveContentMixedResourceSample>;
+	readonly lifecycle: ProgressiveContentSoakLifecycleContract;
 }): Promise<ProgressiveContentMixedSoakReport> {
 	const startedAt = performance.now();
 	return runProgressiveContentMixedSoakContract({

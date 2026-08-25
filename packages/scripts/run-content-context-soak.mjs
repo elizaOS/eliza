@@ -82,6 +82,7 @@ export async function produceContentContextSoak(options) {
       corpusManifestSha256: manifest.manifestSha256,
       targets: contract.targets,
       measureResources: contract.measureResources,
+      lifecycle: contract.lifecycle,
     });
     if (!report.evidenceEligible || report.status !== "passed")
       throw new ContentContextSoakConfigurationError(
