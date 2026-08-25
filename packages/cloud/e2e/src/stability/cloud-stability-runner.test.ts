@@ -152,7 +152,7 @@ describe("Cloud stability manifest", () => {
     expect((await verifyCloudStabilityArtifacts(outputRoot)).report).toEqual(
       report,
     );
-  });
+  }, 30_000);
 
   test("rejects modified, truncated, noncanonical, and duplicate-key reports", async () => {
     const outputRoot = await mkdtemp(
@@ -160,9 +160,10 @@ describe("Cloud stability manifest", () => {
     );
     directories.push(outputRoot);
     const adapter: ScenarioStabilityExecutionAdapter = {
-      async execute() {
+      async execute(input) {
+        const passed = input.attemptNumber !== 2;
         return {
-          passed: true,
+          passed,
           initialStateHash: "b".repeat(64),
           finalStateHash: "c".repeat(64),
           inputTokens: 1,
@@ -176,6 +177,7 @@ describe("Cloud stability manifest", () => {
             judgeVerdicts: [],
           },
           stateDiff: {},
+          ...(passed ? {} : { error: "synthetic scenario failure" }),
         };
       },
       async terminate() {},
@@ -189,9 +191,11 @@ describe("Cloud stability manifest", () => {
     const originalManifest = await readFile(manifestPath);
     const parsedReport = JSON.parse(originalReport.toString("utf8"));
 
+    const directlyModifiedReport = structuredClone(parsedReport);
+    directlyModifiedReport.cells[0].attempts[0].durationMs += 1;
     await writeFile(
       reportPath,
-      canonicalCloudStabilityJson({ ...parsedReport, status: "failed" }),
+      canonicalCloudStabilityJson(directlyModifiedReport),
     );
     await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
       /does not match retained report bytes/,
@@ -263,12 +267,105 @@ describe("Cloud stability manifest", () => {
     ).resolves.toMatchObject({ report: modifiedReport });
 
     const invalidReport = structuredClone(parsedReport);
-    invalidReport.cells[0].passedAttempts = 2;
+    invalidReport.cells[0].passedAttempts = 3;
     await bindAlteredReport(
       Buffer.from(canonicalCloudStabilityJson(invalidReport), "utf8"),
     );
     await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
       /summary does not match/,
+    );
+
+    const unclassifiedFailure = structuredClone(parsedReport);
+    unclassifiedFailure.cells[0].attempts[1].failureClassification = null;
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(unclassifiedFailure), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /pass and failure classification disagree/,
+    );
+
+    const classifiedPass = structuredClone(parsedReport);
+    classifiedPass.cells[0].attempts[0].failureClassification =
+      "scenario-failure";
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(classifiedPass), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /pass and failure classification disagree/,
+    );
+
+    const wrongPlan = structuredClone(parsedReport);
+    wrongPlan.planFingerprint = "0".repeat(64);
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(wrongPlan), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /does not match its manifest/,
+    );
+
+    const wrongAttemptIdentity = structuredClone(parsedReport);
+    wrongAttemptIdentity.cells[0].attempts[0].attemptId += "-fabricated";
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(wrongAttemptIdentity), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /does not match its manifest/,
+    );
+
+    const wrongAttemptDirectory = structuredClone(parsedReport);
+    wrongAttemptDirectory.cells[0].attempts[0].outputDir += "-fabricated";
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(wrongAttemptDirectory), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /does not match its manifest/,
+    );
+
+    const wrongBaseline = structuredClone(parsedReport);
+    wrongBaseline.cells[0].baselineInitialStateHash = "f".repeat(64);
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(wrongBaseline), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /baseline does not match its first attempt/,
+    );
+
+    const fabricatedSummaries = structuredClone(parsedReport);
+    fabricatedSummaries.focusList[0] = {
+      ...fabricatedSummaries.focusList[0],
+      scenarioId: "fabricated",
+      provider: "wrong",
+      model: "wrong",
+      failedAttemptIds: [],
+      failureClassifications: [],
+    };
+    fabricatedSummaries.failureClusters = [];
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(fabricatedSummaries), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /summaries do not match derived execution evidence/,
+    );
+
+    const fabricatedCluster = structuredClone(parsedReport);
+    fabricatedCluster.failureClusters[0].sample = "fabricated sample";
+    fabricatedCluster.failureClusters[0].fingerprint = "0".repeat(64);
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(fabricatedCluster), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /summaries do not match derived execution evidence/,
+    );
+
+    const duplicateCluster = structuredClone(parsedReport);
+    duplicateCluster.failureClusters.push(
+      structuredClone(duplicateCluster.failureClusters[0]),
+    );
+    await bindAlteredReport(
+      Buffer.from(canonicalCloudStabilityJson(duplicateCluster), "utf8"),
+    );
+    await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow(
+      /summaries do not match derived execution evidence/,
     );
 
     await Promise.all([
@@ -286,5 +383,5 @@ describe("Cloud stability manifest", () => {
     await rename(reportPath, reportTargetPath);
     await symlink(reportTargetPath, reportPath);
     await expect(verifyCloudStabilityArtifacts(outputRoot)).rejects.toThrow();
-  });
+  }, 30_000);
 });

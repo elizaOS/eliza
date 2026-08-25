@@ -11,6 +11,9 @@ import path from "node:path";
 import {
   assertScenarioStabilityBoundedJson,
   createScenarioStabilityPlan,
+  deriveScenarioStabilityExecutionAttemptIdentities,
+  deriveScenarioStabilityFailureClusters,
+  deriveScenarioStabilityFocusList,
   executeScenarioStability,
   parseScenarioStabilityAttemptExecution,
   type ScenarioStabilityExecutionAdapter,
@@ -19,6 +22,7 @@ import {
   type ScenarioStabilityExecutionTarget,
   type ScenarioStabilityFailureClassification,
   type ScenarioStabilityTier,
+  scenarioStabilityExecutionPlanFingerprint,
 } from "@elizaos/scenario-runner";
 import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 
@@ -505,6 +509,9 @@ function parseExecutedAttempt(value: unknown, index: number) {
           record.failureClassification,
           `${label} failureClassification`,
         );
+  if (execution.passed !== (classification === null)) {
+    throw new Error(`${label} pass and failure classification disagree`);
+  }
   return {
     ...execution,
     attemptNumber,
@@ -566,6 +573,9 @@ function parseExecutedCell(value: unknown, index: number) {
           record.baselineInitialStateHash,
           `${label} baselineInitialStateHash`,
         );
+  if (baselineInitialStateHash !== attempts[0]?.initialStateHash) {
+    throw new Error(`${label} baseline does not match its first attempt`);
+  }
   return {
     scenarioId: boundedString(record.scenarioId, `${label} scenarioId`),
     model: {
@@ -640,6 +650,7 @@ function parseFailureCluster(value: unknown, index: number) {
 function parseCloudStabilityExecutionReport(
   value: unknown,
   manifest: CloudStabilityManifest,
+  planOutputRoot: string,
 ): ScenarioStabilityExecutionReport {
   assertScenarioStabilityBoundedJson(
     value,
@@ -667,6 +678,10 @@ function parseCloudStabilityExecutionReport(
     throw new Error("Cloud stability aggregate report constants are invalid");
   }
   const runId = stabilityRunId(record.runId);
+  const planFingerprint = sha256String(
+    record.planFingerprint,
+    "stability report planFingerprint",
+  );
   const budgets = parseExecutionBudgets(record.budgets);
   const cells = strictArray(record.cells, "stability report cells").map(
     parseExecutedCell,
@@ -683,6 +698,16 @@ function parseCloudStabilityExecutionReport(
     throw new Error("Cloud stability aggregate must contain exactly one cell");
   }
   const cell = cells[0];
+  const target: ScenarioStabilityExecutionTarget = {
+    scenarioId: manifest.scenarioId,
+    model: { provider: manifest.provider, model: manifest.model },
+  };
+  const plan = createScenarioStabilityPlan({
+    runId: manifest.runId,
+    outputRoot: planOutputRoot,
+  });
+  const expectedAttemptIdentities =
+    deriveScenarioStabilityExecutionAttemptIdentities(plan, target);
   if (
     !cell ||
     runId !== manifest.runId ||
@@ -693,18 +718,36 @@ function parseCloudStabilityExecutionReport(
     budgets.maxInputTokens !== manifest.maxInputTokens ||
     budgets.maxOutputTokens !== manifest.maxOutputTokens ||
     budgets.maxToolCalls !== manifest.maxToolCalls ||
-    (record.status === "passed") !== cell.strictPassed ||
-    focusList.length !== (cell.strictPassed ? 0 : 1)
+    planFingerprint !== scenarioStabilityExecutionPlanFingerprint(plan) ||
+    cell.attempts.some((attempt, index) => {
+      const expected = expectedAttemptIdentities[index];
+      return (
+        !expected ||
+        attempt.attemptNumber !== expected.attemptNumber ||
+        attempt.attemptId !== expected.attemptId ||
+        attempt.outputDir !== expected.outputDir
+      );
+    })
   ) {
     throw new Error("Cloud stability aggregate does not match its manifest");
+  }
+  const expectedFocusList = deriveScenarioStabilityFocusList(cells);
+  const expectedFailureClusters = deriveScenarioStabilityFailureClusters(cells);
+  if (
+    canonicalCloudStabilityJson(focusList) !==
+      canonicalCloudStabilityJson(expectedFocusList) ||
+    canonicalCloudStabilityJson(failureClusters) !==
+      canonicalCloudStabilityJson(expectedFailureClusters) ||
+    record.status !== (expectedFocusList.length === 0 ? "passed" : "failed")
+  ) {
+    throw new Error(
+      "Cloud stability aggregate summaries do not match derived execution evidence",
+    );
   }
   return {
     schemaVersion: 1,
     runId,
-    planFingerprint: sha256String(
-      record.planFingerprint,
-      "stability report planFingerprint",
-    ),
+    planFingerprint,
     status: record.status,
     attemptCount: 3,
     requiredTier: "3/3",
@@ -740,9 +783,9 @@ function parseArtifactManifest(value: unknown): CloudStabilityArtifactManifest {
   return { ...manifest, manifestSha256, reportSha256 };
 }
 
-/** Verifies retained report bytes, sidecar, and manifest before returning data. */
-export async function verifyCloudStabilityArtifacts(
+async function verifyCloudStabilityArtifactsAt(
   outputRoot: string,
+  planOutputRoot: string,
 ): Promise<VerifiedCloudStabilityArtifacts> {
   const [reportBytes, checksumBytes, manifestBytes] = await Promise.all([
     readBoundedArtifact(
@@ -773,8 +816,19 @@ export async function verifyCloudStabilityArtifacts(
   ) {
     throw new Error("Cloud stability report checksums do not match");
   }
-  const report = parseCloudStabilityExecutionReport(reportValue, manifest);
+  const report = parseCloudStabilityExecutionReport(
+    reportValue,
+    manifest,
+    planOutputRoot,
+  );
   return { report, manifest, reportSha256 };
+}
+
+/** Verifies retained report bytes, sidecar, manifest, and output-path authority. */
+export async function verifyCloudStabilityArtifacts(
+  outputRoot: string,
+): Promise<VerifiedCloudStabilityArtifacts> {
+  return verifyCloudStabilityArtifactsAt(outputRoot, outputRoot);
 }
 
 async function removeStagedBundle(stagingRoot: string): Promise<void> {
@@ -839,7 +893,7 @@ async function persistCloudStabilityArtifacts(
       canonicalCloudStabilityJson(artifactManifest),
     );
     await syncDirectory(stagingRoot);
-    await verifyCloudStabilityArtifacts(stagingRoot);
+    await verifyCloudStabilityArtifactsAt(stagingRoot, outputRoot);
 
     // The manifest is the commit marker: it is linked last, and no link may
     // replace a prior artifact generation. Readers either verify all three or

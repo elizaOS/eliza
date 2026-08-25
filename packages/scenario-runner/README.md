@@ -152,6 +152,9 @@ Programmatic stability execution is available through
 plan before any adapter call, bounds every retained evidence/state value as
 plain JSON, compares runtime-produced initial-state hashes, records
 first-attempt success, and blocks every cell below `3/3`.
+Its exported plan-fingerprint, attempt-identity, focus-list, and failure-cluster
+derivations let artifact verifiers enforce the exact production projections
+without maintaining a second implementation.
 
 Use `ScenarioStabilitySubprocessAdapter` for Cloud or qualification lanes. It
 opens the exact shared synthetic-control manifest for every attempt, launches a
