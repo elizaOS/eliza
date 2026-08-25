@@ -60,6 +60,11 @@ import {
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
+import type { TelegramMembershipReason } from "./membership";
+import {
+  createTelegramMembershipGate,
+  type TelegramMembershipGate,
+} from "./membership-gate";
 import { MessageManager } from "./messageManager";
 import {
   claimTelegramPollerToken,
@@ -396,6 +401,13 @@ export class TelegramService extends Service {
   private botToken: string | null;
   private defaultAccountId = DEFAULT_ACCOUNT_ID;
   private accountStates: Map<string, TelegramAccountRuntime> = new Map();
+  /**
+   * Lazily-created membership-authority gate for the default account: binds
+   * the durable connector-account row and the per-account authority client.
+   * Null until the bot's Telegram identity is known (getMe) or when the
+   * authority service is absent — group admission then fails closed.
+   */
+  private membershipGate: Promise<TelegramMembershipGate | null> | null = null;
 
   /**
    * Constructor for TelegramService class.
@@ -1032,6 +1044,47 @@ export class TelegramService extends Service {
       },
       "Bot info retrieved",
     );
+
+    // Seed the membership-authority gate once the bot identity is known. The
+    // default account is the only multi-account surface this vertical gates.
+    if (accountId === this.defaultAccountId && !this.membershipGate) {
+      this.membershipGate = createTelegramMembershipGate({
+        runtime: this.runtime,
+        botTelegramUserId: String(botInfo.id),
+      });
+      // error-policy:J4 Gate construction failure (absent authority service,
+      // bootstrap error) resolves to null; group admission fails closed.
+      try {
+        const gate = await this.membershipGate;
+        if (gate) {
+          const manager =
+            this.getAccountState(accountId)?.messageManager ??
+            this.messageManager;
+          manager?.bindMembershipGate(gate);
+        }
+      } catch {
+        this.membershipGate = null;
+      }
+    }
+  }
+
+  /** Resolves the membership gate, or null when the authority is unavailable. */
+  private async getMembershipGate(): Promise<TelegramMembershipGate | null> {
+    if (!this.membershipGate) {
+      return null;
+    }
+    try {
+      return await this.membershipGate;
+    } catch {
+      // error-policy:J4 a rejected bootstrap surfaces as an absent gate; the
+      // per-chat denial path reports the underlying error once per chat.
+      return null;
+    }
+  }
+
+  /** Chat room key for membership scopes: the chat's main room, not a topic room. */
+  private membershipChatRoomKey(chatId: string, accountId: string): string {
+    return this.scopedTelegramKey(chatId, accountId);
   }
 
   /** Installs the process-level teardown hooks for one Telegraf instance. */
@@ -1654,7 +1707,7 @@ export class TelegramService extends Service {
     // Handle all three entity sync cases separately for clarity
     await this.syncMessageSender(ctx, worldId, roomId, chatId, accountId);
     await this.syncNewChatMember(ctx, worldId, roomId, chatId, accountId);
-    await this.syncLeftChatMember(ctx, accountId);
+    await this.syncLeftChatMember(ctx, worldId, roomId, accountId);
   }
 
   /**
@@ -1705,6 +1758,68 @@ export class TelegramService extends Service {
   }
 
   /**
+   * Applies one membership-evidence fact through the authority gate,
+   * ensuring the principal entity row exists first (the authority's FK
+   * requires it) and resolving the canonical principal the same way the
+   * message path does.
+   */
+  private async recordMembershipEvent(
+    ctx: Context,
+    chatId: string,
+    chatRoomKey: string,
+    event: {
+      telegramUserId: string;
+      canonicalPrincipalId: UUID;
+      state: "active" | "revoked";
+      reason: TelegramMembershipReason;
+      runtime: { worldId: UUID; roomId: UUID; entityId: UUID };
+      messageId: number;
+      observedAt: string;
+    },
+  ): Promise<void> {
+    const gate = await this.getMembershipGate();
+    if (!gate) {
+      // No authority service or bootstrap failed: nothing to record. Group
+      // admission fails closed separately; this path only records evidence.
+      return;
+    }
+    try {
+      // The authority requires an entity row for the principal before
+      // evidence can be applied; ensureConnection creates it when missing.
+      await this.runtime.ensureConnection({
+        entityId: event.canonicalPrincipalId,
+        roomId: event.runtime.roomId,
+        roomName: getTelegramChatDisplayName(ctx.chat, chatId),
+        userName: undefined,
+        name: "Unknown User",
+        source: "telegram",
+        channelId: chatId,
+        type: ChannelType.GROUP,
+        worldId: event.runtime.worldId,
+      });
+    } catch (error) {
+      // error-policy:J7 Entity bootstrap failure must not kill the update
+      // handler; without the row the evidence would throw anyway, so skip.
+      this.runtime.reportError("telegram:membership-entity", error, {
+        chatId,
+        telegramUserId: event.telegramUserId,
+      });
+      return;
+    }
+    await gate.authority.recordEvent({
+      chatId,
+      chatRoomKey,
+      canonicalPrincipalId: event.canonicalPrincipalId,
+      state: event.state,
+      reason: event.reason,
+      runtime: event.runtime,
+      messageId: event.messageId,
+      telegramUserId: event.telegramUserId,
+      observedAt: event.observedAt,
+    });
+  }
+
+  /**
    * Synchronizes a new chat member entity with the runtime system.
    * Triggered when a user joins the chat.
    *
@@ -1724,6 +1839,10 @@ export class TelegramService extends Service {
   ): Promise<void> {
     // Handle new chat member
     if (ctx.message && "new_chat_members" in ctx.message) {
+      const messageId = ctx.message.message_id;
+      const observedAt = new Date(ctx.message.date * 1_000).toISOString();
+      const chatRoomKey = this.membershipChatRoomKey(chatId, accountId);
+      const botId = (await this.getMembershipGate())?.botTelegramUserId;
       for (const newMember of ctx.message.new_chat_members) {
         const telegramId = newMember.id.toString();
         const entityId = await resolveTelegramRuntimeEntityId(
@@ -1731,6 +1850,21 @@ export class TelegramService extends Service {
           accountId,
           telegramId,
         );
+
+        // Membership evidence is applied for every observed join, including
+        // cached entities: the syncedEntityIds guard exists to avoid repeated
+        // ensureConnection work, not to gate membership facts.
+        if (!botId || telegramId !== botId) {
+          await this.recordMembershipEvent(ctx, chatId, chatRoomKey, {
+            telegramUserId: telegramId,
+            canonicalPrincipalId: entityId,
+            state: "active",
+            reason: "joined",
+            runtime: { worldId, roomId, entityId },
+            messageId,
+            observedAt,
+          });
+        }
 
         if (this.syncedEntityIds.has(entityId)) {
           continue;
@@ -1776,24 +1910,62 @@ export class TelegramService extends Service {
   }
 
   /**
-   * Updates entity status when a user leaves the chat.
-   *
-   * @param {Context} ctx - The context of the incoming update
-   * @returns {Promise<void>}
-   * @private
+   * Updates entity status when a user leaves the chat and records the
+   * revocation as membership evidence so the authority denies the principal
+   * from the same turn onward. The bot's own removal instead degrades the
+   * whole chat scope to `unavailable` (fail-closed admission for everyone).
    */
   private async syncLeftChatMember(
     ctx: Context,
+    worldId: UUID,
+    roomId: UUID,
     accountId = this.defaultAccountId,
   ): Promise<void> {
     // Handle left chat member
     if (ctx.message && "left_chat_member" in ctx.message) {
       const leftMember = ctx.message.left_chat_member;
       const telegramId = leftMember.id.toString();
-      const entityId = createUniqueUuid(
+      const chat = ctx.chat?.id.toString();
+      if (!chat) {
+        return;
+      }
+      const messageId = ctx.message.message_id;
+      const observedAt = new Date(ctx.message.date * 1_000).toISOString();
+      const chatRoomKey = this.membershipChatRoomKey(chat, accountId);
+      const gate = await this.getMembershipGate();
+
+      if (gate && telegramId === gate.botTelegramUserId) {
+        // The bot itself was removed: it can no longer observe this chat, so
+        // the scope fails closed instead of fabricating stale authority.
+        await gate.authority.markScopeUnavailable({
+          chatId: chat,
+          chatRoomKey,
+          reason: "bot_removed",
+        });
+      }
+
+      const entityId = await resolveTelegramRuntimeEntityId(
         this.runtime,
-        this.scopedTelegramKey(telegramId, accountId),
-      ) as UUID;
+        accountId,
+        telegramId,
+      );
+
+      // Record the revocation for the canonical principal even when the
+      // entity row is missing: recordMembershipEvent bootstraps it first so
+      // the durable revocation exists (never-seen leavers included).
+      await this.recordMembershipEvent(ctx, chat, chatRoomKey, {
+        telegramUserId: telegramId,
+        canonicalPrincipalId: entityId,
+        state: "revoked",
+        reason: "left",
+        runtime: { worldId, roomId, entityId },
+        messageId,
+        observedAt,
+      });
+
+      // A leaving member's cached sync state must not suppress the evidence
+      // for a later re-join in the same process.
+      this.syncedEntityIds.delete(entityId);
 
       const existingEntity = await this.runtime.getEntityById(entityId);
       if (existingEntity) {

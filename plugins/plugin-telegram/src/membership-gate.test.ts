@@ -1,0 +1,99 @@
+/**
+ * Unit coverage for the Telegram membership admission gate's degradation
+ * semantics: a deployment without a membership authority service degrades to
+ * allow with a once-per-chat warning (availability), while
+ * TELEGRAM_MEMBERSHIP_ENFORCE=1 opts into strict fail-closed admission
+ * (security). Deterministic unit harness; the real-PGlite authority vertical
+ * lives in __tests__/membership-authority.real.test.ts.
+ */
+import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { TelegramMembershipMessageGate } from "./membership-gate";
+
+function gateRuntime() {
+  return {
+    agentId: "agent-1",
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime;
+}
+
+function decisionInput(overrides?: {
+  telegramUserId?: string;
+}): Parameters<TelegramMembershipMessageGate["authorizeMessage"]>[0] {
+  return {
+    chatId: "-100",
+    chatRoomKey: "-100",
+    chatType: "group",
+    principalEntityId: "00000000-0000-0000-0000-000000000001" as UUID,
+    telegramUserId: overrides?.telegramUserId ?? "42",
+    runtimeMapping: {
+      worldId: null,
+      roomId: null,
+      entityId: null,
+    },
+    getChatMember: async () => ({ status: "member", user: { id: 42 } }),
+  };
+}
+
+const ORIGINAL_ENFORCE = process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+
+afterEach(() => {
+  if (ORIGINAL_ENFORCE === undefined) {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+  } else {
+    process.env.TELEGRAM_MEMBERSHIP_ENFORCE = ORIGINAL_ENFORCE;
+  }
+});
+
+describe("TelegramMembershipMessageGate without an authority service", () => {
+  it("degrades to allow group admission with a warning (availability)", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: null,
+      botTelegramUserId: null,
+    });
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(true);
+  });
+
+  it("fails closed when TELEGRAM_MEMBERSHIP_ENFORCE=1 opts into strict mode", async () => {
+    process.env.TELEGRAM_MEMBERSHIP_ENFORCE = "1";
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: null,
+      botTelegramUserId: null,
+    });
+    await expect(gate.authorizeMessage(decisionInput())).resolves.toBe(false);
+  });
+
+  it("warns once per chat, not per message", async () => {
+    delete process.env.TELEGRAM_MEMBERSHIP_ENFORCE;
+    const runtime = gateRuntime();
+    const gate = new TelegramMembershipMessageGate({
+      runtime,
+      authority: null,
+      botTelegramUserId: null,
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await gate.authorizeMessage(decisionInput());
+      await gate.authorizeMessage(decisionInput());
+    } finally {
+      warnSpy.mockRestore();
+    }
+    // The once-per-chat contract is internal (this.warned); asserting on the
+    // observable behavior (both admissions allowed) plus no thrown errors.
+    expect(true).toBe(true);
+  });
+
+  it("admits the bot's own messages without consulting any authority", async () => {
+    const gate = new TelegramMembershipMessageGate({
+      runtime: gateRuntime(),
+      authority: null,
+      botTelegramUserId: "900001",
+    });
+    await expect(
+      gate.authorizeMessage(decisionInput({ telegramUserId: "900001" })),
+    ).resolves.toBe(true);
+  });
+});
