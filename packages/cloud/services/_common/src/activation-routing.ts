@@ -6,6 +6,8 @@
  * while the activation route is a renewable TTL projection of that authority.
  */
 
+import { createHash } from "node:crypto";
+
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
@@ -27,8 +29,18 @@ const ROUTE_KEYS = [
   "generation",
   "publicationId",
   "endpointSha256",
-  "serverName",
+  "endpoint",
 ] as const;
+const ENDPOINT_KEYS = [
+  "version",
+  "generation",
+  "kind",
+  "serverName",
+  "registryUrl",
+  "bridgeUrl",
+  "healthUrl",
+] as const;
+const MAX_ENDPOINT_URL_BYTES = 4096;
 
 export type ActivationRoutingSnapshotKeys = readonly [
   managedMarker: string,
@@ -88,13 +100,23 @@ export type ActivationRegistrationAuthorityV1 =
   | ActiveRegistrationAuthorityV1
   | InactiveRegistrationAuthorityV1;
 
+export interface ActivationRoutingEndpointEnvelopeV1 {
+  readonly version: 1;
+  readonly generation: string;
+  readonly kind: "dedicated-sandbox";
+  readonly serverName: string;
+  readonly registryUrl: string;
+  readonly bridgeUrl: string;
+  readonly healthUrl: string;
+}
+
 export interface DedicatedSandboxActivationRouteV1 {
   readonly version: 1;
   readonly kind: "dedicated-sandbox";
   readonly generation: string;
   readonly publicationId: string;
   readonly endpointSha256: string;
-  readonly serverName: string;
+  readonly endpoint: ActivationRoutingEndpointEnvelopeV1;
 }
 
 export type ActivationRoutingAuthorityUnavailableReason =
@@ -210,6 +232,84 @@ function isSha256(value: unknown): value is string {
   return typeof value === "string" && SHA256.test(value);
 }
 
+function isBoundedHttpEndpoint(value: unknown): value is string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value !== value.trim() ||
+    !/^https?:\/\//u.test(value) ||
+    new TextEncoder().encode(value).byteLength > MAX_ENDPOINT_URL_BYTES
+  ) {
+    return false;
+  }
+
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (
+      /[\s\\?#]/u.test(character) ||
+      codePoint <= 0x1f ||
+      (codePoint >= 0x7f && codePoint <= 0x9f)
+    ) {
+      return false;
+    }
+  }
+
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.length > 0 &&
+      parsed.username === "" &&
+      parsed.password === "" &&
+      parsed.search === "" &&
+      parsed.hash === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
+function parseEndpoint(
+  value: unknown,
+  expectedGeneration: string,
+): ActivationRoutingEndpointEnvelopeV1 | null {
+  if (
+    !hasExactKeys(value, ENDPOINT_KEYS) ||
+    value.version !== 1 ||
+    value.generation !== expectedGeneration ||
+    value.kind !== "dedicated-sandbox" ||
+    value.serverName !== `sandbox-${expectedGeneration}` ||
+    !isBoundedHttpEndpoint(value.registryUrl) ||
+    !isBoundedHttpEndpoint(value.bridgeUrl) ||
+    !isBoundedHttpEndpoint(value.healthUrl)
+  ) {
+    return null;
+  }
+
+  return Object.freeze({
+    version: 1,
+    generation: expectedGeneration,
+    kind: "dedicated-sandbox",
+    serverName: value.serverName,
+    registryUrl: value.registryUrl,
+    bridgeUrl: value.bridgeUrl,
+    healthUrl: value.healthUrl,
+  });
+}
+
+function hashEndpoint(endpoint: ActivationRoutingEndpointEnvelopeV1): string {
+  const canonical = JSON.stringify({
+    version: 1,
+    generation: endpoint.generation,
+    kind: "dedicated-sandbox",
+    serverName: endpoint.serverName,
+    registryUrl: endpoint.registryUrl,
+    bridgeUrl: endpoint.bridgeUrl,
+    healthUrl: endpoint.healthUrl,
+  });
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
+}
+
 function parseMarker(raw: string): ActivationRoutingMarkerV1 | null {
   const value = parseJsonObject(raw);
   if (
@@ -272,11 +372,12 @@ function parseRoute(raw: string): DedicatedSandboxActivationRouteV1 | null {
     value.kind !== "dedicated-sandbox" ||
     !isCanonicalUuid(value.generation) ||
     !isCanonicalUuid(value.publicationId) ||
-    !isSha256(value.endpointSha256) ||
-    value.serverName !== `sandbox-${value.generation}`
+    !isSha256(value.endpointSha256)
   ) {
     return null;
   }
+  const endpoint = parseEndpoint(value.endpoint, value.generation);
+  if (!endpoint) return null;
 
   return Object.freeze({
     version: 1,
@@ -284,7 +385,7 @@ function parseRoute(raw: string): DedicatedSandboxActivationRouteV1 | null {
     generation: value.generation,
     publicationId: value.publicationId,
     endpointSha256: value.endpointSha256,
-    serverName: value.serverName,
+    endpoint,
   });
 }
 
@@ -418,6 +519,12 @@ export async function readActivationRoutingState(
     });
   }
   if (route.endpointSha256 !== authority.endpointSha256) {
+    return Object.freeze({
+      status: "conflict",
+      reason: "endpoint_hash_mismatch",
+    });
+  }
+  if (hashEndpoint(route.endpoint) !== route.endpointSha256) {
     return Object.freeze({
       status: "conflict",
       reason: "endpoint_hash_mismatch",

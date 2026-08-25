@@ -13,7 +13,8 @@ const GENERATION = "00000000-0000-4000-8000-000000000002";
 const OTHER_GENERATION = "00000000-0000-4000-8000-000000000003";
 const PUBLICATION_ID = "00000000-0000-4000-8000-000000000004";
 const OTHER_PUBLICATION_ID = "00000000-0000-4000-8000-000000000005";
-const ENDPOINT_SHA256 = "a".repeat(64);
+const ENDPOINT_SHA256 =
+  "73eb701612c13ee660f3598e5309e6ce83743070eb648ea7670a57e060047e11";
 const OTHER_ENDPOINT_SHA256 = "b".repeat(64);
 const SNAPSHOT_MISSING_SENTINEL = "activation-routing-missing:v1";
 const SNAPSHOT_SENTINEL = "activation-routing-snapshot:v1";
@@ -42,6 +43,26 @@ const REVOKED_AUTHORITY = JSON.stringify({
   endpointSha256: null,
 });
 
+interface EndpointFixture {
+  version: number;
+  generation: string;
+  kind: string;
+  serverName: string;
+  registryUrl: string;
+  bridgeUrl: string;
+  healthUrl: string;
+}
+
+const ENDPOINT: EndpointFixture = {
+  version: 1,
+  generation: GENERATION,
+  kind: "dedicated-sandbox",
+  serverName: `sandbox-${GENERATION}`,
+  registryUrl: "https://sandbox.internal:3000/",
+  bridgeUrl: "http://100.64.0.2:3000",
+  healthUrl: "http://100.64.0.2:3000/health",
+};
+
 function route(
   overrides: Partial<{
     version: number;
@@ -49,7 +70,7 @@ function route(
     generation: string;
     publicationId: string;
     endpointSha256: string;
-    serverName: string;
+    endpoint: EndpointFixture;
   }> = {},
 ): string {
   return JSON.stringify({
@@ -58,7 +79,7 @@ function route(
     generation: GENERATION,
     publicationId: PUBLICATION_ID,
     endpointSha256: ENDPOINT_SHA256,
-    serverName: `sandbox-${GENERATION}`,
+    endpoint: ENDPOINT,
     ...overrides,
   });
 }
@@ -214,7 +235,11 @@ describe("atomic activation-routing reader", () => {
         TRANSITION_AUTHORITY,
         route({
           generation: OTHER_GENERATION,
-          serverName: `sandbox-${OTHER_GENERATION}`,
+          endpoint: {
+            ...ENDPOINT,
+            generation: OTHER_GENERATION,
+            serverName: `sandbox-${OTHER_GENERATION}`,
+          },
         }),
       ]),
     ).resolves.toMatchObject({
@@ -250,7 +275,7 @@ describe("atomic activation-routing reader", () => {
       generation: GENERATION,
       publicationId: PUBLICATION_ID,
       endpointSha256: ENDPOINT_SHA256,
-      serverName: `sandbox-${GENERATION}`,
+      endpoint: ENDPOINT,
       extra: true,
     }),
     route({ kind: "shared-runtime" }),
@@ -266,7 +291,11 @@ describe("atomic activation-routing reader", () => {
     [
       route({
         generation: OTHER_GENERATION,
-        serverName: `sandbox-${OTHER_GENERATION}`,
+        endpoint: {
+          ...ENDPOINT,
+          generation: OTHER_GENERATION,
+          serverName: `sandbox-${OTHER_GENERATION}`,
+        },
       }),
       "generation_mismatch",
     ],
@@ -275,7 +304,15 @@ describe("atomic activation-routing reader", () => {
       route({ endpointSha256: OTHER_ENDPOINT_SHA256 }),
       "endpoint_hash_mismatch",
     ],
-    [route({ serverName: `sandbox-${OTHER_GENERATION}` }), "invalid_route"],
+    [
+      route({
+        endpoint: {
+          ...ENDPOINT,
+          serverName: `sandbox-${OTHER_GENERATION}`,
+        },
+      }),
+      "invalid_route",
+    ],
   ])("rejects authority/route divergence (%s)", async (rawRoute, reason) => {
     await expect(read([MARKER, ACTIVE_AUTHORITY, rawRoute])).resolves.toEqual({
       status: "conflict",
@@ -299,8 +336,26 @@ describe("atomic activation-routing reader", () => {
         generation: GENERATION,
         publicationId: PUBLICATION_ID,
         endpointSha256: ENDPOINT_SHA256,
-        serverName: `sandbox-${GENERATION}`,
+        endpoint: ENDPOINT,
       },
+    });
+  });
+
+  test("rejects a route whose endpoint body no longer matches its content hash", async () => {
+    await expect(
+      read([
+        MARKER,
+        ACTIVE_AUTHORITY,
+        route({
+          endpoint: {
+            ...ENDPOINT,
+            registryUrl: "https://attacker-selected.invalid/",
+          },
+        }),
+      ]),
+    ).resolves.toEqual({
+      status: "conflict",
+      reason: "endpoint_hash_mismatch",
     });
   });
 
