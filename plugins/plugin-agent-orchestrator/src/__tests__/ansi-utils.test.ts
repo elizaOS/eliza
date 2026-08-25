@@ -4,9 +4,12 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  cleanForChat,
+  cleanForFailoverContext,
   closeUnbalancedMarkdownFences,
   extractCompletionSummary,
   formatMarkdownTablesForChat,
+  stripAnsi,
   summarizeUserFacingTurnOutput,
 } from "../services/ansi-utils.js";
 
@@ -533,6 +536,77 @@ describe("closeUnbalancedMarkdownFences", () => {
         "origin https://github.com/example/repo.git",
         "```",
       ].join("\n"),
+    );
+  });
+});
+
+describe("stripAnsi", () => {
+  it("strips ANSI color, erase, and cursor control codes", () => {
+    const raw = "\x1b[32mBuild Succeeded\x1b[0m\x1b[2K\x1b[1A";
+    expect(stripAnsi(raw)).toBe("Build Succeeded");
+  });
+
+  it("rejoins split SGR sequences across line breaks", () => {
+    const raw = "Status: [38;2;153;\n153;153mReady\x1b[0m";
+    expect(stripAnsi(raw)).toBe("Status: Ready");
+  });
+
+  it("strips OSC hyperlinks and preserves link anchor text", () => {
+    const raw =
+      "See \x1b]8;;https://elizaos.ai\x1b\\Eliza OS\x1b]8;;\x1b\\ for details.";
+    expect(stripAnsi(raw)).toBe("See Eliza OS for details.");
+  });
+
+  it("collapses runs of whitespace and strips orphaned SGR sequences", () => {
+    const raw = "Item  [31;1m  [39m  Description       Value";
+    expect(stripAnsi(raw)).toBe("Item Description Value");
+  });
+});
+
+describe("cleanForChat", () => {
+  it("strips TUI decorative box-drawing characters and borders", () => {
+    const raw = [
+      "╭─ System Summary ─╮",
+      "│ All tasks done.  │",
+      "╰──────────────────╯",
+    ].join("\n");
+    expect(cleanForChat(raw)).toBe("System Summary\nAll tasks done.");
+  });
+
+  it("filters out loading, thinking, and progress indicator lines", () => {
+    const raw = [
+      "Recombobulating… (4s)",
+      "Thinking for 2s",
+      "Compiled successfully in 120ms.",
+      "Tomfoolering…",
+    ].join("\n");
+    expect(cleanForChat(raw)).toBe("Compiled successfully in 120ms.");
+  });
+
+  it("filters out tool execution markers, session bootstrap banners, and git noise", () => {
+    const raw = [
+      "Do you trust the contents of this directory?",
+      "1. Yes, I trust this folder",
+      "Bash(cargo build --release)",
+      "On branch develop",
+      "Release artifact ready at target/release/app.",
+    ].join("\n");
+    expect(cleanForChat(raw)).toBe(
+      "Release artifact ready at target/release/app.",
+    );
+  });
+});
+
+describe("cleanForFailoverContext", () => {
+  it("sanitizes terminal transcripts while preserving core response lines", () => {
+    const raw = [
+      "Recombobulating… (1s)",
+      "Bash(git status)",
+      "Your branch is up to date with 'origin/develop'.",
+      "Tests executed: 45 passed, 0 failed.",
+    ].join("\n");
+    expect(cleanForFailoverContext(raw)).toBe(
+      "Tests executed: 45 passed, 0 failed.",
     );
   });
 });
