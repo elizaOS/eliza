@@ -90,7 +90,10 @@ export class InboxUnsubscribeRepository {
   async listEmailUnsubscribes(
     args: { limit?: number } = {},
   ): Promise<EmailUnsubscribeRecord[]> {
-    const limit = Math.max(1, Math.min(500, Math.trunc(args.limit ?? 100)));
+    const requested = args.limit ?? 100;
+    const limit = Number.isFinite(requested)
+      ? Math.max(1, Math.min(500, Math.trunc(requested)))
+      : 100;
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
