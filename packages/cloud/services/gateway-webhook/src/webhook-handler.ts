@@ -8,6 +8,7 @@ import {
   executeResponseAttempts,
   type ResponseAttemptsResult,
 } from "@elizaos/cloud-services-common/response-attempts";
+import { TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER } from "@elizaos/cloud-services-common/telegram-connector";
 import {
   executeTelegramDelivery,
   type TelegramDeliveryHooks,
@@ -327,6 +328,7 @@ async function forwardPersonalTelegramToEdge(
         headers: {
           "Content-Type": "application/json",
           [ELIZA_TRACE_ID_HEADER]: traceId,
+          [TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER]: connectorAccountId,
           "X-Eliza-Webhook-Forwarder-Secret": secret,
           "X-Telegram-Bot-Api-Secret-Token": telegramSignature,
         },
@@ -338,6 +340,14 @@ async function forwardPersonalTelegramToEdge(
       await deps.redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
+    } else if (
+      response.status === 409 &&
+      response.headers.get("X-Eliza-Failure-Stage") === "connector_account"
+    ) {
+      // The Worker rejected the handoff before provider egress because this
+      // gateway resolved a different bot account. Reopen only this explicit,
+      // pre-egress failure so a corrected gateway/config can retry the update.
+      await deps.redis.del(dedupKey);
     }
     return response;
   } finally {

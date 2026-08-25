@@ -518,6 +518,11 @@ export interface Bindings {
   ELIZA_APP_PERSONAL_SHARED_JOIN_CODE_SECRET?: string;
   /** Moves only the official Personal Shared Telegram transport to the Worker edge. */
   PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED?: string;
+  /**
+   * Temporary exact-`"true"` bridge for a legacy Telegram Gateway without the
+   * account header or epoch-2 reconciliation. Keep absent outside a cutover.
+   */
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED?: string;
   /** Collision-free secret used by the protected staging edge cutover. */
   PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED?: string;
   /** Collision-free secret used by the protected production edge cutover; inert outside production. */

@@ -12,6 +12,19 @@ export const PERSONAL_TELEGRAM_DELIVERY_PATH = "/v1/delivery";
 // Epoch 1 omitted the connector account from both routing boundaries. Epoch 2
 // is intentionally disjoint because those historical owners cannot be inferred.
 export const PERSONAL_TELEGRAM_DELIVERY_EPOCH = 2;
+/**
+ * Temporary rolling-upgrade bridge for an older Gateway that neither sends
+ * the connector-account edge header nor account-scoped epoch-2 reconciliation.
+ * It is deliberately exact-true and off when absent.
+ */
+export function isPersonalTelegramDeliveryEpoch1CompatEnabled(
+  env: Pick<
+    AppEnv["Bindings"],
+    "PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED"
+  >,
+): boolean {
+  return env.PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED === "true";
+}
 // This also bounds the quarantine window for account-independent epoch 1 state.
 export const PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS =
   30 * 24 * 60 * 60_000;

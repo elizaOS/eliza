@@ -61,6 +61,7 @@ export type SharedReminderDelivery =
   | {
       platform: "telegram";
       project: string;
+      connectorAccountId: string;
       chatId: string;
     }
   | {
@@ -228,12 +229,16 @@ export function parseSharedReminderDelivery(
     delivery.platform === "telegram" &&
     typeof delivery.project === "string" &&
     PROJECT_PATTERN.test(delivery.project) &&
+    typeof delivery.connectorAccountId === "string" &&
+    delivery.connectorAccountId.trim().length >= 3 &&
+    delivery.connectorAccountId.length <= CONNECTOR_ACCOUNT_ID_MAX_LENGTH &&
     typeof delivery.chatId === "string" &&
     TELEGRAM_CHAT_ID_PATTERN.test(delivery.chatId)
   ) {
     return {
       platform: "telegram",
       project: delivery.project,
+      connectorAccountId: delivery.connectorAccountId,
       chatId: delivery.chatId,
     };
   }

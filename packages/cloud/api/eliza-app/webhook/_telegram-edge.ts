@@ -15,6 +15,7 @@ import {
   resolveTelegramVoiceNote,
   sendTelegramReply,
   sendTelegramTyping,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER,
   TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
@@ -28,6 +29,7 @@ import {
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
   PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
 } from "@/api-app/personal-telegram-delivery";
@@ -76,6 +78,7 @@ interface LedgerResponse {
 
 export interface PersonalTelegramReminderDispatchInput {
   project: string;
+  connectorAccountId: string;
   chatId: string;
   providerThreadId?: string;
   text: string;
@@ -107,6 +110,19 @@ async function resolveTelegramConnectorAccountId(
   // immutable bot id, while opaque proxy/test credentials remain non-secret.
   const botId = botToken.match(/^(\d{1,20}):/)?.[1];
   return botId ? `bot:${botId}` : `bot:${await sha256Hex(botToken)}`;
+}
+
+async function configuredPersonalTelegramScope(
+  env: AppEnv["Bindings"],
+): Promise<{ project: string; connectorAccountId: string } | null> {
+  const project =
+    readEnvString(env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
+  const botToken = readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
+  if (!DELIVERY_PROJECT_RE.test(project) || !botToken) return null;
+  return {
+    project,
+    connectorAccountId: await resolveTelegramConnectorAccountId(botToken),
+  };
 }
 
 async function telegramCanonicalMessageId(
@@ -257,6 +273,45 @@ export function verifyPersonalTelegramGatewayRequest(c: AppContext): boolean {
   );
 }
 
+/**
+ * Binds an authenticated Gateway handoff to the exact Worker-side bot account
+ * before the Worker allocates delivery state or performs a provider action.
+ */
+export async function personalTelegramGatewayConnectorAccountFailure(
+  c: AppContext,
+): Promise<Response | null> {
+  const configuredScope = await configuredPersonalTelegramScope(c.env);
+  if (!configuredScope) {
+    return c.json(
+      { success: false, error: "Telegram connector is not configured" },
+      503,
+    );
+  }
+  const presentedHeader = c.req.header(TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER);
+  if (
+    presentedHeader === undefined &&
+    isPersonalTelegramDeliveryEpoch1CompatEnabled(c.env)
+  ) {
+    logger.warn(
+      "[PersonalTelegramEdge] legacy headerless gateway handoff accepted",
+      { deliveryEpoch: 1 },
+    );
+    return null;
+  }
+  const presentedAccountId = presentedHeader?.trim() ?? "";
+  if (
+    !TELEGRAM_CONNECTOR_ACCOUNT_RE.test(presentedAccountId) ||
+    presentedAccountId !== configuredScope.connectorAccountId
+  ) {
+    c.header("X-Eliza-Failure-Stage", "connector_account");
+    return c.json(
+      { success: false, error: "Telegram connector account mismatch" },
+      409,
+    );
+  }
+  return null;
+}
+
 export async function handlePersonalTelegramDeliveryLedger(
   c: AppContext,
 ): Promise<Response> {
@@ -277,6 +332,7 @@ export async function handlePersonalTelegramDeliveryLedger(
   const project = input.project;
   const senderId = input.senderId;
   const messageId = input.messageId;
+  const operation = input.operation;
   const deliveryEpoch = input.deliveryEpoch;
   const connectorAccountId = input.connectorAccountId;
   const legacyEpoch =
@@ -292,31 +348,67 @@ export async function handlePersonalTelegramDeliveryLedger(
     !DELIVERY_SENDER_RE.test(senderId) ||
     typeof messageId !== "string" ||
     !DELIVERY_MESSAGE_ID_RE.test(messageId) ||
+    (operation !== "mark_uncertain" && operation !== "mark_delivered") ||
     (!legacyEpoch && !accountScopedEpoch)
   ) {
     return c.json({ success: false, error: "Invalid delivery scope" }, 400);
+  }
+  const configuredScope = await configuredPersonalTelegramScope(c.env);
+  if (!configuredScope) {
+    return c.json(
+      { success: false, error: "Telegram connector is not configured" },
+      503,
+    );
+  }
+  if (
+    project !== configuredScope.project ||
+    (accountScopedEpoch &&
+      connectorAccountId !== configuredScope.connectorAccountId)
+  ) {
+    return c.json({ success: false, error: "Forbidden delivery scope" }, 403);
+  }
+  if (legacyEpoch && !isPersonalTelegramDeliveryEpoch1CompatEnabled(c.env)) {
+    logger.warn(
+      "[PersonalTelegramDelivery] legacy epoch reconciliation rejected",
+      { deliveryEpoch: 1, operation },
+    );
+    return c.json(
+      {
+        success: false,
+        error: "Legacy Telegram delivery epoch is disabled",
+        code: "LEGACY_DELIVERY_EPOCH_DISABLED",
+      },
+      409,
+    );
   }
   const namespace = c.env.PERSONAL_TELEGRAM_DELIVERIES;
   if (!namespace) {
     return c.json({ success: false, error: "Delivery binding missing" }, 503);
   }
-  // Epoch 1 requests come only from an older gateway binary during a rolling
-  // deployment. Its account-independent tombstones are ambiguous, so epoch 2
-  // never reads them; the Durable Object expires them after 30 days. A current
-  // gateway must identify its stable account explicitly and writes only v2.
-  const scopedConnectorAccountId =
-    accountScopedEpoch && typeof connectorAccountId === "string"
-      ? connectorAccountId
-      : undefined;
+  // Epoch 1 is a temporary, observable rolling-upgrade bridge. Its ambiguous
+  // tombstones stay quarantined from epoch 2 and expire after 30 days.
+  if (legacyEpoch) {
+    logger.warn(
+      "[PersonalTelegramDelivery] legacy epoch reconciliation accepted",
+      { deliveryEpoch: 1, operation },
+    );
+  }
+  const scopedConnectorAccountId = accountScopedEpoch
+    ? configuredScope.connectorAccountId
+    : undefined;
   const scopedMessageId = scopedConnectorAccountId
     ? await telegramCanonicalMessageId(
-        project,
+        configuredScope.project,
         scopedConnectorAccountId,
         messageId,
       )
     : messageId;
   const stub = namespace.getByName(
-    telegramDeliveryObjectName(project, senderId, scopedConnectorAccountId),
+    telegramDeliveryObjectName(
+      configuredScope.project,
+      senderId,
+      scopedConnectorAccountId,
+    ),
   );
   const response = await stub.fetch(
     `https://personal-telegram-delivery${PERSONAL_TELEGRAM_DELIVERY_PATH}`,
@@ -324,12 +416,8 @@ export async function handlePersonalTelegramDeliveryLedger(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...input,
-        project: undefined,
-        senderId: undefined,
-        connectorAccountId: undefined,
-        deliveryEpoch: undefined,
         messageId: scopedMessageId,
+        operation,
       }),
     },
   );
@@ -475,6 +563,20 @@ export async function dispatchPersonalTelegramReminder(
       message: "Telegram connector is not configured",
     };
   }
+  const configuredScope = await configuredPersonalTelegramScope(env);
+  if (
+    !configuredScope ||
+    configuredScope.project !== input.project ||
+    !TELEGRAM_CONNECTOR_ACCOUNT_RE.test(input.connectorAccountId) ||
+    configuredScope.connectorAccountId !== input.connectorAccountId
+  ) {
+    return {
+      ok: false,
+      acceptance: "not_accepted",
+      message:
+        "Telegram connector account no longer matches the reminder destination",
+    };
+  }
   const event: TelegramConnectorEvent = {
     platform: "telegram",
     messageId: input.idempotencyKey,
@@ -490,8 +592,7 @@ export async function dispatchPersonalTelegramReminder(
     rawPayload: { source: "shared-reminder" },
   };
   try {
-    const connectorAccountId =
-      await resolveTelegramConnectorAccountId(botToken);
+    const connectorAccountId = input.connectorAccountId;
     const canonicalMessageId = await telegramCanonicalMessageId(
       input.project,
       connectorAccountId,

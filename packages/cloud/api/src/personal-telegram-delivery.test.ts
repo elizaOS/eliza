@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
   PERSONAL_TELEGRAM_DELIVERY_EPOCH,
   PERSONAL_TELEGRAM_DELIVERY_PATH,
   PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS,
@@ -78,6 +79,16 @@ async function json(response: Promise<Response>): Promise<unknown> {
 }
 
 describe("PersonalTelegramDelivery", () => {
+  test.each([
+    [{}, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "false" }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "1" }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: " true " }, false],
+    [{ PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED: "true" }, true],
+  ])("resolves epoch-1 compatibility %o as %s", (env, expected) => {
+    expect(isPersonalTelegramDeliveryEpoch1CompatEnabled(env)).toBe(expected);
+  });
+
   test("bounds quarantined epoch 1 tombstones to the 30-day delivery TTL", async () => {
     expect(PERSONAL_TELEGRAM_DELIVERY_EPOCH).toBe(2);
     expect(PERSONAL_TELEGRAM_DELIVERY_TOMBSTONE_TTL_MS).toBe(
