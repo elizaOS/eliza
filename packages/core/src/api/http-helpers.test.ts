@@ -1,16 +1,61 @@
 /**
- * Exercises the shared HTTP body reader through real Node request streams,
- * including per-reader byte budgets after the request body has been memoized.
+ * Exercises shared HTTP body reads and JSON responses through real Node
+ * sockets, including byte-budget enforcement and serialization failures.
  */
 import http from "node:http";
 import { describe, expect, it } from "vitest";
 import { ElizaError } from "../errors.js";
-import { readJsonBody, readRequestBodyBuffer } from "./http-helpers.js";
+import {
+	readJsonBody,
+	readRequestBodyBuffer,
+	sendJson,
+} from "./http-helpers.js";
 
 interface IncomingRequestResult<T> {
 	inspection: T;
 	responseBody: string;
 	status: number;
+}
+
+async function requestJsonResponse(body: unknown): Promise<{
+	contentType: string | null;
+	headersSent: boolean;
+	responseBody: string;
+	status: number;
+	writableEnded: boolean;
+}> {
+	let serverResponse: http.ServerResponse | undefined;
+	const server = http.createServer((_req, res) => {
+		serverResponse = res;
+		sendJson(res, body);
+	});
+
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const address = server.address();
+	if (address === null || typeof address === "string") {
+		throw new Error("HTTP test server did not expose a TCP address");
+	}
+
+	try {
+		const response = await fetch(`http://127.0.0.1:${address.port}`, {
+			signal: AbortSignal.timeout(1_000),
+		});
+		const responseBody = await response.text();
+		if (serverResponse === undefined) {
+			throw new Error("HTTP test server did not capture its response");
+		}
+		return {
+			contentType: response.headers.get("content-type"),
+			headersSent: serverResponse.headersSent,
+			responseBody,
+			status: response.status,
+			writableEnded: serverResponse.writableEnded,
+		};
+	} finally {
+		await new Promise<void>((resolve, reject) =>
+			server.close((error) => (error ? reject(error) : resolve())),
+		);
+	}
 }
 
 async function withIncomingRequest<T>(
@@ -142,5 +187,19 @@ describe("readRequestBodyBuffer", () => {
 		expect(outcome.responseBody).toBe(
 			JSON.stringify({ error: "Request body exceeds this route's limit" }),
 		);
+	});
+});
+
+describe("sendJson", () => {
+	it("terminates the response when a BigInt payload cannot be serialized", async () => {
+		const response = await requestJsonResponse({ balance: 10n });
+
+		expect(response.status).toBe(500);
+		expect(response.responseBody).toBe(
+			JSON.stringify({ error: "Failed to serialize response" }),
+		);
+		expect(response.contentType).toBe("application/json");
+		expect(response.headersSent).toBe(true);
+		expect(response.writableEnded).toBe(true);
 	});
 });
