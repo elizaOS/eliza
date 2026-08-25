@@ -6,11 +6,22 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-/** Enable when an Anthropic / Claude API key is present in the environment. */
+/**
+ * Placeholder patterns treated the same as "unset" — mirrors the canonical
+ * placeholder detection in evm-signing-capability.ts so a stale
+ * "REDACTED"/"PLACEHOLDER" in env (e.g. copied from a template) does not
+ * spoof the gate into enabling the provider with a non-functional key.
+ */
+const PLACEHOLDER_RE =
+  /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
+
+function isConcreteKey(value: string | undefined): boolean {
+  const trimmed = value?.trim();
+  return Boolean(trimmed) && !PLACEHOLDER_RE.test(trimmed as string);
+}
+
+/** Enable when an Anthropic / Claude API key is present and concrete. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
   const env = ctx.env;
-  return Boolean(
-    (env.ANTHROPIC_API_KEY && env.ANTHROPIC_API_KEY.trim() !== "") ||
-      (env.CLAUDE_API_KEY && env.CLAUDE_API_KEY.trim() !== ""),
-  );
+  return isConcreteKey(env.ANTHROPIC_API_KEY) || isConcreteKey(env.CLAUDE_API_KEY);
 }
