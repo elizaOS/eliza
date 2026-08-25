@@ -2401,6 +2401,14 @@ function createV5ReplyStrategyResult(args: {
 		...(args.terminalFailure
 			? {
 					failureKind: args.terminalFailure.kind,
+					terminalFailure: {
+						kind: args.terminalFailure.kind,
+						message: args.terminalFailure.message,
+						transient: args.terminalFailure.transient,
+						...(args.terminalFailure.code
+							? { code: args.terminalFailure.code }
+							: {}),
+					},
 					elizaSyntheticFailure: true,
 					transient: args.terminalFailure.transient,
 				}
