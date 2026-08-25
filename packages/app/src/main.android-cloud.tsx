@@ -13,7 +13,6 @@ import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
-import { ErrorBoundary } from "@elizaos/ui";
 import {
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
   type AndroidCloudAccountLifecycleAdapter,
@@ -31,6 +30,7 @@ import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
 } from "@elizaos/ui/android-cloud/android-cloud-client";
+import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
 import React from "react";
 import { createRoot } from "react-dom/client";
