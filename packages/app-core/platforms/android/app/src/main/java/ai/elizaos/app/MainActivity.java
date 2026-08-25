@@ -95,6 +95,7 @@ public class MainActivity extends BridgeActivity {
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
+        registerPlugin(GoogleIdentityPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
         registerPlugin(ElizaVoicePlugin.class);

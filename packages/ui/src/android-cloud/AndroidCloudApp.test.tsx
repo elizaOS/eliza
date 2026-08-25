@@ -20,7 +20,10 @@ import {
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "./AndroidCloudApp";
-import { AndroidCloudClient } from "./android-cloud-client";
+import {
+  AndroidCloudClient,
+  type AndroidCloudGoogleIdentityAdapter,
+} from "./android-cloud-client";
 
 const session = {
   identity: {
@@ -45,6 +48,14 @@ function createVoice(): AndroidCloudVoiceAdapter {
   };
 }
 
+function createGoogleIdentity(): AndroidCloudGoogleIdentityAdapter {
+  return {
+    signIn: vi.fn(async () => ({ idToken: "google-id-token" })),
+    cancel: vi.fn(async () => undefined),
+    clearCredentialState: vi.fn(async () => undefined),
+  };
+}
+
 describe("AndroidCloudApp", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -53,7 +64,53 @@ describe("AndroidCloudApp", () => {
 
   afterEach(() => cleanup());
 
-  it("opens the canonical Steward sign-in without rendering a second provider picker", async () => {
+  it("uses native Google while keeping canonical Steward options available", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(session);
+    const nativeSignIn = vi
+      .spyOn(client, "signInWithGoogle")
+      .mockResolvedValue(undefined);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
+    const openExternal = vi.fn(async () => "opened" as const);
+    const closeExternal = vi.fn(async () => undefined);
+    const googleIdentity = createGoogleIdentity();
+    render(
+      <AndroidCloudApp
+        client={client}
+        closeExternal={closeExternal}
+        googleIdentity={googleIdentity}
+        openExternal={openExternal}
+        voice={createVoice()}
+      />,
+    );
+
+    const signInButton = await screen.findByRole("button", {
+      name: "Continue with Google",
+    });
+    expect(screen.getByTestId("android-cloud-first-run-greeting")).toBeTruthy();
+    expect(screen.getByTestId("android-cloud-first-run-sign-in")).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Sign in to start chatting"),
+    ).toHaveProperty("disabled", true);
+    expect(openExternal).not.toHaveBeenCalled();
+    fireEvent.click(signInButton);
+    await waitFor(() => expect(nativeSignIn).toHaveBeenCalledOnce());
+    expect(nativeSignIn).toHaveBeenCalledWith(
+      googleIdentity,
+      expect.any(AbortSignal),
+    );
+    expect(await screen.findByText("Ada")).toBeTruthy();
+    expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it("opens canonical Steward when another sign-in method is requested", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);
     vi.spyOn(client, "beginLogin").mockResolvedValue({
@@ -68,21 +125,15 @@ describe("AndroidCloudApp", () => {
       <AndroidCloudApp
         client={client}
         closeExternal={closeExternal}
+        googleIdentity={createGoogleIdentity()}
         openExternal={openExternal}
         voice={createVoice()}
       />,
     );
 
-    const signInButton = await screen.findByRole("button", {
-      name: "Sign in to Eliza Cloud",
-    });
-    expect(screen.getByTestId("android-cloud-first-run-greeting")).toBeTruthy();
-    expect(screen.getByTestId("android-cloud-first-run-sign-in")).toBeTruthy();
-    expect(
-      screen.getByPlaceholderText("Sign in to start chatting"),
-    ).toHaveProperty("disabled", true);
-    expect(openExternal).not.toHaveBeenCalled();
-    fireEvent.click(signInButton);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Other sign-in options" }),
+    );
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     expect(openExternal).toHaveBeenCalledWith(
       "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
@@ -98,7 +149,7 @@ describe("AndroidCloudApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
     expect(
-      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
+      screen.getByRole("button", { name: "Continue with Google" }),
     ).toBeTruthy();
   });
 
