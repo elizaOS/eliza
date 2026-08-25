@@ -68,7 +68,7 @@ describe("Slack handleSendMessage delivery outcomes", () => {
   it("returns delivered with ordered ts+fileId provider ids when all parts succeed", async () => {
     const service = createService({
       textReceipts: [
-        { ts: "111.0001", text: "part one " },
+        { ts: "111.000100", text: "part one " },
         { ts: "111.0002", text: "part two" },
       ],
     });
@@ -83,7 +83,7 @@ describe("Slack handleSendMessage delivery outcomes", () => {
     if (outcome.kind !== "delivered") return;
     // Text chunk ts values in send order, then accepted file ids in request order.
     expect(outcome.receipt.providerMessageIds).toEqual([
-      "111.0001",
+      "111.000100",
       "111.0002",
       "F1",
       "F1",
@@ -232,5 +232,100 @@ describe("Slack handleSendMessage delivery outcomes", () => {
     expect(isSendHandlerOutcome(outcome)).toBe(true);
     if (outcome.kind !== "not_delivered") return;
     expect(outcome.code).toBe("SLACK_EMPTY_MESSAGE");
+  });
+
+  // Real sendMessage path (only the Slack client is stubbed): a later text
+  // chunk failing must surface the already-accepted chunk ts evidence as a
+  // partial delivery instead of throwing it away (#23104 review blocker 1).
+  // Structural view of the seams the real path calls; avoids intersecting
+  // the class type (private members collapse such intersections to never).
+  type RealPathService = {
+    runtime: {
+      agentId: string;
+      logger: Record<string, ReturnType<typeof vi.fn>>;
+    };
+    resolveAccountIdForTarget: (
+      runtime: unknown,
+      target: unknown,
+    ) => Promise<string>;
+    getAccountState: (accountId?: string | null) => null;
+    getClientForAccount: (accountId?: string | null) => {
+      chat: { postMessage: ReturnType<typeof vi.fn> };
+    };
+    handleSendMessage: SlackService["handleSendMessage"];
+  };
+
+  function createRealPathService(postMessage: ReturnType<typeof vi.fn>) {
+    const runtime = {
+      agentId: "agent-1",
+      logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+    };
+    const service = Object.create(
+      SlackService.prototype,
+    ) as unknown as RealPathService;
+    service.runtime = runtime;
+    service.resolveAccountIdForTarget = async () => "default";
+    // getOutboundClient falls back to getClientForAccount when no account
+    // state exists, so the real sendMessage loop uses the stubbed client.
+    service.getAccountState = () => null;
+    service.getClientForAccount = () => ({ chat: { postMessage } });
+    return service;
+  }
+
+  // MAX_SLACK_MESSAGE_LENGTH is 40_000 on develop (#28854); 40_001 chars
+  // still exercise the two-chunk partial-delivery path.
+  const TWO_CHUNK_TEXT = "a".repeat(40_001);
+
+  it("returns partially_delivered with accepted chunk ts evidence when a later chunk rejects", async () => {
+    const postMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ ts: "111.000100" })
+      .mockRejectedValueOnce(new Error("slack api down"));
+    const service = createRealPathService(postMessage);
+
+    const outcome: SendOutcome = await service.handleSendMessage(
+      runtimeStub,
+      target,
+      { text: TWO_CHUNK_TEXT },
+    );
+
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(outcome.kind).toBe("partially_delivered");
+    expect(isSendHandlerOutcome(outcome)).toBe(true);
+    if (outcome.kind !== "partially_delivered") return;
+    // Chunk 1 was accepted by Slack: its ts is real provider evidence and
+    // must reach the receipt so an outer retry cannot duplicate it blindly.
+    expect(outcome.receipt.providerMessageIds).toEqual(["111.000100"]);
+    expect(outcome.code).toBe("SLACK_TEXT_PARTIAL_DELIVERY");
+    expect(outcome.message).toContain("slack api down");
+  });
+
+  it("returns partially_delivered when a later chunk resolves without a valid ts", async () => {
+    const postMessage = vi
+      .fn()
+      .mockResolvedValueOnce({ ts: "111.000100" })
+      .mockResolvedValueOnce({ ts: "not-a-ts" });
+    const service = createRealPathService(postMessage);
+
+    const outcome: SendOutcome = await service.handleSendMessage(
+      runtimeStub,
+      target,
+      { text: TWO_CHUNK_TEXT },
+    );
+
+    expect(postMessage).toHaveBeenCalledTimes(2);
+    expect(outcome.kind).toBe("partially_delivered");
+    if (outcome.kind !== "partially_delivered") return;
+    expect(outcome.receipt.providerMessageIds).toEqual(["111.000100"]);
+    expect(outcome.message).toContain("SLACK_POST_MESSAGE_IDENTITY_MISSING");
+  });
+
+  it("still throws the underlying error when the FIRST chunk fails (nothing accepted)", async () => {
+    const postMessage = vi.fn().mockRejectedValue(new Error("no auth"));
+    const service = createRealPathService(postMessage);
+
+    await expect(
+      service.handleSendMessage(runtimeStub, target, { text: TWO_CHUNK_TEXT }),
+    ).rejects.toThrow("no auth");
   });
 });

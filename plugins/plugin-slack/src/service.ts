@@ -575,6 +575,35 @@ export function compareSlackConnectorTargets(
   );
 }
 
+/**
+ * Raised by {@link SlackService.sendMessage} when a later text chunk fails
+ * after earlier chunks were already accepted by Slack. Carries the accepted
+ * chunk ts evidence so the connector boundary can compose a truthful
+ * `partially_delivered` outcome instead of dropping it (#23104).
+ */
+class SlackTextPartialDeliveryError extends ElizaError {
+  readonly acceptedTs: string[];
+
+  constructor(
+    message: string,
+    options: { accepted: string[]; code?: string },
+    errorOptions?: { cause?: unknown },
+  ) {
+    super(message, {
+      code: options.code ?? "SLACK_TEXT_PARTIAL_DELIVERY",
+      context: { acceptedTs: options.accepted },
+      ...(errorOptions?.cause !== undefined
+        ? { cause: errorOptions.cause }
+        : {}),
+    });
+    this.acceptedTs = options.accepted;
+  }
+
+  static isPartial(value: unknown): value is SlackTextPartialDeliveryError {
+    return value instanceof SlackTextPartialDeliveryError;
+  }
+}
+
 export class SlackService extends Service implements ISlackService {
   static serviceType: string = SLACK_SERVICE_NAME;
   capabilityDescription =
@@ -2684,6 +2713,7 @@ export class SlackService extends Service implements ISlackService {
   private buildSendOutcome(args: {
     acceptedIds: string[];
     attachments: OutboundAttachmentDelivery | null;
+    textFailure?: { message: string; code: string };
   }): SendHandlerOutcome {
     const providerMessageIds = [...args.acceptedIds];
     for (const part of args.attachments?.delivered ?? []) {
@@ -2691,9 +2721,11 @@ export class SlackService extends Service implements ISlackService {
     }
     const failures = args.attachments?.failures ?? [];
     const failureDetail =
-      failures.length > 0
-        ? failures.map((f) => `${f.url} (${f.code}: ${f.message})`).join("; ")
-        : "no per-part failure evidence was recorded";
+      args.textFailure !== undefined
+        ? `text delivery failed (${args.textFailure.code}: ${args.textFailure.message})`
+        : failures.length > 0
+          ? failures.map((f) => `${f.url} (${f.code}: ${f.message})`).join("; ")
+          : "no per-part failure evidence was recorded";
     if (providerMessageIds.length === 0) {
       return {
         kind: "not_delivered",
@@ -2710,6 +2742,15 @@ export class SlackService extends Service implements ISlackService {
           "Slack send handler reports provider receipts only; outbound memory persistence is owned by the caller.",
       },
     };
+    if (args.textFailure !== undefined) {
+      return {
+        kind: "partially_delivered",
+        receipt,
+        memories: [],
+        code: "SLACK_TEXT_PARTIAL_DELIVERY",
+        message: `Slack accepted ${providerMessageIds.length} text chunk${providerMessageIds.length === 1 ? "" : "s"} but a later chunk failed: ${failureDetail}. Do not retry blindly; the accepted chunks would be duplicated.`,
+      };
+    }
     if (failures.length > 0) {
       return {
         kind: "partially_delivered",
@@ -2784,20 +2825,38 @@ export class SlackService extends Service implements ISlackService {
     let textReceipt: Awaited<ReturnType<SlackService["sendMessage"]>> | null =
       null;
     if (text) {
-      textReceipt = await this.sendMessage(
-        channelId,
-        text,
-        {
-          threadTs,
-          replyBroadcast: undefined,
-          unfurlLinks: undefined,
-          unfurlMedia: undefined,
-          mrkdwn: undefined,
-          attachments: undefined,
-          blocks: undefined,
-        },
-        accountId,
-      );
+      try {
+        textReceipt = await this.sendMessage(
+          channelId,
+          text,
+          {
+            threadTs,
+            replyBroadcast: undefined,
+            unfurlLinks: undefined,
+            unfurlMedia: undefined,
+            mrkdwn: undefined,
+            attachments: undefined,
+            blocks: undefined,
+          },
+          accountId,
+        );
+      } catch (error) {
+        // error-policy:J1 connector boundary translation — a mid-text
+        // failure with already-accepted chunks becomes a structural
+        // partially_delivered outcome below; any other error propagates
+        // unchanged.
+        if (!SlackTextPartialDeliveryError.isPartial(error)) {
+          throw error;
+        }
+        return this.buildSendOutcome({
+          acceptedIds: error.acceptedTs,
+          textFailure: {
+            message: error.message,
+            code: error.code,
+          },
+          attachments: null,
+        });
+      }
     }
 
     let attachmentDelivery: OutboundAttachmentDelivery | null = null;
@@ -3901,16 +3960,46 @@ export class SlackService extends Service implements ISlackService {
         messageArgs.blocks = options.blocks;
       }
 
-      const result = await client.chat.postMessage(messageArgs);
+      let result: Awaited<ReturnType<typeof client.chat.postMessage>>;
+      try {
+        result = await client.chat.postMessage(messageArgs);
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — a later-chunk failure is
+        // wrapped in a typed error carrying the accepted-chunk evidence with
+        // the original error preserved as cause; first-chunk failures
+        // propagate unchanged.
+        // Earlier chunks are already accepted by Slack; surface them with the
+        // failure so the caller composes a partial delivery instead of
+        // dropping the evidence (and blind-retrying into duplicates).
+        if (sentMessages.length > 0) {
+          throw new SlackTextPartialDeliveryError(
+            error instanceof Error ? error.message : String(error),
+            { accepted: sentMessages.map(({ ts }) => ts) },
+            { cause: error },
+          );
+        }
+        throw error;
+      }
 
       if (typeof result.ts !== "string" || !isValidMessageTs(result.ts)) {
-        throw new ElizaError(
+        const identityError = new ElizaError(
           "Slack chat.postMessage returned no message timestamp",
           {
             code: "SLACK_POST_MESSAGE_IDENTITY_MISSING",
             context: { accountId: normalizeAccountId(accountId), channelId },
           },
         );
+        if (sentMessages.length > 0) {
+          throw new SlackTextPartialDeliveryError(
+            identityError.message,
+            {
+              accepted: sentMessages.map(({ ts }) => ts),
+              code: identityError.code,
+            },
+            { cause: identityError },
+          );
+        }
+        throw identityError;
       }
       lastTs = result.ts;
       sentMessages.push({ ts: result.ts, text: msg });

@@ -3,7 +3,7 @@
  */
 
 import { execFile } from "node:child_process";
-import crypto from "node:crypto";
+import crypto, { randomUUID } from "node:crypto";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import { extname, isAbsolute, join } from "node:path";
@@ -857,6 +857,7 @@ export class IMessageService extends Service implements IIMessageService {
                   reason:
                     "iMessage AppleScript sends return no provider message ids; effect stamps are local completion markers.",
                 },
+                evidenceKind: "local-effect",
               },
               memories: [],
               code: "IMESSAGE_PARTIAL_DELIVERY",
@@ -872,16 +873,18 @@ export class IMessageService extends Service implements IIMessageService {
         return {
           kind: "delivered",
           receipt: {
-            providerMessageIds: [result.messageId ?? `imessage-effect-${Date.now()}`] as [
-              string,
-              ...string[],
-            ],
+            // AppleScript provides no provider message id and the service's
+            // synthetic messageId is a repeatable Date.now() echo; the
+            // receipt always carries a freshly generated unique local-effect
+            // stamp instead, honoring the per-send uniqueness contract.
+            providerMessageIds: [`imessage-effect:${randomUUID()}:send`] as [string, ...string[]],
             acceptedAt: Date.now(),
             persistence: {
               status: "not_attempted",
               reason:
                 "iMessage send handler reports effect completion only; outbound memory persistence is owned by the caller.",
             },
+            evidenceKind: "local-effect",
           },
           memories: [],
         };
@@ -1194,7 +1197,7 @@ export class IMessageService extends Service implements IIMessageService {
       return { success: false, error: "Service not initialized" };
     }
 
-    if (this.settings.transport === "blooio" && options?.mediaUrl) {
+    if (this.settings.transport === "blooio" && options?.mediaUrls?.length) {
       return {
         success: false,
         error:
@@ -1233,6 +1236,15 @@ export class IMessageService extends Service implements IIMessageService {
     let deliveredTextChunks = 0;
     let deliveredAttachments = 0;
     const effectStamps: string[] = [];
+    // Local completion markers for parts that reached Messages.app. Stamps
+    // are prefixed with a per-send unique id so they cannot repeat across
+    // sends (#23104 review blocker 3); AppleScript returns no provider ids.
+    const sendStampId = randomUUID();
+    let partIndex = 0;
+    const nextEffectStamp = (kind: "text" | "attachment"): string => {
+      partIndex += 1;
+      return `imessage-effect:${sendStampId}:${kind}:${partIndex}`;
+    };
     try {
       for (const chunk of chunks) {
         const result = await this.sendSingleMessage(target, chunk);
@@ -1247,7 +1259,7 @@ export class IMessageService extends Service implements IIMessageService {
           };
         }
         deliveredTextChunks += 1;
-        effectStamps.push(result.messageId ?? `text-${deliveredTextChunks}`);
+        effectStamps.push(nextEffectStamp("text"));
       }
 
       // Each attachment is one external effect, independent of text chunking
@@ -1265,7 +1277,7 @@ export class IMessageService extends Service implements IIMessageService {
           };
         }
         deliveredAttachments += 1;
-        effectStamps.push(mediaResult.messageId ?? `attachment-${deliveredAttachments}`);
+        effectStamps.push(nextEffectStamp("attachment"));
       }
     } finally {
       await cleanupResolvedMedia(mediaList);

@@ -77,6 +77,16 @@ export interface SendHandlerReceipt {
 	providerMessageIds: readonly [string, ...string[]];
 	acceptedAt: number;
 	persistence: SendHandlerPersistence;
+	/**
+	 * What the ids above actually are. `"provider"` (the documented default)
+	 * means ids issued by the remote provider and reconcilable against it.
+	 * `"local-effect"` means ids that are locally generated completion
+	 * markers for sends whose transport returns no provider identity at all
+	 * (e.g. AppleScript-driven Messages.app); they are unique per send and
+	 * stable evidence that an external effect happened, but they must never
+	 * be treated as provider-backed message ids for reconciliation.
+	 */
+	evidenceKind?: "provider" | "local-effect";
 }
 
 /** The final provider id from a non-empty delivery receipt. */
@@ -192,13 +202,21 @@ function isSendHandlerPersistence(
 function isSendHandlerReceipt(value: unknown): value is SendHandlerReceipt {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value as Partial<SendHandlerReceipt>;
-	return (
-		isStringArray(candidate.providerMessageIds) &&
-		candidate.providerMessageIds.length > 0 &&
-		typeof candidate.acceptedAt === "number" &&
-		Number.isFinite(candidate.acceptedAt) &&
-		isSendHandlerPersistence(candidate.persistence)
-	);
+	if (!isStringArray(candidate.providerMessageIds)) return false;
+	if (candidate.providerMessageIds.length <= 0) return false;
+	if (typeof candidate.acceptedAt !== "number") return false;
+	if (!Number.isFinite(candidate.acceptedAt)) return false;
+	// The evidence-kind discriminator decides whether the ids are
+	// provider-reconcilable; an unrecognized value must invalidate the
+	// receipt rather than silently default to "provider".
+	if (
+		candidate.evidenceKind !== undefined &&
+		candidate.evidenceKind !== "provider" &&
+		candidate.evidenceKind !== "local-effect"
+	) {
+		return false;
+	}
+	return isSendHandlerPersistence(candidate.persistence);
 }
 
 /** Narrow an untrusted connector return to a complete structural outcome. */
