@@ -142,6 +142,31 @@ describe("Log Integration Tests", () => {
       expect(logs[0].body).toEqual(body);
     });
 
+    it("persists shared (non-cyclic) sub-objects in a log body without nulling repeats", async () => {
+      // A single object reused across two branches is legitimate DAG data, not
+      // a cycle. Before the path-based cycle guard, the second occurrence was
+      // silently written as `null`, so the stored jsonb lost `mirror`.
+      const shared = { requestId: "req-1", detail: { code: 200, tags: ["a", "b"] } };
+      const body = { primary: shared, mirror: shared, items: [shared, shared] };
+      await adapter.log({
+        body,
+        entityId: testEntityId,
+        roomId: testRoomId,
+        type: "shared_ref_test",
+      });
+
+      const logs = await adapter.getLogs({
+        roomId: testRoomId,
+        type: "shared_ref_test",
+      });
+      expect(logs).toHaveLength(1);
+      const persisted = logs[0].body as Record<string, unknown>;
+      // Both branches and both array elements survive the jsonb round-trip.
+      expect(persisted.primary).toEqual(shared);
+      expect(persisted.mirror).toEqual(shared);
+      expect(persisted.items).toEqual([shared, shared]);
+    });
+
     it("strips NUL characters so the jsonb insert does not fail", async () => {
       const nul = String.fromCharCode(0);
       await adapter.log({

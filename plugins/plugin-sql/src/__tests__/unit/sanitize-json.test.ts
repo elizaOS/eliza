@@ -142,6 +142,67 @@ describe("sanitizeJsonObject", () => {
     expect(() => JSON.stringify(sanitized)).not.toThrow();
   });
 
+  it("preserves a shared (non-cyclic) object referenced from sibling keys", () => {
+    // Diamond/DAG: `shared` is reachable through two DISTINCT branches, not a
+    // cycle. Both occurrences are legitimate data and must survive. A
+    // visited-based (never-unwound) cycle guard nulls the second one, storing
+    // `{a:{v:1}, b:null}` in the jsonb body.
+    const shared = { v: 1 };
+    const sanitized = sanitizeJsonObject({ a: shared, b: shared });
+    expect(sanitized).toEqual({ a: { v: 1 }, b: { v: 1 } });
+    expect(JSON.parse(JSON.stringify(sanitized))).toEqual({ a: { v: 1 }, b: { v: 1 } });
+  });
+
+  it("preserves a repeated element that appears more than once in an array", () => {
+    const shared = { v: 2 };
+    const sanitized = sanitizeJsonObject([shared, shared, shared]) as Array<{ v: number }>;
+    expect(sanitized).toEqual([{ v: 2 }, { v: 2 }, { v: 2 }]);
+    // Every element, not just the first, must round-trip intact.
+    for (const element of sanitized) {
+      expect(element).toEqual({ v: 2 });
+    }
+  });
+
+  it("preserves a nested diamond reached through two wrapper objects", () => {
+    const shared = { p: 1, q: ["x", "y"] };
+    const input = { x: { inner: shared }, y: { inner: shared } };
+    const sanitized = sanitizeJsonObject(input);
+    expect(sanitized).toEqual({
+      x: { inner: { p: 1, q: ["x", "y"] } },
+      y: { inner: { p: 1, q: ["x", "y"] } },
+    });
+  });
+
+  it("still breaks a cycle nested one level below the root", () => {
+    const root: Record<string, unknown> = { name: "root" };
+    const child: Record<string, unknown> = { label: "c" };
+    child.back = root; // ancestor reference => cycle
+    root.child = child;
+    const sanitized = sanitizeJsonObject(root) as {
+      name: string;
+      child: { label: string; back: unknown };
+    };
+    expect(sanitized.name).toBe("root");
+    expect(sanitized.child.label).toBe("c");
+    expect(sanitized.child.back).toBeNull();
+    expect(() => JSON.stringify(sanitized)).not.toThrow();
+  });
+
+  it("breaks mutual cycles while still expanding the shared nodes once per branch", () => {
+    const a: Record<string, unknown> = { id: "a" };
+    const b: Record<string, unknown> = { id: "b" };
+    a.b = b;
+    b.a = a; // a -> b -> a is a cycle
+    const sanitized = sanitizeJsonObject({ a, b });
+    // Each top-level branch expands its subtree and severs the back-edge that
+    // would loop, so the result is finite and serializable.
+    expect(sanitized).toEqual({
+      a: { id: "a", b: { id: "b", a: null } },
+      b: { id: "b", a: { id: "a", b: null } },
+    });
+    expect(() => JSON.stringify(sanitized)).not.toThrow();
+  });
+
   function nestArray(depth: number): unknown {
     let value: unknown = "leaf";
     for (let i = 0; i < depth; i++) {
@@ -275,7 +336,11 @@ describe("sanitizeJsonObject", () => {
 
     const sanitized = sanitizeJsonObject(withinBudget) as Array<{ value: number }>;
     expect(sanitized).toHaveLength(4_999);
-    expect(sanitized[0]).toEqual({ value: 1 });
+    // Every repeated reference (not just the first) must serialize in full;
+    // a never-unwound cycle guard would null every element after index 0.
+    for (const element of sanitized) {
+      expect(element).toEqual({ value: 1 });
+    }
     expect(prototypeReads).toBe(0);
   });
 

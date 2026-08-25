@@ -118,8 +118,14 @@ function reflectOrFail<T>(operation: () => T, reason: string): T {
 }
 
 /**
- * Prepare a value for `JSON.stringify` + `$1::jsonb`. Circular references
- * become `null`. Depth past {@link MAX_SQL_JSON_SANITIZE_DEPTH} fails closed.
+ * Prepare a value for `JSON.stringify` + `$1::jsonb`. Cyclic references (an
+ * object that reaches itself through an ancestor on the current recursion
+ * path) become `null`. Detection is path-based, not visited-based: `seen`
+ * holds only the ancestors of the node under inspection, so a value that is
+ * merely shared across sibling branches of a DAG/diamond (e.g. `{a:x, b:x}`
+ * or `[x, x]`) is serialized in full on every occurrence rather than nulled
+ * after its first appearance. Depth past {@link MAX_SQL_JSON_SANITIZE_DEPTH}
+ * fails closed.
  */
 export function sanitizeJsonObject(
   value: unknown,
@@ -247,6 +253,10 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
         }
         result.push(sanitizeJsonValue(descriptor?.value, context, depth + 1));
       }
+      // Unwind the current node from the ancestor path so a later sibling that
+      // references this same array serializes fully instead of hitting the
+      // cycle guard. Only ancestors still on the recursion stack count.
+      context.seen.delete(value);
       return result;
     }
 
@@ -290,6 +300,10 @@ function sanitizeJsonValue(value: unknown, context: SanitizeContext, depth: numb
         writable: true,
       });
     }
+    // Unwind the current node from the ancestor path so a later sibling that
+    // references this same object serializes fully instead of hitting the
+    // cycle guard. Only ancestors still on the recursion stack count.
+    context.seen.delete(value);
     return result;
   }
 
