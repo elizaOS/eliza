@@ -137,6 +137,18 @@ type PaypalPaymentMetadata = Record<string, unknown> & {
   capability?: PaypalCapability;
 };
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -408,11 +420,12 @@ export class FinancesService {
     request: AddPaymentSourceRequest,
   ): Promise<LifeOpsPaymentSource> {
     const kind = normalizeSourceKind(request.kind);
-    const label = requireNonEmptyString(request.label, "label").slice(0, 120);
-    const institution =
-      normalizeOptionalString(request.institution)?.slice(0, 120) ?? null;
-    const accountMask =
-      normalizeOptionalString(request.accountMask)?.slice(0, 16) ?? null;
+    const rawLabel = requireNonEmptyString(request.label, "label");
+    const label = truncateText(rawLabel, 120);
+    const rawInst = normalizeOptionalString(request.institution);
+    const institution = rawInst ? truncateText(rawInst, 120) : null;
+    const rawMask = normalizeOptionalString(request.accountMask);
+    const accountMask = rawMask ? truncateText(rawMask, 16) : null;
     const now = new Date().toISOString();
     const source: LifeOpsPaymentSource = {
       id: crypto.randomUUID(),
@@ -959,9 +972,11 @@ export class FinancesService {
       id: crypto.randomUUID(),
       agentId: this.agentId(),
       kind: "plaid",
-      label: label.slice(0, 120),
-      institution: result.institution.institutionName.slice(0, 120),
-      accountMask: result.institution.primaryAccountMask?.slice(0, 16) ?? null,
+      label: truncateText(label, 120),
+      institution: truncateText(result.institution.institutionName, 120),
+      accountMask: result.institution.primaryAccountMask
+        ? truncateText(result.institution.primaryAccountMask, 16)
+        : null,
       status: "active",
       lastSyncedAt: null,
       transactionCount: 0,
@@ -1150,7 +1165,7 @@ export class FinancesService {
       id: crypto.randomUUID(),
       agentId: this.agentId(),
       kind: "paypal",
-      label: label.slice(0, 120),
+      label: truncateText(label, 120),
       institution: "PayPal",
       accountMask: null,
       status: exchange.capability.hasReporting ? "active" : "needs_attention",
