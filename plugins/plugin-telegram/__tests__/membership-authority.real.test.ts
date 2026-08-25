@@ -848,4 +848,180 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       );
     });
   }, 120_000);
+
+  it("keeps an uncommitted revocation denying across a RESTART even after unrelated evidence restores scope health (durable overlay)", async () => {
+    const dir = await import("node:fs/promises").then((fs) =>
+      fs.mkdtemp("/tmp/tg-membership-pending-restart-"),
+    );
+    const first = await bootMembershipHarness({ pgliteDir: dir });
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        first.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(first.harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal is admitted, then their leave-revocation write FAILS (real
+    // authority outage): the scope degrades stale and the pending-revocation
+    // overlay installs — and must now be PERSISTED, not in-memory only.
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    first.faults.failApplyMembership = true;
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    first.faults.failApplyMembership = false;
+
+    // Restart: stop the first runtime WITHOUT removing the PGlite dir.
+    const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
+    if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+    await first.harness.runtime.stop().catch(() => {});
+    const second = await bootMembershipHarness({ pgliteDir: dir });
+
+    // In the restarted process, unrelated evidence for another principal
+    // restores scope health to current — the stale degrade is gone.
+    const otherId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        second.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID + 9),
+      ),
+    );
+    await ensurePrincipal(second.harness, otherId);
+    await second.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: otherId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID + 9),
+      runtime: { worldId: null, roomId: null, entityId: otherId },
+      observedAt: new Date().toISOString(),
+    });
+    const health = await second.authority.scopeHealth({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+    });
+    expect(health?.health).toBe("current");
+
+    // The departed principal must STILL be denied: their revocation never
+    // committed and the durable overlay re-hydrated from the cache. Without
+    // persistence this authorize returns allowed (the fail-open path).
+    const decision = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      decision.decision,
+      "a restarted process must keep denying a principal whose revocation could not be committed",
+    ).toBe("denied");
+    expect(decision.reason).toBe("membership_revoked");
+
+    // Fresh evidence for the SAME principal in the restarted process clears
+    // the durable overlay: the authority speaks again.
+    await second.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 4,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const reAdmitted = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(reAdmitted.decision).toBe("allowed");
+    cleanups.push(async () => {
+      await import("node:fs/promises").then((fs) =>
+        fs.rm(dir, { recursive: true, force: true }),
+      );
+    });
+  }, 120_000);
+
+  it("does not let a queued authorization overtake the revocation failure degrade (atomic fence)", async () => {
+    const { authority, harness, faults } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal admitted; then the leave-revocation write fails while an
+    // authorization for the SAME principal is already queued behind it on
+    // the per-scope chain. The queued authorize must NOT observe the stale
+    // active record: the degrade + overlay land inside the SAME chain link.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+
+    faults.failApplyMembership = true;
+    // Queue the failing revocation and the authorize TOGETHER: the authorize
+    // enqueues on the per-scope chain while the revocation write is still
+    // pending/failed. Before the fix, the overlay installed only after the
+    // chain settled, so this authorize returned allowed (fail-open race).
+    const revocationPromise = authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    const queuedAuthorize = authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    await revocationPromise;
+    faults.failApplyMembership = false;
+
+    const decision = await queuedAuthorize;
+    expect(
+      decision.decision,
+      "an authorization queued behind a failed revocation write must not overtake the fail-closed degrade",
+    ).toBe("denied");
+    expect(decision.reason).toBe("membership_revoked");
+  }, 120_000);
 });
