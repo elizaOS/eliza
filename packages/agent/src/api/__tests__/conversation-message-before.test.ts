@@ -10,7 +10,12 @@
  * relies on: room-scope, inclusive `end` createdAt bound, `orderDirection`, and
  * `limit` (so the +1 hasMore probe is meaningful).
  */
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  compareMemoryIds,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationRouteContext,
@@ -99,6 +104,7 @@ function makeState(
       start?: number;
       end?: number;
       limit?: number;
+      cursor?: { createdAt: number; id: UUID };
       orderDirection?: "asc" | "desc";
     }) => {
       let rows = memories.filter((m) => m.roomId === params.roomId);
@@ -109,11 +115,28 @@ function makeState(
         rows = rows.filter((m) => (m.createdAt ?? 0) <= (params.end ?? 0));
       }
       const dir = params.orderDirection ?? "desc";
-      rows = [...rows].sort((a, b) =>
-        dir === "asc"
-          ? (a.createdAt ?? 0) - (b.createdAt ?? 0)
-          : (b.createdAt ?? 0) - (a.createdAt ?? 0),
-      );
+      rows = [...rows].sort((a, b) => {
+        const timestampOrder =
+          dir === "asc"
+            ? (a.createdAt ?? 0) - (b.createdAt ?? 0)
+            : (b.createdAt ?? 0) - (a.createdAt ?? 0);
+        if (timestampOrder !== 0) return timestampOrder;
+        return dir === "asc"
+          ? compareMemoryIds(a.id ?? "", b.id ?? "")
+          : compareMemoryIds(b.id ?? "", a.id ?? "");
+      });
+      if (params.cursor) {
+        rows = rows.filter((memory) => {
+          const createdAt = memory.createdAt ?? 0;
+          if (createdAt !== params.cursor?.createdAt) {
+            return dir === "asc"
+              ? createdAt > (params.cursor?.createdAt ?? 0)
+              : createdAt < (params.cursor?.createdAt ?? 0);
+          }
+          const idOrder = compareMemoryIds(memory.id ?? "", params.cursor.id);
+          return dir === "asc" ? idOrder > 0 : idOrder < 0;
+        });
+      }
       return params.limit !== undefined ? rows.slice(0, params.limit) : rows;
     },
   );
@@ -173,6 +196,55 @@ describe("GET /api/conversations/:id/messages?before", () => {
       makeState(seeded, [conv("c-a", roomA)]),
     );
     expect(hasMore(result.body)).toBe(true);
+  });
+
+  it("continues through messages tied on the cursor millisecond", async () => {
+    const m5 = { ...mem(5000), id: memId(5) };
+    const m4a = { ...mem(4000), id: memId(2) };
+    const m4b = { ...mem(4000), id: memId(1) };
+    const m3 = { ...mem(3000), id: memId(3) };
+    const state = makeState([m5, m4a, m4b, m3], [conv("c-a", roomA)]);
+
+    const first = await getMessages("c-a", "?before=6000&limit=2", state);
+    expect(
+      (first.body as { messages: Array<{ id: string }> }).messages.map(
+        (message) => message.id,
+      ),
+    ).toEqual([m4a.id, m5.id]);
+
+    const second = await getMessages(
+      "c-a",
+      `?before=4000&beforeId=${m4a.id}&limit=2`,
+      state,
+    );
+    expect(
+      (second.body as { messages: Array<{ id: string }> }).messages.map(
+        (message) => message.id,
+      ),
+    ).toEqual([m3.id, m4b.id]);
+  });
+
+  it("rejects beforeId unless it is a UUID paired with before", async () => {
+    const state = makeState(seeded, [conv("c-a", roomA)]);
+    const missingBefore = await getMessages(
+      "c-a",
+      `?beforeId=${memId(10)}`,
+      state,
+    );
+    const invalidId = await getMessages(
+      "c-a",
+      "?before=100&beforeId=not-a-uuid",
+      state,
+    );
+
+    expect(missingBefore).toEqual({
+      status: 400,
+      body: { error: "beforeId must be a UUID paired with before" },
+    });
+    expect(invalidId).toEqual({
+      status: 400,
+      body: { error: "beforeId must be a UUID paired with before" },
+    });
   });
 
   it("reports hasMore=false at the true top (fewer older turns than the page)", async () => {

@@ -364,6 +364,8 @@ declare module "./client-base" {
          * and makes the response carry `hasMore`.
          */
         before?: number;
+        /** ID tiebreaker paired with `before` for lossless keyset pagination. */
+        beforeId?: string;
         /** Older-page size for the `before` cursor path. Server-clamped. */
         limit?: number;
       },
@@ -1092,6 +1094,9 @@ ElizaClient.prototype.getConversationMessages = async function (
     query = `?around=${encodeURIComponent(options.around)}`;
   } else if (options?.before !== undefined) {
     const params = new URLSearchParams({ before: String(options.before) });
+    if (options.beforeId) {
+      params.set("beforeId", options.beforeId);
+    }
     if (options.limit !== undefined) {
       params.set("limit", String(options.limit));
     }

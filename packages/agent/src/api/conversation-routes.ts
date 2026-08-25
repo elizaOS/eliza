@@ -2407,36 +2407,48 @@ function clampOlderPageLimit(raw: string | null): number {
 }
 
 /**
- * Load one page of messages STRICTLY OLDER than the `before` cursor for the
- * infinite upward scroll (#13532). `before` is the createdAt of the oldest
- * message the client already holds; this returns up to `limit` turns with a
- * smaller createdAt, newest-first from the store, so the caller can prepend
- * them above the current top.
+ * Load one page before the `(before, beforeId)` cursor for the infinite upward
+ * scroll (#13532). The tuple identifies the oldest message the client already
+ * holds and lets the store continue through rows sharing its createdAt.
  *
- * The bound is pushed into the store as getMemories `end` (an inclusive
- * createdAt upper bound) with `before - 1`, so the cursor row itself is
- * excluded and there is NO in-process scan. One extra row beyond `limit` is
- * requested to compute `hasMore` without a second COUNT query; the caller
- * trims it.
+ * Timestamp-only callers retain compatibility: an inclusive query removes one
+ * cursor-millisecond row rather than excluding the entire tie group. First-party
+ * callers always provide the id and receive exact exclusive keyset pagination.
+ * One extra eligible row computes `hasMore` without a COUNT query.
  */
 async function loadConversationMessagesBefore(
   runtime: AgentRuntime,
   roomId: UUID,
   before: number,
+  beforeId: UUID | null,
   limit: number,
 ): Promise<{ memories: Memory[]; hasMore: boolean }> {
-  // `end` is inclusive, so subtract 1ms to make the cursor exclusive: the
-  // client already holds the message at `before`, we want strictly older.
   const rows = await runtime.getMemories({
     roomId,
     tableName: "messages",
-    end: before - 1,
-    limit: limit + 1,
+    ...(beforeId
+      ? { cursor: { createdAt: before, id: beforeId } }
+      : { end: before }),
+    limit: limit + (beforeId ? 1 : 2),
     orderBy: "createdAt",
     orderDirection: "desc",
   });
-  const hasMore = rows.length > limit;
-  return { memories: hasMore ? rows.slice(0, limit) : rows, hasMore };
+  // Timestamp-only callers cannot identify which row at `before` they already
+  // hold. Preserve their historical strict-before behavior for a unique cursor
+  // while retaining another row tied at that millisecond. First-party callers
+  // send `beforeId` and use the exact adapter-owned keyset boundary above.
+  const timestampCursorIndex = beforeId
+    ? -1
+    : rows.findIndex((row) => row.createdAt === before);
+  const eligibleRows =
+    timestampCursorIndex === -1
+      ? rows
+      : rows.filter((_row, index) => index !== timestampCursorIndex);
+  const hasMore = eligibleRows.length > limit;
+  return {
+    memories: hasMore ? eligibleRows.slice(0, limit) : eligibleRows,
+    hasMore,
+  };
 }
 
 function extractConversationMetaString(
@@ -3095,14 +3107,22 @@ export async function handleConversationRoutes(
       // far-back) message so a keyword-search jump can scroll to a hit older
       // than the default recent window (#9955). Absent → unchanged recent window.
       const aroundParam = validateUuid(requestUrl.searchParams.get("around"));
-      // `?before=<createdAt>&limit=N` loads one page STRICTLY OLDER than the
-      // cursor for the infinite upward scroll (#13532): the client passes the
-      // createdAt of its current oldest message and prepends the returned page.
+      // `?before=<createdAt>&beforeId=<id>&limit=N` loads one page before the
+      // exact oldest message for the infinite upward scroll (#13532).
       // Mutually exclusive with `around` — a centered jump defines its own
       // window. Returns `hasMore` so the client stops paging at the true top.
       const beforeParam = parseBeforeCursor(
         requestUrl.searchParams.get("before"),
       );
+      const beforeIdRaw = requestUrl.searchParams.get("beforeId");
+      const beforeIdParam = validateUuid(beforeIdRaw);
+      if (
+        beforeIdRaw !== null &&
+        (beforeParam === null || beforeIdParam === null)
+      ) {
+        error(res, "beforeId must be a UUID paired with before", 400);
+        return true;
+      }
       const olderLimit = clampOlderPageLimit(
         requestUrl.searchParams.get("limit"),
       );
@@ -3113,6 +3133,7 @@ export async function handleConversationRoutes(
           runtime,
           conv.roomId,
           beforeParam,
+          beforeIdParam,
           olderLimit,
         );
         memories = page.memories;
