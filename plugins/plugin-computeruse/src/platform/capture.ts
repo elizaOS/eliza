@@ -204,7 +204,15 @@ function captureRegionDarwin(tmpFile: string, region: ScreenRegion): void {
 function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
   const [x, y, w, h] = display.bounds;
   if (isWaylandSession()) {
-    if (tryCaptureWaylandGrim(tmpFile, undefined, display.name)) return;
+    const outputName = authoritativeWaylandOutputName(display.name);
+    if (outputName && tryCaptureWaylandGrim(tmpFile, undefined, outputName))
+      return;
+    if (
+      !outputName &&
+      listDisplays().length === 1 &&
+      tryCaptureWaylandGrim(tmpFile)
+    )
+      return;
     if (
       display.primary &&
       listDisplays().length === 1 &&
@@ -266,7 +274,19 @@ function captureRegionLinux(
   region: ScreenRegion,
   outputName?: string,
 ): void {
-  if (isWaylandSession() && tryCaptureWaylandGrim(tmpFile, region, outputName))
+  const scopedOutputName = authoritativeWaylandOutputName(outputName);
+  if (
+    isWaylandSession() &&
+    scopedOutputName &&
+    tryCaptureWaylandGrim(tmpFile, region, scopedOutputName)
+  )
+    return;
+  if (
+    isWaylandSession() &&
+    !scopedOutputName &&
+    listDisplays().length === 1 &&
+    tryCaptureWaylandGrim(tmpFile, region)
+  )
     return;
   if (isWaylandSession()) {
     throw new Error(
@@ -322,6 +342,20 @@ function captureRegionLinux(
     return;
   }
   throw new Error("No screenshot tool available for region capture.");
+}
+
+function authoritativeWaylandOutputName(
+  name: string | undefined,
+): string | undefined {
+  if (!name) return undefined;
+  if (
+    name === "primary" ||
+    name === "main" ||
+    name.startsWith("output-") ||
+    name.startsWith("display-")
+  )
+    return undefined;
+  return name;
 }
 
 function tryCaptureWaylandPortal(tmpFile: string): boolean {

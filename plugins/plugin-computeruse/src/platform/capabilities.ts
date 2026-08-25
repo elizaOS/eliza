@@ -6,12 +6,14 @@
 import type { PlatformCapabilities } from "../types.js";
 import { type DriverName, selectedDriver } from "./driver.js";
 import type { PlatformOS } from "./helpers.js";
+import { isWaylandSession } from "./wayland-portal.js";
 
 export interface CapabilityDetectionOptions {
   osName: PlatformOS;
   commandExists: (command: string) => boolean;
   driverName?: DriverName;
   isBrowserAvailable: () => boolean;
+  isWaylandSession?: () => boolean;
   shell?: string;
 }
 
@@ -123,7 +125,8 @@ export function detectPlatformCapabilities(
     };
     caps.clipboard = { available: true, tool: "pbpaste / pbcopy (built-in)" };
   } else if (options.osName === "linux") {
-    if (options.commandExists("grim")) {
+    const wayland = options.isWaylandSession?.() ?? isWaylandSession();
+    if (wayland && options.commandExists("grim")) {
       caps.screenshot = { available: true, tool: "grim (Wayland)" };
     } else if (options.commandExists("import")) {
       caps.screenshot = { available: true, tool: "ImageMagick import" };
