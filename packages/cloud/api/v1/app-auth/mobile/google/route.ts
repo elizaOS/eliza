@@ -31,7 +31,20 @@ import { requireRegisteredMobileApp } from "../_registration";
 import { mobileAppAuthErrorResponse } from "../_response";
 import { mobileAppAuthGoogleSchema } from "../_schemas";
 
-type StewardLoginResponse = { ok?: boolean; token?: string; error?: string };
+type StewardLoginResponse = {
+  ok?: boolean;
+  token?: string;
+  error?: string;
+  code?: string;
+};
+
+const NONRETRYABLE_GOOGLE_IDENTITY_CODES = new Set([
+  "google_account_conflict",
+  "google_email_unverified",
+  "google_policy_denied",
+  "google_token_invalid",
+  "google_token_replayed",
+]);
 
 function decodeJwtPayload(token: string): Record<string, unknown> {
   const payload = token.split(".")[1];
@@ -90,6 +103,15 @@ async function exchangeGoogleToken(
     redirect: "error",
     signal: AbortSignal.timeout(STEWARD_AUTH_UPSTREAM_TIMEOUT_MS),
   });
+  let result: StewardLoginResponse;
+  try {
+    result = (await response.json()) as StewardLoginResponse;
+  } catch (error) {
+    // error-policy:J2 upstream response parsing adds dependency context and rethrows.
+    throw new Error("Steward native Google dependency returned invalid JSON", {
+      cause: error,
+    });
+  }
   if (
     response.status === 408 ||
     response.status === 429 ||
@@ -100,19 +122,18 @@ async function exchangeGoogleToken(
     );
   }
   if (response.status >= 400) {
-    throw new MobileAppAuthProtocolError(
-      "invalid_request",
-      "Google sign-in could not be completed",
+    if (
+      typeof result.code === "string" &&
+      NONRETRYABLE_GOOGLE_IDENTITY_CODES.has(result.code)
+    ) {
+      throw new MobileAppAuthProtocolError(
+        "invalid_request",
+        "Google sign-in could not be completed",
+      );
+    }
+    throw new Error(
+      `Steward native Google dependency rejected the signed Cloud request with ${response.status}`,
     );
-  }
-  let result: StewardLoginResponse;
-  try {
-    result = (await response.json()) as StewardLoginResponse;
-  } catch (error) {
-    // error-policy:J2 upstream response parsing adds dependency context and rethrows.
-    throw new Error("Steward native Google dependency returned invalid JSON", {
-      cause: error,
-    });
   }
   if (!response.ok || result.ok !== true || typeof result.token !== "string") {
     throw new Error(
