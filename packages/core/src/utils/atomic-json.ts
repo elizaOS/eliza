@@ -153,7 +153,7 @@ export async function readJsonFile<T>(filePath: string): Promise<T | null> {
 	assertFilePath(filePath);
 	try {
 		const raw = await fsp.readFile(filePath, "utf-8");
-		return JSON.parse(raw) as T;
+		return JSON.parse(raw.replace(/^\uFEFF/, "")) as T;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 			// error-policy:J4 an absent optional JSON file is an explicit not-found
@@ -172,7 +172,7 @@ export function readJsonFileSync<T>(filePath: string): T | null {
 	assertFilePath(filePath);
 	try {
 		const raw = fs.readFileSync(filePath, "utf-8");
-		return JSON.parse(raw) as T;
+		return JSON.parse(raw.replace(/^\uFEFF/, "")) as T;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
 			// error-policy:J4 an absent optional JSON file is an explicit not-found
