@@ -26,6 +26,7 @@ import {
   validateContentContextResult as validateContentContextResultBase,
 } from "./progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
+import { createProgressiveContentPostgresEvidenceFixture } from "./testing/progressive-content-postgres-evidence-fixture.ts";
 
 const fixtureCommit = "a".repeat(40);
 const fixtureE2EArtifactBytes = {
@@ -246,183 +247,11 @@ function validPostgresEvidence(
   }[],
   corpusManifestSha256: string,
 ) {
-  const mappings = [
-    ["file", "filesystem", "READ.byteWindow", "typed-rejection", false],
-    [
-      "document",
-      "document-store",
-      "DatabaseAdapter.readDocumentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "memory",
-      "memory-store",
-      "DatabaseAdapter.readMessageContentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "email",
-      "message-store",
-      "DatabaseAdapter.readMessageContentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "attachment",
-      "content-addressed-media",
-      "media-store.readStoredMediaByteRange",
-      "native-bytes",
-      false,
-    ],
-    [
-      "tool-output",
-      "filesystem",
-      "readShellOutputArtifactPage",
-      "native-bytes",
-      false,
-    ],
-  ] as const;
-  const commit = "a".repeat(40);
-  return {
-    schemaVersion: "elizaos.content-context.postgres.v3",
-    status: "passed",
-    backend: "postgres",
-    commit,
+  return createProgressiveContentPostgresEvidenceFixture({
+    objects,
     corpusManifestSha256,
-    server: { version: "PostgreSQL 17.1", versionNum: 170_001 },
-    command: {
-      executable: "bun",
-      argv: [
-        "packages/scripts/produce-content-context-postgres.mjs",
-        `--commit=${commit}`,
-      ],
-      cwd: ".",
-    },
-    performance: {
-      durationMs: 1_000,
-      peakRssBytes: 128 * 1024 * 1024,
-      peakHeapUsedBytes: 64 * 1024 * 1024,
-      peakExternalBytes: 16 * 1024 * 1024,
-      rssDeltaBytes: 1024,
-      heapUsedStartBytes: 32 * 1024 * 1024,
-      heapUsedEndBytes: 33 * 1024 * 1024,
-      externalStartBytes: 1024,
-      externalEndBytes: 2048,
-      databaseSizeBytes: 64 * 1024 * 1024,
-      totalPostgresRows: 96,
-    },
-    familyMappings: mappings.map(
-      ([
-        family,
-        authoritativeStore,
-        productionMethod,
-        binaryPolicy,
-        postgresBacked,
-      ]) => ({
-        family,
-        authoritativeStore,
-        productionMethod,
-        binaryPolicy,
-        postgresRows: postgresBacked ? 32 : 0,
-      }),
-    ),
-    sharedVectors: mappings
-      .filter((mapping) => mapping[4])
-      .map(([family, , productionMethod]) => ({
-        family,
-        status: "passed",
-        productionMethod,
-        authorizationDenied: true,
-        isolationDenied: true,
-        restartVerified: true,
-        indexNames: [
-          family === "document"
-            ? "idx_document_source_byte_seek"
-            : "idx_message_content_byte_seek",
-        ],
-        seekPlan: {
-          indexName:
-            family === "document"
-              ? "idx_document_source_byte_seek"
-              : "idx_message_content_byte_seek",
-          nodeTypes: ["Limit", "Bitmap Heap Scan", "Bitmap Index Scan"],
-          actualRows: 1,
-          sharedHitBlocks: 1,
-          sharedReadBlocks: 0,
-          planningTimeMs: 0.1,
-          executionTimeMs: 0.1,
-        },
-      })),
-    objects: objects.map((object) => {
-      const postgresBacked =
-        mappings.find(([family]) => family === object.family)?.[4] === true;
-      const typedRejection =
-        postgresBacked &&
-        (object.format === "binary" || object.format === "invalid-utf8");
-      const pageBytes = 64 * 1024;
-      const postgresRows = typedRejection
-        ? 0
-        : postgresBacked
-          ? Math.ceil(object.byteLength / pageBytes)
-          : 0;
-      return {
-        objectId: object.id,
-        family: object.family,
-        sourceBytes: object.byteLength,
-        sourceSha256: object.sourceSha256,
-        revision: object.revision,
-        authorizationScope: object.authorizationScope,
-        disposition: typedRejection
-          ? "typed-rejected"
-          : postgresBacked
-            ? "postgres-text-reassembled"
-            : "native-store-reassembled",
-        postgresRows,
-        reassembledSha256: typedRejection ? null : object.sourceSha256,
-        rejectionCode: typedRejection
-          ? object.format === "binary"
-            ? "CONTENT_BINARY_UNSUPPORTED"
-            : "CONTENT_INVALID_UTF8"
-          : null,
-        storageWrites: postgresRows,
-        authorizationVerified: true,
-        isolationVerified: true,
-        restartVerified: true,
-        durationMs: 10,
-        sourceWork: {
-          pageBytes,
-          bytesRead: typedRejection
-            ? Math.min(pageBytes, object.byteLength)
-            : object.byteLength,
-          readCalls: typedRejection
-            ? 1
-            : Math.ceil(object.byteLength / pageBytes),
-          rowsRead:
-            postgresBacked && !typedRejection
-              ? Math.ceil(object.byteLength / pageBytes)
-              : 0,
-          parentScans: 0,
-          readAmplification: 1,
-        },
-      };
-    }),
-    negativeVectors: ["document", "memory", "email"].flatMap((family) =>
-      ["binary", "invalid-utf8"].map((format) => ({
-        family,
-        format,
-        status: "passed",
-        rejectionCode:
-          format === "binary"
-            ? "CONTENT_BINARY_UNSUPPORTED"
-            : "CONTENT_INVALID_UTF8",
-        postgresRows: 0,
-        storageWrites: 0,
-      })),
-    ),
-    cleanup: { databaseDropped: true, postDropProbe: "absent" },
-  };
+    commit: fixtureCommit,
+  });
 }
 
 function validDeterministicScenarioReport() {
@@ -1245,43 +1074,54 @@ describe("content-context result", () => {
     ).toThrow(/fault matrix/u);
   });
 
-  it("rejects Postgres evidence that copies native stores into SQL", () => {
+  it("rejects PostgreSQL factories that change production storage ownership", () => {
     const original = evidence();
     const postgres = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
     ) as {
-      familyMappings: Array<Record<string, unknown>>;
+      targetHarness: {
+        factories: Array<{ family: string; authoritativeStore: string }>;
+      };
     };
-    const file = postgres.familyMappings.find(
-      ({ family }) => family === "file",
+    const attachment = postgres.targetHarness.factories.find(
+      ({ family }) => family === "attachment",
     );
-    if (!file) throw new Error("valid fixture lacks file mapping");
-    file.postgresRows = 1;
+    if (!attachment) throw new Error("valid fixture lacks attachment factory");
+    attachment.authoritativeStore = "postgres";
     const changed = replaceArtifact(original, "postgres.json", postgres);
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
-    ).toThrow(/production storage ownership/u);
+    ).toThrow(/target factory differs from production/u);
   });
 
-  it("rejects Postgres evidence with amplified reads or missing typed rejections", () => {
+  it("rejects unbounded source work and incomplete typed-rejection coverage", () => {
     const original = evidence();
     const amplified = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
     ) as {
-      objects: Array<{ sourceWork: { bytesRead: number } }>;
+      targetHarness: {
+        entries: Array<{
+          status: string;
+          sourceWork: { maxReadBytes: number };
+        }>;
+      };
     };
-    const firstObject = amplified.objects[0];
-    if (!firstObject) throw new Error("valid fixture lacks Postgres objects");
-    firstObject.sourceWork.bytesRead = 100 * 1024 * 1024;
+    const firstObject = amplified.targetHarness.entries[0];
+    if (!firstObject) throw new Error("valid fixture lacks target entries");
+    firstObject.sourceWork.maxReadBytes = 100 * 1024 * 1024;
     const changedWork = replaceArtifact(original, "postgres.json", amplified);
     expect(() =>
       validateContentContextResult(changedWork.result, changedWork.bytes),
-    ).toThrow(/source work is unbounded/u);
+    ).toThrow(/source work is invalid or unbounded/u);
 
     const missingNegative = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
-    ) as { negativeVectors: unknown[] };
-    missingNegative.negativeVectors.pop();
+    ) as { targetHarness: { entries: Array<{ status: string }> } };
+    const typedIndex = missingNegative.targetHarness.entries.findIndex(
+      ({ status }) => status === "typed-rejected",
+    );
+    if (typedIndex < 0) throw new Error("valid fixture lacks typed rejection");
+    missingNegative.targetHarness.entries.splice(typedIndex, 1);
     const changedNegative = replaceArtifact(
       original,
       "postgres.json",
@@ -1292,31 +1132,20 @@ describe("content-context result", () => {
         changedNegative.result,
         changedNegative.bytes,
       ),
-    ).toThrow(/negative vectors are incomplete/u);
+    ).toThrow(/target object coverage is incomplete/u);
   });
 
-  it("rejects Postgres evidence with a fake index, rejection code, or producer command", () => {
+  it("rejects forged index, receipt, rejection, and producer-command evidence", () => {
     const original = evidence();
-    const fakeIndex = JSON.parse(
-      new TextDecoder().decode(original.bytes["postgres.json"]),
-    ) as { sharedVectors: Array<{ indexNames: string[] }> };
-    const firstVector = fakeIndex.sharedVectors[0];
-    if (!firstVector) throw new Error("valid fixture lacks shared vectors");
-    firstVector.indexNames = ["idx_fixture_only"];
-    const changedIndex = replaceArtifact(original, "postgres.json", fakeIndex);
-    expect(() =>
-      validateContentContextResult(changedIndex.result, changedIndex.bytes),
-    ).toThrow(/shared vector is incomplete/u);
-
     const fakePlan = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
     ) as {
-      sharedVectors: Array<{
+      indexVectors: Array<{
         seekPlan: { indexName: string; nodeTypes: string[] };
       }>;
     };
-    const firstPlan = fakePlan.sharedVectors[0]?.seekPlan;
-    if (!firstPlan) throw new Error("valid fixture lacks a Postgres seek plan");
+    const firstPlan = fakePlan.indexVectors[0]?.seekPlan;
+    if (!firstPlan) throw new Error("valid fixture lacks an index vector");
     firstPlan.indexName = "idx_fixture_only";
     firstPlan.nodeTypes = ["Seq Scan"];
     const changedPlan = replaceArtifact(original, "postgres.json", fakePlan);
@@ -1324,11 +1153,50 @@ describe("content-context result", () => {
       validateContentContextResult(changedPlan.result, changedPlan.bytes),
     ).toThrow(/indexed seek plan is invalid/u);
 
+    const fakeReceipt = JSON.parse(
+      new TextDecoder().decode(original.bytes["postgres.json"]),
+    ) as {
+      targetHarness: {
+        entries: Array<{
+          status: string;
+          receipts?: Array<{
+            phase: string;
+            after: { present: boolean };
+          }>;
+        }>;
+      };
+    };
+    const verified = fakeReceipt.targetHarness.entries.find(
+      ({ status }) => status === "verified",
+    );
+    const cleanupReceipt = verified?.receipts?.find(
+      ({ phase }) => phase === "cleanup",
+    );
+    if (!cleanupReceipt) throw new Error("valid fixture lacks cleanup receipt");
+    cleanupReceipt.after.present = true;
+    const changedReceipt = replaceArtifact(
+      original,
+      "postgres.json",
+      fakeReceipt,
+    );
+    expect(() =>
+      validateContentContextResult(changedReceipt.result, changedReceipt.bytes),
+    ).toThrow(/cleanup transition was not observed/u);
+
     const fakeRejection = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
-    ) as { negativeVectors: Array<{ rejectionCode: string }> };
-    const firstNegative = fakeRejection.negativeVectors[0];
-    if (!firstNegative) throw new Error("valid fixture lacks negative vectors");
+    ) as {
+      targetHarness: {
+        entries: Array<{
+          status: string;
+          rejectionCode?: string;
+        }>;
+      };
+    };
+    const firstNegative = fakeRejection.targetHarness.entries.find(
+      ({ status }) => status === "typed-rejected",
+    );
+    if (!firstNegative) throw new Error("valid fixture lacks typed rejection");
     firstNegative.rejectionCode = "FIXTURE_REJECTED";
     const changedRejection = replaceArtifact(
       original,
@@ -1340,7 +1208,7 @@ describe("content-context result", () => {
         changedRejection.result,
         changedRejection.bytes,
       ),
-    ).toThrow(/negative vector is not fail-closed/u);
+    ).toThrow(/typed rejection is invalid/u);
 
     const fakeCommand = JSON.parse(
       new TextDecoder().decode(original.bytes["postgres.json"]),
