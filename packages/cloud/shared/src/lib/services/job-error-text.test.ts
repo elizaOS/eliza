@@ -173,6 +173,8 @@ describe("publicJobErrorSummary — API boundary", () => {
 
   test.each([
     "Provider failed at https://api.eliza.app/v1/chat",
+    "Provider failed at https://api.eliza.app/callback?next=/v1/chat",
+    "Provider failed at https://api.eliza.app/v1//chat",
     "Socket closed at wss://agent.example.test/chat",
   ])("does not mistake a public network URL for a host path: %s", (message) => {
     const stored = jobErrorText(new Error(message));
