@@ -645,6 +645,34 @@ describe("content-context result", () => {
     expect(validateContentContextResult(result, bytes)).toEqual(result);
   });
 
+  it("rejects unknown result and artifact declaration fields", () => {
+    const { result, bytes } = evidence();
+    expect(() =>
+      validateContentContextResult({ ...result, extra: true }, bytes),
+    ).toThrow(/result fields are not exact/u);
+    expect(() =>
+      validateContentContextResult(
+        {
+          ...result,
+          artifacts: result.artifacts.map((artifact, index) =>
+            index === 0 ? { ...artifact, extra: true } : artifact,
+          ),
+        },
+        bytes,
+      ),
+    ).toThrow(/artifact fields are not exact/u);
+  });
+
+  it("rejects extra runtime artifact bytes", () => {
+    const { result, bytes } = evidence();
+    expect(() =>
+      validateContentContextResult(result, {
+        ...bytes,
+        "invented.json": Buffer.from("{}"),
+      } as typeof bytes),
+    ).toThrow(/artifact byte fields are not exact/u);
+  });
+
   it("rejects changed bytes even when every artifact remains named", () => {
     const { result, bytes } = evidence();
     expect(() =>
