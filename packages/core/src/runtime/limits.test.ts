@@ -99,6 +99,23 @@ describe("getFailureSignature", () => {
 		// "X:" + 240 chars
 		expect(sig).toHaveLength(2 + 240);
 	});
+
+	it("preserves surrogate pairs when normalizing long errors or repeatKeys", () => {
+		// "🔥" (2 chars * 130 = 260 chars) -> 260 chars > 240 chars
+		// At boundary 240, index 239 is high surrogate of 120th emoji, which bisects without backoff
+		const longEmojiError = "🔥".repeat(130);
+		const sig = getFailureSignature({ toolName: "X", error: longEmojiError });
+		expect(sig).not.toBeNull();
+		const errorPart = (sig as string).slice(2);
+		expect(errorPart.length).toBe(240);
+		for (const char of errorPart) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
 });
 
 describe("countRepeatedFailures / assertRepeatedFailureLimit", () => {

@@ -187,6 +187,18 @@ export interface FailureLike {
 	failureProvenance?: ActionFailureProvenance;
 }
 
+function truncateText(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	let end = maxChars;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 export function getFailureSignature(failure: FailureLike): string | null {
 	if (failure.success !== false && failure.error == null) {
 		return null;
@@ -201,7 +213,7 @@ export function getFailureSignature(failure: FailureLike): string | null {
 				: failure.error == null
 					? "failed"
 					: JSON.stringify(failure.error);
-	const normalizedError = rawError.trim().replace(/\s+/g, " ").slice(0, 240);
+	const normalizedError = truncateText(rawError.trim().replace(/\s+/g, " "), 240);
 	return `${toolName}:${normalizedError}`;
 }
 
@@ -227,7 +239,7 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey ? `${signature}:${truncateText(repeatKey, 240)}` : signature;
 }
 
 export function assertRepeatedFailureLimit(params: {
