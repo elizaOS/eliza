@@ -26,6 +26,7 @@ export {
   SCENARIO_NATIVE_EXPORT_VERSION,
 } from "./native-export.ts";
 export * from "./production-manifest.ts";
+export * from "./progressive-content-external-mutants.ts";
 export * from "./provider-qualified/index.ts";
 export {
   buildAggregate,
