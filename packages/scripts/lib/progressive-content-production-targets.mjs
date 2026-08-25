@@ -22,6 +22,70 @@ const TARGET_FAMILIES = [
   "attachment",
   "tool-output",
 ];
+
+const POSTGRES_BENCHMARK_FAMILIES = new Set(["document", "memory", "email"]);
+
+/**
+ * Build one fixed benchmark factory without initializing unrelated stores.
+ * SQL coordinates always use the real PostgreSQL production adapter; callers
+ * cannot substitute a module or silently fall back to PGlite.
+ */
+export async function createProgressiveContentBenchmarkFactory(input) {
+  if (!TARGET_FAMILIES.includes(input.family)) {
+    throw new TypeError(`unsupported benchmark family: ${input.family}`);
+  }
+  const workRoot = path.resolve(input.workRoot);
+  const stateDir = path.join(workRoot, "state");
+  await fs.mkdir(stateDir, { recursive: true, mode: 0o700 });
+  process.env.ELIZA_STATE_DIR = stateDir;
+
+  if (POSTGRES_BENCHMARK_FAMILIES.has(input.family)) {
+    if (!input.postgresUrl) {
+      throw new TypeError("PostgreSQL benchmark factory requires POSTGRES_URL");
+    }
+    const sqlModule = await import(
+      "../../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts"
+    );
+    const factories =
+      await sqlModule.createProgressivePostgresSqlTargetFactories({
+        connectionString: input.postgresUrl,
+      });
+    const factory = factories.find(({ family }) => family === input.family);
+    if (!factory) {
+      throw new TypeError(
+        `fixed PostgreSQL production factory is absent for ${input.family}`,
+      );
+    }
+    if (!factory.adapterId.startsWith("plugin-sql-postgres-")) {
+      throw new TypeError(
+        `fixed PostgreSQL production factory is absent for ${input.family}`,
+      );
+    }
+    return factory;
+  }
+
+  if (input.family === "file") {
+    const module = await import(
+      "../../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts"
+    );
+    return await module.createProgressiveFileTargetFactory({
+      targetRoot: path.join(workRoot, "file"),
+      agentId: "content-context-benchmark-file-agent",
+    });
+  }
+  if (input.family === "attachment") {
+    const module = await import(
+      "../../agent/src/testing/progressive-content-attachment-target.ts"
+    );
+    return module.createProgressiveAttachmentTargetFactory();
+  }
+  const module = await import(
+    "../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts"
+  );
+  return module.createProgressiveToolOutputTargetFactory({
+    agentId: "content-context-benchmark-tool-agent",
+  });
+}
 export const PROGRESSIVE_CONTENT_SOAK_OBJECT_BYTES = 10 * 1024 * 1024;
 
 /** Instantiate each production factory exactly once under a private work root. */

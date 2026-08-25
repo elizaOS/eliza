@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { generateProgressiveContentCorpus } from "../../corpus-tools/src/progressive-content";
 import {
+  PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS,
   PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY,
   parseProgressiveContentBenchmarkArgs,
   selectProgressiveContentBenchmarkObject,
@@ -37,6 +38,47 @@ describe("progressive content benchmark producer", () => {
         `--commit=${commit}`,
       ]),
     ).toThrow(/unsupported benchmark argument/u);
+    expect(() =>
+      parseProgressiveContentBenchmarkArgs([
+        "--postgres-url=postgresql://caller-selected/db",
+        "--corpus-root=/private/corpus",
+        "--out=/private/benchmark.json",
+        `--commit=${commit}`,
+      ]),
+    ).toThrow(/unsupported benchmark argument/u);
+    expect(PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS).toEqual({
+      file: "filesystem",
+      document: "postgres",
+      memory: "postgres",
+      email: "postgres",
+      attachment: "content-addressed-media-store",
+      "tool-output": "runtime-tool-output-store",
+    });
+    expect(Object.isFrozen(PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS)).toBe(true);
+  });
+
+  it("fails closed before corpus access when PostgreSQL is unavailable", async () => {
+    const script = fileURLToPath(
+      new URL("../run-progressive-content-benchmark.mjs", import.meta.url),
+    );
+    const baseArguments = [
+      script,
+      "--corpus-root=/private/missing-corpus",
+      "--out=/private/missing-output.json",
+      `--commit=${commit}`,
+    ];
+    await expect(
+      execFileAsync(process.execPath, baseArguments, {
+        env: { ...process.env, POSTGRES_URL: "" },
+      }),
+    ).rejects.toMatchObject({ stderr: expect.stringMatching(/POSTGRES_URL/u) });
+    await expect(
+      execFileAsync(process.execPath, baseArguments, {
+        env: { ...process.env, POSTGRES_URL: "https://not-postgres.invalid" },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringMatching(/PostgreSQL protocol/u),
+    });
   });
 
   it("keeps every coordinate and work root internal to workers", () => {
@@ -155,6 +197,7 @@ describe("progressive content benchmark producer", () => {
       expect(sample.family).toBe("file");
       expect(sample.adapterId).toBeTypeOf("string");
       expect(sample.productionMethod).toBeTypeOf("string");
+      expect(sample.backend).toBe("filesystem");
       expect(sample.cold.bytesReturned).toBe(object.byteLength);
       expect(sample.warm.bytesReturned).toBe(object.byteLength);
     } finally {
