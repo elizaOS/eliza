@@ -121,10 +121,19 @@ export interface InboxActionParameters {
   query?: string;
   id?: string;
   entryId?: string;
+  entry_id?: string;
   messageId?: string;
+  message_id?: string;
+  itemId?: string;
+  item_id?: string;
+  threadId?: string;
+  thread_id?: string;
+  target?: string;
   body?: string;
   text?: string;
   draft?: string;
+  message?: string;
+  content?: string;
   until?: string;
   snoozedUntil?: string;
   confirmed?: boolean;
@@ -526,12 +535,27 @@ function normalizeMessageSource(value: string): MessageSource | null {
 }
 
 function parseEntryId(params: InboxActionParameters): string | null {
-  const raw = params.entryId ?? params.id ?? params.messageId;
+  const raw =
+    params.entryId ??
+    params.entry_id ??
+    params.id ??
+    params.messageId ??
+    params.message_id ??
+    params.itemId ??
+    params.item_id ??
+    params.threadId ??
+    params.thread_id ??
+    params.target;
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
 function parseReplyBody(params: InboxActionParameters): string | null {
-  const raw = params.body ?? params.text ?? params.draft;
+  const raw =
+    params.body ??
+    params.text ??
+    params.draft ??
+    params.message ??
+    params.content;
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 

@@ -840,6 +840,25 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(update?.sql).toContain("resolved = FALSE");
     });
 
+    it("snoozes a persisted triage entry with itemId alias", async () => {
+      const { runtime } = makeDbRuntime((sql) => {
+        if (sql.startsWith("SELECT")) return [makeTriageRow({ id: "entry-1" })];
+        return [];
+      });
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "snooze",
+        itemId: "entry-1",
+        until: "2026-07-02T00:00:00-04:00",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        subaction: "snooze",
+        entryId: "entry-1",
+      });
+    });
+
     it("rejects an explicit malformed snooze timestamp instead of applying the default window", async () => {
       const { runtime, calls } = makeDbRuntime((sql) => {
         if (sql.startsWith("SELECT")) return [makeTriageRow({ id: "entry-1" })];
