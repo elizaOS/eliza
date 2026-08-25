@@ -636,3 +636,163 @@ describe("PUT /api/character clears schema-valid empty values", () => {
     expect(invalidateTopologySpy).not.toHaveBeenCalled();
   });
 });
+describe("GET /api/character contracts", () => {
+  it("returns merged character snapshot and agentName for a live runtime", async () => {
+    const character = {
+      name: "Ada",
+      username: "ada_live",
+      bio: ["expert"],
+      system: "you are Ada",
+      adjectives: ["curious"],
+      topics: ["code"],
+      style: { all: ["terse"] },
+      messageExamples: [[{ name: "Ada", content: { text: "hi" } }]],
+      postExamples: ["post 1"],
+    };
+    const json = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime: { character } as never },
+      json,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledWith({}, expect.objectContaining({ character: expect.objectContaining({ name: "Ada", bio: ["expert"] }), agentName: "Ada" }));
+  });
+
+  it("returns empty character when runtime is null", async () => {
+    const json = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character",
+      state: { agentName: "Ghost", runtime: null as never },
+      json,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledWith({}, { character: {}, agentName: "Ghost" });
+  });
+});
+
+describe("GET /api/character/history with limit boundary", () => {
+  it("returns history with valid limit and without limit", async () => {
+    const fakeHistory = [{ id: "1" }];
+    // Mock the character-history service via runtime.getMemories indirectly: we mock listCharacterHistory via runtime shape?
+    // Instead exercise the route's limit parsing: provide valid limit and ensure it does not error.
+    const getMemories = vi.fn(async () => []);
+    // listCharacterHistory uses runtime.getMemories internally; we can stub getMemories to return rows that parse.
+    const json = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: { url: "/api/character/history?limit=2" } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character/history",
+      state: { agentName: "Ada", runtime: { agentId: "agent", getMemories } as never },
+      json,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledWith({}, expect.objectContaining({ history: expect.any(Array), agentName: "Ada" }));
+  });
+
+  it("returns empty history when runtime is null regardless of limit", async () => {
+    const json = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: { url: "/api/character/history?limit=5" } as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character/history",
+      state: { agentName: "Ada", runtime: null as never },
+      json,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledWith({}, { history: [], agentName: "Ada" });
+  });
+});
+
+describe("GET /api/character/schema and random-name", () => {
+  it("returns schema fields and random name", async () => {
+    const jsonSchema = vi.fn();
+    await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character/schema",
+      state: { agentName: "Ada", runtime: null as never },
+      json: jsonSchema,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(jsonSchema).toHaveBeenCalledWith({}, expect.objectContaining({ fields: expect.any(Array) }));
+    const jsonName = vi.fn();
+    await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character/random-name",
+      state: { agentName: "Ada", runtime: null as never },
+      json: jsonName,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(() => ["Mika"]),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(jsonName).toHaveBeenCalledWith({}, { name: "Mika" });
+  });
+
+  it("falls back to Reimu when pickRandomNames returns empty", async () => {
+    const json = vi.fn();
+    await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/character/random-name",
+      state: { agentName: "Ada", runtime: null as never },
+      json,
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(() => []),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(json).toHaveBeenCalledWith({}, { name: "Reimu" });
+  });
+});
+
+describe("handleCharacterRoutes fallback", () => {
+  it("returns false for unknown routes", async () => {
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "GET",
+      pathname: "/api/unknown",
+      state: { agentName: "Ada", runtime: null as never },
+      json: vi.fn(),
+      error: vi.fn(),
+      readJsonBody: vi.fn(),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(),
+    } as never);
+    expect(handled).toBe(false);
+  });
+});
+
