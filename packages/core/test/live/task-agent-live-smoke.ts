@@ -11,7 +11,6 @@ const {
 	default: agentOrchestratorPlugin,
 	AcpService,
 	cleanForChat,
-	listAgentsAction,
 	sendToAgentAction,
 	spawnAgentAction,
 } = await import("@elizaos/plugin-agent-orchestrator");
