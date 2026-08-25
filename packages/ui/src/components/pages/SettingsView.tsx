@@ -172,10 +172,10 @@ function SettingsSectionFallback({
         {error.message}
       </p>
       <Button
-        variant="outline"
-        size="sm"
+        variant="outlineAccent"
+        size="regularCompact"
         onClick={onRetry}
-        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </Button>
