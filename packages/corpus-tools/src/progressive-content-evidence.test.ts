@@ -27,6 +27,7 @@ import {
 } from "./progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
 import { createProgressiveContentPostgresEvidenceFixture } from "./testing/progressive-content-postgres-evidence-fixture.ts";
+import { createProgressiveContentSoakEvidenceFixture } from "./testing/progressive-content-soak-evidence-fixture.ts";
 
 const fixtureCommit = "a".repeat(40);
 const fixtureE2EArtifactBytes = {
@@ -70,8 +71,16 @@ const fixtureObjects = [
   "attachment",
   "tool-output",
 ].flatMap((family) =>
-  [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map((byteLength) => {
-    const id = `${family}-${byteLength}`;
+  (
+    [
+      [1024 * 1024, "lf-lines"],
+      [10 * 1024 * 1024, "no-final-newline"],
+      [100 * 1024 * 1024, "minified-json-like"],
+      [4096, "binary"],
+      [4097, "invalid-utf8"],
+    ] as const
+  ).map(([byteLength, format], ordinal) => {
+    const id = `${family}-${ordinal}-${byteLength}`;
     return {
       id,
       family,
@@ -79,12 +88,7 @@ const fixtureObjects = [
       sourceSha256: "c".repeat(64),
       revision: `revision-${family}-${byteLength}`,
       authorizationScope: `scope-${family}`,
-      format:
-        family === "memory" && byteLength === 10 * 1024 * 1024
-          ? "binary"
-          : family === "email" && byteLength === 1024 * 1024
-            ? "invalid-utf8"
-            : "lf-lines",
+      format,
       relativePath: `objects/${family}/${id}.txt`,
       coordinateSystem: "utf8-byte-start-inclusive-end-exclusive",
       canaries: [],
@@ -128,77 +132,11 @@ function expectedFixtureRejection(object: (typeof fixtureObjects)[number]) {
 }
 
 function validSoakEvidence(commit: string, corpusManifestSha256: string) {
-  const families = [
-    "file",
-    "document",
-    "memory",
-    "email",
-    "attachment",
-    "tool-output",
-  ];
-  return {
-    schemaVersion: "elizaos.progressive-content.mixed-soak.v1",
-    status: "passed",
+  return createProgressiveContentSoakEvidenceFixture({
     commit,
     corpusManifestSha256,
-    clockSource: "system-monotonic",
-    evidenceEligible: true,
-    durationMs: 6 * 60 * 60 * 1_000,
-    operations: 100_000,
-    requiredDurationMs: 6 * 60 * 60 * 1_000,
-    requiredOperations: 100_000,
-    sampleEveryOperations: 1_000,
-    warmupOperations: 10_000,
-    positiveLeakControlDetected: true,
-    positiveLeakControlKind: "retained-array-buffer",
-    batches: 1_000,
-    failures: [],
-    resourceSamples: Array.from({ length: 101 }, (_, index) => ({
-      operation: index * 1_000,
-      elapsedMs: index * 216_000,
-      sample: steadyResourceSample,
-    })),
-    resourceDrift: { status: "passed", failures: [] },
-    positiveLeakControlSamples: [
-      steadyResourceSample,
-      {
-        ...steadyResourceSample,
-        rssBytes: steadyResourceSample.rssBytes + 32 * 1024 * 1024,
-      },
-    ],
-    positiveLeakControlDrift: {
-      status: "failed",
-      failures: ["rss leak detected"],
-    },
-    families: families.map((family, index) => {
-      const operations = index < 4 ? 16_667 : 16_666;
-      const realization = {
-        file: ["filesystem", "typed-rejection"],
-        document: ["document-store", "typed-rejection"],
-        memory: ["memory-store", "typed-rejection"],
-        email: ["message-store", "typed-rejection"],
-        attachment: ["content-addressed-media", "native-bytes"],
-        "tool-output": ["filesystem", "native-bytes"],
-      }[family];
-      return {
-        family,
-        adapterId: `production-${family}`,
-        objectId: `${family}-10485760`,
-        authoritativeStore: realization?.[0],
-        binaryPolicy: realization?.[1],
-        productionMethod: `${family}-native-realization`,
-        operations,
-        cleanupVerified: true,
-        failures: [],
-        sourceWork: {
-          bytesRead: operations * 64 * 1024,
-          readCalls: operations,
-          rowsRead: operations,
-          parentScans: 0,
-        },
-      };
-    }),
-  };
+    steadyResourceSample,
+  });
 }
 
 function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
@@ -454,7 +392,10 @@ function evidence() {
             JSON.stringify({
               objectId: object.id,
               revision: object.revision,
-              sliceSha256: "d".repeat(64),
+              sliceSha256:
+                object.byteLength <= 64 * 1024
+                  ? object.sourceSha256
+                  : "d".repeat(64),
               range: {
                 start: page * 64 * 1024,
                 end: Math.min(object.byteLength, (page + 1) * 64 * 1024),
@@ -1232,6 +1173,36 @@ describe("content-context result", () => {
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
     ).toThrow(/soak evidence/u);
+  });
+
+  it("rejects incomplete, unsupported, or code-forged soak lifecycle cycles", () => {
+    const original = evidence();
+    const valid = validSoakEvidence("a".repeat(40), manifestSha);
+    for (const mutate of [
+      (report: typeof valid) => {
+        report.lifecycle.results.pop();
+      },
+      (report: typeof valid) => {
+        const abort = report.lifecycle.results.find(({ id }) => id === "abort");
+        if (!abort) throw new Error("valid fixture lacks abort lifecycle");
+        abort.observedCode = "CONTENT_STALE_REVISION";
+      },
+      (report: typeof valid) => {
+        const eviction = report.lifecycle.results.find(
+          ({ id }) => id === "eviction",
+        );
+        if (!eviction)
+          throw new Error("valid fixture lacks eviction lifecycle");
+        eviction.status = "unsupported";
+      },
+    ]) {
+      const report = JSON.parse(JSON.stringify(valid)) as typeof valid;
+      mutate(report);
+      const changed = replaceArtifact(original, "soak.json", report);
+      expect(() =>
+        validateContentContextResult(changed.result, changed.bytes),
+      ).toThrow(/lifecycle/u);
+    }
   });
 
   it("recomputes soak and positive-control drift from the recorded samples", () => {

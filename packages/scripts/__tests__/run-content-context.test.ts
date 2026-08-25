@@ -28,6 +28,7 @@ import {
 } from "../../corpus-tools/src/progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../corpus-tools/src/progressive-content-realization.ts";
 import { createProgressiveContentPostgresEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-postgres-evidence-fixture.ts";
+import { createProgressiveContentSoakEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-soak-evidence-fixture.ts";
 import { createBundle } from "../../evidence/src/bundle.ts";
 import {
   captureSiloSnapshot,
@@ -79,77 +80,11 @@ const steadyResourceSample = {
 };
 
 function validSoakEvidence(commit: string, corpusManifestSha256: string) {
-  const families = [
-    "file",
-    "document",
-    "memory",
-    "email",
-    "attachment",
-    "tool-output",
-  ];
-  return {
-    schemaVersion: "elizaos.progressive-content.mixed-soak.v1",
-    status: "passed",
+  return createProgressiveContentSoakEvidenceFixture({
     commit,
     corpusManifestSha256,
-    clockSource: "system-monotonic",
-    evidenceEligible: true,
-    durationMs: 6 * 60 * 60 * 1_000,
-    operations: 100_000,
-    requiredDurationMs: 6 * 60 * 60 * 1_000,
-    requiredOperations: 100_000,
-    sampleEveryOperations: 1_000,
-    warmupOperations: 10_000,
-    positiveLeakControlDetected: true,
-    positiveLeakControlKind: "retained-array-buffer",
-    batches: 1_000,
-    failures: [],
-    resourceSamples: Array.from({ length: 101 }, (_, index) => ({
-      operation: index * 1_000,
-      elapsedMs: index * 216_000,
-      sample: steadyResourceSample,
-    })),
-    resourceDrift: { status: "passed", failures: [] },
-    positiveLeakControlSamples: [
-      steadyResourceSample,
-      {
-        ...steadyResourceSample,
-        rssBytes: steadyResourceSample.rssBytes + 32 * 1024 * 1024,
-      },
-    ],
-    positiveLeakControlDrift: {
-      status: "failed",
-      failures: ["rss leak detected"],
-    },
-    families: families.map((family, index) => {
-      const operations = index < 4 ? 16_667 : 16_666;
-      const realization = {
-        file: ["filesystem", "typed-rejection"],
-        document: ["document-store", "typed-rejection"],
-        memory: ["memory-store", "typed-rejection"],
-        email: ["message-store", "typed-rejection"],
-        attachment: ["content-addressed-media", "native-bytes"],
-        "tool-output": ["filesystem", "native-bytes"],
-      }[family];
-      return {
-        family,
-        adapterId: `production-${family}`,
-        objectId: `${family}-10485760`,
-        authoritativeStore: realization?.[0],
-        binaryPolicy: realization?.[1],
-        productionMethod: `${family}-native-realization`,
-        operations,
-        cleanupVerified: true,
-        failures: [],
-        sourceWork: {
-          bytesRead: operations * 64 * 1024,
-          readCalls: operations,
-          rowsRead: operations,
-          parentScans: 0,
-        },
-      };
-    }),
-  };
+    steadyResourceSample,
+  });
 }
 
 function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
@@ -267,8 +202,16 @@ function evidenceValues() {
     "attachment",
     "tool-output",
   ].flatMap((family) =>
-    [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024].map((byteLength) => ({
-      id: `${family}-${byteLength}`,
+    (
+      [
+        [1024 * 1024, "lf-lines"],
+        [10 * 1024 * 1024, "no-final-newline"],
+        [100 * 1024 * 1024, "minified-json-like"],
+        [4096, "binary"],
+        [4097, "invalid-utf8"],
+      ] as const
+    ).map(([byteLength, format], ordinal) => ({
+      id: `${family}-${ordinal}-${byteLength}`,
       family,
       byteLength,
       sourceSha256: "c".repeat(64),
@@ -277,12 +220,7 @@ function evidenceValues() {
       relativePath: `objects/${family}-${byteLength}.bin`,
       coordinateSystem: "utf8-byte-start-inclusive-end-exclusive",
       canaries: [],
-      format:
-        family === "memory" && byteLength === 10 * 1024 * 1024
-          ? "binary"
-          : family === "email" && byteLength === 1024 * 1024
-            ? "invalid-utf8"
-            : "lf-lines",
+      format,
     })),
   );
   const expectedRejection = (object: (typeof objects)[number]) => {
@@ -460,7 +398,10 @@ function evidenceValues() {
             JSON.stringify({
               objectId: object.id,
               revision: object.revision,
-              sliceSha256: "d".repeat(64),
+              sliceSha256:
+                object.byteLength <= 64 * 1024
+                  ? object.sourceSha256
+                  : "d".repeat(64),
               range: {
                 start: page * 64 * 1024,
                 end: Math.min(object.byteLength, (page + 1) * 64 * 1024),

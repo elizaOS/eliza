@@ -7,6 +7,11 @@ import {
   PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
 } from "../../core/src/testing/progressive-content-faults.ts";
 import {
+  PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS,
+  PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_REJECTIONS,
+  PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_SCHEMA_VERSION,
+} from "../../core/src/testing/progressive-content-mixed-soak.ts";
+import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
@@ -566,6 +571,144 @@ function soakFamilyFailures(soak: Record<string, unknown>): string[] {
     Math.max(...operationCounts) - Math.min(...operationCounts) > 1
   )
     failures.push("soak operations were not distributed across every family");
+  return failures;
+}
+
+function soakLifecycleFailures(soak: Record<string, unknown>): string[] {
+  const failures: string[] = [];
+  const lifecycle = record(soak.lifecycle, "soak lifecycle");
+  exactKeys(
+    lifecycle,
+    ["schemaVersion", "status", "required", "completedCycles", "results"],
+    "soak lifecycle",
+  );
+  const required = array(lifecycle.required, "soak lifecycle required IDs");
+  const results = array(lifecycle.results, "soak lifecycle results").map(
+    (value, index) => record(value, `soak lifecycle result ${index}`),
+  );
+  const completedCycles = lifecycle.completedCycles;
+  if (
+    lifecycle.schemaVersion !==
+      PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_SCHEMA_VERSION ||
+    lifecycle.status !== "passed" ||
+    required.length !== PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.length ||
+    required.some(
+      (id, index) => id !== PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS[index],
+    ) ||
+    typeof completedCycles !== "number" ||
+    !Number.isSafeInteger(completedCycles) ||
+    completedCycles <= 0 ||
+    completedCycles !== soak.batches ||
+    results.length !==
+      completedCycles * PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.length
+  ) {
+    failures.push(
+      "soak lifecycle identity, coverage, or cycle count is invalid",
+    );
+  }
+  const expectedRejections = new Map(
+    Object.entries(PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_REJECTIONS),
+  );
+  const seen = new Set<string>();
+  for (const result of results) {
+    exactKeys(
+      result,
+      [
+        "id",
+        "cycle",
+        "semantics",
+        "status",
+        "targetFamily",
+        "expectedCode",
+        "observedCode",
+        "beforeGeneration",
+        "afterGeneration",
+        "beforeSliceSha256",
+        "afterSliceSha256",
+        "observedEffects",
+        "reason",
+      ],
+      "soak lifecycle result",
+    );
+    const identity = `${String(result.cycle)}:${String(result.id)}`;
+    const effects = array(
+      result.observedEffects,
+      "soak lifecycle observed effects",
+    );
+    if (
+      typeof result.cycle !== "number" ||
+      !Number.isSafeInteger(result.cycle) ||
+      result.cycle < 1 ||
+      result.cycle > Number(completedCycles) ||
+      !PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.includes(
+        result.id as (typeof PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS)[number],
+      ) ||
+      seen.has(identity) ||
+      result.status !== "passed" ||
+      result.reason !== null ||
+      effects.some(
+        (effect) =>
+          typeof effect !== "string" ||
+          PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS.includes(
+            effect as (typeof PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS)[number],
+          ),
+      )
+    ) {
+      failures.push("soak lifecycle contains a failed or invalid result");
+    }
+    seen.add(identity);
+    if (result.id === "restart") {
+      if (
+        result.semantics !== "target-transition" ||
+        !CONTENT_CONTEXT_FAMILIES.includes(
+          result.targetFamily as (typeof CONTENT_CONTEXT_FAMILIES)[number],
+        ) ||
+        result.expectedCode !== null ||
+        result.observedCode !== null ||
+        typeof result.beforeGeneration !== "string" ||
+        result.beforeGeneration.length === 0 ||
+        typeof result.afterGeneration !== "string" ||
+        result.afterGeneration.length === 0 ||
+        result.beforeGeneration === result.afterGeneration ||
+        typeof result.beforeSliceSha256 !== "string" ||
+        !/^[0-9a-f]{64}$/u.test(result.beforeSliceSha256) ||
+        result.afterSliceSha256 !== result.beforeSliceSha256
+      ) {
+        failures.push("soak restart lifecycle result is invalid");
+      }
+      continue;
+    }
+    const rejection =
+      typeof result.id === "string"
+        ? expectedRejections.get(result.id)
+        : undefined;
+    if (
+      !rejection ||
+      result.semantics !== rejection[0] ||
+      result.expectedCode !== rejection[1] ||
+      result.observedCode !== rejection[1] ||
+      result.targetFamily !== null ||
+      result.beforeGeneration !== null ||
+      result.afterGeneration !== null ||
+      result.beforeSliceSha256 !== null ||
+      result.afterSliceSha256 !== null
+    ) {
+      failures.push("soak rejection lifecycle result is invalid");
+    }
+  }
+  if (
+    typeof completedCycles === "number" &&
+    Number.isSafeInteger(completedCycles) &&
+    completedCycles > 0
+  ) {
+    for (let cycle = 1; cycle <= completedCycles; cycle += 1) {
+      for (const id of PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS) {
+        if (!seen.has(`${cycle}:${id}`)) {
+          failures.push("soak lifecycle lacks exact per-cycle coverage");
+        }
+      }
+    }
+  }
   return failures;
 }
 
@@ -1399,6 +1542,7 @@ function semanticFailures(
 
   const soak = json(bytes["soak.json"], "soak report");
   const soakFailures = soakResourceFailures(soak);
+  const soakLifecycle = soakLifecycleFailures(soak);
   if (
     soak.schemaVersion !== "elizaos.progressive-content.mixed-soak.v1" ||
     soak.status !== "passed" ||
@@ -1417,12 +1561,14 @@ function semanticFailures(
     soak.positiveLeakControlDetected !== true ||
     soak.positiveLeakControlKind !== "retained-array-buffer" ||
     soakFailures.length > 0 ||
-    soakFamilyFailures(soak).length > 0
+    soakFamilyFailures(soak).length > 0 ||
+    soakLifecycle.length > 0
   )
     failures.push(
       "soak evidence lacks production duration, exact family operations, or leak control",
     );
   failures.push(...soakFailures);
+  failures.push(...soakLifecycle);
 
   try {
     validateProgressiveContentPostgresEvidence(
