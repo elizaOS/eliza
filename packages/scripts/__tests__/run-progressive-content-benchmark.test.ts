@@ -17,6 +17,7 @@ import {
 
 const commit = "a".repeat(40);
 const execFileAsync = promisify(execFile);
+const bunExecutable = process.versions.bun ? process.execPath : "bun";
 
 describe("progressive content benchmark producer", () => {
   it("requires only the repository corpus, output, and exact commit", () => {
@@ -68,12 +69,12 @@ describe("progressive content benchmark producer", () => {
       `--commit=${commit}`,
     ];
     await expect(
-      execFileAsync(process.execPath, baseArguments, {
+      execFileAsync(bunExecutable, baseArguments, {
         env: { ...process.env, POSTGRES_URL: "" },
       }),
     ).rejects.toMatchObject({ stderr: expect.stringMatching(/POSTGRES_URL/u) });
     await expect(
-      execFileAsync(process.execPath, baseArguments, {
+      execFileAsync(bunExecutable, baseArguments, {
         env: { ...process.env, POSTGRES_URL: "https://not-postgres.invalid" },
       }),
     ).rejects.toMatchObject({
@@ -182,7 +183,7 @@ describe("progressive content benchmark producer", () => {
       const script = fileURLToPath(
         new URL("../run-progressive-content-benchmark.mjs", import.meta.url),
       );
-      await execFileAsync(process.execPath, [
+      await execFileAsync(bunExecutable, [
         script,
         `--corpus-root=${corpusRoot}`,
         `--worker-out=${workerOut}`,
