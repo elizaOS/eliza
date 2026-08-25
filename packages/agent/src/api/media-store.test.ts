@@ -1046,6 +1046,22 @@ describe("readStoredMediaByteRange", () => {
     expect(readStoredMediaByteRange(fileName, 0, 0)).toBeNull();
     expect(readStoredMediaByteRange(fileName, 0, 64 * 1024 + 1)).toBeNull();
   });
+
+  it("rejects symlink and hard-link aliases at the bounded read boundary", () => {
+    const stored = persistMediaBytes(Buffer.from("private"), "text/plain");
+    const symlinkName = `${"e".repeat(64)}.txt`;
+    fs.symlinkSync(mediaPath(stored.fileName), mediaPath(symlinkName));
+    expect(() => readStoredMediaByteRange(symlinkName, 0, 1)).toThrowError(
+      expect.objectContaining({ code: "MEDIA_STORE_READ_FAILED" }),
+    );
+    fs.unlinkSync(mediaPath(symlinkName));
+
+    const hardLinkName = `${"f".repeat(64)}.txt`;
+    fs.linkSync(mediaPath(stored.fileName), mediaPath(hardLinkName));
+    expect(readStoredMediaByteRange(stored.fileName, 0, 1)).toBeNull();
+    expect(readStoredMediaByteRange(hardLinkName, 0, 1)).toBeNull();
+    fs.unlinkSync(mediaPath(hardLinkName));
+  });
 });
 
 describe("writeStoredMediaFile fast-fail (#12265)", () => {

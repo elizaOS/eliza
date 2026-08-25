@@ -7,7 +7,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deleteShellOutputArtifact,
   persistShellOutputArtifact,
+  persistShellOutputByteArtifact,
+  readShellOutputArtifactBytePage,
   readShellOutputArtifactPage,
 } from "./shell-output-artifact.js";
 
@@ -130,6 +133,72 @@ describe("private shell-output artifacts", () => {
     });
     expect(denied).toMatchObject({ ok: false, reason: "unavailable" });
     expect(JSON.stringify(denied)).not.toContain("restart-safe");
+  });
+
+  it("pages native-byte artifacts exactly and keeps text and owner boundaries closed", async () => {
+    const source = Buffer.alloc(96 * 1024 + 13);
+    for (let index = 0; index < source.length; index += 1) {
+      source[index] = (index * 197 + 0xff) & 0xff;
+    }
+    const artifact = await persistShellOutputByteArtifact({
+      chunks: (async function* () {
+        yield source.subarray(0, 31_337);
+        yield source.subarray(31_337);
+      })(),
+      stream: "stdout",
+      exitCode: 0,
+      timedOut: false,
+      signal: null,
+      ownerAgentId: OWNER_AGENT,
+      ownerConversationId: OWNER_CONVERSATION,
+    });
+    let offset = 0;
+    const pages: Buffer[] = [];
+    while (offset < source.byteLength) {
+      const page = await readShellOutputArtifactBytePage({
+        handle: artifact.handle,
+        stream: "stdout",
+        offset,
+        limit: 7_919,
+        requesterAgentId: OWNER_AGENT,
+        requesterConversationId: OWNER_CONVERSATION,
+      });
+      if (!page.ok) throw new Error(page.message);
+      expect(page.value.startOffset).toBe(offset);
+      expect(page.value.endOffset).toBeGreaterThan(offset);
+      expect(page.value.sourceBytesRead).toBeLessThanOrEqual(2 * 16 * 1024);
+      pages.push(page.value.bytes);
+      offset = page.value.nextOffset;
+    }
+    expect(Buffer.concat(pages)).toEqual(source);
+    expect(
+      await readShellOutputArtifactPage({
+        handle: artifact.handle,
+        stream: "stdout",
+        requesterAgentId: OWNER_AGENT,
+        requesterConversationId: OWNER_CONVERSATION,
+      }),
+    ).toMatchObject({ ok: false, reason: "unavailable" });
+    expect(
+      await readShellOutputArtifactBytePage({
+        handle: artifact.handle,
+        stream: "stdout",
+        offset: 0,
+        limit: 1,
+        requesterAgentId: OWNER_AGENT,
+        requesterConversationId: `${OWNER_CONVERSATION}-other`,
+      }),
+    ).toMatchObject({ ok: false, reason: "unavailable" });
+    expect(
+      await deleteShellOutputArtifact({
+        handle: artifact.handle,
+        requesterAgentId: OWNER_AGENT,
+        requesterConversationId: OWNER_CONVERSATION,
+      }),
+    ).toBe(true);
+    await expect(
+      fs.stat(artifactDirectory(artifact.handle)),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("expires reads and garbage-collects expired immutable artifacts", async () => {
