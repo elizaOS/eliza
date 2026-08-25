@@ -108,9 +108,21 @@ function sanitizeCommandName(name: string): string | null {
 }
 
 /** Clamp a description to Telegram's limit; a description is always required. */
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function clampDescription(description: string): string {
   const trimmed = description.trim();
-  return trimmed.slice(0, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+  return truncateUtf16Safe(trimmed, TELEGRAM_COMMAND_DESCRIPTION_MAX);
 }
 
 /**
@@ -278,7 +290,7 @@ async function dispatchAgentCommand(
       ...(sender.senderName ? { senderName: sender.senderName } : {}),
     });
     if (resolved.handled && resolved.reply !== undefined) {
-      await ctx.reply(resolved.reply.slice(0, TELEGRAM_MESSAGE_MAX));
+      await ctx.reply(truncateUtf16Safe(resolved.reply, TELEGRAM_MESSAGE_MAX));
       return;
     }
   }

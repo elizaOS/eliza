@@ -361,4 +361,26 @@ describe("applyTelegramSetMyCommands", () => {
     ).resolves.toBeUndefined();
     expect(setMyCommands).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps surrogate pairs intact when clamping command descriptions", () => {
+    // "🔥" (2 code units * 150 = 300 units) -> > TELEGRAM_COMMAND_DESCRIPTION_MAX (256)
+    const longEmojiDesc = "🔥".repeat(150);
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "emoji_cmd",
+        description: longEmojiDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const descriptors = buildTelegramCommandDescriptors();
+    expect(descriptors).toHaveLength(1);
+    expect(descriptors[0].description.length).toBeLessThanOrEqual(256);
+    for (const char of descriptors[0].description) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
