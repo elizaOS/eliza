@@ -462,7 +462,16 @@ export class AndroidCloudClient {
             method: "POST",
             signal,
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...tokenRequest, credentialId, secret }),
+            body: JSON.stringify({
+              clientId: pending.clientId,
+              environment: pending.environment,
+              redirectUri: pending.redirectUri,
+              state: pending.state,
+              code,
+              codeVerifier: pending.codeVerifier,
+              credentialId,
+              secret,
+            }),
           },
         );
         const acknowledged = await responseJson(acknowledgeResponse);
