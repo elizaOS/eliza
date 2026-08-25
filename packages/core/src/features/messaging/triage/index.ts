@@ -12,6 +12,7 @@ export { manageMessageAction } from "./actions/manageMessage.ts";
 export { respondToMessageAction } from "./actions/respondToMessage.ts";
 export { scheduleDraftSendAction } from "./actions/scheduleDraftSend.ts";
 export { searchMessagesAction } from "./actions/searchMessages.ts";
+export { draftConsentDigest } from "./actions/send-consent.ts";
 export { sendDraftAction } from "./actions/sendDraft.ts";
 export { triageMessagesAction } from "./actions/triageMessages.ts";
 export { BaseMessageAdapter, filterInMemory } from "./adapters/base.ts";
