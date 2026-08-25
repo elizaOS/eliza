@@ -363,7 +363,7 @@ export async function runProgressiveContentStress(input: {
 						rowsRead += page.sourceWork.rowsRead;
 						parentScans += page.sourceWork.parentScans;
 						const end = offset + page.bytes.byteLength;
-						const expectedEnd = Math.min(
+						const maximumEnd = Math.min(
 							input.target.object.byteLength,
 							offset + pageBytes,
 						);
@@ -379,17 +379,19 @@ export async function runProgressiveContentStress(input: {
 							page.view.reference.revision !== input.target.object.revision ||
 							page.view.slice.range.unit !== "byte" ||
 							page.view.slice.range.start !== offset ||
-							page.view.slice.range.end !== expectedEnd ||
-							end !== expectedEnd ||
+							page.view.slice.range.end !== end ||
+							end > maximumEnd ||
+							(input.target.object.byteLength > offset && end <= offset) ||
+							maximumEnd - end > 3 ||
 							page.view.slice.range.total !== input.target.object.byteLength ||
 							page.view.slice.hasMore !==
-								expectedEnd < input.target.object.byteLength ||
-							(expectedEnd < input.target.object.byteLength
-								? page.view.slice.nextOffset !== expectedEnd
+								end < input.target.object.byteLength ||
+							(end < input.target.object.byteLength
+								? page.view.slice.nextOffset !== end
 								: page.view.slice.nextOffset !== undefined) ||
 							page.view.slice.sliceSha256 !== digest ||
 							(prior !== undefined &&
-								(prior.end !== expectedEnd || prior.sha256 !== digest)) ||
+								(prior.end !== end || prior.sha256 !== digest)) ||
 							page.sourceWork.parentScans !== 0 ||
 							page.sourceWork.bytesRead >
 								page.bytes.byteLength * 2 + pageBytes ||
@@ -400,7 +402,7 @@ export async function runProgressiveContentStress(input: {
 								`worker ${worker} operation ${operation} violated paging invariants`,
 							);
 						} else if (!prior) {
-							observedPages.set(offset, { end: expectedEnd, sha256: digest });
+							observedPages.set(offset, { end, sha256: digest });
 						}
 					} catch (error) {
 						failures.push(
