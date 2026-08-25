@@ -76,12 +76,13 @@ function Fixture() {
         onRemove={noOp}
         onInspectSsh={noOp}
         onConnectSsh={noOp}
+        onEnrollLinuxTarget={noOp}
         onCreateTargetPairing={noOp}
         onConfirmTargetPairing={noOp}
         onDenyTargetPairing={noOp}
         onSetLinuxTargetRunning={noOp}
         onRevokeLinuxTarget={noOp}
-      />
+        />
       </main>
     </TranslationCtx.Provider>
   );

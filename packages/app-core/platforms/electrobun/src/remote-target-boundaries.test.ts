@@ -129,6 +129,7 @@ describe("remote target native boundaries", () => {
       ownerId: "owner-1",
       deviceId: "device-1",
       displayName: "Linux target",
+      platform: "linux" as const,
       runtimeKeyId: "target-key-1",
       signingPublicKeyJwk: keyPair().publicKey,
       encryptionPublicKeyJwk: keyPair().publicKey,
@@ -208,7 +209,7 @@ describe("remote target native boundaries", () => {
       ownerId: "owner-1",
       deviceId: host.deviceId,
       displayName: host.displayName,
-      platform: host.platform,
+      platform: host.platform as "linux",
       runtimeKeyId: host.runtimeKeyId,
       signingPublicKeyJwk: signing.publicKey,
       encryptionPublicKeyJwk: encryption.publicKey,
@@ -225,6 +226,7 @@ describe("remote target native boundaries", () => {
     const prepared = await vault.prepare({
       ownerId: "owner-1",
       displayName: "Linux target",
+      platform: "linux",
       now: 2_000_000_000_000,
     });
     if (prepared.status !== "pending") throw new Error("expected pending");
@@ -340,6 +342,7 @@ describe("remote target native boundaries", () => {
     const pending = await vault.prepare({
       ownerId: "owner-1",
       displayName: "Linux target",
+      platform: "linux",
       now: 2_000_000_000_000,
     });
     if (pending.status !== "pending") throw new Error("expected pending");
@@ -364,6 +367,7 @@ describe("remote target native boundaries", () => {
     const pending = await vault.prepare({
       ownerId: "owner-1",
       displayName: "Linux target",
+      platform: "linux",
       now: 2_000_000_000_000,
     });
     if (pending.status !== "pending") throw new Error("expected pending");

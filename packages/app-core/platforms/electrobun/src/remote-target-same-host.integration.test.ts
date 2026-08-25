@@ -404,6 +404,7 @@ describe("same-host remote target integration with injected secret-store and rel
       ownerId: OWNER_ID,
       ownerAccessToken: OWNER_TOKEN,
       displayName: "Same-host Linux target",
+      platform: "linux",
     });
     expect(enrolled).toMatchObject({ hostId: HOST_ID, status: "active" });
     expect(relay.enrollmentRequest).toMatchObject({
