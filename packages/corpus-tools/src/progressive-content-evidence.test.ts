@@ -525,6 +525,13 @@ describe("content-context result", () => {
     expect(validateContentContextResult(result, bytes)).toEqual(result);
   });
 
+  it("rejects a failed result instead of publishing diagnostic evidence as complete", () => {
+    const { result, bytes } = evidence();
+    expect(() =>
+      validateContentContextResult({ ...result, status: "failed" }, bytes),
+    ).toThrow(/not publishable unless it passed/u);
+  });
+
   it("rejects unknown result and artifact declaration fields", () => {
     const { result, bytes } = evidence();
     expect(() =>
