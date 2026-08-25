@@ -30,6 +30,7 @@ import {
 } from "./client-cloud";
 import { fetchWithCsrf } from "./csrf-client";
 import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
+import { isPasswordAuthTransportConfidential } from "./password-auth-transport-policy";
 
 // ── Shared response shapes ────────────────────────────────────────────────────
 
@@ -85,6 +86,7 @@ export type AuthSetupResult =
       reason:
         | "weak_password"
         | "invalid_display_name"
+        | "insecure_transport"
         | "already_initialized"
         | "rate_limited"
         | "server_error";
@@ -101,7 +103,11 @@ export type AuthLoginResult =
   | {
       ok: false;
       status: 400 | 401 | 429 | 500;
-      reason: "invalid_credentials" | "rate_limited" | "server_error";
+      reason:
+        | "invalid_credentials"
+        | "insecure_transport"
+        | "rate_limited"
+        | "server_error";
       message: string;
     };
 
@@ -141,6 +147,7 @@ export type AuthChangePasswordResult =
       reason:
         | "weak_password"
         | "invalid_credentials"
+        | "insecure_transport"
         | "owner_not_found"
         | "rate_limited"
         | "server_error";
@@ -169,9 +176,19 @@ export async function authSetup(params: {
   displayName: string;
   password: string;
 }): Promise<AuthSetupResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password setup requires HTTPS or a local in-process connection.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/setup`, {
+    res = await fetchWithCsrf(`${base}/api/auth/setup`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -191,7 +208,7 @@ export async function authSetup(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
-    rememberCsrfTokenForUrl(authBase(), body.csrfToken);
+    rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
 
@@ -250,9 +267,19 @@ export async function authLoginPassword(params: {
   password: string;
   rememberDevice?: boolean;
 }): Promise<AuthLoginResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Owner password login requires HTTPS or a local in-process connection. Pair this device instead.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/login/password`, {
+    res = await fetchWithCsrf(`${base}/api/auth/login/password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
@@ -272,7 +299,7 @@ export async function authLoginPassword(params: {
       session: AuthSessionInfo;
       csrfToken: string;
     };
-    rememberCsrfTokenForUrl(authBase(), body.csrfToken);
+    rememberCsrfTokenForUrl(base, body.csrfToken);
     return { ok: true, ...body };
   }
 
@@ -536,9 +563,19 @@ export async function authChangePassword(params: {
   currentPassword?: string;
   newPassword: string;
 }): Promise<AuthChangePasswordResult> {
+  const base = authBase();
+  if (!isPasswordAuthTransportConfidential(base)) {
+    return {
+      ok: false,
+      status: 400,
+      reason: "insecure_transport",
+      message:
+        "Changing the owner password requires HTTPS or a local in-process connection.",
+    };
+  }
   let res: Response;
   try {
-    res = await fetchWithCsrf(`${authBase()}/api/auth/password/change`, {
+    res = await fetchWithCsrf(`${base}/api/auth/password/change`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),

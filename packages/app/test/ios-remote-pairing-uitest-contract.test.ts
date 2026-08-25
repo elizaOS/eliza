@@ -72,13 +72,14 @@ describe("physical iPhone remote pairing harness", () => {
     const testStart = harnessUnderTest.indexOf(
       "func testPairedRemoteChatPersistsAcrossRelaunch() throws",
     );
-    const helperStart = harnessUnderTest.indexOf(
-      "private func requireHome(",
+    const nextTestStart = harnessUnderTest.indexOf(
+      "func testRemoteOwnerPasswordLoginPersistsAcrossRelaunch() throws",
       testStart,
     );
-    const testBody = harnessUnderTest.slice(testStart, helperStart);
+    const testBody = harnessUnderTest.slice(testStart, nextTestStart);
 
     expect(testStart).toBeGreaterThanOrEqual(0);
+    expect(nextTestStart).toBeGreaterThan(testStart);
     expect(testBody).toContain('env["ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER"]');
     expect(testBody).toContain('env["ELIZA_TEST_CHAT_AFTER_RESTART_MARKER"]');
     expect(testBody).toContain("app.terminate()");

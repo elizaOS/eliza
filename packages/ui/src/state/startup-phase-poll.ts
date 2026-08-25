@@ -26,6 +26,7 @@ import {
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "../api/ios-local-agent-transport";
+import { isPasswordAuthTransportConfidential } from "../api/password-auth-transport-policy";
 import { getBackendStartupTimeoutMs } from "../bridge";
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import {
@@ -782,12 +783,14 @@ export async function runPollingBackend(
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
-        // A configured owner password is itself the supported path forward.
-        // Finish backend startup so the independent /api/auth/me boundary can
-        // render LoginView; do not misclassify this app-core host as a
-        // pairing-only standalone agent. The login success callback commits
-        // the authenticated first-run state after the user proves ownership.
-        if (auth.passwordConfigured === true) {
+        // A configured owner password is a supported path forward only when it
+        // cannot cross a plaintext remote network. Runtime URL trust allows
+        // explicit LAN/Tailscale targets for short-lived pairing, but that is
+        // not channel confidentiality for a reusable OWNER credential.
+        if (
+          auth.passwordConfigured === true &&
+          isPasswordAuthTransportConfidential(client.getBaseUrl())
+        ) {
           deps.setAuthRequired(false);
           deps.setFirstRunComplete(true);
           deps.setFirstRunLoading(false);

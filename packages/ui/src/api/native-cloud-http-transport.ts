@@ -1,7 +1,9 @@
 /**
  * Native HTTP transport for Eliza Cloud and explicitly selected remote agents.
- * Bounded JSON/binary calls use CapacitorHttp while agent SSE keeps the browser
- * streaming body; arbitrary public origins remain outside this transport.
+ * Bounded JSON/binary calls use CapacitorHttp. Bearer-capable dedicated Cloud
+ * agent SSE keeps the browser streaming body; session-cookie remote-agent SSE
+ * stays on the native cookie-jar transport. Arbitrary public origins remain
+ * outside this transport.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
@@ -167,7 +169,7 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // `api.eliza.app` does not, so its SSE stays on CapacitorHttp below.
     const isRemoteAgent = isNativeTrustedRemoteAgentUrl(url);
     if (
-      (isNativeCloudAgentSubdomain(url) || isRemoteAgent) &&
+      isNativeCloudAgentSubdomain(url) &&
       isStreamingRequest(url, init.headers)
     ) {
       const webFetch = nativeWebFetch();
@@ -176,9 +178,12 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       }
     }
 
-    // Non-streaming requests to a dedicated agent subdomain (or any non-direct
-    // cloud URL) keep their existing path — the patched global fetch — so this
-    // change only affects the SSE streaming case above.
+    // Session-authenticated remote-agent requests, including SSE, must remain
+    // on CapacitorHttp. Its native URLSession cookie jar carries the HttpOnly
+    // SameSite session established by password login; a cross-site WKWebView
+    // fetch cannot reliably attach that cookie. This intentionally accepts a
+    // buffered SSE response until a native incremental transport sharing the
+    // same cookie jar exists.
     const wantsBinary = context?.responseType === "arraybuffer";
     const isDirectApi = isNativeDirectCloudApiUrl(url);
     const isCloudHost = isNativeCloudHttpsUrl(url);

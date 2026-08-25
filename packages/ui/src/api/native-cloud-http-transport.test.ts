@@ -216,7 +216,7 @@ describe("SSE streaming bypass", () => {
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
   });
 
-  it("streams a trusted remote-Mac chat through the native browser fetch", async () => {
+  it("keeps remote-Mac session SSE on the native cookie-jar transport", async () => {
     globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
     const url =
       "http://192.168.1.30:31338/api/conversations/abc/messages/stream";
@@ -227,8 +227,40 @@ describe("SSE streaming bypass", () => {
       body: "{}",
     });
 
-    expect(webFetchMock).toHaveBeenCalledTimes(1);
-    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url,
+        method: "POST",
+        data: "{}",
+        disableRedirects: true,
+      }),
+    );
+    expect(webFetchMock).not.toHaveBeenCalled();
+    expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a remote session rejection from CapacitorHttp", async () => {
+    globalThis.localStorage?.setItem("eliza:mobile-runtime-mode", "remote-mac");
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 401,
+      headers: { "content-type": "application/json" },
+      data: { error: "authentication required" },
+    });
+    const url =
+      "https://remote.tailnet.ts.net/api/conversations/abc/messages/stream";
+    const transport = nativeCloudHttpTransportForUrl(url);
+    const response = await transport?.request(url, {
+      method: "POST",
+      headers: { Accept: "text/event-stream" },
+      body: "{}",
+    });
+
+    expect(response?.status).toBe(401);
+    await expect(response?.json()).resolves.toEqual({
+      error: "authentication required",
+    });
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+    expect(webFetchMock).not.toHaveBeenCalled();
     expect(globalFetchMock).not.toHaveBeenCalled();
   });
 
