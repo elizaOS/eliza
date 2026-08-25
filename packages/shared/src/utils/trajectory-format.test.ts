@@ -121,6 +121,36 @@ describe("formatTrajectoryTimestamp", () => {
     expect(formatTrajectoryTimestamp("not-a-date", "detailed")).toBe("—");
   });
 
+  it("fails closed on impossible calendar dates that Date rolls over", () => {
+    expect(formatTrajectoryTimestamp("2026-02-31T00:00:00Z", "smart")).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTimestamp("2026-02-31T00:00:00Z", "detailed")).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTimestamp("2026-02-29T00:00:00Z", "smart")).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTimestamp("2026-04-31T00:00:00Z", "smart")).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTimestamp("2026-13-01T00:00:00Z", "smart")).toBe(
+      "—",
+    );
+    expect(formatTrajectoryTimestamp("2026-00-10T00:00:00Z", "smart")).toBe(
+      "—",
+    );
+  });
+
+  it("accepts valid calendar dates including leap day", () => {
+    const leap = "2024-02-29T00:00:00Z";
+    expect(formatTrajectoryTimestamp(leap, "smart")).not.toBe("—");
+    expect(formatTrajectoryTimestamp(leap, "detailed")).not.toBe("—");
+    expect(formatTrajectoryTimestamp("2026-02-28T00:00:00Z", "smart")).not.toBe(
+      "—",
+    );
+  });
+
   it("formats today in smart mode as a local time", () => {
     const date = new Date();
     const out = formatTrajectoryTimestamp(date.toISOString(), "smart");

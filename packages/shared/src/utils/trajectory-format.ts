@@ -64,6 +64,33 @@ export function formatTrajectoryTokenCount(
   return `${(count / 1_000_000).toFixed(1)}M`;
 }
 
+const ISO_CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/;
+
+function hasValidIsoCalendarDate(value: string): boolean {
+  const match = ISO_CALENDAR_DATE_PREFIX.exec(value);
+  if (!match) return true;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day <= daysInMonth[month - 1];
+}
+
 export function formatTrajectoryTimestamp(
   iso: string,
   mode: "smart" | "detailed",
@@ -72,6 +99,7 @@ export function formatTrajectoryTimestamp(
   // format.ts: empty input or a non-finite parsed Date renders the placeholder
   // instead of the browser's "Invalid Date" string.
   if (iso == null || iso === "") return "—";
+  if (!hasValidIsoCalendarDate(iso)) return "—";
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "—";
 
