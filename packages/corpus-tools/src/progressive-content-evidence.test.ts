@@ -952,6 +952,44 @@ describe("content-context result", () => {
     ).toThrow(/page ledger is not a full traversal/u);
   });
 
+  it("rejects forged terminal hashes and range byte counts", () => {
+    const original = evidence();
+    const rows = new TextDecoder()
+      .decode(original.bytes["page-ledger.jsonl"])
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const terminal = rows.find((row) => row.reassembledSha256 !== undefined);
+    if (!terminal) throw new Error("page ledger fixture lacks a terminal row");
+    terminal.reassembledSha256 = "f".repeat(64);
+    const forged = replaceArtifact(
+      original,
+      "page-ledger.jsonl",
+      rows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    expect(() =>
+      validateContentContextResult(forged.result, forged.bytes),
+    ).toThrow(/page ledger is not a full traversal/u);
+
+    const mismatchedRows = new TextDecoder()
+      .decode(original.bytes["page-ledger.jsonl"])
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const first = mismatchedRows[0];
+    if (!first || typeof first.bytesRead !== "number")
+      throw new Error("page ledger fixture is empty");
+    first.bytesRead -= 1;
+    const mismatched = replaceArtifact(
+      original,
+      "page-ledger.jsonl",
+      mismatchedRows.map((row) => JSON.stringify(row)).join("\n"),
+    );
+    expect(() =>
+      validateContentContextResult(mismatched.result, mismatched.bytes),
+    ).toThrow(/page ledger lacks exact bounded native reads/u);
+  });
+
   it("rejects fixture-shaped live evidence and stale run identities", () => {
     const original = evidence();
     const fixtureRows = Array.from({ length: 5 }, (_, repetition) =>
