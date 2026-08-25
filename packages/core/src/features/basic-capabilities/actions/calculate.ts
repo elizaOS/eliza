@@ -1,11 +1,7 @@
 /**
- * CALCULATE — deterministic arithmetic for the chat surface. Language models
- * reliably miscompute multi-digit arithmetic (live 2026-08-24: "3847 times
- * 292" drew three different wrong products across the simple and planner
- * paths), and the chat action surface carries no other compute tool: shell is
- * gate-rejected from chat and a coding sub-agent is a build, not a
- * calculator. The handler parses the expression itself — recursive descent,
- * no eval/Function — so the result is arithmetic, not model recall.
+ * Provides deterministic arithmetic for the general chat action surface.
+ * The handler parses expressions with recursive descent and never delegates
+ * calculation to model recall or dynamic code evaluation.
  *
  * Integer-only expressions (+ - * % and non-negative integer ^) evaluate in
  * BigInt and are exact within the explicit resource boundary below. Anything
@@ -248,9 +244,8 @@ export const calculateAction: Action = {
 	name: "CALCULATE",
 	contexts: ["general"],
 	description:
-		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ parentheses, decimals, unary minus) deterministically. Use for ANY multi-digit arithmetic instead of computing in your head — model mental math is unreliable and supported integer results are exact.",
-	descriptionCompressed:
-		"exact arithmetic eval; use for any multi-digit math instead of mental math",
+		"Exact arithmetic: evaluates a numeric expression (+ - * / % ^ parentheses, decimals, unary minus) deterministically. Use for arithmetic instead of computing in your head; supported integer results are exact.",
+	descriptionCompressed: "exact arithmetic eval; use instead of mental math",
 	similes: ["MATH", "COMPUTE", "ARITHMETIC", "MULTIPLY", "DIVIDE", "EVAL_MATH"],
 	parameters: [
 		{

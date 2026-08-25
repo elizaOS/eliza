@@ -1140,15 +1140,7 @@ export function inferDirectCurrentRequestCandidateActions(
 	).names;
 }
 
-/**
- * Explicit multi-digit arithmetic in the message ("whats 3847 times 292",
- * "1,234 * 56"). Deterministically detectable, and worth routing: models
- * reliably miscompute once any operand reaches three digits (live
- * 2026-08-24: three different wrong products for one ask), while the
- * CALCULATE action is exact. Two-digit mental math stays on the simple path
- * — it is fast and demonstrated reliable — so the detector requires at
- * least one operand of three or more digits (separators ignored).
- */
+/** Detects explicit arithmetic while excluding common range and count prose. */
 const ARITHMETIC_OPERAND = "\\d[\\d,_]*(?:\\.\\d+)?";
 const STRONG_ARITHMETIC_OPERATOR =
 	"(?:\\*\\*|[*×÷^%]|plus|minus|times|multiplied\\s+by|divided\\s+by|over|mod(?:ulo)?|to\\s+the\\s+power\\s+of)";
@@ -1172,25 +1164,12 @@ const BARE_AMBIGUOUS_ARITHMETIC_RE = new RegExp(
 	"iu",
 );
 
-function looksLikeMultiDigitArithmetic(text: string): boolean {
-	const digits = (operand: string) => operand.replace(/[^\d]/g, "").length;
-	const hasLargeOperand = (left: string, right: string) =>
-		digits(left) >= 3 || digits(right) >= 3;
+function looksLikeExplicitArithmetic(text: string): boolean {
 	const strongMatch = STRONG_ARITHMETIC_EXPRESSION_RE.exec(text);
-	if (
-		strongMatch &&
-		hasLargeOperand(strongMatch[1] ?? "", strongMatch[2] ?? "")
-	) {
-		return true;
-	}
+	if (strongMatch) return true;
 
 	const ambiguousMatch = AMBIGUOUS_ARITHMETIC_EXPRESSION_RE.exec(text);
-	if (
-		!ambiguousMatch ||
-		!hasLargeOperand(ambiguousMatch[1] ?? "", ambiguousMatch[5] ?? "")
-	) {
-		return false;
-	}
+	if (!ambiguousMatch) return false;
 	const operator = ambiguousMatch[3] ?? "";
 	const left = ambiguousMatch[1] ?? "";
 	const right = ambiguousMatch[5] ?? "";
@@ -1236,7 +1215,7 @@ export function inferDirectCurrentRequestCandidateInference(
 		const shellAction = findShellDirectActionName(actions);
 		if (shellAction) return { names: [shellAction], kind: "shell" };
 	}
-	if (looksLikeMultiDigitArithmetic(messageText)) {
+	if (looksLikeExplicitArithmetic(messageText)) {
 		const calculateAction = findCalculateActionName(actions);
 		if (calculateAction) {
 			return { names: [calculateAction], kind: "calculate" };

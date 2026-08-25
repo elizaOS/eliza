@@ -1,7 +1,6 @@
 /**
- * CALCULATE action: deterministic recursive-descent arithmetic (BigInt-exact
- * integer lane, disclosed float lane), typed rejection of unparseable input,
- * and general-context reachability. Deterministic unit harness; no model.
+ * Exercises deterministic arithmetic, typed invalid-input rejection, action
+ * registration, and direct-request routing without a model.
  */
 import { describe, expect, it } from "vitest";
 import { inferDirectCurrentRequestCandidateActions } from "../../services/message/direct-action-heuristics.ts";
@@ -10,8 +9,7 @@ import { calculateAction, evaluateArithmetic } from "./actions/calculate.ts";
 import { basicActions } from "./index.ts";
 
 describe("evaluateArithmetic", () => {
-	it("computes the live-incident product exactly", () => {
-		// 2026-08-24: the model produced 1,123,186 / 1,122,824 for this ask.
+	it("computes a representative product exactly", () => {
 		expect(evaluateArithmetic("3847 * 292")).toEqual({
 			text: "1123324",
 			exact: true,
@@ -106,7 +104,7 @@ describe("CALCULATE action", () => {
 describe("deterministic arithmetic routing", () => {
 	const actions = [{ name: "CALCULATE", similes: [], tags: [] }];
 
-	it("routes explicit multi-digit arithmetic to CALCULATE", () => {
+	it("routes explicit arithmetic to CALCULATE", () => {
 		for (const text of [
 			"whats 3847 times 292",
 			"3847 * 292?",
@@ -117,6 +115,10 @@ describe("deterministic arithmetic routing", () => {
 			"3847 x 292?",
 			"calculate 2024-2025",
 			"what is 2024-2025?",
+			"whats 17 times 23",
+			"17*23",
+			"what is 17 - 2?",
+			"5/2",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"CALCULATE",
@@ -124,9 +126,8 @@ describe("deterministic arithmetic routing", () => {
 		}
 	});
 
-	it("leaves two-digit mental math and ordinary prose on the simple path", () => {
+	it("leaves arithmetic-shaped ordinary prose on the simple path", () => {
 		for (const text of [
-			"whats 17 times 23",
 			"see you at 10 - 11 tomorrow",
 			"i walked 5 x this week",
 			"no math here at all",
