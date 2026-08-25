@@ -1,10 +1,12 @@
 /**
- * Keyless, model-free coverage for progressive reads across the production
- * FILE, DOCUMENT, ATTACHMENT, and MESSAGE action surfaces. Seeds large source
- * objects through real services, then proves exact continuation metadata and
- * single-carrier page text without putting planted canaries in turn prompts.
+ * Keyless, model-free coverage for progressive reads across production action
+ * surfaces and the six shared target families. It seeds large native sources,
+ * proves exact continuation without planting answers in prompts, and runs the
+ * real lifecycle oracle for restart, isolation, concurrency, cleanup, typed
+ * rejection, and bounded source work.
  */
 
+import { createHash } from "node:crypto";
 import { promises as fs, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +16,11 @@ import {
   getDefaultTriageService,
   stringToUuid,
 } from "@elizaos/core";
+import {
+  type ProgressiveContentTargetFactory,
+  type ProgressiveContentTargetFamily,
+  runProgressiveContentTargetConformance,
+} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -22,7 +29,11 @@ import type {
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import codingToolsPlugin from "../../../../plugins/plugin-coding-tools/src/index.ts";
+import { createProgressiveFileTargetFactory } from "../../../../plugins/plugin-coding-tools/src/testing/progressive-content-file-target.ts";
+import { createProgressiveToolOutputTargetFactory } from "../../../../plugins/plugin-coding-tools/src/testing/progressive-content-tool-output-target.ts";
 import { GoogleGmailAdapter } from "../../../../plugins/plugin-google-workspace/src/lifeops-message-adapter.ts";
+import { createProgressiveSqlTargetFactories } from "../../../../plugins/plugin-sql/src/testing/progressive-content-sql-targets.ts";
+import { createProgressiveAttachmentTargetFactory } from "../../../agent/src/testing/progressive-content-attachment-target.ts";
 import {
   DocumentService,
   documentsPlugin,
@@ -224,6 +235,8 @@ const MESSAGE_ROUTING = {
 };
 const AUTONOMOUS_FILE_PROMPT =
   "Inspect the seeded large file through its bounded production reader.";
+const TARGET_SOURCE_BYTES = 384 * 1024 + 37;
+const TARGET_SOURCE_PAGE_BYTES = 64 * 1024;
 
 function currentTurnInputPattern(input: string): string {
   const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -321,6 +334,252 @@ async function publishSegmentedMessage(
   return result.status === "created"
     ? undefined
     : `segmented message publication returned ${result.status}`;
+}
+
+function lifecycleCorpus(family: ProgressiveContentTargetFamily) {
+  const bytes = Buffer.alloc(TARGET_SOURCE_BYTES, 0x61);
+  const canaries = [
+    { label: "beginning", text: `BEGIN-${family}-世界`, byteStart: 0 },
+    {
+      label: "page-boundary",
+      text: `BOUNDARY-${family}-🧪`,
+      byteStart: TARGET_SOURCE_PAGE_BYTES - 17,
+    },
+    {
+      label: "middle",
+      text: `MIDDLE-${family}-世界`,
+      byteStart: Math.floor(TARGET_SOURCE_BYTES / 2),
+    },
+    {
+      label: "late",
+      text: `LATE-${family}-🧪`,
+      byteStart: TARGET_SOURCE_BYTES - 48,
+    },
+  ].map((canary) => ({
+    ...canary,
+    byteEnd: canary.byteStart + Buffer.byteLength(canary.text),
+  }));
+  for (const canary of canaries) bytes.write(canary.text, canary.byteStart);
+  return { bytes, canaries };
+}
+
+function caughtCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+async function verifyTypedRejection(input: {
+  factory: ProgressiveContentTargetFactory;
+  id: string;
+  format: "binary" | "invalid-utf8";
+  bytes: Buffer;
+  expectedCode: "CONTENT_BINARY_UNSUPPORTED" | "CONTENT_INVALID_UTF8";
+  maximumSourceBytes: number;
+}): Promise<string | undefined> {
+  const digest = createHash("sha256").update(input.bytes).digest("hex");
+  let reads = 0;
+  let sourceBytes = 0;
+  let maxReadBytes = 0;
+  try {
+    const target = await input.factory.create({
+      object: {
+        id: input.id,
+        family: input.factory.family,
+        byteLength: input.bytes.byteLength,
+        sourceSha256: digest,
+        sourceRevision: digest,
+        format: input.format,
+        authorizationScope: `${SCENARIO_ID}:${input.id}:owner`,
+        canaries: [],
+      },
+      source: {
+        byteLength: input.bytes.byteLength,
+        async read(offset, maximum = TARGET_SOURCE_PAGE_BYTES) {
+          const page = input.bytes.subarray(offset, offset + maximum);
+          reads += 1;
+          sourceBytes += page.byteLength;
+          maxReadBytes = Math.max(maxReadBytes, page.byteLength);
+          return page;
+        },
+      },
+    });
+    await target.cleanup();
+    return `${input.factory.family} ${input.format} unexpectedly realized a target`;
+  } catch (error) {
+    if (caughtCode(error) !== input.expectedCode) {
+      return `${input.factory.family} ${input.format} rejected with ${caughtCode(error) ?? "untyped error"}`;
+    }
+  }
+  if (
+    sourceBytes > input.maximumSourceBytes ||
+    maxReadBytes > TARGET_SOURCE_PAGE_BYTES
+  ) {
+    return `${input.factory.family} ${input.format} rejection performed unbounded source work: reads=${reads} bytes=${sourceBytes} max=${maxReadBytes}`;
+  }
+  return undefined;
+}
+
+async function verifyProductionTargetLifecycle(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  if (!fixtureRoot) return "progressive fixture root unavailable";
+  const lifecycleRoot = path.join(fixtureRoot, "production-target-lifecycle");
+  const priorStateDir = process.env.ELIZA_STATE_DIR;
+  process.env.ELIZA_STATE_DIR = path.join(lifecycleRoot, "state");
+  try {
+    const fileFactory = await createProgressiveFileTargetFactory({
+      targetRoot: path.join(lifecycleRoot, "files"),
+      agentId: String(ctx.runtime.agentId),
+    });
+    const sqlFactories = await createProgressiveSqlTargetFactories({
+      dataRoot: path.join(lifecycleRoot, "sql"),
+    });
+    const attachmentFactory = createProgressiveAttachmentTargetFactory();
+    const toolOutputFactory = createProgressiveToolOutputTargetFactory({
+      agentId: String(ctx.runtime.agentId),
+    });
+    const factories = [
+      fileFactory,
+      ...sqlFactories,
+      attachmentFactory,
+      toolOutputFactory,
+    ];
+    const observedFamilies = new Set<ProgressiveContentTargetFamily>();
+
+    for (const factory of factories) {
+      const { bytes, canaries } = lifecycleCorpus(factory.family);
+      const digest = createHash("sha256").update(bytes).digest("hex");
+      let sourceReads = 0;
+      let sourceBytes = 0;
+      let maxReadBytes = 0;
+      const target = await factory.create({
+        object: {
+          id: `${SCENARIO_ID}:${factory.family}:healthy`,
+          family: factory.family,
+          byteLength: bytes.byteLength,
+          sourceSha256: digest,
+          sourceRevision: digest,
+          format:
+            factory.binaryPolicy === "native-bytes" ? "binary" : "unicode-text",
+          authorizationScope: `${SCENARIO_ID}:${factory.family}:owner`,
+          canaries,
+        },
+        source: {
+          byteLength: bytes.byteLength,
+          async read(offset, maximum = TARGET_SOURCE_PAGE_BYTES) {
+            const page = bytes.subarray(offset, offset + maximum);
+            sourceReads += 1;
+            sourceBytes += page.byteLength;
+            maxReadBytes = Math.max(maxReadBytes, page.byteLength);
+            return page;
+          },
+        },
+      });
+      const result = await runProgressiveContentTargetConformance({
+        manifestSha256: digest,
+        adapterId: factory.adapterId,
+        target,
+        pageBytes: TARGET_SOURCE_PAGE_BYTES,
+        performanceCeilings: {
+          maxPageLatencyMs: 10_000,
+          maxRssGrowthBytes: 512 * 1024 * 1024,
+          maxReadAmplification: 2,
+          maxReadCallsPerPage: 2,
+          maxRowsPerPage: 8,
+        },
+      });
+      const receiptPhases = new Set(
+        result.receipts
+          .filter(({ status }) => status === "passed")
+          .map(({ phase }) => phase),
+      );
+      const requiredPhases = [
+        "realized",
+        "authorization",
+        "isolation",
+        "restart",
+        "cleanup",
+      ] as const;
+      if (
+        result.report.status !== "passed" ||
+        result.report.pages < 2 ||
+        !result.report.restartVerified ||
+        !result.report.concurrencyVerified ||
+        !result.report.repeatedPageVerified ||
+        !result.report.cleanupVerified ||
+        !result.report.postCleanupProbeVerified ||
+        result.report.sourceWork.parentScans !== 0 ||
+        result.report.performance.readCallsPerPageMax > 2 ||
+        result.report.performance.rowsPerPageMax > 8 ||
+        requiredPhases.some((phase) => !receiptPhases.has(phase))
+      ) {
+        return `${factory.family} lifecycle failed: ${JSON.stringify({ report: result.report, receipts: result.receipts })}`;
+      }
+      if (
+        sourceReads < 2 ||
+        sourceBytes !== bytes.byteLength ||
+        maxReadBytes > TARGET_SOURCE_PAGE_BYTES
+      ) {
+        return `${factory.family} realization source work was not bounded and complete: reads=${sourceReads} bytes=${sourceBytes} max=${maxReadBytes}`;
+      }
+      observedFamilies.add(factory.family);
+    }
+
+    const invalidUtf8 = Buffer.alloc(96 * 1024, 0x61);
+    invalidUtf8[127] = 0xff;
+    const binary = Buffer.from([0, 0xff, 1, 2]);
+    const sqlMemory = sqlFactories.find(({ family }) => family === "memory");
+    const sqlEmail = sqlFactories.find(({ family }) => family === "email");
+    if (!sqlMemory || !sqlEmail) return "SQL rejection factories unavailable";
+    for (const rejection of [
+      {
+        factory: fileFactory,
+        id: "file-binary-rejection",
+        format: "binary" as const,
+        bytes: binary,
+        expectedCode: "CONTENT_BINARY_UNSUPPORTED" as const,
+        maximumSourceBytes: 0,
+      },
+      {
+        factory: fileFactory,
+        id: "file-invalid-utf8-rejection",
+        format: "invalid-utf8" as const,
+        bytes: invalidUtf8,
+        expectedCode: "CONTENT_INVALID_UTF8" as const,
+        maximumSourceBytes: TARGET_SOURCE_PAGE_BYTES,
+      },
+      {
+        factory: sqlMemory,
+        id: "memory-binary-rejection",
+        format: "binary" as const,
+        bytes: binary,
+        expectedCode: "CONTENT_BINARY_UNSUPPORTED" as const,
+        maximumSourceBytes: 0,
+      },
+      {
+        factory: sqlEmail,
+        id: "email-invalid-utf8-rejection",
+        format: "invalid-utf8" as const,
+        bytes: invalidUtf8,
+        expectedCode: "CONTENT_INVALID_UTF8" as const,
+        maximumSourceBytes: TARGET_SOURCE_PAGE_BYTES,
+      },
+    ]) {
+      const failure = await verifyTypedRejection(rejection);
+      if (failure) return failure;
+    }
+    return observedFamilies.size === 6
+      ? undefined
+      : `expected six production target families, saw ${[
+          ...observedFamilies,
+        ].join(", ")}`;
+  } catch (error) {
+    return `production target lifecycle threw: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`;
+  } finally {
+    if (priorStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = priorStateDir;
+  }
 }
 
 async function setupSources(ctx: ScenarioContext): Promise<string | undefined> {
@@ -533,6 +792,11 @@ export default scenario({
       type: "custom",
       name: "seed large native progressive content sources",
       apply: setupSources,
+    },
+    {
+      type: "custom",
+      name: "exercise six production target lifecycles",
+      apply: verifyProductionTargetLifecycle,
     },
   ],
   turns: [
