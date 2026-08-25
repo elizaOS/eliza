@@ -1481,7 +1481,9 @@ describe("v5 planner loop skeleton", () => {
 		const noTestsStep = {
 			toolCall: {
 				name: "SHELL",
-				params: { command: "go test ./internal/config -run TestEnvSubstitution" },
+				params: {
+					command: "go test ./internal/config -run TestEnvSubstitution",
+				},
 			},
 			result: {
 				success: true,
@@ -1492,14 +1494,15 @@ describe("v5 planner loop skeleton", () => {
 				},
 			},
 		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
-		expect(__isSuccessfulCodingVerificationStepForTests(noTestsStep)).toBe(false);
+		expect(__isSuccessfulCodingVerificationStepForTests(noTestsStep)).toBe(
+			false,
+		);
 
 		const mixedStep = {
 			...noTestsStep,
 			result: {
 				...noTestsStep.result,
-				text:
-					"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
+				text: "ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
 				data: {
 					output:
 						"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
@@ -2577,12 +2580,12 @@ describe("v5 planner loop skeleton", () => {
 				text,
 				...(command
 					? {
-						data: {
-							command,
-							exit_code: success ? 0 : 1,
-							output: text,
-						},
-					}
+							data: {
+								command,
+								exit_code: success ? 0 : 1,
+								output: text,
+							},
+						}
 					: {}),
 			});
 			const runtime = {
@@ -2646,11 +2649,7 @@ describe("v5 planner loop skeleton", () => {
 				)
 				.mockResolvedValueOnce(toolResult(true, "fixed file"))
 				.mockResolvedValueOnce(
-					toolResult(
-						true,
-						"test passed",
-						"npm test -- dice.html --runInBand",
-					),
+					toolResult(true, "test passed", "npm test -- dice.html --runInBand"),
 				);
 
 			const result = await runPlannerLoop({
