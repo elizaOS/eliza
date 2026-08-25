@@ -18,7 +18,7 @@ import {
 import { PROGRESSIVE_CONTENT_TARGET_FAMILIES } from "../core/src/testing/progressive-content-target.ts";
 import { verifyProgressiveContentCorpus } from "../corpus-tools/src/progressive-content.ts";
 import {
-  createProgressiveContentProductionFactories,
+  createProgressiveContentBenchmarkFactory,
   createProgressiveContentProductionTarget,
 } from "./lib/progressive-content-production-targets.mjs";
 
@@ -31,6 +31,34 @@ export const PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY = {
   attachment: "native-bytes",
   "tool-output": "native-bytes",
 };
+
+export const PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS = Object.freeze({
+  file: "filesystem",
+  document: "postgres",
+  memory: "postgres",
+  email: "postgres",
+  attachment: "content-addressed-media-store",
+  "tool-output": "runtime-tool-output-store",
+});
+
+function requiredPostgresUrl() {
+  const value = process.env.POSTGRES_URL?.trim();
+  if (!value) {
+    throw new Error(
+      "POSTGRES_URL is required for the fixed PostgreSQL benchmark backend",
+    );
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("POSTGRES_URL must be a valid PostgreSQL URL");
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw new Error("POSTGRES_URL must use the PostgreSQL protocol");
+  }
+  return value;
+}
 
 export function parseProgressiveContentBenchmarkArgs(argv) {
   const options = {};
@@ -180,12 +208,22 @@ async function runWorker(options) {
     options.family,
     options.sourceBytes,
   );
-  const factories = await createProgressiveContentProductionFactories({
+  const backend = PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS[options.family];
+  const postgresUrl =
+    backend === "postgres" ? requiredPostgresUrl() : undefined;
+  const factory = await createProgressiveContentBenchmarkFactory({
     workRoot: options.workRoot,
+    family: options.family,
+    ...(postgresUrl ? { postgresUrl } : {}),
   });
-  const factory = factories.find(({ family }) => family === options.family);
-  if (!factory)
-    throw new Error(`fixed production factory is absent for ${options.family}`);
+  const factories = [factory];
+  if (factory.family !== options.family)
+    throw new Error(`fixed production factory changed for ${options.family}`);
+  if (
+    backend === "postgres" &&
+    !factory.adapterId.startsWith("plugin-sql-postgres-")
+  )
+    throw new Error(`fixed PostgreSQL backend changed for ${options.family}`);
   if (
     factory.binaryPolicy !==
     PROGRESSIVE_CONTENT_BENCHMARK_BINARY_POLICY[options.family]
@@ -193,7 +231,7 @@ async function runWorker(options) {
     throw new Error(
       `fixed production binary policy changed for ${options.family}`,
     );
-  const sample = await runProgressiveContentBenchmarkProcessSample({
+  const observed = await runProgressiveContentBenchmarkProcessSample({
     family: factory.family,
     adapterId: factory.adapterId,
     productionMethod: factory.productionMethod,
@@ -210,6 +248,7 @@ async function runWorker(options) {
     measureResources: (target) =>
       benchmarkResources(target, factory.authoritativeStore),
   });
+  const sample = { ...observed, backend };
   const bytes = Buffer.from(`${JSON.stringify(sample)}\n`);
   await atomicPrivateWrite(options.workerOut, bytes);
   return { outputSha256: createHash("sha256").update(bytes).digest("hex") };
@@ -263,6 +302,7 @@ async function readWorkerSample(file) {
 
 /** Execute the fixed 90-worker matrix and publish one run-bound benchmark artifact. */
 export async function runProgressiveContentBenchmark(options) {
+  requiredPostgresUrl();
   const manifest = await verifyProgressiveContentCorpus(options.corpusRoot);
   if (manifest.profile !== "scale")
     throw new Error("benchmark requires the verified scale corpus profile");
@@ -300,7 +340,8 @@ export async function runProgressiveContentBenchmark(options) {
           if (
             sample.family !== family ||
             sample.sourceBytes !== sourceBytes ||
-            sample.repetition !== repetition
+            sample.repetition !== repetition ||
+            sample.backend !== PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS[family]
           )
             throw new Error(
               `benchmark worker coordinate mismatch for ${basename}`,
@@ -315,6 +356,7 @@ export async function runProgressiveContentBenchmark(options) {
       commit: options.commit,
       corpusManifestSha256: manifest.manifestSha256,
       generatorRevision: manifest.generatorRevision,
+      backendPolicy: PROGRESSIVE_CONTENT_BENCHMARK_BACKENDS,
       environment: {
         runtime: "bun",
         runtimeVersion: process.versions.bun ?? process.version,
@@ -323,6 +365,7 @@ export async function runProgressiveContentBenchmark(options) {
         cpu: os.cpus()[0]?.model ?? "unknown",
         logicalCpuCount: os.cpus().length,
         totalMemoryBytes: os.totalmem(),
+        sqlBackend: "postgres",
       },
     };
     if (!result.evidenceEligible || result.status !== "passed")
