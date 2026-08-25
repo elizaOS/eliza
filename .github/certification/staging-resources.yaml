@@ -11,8 +11,8 @@ snapshot:
   repository_commit: "51617538d704126b0d308654ccaaff091e474a67"
   staging_deployment_commit: "de774b875774f478ef5b879dbdae8fd2997a3470"
 deployment_observation:
-  observed_at: "2026-08-25T03:25:13.399Z"
-  staging_deployment_commit: "13c3449cbc6bb88728bb87caa8fd928f5916ff38"
+  observed_at: "2026-08-25T11:16:31Z"
+  staging_deployment_commit: "094f80ad2ded8fdd78da8664ccf3423590f1c25a"
   evidence_alignment: "REVALIDATION_REQUIRED"
 ready_authorization: null
 resources:

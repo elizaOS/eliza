@@ -683,13 +683,21 @@ describe("staging-resource ledger gate", () => {
     ledger.deployment_observation.staging_deployment_commit =
       ledger.snapshot.staging_deployment_commit;
     ledger.deployment_observation.evidence_alignment = "ALIGNED";
+    const latestObservation = Math.max(
+      Date.parse(ledger.snapshot.observed_at),
+      Date.parse(ledger.deployment_observation.observed_at),
+    );
+    const signedAt = new Date(latestObservation).toISOString();
+    const validUntil = new Date(
+      latestObservation + 24 * 60 * 60 * 1000,
+    ).toISOString();
     writeLedger(root, ledger);
 
     const prepared = prepareReadyAuthorizationPayload({
       repoRoot: root,
-      signedAt: "2026-08-25T04:00:00Z",
-      validUntil: "2026-08-25T18:00:00Z",
-      now: fixedNow,
+      signedAt,
+      validUntil,
+      now: new Date(latestObservation + 60 * 60 * 1000),
     });
     expect(prepared.authorization_metadata).toMatchObject({
       payload_version: 1,
