@@ -158,10 +158,6 @@ Product source and Storybook examples are governed. Test files, test fixtures,
 generated output, and templates are excluded because they imitate host and
 failure boundaries rather than ship as maintained product UI.
 
-Product source and Storybook examples are governed. Test files, test fixtures,
-generated output, and templates are excluded because they imitate host and
-failure boundaries rather than ship as maintained product UI.
-
 Legitimate renderer, native, or external-system cases live in
 `scripts/design-system-exceptions.json`. Each exception names one rule, file,
 symbol, owner, reason, review date, expected match count, and exact source lines

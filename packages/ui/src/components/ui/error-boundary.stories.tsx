@@ -1,6 +1,6 @@
 /** Storybook fixture driving the ErrorBoundary fallback via a child that throws on render; also feeds the story-gate render check. */
 import type { Meta, StoryObj } from "@storybook/react";
-import { ErrorBoundary, ErrorBoundaryFallback } from "./error-boundary";
+import { ErrorBoundary } from "./error-boundary";
 
 const meta = {
   title: "Primitives/ErrorBoundary",

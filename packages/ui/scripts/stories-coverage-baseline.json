@@ -1,6 +1,6 @@
 {
   "componentFiles": 409,
-  "withStories": 252,
+  "withStories": 251,
   "missing": [
     "src/components/accounts/AccountListShell.tsx",
     "src/components/accounts/AccountManagementPanel.tsx",
@@ -154,6 +154,7 @@
     "src/components/transcripts/SpeakerNameAttributionBadge.tsx",
     "src/components/transcripts/TranscriptsPage.tsx",
     "src/components/transcripts/TranscriptsView.tsx",
+    "src/components/views/DynamicViewLoader.tsx",
     "src/components/views/KeepAliveViewHost.tsx",
     "src/components/views/SandboxedViewFrame.tsx",
     "src/components/views/ViewErrorBoundary.tsx",

@@ -329,7 +329,6 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={testBusy || saving}
-            aria-label={t("accounts.test", { defaultValue: "Test" })}
             onClick={() => void onTest()}
             aria-label={testLabel}
           >
@@ -340,7 +339,6 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={refreshBusy || saving}
-            aria-label={t("accounts.refresh", { defaultValue: "Refresh" })}
             onClick={() => void onRefreshUsage()}
             aria-label={refreshLabel}
           >
