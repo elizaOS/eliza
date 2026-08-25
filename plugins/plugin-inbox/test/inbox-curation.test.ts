@@ -16,9 +16,10 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type {
-  EmailCurationIdentityHook,
-  EmailCurationPolicyHook,
+import {
+  type EmailCurationIdentityHook,
+  type EmailCurationPolicyHook,
+  buildEmailCurationPrompt,
 } from "../src/inbox/email-curation.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
@@ -190,5 +191,19 @@ describe("InboxService.triageWithCuration", () => {
       item.curation.action,
     );
     expect(result.curation.decisions).toHaveLength(1);
+  });
+});
+
+describe("buildEmailCurationPrompt surrogate safety", () => {
+  it("never bisects surrogate pairs when clamping headers or body", () => {
+    // "a" + 4500 emojis (9000 code units): length 9001.
+    // 8000 boundary lands between high and low surrogate of the 4000th emoji.
+    const candidate = inbound({
+      id: "msg-surrogate",
+      body: "a" + "😀".repeat(4500),
+    });
+    const prompt = buildEmailCurationPrompt(candidate);
+    expect(prompt).not.toContain("\uD83D\n");
+    expect(prompt).not.toContain("\uD83D<");
   });
 });

@@ -1626,6 +1626,18 @@ export function validateCurationDecisionCitations(
   return errors;
 }
 
+function truncateUtf16Safe(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  let end = limit;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export function buildEmailCurationPrompt(
   input: EmailCurationInput | EmailCurationCandidate,
 ): string {
@@ -1642,8 +1654,8 @@ export function buildEmailCurationPrompt(
           formatEmailCurationField("fromEmail", candidate.fromEmail ?? ""),
           formatEmailCurationField("subject", text.subject),
           formatEmailCurationField("snippet", text.snippet),
-          formatEmailCurationField("headers", text.headers.slice(0, 2000)),
-          formatEmailCurationField("body", text.body.slice(0, 8000)),
+          formatEmailCurationField("headers", truncateUtf16Safe(text.headers, 2000)),
+          formatEmailCurationField("body", truncateUtf16Safe(text.body, 8000)),
         ].join("\n"),
       ),
     ].join("\n");
