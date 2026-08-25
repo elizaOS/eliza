@@ -182,6 +182,12 @@ describe("sleepWithAbort", () => {
 		await expect(sleepWithAbort(5, controller.signal)).rejects.toThrow(
 			"aborted",
 		);
+		await expect(sleepWithAbort(0, controller.signal)).rejects.toThrow(
+			"aborted",
+		);
+		await expect(sleepWithAbort(-10, controller.signal)).rejects.toThrow(
+			"aborted",
+		);
 	});
 
 	it("rejects when aborted mid-sleep", async () => {
