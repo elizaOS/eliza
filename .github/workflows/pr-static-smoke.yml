@@ -1,7 +1,8 @@
 # This workflow is the sole pull-request and merge-candidate validation authority.
 # It checks mergeability, changed secrets and workflow syntax, then builds and
-# statically validates the affected workspace closure without running test,
-# provider, device, deployment, or destructive-effect lanes.
+# statically validates the affected workspace closure. A narrow, mock-backed
+# billing replay E2E runs when its contract surface changes; provider, device,
+# deployment, and destructive-effect lanes remain excluded.
 name: PR Static Smoke
 
 on:
@@ -149,6 +150,81 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
         run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only
 
+  billing-payment-replay-e2e:
+    name: Billing payment replay E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      NODE_ENV: test
+      CLOUD_E2E: "1"
+      MOCK_REDIS: "1"
+      MOCK_HETZNER_LATENCY: "0"
+      MOCK_HETZNER_ACTION_MS: "30"
+      CONTROL_PLANE_TICK_MS: "50"
+      DATABASE_URL: pglite://./.eliza-ci/.pgdata
+      HCLOUD_TOKEN: test-token
+      CONTAINER_CONTROL_PLANE_TOKEN: test-token
+      CRON_SECRET: test-cron-secret
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Detect billing replay contract changes
+        id: billing-diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          test -n "$merge_base"
+
+          set +e
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            'packages/cloud/**' \
+            'packages/app/**' \
+            'packages/ui/**' \
+            package.json \
+            bun.lock \
+            '.github/actions/cloud-setup-test-env/**' \
+            .github/scripts/install-playwright-browsers.sh \
+            .github/workflows/pr-static-smoke.yml \
+            .github/workflows/cloud-tests.yml
+          diff_status=$?
+          set -e
+
+          case "$diff_status" in
+            0) echo "run=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "run=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$diff_status" ;;
+          esac
+      - if: steps.billing-diff.outputs.run == 'true'
+        uses: ./.github/actions/cloud-setup-test-env
+      - name: Install Playwright browsers
+        if: steps.billing-diff.outputs.run == 'true'
+        run: .github/scripts/install-playwright-browsers.sh chromium
+      - name: Run billing payment replay spec
+        if: steps.billing-diff.outputs.run == 'true'
+        run: >-
+          bun run cloud:e2e --
+          '(^|/)billing-payment-replay\.spec\.ts$'
+      - name: Upload Playwright evidence
+        if: failure() && steps.billing-diff.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: billing-payment-replay-e2e-${{ github.run_attempt }}
+          path: |
+            packages/cloud/e2e/test-results
+            packages/cloud/e2e/.logs
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: warn
+
   browser-bridge-windows-security:
     name: Browser bridge Windows security
     uses: ./.github/workflows/browser-bridge-windows-security.yml
@@ -156,14 +232,15 @@ jobs:
   static-smoke:
     name: All Tests Passed
     if: always()
-    needs: [source-smoke, browser-bridge-windows-security]
+    needs: [source-smoke, browser-bridge-windows-security, billing-payment-replay-e2e]
     runs-on: ubuntu-24.04
     steps:
-      - name: Require source and Windows security lanes
+      - name: Require every admission lane
         env:
           RESULTS: >-
             source-smoke=${{ needs.source-smoke.result }}
             browser-bridge-windows-security=${{ needs.browser-bridge-windows-security.result }}
+            billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do
