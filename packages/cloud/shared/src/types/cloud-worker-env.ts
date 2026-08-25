@@ -68,7 +68,6 @@ export interface Bindings {
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
-  /** Steward direct-OIDC provider used for Android Credential Manager Google tokens. */
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;

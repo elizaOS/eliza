@@ -25,6 +25,12 @@ let verifiedClaims: Record<string, unknown> | null = {
   userId: "steward-user",
   email: "owner@example.test",
 };
+const signStewardMutatingRequest = mock(
+  async (_secret: string, _method: string, _path: string, headers: Headers) => {
+    events.push("sign");
+    headers.set("x-steward-signature", "v1=test-signature");
+  },
+);
 
 const mobileAuth = await import("@/lib/services/mobile-app-auth");
 mock.module("@/lib/services/mobile-app-auth", () => ({
@@ -57,9 +63,7 @@ mock.module("@/lib/auth/steward-client", () => ({
   }),
 }));
 mock.module("@/lib/steward/sign", () => ({
-  signStewardMutatingRequest: mock(async () => {
-    events.push("sign");
-  }),
+  signStewardMutatingRequest,
 }));
 mock.module("@/lib/steward-sync", () => ({
   describeSyncError: mock((error: unknown) => String(error)),
@@ -131,18 +135,24 @@ function request(overrides: Record<string, unknown> = {}): Request {
 
 beforeEach(() => {
   events.length = 0;
+  signStewardMutatingRequest.mockClear();
   consumeResult = true;
   verifiedClaims = {
     userId: "steward-user",
     email: "owner@example.test",
   };
-  globalThis.fetch = mock(async (input: RequestInfo | URL) => {
-    events.push("steward");
-    expect(String(input)).toBe(
-      "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
-    );
-    return Response.json({ ok: true, token: "steward-session" });
-  }) as unknown as typeof fetch;
+  globalThis.fetch = mock(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      events.push("steward");
+      expect(String(input)).toBe(
+        "https://api-staging.eliza.app/steward/auth/oauth/google/id-token",
+      );
+      expect(new Headers(init?.headers).get("x-steward-signature")).toBe(
+        "v1=test-signature",
+      );
+      return Response.json({ ok: true, token: "steward-session" });
+    },
+  ) as unknown as typeof fetch;
 });
 
 describe("POST /api/v1/app-auth/mobile/google", () => {
@@ -159,6 +169,13 @@ describe("POST /api/v1/app-auth/mobile/google", () => {
       "verify",
       "consume",
     ]);
+    expect(signStewardMutatingRequest).toHaveBeenCalledWith(
+      "request-signing-secret",
+      "POST",
+      "/steward/auth/oauth/google/id-token",
+      expect.any(Headers),
+      expect.any(Uint8Array),
+    );
   });
 
   test("rejects a nonce claim mismatch before Steward or Redis", async () => {
@@ -195,10 +212,16 @@ describe("POST /api/v1/app-auth/mobile/google", () => {
     });
   });
 
-  test("Steward 400 remains invalid identity while 408, 429, and 5xx are retryable", async () => {
-    for (const status of [400, 401, 403, 422]) {
-      globalThis.fetch = mock(
-        async () => new Response("rejected", { status }),
+  test("only structured identity rejections are nonretryable", async () => {
+    for (const [status, code] of [
+      [401, "google_token_invalid"],
+      [401, "google_token_replayed"],
+      [403, "google_email_unverified"],
+      [403, "google_policy_denied"],
+      [409, "google_account_conflict"],
+    ] as const) {
+      globalThis.fetch = mock(async () =>
+        Response.json({ ok: false, code }, { status }),
       ) as unknown as typeof fetch;
       const response = await app.fetch(request(), env);
       expect(response.status).toBe(400);
@@ -207,9 +230,20 @@ describe("POST /api/v1/app-auth/mobile/google", () => {
         retryable: false,
       });
     }
-    for (const status of [408, 429, 500, 503]) {
-      globalThis.fetch = mock(
-        async () => new Response("unavailable", { status }),
+  });
+
+  test("signature, route, configuration, throttling, and outage failures remain retryable", async () => {
+    for (const [status, body] of [
+      [400, { ok: false, code: "google_tenant_mismatch" }],
+      [401, { ok: false, error: "Invalid request signature" }],
+      [404, { ok: false, error: "Not found" }],
+      [408, { ok: false, error: "Timeout" }],
+      [429, { ok: false, code: "google_rate_limited" }],
+      [500, { ok: false, error: "Failure" }],
+      [503, { ok: false, code: "google_not_configured" }],
+    ] as const) {
+      globalThis.fetch = mock(async () =>
+        Response.json(body, { status }),
       ) as unknown as typeof fetch;
       const response = await app.fetch(request(), env);
       expect(response.status).toBe(503);
