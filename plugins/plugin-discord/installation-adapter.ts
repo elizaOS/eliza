@@ -388,4 +388,4 @@ export function registerDiscordInstallationContribution(
 }
 
 export type { InstallationLifecycleService };
-export { createUniqueUuid };
+export { createUniqueUuid, isInstallationLifecycleService };

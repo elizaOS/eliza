@@ -124,14 +124,19 @@ const discordPlugin: Plugin = {
 				typeof applicationId === "string" ? applicationId : null,
 			);
 		} catch (err) {
-			// error-policy:J4 user-facing degrade — the ONLY expected failure
-			// shape here is a malformed-contribution ElizaError
-			// (INSTALLATION_INVALID_CONTRIBUTION) thrown by registration-time
+			// error-policy:J4 user-facing degrade — the ONLY degraded shape is
+			// a malformed-contribution ElizaError carrying
+			// INSTALLATION_INVALID_CONTRIBUTION from registration-time
 			// validation; it degrades Discord install diagnostics to the
-			// manual-activation path (the load-promise retry still runs) and
-			// surfaces as INSTALLATION_MISSING_CONTRIBUTION on diagnostic
-			// reads. Unexpected errors rethrow to fail fast.
-			if (!(err instanceof ElizaError)) {
+			// manual-activation path and surfaces as a missing contribution on
+			// diagnostic reads. Any other error (including other ElizaErrors)
+			// is a bug and rethrows to fail fast.
+			if (
+				!(
+					err instanceof ElizaError &&
+					err.code === "INSTALLATION_INVALID_CONTRIBUTION"
+				)
+			) {
 				throw err;
 			}
 			logger.warn(
@@ -152,10 +157,20 @@ const discordPlugin: Plugin = {
 				);
 			})
 			.catch((err) => {
-				// error-policy:J4 user-facing degrade — when the installation
-				// service never starts, Discord install diagnostics degrade to
-				// truthful manual steps (the same catalog path as an unknown
-				// application id); the connector still boots and runs.
+				// error-policy:J4 user-facing degrade — the degraded shape is
+				// the service-load failure itself (service never starts; the
+				// promise rejects): Discord install diagnostics fall back to
+				// truthful manual steps and the connector keeps running. A
+				// registration-time ElizaError from inside the .then is NOT
+				// this shape, so it is re-reported (not absorbed) via
+				// reportError for diagnostics while boot continues.
+				if (err instanceof ElizaError) {
+					// error-policy:J7 diagnostics must not kill the loop —
+					// surfaced through the runtime error channel, observed
+					// nowhere else.
+					runtime.reportError("plugin:discord:installation-contribution", err);
+					return;
+				}
 				logger.warn(
 					{
 						src: "plugin:discord",

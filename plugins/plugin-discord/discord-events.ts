@@ -26,6 +26,7 @@ import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
+	isInstallationLifecycleService,
 	reportDiscordGuildJoined,
 	reportDiscordGuildRemoved,
 } from "./installation-adapter";
@@ -676,8 +677,15 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		try {
 			// Canonical installation lifecycle: report the join before any other
 			// onboarding so a guild the agent cannot durably record still leaves
-			// an honest evidence trail.
-			await reportDiscordGuildJoined(service.runtime, {
+			// an honest evidence trail. "rejected" means the lifecycle FENCED
+			// this guildCreate (e.g. a stale redelivery observed after removal
+			// — the resurrection guard): onboarding must NOT run for it, or the
+			// stale event would still rebuild rooms/entities and emit
+			// WORLD_JOINED. A missing lifecycle service reports "rejected" for
+			// every guild, so the connector grandfathers that case open (same
+			// observability-mode rule as the traffic gate).
+			const lifecycleService = service.runtime.getService?.("installation");
+			const joinedReport = await reportDiscordGuildJoined(service.runtime, {
 				connectorAccountId:
 					service.discordInstallationAccountId?.() ??
 					createUniqueUuid(service.runtime, "discord-default-account"),
@@ -689,6 +697,20 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				// re-creation after removal.
 				joinedAt: guild.joinedAt?.toISOString() ?? null,
 			});
+			if (
+				joinedReport === "rejected" &&
+				isInstallationLifecycleService(lifecycleService)
+			) {
+				service.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: service.runtime.agentId,
+						guildId: guild.id,
+					},
+					"Installation lifecycle fenced this guildCreate (stale-event resurrection guard); skipping onboarding",
+				);
+				return;
+			}
 			await service.handleGuildCreate(guild);
 		} catch (error) {
 			service.runtime.logger.error(
