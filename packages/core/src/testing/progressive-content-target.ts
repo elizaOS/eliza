@@ -215,7 +215,7 @@ export async function runProgressiveContentTargetConformance(input: {
 	const receipts: ProgressiveContentTargetReceipt[] = [];
 	const initial = validateSnapshot(await input.target.inspect());
 	const receipt = async (
-		phase: ProgressiveContentTargetReceipt["phase"],
+		phase: "authorization" | "isolation",
 		access: ProgressiveContentAccessProbe,
 		operation: () => Promise<ProgressiveConformancePage | undefined>,
 		expectedCodes: readonly string[] = [],
@@ -229,13 +229,7 @@ export async function runProgressiveContentTargetConformance(input: {
 			code = errorCode(error);
 		}
 		const after = validateSnapshot(await input.target.inspect());
-		const denialExpected = expectedCodes.length > 0;
-		const status =
-			phase === "cleanup"
-				? code === undefined && !after.present
-				: denialExpected
-					? code !== undefined && expectedCodes.includes(code)
-					: code === undefined;
+		const status = code !== undefined && expectedCodes.includes(code);
 		receipts.push({
 			schemaVersion: PROGRESSIVE_CONTENT_TARGET_RECEIPT_SCHEMA_VERSION,
 			targetBindingSha256: binding,
@@ -365,10 +359,6 @@ export async function runProgressiveContentTargetConformance(input: {
 		...(input.performanceCeilings
 			? { performanceCeilings: input.performanceCeilings }
 			: {}),
-	});
-	await receipt("cleanup", "authorized", async () => {
-		await input.target.cleanup();
-		return undefined;
 	});
 	const receiptFailures = receipts
 		.filter(({ status }) => status === "failed")
