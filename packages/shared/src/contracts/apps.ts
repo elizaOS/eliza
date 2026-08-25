@@ -7,6 +7,12 @@ import curatedAppDefinitions from "@elizaos/registry/first-party/curated-app-def
   type: "json",
 };
 import z from "zod";
+import { packageNameToAppRouteSlug } from "../apps/package-name.js";
+
+export {
+  packageNameToAppDisplayName,
+  packageNameToAppRouteSlug,
+} from "../apps/package-name.js";
 
 const APP_ROUTE_SLUG_RE = /^[a-z0-9](?:[a-z0-9._-]{0,127})$/;
 
@@ -739,13 +745,6 @@ export type PostRelaunchAppResponse = z.infer<
 >;
 export type AppVerifyResult = z.infer<typeof AppVerifyResultSchema>;
 
-function packageNameToBasename(packageName: string): string {
-  return packageName
-    .trim()
-    .replace(/^@[^/]+\//, "")
-    .trim();
-}
-
 // Materialized from the first-party registry. The curated-app set is derived at
 // registry build time from each plugin's `registry-entry.json` `curatedApp`
 // marker (slug + order + aliases) and emitted as a small, browser-safe JSON. To
@@ -792,26 +791,6 @@ const ELIZA_CURATED_APP_DEFINITION_BY_KEY = new Map<
     getElizaCuratedAppMatchKeys(definition).map((key) => [key, definition]),
   ),
 );
-
-export function packageNameToAppRouteSlug(packageName: string): string | null {
-  const basename = packageNameToBasename(packageName);
-  if (!basename) return null;
-
-  const withoutPrefix = basename.replace(/^(app|plugin)-/, "").trim();
-  return withoutPrefix || basename;
-}
-
-export function packageNameToAppDisplayName(packageName: string): string {
-  const slug =
-    packageNameToAppRouteSlug(packageName) ??
-    packageNameToBasename(packageName);
-
-  return slug
-    .split(/[^a-zA-Z0-9]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export function hasAppInterface(
   value: { kind?: string | null; appMeta?: unknown } | null | undefined,

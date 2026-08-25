@@ -20,6 +20,7 @@ describe("@elizaos/prompts Turbo build cache outputs", () => {
     const task = turbo.tasks["@elizaos/prompts#build"];
     const outputs = new Set(task.outputs ?? []);
     const inputs = new Set(task.inputs ?? []);
+    const dependencies = new Set(task.dependsOn ?? []);
 
     expect(task.cache).not.toBe(false);
     expect(outputs.has("specs/actions/plugins.generated.json")).toBe(true);
@@ -27,5 +28,8 @@ describe("@elizaos/prompts Turbo build cache outputs", () => {
       outputs.has("$TURBO_ROOT$/packages/core/src/generated/action-docs.ts"),
     ).toBe(true);
     expect(inputs.has("$TURBO_ROOT$/plugins/**/*.ts")).toBe(true);
+    // Prompts is an input to core, so making prompts wait on core creates a
+    // build cycle and leaves its published dist entry absent in consumers.
+    expect(dependencies.has("@elizaos/core#build")).toBe(false);
   });
 });

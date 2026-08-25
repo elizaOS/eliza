@@ -6,6 +6,7 @@
  * deterministic tests cannot pass by inventing a plausible model decision.
  */
 import { createHash } from "node:crypto";
+import { canonicalPromptForModelCall } from "../runtime/trajectory-provider-attribution";
 import type {
 	GenerateTextParams,
 	GenerateTextResult,
@@ -439,7 +440,7 @@ function matchesFixture(
 		return false;
 	if (
 		match.prompt &&
-		!matchesText(match.prompt, call.params.prompt ?? "", call)
+		!matchesText(match.prompt, modelPromptText(call.params), call)
 	)
 		return false;
 	if (
@@ -533,12 +534,13 @@ function buildCall(
 function callDiagnostic(
 	call: DeterministicModelCall,
 ): DeterministicModelCallDiagnostic {
+	const prompt = modelPromptText(call.params);
 	return {
 		modelType: call.modelType,
 		latestUserTextFingerprint: fingerprint(call.latestUserText),
-		promptFingerprint: fingerprint(call.params.prompt ?? ""),
+		promptFingerprint: fingerprint(prompt),
 		latestUserTextLength: call.latestUserText.length,
-		promptLength: (call.params.prompt ?? "").length,
+		promptLength: prompt.length,
 		toolNames: call.toolNames,
 		responseSchemaFingerprint:
 			call.params.responseSchema === undefined
@@ -546,6 +548,13 @@ function callDiagnostic(
 				: fingerprint(stableStringify(call.params.responseSchema)),
 		availableFixtureNames: [],
 	};
+}
+
+function modelPromptText(params: GenerateTextParams): string {
+	return canonicalPromptForModelCall({
+		messages: params.messages,
+		prompt: params.prompt,
+	});
 }
 
 function fingerprint(value: string): string {

@@ -98,7 +98,7 @@
       "outputs": []
     },
     "@elizaos/prompts#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
+      "dependsOn": ["^build"],
       "outputs": [
         "dist/**",
         "specs/actions/plugins.generated.json",

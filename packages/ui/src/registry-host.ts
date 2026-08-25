@@ -8,4 +8,4 @@ export {
   provideUiRegistryHost,
   resetUiRegistryHostForTests,
   type UiRegistryHost,
-} from "@elizaos/shared";
+} from "@elizaos/shared/registry-host";

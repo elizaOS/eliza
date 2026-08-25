@@ -131,6 +131,41 @@ describe("createDeterministicModelPlugin", () => {
 		expect(() => plugin.assertFixturesConsumed()).not.toThrow();
 	});
 
+	it("matches canonical message prompts without accepting unrelated rescue input", async () => {
+		const plugin = createDeterministicModelPlugin({
+			fixtures: [
+				{
+					name: "exact-tool-result-rescue",
+					match: {
+						modelType: ModelType.ACTION_PLANNER,
+						prompt: (prompt) => prompt.includes("result-canary-42"),
+					},
+					response: "rescued",
+					times: 1,
+				},
+			],
+		});
+		const handler = textHandler(plugin, ModelType.ACTION_PLANNER);
+
+		await expect(
+			handler(runtime, {
+				messages: [
+					{ role: "system", content: "compose the successful tool result" },
+					{ role: "user", content: "result-canary-42" },
+				],
+			} as GenerateTextParams),
+		).resolves.toBe("rescued");
+		expect(
+			plugin.getFixtureDiagnostics().calls[0]?.promptLength,
+		).toBeGreaterThan("result-canary-42".length);
+
+		await expect(
+			handler(runtime, {
+				messages: [{ role: "user", content: "different tool result" }],
+			} as GenerateTextParams),
+		).rejects.toThrow("no fixture matched");
+	});
+
 	it("uses an explicit resolver only when no fixture matches", async () => {
 		const plugin = createDeterministicModelPlugin({
 			fixtures: [
