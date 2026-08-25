@@ -3930,10 +3930,13 @@ function deferCodingCompletionUntilMutationVerified(args: {
 				success: false,
 				decision: "CONTINUE",
 				thought:
-					"A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
-				messageToUser:
-					"Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
-			};
+					latestSuccessfulNoTestVerification(args.trajectory)
+						? "The last test command selected no tests."
+						: "A successful WRITE or EDIT has not been followed by a successful SHELL verification.",
+				messageToUser: latestSuccessfulNoTestVerification(args.trajectory)
+					? "The last test command selected no tests. Run the task's actual acceptance tests with SHELL before finishing."
+					: "Run the narrowest relevant test, typecheck, lint, build, or diff check with SHELL before finishing.",
+		};
 	args.trajectory.evaluatorOutputs.push(
 		projectToolDiagnosticValue(
 			evaluator,
@@ -3948,6 +3951,21 @@ function deferCodingCompletionUntilMutationVerified(args: {
 	);
 	args.trajectory.plannedQueue.length = 0;
 	return true;
+}
+
+function latestSuccessfulNoTestVerification(
+	trajectory: PlannerTrajectory,
+): boolean {
+	const steps = [...trajectory.archivedSteps, ...trajectory.steps];
+	for (let index = steps.length - 1; index >= 0; index--) {
+		const step = steps[index];
+		if (!step?.toolCall || step.toolCall.name.toUpperCase() !== "SHELL") continue;
+		if (step.result?.success !== true) continue;
+		const command = shellCommandParam(step.toolCall);
+		if (codingVerificationKind(command) !== "test") return false;
+		return verificationRanNoTests(step);
+	}
+	return false;
 }
 
 function codingMutationRequiresVerification(
@@ -4241,7 +4259,42 @@ function isSuccessfulCodingVerificationStep(step: PlannerStep): boolean {
 	}
 	const command = shellCommandParam(step.toolCall);
 	if (!command) return false;
-	return codingVerificationKind(command) !== undefined;
+	const kind = codingVerificationKind(command);
+	if (kind === undefined) return false;
+	return !(kind === "test" && verificationRanNoTests(step));
+}
+
+/** Test seam for rejecting zero-test verification as completion proof. */
+export function __isSuccessfulCodingVerificationStepForTests(
+	step: PlannerStep,
+): boolean {
+	return isSuccessfulCodingVerificationStep(step);
+}
+
+/**
+ * A command that exits zero while selecting no tests is not completion proof.
+ * Go and several test runners report this as an `ok` line annotated with
+ * `[no tests to run]`; reject only when every package result is so annotated,
+ * preserving mixed runs where at least one real test suite executed.
+ */
+function verificationRanNoTests(step: PlannerStep): boolean {
+	const result = step.result;
+	const data = result?.data;
+	const output = [
+		result?.text,
+		result?.summary,
+		typeof data?.output === "string" ? data.output : undefined,
+	]
+		.filter((value): value is string => typeof value === "string")
+		.join("\n");
+	if (!/\[no tests to run\]/i.test(output)) return false;
+	const packageResults = output
+		.split(/\r?\n/u)
+		.filter((line) => /^ok\s+\S+\s+\S+/u.test(line));
+	return (
+		packageResults.length > 0 &&
+		packageResults.every((line) => /\[no tests to run\]/i.test(line))
+	);
 }
 
 function isNoopShellVerificationCommand(command: string): boolean {
@@ -4421,8 +4474,32 @@ function resolveShellFailuresSubsumedBy(
 		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
 		if (containsCommandVerbatim(command, failedCommand)) {
 			unresolvedByOperation.delete(key);
+			continue;
+		}
+		// A narrower successful verifier is a valid recovery for a broader failed
+		// verifier when both commands belong to the same tool family (for example,
+		// `go test ./...` followed by `go test ./internal/config -run TestLoad`).
+		// This is restricted to coding verification commands and an identical
+		// executable prefix so an unrelated deploy/build failure cannot be laundered
+		// by a later test.
+		if (
+			codingVerificationKind(failedCommand) !== undefined &&
+			codingVerificationKind(command) === codingVerificationKind(failedCommand) &&
+			verificationCommandFamily(command) === verificationCommandFamily(failedCommand)
+		) {
+			unresolvedByOperation.delete(key);
 		}
 	}
+}
+
+function verificationCommandFamily(command: string): string {
+	const segment = splitSafeShellVerificationChain(command)?.[0] ?? command;
+	return stripShellVerificationPrefix(segment)
+		.trim()
+		.split(/\s+/u)
+		.slice(0, 2)
+		.join(" ")
+		.toLowerCase();
 }
 
 function shellCommandParam(call: PlannerToolCall): string {

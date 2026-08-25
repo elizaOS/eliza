@@ -13,6 +13,7 @@ import { ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
 import {
 	__codingMutationRequiresVerificationForTests,
+	__isSuccessfulCodingVerificationStepForTests,
 	__renderRoutingHintsBlockForTests,
 	actionResultToPlannerToolResult,
 	FAILED_TOOL_FALLBACK_MESSAGE,
@@ -1476,6 +1477,38 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("does not accept a successful test command that ran no tests as verification", () => {
+		const noTestsStep = {
+			toolCall: {
+				name: "SHELL",
+				params: { command: "go test ./internal/config -run TestEnvSubstitution" },
+			},
+			result: {
+				success: true,
+				text: "ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]",
+				data: {
+					output:
+						"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]",
+				},
+			},
+		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		expect(__isSuccessfulCodingVerificationStepForTests(noTestsStep)).toBe(false);
+
+		const mixedStep = {
+			...noTestsStep,
+			result: {
+				...noTestsStep.result,
+				text:
+					"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
+				data: {
+					output:
+						"ok  go.flipt.io/flipt/internal/config 0.2s [no tests to run]\nok  go.flipt.io/flipt/internal/config 0.4s",
+				},
+			},
+		} as Parameters<typeof __isSuccessfulCodingVerificationStepForTests>[0];
+		expect(__isSuccessfulCodingVerificationStepForTests(mixedStep)).toBe(true);
+	});
+
 	it("does not treat a successful inspection command as coding verification", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const runtime = {
@@ -2535,9 +2568,22 @@ describe("v5 planner loop skeleton", () => {
 
 	it("lets final verification supersede failed intermediate coding commands", async () => {
 		await withCodingRequiredToolDefaults(async () => {
-			const toolResult = (success: boolean, text: string) => ({
+			const toolResult = (
+				success: boolean,
+				text: string,
+				command?: string,
+			) => ({
 				success,
 				text,
+				...(command
+					? {
+						data: {
+							command,
+							exit_code: success ? 0 : 1,
+							output: text,
+						},
+					}
+					: {}),
 			});
 			const runtime = {
 				useModel: vi
@@ -2582,7 +2628,9 @@ describe("v5 planner loop skeleton", () => {
 							{
 								id: "shell-passed",
 								name: "SHELL",
-								arguments: { command: "npm test -- dice.html" },
+								arguments: {
+									command: "npm test -- dice.html --runInBand",
+								},
 							},
 						],
 					})
@@ -2593,9 +2641,17 @@ describe("v5 planner loop skeleton", () => {
 			const executeToolCall = vi
 				.fn()
 				.mockResolvedValueOnce(toolResult(true, "wrote draft"))
-				.mockResolvedValueOnce(toolResult(false, "test failed"))
+				.mockResolvedValueOnce(
+					toolResult(false, "test failed", "npm test -- dice.html"),
+				)
 				.mockResolvedValueOnce(toolResult(true, "fixed file"))
-				.mockResolvedValueOnce(toolResult(true, "test passed"));
+				.mockResolvedValueOnce(
+					toolResult(
+						true,
+						"test passed",
+						"npm test -- dice.html --runInBand",
+					),
+				);
 
 			const result = await runPlannerLoop({
 				runtime,
