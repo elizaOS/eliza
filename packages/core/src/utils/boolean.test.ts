@@ -61,6 +61,35 @@ describe("parseBooleanValue", () => {
 			}),
 		).toBe(false);
 	});
+
+	it("ignores non-string entries in custom truthy/falsy without throwing", () => {
+		expect(
+			parseBooleanValue("yes", {
+				truthy: ["yes", 123 as unknown as string, null as unknown as string],
+			}),
+		).toBe(true);
+		expect(
+			parseBooleanValue("no", {
+				falsy: ["no", undefined as unknown as string, "" as unknown as string],
+			}),
+		).toBe(false);
+		expect(() =>
+			parseBooleanValue("yes", {
+				truthy: [123 as unknown as string, null as unknown as string],
+			}),
+		).not.toThrow();
+		expect(
+			parseBooleanValue("yes", {
+				truthy: [123 as unknown as string],
+			}),
+		).toBeUndefined();
+		expect(
+			parseBooleanValue("maybe", {
+				truthy: ["yes", 123 as unknown as string],
+				falsy: ["no", null as unknown as string],
+			}),
+		).toBeUndefined();
+	});
 });
 
 describe("parseBooleanText", () => {

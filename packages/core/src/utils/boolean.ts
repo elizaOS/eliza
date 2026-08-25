@@ -59,11 +59,21 @@ export function parseBooleanValue(
 	const truthySet =
 		truthy === DEFAULT_TRUTHY
 			? DEFAULT_TRUTHY_SET
-			: new Set(truthy.map((v) => v.trim().toLowerCase()));
+			: new Set(
+					truthy
+						.filter((v): v is string => typeof v === "string")
+						.map((v) => v.trim().toLowerCase())
+						.filter((v) => v.length > 0),
+				);
 	const falsySet =
 		falsy === DEFAULT_FALSY
 			? DEFAULT_FALSY_SET
-			: new Set(falsy.map((v) => v.trim().toLowerCase()));
+			: new Set(
+					falsy
+						.filter((v): v is string => typeof v === "string")
+						.map((v) => v.trim().toLowerCase())
+						.filter((v) => v.length > 0),
+				);
 	if (truthySet.has(normalized)) {
 		return true;
 	}
