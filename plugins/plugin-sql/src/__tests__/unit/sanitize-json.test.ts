@@ -163,6 +163,24 @@ describe("sanitizeJsonObject", () => {
     }
   });
 
+  it("preserves a shared (non-cyclic) Date referenced from sibling keys and array slots", () => {
+    // A Date is added to `seen` before it is recognized, then both Date exits
+    // return without recursing. Without pairing the add with an unconditional
+    // unwind, the completed sibling stays in `seen` and the second, legitimate
+    // occurrence is nulled — storing `{ primary: <iso>, mirror: null }`.
+    const iso = "2026-08-25T00:00:00.000Z";
+    const shared = new Date(iso);
+    expect(sanitizeJsonObject({ primary: shared, mirror: shared })).toEqual({
+      primary: iso,
+      mirror: iso,
+    });
+    expect(sanitizeJsonObject([shared, shared, shared])).toEqual([iso, iso, iso]);
+    expect(sanitizeJsonObject({ a: { d: shared }, b: { d: shared } })).toEqual({
+      a: { d: iso },
+      b: { d: iso },
+    });
+  });
+
   it("preserves a nested diamond reached through two wrapper objects", () => {
     const shared = { p: 1, q: ["x", "y"] };
     const input = { x: { inner: shared }, y: { inner: shared } };

@@ -147,7 +147,18 @@ describe("Log Integration Tests", () => {
       // a cycle. Before the path-based cycle guard, the second occurrence was
       // silently written as `null`, so the stored jsonb lost `mirror`.
       const shared = { requestId: "req-1", detail: { code: 200, tags: ["a", "b"] } };
-      const body = { primary: shared, mirror: shared, items: [shared, shared] };
+      // A shared Date exercises the same class through the Date exit, which
+      // returns an ISO string without recursing: the second occurrence must
+      // survive rather than being nulled. Dates persist as their ISO string.
+      const sharedDateIso = "2026-08-25T00:00:00.000Z";
+      const sharedDate = new Date(sharedDateIso);
+      const body = {
+        primary: shared,
+        mirror: shared,
+        items: [shared, shared],
+        firstSeen: sharedDate,
+        lastSeen: sharedDate,
+      };
       await adapter.log({
         body,
         entityId: testEntityId,
@@ -165,6 +176,9 @@ describe("Log Integration Tests", () => {
       expect(persisted.primary).toEqual(shared);
       expect(persisted.mirror).toEqual(shared);
       expect(persisted.items).toEqual([shared, shared]);
+      // The shared Date survives at both keys instead of the second nulling.
+      expect(persisted.firstSeen).toBe(sharedDateIso);
+      expect(persisted.lastSeen).toBe(sharedDateIso);
     });
 
     it("strips NUL characters so the jsonb insert does not fail", async () => {
