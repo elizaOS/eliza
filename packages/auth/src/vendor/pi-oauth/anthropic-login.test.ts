@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   exchangeAnthropicAuthorizationCode,
+  loginAnthropic,
   refreshAnthropicToken,
   startAnthropicOAuthFlowRaw,
 } from "./anthropic-login.ts";
@@ -137,5 +138,44 @@ describe("Anthropic authorization exchange", () => {
     expect(creds.expires).toBe(now + 3600 * 1000);
     expect(creds.expires).not.toBe(now + 3600 * 1000 - 5 * 60 * 1000);
     vi.restoreAllMocks();
+  });
+
+  it("loginAnthropic passes authUrl to callback and completes with credentials on prompt code", async () => {
+    mockTokenResponse({
+      refresh_token: "rt-login",
+      access_token: "at-login",
+      expires_in: 3600,
+    });
+
+    let receivedUrl = "";
+    const onAuthUrl = vi.fn((url: string) => {
+      receivedUrl = url;
+    });
+
+    const onPromptCode = vi.fn(async () => {
+      const verifier = new URL(receivedUrl).searchParams.get("state");
+      return `auth-code#${verifier}`;
+    });
+
+    const creds = await loginAnthropic(onAuthUrl, onPromptCode);
+
+    expect(onAuthUrl).toHaveBeenCalledTimes(1);
+    expect(receivedUrl).toContain("https://claude.ai/oauth/authorize");
+    expect(receivedUrl).toContain("response_type=code");
+    expect(onPromptCode).toHaveBeenCalledTimes(1);
+    expect(creds).toMatchObject({
+      refresh: "rt-login",
+      access: "at-login",
+    });
+  });
+
+  it("flow handle cancel rejects the completion promise with cancellation error", async () => {
+    const flow = await startAnthropicOAuthFlowRaw();
+    flow.cancel("User cancelled OAuth");
+    await expect(flow.completion).rejects.toThrow("User cancelled OAuth");
+
+    const defaultCancelFlow = await startAnthropicOAuthFlowRaw();
+    defaultCancelFlow.cancel();
+    await expect(defaultCancelFlow.completion).rejects.toThrow("Cancelled");
   });
 });
