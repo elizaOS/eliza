@@ -39,6 +39,21 @@ describe("isTimeoutError", () => {
     expect(isTimeoutError({ message: "Invalid payload" })).toBe(false);
   });
 
+  it("identifies error code properties (ETIMEDOUT, ESOCKETTIMEDOUT, etc.)", () => {
+    const etimedout = Object.assign(new Error("Connection failed"), {
+      code: "ETIMEDOUT",
+    });
+    expect(isTimeoutError(etimedout)).toBe(true);
+
+    const undConnect = Object.assign(new Error("Headers failed"), {
+      code: "UND_ERR_CONNECT_TIMEOUT",
+    });
+    expect(isTimeoutError(undConnect)).toBe(true);
+
+    expect(isTimeoutError({ code: "ESOCKETTIMEDOUT" })).toBe(true);
+    expect(isTimeoutError({ code: "ECONNREFUSED" })).toBe(false);
+  });
+
   it("returns false for null, undefined, and non-timeout values", () => {
     expect(isTimeoutError(null)).toBe(false);
     expect(isTimeoutError(undefined)).toBe(false);
