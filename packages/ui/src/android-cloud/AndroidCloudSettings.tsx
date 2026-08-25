@@ -1,6 +1,9 @@
 /** Play-safe account, permission, and deletion settings for Android Cloud. */
 
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import { Input } from "../components/ui/input";
 import type {
   AccountDeletionAvailabilityDto,
   AccountDeletionRequestDto,
@@ -193,24 +196,26 @@ function DeletionStatus({
       ) : null}
       <div className="grid gap-2">
         {request.export?.status === "ready" ? (
-          <button
+          <Button
             type="button"
-            className="rounded-xl border border-border px-4 py-3 font-semibold"
+            variant="outline"
+            size="touch"
             disabled={!lifecycle || working !== null}
             onClick={() => void downloadExport()}
           >
             {working === "export" ? "Saving export…" : "Save data export"}
-          </button>
+          </Button>
         ) : null}
         {request.canCancel ? (
-          <button
+          <Button
             type="button"
-            className="rounded-xl border border-border px-4 py-3 font-semibold"
+            variant="outline"
+            size="touch"
             disabled={!lifecycle || working !== null}
             onClick={() => setConfirmCancel(true)}
           >
             Keep my account
-          </button>
+          </Button>
         ) : null}
       </div>
       <p className="border-t border-border pt-3 text-xs text-muted">
@@ -239,33 +244,37 @@ function DeletionStatus({
               htmlFor="android-cancel-deletion-text"
             >
               Confirmation
-              <input
+              <Input
                 id="android-cancel-deletion-text"
-                className="mt-2 w-full rounded-xl border border-border bg-bg px-3 py-3"
+                variant="modal"
+                density="relaxed"
+                className="mt-2"
                 value={cancelText}
                 onChange={(event) => setCancelText(event.target.value)}
                 autoComplete="off"
               />
             </label>
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <Button
                 type="button"
-                className="rounded-xl border border-border px-3 py-3"
+                variant="outline"
+                size="touch"
                 disabled={working === "cancel"}
                 onClick={() => setConfirmCancel(false)}
               >
                 Continue deletion
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="rounded-xl bg-accent px-3 py-3 font-semibold text-accent-foreground disabled:opacity-50"
+                variant="default"
+                size="touch"
                 disabled={
                   cancelText !== "CANCEL DELETION" || working === "cancel"
                 }
                 onClick={() => void cancel()}
               >
                 Keep account
-              </button>
+              </Button>
             </div>
           </section>
         </div>
@@ -378,14 +387,15 @@ export function AndroidCloudSettings({
   return (
     <main className="min-h-dvh overflow-y-auto bg-bg px-4 pb-10 pt-[max(1rem,env(safe-area-inset-top))] text-txt">
       <header className="mb-5 flex items-center gap-3">
-        <button
+        <Button
           type="button"
-          className="rounded-xl border border-border px-3 py-2"
+          variant="outline"
+          size="touch"
           onClick={onBack}
           aria-label={backLabel}
         >
           Back
-        </button>
+        </Button>
         <div>
           <h1 className="text-xl font-semibold">Settings</h1>
           {displayName ? (
@@ -419,13 +429,14 @@ export function AndroidCloudSettings({
                 audio playback.
               </p>
               {openAppSettings ? (
-                <button
+                <Button
                   type="button"
-                  className="rounded-xl border border-border px-4 py-3 font-semibold"
+                  variant="outline"
+                  size="touch"
                   onClick={() => void openAppSettings()}
                 >
                   Open Android app settings
-                </button>
+                </Button>
               ) : null}
             </section>
 
@@ -465,18 +476,20 @@ export function AndroidCloudSettings({
                 </p>
               ) : null}
               <div className="grid gap-2">
-                <button
+                <Button
                   type="button"
-                  className="rounded-xl border border-border px-4 py-3 font-semibold"
+                  variant="outline"
+                  size="touch"
                   onClick={() =>
                     void openExternal("https://eliza.app/account-deletion")
                   }
                 >
                   Deletion policy & web request
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="rounded-xl border border-status-danger/50 px-4 py-3 font-semibold text-status-danger"
+                  variant="dangerOutline"
+                  size="touch"
                   disabled={
                     !lifecycle || loading || availability?.state !== "available"
                   }
@@ -487,19 +500,21 @@ export function AndroidCloudSettings({
                   }}
                 >
                   Delete account & data
-                </button>
+                </Button>
               </div>
             </section>
 
             <section className="space-y-3 rounded-2xl border border-border bg-card p-5">
               <h2 className="font-semibold">Account</h2>
-              <button
+              <Button
                 type="button"
-                className="w-full rounded-xl border border-border px-4 py-3 font-semibold"
+                variant="outline"
+                size="touch"
+                className="w-full"
                 onClick={() => void onSignOut()}
               >
                 Sign out
-              </button>
+              </Button>
             </section>
           </>
         )}
@@ -525,26 +540,28 @@ export function AndroidCloudSettings({
               cancel. After it ends, deletion is irreversible. Shared
               organization data requires an active successor owner.
             </p>
-            <label className="flex items-start gap-3 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1 h-5 w-5"
+            <div className="flex items-start gap-3 text-sm">
+              <Checkbox
+                id="android-delete-account-acknowledgement"
+                className="mt-1"
                 checked={acknowledged}
-                onChange={(event) => setAcknowledged(event.target.checked)}
+                onCheckedChange={(checked) => setAcknowledged(checked === true)}
               />
-              <span>
+              <label htmlFor="android-delete-account-acknowledgement">
                 I understand account access is disabled after safe reservation
                 and deletion becomes permanent after the recovery window.
-              </span>
-            </label>
+              </label>
+            </div>
             <label
               className="block text-sm"
               htmlFor="android-delete-account-text"
             >
               Type DELETE to confirm
-              <input
+              <Input
                 id="android-delete-account-text"
-                className="mt-2 w-full rounded-xl border border-border bg-bg px-3 py-3"
+                variant="modal"
+                density="relaxed"
+                className="mt-2"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
                 autoComplete="off"
@@ -557,9 +574,11 @@ export function AndroidCloudSettings({
               >
                 <p>{error}</p>
                 {admissionCode === "TRANSFER_REQUIRED" ? (
-                  <button
+                  <Button
                     type="button"
-                    className="underline"
+                    variant="dangerGhost"
+                    size="content"
+                    align="start"
                     onClick={() =>
                       void openExternal(
                         "https://eliza.app/settings#cloud-organization",
@@ -567,12 +586,14 @@ export function AndroidCloudSettings({
                     }
                   >
                     Transfer shared organization ownership
-                  </button>
+                  </Button>
                 ) : null}
                 {admissionCode === "RECENT_AUTH_REQUIRED" ? (
-                  <button
+                  <Button
                     type="button"
-                    className="underline"
+                    variant="dangerGhost"
+                    size="content"
+                    align="start"
                     onClick={() =>
                       void openExternal(
                         "https://eliza.app/login?returnTo=%2Fsettings%23cloud-security",
@@ -580,27 +601,29 @@ export function AndroidCloudSettings({
                     }
                   >
                     Verify your identity again
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ) : null}
             <div className="grid grid-cols-2 gap-2">
-              <button
+              <Button
                 type="button"
-                className="rounded-xl border border-border px-3 py-3"
+                variant="outline"
+                size="touch"
                 disabled={working}
                 onClick={() => setRequestOpen(false)}
               >
                 Keep account
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="rounded-xl bg-status-danger px-3 py-3 font-semibold text-white disabled:opacity-50"
+                variant="destructive"
+                size="touch"
                 disabled={!acknowledged || confirmation !== "DELETE" || working}
                 onClick={() => void submitDeletion()}
               >
                 {working ? "Reserving…" : "Delete account"}
-              </button>
+              </Button>
             </div>
           </section>
         </div>

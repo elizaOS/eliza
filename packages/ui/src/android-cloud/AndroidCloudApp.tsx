@@ -603,7 +603,8 @@ export function AndroidCloudApp({
         <div className="absolute inset-0 z-40 flex bg-black/70">
           <Button
             type="button"
-            unstyled
+            variant="transparent"
+            size="fill"
             className="flex-1"
             aria-label="Close launcher"
             onClick={() => setLauncherOpen(false)}
