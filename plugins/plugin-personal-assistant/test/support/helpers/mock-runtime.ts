@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
 import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
 import {
   createRealTestRuntime,
@@ -104,11 +105,19 @@ const FAKE_CREDS: Readonly<Record<string, string>> = {
   TWITTER_USER_ID: "1234567890",
 };
 
+const knowledgeGraphPlugin: Plugin = {
+  name: "mock-runtime-knowledge-graph",
+  description:
+    "Runtime-owned entity and relationship graph required by benchmark fixtures.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
+
 function mockRuntimePlugins(
   plugins: readonly Plugin[] | undefined,
   modelProvider: Plugin | undefined,
 ): Plugin[] {
-  const out: Plugin[] = [personalAssistantPlugin];
+  const out: Plugin[] = [knowledgeGraphPlugin, personalAssistantPlugin];
   const seen = new Set(out.map((plugin) => plugin.name));
   if (modelProvider) {
     seen.add(modelProvider.name);

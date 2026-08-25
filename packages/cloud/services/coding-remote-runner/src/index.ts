@@ -445,6 +445,13 @@ async function runCommand(
 }
 
 function getBunRuntime(): BunRuntime | null {
+  // Vitest and browser-compatibility shims may expose a partial `globalThis.Bun`
+  // while the process is still Node. Only select Bun's process API in a real
+  // Bun runtime; otherwise commands can appear to exit successfully without
+  // ever being spawned.
+  if (!(process.versions as NodeJS.ProcessVersions & { bun?: string }).bun) {
+    return null;
+  }
   const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
   return typeof runtime?.spawn === "function" ? runtime : null;
 }
