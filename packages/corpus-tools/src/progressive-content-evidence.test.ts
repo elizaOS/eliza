@@ -19,17 +19,16 @@ import {
 import {
   buildContentContextResult,
   CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
-  CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION,
-  CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION,
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
   CONTENT_CONTEXT_REQUIRED_ARTIFACTS,
   CONTENT_CONTEXT_RESULT_SCHEMA_VERSION,
   type ContentContextRequiredArtifact,
-  contentContextCanonicalEvidenceSha256,
   validateContentContextResult as validateContentContextResultBase,
 } from "./progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "./progressive-content-realization.ts";
+import { createProgressiveContentLiveTrajectoryEvidenceFixture } from "./testing/progressive-content-live-trajectory-evidence-fixture.ts";
 import { createProgressiveContentPostgresEvidenceFixture } from "./testing/progressive-content-postgres-evidence-fixture.ts";
+import { createProgressiveContentScenarioNativeEvidenceFixture } from "./testing/progressive-content-scenario-native-evidence-fixture.ts";
 import { createProgressiveContentSoakEvidenceFixture } from "./testing/progressive-content-soak-evidence-fixture.ts";
 
 const fixtureCommit = "a".repeat(40);
@@ -143,70 +142,10 @@ function validSoakEvidence(commit: string, corpusManifestSha256: string) {
 }
 
 function validLiveTrajectories(commit: string, corpusManifestSha256: string) {
-  return Array.from({ length: 5 }, (_, repetition) =>
-    ["file", "document", "memory", "email", "attachment", "tool-output"].map(
-      (family) => {
-        const trajectory = {
-          schemaVersion: "elizaos.content-context.normalized-trajectory.v1",
-          messages: [{ role: "user", content: `find ${family} late evidence` }],
-          toolCalls: [
-            { name: "READ", offset: 0 },
-            { name: "READ", offset: 65_536 },
-          ],
-          modelCalls: [{ purpose: "planner", response: "continue" }],
-          finalAnswer: `recovered ${family} answer`,
-        };
-        const answerSha256 = createHash("sha256")
-          .update(trajectory.finalAnswer)
-          .digest("hex");
-        const observerEvidence = {
-          schemaVersion: CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION,
-          judgeProvider: "openai",
-          judgeModel: "gpt-5.4",
-          judgeResponse: { decision: "qualified", citationsVerified: true },
-          expectedAnswerSha256: answerSha256,
-          observedAnswerSha256: answerSha256,
-          continuationDiscovered: true,
-          lateEvidenceRecovered: true,
-          exactAnswer: true,
-          answerLeakageDetected: false,
-          canaryLeakageDetected: false,
-          toolCalls: 2,
-          noProgressReads: 0,
-        };
-        return JSON.stringify({
-          schemaVersion: CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION,
-          repetition,
-          family,
-          status: "passed",
-          commit,
-          corpusManifestSha256,
-          providerQualified: true,
-          provider: "openai",
-          model: "gpt-5.4",
-          continuationDiscovered: true,
-          lateEvidenceRecovered: true,
-          exactAnswer: true,
-          answerLeakageDetected: false,
-          canaryLeakageDetected: false,
-          toolCalls: 2,
-          noProgressReads: 0,
-          latencyMs: 100,
-          inputTokens: 1_000,
-          outputTokens: 100,
-          costUsd: 0.01,
-          controllerDecision: "qualified",
-          observerEvidence,
-          observerEvidenceSha256:
-            contentContextCanonicalEvidenceSha256(observerEvidence),
-          trajectory,
-          trajectorySha256: contentContextCanonicalEvidenceSha256(trajectory),
-        });
-      },
-    ),
-  )
-    .flat()
-    .join("\n");
+  return createProgressiveContentLiveTrajectoryEvidenceFixture(
+    commit,
+    corpusManifestSha256,
+  );
 }
 
 function validPostgresEvidence(
@@ -498,25 +437,8 @@ function evidence() {
     "soak.json": validSoakEvidence("a".repeat(40), manifestSha),
     "postgres.json": validPostgresEvidence(objects, manifestSha),
     "scenario.json": validDeterministicScenarioReport(),
-    "scenario-native.jsonl": `${JSON.stringify({
-      format: "eliza_native_v1",
-      scenarioStatus: "passed",
-      stepType: "planner",
-      privacyAttestation: { passed: true },
-      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
-    })}\n${JSON.stringify({
-      format: "eliza_native_v1",
-      scenarioStatus: "passed",
-      stepType: "evaluator",
-      privacyAttestation: { passed: true },
-      response: {
-        text: JSON.stringify({
-          success: true,
-          decision: "FINISH",
-          messageToUser: "Done.",
-        }),
-      },
-    })}\n`,
+    "scenario-native.jsonl":
+      createProgressiveContentScenarioNativeEvidenceFixture(),
     "trajectories.jsonl": validLiveTrajectories("a".repeat(40), manifestSha),
     "e2e.json": {
       schemaVersion: CONTENT_CONTEXT_E2E_SCHEMA_VERSION,
@@ -743,34 +665,19 @@ describe("content-context result", () => {
     ["failed privacy attestation", { privacyAttestation: { passed: false } }],
     ["legacy synthetic event", { format: undefined, type: "tool_call" }],
   ])("rejects a %s in the native scenario export", (_label, override) => {
-    const row = {
-      format: "eliza_native_v1",
-      scenarioStatus: "passed",
-      stepType: "planner",
-      privacyAttestation: { passed: true },
-      response: { text: "", toolCalls: [{ toolName: "FILE", input: {} }] },
-      ...override,
-    };
+    const rows = createProgressiveContentScenarioNativeEvidenceFixture()
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    rows[1] = { ...rows[1], ...override };
     const changed = replaceArtifact(
       evidence(),
       "scenario-native.jsonl",
-      `${JSON.stringify(row)}\n${JSON.stringify({
-        format: "eliza_native_v1",
-        scenarioStatus: "passed",
-        stepType: "evaluator",
-        privacyAttestation: { passed: true },
-        response: {
-          text: JSON.stringify({
-            success: true,
-            decision: "FINISH",
-            messageToUser: "Done.",
-          }),
-        },
-      })}\n`,
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
     );
     expect(() =>
       validateContentContextResult(changed.result, changed.bytes),
-    ).toThrow(/scenario native export lacks tool and final events/u);
+    ).toThrow(/scenario native export contains invalid rows/u);
   });
 
   it("rejects aggregate scale coverage that omits one family's 10 MiB case", () => {
