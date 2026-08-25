@@ -16,7 +16,6 @@ export type PairingChannel =
 	| "slack"
 	| "imessage"
 	| "googlechat"
-	| "msteams"
 	| (string & {}); // Allow extension channels
 
 /**

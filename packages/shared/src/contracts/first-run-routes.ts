@@ -89,8 +89,6 @@ export const PostFirstRunRequestSchema = z
     twilioAccountSid: z.string().optional(),
     twilioAuthToken: z.string().optional(),
     twilioPhoneNumber: z.string().optional(),
-    blooioApiKey: z.string().optional(),
-    blooioPhoneNumber: z.string().optional(),
     inventoryProviders: z.array(InventoryProviderEntrySchema).optional(),
     // Structured sections — handed to dedicated normalization helpers,
     // schema validates only that they are objects.

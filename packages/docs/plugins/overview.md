@@ -28,7 +28,7 @@ A plugin is a self-contained module that registers one or more of:
 </Card>
 
 <Card title="Platform Connectors" icon="plug" href="/tracks/agent/connect-channels">
-  Bundled and remote registries expose connectors only when their runtime path is available. Current first-party messaging connectors include Discord, Telegram, Twitter, Slack, WhatsApp, iMessage, Blooio, MS Teams, Google Chat, Mattermost, Farcaster, Twitch, Feishu, Matrix, Nostr, Lens, and WeChat.
+  Bundled and remote registries expose connectors only when their runtime path is available. Current first-party messaging connectors include Discord, Telegram, X (Twitter), Slack, WhatsApp, iMessage, Google Chat (spaces and DMs; Gmail is outbound send-only), Instagram, Matrix, and WeChat — see the generated connector truth inventory (`packages/registry/src/first-party/connector-truth-inventory.json`) for the authoritative per-connector capability and scope list.
 </Card>
 
 <Card title="DeFi & Blockchain" icon="wallet" href="/plugins/overview">
