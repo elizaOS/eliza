@@ -240,7 +240,9 @@ function makeGuild(options?: {
 			me: bot,
 			async fetch(userId: string) {
 				const member = membersMap.get(userId);
-				if (!member) throw new Error("Unknown Member");
+				if (!member) {
+					throw Object.assign(new Error("Unknown Member"), { code: 10007 });
+				}
 				return member;
 			},
 		},
@@ -852,6 +854,20 @@ describe("guild management verbs", () => {
 		expect(guild.bans_.has("654321")).toBe(true);
 		await run(guild, { operation: "unban", userId: "654321" });
 		expect(guild.bans_.has("654321")).toBe(false);
+	});
+
+	it("does not ban when member lookup fails for a reason other than absence", async () => {
+		const guild = makeGuild();
+		guild.members.fetch = async () => {
+			throw new Error("Discord gateway unavailable");
+		};
+		const error = await expectError(
+			run(guild, { operation: "ban", userId: "654321" }),
+			"MEMBER_FETCH_FAILED",
+		);
+		expect(error.cause).toBeInstanceOf(Error);
+		expect(guild.bans_.has("654321")).toBe(false);
+		expect(guild.log).toHaveLength(0);
 	});
 });
 

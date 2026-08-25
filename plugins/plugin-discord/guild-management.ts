@@ -25,6 +25,7 @@
  * live discord.js `Guild` to it.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { ChannelType, PermissionsBitField } from "discord.js";
 import {
 	BUILT_IN_GUILD_TEMPLATES,
@@ -319,12 +320,13 @@ export interface GuildManagementReceipt {
 	summary: string;
 }
 
-export class GuildManagementError extends Error {
-	public readonly code: string;
-	constructor(code: string, message: string) {
-		super(message);
-		this.name = "GuildManagementError";
-		this.code = code;
+export class GuildManagementError extends ElizaError {
+	override readonly name = "GuildManagementError";
+	constructor(code: string, message: string, cause?: unknown) {
+		super(message, {
+			code,
+			...(cause !== undefined ? { cause } : {}),
+		});
 	}
 }
 
@@ -486,14 +488,7 @@ async function fetchRole(
 	guild: ManageableGuild,
 	roleId: string,
 ): Promise<ManageableRole> {
-	const cached = guild.roles.cache.get(roleId);
-	if (cached) return cached;
-	let fetched: ManageableRole | null = null;
-	try {
-		fetched = await guild.roles.fetch(roleId);
-	} catch {
-		fetched = null;
-	}
+	const fetched = await fetchOptionalRole(guild, roleId);
 	if (!fetched) {
 		throw new GuildManagementError(
 			"ROLE_NOT_FOUND",
@@ -503,18 +498,39 @@ async function fetchRole(
 	return fetched;
 }
 
+function discordErrorCode(error: unknown): string | undefined {
+	if (!error || typeof error !== "object") return undefined;
+	const code = (error as { code?: unknown }).code;
+	return typeof code === "string" || typeof code === "number"
+		? String(code)
+		: undefined;
+}
+
+async function fetchOptionalRole(
+	guild: ManageableGuild,
+	roleId: string,
+): Promise<ManageableRole | null> {
+	const cached = guild.roles.cache.get(roleId);
+	if (cached) return cached;
+	try {
+		return await guild.roles.fetch(roleId);
+	} catch (error) {
+		// error-policy:J4 Discord's exact Unknown Role response is a designed
+		// missing state; every other provider failure remains a typed error.
+		if (discordErrorCode(error) === "10011") return null;
+		throw new GuildManagementError(
+			"ROLE_FETCH_FAILED",
+			`Discord failed to fetch role ${roleId} from guild "${guild.name}".`,
+			error,
+		);
+	}
+}
+
 async function fetchChannel(
 	guild: ManageableGuild,
 	channelId: string,
 ): Promise<ManageableChannel> {
-	const cached = guild.channels.cache.get(channelId);
-	if (cached) return cached;
-	let fetched: ManageableChannel | null = null;
-	try {
-		fetched = await guild.channels.fetch(channelId);
-	} catch {
-		fetched = null;
-	}
+	const fetched = await fetchOptionalChannel(guild, channelId);
 	if (!fetched) {
 		throw new GuildManagementError(
 			"CHANNEL_NOT_FOUND",
@@ -530,18 +546,56 @@ async function fetchChannel(
 	return fetched;
 }
 
+async function fetchOptionalChannel(
+	guild: ManageableGuild,
+	channelId: string,
+): Promise<ManageableChannel | null> {
+	const cached = guild.channels.cache.get(channelId);
+	if (cached) return cached;
+	try {
+		return await guild.channels.fetch(channelId);
+	} catch (error) {
+		// error-policy:J4 Discord's exact Unknown Channel response is a designed
+		// missing state; every other provider failure remains a typed error.
+		if (discordErrorCode(error) === "10003") return null;
+		throw new GuildManagementError(
+			"CHANNEL_FETCH_FAILED",
+			`Discord failed to fetch channel ${channelId} from guild "${guild.name}".`,
+			error,
+		);
+	}
+}
+
+async function fetchOptionalMember(
+	guild: ManageableGuild,
+	userId: string,
+): Promise<ManageableMember | null> {
+	try {
+		return await guild.members.fetch(userId);
+	} catch (error) {
+		// error-policy:J4 Discord's exact Unknown Member response is a designed
+		// missing state; every other provider failure remains a typed error.
+		if (discordErrorCode(error) === "10007") return null;
+		throw new GuildManagementError(
+			"MEMBER_FETCH_FAILED",
+			`Discord failed to fetch member ${userId} from guild "${guild.name}".`,
+			error,
+		);
+	}
+}
+
 async function fetchMember(
 	guild: ManageableGuild,
 	userId: string,
 ): Promise<ManageableMember> {
-	try {
-		return await guild.members.fetch(userId);
-	} catch {
+	const member = await fetchOptionalMember(guild, userId);
+	if (!member) {
 		throw new GuildManagementError(
 			"MEMBER_NOT_FOUND",
 			`Member ${userId} was not found in guild "${guild.name}".`,
 		);
 	}
+	return member;
 }
 
 function requireName(request: GuildManagementRequest): string {
@@ -1365,12 +1419,7 @@ async function moderationOp(
 	if (operation === "ban") {
 		// Hierarchy check when the member is present; bans of absent users pass
 		// straight to the API.
-		let member: ManageableMember | null = null;
-		try {
-			member = await guild.members.fetch(userId);
-		} catch {
-			member = null;
-		}
+		const member = await fetchOptionalMember(guild, userId);
 		if (member && member.bannable === false) {
 			throw new GuildManagementError(
 				"MODERATION_HIERARCHY",
@@ -1580,9 +1629,7 @@ async function resolveTrackedRole(
 	renderedName: string,
 ): Promise<ManageableRole | undefined> {
 	if (stateId) {
-		const byId =
-			guild.roles.cache.get(stateId) ??
-			(await guild.roles.fetch(stateId).catch(() => null));
+		const byId = await fetchOptionalRole(guild, stateId);
 		if (byId) return byId;
 	}
 	for (const role of guild.roles.cache.values()) {
@@ -1715,9 +1762,7 @@ async function resolveTrackedChannel(
 	parentId?: string,
 ): Promise<ManageableChannel | undefined> {
 	if (stateId) {
-		const byId =
-			guild.channels.cache.get(stateId) ??
-			(await guild.channels.fetch(stateId).catch(() => null));
+		const byId = await fetchOptionalChannel(guild, stateId);
 		if (byId) return byId;
 	}
 	for (const channel of guild.channels.cache.values()) {
@@ -1991,9 +2036,7 @@ async function reconcileOverwrites(
 			}
 			continue;
 		}
-		const channel =
-			guild.channels.cache.get(channelId) ??
-			(await guild.channels.fetch(channelId).catch(() => null));
+		const channel = await fetchOptionalChannel(guild, channelId);
 		if (!channel?.permissionOverwrites) {
 			entries.push({
 				kind: "overwrite",
