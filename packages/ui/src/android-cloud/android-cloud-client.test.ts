@@ -12,12 +12,10 @@ import {
   resolveAndroidCloudChatAuthority,
 } from "./android-cloud-client";
 
-const SESSION_ID = "10000000-0000-4000-8000-000000000001";
 const ACCOUNT_ID = "20000000-0000-4000-8000-000000000002";
 const PERSONAL_ID = "personal:org-1:user-1";
 const RUNTIME_ID = "30000000-0000-4000-8000-000000000003";
 const RUNTIME_BASE = `https://${RUNTIME_ID}.cloud.eliza.app`;
-const GOOGLE_NONCE = "a".repeat(64);
 const MOBILE_CREDENTIAL_ID = "40000000-0000-4000-8000-000000000004";
 const MOBILE_SECRET = `eliza_mobile_${"b".repeat(64)}`;
 
@@ -60,34 +58,7 @@ describe("AndroidCloudClient", () => {
     ).toThrow("untrusted chat authority");
   });
 
-  it("creates and completes the bounded external sign-in contract", async () => {
-    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(SESSION_ID);
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(json(200, { sessionId: SESSION_ID }))
-      .mockResolvedValueOnce(
-        json(200, { status: "authenticated", apiKey: "steward-token" }),
-      );
-    const client = new AndroidCloudClient({ fetchImpl });
-
-    const attempt = await client.beginLogin();
-    expect(attempt).toEqual({
-      sessionId: SESSION_ID,
-      browserUrl: `https://cloud.eliza.app/auth/cli-login?session=${SESSION_ID}`,
-    });
-    await expect(client.pollLogin(SESSION_ID)).resolves.toEqual({
-      status: "authenticated",
-      token: "steward-token",
-    });
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
-    expect(fetchImpl).toHaveBeenNthCalledWith(
-      1,
-      "https://api.eliza.app/api/auth/cli-session",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("uses native Google identity and activates the existing mobile credential", async () => {
+  it("uses hosted Eliza Cloud login and activates the returned mobile credential", async () => {
     let secureToken: string | null = null;
     const credentialStore = {
       read: vi.fn(async () => secureToken),
@@ -98,30 +69,18 @@ describe("AndroidCloudClient", () => {
         secureToken = null;
       }),
     };
-    const adapter = {
-      signIn: vi.fn(
-        async ({ nonce }: { serverClientId: string; nonce: string }) => ({
-          idToken: `header.${btoa(JSON.stringify({ nonce }))}.signature`,
-        }),
-      ),
-      cancel: vi.fn(async () => undefined),
-      clearCredentialState: vi.fn(async () => undefined),
-    };
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         json(200, {
-          google: { native: true, serverClientId: "google-web-client" },
-        }),
-      )
-      .mockResolvedValueOnce(
-        json(200, {
           success: true,
-          nonce: GOOGLE_NONCE,
-          expiresAt: "2026-08-25T12:05:00.000Z",
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+          app: { name: "Eliza" },
         }),
       )
-      .mockResolvedValueOnce(json(200, { code: `emac_${"a".repeat(64)}` }))
       .mockResolvedValueOnce(
         json(200, {
           credentialId: MOBILE_CREDENTIAL_ID,
@@ -136,56 +95,69 @@ describe("AndroidCloudClient", () => {
         }),
       );
     const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+    const attempt = await client.beginLogin();
+    const loginUrl = new URL(attempt.browserUrl);
+    const returnTo = loginUrl.searchParams.get("returnTo");
+    const authorizeUrl = new URL(returnTo ?? "", loginUrl.origin);
 
-    await expect(client.signInWithGoogle(adapter)).resolves.toBeUndefined();
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
+    expect(loginUrl.pathname).toBe("/login");
+    expect(authorizeUrl.pathname).toBe("/app-auth/authorize");
+    expect(authorizeUrl.searchParams.get("flow")).toBe("mobile_pkce");
+    expect(authorizeUrl.searchParams.get("client_id")).toBe("ai.elizaos.app");
+    expect(authorizeUrl.searchParams.get("state")).toBe(attempt.state);
+    expect(authorizeUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(authorizeUrl.searchParams.get("code_challenge")).toMatch(
+      /^[A-Za-z0-9_-]{43}$/,
+    );
 
-    expect(adapter.signIn).toHaveBeenCalledWith({
-      nonce: GOOGLE_NONCE,
-      serverClientId: "google-web-client",
-    });
+    await expect(
+      client.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`,
+      ),
+    ).resolves.toBeUndefined();
     expect(credentialStore.write).toHaveBeenCalledWith(MOBILE_SECRET);
     expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
       expect.stringContaining("/api/v1/app-auth/mobile/config?"),
-      "https://api.eliza.app/api/v1/app-auth/mobile/google/nonce",
-      "https://api.eliza.app/api/v1/app-auth/mobile/google",
       "https://api.eliza.app/api/v1/app-auth/mobile/token",
       "https://api.eliza.app/api/v1/app-auth/mobile/ack",
     ]);
-    const nonceRequest = fetchImpl.mock.calls[1]?.[1];
-    const approvalRequest = fetchImpl.mock.calls[2]?.[1];
-    expect(JSON.parse(String(nonceRequest?.body))).toMatchObject({
+    const tokenRequest = fetchImpl.mock.calls[1]?.[1];
+    const acknowledgementRequest = fetchImpl.mock.calls[2]?.[1];
+    expect(JSON.parse(String(tokenRequest?.body))).toMatchObject({
       clientId: "ai.elizaos.app",
       environment: "production",
       redirectUri: "https://eliza.app/auth/callback",
-      codeChallengeMethod: "S256",
-      deviceName: "Android",
+      state: attempt.state,
+      grantType: "authorization_code",
     });
-    expect(JSON.parse(String(approvalRequest?.body))).toMatchObject({
-      nonce: GOOGLE_NONCE,
-      codeChallenge: JSON.parse(String(nonceRequest?.body)).codeChallenge,
-      state: JSON.parse(String(nonceRequest?.body)).state,
+    expect(JSON.parse(String(acknowledgementRequest?.body))).toMatchObject({
+      credentialId: MOBILE_CREDENTIAL_ID,
+      secret: MOBILE_SECRET,
+      state: attempt.state,
     });
   });
 
-  it("rejects a malformed server challenge before opening Credential Manager", async () => {
-    const adapter = {
-      signIn: vi.fn(async () => ({ idToken: "unused" })),
-      cancel: vi.fn(async () => undefined),
-      clearCredentialState: vi.fn(async () => undefined),
-    };
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        json(200, {
-          google: { native: true, serverClientId: "google-web-client" },
-        }),
-      )
-      .mockResolvedValueOnce(json(200, { nonce: "client-controlled" }));
+  it("rejects a callback that does not match the in-memory PKCE state", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "production",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+        app: { name: "Eliza" },
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl });
+    await client.beginLogin();
 
     await expect(
-      new AndroidCloudClient({ fetchImpl }).signInWithGoogle(adapter),
-    ).rejects.toThrow("invalid Google sign-in challenge");
-    expect(adapter.signIn).not.toHaveBeenCalled();
+      client.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=attacker`,
+      ),
+    ).rejects.toThrow("state did not match");
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it("restores the previous credential when acknowledgement fails", async () => {
@@ -199,24 +171,18 @@ describe("AndroidCloudClient", () => {
         secureToken = null;
       }),
     };
-    const adapter = {
-      signIn: vi.fn(
-        async ({ nonce }: { serverClientId: string; nonce: string }) => ({
-          idToken: `header.${btoa(JSON.stringify({ nonce }))}.signature`,
-        }),
-      ),
-      cancel: vi.fn(async () => undefined),
-      clearCredentialState: vi.fn(async () => undefined),
-    };
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
         json(200, {
-          google: { native: true, serverClientId: "google-web-client" },
+          success: true,
+          clientId: "ai.elizaos.app",
+          environment: "production",
+          redirectUri: "https://eliza.app/auth/callback",
+          codeChallengeMethod: "S256",
+          app: { name: "Eliza" },
         }),
       )
-      .mockResolvedValueOnce(json(200, { nonce: GOOGLE_NONCE }))
-      .mockResolvedValueOnce(json(200, { code: `emac_${"a".repeat(64)}` }))
       .mockResolvedValueOnce(
         json(200, {
           credentialId: MOBILE_CREDENTIAL_ID,
@@ -225,9 +191,11 @@ describe("AndroidCloudClient", () => {
       )
       .mockResolvedValueOnce(json(503, { error: "temporarily_unavailable" }));
 
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+    const attempt = await client.beginLogin();
     await expect(
-      new AndroidCloudClient({ credentialStore, fetchImpl }).signInWithGoogle(
-        adapter,
+      client.completeLogin(
+        `elizaos://auth/callback?code=emac_${"a".repeat(64)}&state=${encodeURIComponent(attempt.state)}`,
       ),
     ).rejects.toThrow();
     expect(secureToken).toBe("previous-secret");
@@ -237,11 +205,6 @@ describe("AndroidCloudClient", () => {
   });
 
   it("translates a mobile-auth configuration failure into product language", async () => {
-    const adapter = {
-      signIn: vi.fn(async () => ({ idToken: "unused" })),
-      cancel: vi.fn(async () => undefined),
-      clearCredentialState: vi.fn(async () => undefined),
-    };
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       json(503, {
         success: false,
@@ -251,28 +214,9 @@ describe("AndroidCloudClient", () => {
     );
     const client = new AndroidCloudClient({ fetchImpl });
 
-    await expect(client.signInWithGoogle(adapter)).rejects.toThrow(
+    await expect(client.beginLogin()).rejects.toThrow(
       "Eliza Cloud sign-in is not configured for this app yet.",
     );
-    expect(adapter.signIn).not.toHaveBeenCalled();
-  });
-
-  it("stops native auth before opening Credential Manager when cancelled", async () => {
-    const adapter = {
-      signIn: vi.fn(async () => ({ idToken: "unused" })),
-      cancel: vi.fn(async () => undefined),
-      clearCredentialState: vi.fn(async () => undefined),
-    };
-    const fetchImpl = vi.fn<typeof fetch>();
-    const client = new AndroidCloudClient({ fetchImpl });
-    const controller = new AbortController();
-    controller.abort();
-
-    await expect(
-      client.signInWithGoogle(adapter, controller.signal),
-    ).rejects.toMatchObject({ name: "AbortError" });
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(adapter.signIn).not.toHaveBeenCalled();
   });
 
   it("restores identity and resolves its managed runtime before chat", async () => {
@@ -472,13 +416,17 @@ describe("AndroidCloudClient", () => {
     ).rejects.toThrow("server_configuration_error");
   });
 
-  // A staging build must send users to the staging login: the session was
-  // minted against the staging API, and production cannot claim it.
-  it("pairs the sign-in origin with the API the session was minted against", async () => {
-    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(SESSION_ID);
-    const fetchImpl = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(json(200, { sessionId: SESSION_ID }));
+  it("pairs the hosted sign-in page with the selected Cloud environment", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      json(200, {
+        success: true,
+        clientId: "ai.elizaos.app",
+        environment: "staging",
+        redirectUri: "https://eliza.app/auth/callback",
+        codeChallengeMethod: "S256",
+        app: { name: "Eliza" },
+      }),
+    );
     const client = new AndroidCloudClient({
       fetchImpl,
       cloudApiBase: "https://api-staging.eliza.app",
@@ -486,14 +434,16 @@ describe("AndroidCloudClient", () => {
 
     const attempt = await client.beginLogin();
 
-    expect(attempt.browserUrl).toBe(
-      `https://cloud-staging.eliza.app/auth/cli-login?session=${SESSION_ID}`,
+    const loginUrl = new URL(attempt.browserUrl);
+    expect(loginUrl.origin).toBe("https://cloud-staging.eliza.app");
+    const authorizeUrl = new URL(
+      loginUrl.searchParams.get("returnTo") ?? "",
+      loginUrl.origin,
     );
+    expect(authorizeUrl.searchParams.get("environment")).toBe("staging");
   });
 
-  // A body that is present but unparsable is a broken endpoint, not "no
-  // session yet". Collapsing it to {} made pollLogin spin its full timeout.
-  it("reports an unreadable response instead of reading it as pending", async () => {
+  it("reports unreadable mobile configuration instead of opening hosted auth", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response("<html>gateway error</html>", {
         status: 200,
@@ -502,9 +452,7 @@ describe("AndroidCloudClient", () => {
     );
     const client = new AndroidCloudClient({ fetchImpl });
 
-    await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
-      /could not be read/,
-    );
+    await expect(client.beginLogin()).rejects.toThrow(/could not be read/);
   });
 
   it.each([
@@ -513,29 +461,24 @@ describe("AndroidCloudClient", () => {
     ["a string", "pending"],
     ["a number", 0],
     ["a boolean", false],
-  ])(
-    "rejects %s JSON body instead of reading it as pending",
-    async (_label, body) => {
-      const fetchImpl = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(json(200, body));
-      const client = new AndroidCloudClient({ fetchImpl });
+  ])("rejects %s mobile configuration body", async (_label, body) => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json(200, body));
+    const client = new AndroidCloudClient({ fetchImpl });
 
-      await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
-        /invalid JSON response/,
-      );
-      expect(fetchImpl).toHaveBeenCalledOnce();
-    },
-  );
+    await expect(client.beginLogin()).rejects.toThrow(/invalid JSON response/);
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
 
-  it("treats a genuinely empty body as empty rather than unreadable", async () => {
+  it("rejects a genuinely empty mobile configuration response", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(new Response("", { status: 200 }));
     const client = new AndroidCloudClient({ fetchImpl });
 
-    await expect(client.pollLogin(SESSION_ID)).resolves.toEqual({
-      status: "pending",
-    });
+    await expect(client.beginLogin()).rejects.toThrow(
+      "invalid mobile sign-in metadata",
+    );
   });
 });
