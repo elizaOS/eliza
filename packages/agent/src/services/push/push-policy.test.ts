@@ -10,6 +10,7 @@ import type { AgentNotification } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   decidePushDelivery,
+  PUSH_POLICY_PERSIST_FAILED_CODE,
   type PushDeliveryPolicy,
   PushPolicyStore,
   parsePushDeliveryPolicy,
@@ -98,6 +99,11 @@ describe("parsePushDeliveryPolicy (untrusted boundary)", () => {
       { ...ALLOWED_POLICY, updatedAt: "yesterday" },
       { ...ALLOWED_POLICY, updatedAt: -1 },
       { pushEnabled: true }, // missing version + updatedAt
+      { ...ALLOWED_POLICY, extra: true }, // extra key: not the canonical 3-key shape
+      { pushEnabled: true, version: 1, updatedAt: 1, extra: "x" }, // 4-key variant
+      // inherited-policy injection: three arbitrary own keys, valid values on
+      // the prototype — passes a length-only check, blocked by key-set equality
+      Object.assign(Object.create(ALLOWED_POLICY), { a: 1, b: 2, c: 3 }),
     ];
     for (const value of corrupt) {
       expect(parsePushDeliveryPolicy(value)).toBeNull();
@@ -151,5 +157,17 @@ describe("PushPolicyStore (durable per-principal store)", () => {
     await expect(rejecting.save("owner-1", ALLOWED_POLICY)).rejects.toThrow(
       /rejected the push-policy write/,
     );
+  });
+
+  it("rejects with a typed ElizaError carrying the stable persist code", async () => {
+    const rejecting = new PushPolicyStore({
+      ...runtime,
+      setCache: async () => false,
+    });
+    const rejection = rejecting.save("owner-1", ALLOWED_POLICY);
+    await expect(rejection).rejects.toMatchObject({
+      name: "ElizaError",
+      code: PUSH_POLICY_PERSIST_FAILED_CODE,
+    });
   });
 });

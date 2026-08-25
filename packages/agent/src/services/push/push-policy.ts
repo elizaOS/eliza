@@ -25,7 +25,7 @@
  * expresses no scheduling and creates no competing scheduler.
  */
 
-import { type AgentNotification, logger } from "@elizaos/core";
+import { type AgentNotification, ElizaError, logger } from "@elizaos/core";
 
 /** Outcome of the inbox-before-push decision. */
 export type PushDeliveryDecision =
@@ -60,6 +60,9 @@ export const PUSH_DELIVERY_DENY: PushDeliveryDecision = {
 const policyCacheKeyFor = (agentId: string, recipientId: string): string =>
   `push-policy:${agentId}:${recipientId}`;
 
+/** Stable `ElizaError.code` for a rejected durable push-policy write. */
+export const PUSH_POLICY_PERSIST_FAILED_CODE = "PUSH_POLICY_PERSIST_FAILED";
+
 /** Cap on the stored policy record size guard (bytes, defensive). */
 const MAX_POLICY_JSON_BYTES = 4096;
 
@@ -73,6 +76,19 @@ export function parsePushDeliveryPolicy(
 ): PushDeliveryPolicy | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
+  // EXACT shape: the row's own enumerable key set must be exactly the three
+  // canonical names — extra keys fail closed, and inherited properties are not
+  // substitutes: property reads below would accept prototype values, so the
+  // key-set equality is what blocks inherited-policy injection via Object.create.
+  const ownKeys = Object.keys(record);
+  if (
+    ownKeys.length !== 3 ||
+    !ownKeys.includes("pushEnabled") ||
+    !ownKeys.includes("version") ||
+    !ownKeys.includes("updatedAt")
+  ) {
+    return null;
+  }
   if (typeof record.pushEnabled !== "boolean") return null;
   if (
     typeof record.version !== "number" ||
@@ -160,15 +176,27 @@ export class PushPolicyStore {
   async save(recipientId: string, policy: PushDeliveryPolicy): Promise<void> {
     const serialized = JSON.stringify(policy);
     if (serialized.length > MAX_POLICY_JSON_BYTES) {
-      throw new Error("[PushPolicyStore] policy record exceeds size cap");
+      throw new ElizaError("[PushPolicyStore] policy record exceeds size cap", {
+        code: PUSH_POLICY_PERSIST_FAILED_CODE,
+        context: {
+          byteLength: serialized.length,
+          limit: MAX_POLICY_JSON_BYTES,
+        },
+        severity: "ephemeral",
+      });
     }
     const persisted = await this.runtime.setCache(
       this.cacheKey(recipientId),
       policy,
     );
     if (persisted !== true) {
-      throw new Error(
+      throw new ElizaError(
         "[PushPolicyStore] durable cache rejected the push-policy write",
+        {
+          code: PUSH_POLICY_PERSIST_FAILED_CODE,
+          context: { recipientLength: recipientId.length },
+          severity: "ephemeral",
+        },
       );
     }
   }
