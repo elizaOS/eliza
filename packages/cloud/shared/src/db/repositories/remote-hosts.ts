@@ -5,7 +5,10 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
+import {
+  canonicalizeRemoteControlValue,
+  type RemoteConnectionMode,
+} from "@elizaos/shared/contracts/remote-control";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
@@ -27,7 +30,7 @@ export interface RecoverRemoteHostCredentialInput {
   deviceId: string;
   displayName: string;
   platform: string;
-  connectionMode: string;
+  connectionMode: RemoteConnectionMode;
   runtimeKeyId: string;
   signingPublicJwk: JsonWebKey;
   encryptionPublicJwk: JsonWebKey;

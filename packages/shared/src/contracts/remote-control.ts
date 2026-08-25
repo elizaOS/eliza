@@ -18,6 +18,24 @@ export const REMOTE_CONTROL_MAX_CANONICAL_BYTES = 1_048_576 as const;
 export const REMOTE_CONTROL_MAX_REPLAY_ENTRIES_PER_SESSION = 4_096 as const;
 export const REMOTE_CONTROL_MAX_ACTIVE_SESSIONS = 256 as const;
 
+/**
+ * Closed allowlist of connection modes a secure remote host may declare.
+ * Relay is the only transport v1 admits; adding a member requires a reviewed
+ * lane that also owns the schema, migration, and transport cleanup contract.
+ */
+export const REMOTE_CONNECTION_MODES = ["relay"] as const;
+
+export type RemoteConnectionMode = (typeof REMOTE_CONNECTION_MODES)[number];
+
+export function isRemoteConnectionMode(
+  value: unknown,
+): value is RemoteConnectionMode {
+  return (
+    typeof value === "string" &&
+    (REMOTE_CONNECTION_MODES as readonly string[]).includes(value)
+  );
+}
+
 export const REMOTE_CONTROLLER_PLATFORMS = [
   "ios",
   "macos",

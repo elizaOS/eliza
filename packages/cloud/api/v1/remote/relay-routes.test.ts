@@ -236,6 +236,26 @@ describe("secure remote relay routes", () => {
     );
   });
 
+  test("rejects a non-relay connection mode before any host state is created", async () => {
+    for (const connectionMode of ["headscale", "tunnel", "direct", "RELAY"]) {
+      createOwned.mockReset();
+      recoverHostCredential.mockReset();
+      const response = await request("/api/v1/remote/hosts", {
+        ownerId,
+        deviceId: "linux-one",
+        displayName: "Linux One",
+        platform: "linux",
+        connectionMode,
+        runtimeKeyId: targetKeyId,
+        signingPublicKeyJwk: publicJwk,
+        encryptionPublicKeyJwk: publicJwk,
+      });
+      expect(response.status).toBe(400);
+      expect(createOwned).not.toHaveBeenCalled();
+      expect(recoverHostCredential).not.toHaveBeenCalled();
+    }
+  });
+
   test("bootstraps the authenticated owner and target public keys without leaking host credentials", async () => {
     const staleHostId = "40000000-0000-4000-8000-000000000002";
     listOwned.mockResolvedValue([

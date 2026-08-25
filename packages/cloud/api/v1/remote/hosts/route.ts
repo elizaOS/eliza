@@ -14,7 +14,10 @@ import { remoteHostsRepository } from "@/db/repositories/remote-hosts";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { isRemoteControlIdentifier } from "../validation";
+import {
+  isRemoteConnectionMode,
+  isRemoteControlIdentifier,
+} from "../validation";
 
 const app = new Hono<AppEnv>();
 const REMOTE_HOST_ONLINE_WINDOW_MS = 15_000;
@@ -103,7 +106,7 @@ app.post("/", async (c) => {
     };
     if (
       !isRemoteControlIdentifier(body.deviceId) ||
-      !isRemoteControlIdentifier(connectionMode) ||
+      !isRemoteConnectionMode(connectionMode) ||
       !isRemoteTargetPublicIdentity(identity)
     ) {
       return c.json(
@@ -122,7 +125,7 @@ app.post("/", async (c) => {
           deviceId: body.deviceId as string,
           displayName: identity.displayName,
           platform: identity.platform,
-          connectionMode: connectionMode as string,
+          connectionMode,
           runtimeKeyId: identity.keyId,
           signingPublicJwk: identity.signingPublicKeyJwk,
           encryptionPublicJwk: identity.encryptionPublicKeyJwk,
