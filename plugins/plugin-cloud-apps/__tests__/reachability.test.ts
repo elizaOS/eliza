@@ -1,104 +1,160 @@
 /**
- * Tests for the pure reachability probe (probeReachable, respondedLive, healthUrl) with an injected fetch. Asserts the probe uses redirect:"manual" to mirror the server's live decision. No SDK or runtime.
+ * Coverage for the deploy-gate reachability probe — pure URL joining, Caddy
+ * gateway status classification, and bounded fetch probing without a live container.
  */
 import { describe, expect, it } from "bun:test";
+import type { FetchLike } from "../src/reachability.ts";
 import {
-  type FetchLike,
   healthUrl,
   probeReachable,
   respondedLive,
 } from "../src/reachability.ts";
 
 describe("healthUrl", () => {
-  it("joins base + path, collapsing slashes", () => {
-    expect(healthUrl("https://acme.elizacloud.ai")).toBe(
-      "https://acme.elizacloud.ai/health",
+  it("appends /health and collapses trailing slashes", () => {
+    expect(healthUrl("https://example.com")).toBe("https://example.com/health");
+    expect(healthUrl("https://example.com/")).toBe(
+      "https://example.com/health",
     );
-    expect(healthUrl("https://acme.elizacloud.ai///", "health")).toBe(
-      "https://acme.elizacloud.ai/health",
+    expect(healthUrl("https://example.com///")).toBe(
+      "https://example.com/health",
     );
-    expect(healthUrl("https://acme.elizacloud.ai", "/status")).toBe(
-      "https://acme.elizacloud.ai/status",
+  });
+
+  it("respects a custom path and adds a leading slash when missing", () => {
+    expect(healthUrl("https://example.com", "ready")).toBe(
+      "https://example.com/ready",
+    );
+    expect(healthUrl("https://example.com/", "/ready")).toBe(
+      "https://example.com/ready",
+    );
+  });
+
+  it("preserves base path segments", () => {
+    expect(healthUrl("https://example.com/app")).toBe(
+      "https://example.com/app/health",
+    );
+    expect(healthUrl("https://example.com/app/", "/health")).toBe(
+      "https://example.com/app/health",
     );
   });
 });
 
 describe("respondedLive", () => {
-  it("counts any completed non-gateway status as live (server's isReachableStatus rule)", () => {
-    for (const status of [200, 204, 301, 302, 307, 308, 401, 403, 404, 500]) {
-      expect(respondedLive({ ok: status < 300, status })).toBe(true);
-    }
+  it("treats gateway-down statuses as not live", () => {
+    expect(respondedLive({ ok: false, status: 502 })).toBe(false);
+    expect(respondedLive({ ok: false, status: 503 })).toBe(false);
+    expect(respondedLive({ ok: false, status: 504 })).toBe(false);
   });
 
-  it("counts Caddy gateway errors and no-response as NOT live", () => {
-    for (const status of [502, 503, 504]) {
-      expect(respondedLive({ ok: false, status })).toBe(false);
-    }
-    expect(respondedLive({ ok: false, error: "ECONNREFUSED" })).toBe(false);
+  it("treats other HTTP statuses as live (auth gates, 404, 3xx, 2xx)", () => {
+    expect(respondedLive({ ok: true, status: 200 })).toBe(true);
+    expect(respondedLive({ ok: false, status: 301 })).toBe(true);
+    expect(respondedLive({ ok: false, status: 401 })).toBe(true);
+    expect(respondedLive({ ok: false, status: 403 })).toBe(true);
+    expect(respondedLive({ ok: false, status: 404 })).toBe(true);
+    expect(respondedLive({ ok: false, status: 500 })).toBe(true);
+  });
+
+  it("returns false when no status is present (network error / abort)", () => {
+    expect(respondedLive({ ok: false })).toBe(false);
+    expect(respondedLive({ ok: false, error: "aborted" })).toBe(false);
   });
 });
 
 describe("probeReachable", () => {
-  it("resolves ok:true with the status for a 2xx response", async () => {
-    const result = await probeReachable("https://app.example/health", {
-      fetchImpl: () => Promise.resolve({ ok: true, status: 200 }),
+  it("returns ok:true for a 2xx response", async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: true, status: 200 });
+    const result = await probeReachable("https://example.com/health", {
+      fetchImpl,
     });
-    expect(result).toEqual({ ok: true, status: 200 });
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(200);
   });
 
-  it("REGRESSION: does NOT follow redirects — mirrors the server's probe (redirect: manual)", async () => {
-    // The probe must not follow redirects: it uses redirect:"manual" and treats
-    // a 3xx as "the app answered", mirroring the server's probeUrlReachable.
-    // Following redirects would let a failed redirect target contradict the
-    // server's READY with a false "not live".
-    let seenInit: Parameters<FetchLike>[1];
-    const result = await probeReachable("https://app.example/health", {
-      fetchImpl: (_url, init) => {
-        seenInit = init;
-        return Promise.resolve({ ok: false, status: 302 });
-      },
+  it("returns ok:false with status for a 404 and a 503", async () => {
+    const f404: FetchLike = async () => ({ ok: false, status: 404 });
+    expect(
+      await probeReachable("https://example.com/health", { fetchImpl: f404 }),
+    ).toEqual({
+      ok: false,
+      status: 404,
     });
+    const f503: FetchLike = async () => ({ ok: false, status: 503 });
+    expect(
+      await probeReachable("https://example.com/health", { fetchImpl: f503 }),
+    ).toEqual({
+      ok: false,
+      status: 503,
+    });
+  });
 
-    expect(seenInit?.redirect).toBe("manual");
-    expect(seenInit?.method).toBe("GET");
+  it("treats 201 as ok via status range even when res.ok is false", async () => {
+    const fetchImpl: FetchLike = async () => ({ ok: false, status: 201 });
+    const result = await probeReachable("https://example.com/health", {
+      fetchImpl,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe(201);
+  });
+
+  it("falls back to global fetch when no fetchImpl is provided", async () => {
+    const originalFetch = globalThis.fetch;
+    const stub = async () => ({ ok: true as const, status: 200 });
+    (globalThis as unknown as { fetch: unknown }).fetch = stub;
+    try {
+      const result = await probeReachable("https://example.com/health");
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+    } finally {
+      (globalThis as unknown as { fetch: unknown }).fetch = originalFetch;
+    }
+  });
+
+  it("returns ok:false with error message on network failure", async () => {
+    const fetchImpl: FetchLike = async () => {
+      throw new Error("network down");
+    };
+    const result = await probeReachable("https://example.com/health", {
+      fetchImpl,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("network down");
+  });
+
+  it("passes redirect:manual and handles 3xx as not-ok but live via respondedLive", async () => {
+    let capturedInit: unknown;
+    const fetchImpl: FetchLike = async (_url, init) => {
+      capturedInit = init;
+      return { ok: false, status: 302 };
+    };
+    const result = await probeReachable("https://example.com/health", {
+      fetchImpl,
+    });
+    expect((capturedInit as { redirect: string }).redirect).toBe("manual");
+    expect(result.ok).toBe(false);
     expect(result.status).toBe(302);
-    // The gate's live rule must count the redirect as "the app answered".
     expect(respondedLive(result)).toBe(true);
   });
 
-  it("resolves ok:false with the status (not an error) for auth gates and 404s", async () => {
-    const result = await probeReachable("https://app.example/health", {
-      fetchImpl: () => Promise.resolve({ ok: false, status: 401 }),
-    });
-    expect(result).toEqual({ ok: false, status: 401 });
-    expect(respondedLive(result)).toBe(true);
-  });
-
-  it("never throws: a network error resolves to ok:false with no status", async () => {
-    const result = await probeReachable("https://app.example/health", {
-      fetchImpl: () => Promise.reject(new Error("ECONNREFUSED")),
-    });
-    expect(result.ok).toBe(false);
-    expect(result.status).toBeUndefined();
-    expect(result.error).toBe("ECONNREFUSED");
-    expect(respondedLive(result)).toBe(false);
-  });
-
-  it("a stalled probe is aborted at timeoutMs and resolves ok:false (no hang)", async () => {
-    const result = await probeReachable("https://app.example/health", {
-      timeoutMs: 5,
-      // Signal-honoring stalled fetch: never resolves, rejects on abort.
-      fetchImpl: (_url, init) =>
-        new Promise((_, reject) => {
-          init?.signal?.addEventListener(
-            "abort",
-            () => reject(new Error("aborted")),
-            { once: true },
-          );
-        }),
+  it("uses an AbortSignal and aborts on timeout", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const fetchImpl: FetchLike = async (_url, init) => {
+      capturedSignal = init?.signal;
+      // Never resolve - let the probe's timeout abort it, then reject on signal
+      await new Promise<void>((_, reject) => {
+        capturedSignal?.addEventListener("abort", () =>
+          reject(new Error("aborted")),
+        );
+      });
+      return { ok: true, status: 200 };
+    };
+    const result = await probeReachable("https://example.com/health", {
+      fetchImpl,
+      timeoutMs: 10,
     });
     expect(result.ok).toBe(false);
-    expect(result.status).toBeUndefined();
-    expect(respondedLive(result)).toBe(false);
+    expect(result.error).toBe("aborted");
+    expect(capturedSignal).toBeDefined();
   });
 });
