@@ -74,6 +74,7 @@ export interface MyRuntimesSectionProps {
  * always drives a remote runtime (local exec is gated off mobile), so this
  * switcher is how you point it at your laptop or cloud agent.
  */
+/** @deprecated Catalog-only legacy presentation; use DevicesRuntimesSection. */
 export function MyRuntimesSection({
   runtimes,
   activeId,

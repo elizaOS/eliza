@@ -18,11 +18,21 @@ import {
 } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  APP_CORE_CORS_ALLOWED_HEADERS,
   buildCorsAllowedPorts,
   getAllowedRemoteOrigins,
   invalidateCorsAllowedPorts,
   isAllowedOrigin,
 } from "./server-cors";
+
+describe("server CORS request headers", () => {
+  it("allows the app client's logical-turn headers", () => {
+    const allowedHeaders = APP_CORE_CORS_ALLOWED_HEADERS.split(", ");
+
+    expect(allowedHeaders).toContain("X-ElizaOS-Turn-Correlation");
+    expect(allowedHeaders).toContain("X-ElizaOS-Turn-Attempt");
+  });
+});
 
 describe("server CORS origin allowlist", () => {
   const originalEnv = {

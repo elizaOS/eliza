@@ -32,7 +32,10 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   const firstRunComplete = useAppSelector((s) => s.firstRunComplete);
   const tutorial = useTutorial();
 
-  const ids = React.useMemo(() => resolvePrimingSet(), []);
+  const ids = React.useMemo(
+    () => resolvePrimingSet({ purpose: "onboarding" }),
+    [],
+  );
   const [primed, setPrimed] = React.useState<boolean>(hasPrimedPermissions);
   const [open, setOpen] = React.useState(false);
 

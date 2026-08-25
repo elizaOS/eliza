@@ -202,8 +202,11 @@ final class GestureSemanticsUITests: XCTestCase {
             attachAccessibilitySnapshot(of: app, named: "ax-hierarchy-no-restore-zone")
             throw XCTSkip("no hittable maximize-restore strip in the AX tree")
         }
+        // The restore zone intentionally extends through the safe area, but
+        // iOS owns that status-bar strip. Start in the lower, app-touchable
+        // portion of the same control so XCTest delivers the drag to WebKit.
         let start = restoreZone.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
         let end = start.withOffset(CGVector(dx: 0, dy: 320))
         start.press(
             forDuration: 0.05, thenDragTo: end,
@@ -217,12 +220,13 @@ final class GestureSemanticsUITests: XCTestCase {
             "a top-20% pull-down must restore the inset overlay "
                 + "(chat-maximized reads '\(restored ?? "nil")')"
         )
-        // Restoring keeps the sheet OPEN at the full detent — it must not have
-        // collapsed the whole chat.
+        // This tracked 320-point pull resolves at HALF under the current
+        // release-band contract. The important restore invariant is that the
+        // conversation stays open rather than collapsing to input or pill.
         XCTAssertEqual(
-            markerValue(Self.detentPrefix, in: app), "full",
-            "restoring from full-bleed must land back at the FULL detent, not "
-                + "collapse the sheet"
+            markerValue(Self.detentPrefix, in: app), "half",
+            "this tracked restore must land at HALF and keep the conversation "
+                + "open"
         )
     }
 
@@ -363,8 +367,10 @@ final class GestureSemanticsUITests: XCTestCase {
             if let restoreZone = maximizeRestoreZone(in: app),
                 restoreZone.isHittable
             {
+                // Stay below the system-owned status-bar portion of this
+                // safe-area-spanning control so WebKit receives the gesture.
                 let start = restoreZone.coordinate(
-                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+                    withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
                 let end = start.withOffset(CGVector(dx: 0, dy: 320))
                 start.press(
                     forDuration: 0.05, thenDragTo: end,
@@ -995,13 +1001,15 @@ final class GestureSemanticsUITests: XCTestCase {
 
     // MARK: - Message plumbing
 
-    /// User message bubbles surface as their aria-label ("Show/Hide message
-    /// actions") — the text child is name-hidden behind the label on most OS
-    /// builds, so match the label across element types.
+    /// Current transcript rows expose the complete user message to VoiceOver;
+    /// older renderers exposed only the message-actions label. Match both
+    /// contracts so geometry coverage follows the rendered row rather than an
+    /// obsolete accessibility implementation detail.
     private func messageBubbles(in app: XCUIApplication) -> XCUIElementQuery {
         app.descendants(matching: .any).matching(
             NSPredicate(
-                format: "label IN {'Show message actions', 'Hide message actions'}"
+                format:
+                    "label IN {'Show message actions', 'Hide message actions'} OR label BEGINSWITH[c] 'Your message:'"
             ))
     }
 
@@ -1014,6 +1022,13 @@ final class GestureSemanticsUITests: XCTestCase {
     /// whose center sits right of the window midline, falling back to the
     /// plain last bubble on a reply-less (model-less) boot.
     private func lastMessageBubble(in app: XCUIApplication) throws -> XCUIElement {
+        let currentUserRows = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH[c] 'Your message:'")
+        )
+        if currentUserRows.count > 0 {
+            return currentUserRows.element(boundBy: currentUserRows.count - 1)
+        }
+
         let bubbles = messageBubbles(in: app)
         let count = bubbles.count
         guard count > 0 else {

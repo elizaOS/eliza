@@ -1,11 +1,11 @@
 /**
  The widget extension presents Eliza quick actions across Home and Lock Screen
- families and routes every interaction through the canonical deep-link spine.
+ families and routes widget interactions through the canonical deep-link spine.
  */
 import SwiftUI
 import WidgetKit
 
-/// Deep-link construction for widget and control entry points. Mirrors
+/// Deep-link construction for widget and Live Activity entry points. Mirrors
 /// `ElizaAppIntentRouter` in the app target: every native entry point mints an
 /// `elizaos://<host>?source=<entry>&action=…` URL that routes through the app
 /// shell's deep-link handler, and the `source` tag proves which surface fired.
@@ -14,7 +14,6 @@ enum ElizaWidgetDeepLink {
 
     enum Source: String {
         case widget = "ios-widget"
-        case control = "ios-control"
         case liveActivity = "ios-live-activity"
     }
 
@@ -41,18 +40,6 @@ enum ElizaWidgetDeepLink {
             source: source,
             extraItems: [URLQueryItem(name: "voice", value: "1")]
         )
-    }
-
-    static func dailyBrief(source: Source) -> URL {
-        url(path: "lifeops/daily-brief", action: "lifeops.daily-brief", source: source)
-    }
-
-    static func newTask(source: Source) -> URL {
-        url(path: "lifeops/task/new", action: "lifeops.create", source: source)
-    }
-
-    static func smartReply(source: Source) -> URL {
-        url(path: "chat", action: "smart-reply", source: source)
     }
 
     private static func url(
@@ -105,8 +92,7 @@ struct ElizaWidgetTimelineProvider: TimelineProvider {
     }
 }
 
-/// The five quick actions mirror the app target's App Intents
-/// (`ElizaAppIntents.swift`): Ask, Voice, Daily Brief, New Task, Smart Reply.
+/// The two quick actions mirror the app target's App Intents: message and voice.
 private struct ElizaQuickAction: Identifiable {
     let id: String
     let title: LocalizedStringResource
@@ -117,33 +103,15 @@ private struct ElizaQuickAction: Identifiable {
 private let elizaQuickActions: [ElizaQuickAction] = [
     ElizaQuickAction(
         id: "ask",
-        title: "Ask",
+        title: "Message",
         systemImage: "sparkles",
         url: ElizaWidgetDeepLink.ask(source: .widget)
     ),
     ElizaQuickAction(
         id: "voice",
-        title: "Voice",
+        title: "Talk",
         systemImage: "waveform",
         url: ElizaWidgetDeepLink.voice(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "daily-brief",
-        title: "Brief",
-        systemImage: "sun.max",
-        url: ElizaWidgetDeepLink.dailyBrief(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "new-task",
-        title: "Task",
-        systemImage: "checklist",
-        url: ElizaWidgetDeepLink.newTask(source: .widget)
-    ),
-    ElizaQuickAction(
-        id: "smart-reply",
-        title: "Reply",
-        systemImage: "text.bubble",
-        url: ElizaWidgetDeepLink.smartReply(source: .widget)
     ),
 ]
 
@@ -182,9 +150,9 @@ struct ElizaQuickActionsWidgetView: View {
                 .font(.title2)
                 .foregroundStyle(elizaWidgetAccent)
             Spacer(minLength: 0)
-            Text("Ask Eliza")
+            Text("Message Eliza")
                 .font(.headline)
-            Text("Chat · Voice · Tasks")
+            Text("Message · Talk")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -231,9 +199,9 @@ struct ElizaQuickActionsWidgetView: View {
             Image(systemName: "sparkles")
                 .font(.title3)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Ask Eliza")
+                Text("Message Eliza")
                     .font(.headline)
-                Text("Chat · Voice · Tasks")
+                Text("Message · Talk")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -253,7 +221,7 @@ struct ElizaQuickActionsWidget: Widget {
             ElizaQuickActionsWidgetView()
         }
         .configurationDisplayName("Eliza Quick Actions")
-        .description("Ask, talk, and plan with Eliza from your Home and Lock Screen.")
+        .description("Message or talk to Eliza from your Home and Lock Screen.")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,

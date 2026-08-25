@@ -3,11 +3,29 @@
  * including limited access that must never render as a full grant.
  */
 import { describe, expect, it } from "vitest";
-import { getPermissionAction, getPermissionBadge } from "./permission-types";
+import {
+  getPermissionAction,
+  getPermissionBadge,
+  resolveSystemPermissionsForPlatform,
+} from "./permission-types";
 
 const untranslated = (key: string) => key;
 
 describe("permission presentation", () => {
+  it("does not advertise Apple Speech Recognition in cloud-only iOS", () => {
+    const cloudIds = resolveSystemPermissionsForPlatform("ios", {
+      cloudOnly: true,
+    }).map((permission) => permission.id);
+    const localIds = resolveSystemPermissionsForPlatform("ios").map(
+      (permission) => permission.id,
+    );
+
+    expect(cloudIds).not.toContain("speech-recognition");
+    expect(cloudIds).toContain("microphone");
+    expect(cloudIds).toContain("notifications");
+    expect(localIds).toContain("speech-recognition");
+  });
+
   it("renders limited calendar access as limited with an upgrade action", () => {
     expect(
       getPermissionBadge(untranslated, "calendar", "limited", "ios"),

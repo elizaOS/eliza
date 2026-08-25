@@ -31,7 +31,11 @@ import { resolvePrimingSet } from "../permissions/permission-priming";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import { useDesktopPermissionsState } from "./permission-controls.hooks";
-import { CAPABILITIES, SYSTEM_PERMISSIONS } from "./permission-types";
+import {
+  CAPABILITIES,
+  resolveSystemPermissionsForPlatform,
+  SYSTEM_PERMISSIONS,
+} from "./permission-types";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -117,10 +121,10 @@ function MobileSystemPermissionsPanel() {
   const registry = useMemo(() => createMobileSignalsPermissionsRegistry(), []);
   const permissionDefs = useMemo(
     () =>
-      SYSTEM_PERMISSIONS.filter((def) =>
-        def.platforms.includes(mobilePlatform),
-      ),
-    [mobilePlatform],
+      resolveSystemPermissionsForPlatform(mobilePlatform, {
+        cloudOnly: branding.cloudOnly === true,
+      }),
+    [branding.cloudOnly, mobilePlatform],
   );
   const [states, setStates] = useState<
     Partial<Record<PermissionId, PermissionState>>
@@ -697,7 +701,10 @@ function DesktopPermissionsView() {
 function PermissionPrimingSettingsCard() {
   const t = useAppSelector((s) => s.t);
   const branding = useBranding();
-  const ids = useMemo(() => resolvePrimingSet(), []);
+  const ids = useMemo(
+    () => resolvePrimingSet({ cloudOnly: branding.cloudOnly === true }),
+    [branding.cloudOnly],
+  );
   const [open, setOpen] = useState(false);
 
   if (ids.length === 0) return null;

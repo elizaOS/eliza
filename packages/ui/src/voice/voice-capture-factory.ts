@@ -14,10 +14,12 @@
  *    supported, capture the same WAV and POST it to the cloud STT proxy
  *    (`/api/asr/cloud`) — the cloud transcript is the final. This is the real
  *    web STT path for the documented `eliza-cloud` ASR default.
- * 3. Otherwise fall back to the browser SpeechRecognition API, emitting
- *    interim and final segments as they arrive — used only when WAV capture is
- *    unsupported (no `getUserMedia` / `AudioContext`), which is the one case
- *    where no cloud/local WAV path exists.
+ * 3. On native mobile, use TalkMode only for a local/unset ASR preference.
+ *    A cloud provider remains authoritative: if WAV capture cannot start, the
+ *    request fails visibly instead of surprising the user with Apple's Speech
+ *    Recognition permission and silently changing providers.
+ * 4. Otherwise fall back to the browser SpeechRecognition API, emitting
+ *    interim and final segments as they arrive.
  *
  * Mic permission + AudioContext + MediaStream lifecycle is owned by the
  * underlying primitives ({@link startLocalAsrRecorder} + browser
@@ -175,12 +177,11 @@ export interface VoiceCaptureHandle {
 }
 
 /**
- * True on a native mobile platform whose `TalkMode` plugin is present. On
- * Android/iOS the OS speech recognizer (exposed by TalkMode) is the real STT
- * engine — it transcribes on-device with live INTERIM results — and the
- * local-inference ASR assets are not staged on mobile, so that path 502s.
- * `getNativePlugin` returns `{}` when the plugin is absent, hence the method
- * feature-check.
+ * True on a native mobile platform whose `TalkMode` plugin is present. It is a
+ * fallback for local/unset ASR preferences; explicit cloud providers must not
+ * be swapped to the OS recognizer because that changes both provider truth and
+ * the permission contract. `getNativePlugin` returns `{}` when the plugin is
+ * absent, hence the method feature-check.
  */
 function isNativeTalkModeCaptureAvailable(): boolean {
   if (typeof window === "undefined") return false;
@@ -199,10 +200,18 @@ async function resolveBackendKind(
   if (preferred === "browser") {
     return "browser";
   }
+  // Cloud ASR is an explicit product/privacy choice. Keep its WAV recorder
+  // authoritative even on native mobile so Talk never triggers Apple's Speech
+  // Recognition prompt. startWavRecorder will surface an honest capture error
+  // if microphone WAV primitives are unavailable; it must not provider-swap.
+  if (preferred === "eliza-cloud" || preferred === "openai") {
+    return "cloud";
+  }
   // Native mobile: the platform speech recognizer (TalkMode) is the working STT
-  // path and the only one that streams interim transcripts. Prefer it ahead of
-  // the local-inference probe — on mobile that probe can report ready while the
-  // local ASR assets are missing, then 502 at stop() with no recoverable fallback.
+  // fallback for a local/unset preference and the only one that streams interim
+  // transcripts. Prefer it ahead of the local-inference probe — on mobile that
+  // probe can report ready while the local ASR assets are missing, then 502 at
+  // stop() with no recoverable fallback.
   if (isNativeTalkModeCaptureAvailable()) {
     return "talkmode";
   }

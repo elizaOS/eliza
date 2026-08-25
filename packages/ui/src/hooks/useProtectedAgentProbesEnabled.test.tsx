@@ -198,6 +198,33 @@ describe("protectedAgentProbesEnabled (pure gate — #16242)", () => {
       ),
     ).toBe(true);
   });
+
+  it("holds native remote-agent probes until pairing authenticates the device", () => {
+    expect(
+      protectedAgentProbesEnabled(
+        false,
+        "https://localhost",
+        "http://192.168.1.30:31338",
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      protectedAgentProbesEnabled(
+        true,
+        "https://localhost",
+        "http://192.168.1.30:31338",
+        true,
+      ),
+    ).toBe(true);
+    expect(
+      protectedAgentProbesEnabled(
+        false,
+        "https://localhost",
+        "http://127.0.0.1:31337",
+        true,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("shouldProbeExistingLocalInstall (startup restore — #16242)", () => {

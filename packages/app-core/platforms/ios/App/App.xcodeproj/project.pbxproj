@@ -17,6 +17,8 @@
 		ELIZASTARTTRACE000000001 /* ElizaStartupTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A5105A0000000000000002 /* ElizaAppIntents.swift */; };
+		ECTR00010000000000000001 /* ElizaControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECTR00010000000000000101 /* ElizaControlIntents.swift */; };
+		ECTR00010000000000000002 /* ElizaControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECTR00010000000000000101 /* ElizaControlIntents.swift */; };
 		LCLZ00010000000000000001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = LCLZ00010000000000000101 /* Localizable.xcstrings */; };
 		LCLZ00010000000000000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = LCLZ00010000000000000101 /* Localizable.xcstrings */; };
 		SHCT00010000000000000001 /* AppShortcuts.strings in Resources */ = {isa = PBXBuildFile; fileRef = SHCT00010000000000000101 /* AppShortcuts.strings */; };
@@ -137,6 +139,7 @@
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		E1A5105A0000000000000002 /* ElizaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaAppIntents.swift; sourceTree = "<group>"; };
+		ECTR00010000000000000101 /* ElizaControlIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaControlIntents.swift; sourceTree = "<group>"; };
 		LCLZ00010000000000000101 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		SHCT00010000000000000102 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		SHCT00010000000000000103 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
@@ -286,6 +289,7 @@
 				ELIZAIOSBRIDGE00000000002 /* ElizaBridgeViewController.swift */,
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
+				ECTR00010000000000000101 /* ElizaControlIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
 				NTPY00010000000000000003 /* ElizaNotificationTriggerPolicy.swift */,
 				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
@@ -714,6 +718,7 @@
 				ELIZAIOSBRIDGE00000000001 /* ElizaBridgeViewController.swift in Sources */,
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
+				ECTR00010000000000000001 /* ElizaControlIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
 				NTPY00010000000000000001 /* ElizaNotificationTriggerPolicy.swift in Sources */,
 				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
@@ -773,6 +778,7 @@
 			files = (
 				EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */,
 				EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */,
+				ECTR00010000000000000002 /* ElizaControlIntents.swift in Sources */,
 				EWDG00010000000000000005 /* ElizaDictationAttributes.swift in Sources */,
 				EWDG00010000000000000006 /* ElizaDictationLiveActivity.swift in Sources */,
 			);
@@ -1147,7 +1153,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG APP_EXTENSION";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1168,6 +1174,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) APP_EXTENSION";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

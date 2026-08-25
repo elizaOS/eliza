@@ -46,10 +46,10 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     id: "microphone",
     name: "Microphone",
     nameKey: "permissionssection.permission.microphone.name",
-    description: "Voice input for talk mode and speech recognition",
+    description: "Use your microphone for voice input",
     descriptionKey: "permissionssection.permission.microphone.description",
     icon: "mic",
-    platforms: ["darwin", "win32", "linux"],
+    platforms: ["darwin", "win32", "linux", "ios", "android", "web"],
     requiredForFeatures: ["talkmode", "voice"],
   },
   {
@@ -311,6 +311,21 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     requiredForFeatures: ["mobile-signals"],
   },
 ];
+
+/**
+ * Resolve visible system permissions without advertising capabilities the
+ * configured product cannot exercise. Cloud-only voice transcribes remotely,
+ * so Apple Speech Recognition is neither required nor actionable there.
+ */
+export function resolveSystemPermissionsForPlatform(
+  platform: string,
+  options: { cloudOnly?: boolean } = {},
+): PermissionDef[] {
+  return SYSTEM_PERMISSIONS.filter((definition) => {
+    if (!definition.platforms.includes(platform)) return false;
+    return !(options.cloudOnly && definition.id === "speech-recognition");
+  });
+}
 
 /** Capability toggle definition. */
 export interface CapabilityDef {

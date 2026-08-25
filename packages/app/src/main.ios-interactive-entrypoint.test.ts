@@ -22,13 +22,16 @@ const iosBoot = vi.hoisted(() => ({
   runEmbedHandshake: vi.fn(async () => undefined),
   registerServiceWorker: vi.fn(),
   lifecycleDependencies: undefined as
-    | { handleDeepLink: (url: string) => void }
+    | {
+        handleDeepLink: (url: string) => undefined | Promise<boolean>;
+      }
     | undefined,
   initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
   initializeKeyboard: vi.fn(async () => undefined),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
+  setStorageValue: vi.fn(async (_key: string, _value: string) => undefined),
 }));
 
 iosBoot.createRoot.mockReturnValue({ render: iosBoot.render });
@@ -40,7 +43,7 @@ vi.mock("react-dom/client", () => ({
 vi.mock("@elizaos/ui/App", () => ({ App: () => null }));
 vi.mock("@elizaos/ui/bridge/storage-bridge", () => ({
   initializeStorageBridge: iosBoot.initializeStorage,
-  setStorageValue: vi.fn(async () => undefined),
+  setStorageValue: iosBoot.setStorageValue,
 }));
 vi.mock("@elizaos/ui/bridge/capacitor-bridge", () => ({
   initializeCapacitorBridge: iosBoot.initializeCapacitor,
@@ -81,7 +84,9 @@ vi.mock("@elizaos/capacitor-agent", () => ({
 }));
 vi.mock("./mobile-lifecycle", () => ({
   createMobileLifecycle: vi.fn(
-    (dependencies: { handleDeepLink: (url: string) => void }) => {
+    (dependencies: {
+      handleDeepLink: (url: string) => undefined | Promise<boolean>;
+    }) => {
       iosBoot.lifecycleDependencies = dependencies;
       return {
         initializeDeepLinks: iosBoot.initializeDeepLinks,
@@ -185,7 +190,10 @@ describe("renderer interactive iOS composition", () => {
       "elizaos://auth/callback?state=smoke&code=synthetic",
       "elizaos://unknown-path",
     ]) {
-      handleDeepLink?.(url);
+      const handled = handleDeepLink?.(url);
+      if (url.startsWith("elizaos://first-run/runtime/remote")) {
+        await handled;
+      }
     }
 
     await vi.waitFor(() =>
@@ -204,6 +212,42 @@ describe("renderer interactive iOS composition", () => {
         completeFirstRun: true,
       }),
     );
+    const activeServerCall = iosBoot.setStorageValue.mock.calls.find(
+      ([key]) => key === "elizaos:active-server",
+    );
+    expect(activeServerCall).toBeDefined();
+    const persistedActiveServer = JSON.parse(activeServerCall?.[1] ?? "{}");
+    expect(persistedActiveServer).toEqual({
+      id: "remote:http://127.0.0.1:31337",
+      kind: "remote",
+      label: "127.0.0.1",
+      apiBase: "http://127.0.0.1:31337",
+    });
+    expect(persistedActiveServer).not.toHaveProperty("accessToken");
+    expect(iosBoot.setStorageValue).toHaveBeenCalledWith(
+      "eliza:first-run-complete",
+      "1",
+    );
+    const activeServerWrite =
+      iosBoot.setStorageValue.mock.invocationCallOrder[
+        iosBoot.setStorageValue.mock.calls.findIndex(
+          ([key]) => key === "elizaos:active-server",
+        )
+      ];
+    const completionWrite =
+      iosBoot.setStorageValue.mock.invocationCallOrder[
+        iosBoot.setStorageValue.mock.calls.findIndex(
+          ([key]) => key === "eliza:first-run-complete",
+        )
+      ];
+    const connectDispatch =
+      connectRequest.mock.invocationCallOrder[
+        connectRequest.mock.calls.findIndex(
+          ([detail]) => detail.completeFirstRun === true,
+        )
+      ];
+    expect(activeServerWrite).toBeLessThan(completionWrite ?? 0);
+    expect(completionWrite).toBeLessThan(connectDispatch ?? 0);
     removeConnectListener();
     window.removeEventListener(
       OPEN_NOTIFICATION_CENTER_EVENT,
@@ -217,5 +261,76 @@ describe("renderer interactive iOS composition", () => {
         files: [{ name: "note.txt", path: "/tmp/note.txt" }],
       }),
     ]);
+  });
+
+  it("does not announce a durable remote connection when protected persistence rejects", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    iosBoot.setStorageValue.mockRejectedValueOnce(
+      new Error("secure-store unavailable"),
+    );
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("http://127.0.0.1:31338"),
+      ).rejects.toThrow("secure-store unavailable");
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      removeConnectListener();
+    }
+  });
+
+  it("does not announce completion when the native first-run mirror rejects", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    iosBoot.setStorageValue
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("preferences unavailable"));
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("http://127.0.0.1:31338"),
+      ).rejects.toThrow("preferences unavailable");
+      expect(iosBoot.setStorageValue).toHaveBeenNthCalledWith(
+        iosBoot.setStorageValue.mock.calls.length - 1,
+        "elizaos:active-server",
+        expect.any(String),
+      );
+      expect(iosBoot.setStorageValue).toHaveBeenLastCalledWith(
+        "eliza:first-run-complete",
+        "1",
+      );
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      removeConnectListener();
+    }
+  });
+
+  it("consumes a recognized invalid remote link without persisting or connecting", async () => {
+    const { connectFirstRunRemoteDeepLink } = await import("./main");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
+    const persistedCallsBefore = iosBoot.setStorageValue.mock.calls.length;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await expect(
+        connectFirstRunRemoteDeepLink("ftp://untrusted.example/agent"),
+      ).resolves.toBe(true);
+      await expect(
+        connectFirstRunRemoteDeepLink("https://untrusted.example/agent"),
+      ).resolves.toBe(true);
+      expect(iosBoot.setStorageValue).toHaveBeenCalledTimes(
+        persistedCallsBefore,
+      );
+      expect(connectRequest).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+      warn.mockRestore();
+      removeConnectListener();
+    }
   });
 });

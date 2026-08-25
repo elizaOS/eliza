@@ -145,7 +145,7 @@ describe("ChatMessage desktop hover chrome", () => {
 
     const message = screen.getByTestId("thread-line");
     const bubble = screen.getByRole("button", {
-      name: "Show message actions",
+      name: "Your message: Keyboard draft",
     });
     const actions = screen.getByTestId("thread-line-actions");
     const content = actions.parentElement;
@@ -208,7 +208,7 @@ describe("ChatMessage desktop hover chrome", () => {
 
     const message = screen.getByTestId("thread-line");
     const bubble = screen.getByRole("button", {
-      name: "Show message actions",
+      name: "Your message: Pointer draft",
     });
     const actions = screen.getByTestId("thread-line-actions");
 
@@ -249,7 +249,7 @@ describe("ChatMessage desktop hover chrome", () => {
     );
 
     const bubble = screen.getByRole("button", {
-      name: "Show message actions",
+      name: "Agent message: Here are your latest balances.",
     });
     const nativeBubbleMatches = bubble.matches.bind(bubble);
     vi.spyOn(bubble, "matches").mockImplementation((selector) =>

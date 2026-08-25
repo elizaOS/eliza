@@ -11,6 +11,23 @@ import {
 } from "@elizaos/shared/runtime-env";
 import { readAliasedEnv } from "@elizaos/shared/utils/env";
 
+/** Headers accepted from the bundled app clients on cross-origin API calls. */
+export const APP_CORE_CORS_ALLOWED_HEADERS = [
+  "Content-Type",
+  "Authorization",
+  "X-API-Token",
+  "X-Api-Key",
+  "X-ElizaOS-Client-Id",
+  "X-ElizaOS-UI-Language",
+  "X-ElizaOS-Token",
+  "X-Eliza-Export-Token",
+  "X-Eliza-Terminal-Token",
+  "X-Eliza-Platform",
+  "X-Eliza-CSRF",
+  "X-ElizaOS-Turn-Correlation",
+  "X-ElizaOS-Turn-Attempt",
+].join(", ");
+
 /**
  * Build the set of localhost ports allowed for CORS.
  * Reads from env vars at call time so tests can override.

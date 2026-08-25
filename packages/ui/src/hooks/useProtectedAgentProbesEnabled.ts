@@ -9,13 +9,15 @@
  * each as a console error — the first-run noise of #16242. The in-chat first-run
  * conductor owns Cloud sign-in there; once a session exists the probes resume.
  *
- * Everywhere else (localhost, desktop/mobile local agents, self-hosted remotes)
- * the same-origin agent needs no cloud auth, so probes fire immediately — no
- * auth round-trip is inserted into those hot paths. Consumers:
+ * Everywhere else, loopback/local agents need no cloud auth, so probes fire
+ * immediately. Native remote authorities are the exception: the phone must
+ * finish pairing before protected loaders run, or their expected 401s become
+ * false unavailable cards during first run. Consumers:
  * `notifications-boot`, `useWeather`, `useRuntimeMode`, `useSlashCommandController`.
  */
 
 import { Capacitor } from "@capacitor/core";
+import { isLoopbackBindHost } from "@elizaos/shared";
 import { client } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
@@ -23,8 +25,8 @@ import { useIsAuthenticated } from "./useAuthStatus";
 
 /**
  * Pure decision behind {@link useProtectedAgentProbesEnabled}: probes are
- * allowed once authenticated, or on any origin that is not a bare Eliza Cloud
- * control-plane host (where the same-origin agent needs no cloud session).
+ * allowed once authenticated, or on an authority that is both non-Cloud and
+ * local to the current host. Native non-loopback authorities require pairing.
  */
 export function protectedAgentProbesEnabled(
   authenticated: boolean,
@@ -40,7 +42,19 @@ export function protectedAgentProbesEnabled(
   // Capacitor serves bundled assets from a synthetic https://localhost origin,
   // not an app-shell API server. With no selected authority, `/api/*` would
   // just return the renderer HTML (and cannot become valid after auth alone).
-  if (nativeRuntime && !agentBase?.trim()) return false;
+  if (nativeRuntime) {
+    const configuredBase = agentBase?.trim();
+    if (!configuredBase) return false;
+    if (!authenticated) {
+      try {
+        if (!isLoopbackBindHost(new URL(configuredBase).hostname)) return false;
+      } catch {
+        // error-policy:J3 an invalid native authority cannot become a
+        // pre-authenticated protected-probe target.
+        return false;
+      }
+    }
+  }
   if (authenticated) return true;
   return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
 }

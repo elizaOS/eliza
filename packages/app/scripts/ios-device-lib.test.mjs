@@ -19,7 +19,9 @@ import {
   assertDeviceUnlocked,
   buildCodesignPlan,
   buildCodesignVerificationPlan,
+  buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
+  buildIosXcuitestSigningArgs,
   buildOnlyTestingIdentifier,
   buildPlistXml,
   buildRunnerCodesignPlan,
@@ -34,6 +36,7 @@ import {
   DEFAULT_IOS_XCUITEST_SHARDS,
   deriveSigningEntitlements,
   deriveTargetSigningEntitlements,
+  didIsolatedXcuitestPass,
   entitlementSourceForTarget,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
@@ -43,6 +46,7 @@ import {
   formatDeviceUnlockWaitMessage,
   hasBundleKeyInSimctlListappsOutput,
   IOS_APPEX_TARGET_NAMES,
+  IOS_V1_APPEX_TARGET_NAMES,
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   normalizeProvisioningProfile,
@@ -401,28 +405,54 @@ describe("resolveMaintainedIosSigningTargets", () => {
     bundleId: `ai.elizaos.app.${targetName}`,
     path: `/App.app/PlugIns/${targetName}.appex`,
   }));
+  const v1Appexes = completeAppexes.filter(
+    ({ targetName }) => targetName !== "ElizaKeyboard",
+  );
 
-  it("accepts the exact full app/appex target layout", () => {
+  it("accepts the exact v1 app/appex target layout without the keyboard", () => {
     expect(
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: v1Appexes,
+      }),
+    ).toHaveLength(1 + IOS_V1_APPEX_TARGET_NAMES.length);
+  });
+
+  it("requires an explicit v2 opt-in to accept and require the keyboard", () => {
+    expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
         appexes: completeAppexes,
       }),
+    ).toThrow(/unexpectedly contains ElizaKeyboard/);
+    expect(
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: completeAppexes,
+        keyboardExtensionEnabled: true,
+      }),
     ).toHaveLength(1 + IOS_APPEX_TARGET_NAMES.length);
+    expect(() =>
+      resolveMaintainedIosSigningTargets({
+        appBundleId: "ai.elizaos.app",
+        appexes: v1Appexes,
+        keyboardExtensionEnabled: true,
+      }),
+    ).toThrow(/missing maintained appexes: ElizaKeyboard/);
   });
 
   it("fails for missing, unknown, or bundle-id-substituted appexes", () => {
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
-        appexes: completeAppexes.slice(1),
+        appexes: v1Appexes.slice(1),
       }),
     ).toThrow(/missing maintained appexes/);
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
         appexes: [
-          ...completeAppexes,
+          ...v1Appexes,
           {
             targetName: "UnknownExtension",
             bundleId: "ai.elizaos.app.UnknownExtension",
@@ -433,7 +463,7 @@ describe("resolveMaintainedIosSigningTargets", () => {
     expect(() =>
       resolveMaintainedIosSigningTargets({
         appBundleId: "ai.elizaos.app",
-        appexes: completeAppexes.map((appex, index) =>
+        appexes: v1Appexes.map((appex, index) =>
           index === 0
             ? { ...appex, bundleId: "com.attacker.substitute" }
             : appex,
@@ -522,6 +552,20 @@ describe("deriveSigningEntitlements", () => {
 });
 
 describe("deriveTargetSigningEntitlements", () => {
+  it("accepts Apple's scalar wildcard grant for associated domains", () => {
+    const profile = normalized({
+      extraEntitlements: {
+        "com.apple.developer.associated-domains": "*",
+      },
+    });
+    const claims = deriveTargetSigningEntitlements(profile, "ai.elizaos.app", {
+      "com.apple.developer.associated-domains": ["applinks:eliza.app"],
+    });
+    expect(claims["com.apple.developer.associated-domains"]).toEqual([
+      "applinks:eliza.app",
+    ]);
+  });
+
   it("signs target claims plus identity keys, never the whole profile allowlist", () => {
     const profile = normalized({
       extraEntitlements: {
@@ -822,6 +866,81 @@ describe("rewriteXctestrunUITargetApp", () => {
 
   it("returns 0 when there is nothing to rewrite", () => {
     expect(rewriteXctestrunUITargetApp({ Foo: { Bar: "baz" } }, "/x")).toBe(0);
+  });
+});
+
+describe("buildIosXcuitestForwardedEnvironment", () => {
+  it("forwards remote pairing and view knobs through Xcode's runner prefix", () => {
+    expect(
+      buildIosXcuitestForwardedEnvironment({
+        ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+        ELIZA_TEST_CHAT_REPLY_MARKER: "IOS_GEMMA_FRESH_123_OK",
+        ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER: "IOS_OWNER_BEFORE_OK",
+        ELIZA_TEST_CHAT_AFTER_RESTART_MARKER: "IOS_OWNER_AFTER_OK",
+        ELIZA_TEST_OWNER_PASSWORD: "runner-secret",
+        ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
+        ELIZA_VIEW_PROMPT: "Open the Notes view now.",
+        ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",
+      }),
+    ).toEqual({
+      TEST_RUNNER_ELIZA_TEST_PAIRING_CODE: "ABCD-EFGH-IJKL",
+      TEST_RUNNER_ELIZA_TEST_CHAT_REPLY_MARKER: "IOS_GEMMA_FRESH_123_OK",
+      TEST_RUNNER_ELIZA_TEST_CHAT_BEFORE_RESTART_MARKER: "IOS_OWNER_BEFORE_OK",
+      TEST_RUNNER_ELIZA_TEST_CHAT_AFTER_RESTART_MARKER: "IOS_OWNER_AFTER_OK",
+      TEST_RUNNER_ELIZA_TEST_OWNER_PASSWORD: "runner-secret",
+      TEST_RUNNER_ELIZA_TEST_REMOTE_API_BASE: "http://192.0.2.10:31338",
+      TEST_RUNNER_ELIZA_VIEW_PROMPT: "Open the Notes view now.",
+      TEST_RUNNER_ELIZA_VIEW_ROUTE_TIMEOUT_SECONDS: "45",
+    });
+  });
+
+  it("does not forward undeclared host values or empty knobs", () => {
+    expect(
+      buildIosXcuitestForwardedEnvironment({
+        CEREBRAS_API_KEY: "must-not-cross-the-test-boundary",
+        ELIZA_TEST_PAIRING_CODE: "",
+        ELIZA_SEND_PROMPT: "hello",
+      }),
+    ).toEqual({ TEST_RUNNER_ELIZA_SEND_PROMPT: "hello" });
+  });
+});
+
+describe("buildIosXcuitestSigningArgs", () => {
+  it("overrides the template team for an automatically signed device runner", () => {
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: true,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toEqual(["-allowProvisioningUpdates", "DEVELOPMENT_TEAM=K57Q6PJ395"]);
+  });
+
+  it("preserves ad-hoc simulator and unsigned graft-signing policies", () => {
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: false,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toEqual(["CODE_SIGNING_ALLOWED=NO"]);
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "sim",
+        xcodeSigning: false,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toContain("CODE_SIGN_IDENTITY=-");
+  });
+
+  it("rejects a malformed explicit Apple team identifier", () => {
+    expect(() =>
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: true,
+        developmentTeam: "not-a-team",
+      }),
+    ).toThrow(/10-character Apple team identifier/);
   });
 });
 
@@ -1132,6 +1251,32 @@ describe("classifyXcresultSummaryForGate", () => {
     expect(verdict.ok).toBe(true);
     expect(verdict.stats.total).toBe(3);
     expect(verdict.stats.passed).toBe(1);
+  });
+});
+
+describe("didIsolatedXcuitestPass", () => {
+  it("requires a zero exit and at least one xcresult-recorded pass", () => {
+    expect(
+      didIsolatedXcuitestPass(0, {
+        result: "Passed",
+        passedTests: 1,
+        failedTests: 0,
+      }),
+    ).toBe(true);
+    expect(
+      didIsolatedXcuitestPass(0, {
+        result: "Passed",
+        passedTests: 0,
+        failedTests: 0,
+      }),
+    ).toBe(false);
+    expect(didIsolatedXcuitestPass(0, null)).toBe(false);
+    expect(
+      didIsolatedXcuitestPass(65, {
+        result: "Passed",
+        passedTests: 1,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -1609,6 +1754,19 @@ describe("parseFailedTestIdentifiers (#13566)", () => {
     expect(parseFailedTestIdentifiers(null)).toEqual([]);
     expect(parseFailedTestIdentifiers(42)).toEqual([]);
     expect(parseFailedTestIdentifiers({})).toEqual([]);
+  });
+
+  it("rejects runner-level failures that have no executable test identifier", () => {
+    expect(
+      parseFailedTestIdentifiers({
+        testFailures: [
+          {
+            testName: "AppUITests-Runner encountered an infrastructure error",
+            targetName: "AppUITests",
+          },
+        ],
+      }),
+    ).toEqual([]);
   });
 });
 

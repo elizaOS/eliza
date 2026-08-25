@@ -1,6 +1,8 @@
 /**
  * Root component of the standalone story gallery app: composes every story group into one page.
  */
+
+import { useEffect, useState } from "react";
 import { Story, type StoryGroup } from "./Story.tsx";
 import { analyticsStories } from "./stories/analytics.tsx";
 import { brandStories } from "./stories/brand.tsx";
@@ -43,6 +45,33 @@ const groups: StoryGroup[] = [
 ];
 
 export function App() {
+  const [focusedId, setFocusedId] = useState(() =>
+    window.location.hash.replace(/^#/, ""),
+  );
+  useEffect(() => {
+    const onHashChange = () =>
+      setFocusedId(window.location.hash.replace(/^#/, ""));
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  const focusedStory = groups
+    .flatMap((group) => group.stories)
+    .find((story) => story.id === focusedId);
+  if (focusedStory) {
+    return (
+      <div className="gallery-shell gallery-shell--focused">
+        <main className="gallery-main">
+          <header className="gallery-focus-header">
+            <a href={window.location.pathname}>All components</a>
+            <span>Eliza App preview</span>
+          </header>
+          <section className="gallery-group gallery-group--focused">
+            <Story story={focusedStory} focused />
+          </section>
+        </main>
+      </div>
+    );
+  }
   return (
     <div className="gallery-shell">
       <nav className="gallery-toc" aria-label="Component catalog">

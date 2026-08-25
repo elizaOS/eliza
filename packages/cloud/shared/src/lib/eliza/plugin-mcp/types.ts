@@ -64,7 +64,7 @@ export interface ConnectionState {
   consecutivePingFailures: number;
 }
 
-export type McpServerStatus = "connecting" | "connected" | "disconnected";
+export type McpServerStatus = "connecting" | "connected" | "disconnected" | "error";
 
 export interface McpServer {
   name: string;

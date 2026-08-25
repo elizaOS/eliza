@@ -33,7 +33,7 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
   // ---- Auth middleware --------------------------------------------------
   app.use("*", async (c, next) => {
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
-    if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() === "") {
+    if (!auth?.startsWith("Bearer ") || auth.slice(7).trim() === "") {
       return c.json<ErrorEnvelope>(
         {
           error: {

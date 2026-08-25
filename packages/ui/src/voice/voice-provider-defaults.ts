@@ -31,14 +31,12 @@
  *
  * Layering caveat (this function is only one of two ASR layers): the `asr`
  * value it returns is the *provider* — the server-side transcription route the
- * settings picker seeds and the server uses when it transcribes. It does NOT
- * pick the interactive-capture engine. That is `resolveBackendKind` in
- * `voice-capture-factory.ts`, which on a native-mobile platform with the
- * TalkMode plugin present unconditionally uses the OS speech recognizer (the
- * only backend that streams interim transcripts, and the one whose assets are
- * actually staged on phones) ahead of any provider preference. So on native
- * mobile the `eliza-cloud` value below governs server-side transcription, not
- * the live on-device capture path — the two layers are chosen independently.
+ * settings picker seeds and the server uses when it transcribes. Interactive
+ * capture respects that provider: `eliza-cloud` / `openai` record a WAV and
+ * send it to the configured cloud route on every platform, including native
+ * mobile. `resolveBackendKind` in `voice-capture-factory.ts` uses the OS speech
+ * recognizer only as the local/unset native fallback. This keeps the provider
+ * label, data path, and permission prompt truthful.
  *
  * On web/desktop the two layers now agree for `eliza-cloud`: the capture
  * factory records a WAV and POSTs it to the cloud STT proxy (`/api/asr/cloud`),

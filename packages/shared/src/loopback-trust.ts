@@ -414,7 +414,17 @@ function isTrustedLocalOrigin(raw: string, host: string | null): boolean {
 }
 
 function isTrustedLocalReferer(raw: string, host: string | null): boolean {
-  return isTrustedLocalBrowserUrl(raw.trim(), host, true);
+  const trimmed = raw.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (LOCAL_APP_PROTOCOLS.has(parsed.protocol)) {
+      return true;
+    }
+    return isTrustedLocalBrowserUrl(trimmed, host, true);
+  } catch {
+    // error-policy:J3 untrusted Referer metadata with an invalid URL is denied.
+    return false;
+  }
 }
 
 function cloudBlocksLocalTrust(cloudCheck: "env" | "container"): boolean {

@@ -13,6 +13,7 @@ import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
 import {
   createPersistedActiveServer,
+  loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
 import {
@@ -209,14 +210,30 @@ export function applyLaunchConnection(args: {
     throw new Error("Cloud launch owner does not match its API base");
   }
 
+  // Native hosts may replay their retained, tokenless connect URL after the
+  // pairing flow reloads the renderer. Preserve only a credential already
+  // bound to this exact remote endpoint; carrying it to another endpoint would
+  // leak authority, while clearing it here would undo the completed pairing.
+  const activeServer = loadPersistedActiveServer();
+  const matchingRemoteCredential =
+    kind === "remote" &&
+    token === null &&
+    activeServer?.kind === "remote" &&
+    typeof activeServer.apiBase === "string" &&
+    normalizeLaunchApiBase(activeServer.apiBase, { kind: "remote" }) ===
+      normalizedApiBase
+      ? activeServer.accessToken?.trim() || null
+      : null;
+  const effectiveToken = token ?? matchingRemoteCredential;
+
   client.setToken(null);
   client.setBaseUrl(normalizedApiBase);
-  if (token) client.setToken(token);
+  if (effectiveToken) client.setToken(effectiveToken);
   const persisted = createPersistedActiveServer({
     kind,
     ...(cloudAgentId ? { id: `cloud:${cloudAgentId}` } : {}),
     apiBase: normalizedApiBase,
-    ...(token ? { accessToken: token } : {}),
+    ...(effectiveToken ? { accessToken: effectiveToken } : {}),
   });
   savePersistedActiveServer(persisted);
   // Keep the agent-profile registry (the "My Runtimes" source of truth) in sync
@@ -228,10 +245,10 @@ export function applyLaunchConnection(args: {
     label: persisted.label,
     ...(cloudAgentId ? { cloudAgentId } : {}),
     ...(persisted.apiBase !== undefined ? { apiBase: persisted.apiBase } : {}),
-    ...(token ? { accessToken: token } : {}),
+    ...(effectiveToken ? { accessToken: effectiveToken } : {}),
   });
 
-  return { apiBase: normalizedApiBase, token };
+  return { apiBase: normalizedApiBase, token: effectiveToken };
 }
 
 export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
