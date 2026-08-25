@@ -822,7 +822,31 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
 		for (const entityId of entityIds) {
-			this.entities.delete(String(entityId));
+			const entityKey = String(entityId);
+			for (const [componentId, component] of this.components.entries()) {
+				if (
+					String(component.entityId) === entityKey ||
+					String(component.sourceEntityId) === entityKey
+				) {
+					this.removeComponentIndexes(component);
+					this.components.delete(componentId);
+				}
+			}
+
+			const roomIds = this.roomsByParticipant.get(entityKey);
+			if (roomIds) {
+				for (const roomId of roomIds) {
+					const participants = this.participantsByRoom.get(roomId);
+					participants?.delete(entityKey);
+					if (participants?.size === 0) {
+						this.participantsByRoom.delete(roomId);
+					}
+					this.participantUserState.delete(`${roomId}:${entityKey}`);
+				}
+				this.roomsByParticipant.delete(entityKey);
+			}
+
+			this.entities.delete(entityKey);
 		}
 	}
 
