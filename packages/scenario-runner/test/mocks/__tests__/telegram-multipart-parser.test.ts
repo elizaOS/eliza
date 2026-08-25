@@ -43,20 +43,45 @@ describe("telegram multipart parser (adversarial)", () => {
       part("photo", "matrix-payload.png", payload),
     );
     const parts = parseMultipartPartsForTest(raw, CT);
+    // ALL THREE parts must parse — a loop that advances past the next
+    // delimiter skips every second part (the caption here).
+    expect(parts.map((p) => p.name)).toEqual(["chat_id", "caption", "photo"]);
+    const chat = parts.find((p) => p.name === "chat_id");
+    expect(chat?.data.toString("utf8")).toBe("-10023105");
+    const caption = parts.find((p) => p.name === "caption");
+    expect(caption?.data.toString("utf8")).toBe("matrix caption");
     const photo = parts.find((p) => p.name === "photo");
     expect(photo?.filename).toBe("matrix-payload.png");
     // Exact byte equality: the trailing CRLF belongs to the delimiter, not
     // the payload (regression guard for the +\r\n truncation bug class).
     expect(photo && Buffer.compare(photo.data, payload)).toBe(0);
-    const chat = parts.find((p) => p.name === "chat_id");
-    expect(chat?.data.toString("utf8")).toBe("-10023105");
+  });
+
+  it("parses every part of a five-part body in order (skip regression)", () => {
+    const raw = body(
+      ...[1, 2, 3, 4, 5].map((n) =>
+        part(`field${n}`, undefined, Buffer.from(`value-${n}`)),
+      ),
+    );
+    const parts = parseMultipartPartsForTest(raw, CT);
+    expect(parts.map((p) => p.name)).toEqual([
+      "field1",
+      "field2",
+      "field3",
+      "field4",
+      "field5",
+    ]);
+    for (const p of parts) {
+      const n = p.name.slice("field".length);
+      expect(p.data.toString("utf8")).toBe(`value-${n}`);
+    }
   });
 
   it("does not truncate when the file content contains the boundary mid-line", () => {
     // Boundary bytes appear inside the payload WITHOUT CRLF framing around
     // them as a delimiter line would have — they are content, not framing.
     const payload = Buffer.concat([
-      Buffer.from("before--" + BOUNDARY + "after"),
+      Buffer.from(`before--${BOUNDARY}after`),
       Buffer.from("x".repeat(64)),
     ]);
     const raw = body(part("photo", "collide.bin", payload));
@@ -89,7 +114,7 @@ describe("telegram multipart parser (adversarial)", () => {
     // No delimiter at body start and the first boundary hit lacks CRLF
     // framing before it — nothing is a valid part.
     const raw = Buffer.concat([
-      Buffer.from("junk--" + BOUNDARY + "more junk\r\n"),
+      Buffer.from(`junk--${BOUNDARY}more junk\r\n`),
       body(part("photo", "x.bin", Buffer.from("data"))),
     ]);
     const parts = parseMultipartPartsForTest(raw, CT);

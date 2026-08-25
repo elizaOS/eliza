@@ -1965,8 +1965,8 @@ function parseMultipartParts(
   const parts: Array<{ name: string; filename?: string; data: Buffer }> = [];
   // A delimiter is the boundary at a line start: preceded by CRLF (or body
   // start) and followed by CRLF (next part) or `--` (closing delimiter).
-  // Scan budget bounds delimiter iteration even when parts are skipped as
-  // malformed or over-cap, so a hostile body cannot force unbounded loops.
+  // The scan budget bounds parsed-part iterations; a hostile body cannot
+  // force unbounded part acceptance.
   let cursor = -1;
   let atBodyStart = true;
   let scans = 0;
@@ -1975,7 +1975,10 @@ function parseMultipartParts(
     scans < MOCK_MAX_MULTIPART_SCAN
   ) {
     scans += 1;
-    cursor = findDelimiterLine(raw, boundaryLine, atBodyStart ? 0 : cursor + 1);
+    // Search from `cursor` (not cursor + 1): after a part is parsed between
+    // D(n) and D(n+1), D(n+1) is the CURRENT delimiter of the next part —
+    // searching past it would skip every second part.
+    cursor = findDelimiterLine(raw, boundaryLine, atBodyStart ? 0 : cursor);
     if (cursor === -1) break;
     const afterBoundary = cursor + boundaryLine.length;
     // Closing delimiter terminates parsing.
@@ -1988,7 +1991,7 @@ function parseMultipartParts(
     const nextDelimiter = findDelimiterLine(raw, boundaryLine, dataStart);
     if (nextDelimiter === -1) break;
     const headerEnd = raw.indexOf(Buffer.from("\r\n\r\n"), dataStart);
-    if (headerEnd !== -1 && headerEnd < nextDelimiter - 2) {
+    if (headerEnd !== -1 && headerEnd + 4 <= nextDelimiter - 2) {
       const headers = raw.subarray(dataStart, headerEnd).toString("utf8");
       const nameMatch = /name="([^"]*)"/.exec(headers);
       const fileMatch = /filename="([^"]*)"/.exec(headers);
