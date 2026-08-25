@@ -3,10 +3,13 @@
  * reconciliation and isolated Postgres integration tests execute the same query.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { dbRead } from "../../db/helpers";
+import { agentBackupRestoreOperations } from "../../db/schemas/agent-backup-catalog";
+import { agentSandboxReplacementAttempts } from "../../db/schemas/agent-sandbox-replacement-attempts";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
+import { dockerNodes } from "../../db/schemas/docker-nodes";
 
 /** Sandbox states that no longer consume a live Docker slot. */
 export const TERMINAL_SANDBOX_STATUSES = [
@@ -67,62 +70,191 @@ export function holdsCountedNodeSlot(row: { status: string; node_id: string | nu
   return !TERMINAL_SANDBOX_STATUS_SET.has(row.status);
 }
 
-type WorkloadCountDatabase = Pick<typeof dbRead, "select">;
+type WorkloadCountDatabase = Pick<typeof dbRead, "execute">;
 
-/** Counts live app and agent rows assigned to one Docker node. */
+/**
+ * Counts every live or reserved slot in one database snapshot.
+ *
+ * A restore->replacement->sandbox handoff changes two authorities in one
+ * transaction. Separate SELECTs under READ COMMITTED could observe opposite
+ * sides of that commit and derive either zero or two owners. Scalar subqueries
+ * inside this single statement all share one snapshot, so each atomic handoff
+ * contributes exactly one slot. Reserved owners join the immutable node-record
+ * id as well as logical node id, but deliberately remain counted across an
+ * incarnation change: reboot invalidates the remote target, not the retained
+ * slot, and cleanup must settle that authority before capacity is reusable.
+ * App-container slot markers outrank lifecycle status: a durable claim remains
+ * counted until its durable release, while rows created before those markers
+ * retain the historical status fallback.
+ */
 export async function countAllocatedWorkloadsOnNodeWithDatabase(
   database: WorkloadCountDatabase,
   nodeId: string,
 ): Promise<number> {
-  const [[containerRow], [agentRow], [replacementRow]] = await Promise.all([
-    database
-      .select({ count: sql<number>`count(*)::int` })
-      .from(containers)
-      .where(
-        and(
-          eq(containers.node_id, nodeId),
-          sql`${containers.status} not in ('failed','stopped','deleted')`,
-        ),
-      ),
-    database
-      .select({ count: sql<number>`count(*)::int` })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.node_id, nodeId),
-          // Recorded allocation ownership outranks status. Once a deletion
-          // generation has handed its slot back the row stops consuming
-          // capacity immediately, even though it can linger in a deletion
-          // status until final row cleanup; conversely a `deletion_failed` row
-          // that still owns its slot genuinely occupies one, which a
-          // status-only rule counted as free (#17185).
-          //
-          // NULL keeps the pre-ownership behaviour byte for byte: rows with no
-          // deletion intent never had ownership recorded, and neither did
-          // deletion intents that predate the column — both fall through to the
-          // terminal-status rule rather than being guessed either way.
-          sql`(
+  const result = await database.execute<{ count: number | string }>(sql`
+    SELECT (
+      (SELECT count(*) FROM ${containers}
+        WHERE ${containers.node_id} = ${nodeId}
+          AND NOT jsonb_exists(
+            COALESCE(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt'
+          )
+          AND (
+            jsonb_exists(COALESCE(${containers.metadata}, '{}'::jsonb), 'slotClaimedAt')
+            OR ${containers.status} NOT IN ('failed', 'stopped', 'deleted')
+          ))
+      + (SELECT count(*) FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.node_id} = ${nodeId}
+          AND (
             ${agentSandboxes.deletion_allocation_counted} IS TRUE
             OR (
               ${agentSandboxes.deletion_allocation_counted} IS NULL
-              AND ${agentSandboxes.status} not in (${sql.join(
+              AND ${agentSandboxes.status} NOT IN (${sql.join(
                 TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
                 sql`, `,
               )})
             )
-          )`,
-        ),
-      ),
-    database
-      .select({ count: sql<number>`count(*)::int` })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.replacement_cleanup_node_id, nodeId),
-          eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
-        ),
-      ),
-  ]);
+          ))
+      + (SELECT count(*) FROM ${agentSandboxes} AS cleanup
+        WHERE cleanup."replacement_cleanup_allocation_counted" IS TRUE
+          AND (
+            (cleanup."replacement_cleanup_node_record_id" IS NULL
+              AND cleanup."replacement_cleanup_node_id" = ${nodeId})
+            OR (cleanup."replacement_cleanup_node_record_id" IS NOT NULL AND EXISTS (
+              SELECT 1 FROM ${dockerNodes} AS cleanup_node
+              WHERE cleanup_node."id" = cleanup."replacement_cleanup_node_record_id"
+                AND cleanup_node."node_id" = ${nodeId}
+            ))
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${agentSandboxReplacementAttempts} AS reserved_attempt
+            WHERE reserved_attempt."capacity_state" = 'reserved'
+              AND reserved_attempt."id"
+                = cleanup."replacement_cleanup_attempt_id"
+              AND reserved_attempt."organization_id" = cleanup."organization_id"
+              AND reserved_attempt."agent_id" = cleanup."id"
+              AND reserved_attempt."locator_sandbox_id"
+                = cleanup."replacement_cleanup_sandbox_id"
+              AND reserved_attempt."locator_node_id"
+                = cleanup."replacement_cleanup_node_id"
+              AND reserved_attempt."locator_node_record_id"
+                = cleanup."replacement_cleanup_node_record_id"
+              AND reserved_attempt."locator_node_incarnation"
+                = cleanup."replacement_cleanup_node_incarnation"
+              AND reserved_attempt."locator_node_history_id"
+                = cleanup."replacement_cleanup_node_history_id"
+              AND reserved_attempt."locator_container_name"
+                = cleanup."replacement_cleanup_container_name"
+          ))
+      + (SELECT count(*)
+        FROM ${agentBackupRestoreOperations}
+        INNER JOIN ${dockerNodes}
+          ON ${dockerNodes.id} = ${agentBackupRestoreOperations.expected_node_record_id}
+        WHERE ${dockerNodes.node_id} = ${nodeId}
+          AND ${agentBackupRestoreOperations.capacity_state} = 'reserved')
+      + (SELECT count(*)
+        FROM ${agentSandboxReplacementAttempts}
+        INNER JOIN ${dockerNodes}
+          ON ${dockerNodes.id} = ${agentSandboxReplacementAttempts.locator_node_record_id}
+        WHERE ${dockerNodes.node_id} = ${nodeId}
+          AND ${agentSandboxReplacementAttempts.capacity_state} = 'reserved')
+    )::int AS count
+  `);
+  const row = result.rows[0];
+  const count = Number(row?.count);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error("Docker-node workload count query returned an invalid aggregate");
+  }
+  return count;
+}
 
-  return containerRow.count + agentRow.count + replacementRow.count;
+/**
+ * Counts live, retained, and reserved owners that make a node unsafe to drain.
+ * Durable app and agent slot ownership outranks a terminal lifecycle status:
+ * drain must not destroy a node until the corresponding release is recorded.
+ * Any app container with volume_path set pins its host regardless of lifecycle
+ * status. This is the autoscaler contract even when external-volume metadata is
+ * also present.
+ */
+export async function countRetainedWorkloadsOnNodeWithDatabase(
+  database: WorkloadCountDatabase,
+  nodeId: string,
+): Promise<number> {
+  const result = await database.execute<{ count: number | string }>(sql`
+    SELECT (
+      (SELECT count(*) FROM ${containers}
+        WHERE ${containers.node_id} = ${nodeId}
+          AND (
+            ${containers.status} NOT IN ('failed', 'deleted')
+            OR ${containers.volume_path} IS NOT NULL
+            OR (
+              NOT jsonb_exists(
+                COALESCE(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt'
+              )
+              AND jsonb_exists(
+                COALESCE(${containers.metadata}, '{}'::jsonb), 'slotClaimedAt'
+              )
+            )
+          ))
+      + (SELECT count(*) FROM ${agentSandboxes}
+        WHERE ${agentSandboxes.node_id} = ${nodeId}
+          AND (
+            ${agentSandboxes.deletion_allocation_counted} IS TRUE
+            OR (
+              ${agentSandboxes.status} NOT IN ('stopped', 'error')
+              AND (${agentSandboxes.pool_status} IS NULL
+                OR ${agentSandboxes.pool_status} <> 'unclaimed')
+            )
+          ))
+      + (SELECT count(*) FROM ${agentSandboxes} AS cleanup
+        WHERE (
+            (cleanup."replacement_cleanup_node_record_id" IS NULL
+              AND cleanup."replacement_cleanup_node_id" = ${nodeId})
+            OR (cleanup."replacement_cleanup_node_record_id" IS NOT NULL AND EXISTS (
+              SELECT 1 FROM ${dockerNodes} AS cleanup_node
+              WHERE cleanup_node."id" = cleanup."replacement_cleanup_node_record_id"
+                AND cleanup_node."node_id" = ${nodeId}
+            ))
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${agentSandboxReplacementAttempts} AS reserved_attempt
+            WHERE reserved_attempt."capacity_state" = 'reserved'
+              AND reserved_attempt."id"
+                = cleanup."replacement_cleanup_attempt_id"
+              AND reserved_attempt."organization_id" = cleanup."organization_id"
+              AND reserved_attempt."agent_id" = cleanup."id"
+              AND reserved_attempt."locator_sandbox_id"
+                = cleanup."replacement_cleanup_sandbox_id"
+              AND reserved_attempt."locator_node_id"
+                = cleanup."replacement_cleanup_node_id"
+              AND reserved_attempt."locator_node_record_id"
+                = cleanup."replacement_cleanup_node_record_id"
+              AND reserved_attempt."locator_node_incarnation"
+                = cleanup."replacement_cleanup_node_incarnation"
+              AND reserved_attempt."locator_node_history_id"
+                = cleanup."replacement_cleanup_node_history_id"
+              AND reserved_attempt."locator_container_name"
+                = cleanup."replacement_cleanup_container_name"
+          ))
+      + (SELECT count(*)
+        FROM ${agentBackupRestoreOperations}
+        INNER JOIN ${dockerNodes}
+          ON ${dockerNodes.id} = ${agentBackupRestoreOperations.expected_node_record_id}
+        WHERE ${dockerNodes.node_id} = ${nodeId}
+          AND ${agentBackupRestoreOperations.capacity_state} = 'reserved')
+      + (SELECT count(*)
+        FROM ${agentSandboxReplacementAttempts}
+        INNER JOIN ${dockerNodes}
+          ON ${dockerNodes.id} = ${agentSandboxReplacementAttempts.locator_node_record_id}
+        WHERE ${dockerNodes.node_id} = ${nodeId}
+          AND ${agentSandboxReplacementAttempts.capacity_state} = 'reserved')
+    )::int AS count
+  `);
+  const row = result.rows[0];
+  const count = Number(row?.count);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error("Docker-node retained workload query returned an invalid aggregate");
+  }
+  return count;
 }

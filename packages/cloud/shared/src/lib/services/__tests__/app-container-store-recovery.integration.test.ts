@@ -79,6 +79,7 @@ beforeAll(async () => {
       updated_at timestamp NOT NULL DEFAULT now()
     );
     CREATE TABLE docker_nodes (
+      id uuid UNIQUE NOT NULL,
       node_id text PRIMARY KEY,
       allocated_count integer NOT NULL DEFAULT 0,
       capacity integer NOT NULL,
@@ -88,14 +89,35 @@ beforeAll(async () => {
     );
     CREATE TABLE agent_sandboxes (
       id uuid PRIMARY KEY,
+      organization_id uuid,
       node_id text,
       status text NOT NULL,
+      replacement_cleanup_attempt_id uuid,
+      replacement_cleanup_sandbox_id text,
       replacement_cleanup_node_id text,
+      replacement_cleanup_container_name text,
       replacement_cleanup_allocation_counted boolean,
       deletion_allocation_counted boolean
     );
-    INSERT INTO docker_nodes (node_id, allocated_count, capacity, enabled)
-    VALUES ('node-1', 0, 2, true), ('node-full', 1, 1, true);
+    CREATE TABLE agent_backup_restore_operations (
+      expected_node_record_id uuid,
+      expected_node_id text,
+      capacity_state text
+    );
+    CREATE TABLE agent_sandbox_replacement_attempts (
+      id uuid,
+      organization_id uuid,
+      agent_id uuid,
+      locator_sandbox_id text,
+      locator_node_record_id uuid,
+      locator_node_id text,
+      locator_container_name text,
+      capacity_state text
+    );
+    INSERT INTO docker_nodes (id, node_id, allocated_count, capacity, enabled)
+    VALUES
+      ('00000000-0000-0000-0000-0000000000d1', 'node-1', 0, 2, true),
+      ('00000000-0000-0000-0000-0000000000d2', 'node-full', 1, 1, true);
     INSERT INTO containers
       (id, name, project_name, image_tag, port, organization_id, user_id, status)
     VALUES

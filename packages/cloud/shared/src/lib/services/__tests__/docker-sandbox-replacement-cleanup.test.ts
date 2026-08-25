@@ -25,6 +25,8 @@ import {
 } from "../sandbox-provider-types";
 import * as stewardTenantConfig from "../steward-tenant-config";
 
+const NODE_INCARNATION = "22222222-2222-4222-8222-222222222222";
+const NODE_HISTORY_ID = "44444444-4444-4444-8444-444444444444";
 const NODE: DockerNode = {
   id: "11111111-1111-4111-8111-111111111111",
   node_id: "node-replacement-b",
@@ -37,6 +39,8 @@ const NODE: DockerNode = {
   last_health_check: null,
   ssh_user: "root",
   host_key_fingerprint: "SHA256:replacement-node",
+  node_incarnation: NODE_INCARNATION,
+  current_node_history_id: NODE_HISTORY_ID,
   metadata: {},
   created_at: new Date("2026-07-23T00:00:00.000Z"),
   updated_at: new Date("2026-07-23T00:00:00.000Z"),
@@ -46,6 +50,7 @@ const CONTAINER_NAME = "agent-11111111-1111-4111-8111-111111111111";
 const VOLUME_PATH = "/data/agents/11111111-1111-4111-8111-111111111111";
 const ATTEMPT_ID = "33333333-3333-4333-8333-333333333333";
 const CONTAINER_ID = "a".repeat(64);
+const REPLACEMENT_BOOT_ID_READ_COMMAND = "cat '/proc/sys/kernel/random/boot_id'";
 const PREVIOUS_VPN_NODE_ID = "1403";
 const EXACT_VPN_NODE_ID = "1404";
 const REGISTRATION_STARTED_AT = "2026-07-23T00:05:00.000Z";
@@ -84,16 +89,22 @@ function stubNodeLookup(node: DockerNode = NODE) {
 function stubSsh(execute: (command: string) => Promise<string> = async () => ""): {
   getClient: ReturnType<typeof spyOn>;
   commands: string[];
+  bootCheckCommands: string[];
   candidateObservationCommands: string[];
   secretCleanupCommands: string[];
 } {
   const commands: string[] = [];
+  const bootCheckCommands: string[] = [];
   const candidateObservationCommands: string[] = [];
   const secretCleanupCommands: string[] = [];
   const getClient = spyOn(DockerSSHClient, "getClient").mockImplementation(((hostname: string) => {
     expect(hostname).toBe(NODE.hostname);
     return {
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) {
+          bootCheckCommands.push(command);
+          return `${NODE_INCARNATION}\n`;
+        }
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           secretCleanupCommands.push(command);
           return `${getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID)}\n`;
@@ -107,7 +118,13 @@ function stubSsh(execute: (command: string) => Promise<string> = async () => "")
       }),
     } as unknown as DockerSSHClient;
   }) as unknown as typeof DockerSSHClient.getClient);
-  return { getClient, commands, candidateObservationCommands, secretCleanupCommands };
+  return {
+    getClient,
+    commands,
+    bootCheckCommands,
+    candidateObservationCommands,
+    secretCleanupCommands,
+  };
 }
 
 function replacementIdentity(overrides?: {
@@ -122,6 +139,8 @@ function replacementIdentity(overrides?: {
     overrides?.vpnNodeName === undefined ? "agent-replacement" : overrides.vpnNodeName;
   return {
     nodeRecordId: NODE.id,
+    nodeIncarnation: NODE_INCARNATION,
+    nodeHistoryId: NODE_HISTORY_ID,
     nodeHostname: NODE.hostname,
     nodeSshPort: NODE.ssh_port,
     nodeSshUser: NODE.ssh_user,
@@ -146,11 +165,32 @@ function replacementIdentity(overrides?: {
   };
 }
 
+function postCutoverPrimaryIdentity(containerId: string | null = CONTAINER_ID) {
+  return {
+    nodeRecordId: NODE.id,
+    nodeIncarnation: NODE_INCARNATION,
+    nodeHistoryId: NODE_HISTORY_ID,
+    nodeHostname: NODE.hostname,
+    nodeSshPort: NODE.ssh_port,
+    nodeSshUser: NODE.ssh_user,
+    nodeHostKeyFingerprint: NODE.host_key_fingerprint,
+    replacementSecretCleanupVersion: null,
+    replacementAttemptId: null,
+    containerId,
+    vpnNodeName: null,
+    previousVpnNodeId: null,
+    vpnRegistrationStartedAt: null,
+    allocationCounted: true,
+  };
+}
+
 function legacyReplacementIdentity(
   overrides?: Parameters<typeof replacementIdentity>[0],
 ): Omit<
   ReturnType<typeof replacementIdentity>,
   | "nodeRecordId"
+  | "nodeIncarnation"
+  | "nodeHistoryId"
   | "nodeHostname"
   | "nodeSshPort"
   | "nodeSshUser"
@@ -159,6 +199,8 @@ function legacyReplacementIdentity(
 > {
   const {
     nodeRecordId: _nodeRecordId,
+    nodeIncarnation: _nodeIncarnation,
+    nodeHistoryId: _nodeHistoryId,
     nodeHostname: _nodeHostname,
     nodeSshPort: _nodeSshPort,
     nodeSshUser: _nodeSshUser,
@@ -179,6 +221,8 @@ function replacementHandle(replacementAttemptId = ATTEMPT_ID): SandboxHandle {
       nodeId: NODE.node_id,
       hostname: NODE.hostname,
       nodeRecordId: NODE.id,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeHistoryId: NODE_HISTORY_ID,
       nodeSshPort: NODE.ssh_port,
       nodeSshUser: NODE.ssh_user,
       nodeHostKeyFingerprint: NODE.host_key_fingerprint ?? undefined,
@@ -206,6 +250,8 @@ function replacementIntentHandle(replacementAttemptId = ATTEMPT_ID): SandboxHand
 function legacyReplacementHandle(handle: SandboxHandle): SandboxHandle {
   const {
     nodeRecordId: _nodeRecordId,
+    nodeIncarnation: _nodeIncarnation,
+    nodeHistoryId: _nodeHistoryId,
     nodeSshPort: _nodeSshPort,
     nodeSshUser: _nodeSshUser,
     nodeHostKeyFingerprint: _nodeHostKeyFingerprint,
@@ -2126,7 +2172,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
   test("verifies attempt label and id before exact-node cleanup without releasing capacity", async () => {
     const { primary: findNode } = stubNodeLookup();
-    const { commands } = stubSsh(async (command) => {
+    const { bootCheckCommands, commands, secretCleanupCommands } = stubSsh(async (command) => {
       if (command.startsWith("docker inspect")) {
         return inspectLine(CONTAINER_ID, ATTEMPT_ID);
       }
@@ -2144,14 +2190,200 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     );
 
     expect(findNode).toHaveBeenCalledWith(NODE.id);
+    expect(bootCheckCommands).toHaveLength(2);
     expect(commands[0]).toContain("docker inspect --format");
     expect(commands[0]).toContain(CONTAINER_ID);
-    expect(commands.slice(1)).toEqual([
-      `docker stop -t 10 '${CONTAINER_ID}'`,
-      `docker rm -f '${CONTAINER_ID}'`,
-    ]);
+    expect(commands[1]).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(commands[2]).toContain(`docker rm -f '${CONTAINER_ID}'`);
+    expect(commands[1]).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+    expect(commands[2]).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+    expect(secretCleanupCommands[0]).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
     expect(deleteVpn).toHaveBeenCalledWith("1442");
     expect(decrement).not.toHaveBeenCalled();
+  });
+
+  test("retires an exact post-cutover primary without candidate secret cleanup", async () => {
+    const { primary: findNode } = stubNodeLookup();
+    const { commands, candidateObservationCommands, secretCleanupCommands } = stubSsh(
+      async (command) => {
+        if (command.startsWith("docker inspect")) {
+          return inspectLine(CONTAINER_ID, "");
+        }
+        return "";
+      },
+    );
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockResolvedValue();
+
+    await replacementProvider().stopOnSpecificNodeForReplacement(
+      NODE.node_id,
+      CONTAINER_NAME,
+      null,
+      postCutoverPrimaryIdentity(),
+    );
+
+    expect(findNode).toHaveBeenCalledWith(NODE.id);
+    expect(secretCleanupCommands).toEqual([]);
+    expect(candidateObservationCommands).toEqual([]);
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toContain(`docker inspect --format`);
+    expect(commands[0]).toContain(`'${CONTAINER_ID}'`);
+    expect(commands[1]).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(commands[2]).toContain(`docker rm -f '${CONTAINER_ID}'`);
+    expect(commands.every((command) => !command.includes(`'${CONTAINER_NAME}'`))).toBe(true);
+    expect(decrement).not.toHaveBeenCalled();
+  });
+
+  test("never targets a same-name successor when the published primary disappears after stop", async () => {
+    stubNodeLookup();
+    const successorContainerId = "b".repeat(64);
+    let oldContainerPresent = true;
+    let successorOwnsName = false;
+    const destructiveDockerCommands: string[] = [];
+    const ssh = {
+      exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
+        if (command.startsWith("docker inspect")) {
+          expect(command).toContain(`'${CONTAINER_ID}'`);
+          return inspectLine(CONTAINER_ID, "");
+        }
+        if (command.includes("docker stop")) {
+          destructiveDockerCommands.push(command);
+          expect(command).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+          oldContainerPresent = false;
+          successorOwnsName = true;
+          return "";
+        }
+        if (command.includes("docker rm")) {
+          destructiveDockerCommands.push(command);
+          expect(successorOwnsName).toBe(true);
+          expect(command).toContain(`docker rm -f '${CONTAINER_ID}'`);
+          expect(command).not.toContain(successorContainerId);
+          if (!oldContainerPresent) {
+            throw new Error(`Error response from daemon: No such container: ${CONTAINER_ID}`);
+          }
+        }
+        return "";
+      }),
+    };
+    spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
+
+    await expect(
+      replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        null,
+        postCutoverPrimaryIdentity(),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(destructiveDockerCommands).toHaveLength(2);
+    expect(
+      destructiveDockerCommands.every(
+        (command) =>
+          command.includes(`'${CONTAINER_ID}'`) &&
+          !command.includes(`'${CONTAINER_NAME}'`) &&
+          !command.includes(successorContainerId),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects post-cutover cleanup without a published full Docker id before SSH", async () => {
+    stubNodeLookup();
+
+    for (const containerId of [null, CONTAINER_ID.slice(0, 12)]) {
+      const ssh = spyOn(DockerSSHClient, "getClient");
+      const error = await replacementProvider()
+        .stopOnSpecificNodeForReplacement(
+          NODE.node_id,
+          CONTAINER_NAME,
+          null,
+          postCutoverPrimaryIdentity(containerId),
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+      expect((error as Error).cause).toMatchObject({
+        code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_INVALID",
+      });
+      expect(ssh).not.toHaveBeenCalled();
+      mock.restore();
+      stubNodeLookup();
+    }
+  });
+
+  test("fails unresolved before Docker or Headscale mutation when SSH boot differs from DB", async () => {
+    stubNodeLookup();
+    const remoteCommands: string[] = [];
+    const differentBootId = "99999999-9999-4999-8999-999999999999";
+    spyOn(DockerSSHClient, "getClient").mockReturnValue({
+      exec: mock(async (command: string) => {
+        remoteCommands.push(command);
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${differentBootId}\n`;
+        throw new Error("unexpected remote mutation");
+      }),
+    } as unknown as DockerSSHClient);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+
+    const error = await replacementProvider()
+      .stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        EXACT_VPN_NODE_ID,
+        replacementIdentity(),
+      )
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_REPLACEMENT_REMOTE_NODE_INCARNATION_MISMATCH",
+    });
+    expect(remoteCommands).toEqual([REPLACEMENT_BOOT_ID_READ_COMMAND]);
+    expect(remoteCommands.some((command) => /docker (stop|rm)/.test(command))).toBe(false);
+    expect(deleteVpn).not.toHaveBeenCalled();
+  });
+
+  test("fences rm independently when the node reboots after a successful stop", async () => {
+    stubNodeLookup();
+    let remoteBootId = NODE_INCARNATION;
+    const executedDockerMutations: string[] = [];
+    const ssh = {
+      exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${remoteBootId}\n`;
+        if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
+          return `${getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID)}\n`;
+        }
+        if (command.startsWith("docker inspect")) return inspectLine(CONTAINER_ID, ATTEMPT_ID);
+        if (command.includes("docker stop")) {
+          expect(command).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+          expect(remoteBootId).toBe(NODE_INCARNATION);
+          executedDockerMutations.push("stop");
+          remoteBootId = "99999999-9999-4999-8999-999999999999";
+          return "";
+        }
+        if (command.includes("docker rm")) {
+          expect(command).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+          if (remoteBootId !== NODE_INCARNATION) {
+            throw new Error("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+          }
+          executedDockerMutations.push("rm");
+        }
+        return "";
+      }),
+    };
+    spyOn(DockerSSHClient, "getClient").mockReturnValue(ssh as unknown as DockerSSHClient);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+
+    await expect(
+      replacementProvider().stopOnSpecificNodeForReplacement(
+        NODE.node_id,
+        CONTAINER_NAME,
+        EXACT_VPN_NODE_ID,
+        replacementIdentity(),
+      ),
+    ).rejects.toThrow("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+
+    expect(executedDockerMutations).toEqual(["stop"]);
+    expect(deleteVpn).not.toHaveBeenCalled();
   });
 
   test("rejects a malformed secret-cleanup receipt before inspecting Docker or mutating Headscale", async () => {
@@ -2159,6 +2391,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     spyOn(DockerSSHClient, "getClient").mockReturnValue({
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
         commands.push(command);
         return "unexpected-output\n";
       }),
@@ -2217,7 +2450,13 @@ describe("DockerSandboxProvider replacement cleanup", () => {
   test("rejects exact node-record ABA or SSH tuple drift before opening SSH", async () => {
     for (const authoritativeNode of [
       null,
+      { ...NODE, id: "55555555-5555-4555-8555-555555555555" },
+      { ...NODE, node_id: "node-reused-by-sibling" },
+      { ...NODE, node_incarnation: "66666666-6666-4666-8666-666666666666" },
+      { ...NODE, current_node_history_id: "77777777-7777-4777-8777-777777777777" },
       { ...NODE, hostname: "192.0.2.99" },
+      { ...NODE, ssh_port: 2222 },
+      { ...NODE, ssh_user: "operator" },
       { ...NODE, host_key_fingerprint: "SHA256:rotated-key" },
     ]) {
       const provider = replacementProvider();
@@ -2290,27 +2529,24 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     }
   });
 
-  test("keeps legacy nodeId-only cleanup compatible without claiming exact authority", async () => {
+  test("refuses legacy nodeId-only cleanup before lookup, SSH, or remote mutation", async () => {
     const legacyLookup = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(NODE);
-    const { commands, secretCleanupCommands } = stubSsh(async (command) => {
-      if (command.startsWith("docker inspect")) return inspectLine(CONTAINER_ID, ATTEMPT_ID);
-      return "";
-    });
+    const ssh = spyOn(DockerSSHClient, "getClient");
 
-    await replacementProvider().stopOnSpecificNodeForReplacement(
-      NODE.node_id,
-      CONTAINER_NAME,
-      null,
-      {
+    const error = await replacementProvider()
+      .stopOnSpecificNodeForReplacement(NODE.node_id, CONTAINER_NAME, null, {
         replacementAttemptId: ATTEMPT_ID,
         containerId: CONTAINER_ID,
         allocationCounted: true,
-      },
-    );
+      })
+      .catch((caught: unknown) => caught);
 
-    expect(legacyLookup).toHaveBeenCalledWith(NODE.node_id);
-    expect(commands[0]).toContain("docker inspect");
-    expect(secretCleanupCommands).toEqual([]);
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_INVALID",
+    });
+    expect(legacyLookup).not.toHaveBeenCalled();
+    expect(ssh).not.toHaveBeenCalled();
   });
 
   test("refuses a same-name label mismatch inside the converge grace window", async () => {
@@ -2335,35 +2571,6 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
-  test("converges a same-name label mismatch past the grace window via id+name identity", async () => {
-    stubNodeLookup();
-    const { commands } = stubSsh(async (command) => {
-      if (command.startsWith("docker inspect")) {
-        return inspectLine(CONTAINER_ID, "another-attempt");
-      }
-      return "";
-    });
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockResolvedValue();
-    const provider = replacementProvider({
-      now: () => CONTAINER_CREATED_AT_MS + 2 * 60 * 60 * 1000,
-    });
-
-    await provider.stopOnSpecificNodeForReplacement(
-      NODE.node_id,
-      CONTAINER_NAME,
-      "1444",
-      legacyReplacementIdentity(),
-    );
-
-    expect(commands.slice(1)).toEqual([
-      `docker stop -t 10 '${CONTAINER_ID}'`,
-      `docker rm -f '${CONTAINER_ID}'`,
-    ]);
-    expect(deleteVpn).toHaveBeenCalledWith("1444");
-    expect(decrement).not.toHaveBeenCalled();
-  });
-
   test("keeps failing closed past the grace window when the observed name differs", async () => {
     stubNodeLookup();
     const { commands } = stubSsh(async () =>
@@ -2381,29 +2588,6 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
     expect(commands).toHaveLength(1);
     expect(deleteVpn).not.toHaveBeenCalled();
-  });
-
-  test("bounds an id-less stale fence when the name belongs to a newer attempt", async () => {
-    stubNodeLookup();
-    const newerContainerId = "b".repeat(64);
-    const { commands } = stubSsh(async () => inspectLine(newerContainerId, "newer-attempt"));
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        "1446",
-        legacyReplacementIdentity({ containerId: null }),
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(commands).toHaveLength(1);
-    expect(commands[0]).toContain(CONTAINER_NAME);
-    expect(commands[0]).not.toContain(`docker stop`);
-    expect(commands[0]).not.toContain(`docker rm`);
-    expect(deleteVpn).toHaveBeenCalledWith("1446");
   });
 
   test("refuses cleanup when Docker's inspected id differs from the persisted id", async () => {
@@ -2473,6 +2657,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const commands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return `${getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID)}\n${getReplacementDockerCreateQuiescentReceipt(ATTEMPT_ID)}\n`;
         }
@@ -2516,8 +2701,9 @@ describe("DockerSandboxProvider replacement cleanup", () => {
 
     expect(commands).toHaveLength(3);
     expect(candidateObservationCommands).toHaveLength(1);
-    expect(commands[1]).toBe(`docker stop -t 10 '${CONTAINER_ID}'`);
-    expect(commands[2]).toBe(`docker rm -f '${CONTAINER_ID}'`);
+    expect(candidateObservationCommands[0]).toContain("ELIZA_REPLACEMENT_BOOT_ID_MISMATCH");
+    expect(commands[1]).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(commands[2]).toContain(`docker rm -f '${CONTAINER_ID}'`);
   });
 
   test("replays an exact id-less cleanup after its first successful removal", async () => {
@@ -2528,6 +2714,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const stopCommands: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
@@ -2547,11 +2734,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           }
           return inspectLine(CONTAINER_ID, ATTEMPT_ID);
         }
-        if (command.startsWith("docker stop")) {
+        if (command.includes("docker stop")) {
           stopCommands.push(command);
           return "";
         }
-        if (command.startsWith("docker rm")) {
+        if (command.includes("docker rm")) {
           stopCommands.push(command);
           candidatePresent = false;
           return "";
@@ -2573,10 +2760,8 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(inspectCommands).toHaveLength(2);
     expect(inspectCommands[0]).toContain(CONTAINER_NAME);
     expect(inspectCommands[1]).toContain(CONTAINER_ID);
-    expect(stopCommands).toEqual([
-      `docker stop -t 10 '${CONTAINER_ID}'`,
-      `docker rm -f '${CONTAINER_ID}'`,
-    ]);
+    expect(stopCommands[0]).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(stopCommands[1]).toContain(`docker rm -f '${CONTAINER_ID}'`);
   });
 
   test("converges when an active id-less create materializes after the first cleanup", async () => {
@@ -2588,6 +2773,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const retirementEvents: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
@@ -2607,12 +2793,12 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           if (!candidatePresent) throw new Error(`Error: No such object: ${target}`);
           return inspectLine(CONTAINER_ID, ATTEMPT_ID);
         }
-        if (command.startsWith("docker stop")) {
+        if (command.includes("docker stop")) {
           retirementEvents.push("stop");
           lifecycleCommands.push(command);
           return "";
         }
-        if (command.startsWith("docker rm")) {
+        if (command.includes("docker rm")) {
           retirementEvents.push("rm");
           lifecycleCommands.push(command);
           candidatePresent = false;
@@ -2640,10 +2826,8 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(candidateObserved).toBe(true);
     expect(inspectTargets).toEqual([CONTAINER_NAME, CONTAINER_NAME, CONTAINER_ID]);
     expect(retirementEvents).toEqual(["observe", "stop", "rm"]);
-    expect(lifecycleCommands).toEqual([
-      `docker stop -t 10 '${CONTAINER_ID}'`,
-      `docker rm -f '${CONTAINER_ID}'`,
-    ]);
+    expect(lifecycleCommands[0]).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(lifecycleCommands[1]).toContain(`docker rm -f '${CONTAINER_ID}'`);
   });
 
   test("recovers an observation-marker response loss before or after commit", async () => {
@@ -2656,6 +2840,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     const inspectTargets: string[] = [];
     const ssh = {
       exec: mock(async (command: string) => {
+        if (command === REPLACEMENT_BOOT_ID_READ_COMMAND) return `${NODE_INCARNATION}\n`;
         if (command.includes("ELIZA_REPLACEMENT_SECRET_PURGED_V1")) {
           return [
             getReplacementSecretArtifactsCleanupReceipt(ATTEMPT_ID),
@@ -2679,7 +2864,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           if (!candidatePresent) throw new Error(`Error: No such object: ${CONTAINER_ID}`);
           return inspectLine(CONTAINER_ID, ATTEMPT_ID);
         }
-        if (command.startsWith("docker rm")) {
+        if (command.includes("docker rm")) {
           candidatePresent = false;
         }
         return "";
@@ -2719,7 +2904,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       if (command.startsWith("docker inspect")) {
         return inspectLine(CONTAINER_ID, ATTEMPT_ID);
       }
-      if (command.startsWith("docker rm")) {
+      if (command.includes("docker rm")) {
         throw new Error(
           `[docker-ssh] Command exited with code 1 on ${NODE.hostname}: [stderr] Error response from daemon: No such container: ${CONTAINER_ID}`,
         );
@@ -2780,188 +2965,9 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(deleteVpn).not.toHaveBeenCalled();
   });
 
-  test("legacy cleanup recovers a post-start VPN registration by name, suffix, time, and excluded live id", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error response from daemon: No such container: ${CONTAINER_NAME}`);
-    });
-    const matchingNodes = [
-      headscaleNode(PREVIOUS_VPN_NODE_ID, "agent-replacement", "2026-07-22T23:00:00.000Z"),
-      headscaleNode("1404", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-      headscaleNode("1405", "agent-other", "2026-07-23T00:05:03.000Z"),
-    ];
-    const listNodes = spyOn(headscaleClient, "listNodesStrict")
-      .mockResolvedValueOnce(matchingNodes)
-      .mockResolvedValue([]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await provider.stopOnSpecificNodeForReplacement(
-      NODE.node_id,
-      CONTAINER_NAME,
-      null,
-      legacyReplacementIdentity(),
-    );
-
-    expect(listNodes).toHaveBeenCalledTimes(4);
-    expect(deleteVpn).toHaveBeenCalledWith("1404");
-  });
-
-  test("legacy cleanup waits through an empty list and deletes a registration that commits late", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    const lateNode = headscaleNode(
-      "1406",
-      "agent-replacement-ab12cd34",
-      "2026-07-23T00:05:02.000Z",
-    );
-    const listNodes = spyOn(headscaleClient, "listNodesStrict")
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([lateNode])
-      .mockResolvedValue([]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await provider.stopOnSpecificNodeForReplacement(
-      NODE.node_id,
-      CONTAINER_NAME,
-      null,
-      legacyReplacementIdentity(),
-    );
-
-    expect(listNodes).toHaveBeenCalledTimes(4);
-    expect(deleteVpn).toHaveBeenCalledTimes(1);
-    expect(deleteVpn).toHaveBeenCalledWith("1406");
-  });
-
-  test("legacy cleanup retains the fence through the registration window and removes a late VPN node afterward", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    const startedAt = Date.parse(REGISTRATION_STARTED_AT);
-    let now = startedAt + 1_000;
-    const lateNode = headscaleNode(
-      "1407",
-      "agent-replacement-ab12cd34",
-      "2026-07-23T00:07:00.000Z",
-    );
-    const listNodes = spyOn(headscaleClient, "listNodesStrict")
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([lateNode])
-      .mockResolvedValue([]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider({ now: () => now });
-
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).rejects.toThrow("VPN registration window remains open");
-    expect(listNodes).not.toHaveBeenCalled();
-    expect(deleteVpn).not.toHaveBeenCalled();
-
-    now = startedAt + 60 * 60 * 1_000;
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).resolves.toBeUndefined();
-
-    expect(listNodes).toHaveBeenCalledTimes(4);
-    expect(deleteVpn).toHaveBeenCalledTimes(1);
-    expect(deleteVpn).toHaveBeenCalledWith("1407");
-  });
-
-  test("legacy cleanup allows bounded Headscale clock skew while retaining the name fence", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    const skewedNode = headscaleNode(
-      "1408",
-      "agent-replacement-ab12cd34",
-      "2026-07-23T00:04:55.000Z",
-    );
-    spyOn(headscaleClient, "listNodesStrict")
-      .mockResolvedValueOnce([skewedNode])
-      .mockResolvedValue([]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await provider.stopOnSpecificNodeForReplacement(
-      NODE.node_id,
-      CONTAINER_NAME,
-      null,
-      legacyReplacementIdentity(),
-    );
-
-    expect(deleteVpn).toHaveBeenCalledWith("1408");
-  });
-
-  test("fails closed when multiple new VPN registrations match the same intent", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([
-      headscaleNode("1409", "agent-replacement", "2026-07-23T00:05:01.000Z"),
-      headscaleNode("1410", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-    ]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(deleteVpn).not.toHaveBeenCalled();
-  });
-
-  test("fails closed when ambiguity appears after an initially empty Headscale list", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    const listNodes = spyOn(headscaleClient, "listNodesStrict")
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        headscaleNode("1411", "agent-replacement", "2026-07-23T00:05:01.000Z"),
-        headscaleNode("1412", "agent-replacement-ab12cd34", "2026-07-23T00:05:02.000Z"),
-      ]);
-    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
-    const provider = replacementProvider();
-
-    await expect(
-      provider.stopOnSpecificNodeForReplacement(
-        NODE.node_id,
-        CONTAINER_NAME,
-        null,
-        legacyReplacementIdentity(),
-      ),
-    ).rejects.toThrow("2 matching registrations");
-    expect(listNodes).toHaveBeenCalledTimes(2);
-    expect(deleteVpn).not.toHaveBeenCalled();
-  });
-
-  test("retains the complete locator across VPN API failure and never decrements capacity", async () => {
-    stubNodeLookup();
-    stubSsh(async () => {
-      throw new Error(`Error: No such object: ${CONTAINER_NAME}`);
-    });
-    spyOn(headscaleClient, "listNodesStrict").mockRejectedValue(new Error("Headscale unavailable"));
+  test("retains the complete legacy locator when exact node authority is absent", async () => {
+    const ssh = spyOn(DockerSSHClient, "getClient");
+    const listNodes = spyOn(headscaleClient, "listNodesStrict");
     const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockResolvedValue();
     const provider = replacementProvider();
 
@@ -2984,6 +2990,11 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
       allocationCounted: true,
     });
+    expect((error as Error).cause).toMatchObject({
+      code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_INVALID",
+    });
+    expect(ssh).not.toHaveBeenCalled();
+    expect(listNodes).not.toHaveBeenCalled();
     expect(decrement).not.toHaveBeenCalled();
   });
 

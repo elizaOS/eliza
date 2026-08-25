@@ -68,6 +68,10 @@ export interface SandboxReplacementCleanupLocator {
   containerName: string;
   /** Immutable docker_nodes primary key for exact-placement recovery. */
   nodeRecordId?: string | null;
+  /** Exact boot occurrence bound to nodeRecordId. */
+  nodeIncarnation?: string | null;
+  /** Append-only history receipt for the exact boot occurrence. */
+  nodeHistoryId?: string | null;
   /** SSH authority frozen with nodeRecordId before candidate effects. */
   nodeHostname?: string | null;
   nodeSshPort?: number | null;
@@ -76,6 +80,12 @@ export interface SandboxReplacementCleanupLocator {
   /** Attempt-scoped remote secret cleanup protocol understood by this locator. */
   replacementSecretCleanupVersion?: 1 | null;
   replacementAttemptId?: string | null;
+  /**
+   * Immutable Docker object identity. Candidate intents may temporarily omit
+   * it before create returns and candidate publications may use Docker's
+   * canonical short/full form. A post-cutover primary cleanup must publish the
+   * full lowercase 64-hex id and is never retired by reusable container name.
+   */
   containerId?: string | null;
   vpnNodeId?: string | null;
   vpnNodeName?: string | null;
@@ -130,6 +140,8 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
   readonly nodeId: string;
   readonly containerName: string;
   readonly nodeRecordId: string | null;
+  readonly nodeIncarnation: string | null;
+  readonly nodeHistoryId: string | null;
   readonly nodeHostname: string | null;
   readonly nodeSshPort: number | null;
   readonly nodeSshUser: string | null;
@@ -158,6 +170,8 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
           nodeId: locator.nodeId,
           containerName: locator.containerName,
           nodeRecordId: locator.nodeRecordId ?? null,
+          nodeIncarnation: locator.nodeIncarnation ?? null,
+          nodeHistoryId: locator.nodeHistoryId ?? null,
           replacementAttemptId: locator.replacementAttemptId ?? null,
           containerId: locator.containerId ?? null,
           vpnNodeId: locator.vpnNodeId ?? null,
@@ -170,6 +184,8 @@ export class SandboxReplacementCleanupUnresolvedError extends ElizaError {
     this.nodeId = locator.nodeId;
     this.containerName = locator.containerName;
     this.nodeRecordId = locator.nodeRecordId ?? null;
+    this.nodeIncarnation = locator.nodeIncarnation ?? null;
+    this.nodeHistoryId = locator.nodeHistoryId ?? null;
     this.nodeHostname = locator.nodeHostname ?? null;
     this.nodeSshPort = locator.nodeSshPort ?? null;
     this.nodeSshUser = locator.nodeSshUser ?? null;
@@ -247,7 +263,9 @@ export interface SandboxProvider {
    * because a submitted daemon create can materialize after its SSH client has
    * disconnected. Exact cleanup may settle only when the remote producer is
    * durably quiescent or after observing and recording the exact labeled
-   * candidate ID before removing it.
+   * candidate ID before removing it. Post-cutover primary cleanup instead
+   * requires a published full Docker ID. Every destructive SSH mutation is
+   * fenced against the persisted node boot ID inside the same remote command.
    */
   stopOnSpecificNodeForReplacement?(
     nodeId: string,

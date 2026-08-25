@@ -27,7 +27,10 @@ import {
   attestHetznerCloudNode,
   isTypedHetznerCloudNode,
 } from "./containers/hetzner-node-attestation";
-import { countAllocatedWorkloadsOnNode } from "./docker-node-workloads";
+import {
+  countAllocatedWorkloadsOnNode,
+  reconcileAllocatedWorkloadsOnNode,
+} from "./docker-node-workloads";
 import {
   dockerPlatformFlag,
   inferNodeArchitectureFromMetadata,
@@ -1353,17 +1356,12 @@ export class DockerNodeManager {
     const changes = new Map<string, { before: number; after: number }>();
 
     for (const node of nodes) {
-      const actualCount = await countAllocatedWorkloadsOnNode(node.node_id);
-
-      if (actualCount !== node.allocated_count) {
+      const reconciled = await reconcileAllocatedWorkloadsOnNode(node.node_id);
+      if (reconciled && reconciled.before !== reconciled.after) {
         logger.info(
-          `[docker-node-manager] Sync ${node.node_id}: allocated_count ${node.allocated_count} → ${actualCount}`,
+          `[docker-node-manager] Sync ${node.node_id}: allocated_count ${reconciled.before} → ${reconciled.after}`,
         );
-        await dockerNodesRepository.setAllocatedCount(node.node_id, actualCount);
-        changes.set(node.node_id, {
-          before: node.allocated_count,
-          after: actualCount,
-        });
+        changes.set(node.node_id, reconciled);
       }
     }
 

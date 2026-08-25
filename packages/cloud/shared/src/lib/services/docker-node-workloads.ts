@@ -6,14 +6,13 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { ensureAgentSandboxSchema } from "../../db/ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
-import { containers } from "../../db/schemas/containers";
-import { logger } from "../utils/logger";
+import { dockerNodes } from "../../db/schemas/docker-nodes";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,
+  countRetainedWorkloadsOnNodeWithDatabase,
   TERMINAL_SANDBOX_STATUS_SET,
   TERMINAL_SANDBOX_STATUSES,
 } from "./docker-node-workload-queries";
@@ -29,24 +28,35 @@ import {
 
 export type { OrphanReconcileResult } from "./orphan-container-reconciler";
 
-async function countRows(query: Promise<Array<{ count: number }>>): Promise<number> {
-  const [row] = await query;
-  if (!row) {
-    throw new ElizaError("Workload count query returned no aggregate row", {
-      code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
-    });
-  }
-  return row.count;
-}
-
 /** Postgres `undefined_column` — the shape a pre-migration read takes. */
 const UNDEFINED_COLUMN = "42703";
+const CAPACITY_OWNERSHIP_MIGRATION = "0315_agent_restore_capacity_ownership";
 
 function isUndefinedColumn(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === UNDEFINED_COLUMN
+  const seen = new Set<object>();
+  let current = error;
+  for (let depth = 0; depth < 8; depth += 1) {
+    if (typeof current !== "object" || current === null || seen.has(current)) return false;
+    seen.add(current);
+    try {
+      const candidate = current as { cause?: unknown; code?: unknown };
+      if (candidate.code === UNDEFINED_COLUMN) return true;
+      current = candidate.cause;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function capacityOwnershipMigrationRequired(nodeId: string, cause: unknown): ElizaError {
+  return new ElizaError(
+    "Docker-node capacity ownership migration is required before workload accounting can run",
+    {
+      code: "DOCKER_NODE_CAPACITY_OWNERSHIP_MIGRATION_REQUIRED",
+      context: { nodeId, migration: CAPACITY_OWNERSHIP_MIGRATION },
+      cause,
+    },
   );
 }
 
@@ -71,51 +81,71 @@ function isUndefinedColumn(error: unknown): boolean {
  * container is up but unreachable) and still occupies the slot.
  */
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
-  // Repair-on-failure rather than prophylactic DDL. This is the placement hot
-  // path (`getAvailableNode`, the autoscaler, `syncAllocatedCounts`, each once
-  // per node per sweep) and it reads ownership columns added after the base
-  // table, which the provisioning worker can reach before its migration has run
-  // — its deploy has no `migrate-db` gate.
-  //
-  // Calling ensure up front would guard that, but at a cost the guard does not
-  // justify: it puts a ~15-statement ALTER/CREATE block on every placement, and
-  // `ensureAgentSandboxSchema` rethrows AND drops its memo on failure, so one
-  // transient DDL failure would fail placement for every agent — a strictly
-  // wider blast radius than the missing column it protects against.
-  //
-  // Instead the query runs unguarded, and only an actual `undefined_column`
-  // triggers the self-heal and one retry. The happy path pays nothing, the
-  // pre-migration path still recovers, and a DDL failure surfaces on a request
-  // that was already failing rather than taking down placement wholesale.
+  // Migration 0315 introduces the two durable capacity-owner ledgers read by
+  // this placement hot path. `ensureAgentSandboxSchema` deliberately converges
+  // only the older agent-sandbox compatibility surface; it cannot add those
+  // ledger columns. Omitting either ledger would undercount reserved slots, so
+  // a pre-0315 database must fail closed and wait for db:migrate rather than
+  // retrying the same impossible query or falling back to legacy owners.
   try {
     return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
   } catch (error) {
-    // error-policy:J2 context-adding rethrow — only the known pre-migration
-    // shape is repairable; every other database failure keeps its cause and the
-    // node whose placement count could not be established.
-    if (!isUndefinedColumn(error)) {
-      throw new ElizaError("Failed to count allocated workloads on Docker node", {
-        code: "DOCKER_NODE_WORKLOAD_COUNT_FAILED",
-        context: { nodeId },
-        cause: error,
-      });
-    }
-    logger.warn(
-      "[docker-node-workloads] Workload count hit a missing column; applying agent-sandbox schema ensure and retrying once",
-      { nodeId },
-    );
-    try {
-      await ensureAgentSandboxSchema();
-      return await countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
-    } catch (retryError) {
-      // error-policy:J2 context-adding rethrow — a failed repair must distinguish
-      // the recovery path from an ordinary placement query failure.
-      throw new ElizaError("Failed to repair the Docker workload-count schema", {
-        code: "DOCKER_NODE_WORKLOAD_SCHEMA_REPAIR_FAILED",
-        context: { nodeId },
-        cause: retryError,
-      });
-    }
+    // error-policy:J2 context-adding rethrow — distinguish migration drift from
+    // ordinary query failures while preserving the original SQLSTATE cause.
+    if (isUndefinedColumn(error)) throw capacityOwnershipMigrationRequired(nodeId, error);
+    throw new ElizaError("Failed to count allocated workloads on Docker node", {
+      code: "DOCKER_NODE_WORKLOAD_COUNT_FAILED",
+      context: { nodeId },
+      cause: error,
+    });
+  }
+}
+
+/**
+ * Recompute and persist one node's slot count under the same primary row lock
+ * used by every reservation/release transition. This closes the count->write
+ * race where an older replica snapshot could overwrite a just-committed slot.
+ */
+export async function reconcileAllocatedWorkloadsOnNode(
+  nodeId: string,
+): Promise<{ before: number; after: number } | null> {
+  try {
+    return await dbWrite.transaction(async (tx) => {
+      const [node] = await tx
+        .select()
+        .from(dockerNodes)
+        .where(eq(dockerNodes.node_id, nodeId))
+        .for("update")
+        .limit(1);
+      if (!node) return null;
+
+      const actualCount = await countAllocatedWorkloadsOnNodeWithDatabase(tx, nodeId);
+      if (actualCount !== node.allocated_count) {
+        const [updated] = await tx
+          .update(dockerNodes)
+          .set({ allocated_count: actualCount, updated_at: new Date() })
+          .where(
+            and(
+              eq(dockerNodes.id, node.id),
+              sql`${dockerNodes.node_incarnation} IS NOT DISTINCT FROM ${node.node_incarnation}`,
+              sql`${dockerNodes.current_node_history_id} IS NOT DISTINCT FROM ${
+                node.current_node_history_id
+              }`,
+            ),
+          )
+          .returning({ id: dockerNodes.id });
+        if (!updated) {
+          throw new ElizaError("Docker-node allocation reconciliation lost its node CAS", {
+            code: "DOCKER_NODE_ALLOCATION_RECONCILE_CONFLICT",
+            context: { nodeId },
+          });
+        }
+      }
+      return { before: node.allocated_count, after: actualCount };
+    });
+  } catch (error) {
+    if (isUndefinedColumn(error)) throw capacityOwnershipMigrationRequired(nodeId, error);
+    throw error;
   }
 }
 
@@ -178,7 +208,14 @@ export async function loadSandboxStatusesByIds(
       containerName: agentSandboxes.container_name,
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
-      replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
+      replacementNodeId: sql<string | null>`CASE
+        WHEN ${agentSandboxes.replacement_cleanup_node_record_id} IS NULL
+          THEN ${agentSandboxes.replacement_cleanup_node_id}
+        ELSE (
+          SELECT cleanup_node."node_id" FROM ${dockerNodes} AS cleanup_node
+          WHERE cleanup_node."id" = ${agentSandboxes.replacement_cleanup_node_record_id}
+        )
+      END`,
       replacementContainerName: agentSandboxes.replacement_cleanup_container_name,
     })
     .from(agentSandboxes)
@@ -269,37 +306,12 @@ export function reconcileOrphanContainersOnNodes(): Promise<OrphanReconcileResul
  * recreate them elsewhere — so they do NOT count as retained.
  */
 export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<number> {
-  const [containerCount, agentCount, replacementCount] = await Promise.all([
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(containers)
-        .where(
-          and(
-            eq(containers.node_id, nodeId),
-            sql`${containers.status} not in ('failed','deleted')`,
-          ),
-        ),
-    ),
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.node_id, nodeId),
-            sql`${agentSandboxes.status} not in ('stopped','error')`,
-            sql`(${agentSandboxes.pool_status} is null or ${agentSandboxes.pool_status} <> 'unclaimed')`,
-          ),
-        ),
-    ),
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(eq(agentSandboxes.replacement_cleanup_node_id, nodeId)),
-    ),
-  ]);
-
-  return containerCount + agentCount + replacementCount;
+  // Drain/deprovision is destructive, so replica lag must not hide a retained
+  // or freshly reserved owner. Read every owner from the primary.
+  try {
+    return await countRetainedWorkloadsOnNodeWithDatabase(dbWrite, nodeId);
+  } catch (error) {
+    if (isUndefinedColumn(error)) throw capacityOwnershipMigrationRequired(nodeId, error);
+    throw error;
+  }
 }

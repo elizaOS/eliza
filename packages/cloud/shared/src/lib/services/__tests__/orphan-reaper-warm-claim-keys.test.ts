@@ -11,7 +11,9 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
+import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { organizations } from "../../../db/schemas/organizations";
 import { userCharacters } from "../../../db/schemas/user-characters";
 import { users } from "../../../db/schemas/users";
@@ -46,7 +48,14 @@ beforeAll(async () => {
   }
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
   ({ loadSandboxStatusesByIds } = await import("../docker-node-workloads"));
-  const schema = { organizations, users, userCharacters, agentSandboxes };
+  const schema = {
+    organizations,
+    users,
+    userCharacters,
+    agentNodeIncarnationHistories,
+    dockerNodes,
+    agentSandboxes,
+  };
   const { apply } = await pushSchema(schema as never, dbWrite as never);
   await apply();
 }, PGLITE_TIMEOUT);
@@ -158,6 +167,109 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
           key: cleanupNameId,
           status: "replacement_cleanup_owned",
           nodeId: "node-8",
+        },
+      ]);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a stale exact cleanup follows its immutable record after reboot, rename, and logical-id reuse",
+    async () => {
+      const { orgId, userId } = await seedOwner();
+      const ownerRecordId = crypto.randomUUID();
+      const ownerOldHistoryId = crypto.randomUUID();
+      const ownerOldIncarnation = crypto.randomUUID();
+      const ownerCurrentHistoryId = crypto.randomUUID();
+      const ownerCurrentIncarnation = crypto.randomUUID();
+      const reusedRecordId = crypto.randomUUID();
+      const reusedHistoryId = crypto.randomUUID();
+      const reusedIncarnation = crypto.randomUUID();
+      const rowId = crypto.randomUUID();
+      const cleanupNameId = crypto.randomUUID();
+
+      await dbWrite.insert(agentNodeIncarnationHistories).values([
+        {
+          id: ownerOldHistoryId,
+          docker_node_record_id: ownerRecordId,
+          node_id: "old-logical-node",
+          node_incarnation: ownerOldIncarnation,
+          fleet_kind: "robot",
+          infrastructure_provider: "hetzner",
+          host_key_fingerprint: "SHA256:owner-old",
+        },
+        {
+          id: ownerCurrentHistoryId,
+          docker_node_record_id: ownerRecordId,
+          node_id: "retired-owner-node",
+          node_incarnation: ownerCurrentIncarnation,
+          fleet_kind: "robot",
+          infrastructure_provider: "hetzner",
+          host_key_fingerprint: "SHA256:owner-current",
+        },
+        {
+          id: reusedHistoryId,
+          docker_node_record_id: reusedRecordId,
+          node_id: "old-logical-node",
+          node_incarnation: reusedIncarnation,
+          fleet_kind: "robot",
+          infrastructure_provider: "hetzner",
+          host_key_fingerprint: "SHA256:reused",
+        },
+      ]);
+      await dbWrite.insert(dockerNodes).values([
+        {
+          id: ownerRecordId,
+          node_id: "retired-owner-node",
+          hostname: "owner.internal",
+          host_key_fingerprint: "SHA256:owner-current",
+          fleet_kind: "robot",
+          infrastructure_provider: "hetzner",
+          status: "healthy",
+          node_incarnation: ownerCurrentIncarnation,
+          current_node_history_id: ownerCurrentHistoryId,
+        },
+        {
+          id: reusedRecordId,
+          node_id: "old-logical-node",
+          hostname: "reused.internal",
+          host_key_fingerprint: "SHA256:reused",
+          fleet_kind: "robot",
+          infrastructure_provider: "hetzner",
+          status: "healthy",
+          node_incarnation: reusedIncarnation,
+          current_node_history_id: reusedHistoryId,
+        },
+      ]);
+      await dbWrite.insert(agentSandboxes).values({
+        id: rowId,
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: uniq("stale-cleanup"),
+        status: "running",
+        execution_tier: "dedicated-always",
+        node_id: "canonical-node",
+        container_name: `agent-${rowId}`,
+        replacement_cleanup_sandbox_id: crypto.randomUUID(),
+        replacement_cleanup_node_id: "old-logical-node",
+        replacement_cleanup_node_record_id: ownerRecordId,
+        replacement_cleanup_node_incarnation: ownerOldIncarnation,
+        replacement_cleanup_node_history_id: ownerOldHistoryId,
+        replacement_cleanup_node_hostname: "owner.internal",
+        replacement_cleanup_node_ssh_port: 22,
+        replacement_cleanup_node_ssh_user: "root",
+        replacement_cleanup_node_host_key_fingerprint: "SHA256:owner-old",
+        replacement_cleanup_container_name: `agent-${cleanupNameId}`,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date(),
+      });
+
+      const placements = await loadSandboxStatusesByIds([cleanupNameId]);
+      expect(placements.filter(({ key }) => key === cleanupNameId)).toEqual([
+        {
+          key: cleanupNameId,
+          status: "replacement_cleanup_owned",
+          nodeId: "retired-owner-node",
         },
       ]);
     },

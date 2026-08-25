@@ -351,6 +351,7 @@ beforeEach(async () => {
   await dbWrite.delete(jobs);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
 });
@@ -678,6 +679,292 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).toMatchObject({
       replacement_cleanup_sandbox_id: null,
       replacement_cleanup_attempt_id: null,
+    });
+  });
+
+  test("legacy rollout fences stay readable and defer without remote cleanup or decrement", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: "legacy-candidate",
+        replacement_cleanup_node_id: "legacy-node",
+        replacement_cleanup_container_name: "legacy-candidate",
+        replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date("2026-07-23T12:01:00.000Z"),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const provider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
+      undefined,
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+
+    await expect(
+      service.convergeReplacementCleanupFence(agentId, seeded.organizationId),
+    ).rejects.toThrow(/lacks exact node occurrence authority/);
+    expect(remoteCleanup).not.toHaveBeenCalled();
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId),
+    ).toMatchObject({
+      replacement_cleanup_sandbox_id: "legacy-candidate",
+      replacement_cleanup_node_id: "legacy-node",
+      replacement_cleanup_node_record_id: null,
+      replacement_cleanup_allocation_counted: true,
+    });
+  });
+
+  test("post-cutover DB attempt correlation never selects candidate secret cleanup", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    const nodeRecordId = "10000000-0000-4000-8000-000000000001";
+    const nodeIncarnation = "10000000-0000-4000-8000-000000000002";
+    const nodeHistoryId = "10000000-0000-4000-8000-000000000003";
+    await dbWrite.insert(agentNodeIncarnationHistories).values({
+      id: nodeHistoryId,
+      docker_node_record_id: nodeRecordId,
+      node_id: "old-exact-node",
+      node_incarnation: nodeIncarnation,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "SHA256:old-exact-node",
+    });
+    await dbWrite.insert(dockerNodes).values({
+      id: nodeRecordId,
+      node_id: "old-exact-node",
+      node_incarnation: nodeIncarnation,
+      current_node_history_id: nodeHistoryId,
+      hostname: "old-exact-node.internal",
+      ssh_port: 2222,
+      ssh_user: "operator",
+      host_key_fingerprint: "SHA256:old-exact-node",
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 2,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        replacement_cleanup_sandbox_id: "old-exact-sandbox",
+        replacement_cleanup_node_id: "old-exact-node",
+        replacement_cleanup_node_record_id: nodeRecordId,
+        replacement_cleanup_node_incarnation: nodeIncarnation,
+        replacement_cleanup_node_history_id: nodeHistoryId,
+        replacement_cleanup_node_hostname: "old-exact-node.internal",
+        replacement_cleanup_node_ssh_port: 2222,
+        replacement_cleanup_node_ssh_user: "operator",
+        replacement_cleanup_node_host_key_fingerprint: "SHA256:old-exact-node",
+        replacement_cleanup_secret_cleanup_version: null,
+        replacement_cleanup_container_name: "old-exact-container",
+        replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date("2026-07-23T12:01:00.000Z"),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const provider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
+      undefined,
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+    await service.convergeReplacementCleanupFence(agentId, seeded.organizationId);
+
+    expect(remoteCleanup).toHaveBeenCalledTimes(1);
+    expect(remoteCleanup.mock.calls[0]?.[3]).toMatchObject({
+      nodeRecordId,
+      nodeIncarnation,
+      nodeHistoryId,
+      replacementSecretCleanupVersion: null,
+      replacementAttemptId: null,
+    });
+    expect(
+      (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.id, nodeRecordId)))[0]
+        ?.allocated_count,
+    ).toBe(1);
+    await service.convergeReplacementCleanupFence(agentId, seeded.organizationId);
+    expect(remoteCleanup).toHaveBeenCalledTimes(1);
+  });
+
+  test("reboot and logical-id reuse retain exact fences without touching new siblings", async () => {
+    const seeded = await seedAgents(2);
+    const rebootAgentId = seeded.targets[0]!.agentId;
+    const reuseAgentId = seeded.targets[1]!.agentId;
+    const rebootRecordId = "20000000-0000-4000-8000-000000000001";
+    const rebootIncarnation = "20000000-0000-4000-8000-000000000002";
+    const rebootHistoryId = "20000000-0000-4000-8000-000000000003";
+    const rebootNextIncarnation = "20000000-0000-4000-8000-000000000004";
+    const rebootNextHistoryId = "20000000-0000-4000-8000-000000000005";
+    const reuseRecordId = "30000000-0000-4000-8000-000000000001";
+    const reuseIncarnation = "30000000-0000-4000-8000-000000000002";
+    const reuseHistoryId = "30000000-0000-4000-8000-000000000003";
+    const siblingRecordId = "30000000-0000-4000-8000-000000000004";
+    const siblingIncarnation = "30000000-0000-4000-8000-000000000005";
+    const siblingHistoryId = "30000000-0000-4000-8000-000000000006";
+    await dbWrite.insert(agentNodeIncarnationHistories).values([
+      {
+        id: rebootHistoryId,
+        docker_node_record_id: rebootRecordId,
+        node_id: "reboot-node",
+        node_incarnation: rebootIncarnation,
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        host_key_fingerprint: "SHA256:reboot-node",
+      },
+      {
+        id: rebootNextHistoryId,
+        docker_node_record_id: rebootRecordId,
+        node_id: "reboot-node",
+        node_incarnation: rebootNextIncarnation,
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        host_key_fingerprint: "SHA256:reboot-node",
+      },
+      {
+        id: reuseHistoryId,
+        docker_node_record_id: reuseRecordId,
+        node_id: "reuse-node",
+        node_incarnation: reuseIncarnation,
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        host_key_fingerprint: "SHA256:reuse-node",
+      },
+      {
+        id: siblingHistoryId,
+        docker_node_record_id: siblingRecordId,
+        node_id: "reuse-node",
+        node_incarnation: siblingIncarnation,
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        host_key_fingerprint: "SHA256:reuse-sibling",
+      },
+    ]);
+    await dbWrite.insert(dockerNodes).values([
+      {
+        id: rebootRecordId,
+        node_id: "reboot-node",
+        node_incarnation: rebootIncarnation,
+        current_node_history_id: rebootHistoryId,
+        hostname: "reboot-node.internal",
+        ssh_user: "root",
+        host_key_fingerprint: "SHA256:reboot-node",
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        provider_server_id: null,
+        allocated_count: 2,
+      },
+      {
+        id: reuseRecordId,
+        node_id: "reuse-node",
+        node_incarnation: reuseIncarnation,
+        current_node_history_id: reuseHistoryId,
+        hostname: "reuse-node.internal",
+        ssh_user: "root",
+        host_key_fingerprint: "SHA256:reuse-node",
+        fleet_kind: "robot",
+        infrastructure_provider: "hetzner",
+        provider_server_id: null,
+        allocated_count: 3,
+      },
+    ]);
+    const exactCleanup = (
+      nodeId: string,
+      recordId: string,
+      incarnation: string,
+      historyId: string,
+    ) => ({
+      replacement_cleanup_sandbox_id: `${nodeId}-sandbox`,
+      replacement_cleanup_node_id: nodeId,
+      replacement_cleanup_node_record_id: recordId,
+      replacement_cleanup_node_incarnation: incarnation,
+      replacement_cleanup_node_history_id: historyId,
+      replacement_cleanup_node_hostname: `${nodeId}.internal`,
+      replacement_cleanup_node_ssh_port: 22,
+      replacement_cleanup_node_ssh_user: "root",
+      replacement_cleanup_node_host_key_fingerprint: `SHA256:${nodeId}`,
+      replacement_cleanup_secret_cleanup_version: null,
+      replacement_cleanup_container_name: `${nodeId}-container`,
+      replacement_cleanup_attempt_id: null,
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-07-23T12:01:00.000Z"),
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set(exactCleanup("reboot-node", rebootRecordId, rebootIncarnation, rebootHistoryId))
+      .where(eq(agentSandboxes.id, rebootAgentId));
+    await dbWrite
+      .update(agentSandboxes)
+      .set(exactCleanup("reuse-node", reuseRecordId, reuseIncarnation, reuseHistoryId))
+      .where(eq(agentSandboxes.id, reuseAgentId));
+
+    await dbWrite
+      .update(dockerNodes)
+      .set({
+        node_incarnation: rebootNextIncarnation,
+        current_node_history_id: rebootNextHistoryId,
+      })
+      .where(eq(dockerNodes.id, rebootRecordId));
+    await dbWrite
+      .update(dockerNodes)
+      .set({ node_id: "retired-reuse-node" })
+      .where(eq(dockerNodes.id, reuseRecordId));
+    await dbWrite.insert(dockerNodes).values({
+      id: siblingRecordId,
+      node_id: "reuse-node",
+      node_incarnation: siblingIncarnation,
+      current_node_history_id: siblingHistoryId,
+      hostname: "reuse-sibling.internal",
+      ssh_user: "root",
+      host_key_fingerprint: "SHA256:reuse-sibling",
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      allocated_count: 7,
+      capacity: 8,
+    });
+
+    const provider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
+      undefined,
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+    for (const agentId of [rebootAgentId, reuseAgentId, rebootAgentId, reuseAgentId]) {
+      await expect(
+        service.convergeReplacementCleanupFence(agentId, seeded.organizationId),
+      ).rejects.toThrow(/occurrence is no longer current/);
+    }
+
+    expect(remoteCleanup).not.toHaveBeenCalled();
+    expect(
+      (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.id, rebootRecordId)))[0]
+        ?.allocated_count,
+    ).toBe(2);
+    expect(
+      (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.id, reuseRecordId)))[0]
+        ?.allocated_count,
+    ).toBe(3);
+    expect(
+      (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.id, siblingRecordId)))[0]
+        ?.allocated_count,
+    ).toBe(7);
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(rebootAgentId, seeded.organizationId),
+    ).toMatchObject({
+      replacement_cleanup_node_incarnation: rebootIncarnation,
+      replacement_cleanup_sandbox_id: "reboot-node-sandbox",
+    });
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(reuseAgentId, seeded.organizationId),
+    ).toMatchObject({
+      replacement_cleanup_node_record_id: reuseRecordId,
+      replacement_cleanup_sandbox_id: "reuse-node-sandbox",
     });
   });
 

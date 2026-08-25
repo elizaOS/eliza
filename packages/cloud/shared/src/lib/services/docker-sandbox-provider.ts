@@ -124,6 +124,8 @@ export interface DockerSandboxMetadata {
   hostname: string;
   /** Exact DB record + SSH authority used by replacement cleanup. */
   nodeRecordId?: string;
+  nodeIncarnation?: string;
+  nodeHistoryId?: string;
   nodeSshPort?: number;
   nodeSshUser?: string;
   nodeHostKeyFingerprint?: string;
@@ -207,11 +209,8 @@ const REPLACEMENT_ATTEMPT_LABEL = "ai.elizaos.replacement-attempt";
 const REPLACEMENT_VPN_SETTLE_OBSERVATIONS = 4;
 const REPLACEMENT_VPN_SETTLE_INTERVAL_MS = 750;
 const REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS = 30_000;
-// Converge window for an id-verified container whose attempt label drifted
-// from the fence record (#18032): the immutable Docker id plus a matching
-// deterministic name identify the fenced target beyond doubt, but a young
-// container is still retained in case a concurrent lifecycle op is mid-write.
-const REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS = 60 * 60 * 1000;
+const REMOTE_NODE_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
+const REPLACEMENT_REMOTE_BOOT_FENCE_EXIT_CODE = 78;
 
 class ReplacementPlacementPersistenceError extends Error {
   constructor(cause: unknown) {
@@ -278,6 +277,8 @@ function replacementCleanupLocatorFromHandle(
     nodeId: metadata.nodeId,
     containerName: metadata.containerName,
     nodeRecordId: optionalLocatorString(metadata.nodeRecordId),
+    nodeIncarnation: optionalLocatorString(metadata.nodeIncarnation),
+    nodeHistoryId: optionalLocatorString(metadata.nodeHistoryId),
     nodeHostname: optionalLocatorString(metadata.hostname),
     nodeSshPort: optionalLocatorNumber(metadata.nodeSshPort),
     nodeSshUser: optionalLocatorString(metadata.nodeSshUser),
@@ -303,6 +304,28 @@ function dockerContainerIdsMatch(expected: string, actual: string): boolean {
 
 function isCanonicalDockerContainerId(value: unknown): value is string {
   return typeof value === "string" && /^[a-f0-9]{12,64}$/.test(value);
+}
+
+/** Full Docker object identity persisted when a serving generation is published. */
+function isCanonicalPublishedDockerContainerId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+/**
+ * Keeps the remote boot-id comparison and the destructive mutation inside one
+ * shell invocation. A successful earlier probe is not sufficient: the host can
+ * reboot between stop and rm, so every mutation carries its own occurrence
+ * fence.
+ */
+function buildReplacementCleanupBootFencedCommand(
+  expectedNodeIncarnation: string,
+  destructiveCommand: string,
+): string {
+  return [
+    `observed_boot_id=$(cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)} 2>/dev/null) || { printf '%s\\n' 'ELIZA_REPLACEMENT_BOOT_ID_UNREADABLE' >&2; exit ${REPLACEMENT_REMOTE_BOOT_FENCE_EXIT_CODE}; }`,
+    `if [ "$observed_boot_id" != ${shellQuote(expectedNodeIncarnation)} ]; then printf '%s\\n' 'ELIZA_REPLACEMENT_BOOT_ID_MISMATCH' >&2; exit ${REPLACEMENT_REMOTE_BOOT_FENCE_EXIT_CODE}; fi`,
+    destructiveCommand,
+  ].join("; ");
 }
 
 function isCanonicalReplacementLocatorCore(
@@ -335,6 +358,22 @@ function isCanonicalReplacementLocatorCore(
   );
 }
 
+function isCanonicalExactNodeAuthority(locator: SandboxReplacementCleanupLocator): boolean {
+  return (
+    isCanonicalNodeAuthorityUuid(locator.nodeRecordId) &&
+    isCanonicalNodeAuthorityUuid(locator.nodeIncarnation) &&
+    isCanonicalNodeAuthorityUuid(locator.nodeHistoryId) &&
+    Boolean(locator.nodeHostname?.trim()) &&
+    typeof locator.nodeSshPort === "number" &&
+    Number.isSafeInteger(locator.nodeSshPort) &&
+    locator.nodeSshPort >= 1 &&
+    locator.nodeSshPort <= 65_535 &&
+    Boolean(locator.nodeSshUser?.trim()) &&
+    Boolean(locator.nodeHostKeyFingerprint?.trim()) &&
+    locator.allocationCounted === true
+  );
+}
+
 function isCanonicalExactReplacementLocator(
   locator: SandboxReplacementCleanupLocator,
   expected?: { readonly containerName?: string; readonly replacementAttemptId?: string },
@@ -353,19 +392,27 @@ function isCanonicalExactReplacementLocator(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
       locator.replacementAttemptId ?? "",
     ) &&
-    isCanonicalNodeAuthorityUuid(locator.nodeRecordId) &&
-    Boolean(locator.nodeHostname?.trim()) &&
-    typeof locator.nodeSshPort === "number" &&
-    Number.isSafeInteger(locator.nodeSshPort) &&
-    locator.nodeSshPort >= 1 &&
-    locator.nodeSshPort <= 65_535 &&
-    Boolean(locator.nodeSshUser?.trim()) &&
-    Boolean(locator.nodeHostKeyFingerprint?.trim()) &&
+    isCanonicalExactNodeAuthority(locator) &&
     locator.replacementSecretCleanupVersion === 1 &&
-    locator.allocationCounted === true &&
     (previousVpnNodeId === null || hasVpnRegistrationPair) &&
     (vpnNodeId === null ||
       (containerId !== null && hasVpnRegistrationPair && vpnNodeId !== previousVpnNodeId))
+  );
+}
+
+function isCanonicalExactPrimaryCleanupLocator(locator: SandboxReplacementCleanupLocator): boolean {
+  return (
+    isCanonicalExactNodeAuthority(locator) &&
+    locator.sandboxId === locator.containerName &&
+    isCanonicalReplacementContainerName(locator.containerName) &&
+    locator.nodeId.trim().length > 0 &&
+    locator.replacementSecretCleanupVersion == null &&
+    locator.replacementAttemptId == null &&
+    isCanonicalPublishedDockerContainerId(locator.containerId) &&
+    locator.vpnNodeName == null &&
+    locator.previousVpnNodeId == null &&
+    locator.vpnRegistrationStartedAt == null &&
+    (locator.vpnNodeId == null || isCanonicalHeadscaleNodeId(locator.vpnNodeId))
   );
 }
 
@@ -1620,6 +1667,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       "replacementAttemptId",
       "allocationCounted",
       "nodeRecordId",
+      "nodeIncarnation",
+      "nodeHistoryId",
       "nodeHostname",
       "nodeSshPort",
       "nodeSshUser",
@@ -2062,6 +2111,8 @@ export class DockerSandboxProvider implements SandboxProvider {
     const nodePlacementMetadata = dbNode
       ? {
           nodeRecordId: dbNode.id,
+          nodeIncarnation: dbNode.node_incarnation ?? undefined,
+          nodeHistoryId: dbNode.current_node_history_id ?? undefined,
           nodeSshPort: sshPort,
           nodeSshUser: sshUser,
           nodeHostKeyFingerprint: hostKeyFingerprint,
@@ -3115,6 +3166,8 @@ export class DockerSandboxProvider implements SandboxProvider {
   ): Promise<DockerNodeConnection> {
     const exactAuthorityValues = [
       locator.nodeRecordId,
+      locator.nodeIncarnation,
+      locator.nodeHistoryId,
       locator.nodeHostname,
       locator.nodeSshPort,
       locator.nodeSshUser,
@@ -3125,22 +3178,24 @@ export class DockerSandboxProvider implements SandboxProvider {
       (value) => value !== undefined && value !== null,
     );
     if (!hasAnyExactAuthority) {
-      const legacyNode = await dockerNodesRepository.findByNodeId(locator.nodeId);
-      if (!legacyNode) {
-        throw new ElizaError(`[docker-sandbox] Node ${locator.nodeId} is not registered`, {
-          code: "SANDBOX_REPLACEMENT_NODE_NOT_REGISTERED",
-          context: { nodeId: locator.nodeId, containerName: locator.containerName },
-          severity: "fatal",
-        });
-      }
-      return legacyNode;
+      throw new ElizaError("Replacement cleanup requires exact node occurrence authority", {
+        code: "SANDBOX_REPLACEMENT_NODE_AUTHORITY_INVALID",
+        context: { nodeId: locator.nodeId, nodeRecordId: null },
+        severity: "fatal",
+      });
     }
 
-    assertSandboxReplacementAttemptId(locator.replacementAttemptId);
-
     const nodeRecordId = locator.nodeRecordId;
+    // Secret cleanup is an explicit protocol version, not an inference from a
+    // DB-only handoff correlation id retained by the control plane.
+    const candidateCleanup = locator.replacementSecretCleanupVersion === 1;
+    if (candidateCleanup) {
+      assertSandboxReplacementAttemptId(locator.replacementAttemptId);
+    }
     if (
-      !isCanonicalExactReplacementLocator(locator) ||
+      !(candidateCleanup
+        ? isCanonicalExactReplacementLocator(locator)
+        : isCanonicalExactPrimaryCleanupLocator(locator)) ||
       !isCanonicalNodeAuthorityUuid(nodeRecordId)
     ) {
       throw new ElizaError("Exact replacement cleanup node authority is incomplete", {
@@ -3159,7 +3214,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
     }
     const drifted = [
+      ["nodeRecordId", node.id, locator.nodeRecordId],
       ["nodeId", node.node_id, locator.nodeId],
+      ["nodeIncarnation", node.node_incarnation, locator.nodeIncarnation],
+      ["nodeHistoryId", node.current_node_history_id, locator.nodeHistoryId],
       ["nodeHostname", node.hostname, locator.nodeHostname],
       ["nodeSshPort", node.ssh_port, locator.nodeSshPort],
       ["nodeSshUser", node.ssh_user, locator.nodeSshUser],
@@ -3179,24 +3237,61 @@ export class DockerSandboxProvider implements SandboxProvider {
     return node;
   }
 
+  private async assertReplacementCleanupRemoteNodeIncarnation(
+    ssh: DockerSSHClient,
+    expectedNodeIncarnation: string,
+  ): Promise<void> {
+    let observedNodeIncarnation: string;
+    try {
+      observedNodeIncarnation = (
+        await ssh.exec(`cat ${shellQuote(REMOTE_NODE_BOOT_ID_PATH)}`, DOCKER_CMD_TIMEOUT_MS)
+      ).trim();
+    } catch (cause) {
+      throw new ElizaError("Replacement cleanup could not read the remote node boot ID", {
+        code: "SANDBOX_REPLACEMENT_REMOTE_NODE_INCARNATION_UNRESOLVED",
+        context: { expectedNodeIncarnation },
+        cause,
+        severity: "fatal",
+      });
+    }
+    if (observedNodeIncarnation !== expectedNodeIncarnation) {
+      throw new ElizaError("Replacement cleanup remote node occurrence changed", {
+        code: "SANDBOX_REPLACEMENT_REMOTE_NODE_INCARNATION_MISMATCH",
+        context: {
+          expectedNodeIncarnation,
+          observedNodeIncarnation: observedNodeIncarnation || null,
+        },
+        severity: "fatal",
+      });
+    }
+  }
+
   private async stopOnSpecificNodeWithPolicy(
     node: DockerNodeConnection,
     containerName: string,
     gracefulSeconds: number,
     allowUnreachableAbandon: boolean,
     releaseCapacity: boolean,
+    expectedNodeIncarnation?: string,
+    exactCleanupSsh?: DockerSSHClient,
   ): Promise<void> {
-    const ssh = DockerSSHClient.getClient(
-      node.hostname,
-      node.ssh_port ?? DEFAULT_SSH_PORT,
-      node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? DEFAULT_SSH_USERNAME,
-    );
+    const ssh =
+      exactCleanupSsh ??
+      DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+    const fenceMutation = (command: string): string =>
+      expectedNodeIncarnation
+        ? buildReplacementCleanupBootFencedCommand(expectedNodeIncarnation, command)
+        : command;
     let stopErr: unknown;
     let rmErr: unknown;
     try {
       await ssh.exec(
-        `docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`,
+        fenceMutation(`docker stop -t ${gracefulSeconds} ${shellQuote(containerName)}`),
         DOCKER_CMD_TIMEOUT_MS,
       );
     } catch (err) {
@@ -3209,7 +3304,10 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
     try {
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS);
+      await ssh.exec(
+        fenceMutation(`docker rm -f ${shellQuote(containerName)}`),
+        DOCKER_CMD_TIMEOUT_MS,
+      );
     } catch (err) {
       rmErr = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -3264,25 +3362,30 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       let observedCandidateId: string | null = null;
       let dockerCreateQuiescent = false;
-      let exactCleanupSsh: DockerSSHClient | null = null;
+      const exactCleanupSsh = DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+      await this.assertReplacementCleanupRemoteNodeIncarnation(
+        exactCleanupSsh,
+        locator.nodeIncarnation!,
+      );
       if (locator.replacementSecretCleanupVersion === 1 && locator.replacementAttemptId) {
-        const ssh = DockerSSHClient.getClient(
-          node.hostname,
-          node.ssh_port ?? DEFAULT_SSH_PORT,
-          node.host_key_fingerprint ?? undefined,
-          node.ssh_user ?? DEFAULT_SSH_USERNAME,
-        );
-        exactCleanupSsh = ssh;
         // Tombstone first, under the same remote flock used by both plaintext
         // producers. The receipt proves the attempt cannot start again and its
         // plaintext files are absent. It intentionally does NOT claim that an
         // already-submitted Docker daemon request cannot materialize later;
         // id-less absence settles only with a quiescent producer marker or a
         // durable exact candidate observation from an earlier cleanup pass.
-        const cleanupReceipt = await ssh.exec(
-          buildReplacementSecretArtifactsCleanupCommand(
-            locator.containerName,
-            locator.replacementAttemptId,
+        const cleanupReceipt = await exactCleanupSsh.exec(
+          buildReplacementCleanupBootFencedCommand(
+            locator.nodeIncarnation!,
+            buildReplacementSecretArtifactsCleanupCommand(
+              locator.containerName,
+              locator.replacementAttemptId,
+            ),
           ),
           DOCKER_CMD_TIMEOUT_MS,
         );
@@ -3357,12 +3460,14 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         }
       }
-      const cleanupTarget = locator.replacementAttemptId
-        ? await this.resolveReplacementContainerForCleanup(locator, node, {
-            observedCandidateId,
-            dockerCreateQuiescent,
-          })
-        : locator.containerName;
+      const cleanupTarget = await this.resolveReplacementContainerForCleanup(
+        locator,
+        exactCleanupSsh,
+        {
+          observedCandidateId,
+          dockerCreateQuiescent,
+        },
+      );
       if (cleanupTarget) {
         if (
           locator.replacementSecretCleanupVersion === 1 &&
@@ -3370,22 +3475,11 @@ export class DockerSandboxProvider implements SandboxProvider {
           !locator.containerId &&
           !observedCandidateId
         ) {
-          if (!exactCleanupSsh) {
-            throw new ElizaError(
-              `[docker-sandbox] Exact replacement cleanup SSH authority is unavailable for ${locator.containerName}`,
-              {
-                code: "SANDBOX_REPLACEMENT_CLEANUP_SSH_AUTHORITY_UNAVAILABLE",
-                context: {
-                  nodeId: locator.nodeId,
-                  containerName: locator.containerName,
-                  replacementAttemptId: locator.replacementAttemptId,
-                },
-                severity: "fatal",
-              },
-            );
-          }
           const observationReceipt = await exactCleanupSsh.exec(
-            buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
+            buildReplacementCleanupBootFencedCommand(
+              locator.nodeIncarnation!,
+              buildReplacementCandidateObservedCommand(locator.replacementAttemptId, cleanupTarget),
+            ),
             DOCKER_CMD_TIMEOUT_MS,
           );
           const expectedObservationReceipt = getReplacementCandidateObservedReceipt(
@@ -3407,7 +3501,15 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           }
         }
-        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
+        await this.stopOnSpecificNodeWithPolicy(
+          node,
+          cleanupTarget,
+          10,
+          false,
+          false,
+          locator.nodeIncarnation!,
+          exactCleanupSsh,
+        );
       }
       if (locator.vpnNodeId) {
         if (!isCanonicalHeadscaleNodeId(locator.vpnNodeId)) {
@@ -3423,6 +3525,10 @@ export class DockerSandboxProvider implements SandboxProvider {
             },
           );
         }
+        await this.assertReplacementCleanupRemoteNodeIncarnation(
+          exactCleanupSsh,
+          locator.nodeIncarnation!,
+        );
         await withTimeout(
           headscaleClient.deleteNode(locator.vpnNodeId),
           HEADSCALE_CLEANUP_TIMEOUT_MS,
@@ -3480,18 +3586,12 @@ export class DockerSandboxProvider implements SandboxProvider {
 
   private async resolveReplacementContainerForCleanup(
     locator: SandboxReplacementCleanupLocator,
-    node: DockerNodeConnection,
+    ssh: DockerSSHClient,
     remoteProof: {
       observedCandidateId: string | null;
       dockerCreateQuiescent: boolean;
     },
   ): Promise<string | null> {
-    const ssh = DockerSSHClient.getClient(
-      node.hostname,
-      node.ssh_port ?? DEFAULT_SSH_PORT,
-      node.host_key_fingerprint ?? undefined,
-      node.ssh_user ?? DEFAULT_SSH_USERNAME,
-    );
     const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.Name}}|{{.Created}}`;
     // When Docker returned the create id before a later phase failed, inspect
     // that immutable object directly. A same-name replacement can never make
@@ -3550,8 +3650,6 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
     const containerId = fields[0]!.trim();
     const attemptId = fields[1]!.trim();
-    const observedName = fields[2]!.trim().replace(/^\//, "");
-    const observedCreatedAt = Date.parse(fields[3]!.trim());
     if (!/^[a-f0-9]{12,64}$/i.test(containerId)) {
       throw new Error(
         `[docker-sandbox] Cannot verify replacement identity for ${locator.containerName}: invalid Docker id`,
@@ -3574,74 +3672,29 @@ export class DockerSandboxProvider implements SandboxProvider {
         },
       );
     }
-    if (attemptId !== locator.replacementAttemptId) {
-      if (locator.replacementSecretCleanupVersion === 1) {
-        throw new ElizaError(
-          `[docker-sandbox] Exact replacement attempt label mismatch for ${locator.containerName}`,
-          {
-            code: "SANDBOX_REPLACEMENT_EXACT_ATTEMPT_LABEL_MISMATCH",
-            context: {
-              containerName: locator.containerName,
-              expectedAttemptId: locator.replacementAttemptId ?? null,
-              observedAttemptId: attemptId || null,
-            },
-            severity: "fatal",
-          },
-        );
-      }
-      // A timeout before Docker returned an id leaves only the deterministic
-      // name + attempt label as identity. If that name is now occupied by a
-      // DIFFERENT attempt, Docker's name uniqueness proves the unknown target
-      // is no longer at that name. Retain the occupant and converge the stale
-      // cleanup fence; the node-wide orphan reconciler remains responsible for
-      // any independently renamed debris. With an immutable id, a label
-      // mismatch is corruption and stays fail-closed.
-      if (!locator.containerId) {
-        logger.warn(
-          "[docker-sandbox] Replacement cleanup name is occupied by a different attempt; retaining occupant and treating the id-less target as absent",
-          {
-            nodeId: locator.nodeId,
-            containerName: locator.containerName,
-            expectedAttemptId: locator.replacementAttemptId,
-            observedAttemptId: attemptId || null,
-          },
-        );
-        return null;
-      }
-      // With an immutable id the inspect was addressed at the exact persisted
-      // object, so a label mismatch cannot be a name reuse — it is attempt-id
-      // drift between the fence row and the container's create-time label
-      // (#18032). Refusing forever wedges the agent out of every exclusive
-      // lifecycle job, so converge once identity is proven by the stronger
-      // signals: the id matches the fence record, the deterministic name
-      // matches, and the container is old enough that no concurrent
-      // replacement attempt can still be mid-write.
-      if (
-        dockerContainerIdsMatch(locator.containerId, containerId) &&
-        observedName === locator.containerName &&
-        Number.isFinite(observedCreatedAt) &&
-        this.now() - observedCreatedAt >= REPLACEMENT_LABEL_MISMATCH_RETIRE_GRACE_MS
-      ) {
-        logger.warn(
-          "[docker-sandbox] Replacement attempt label drifted from the fence record; converging via id+name identity past the grace window",
-          {
-            nodeId: locator.nodeId,
-            containerName: locator.containerName,
-            containerId,
-            expectedAttemptId: locator.replacementAttemptId,
-            observedAttemptId: attemptId || null,
-            containerAgeMs: this.now() - observedCreatedAt,
-          },
-        );
-        return containerId;
-      }
-      throw new Error(
-        `[docker-sandbox] Replacement attempt label mismatch for ${locator.containerName}`,
-      );
-    }
     if (locator.containerId && !dockerContainerIdsMatch(locator.containerId, containerId)) {
       throw new Error(
         `[docker-sandbox] Replacement container id mismatch for ${locator.containerName}`,
+      );
+    }
+    // Post-cutover primary cleanup has no candidate-attempt label contract.
+    // Its published full Docker id is stronger: inspect was addressed at that
+    // immutable object, and the inspected id is also the only stop/rm target.
+    if (locator.replacementSecretCleanupVersion !== 1) {
+      return containerId;
+    }
+    if (attemptId !== locator.replacementAttemptId) {
+      throw new ElizaError(
+        `[docker-sandbox] Exact replacement attempt label mismatch for ${locator.containerName}`,
+        {
+          code: "SANDBOX_REPLACEMENT_EXACT_ATTEMPT_LABEL_MISMATCH",
+          context: {
+            containerName: locator.containerName,
+            expectedAttemptId: locator.replacementAttemptId ?? null,
+            observedAttemptId: attemptId || null,
+          },
+          severity: "fatal",
+        },
       );
     }
     return containerId;

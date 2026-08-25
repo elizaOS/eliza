@@ -27,7 +27,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { agentNodeIncarnationHistories } from "../../../db/schemas/agent-node-incarnation-histories";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
@@ -95,6 +95,34 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    // The workload query counts dormant restore/replacement capacity owners as
+    // well as sandbox rows. This suite does not exercise those repositories,
+    // so minimal empty authority tables keep its real SQL surface complete.
+    await dbWrite.execute(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS agent_backup_restore_operations (
+        expected_node_record_id uuid,
+        expected_node_id text,
+        capacity_state text
+      )
+    `),
+    );
+    await dbWrite.execute(
+      sql.raw(`
+      CREATE TABLE IF NOT EXISTS agent_sandbox_replacement_attempts (
+        id uuid,
+        organization_id uuid,
+        agent_id uuid,
+        locator_sandbox_id text,
+        locator_node_record_id uuid,
+        locator_node_id text,
+        locator_node_incarnation uuid,
+        locator_node_history_id uuid,
+        locator_container_name text,
+        capacity_state text
+      )
+    `),
+    );
   } catch (error) {
     pgliteReady = false;
     console.error(
