@@ -1,3 +1,5 @@
+/** Verifies the PowerShell timeout-floor contract at its environment boundary. */
+
 import { afterEach, describe, expect, it } from "vitest";
 import { PS_SPAWN_TIMEOUT_ENV, psSpawnTimeoutMs } from "./windows-timeouts";
 
