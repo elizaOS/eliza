@@ -152,6 +152,12 @@ export type BridgeExecutionContext = {
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
+  /**
+   * Makes a terminal turn visible to later room requests before asynchronous
+   * durability work finishes. Implementations that serialize on durable
+   * writes may omit this hook.
+   */
+  stagePending?(agentId: string, channelId: string, messages: SharedTurnMessage[]): void;
   merge(
     agentId: string,
     channelId: string,
@@ -1785,16 +1791,16 @@ export class SharedRuntimeChatService {
       interrupted: boolean,
       afterWrite?: () => Promise<void>,
       grounding?: SharedTurnMessage["grounding"],
+      stagePending = false,
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
+      const messages = makeTurnMessages(reply, interrupted, grounding);
+      if (stagePending) {
+        options.historyStore?.stagePending?.(agent.id, roomId, messages);
+      }
       finalizationPromise = (async () => {
-        await mergeHistory(
-          agent.id,
-          roomId,
-          makeTurnMessages(reply, interrupted, grounding),
-          options.historyStore,
-        );
+        await mergeHistory(agent.id, roomId, messages, options.historyStore);
         if (streamMemoryStore && !isProviderFreeTurn(turn)) {
           // The long-term-memory mirror is secondary to the durability boundary
           // above (merged history) and the claim completion below: a stalled
@@ -2081,12 +2087,22 @@ export class SharedRuntimeChatService {
           .then(() => undefined);
         observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
 
-        // The room may advance only after interrupted history is durable. It
-        // must not wait for provider teardown: abort is already signalled and
-        // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, () =>
-          settleInterruptedTurn("consumer canceled stream"),
+        // Stage the exact interrupted pair synchronously before the consumer's
+        // cancel promise can release room admission. Durable history, billing,
+        // and provider teardown may then finish off the room queue without
+        // hiding context from the next turn.
+        const finalization = finalizeMessages(
+          interruptedReply,
+          true,
+          () => settleInterruptedTurn("consumer canceled stream"),
+          undefined,
+          true,
         );
+        if (options.executionCtx) {
+          options.executionCtx.waitUntil(finalization);
+          return;
+        }
+        await finalization;
       },
     });
     return withTurnTimingHeaders(
