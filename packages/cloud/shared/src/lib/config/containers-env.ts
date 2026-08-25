@@ -168,8 +168,11 @@ export const containersEnv = {
       env.CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT,
       env.ELIZA_EMBEDDING_SIDECAR_HOST_PORT,
     );
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    return Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : 8290;
+    if (typeof raw !== "string" || raw.trim() === "") return 8290;
+    const trimmed = raw.trim();
+    if (!/^[1-9]\d*$/.test(trimmed)) return 8290;
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 65535 ? parsed : 8290;
   },
 
   /**

@@ -126,3 +126,72 @@ describe("nodeDiskAgentImagePruneMaxAgeHours", () => {
     expect(containersEnv.nodeDiskAgentImagePruneMaxAgeHours()).toBe(90 * 24);
   });
 });
+
+describe("embeddingSidecarHostPort", () => {
+  const hostPortKeys = [
+    "CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT",
+    "ELIZA_EMBEDDING_SIDECAR_HOST_PORT",
+  ] as const;
+  const savedHost = new Map<string, string | undefined>();
+  function setHostPort(
+    value: string | undefined,
+    key: (typeof hostPortKeys)[number] = "CONTAINERS_EMBEDDING_SIDECAR_HOST_PORT",
+  ): void {
+    for (const k of hostPortKeys) {
+      if (!savedHost.has(k)) savedHost.set(k, process.env[k]);
+      delete process.env[k];
+    }
+    if (value !== undefined) process.env[key] = value;
+  }
+  afterEach(() => {
+    for (const [k, v] of savedHost) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    savedHost.clear();
+  });
+
+  test("defaults to 8290 when unset", () => {
+    setHostPort(undefined);
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(8290);
+  });
+
+  test("accepts canonical port", () => {
+    setHostPort("8080");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(8080);
+    setHostPort("  9000  ");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(9000);
+  });
+
+  test("rejects trailing junk, hex, floats and out-of-range", () => {
+    for (const junk of [
+      "8080abc",
+      "0x10",
+      "8080.5",
+      "1e3",
+      "010",
+      "0",
+      "70000",
+      "-1",
+      "Infinity",
+      "",
+    ]) {
+      setHostPort(junk);
+      expect(containersEnv.embeddingSidecarHostPort(), `junk ${junk}`).toBe(8290);
+    }
+  });
+
+  test("falls back to legacy key when primary unset", () => {
+    setHostPort("9090", "ELIZA_EMBEDDING_SIDECAR_HOST_PORT");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(9090);
+  });
+
+  test("clamps to [1, 65535] even for canonical", () => {
+    setHostPort("65535");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(65535);
+    setHostPort("65536");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(8290);
+    setHostPort("1");
+    expect(containersEnv.embeddingSidecarHostPort()).toBe(1);
+  });
+});
