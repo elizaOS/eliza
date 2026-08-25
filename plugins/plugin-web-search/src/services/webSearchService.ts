@@ -113,11 +113,12 @@ function validateSearchOptions(options?: SearchOptions): void {
     if (!isRecord(options)) {
         throw new Error("search options must be an object");
     }
-    assertOptionalPositiveInteger(options.limit, "limit");
-    if (options.limit !== undefined && options.limit > TAVILY_PROVIDER_MAX_RESULTS) {
+    const requestedLimit: unknown = options.limit;
+    assertOptionalPositiveInteger(requestedLimit, "limit");
+    if (typeof requestedLimit === "number" && requestedLimit > TAVILY_PROVIDER_MAX_RESULTS) {
         throw new ElizaError("Tavily supports at most 20 results per search", {
             code: "WEB_SEARCH_PROVIDER_LIMIT_EXCEEDED",
-            context: { requested: options.limit, maximum: TAVILY_PROVIDER_MAX_RESULTS },
+            context: { requested: requestedLimit, maximum: TAVILY_PROVIDER_MAX_RESULTS },
         });
     }
     assertOptionalNonNegativeInteger(options.offset, "offset");
