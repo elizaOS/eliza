@@ -949,7 +949,6 @@ async function mergeHistory(
     agentId,
     roomId,
     valid,
-    Number.MAX_SAFE_INTEGER,
   )) as SharedTurnMessage[];
 }
 
