@@ -437,6 +437,50 @@ describe("extractActionParamsViaLlm", () => {
       );
     });
 
+    it("replaces a planner empty-string required field with the extracted value", async () => {
+      const { runtime: rt } = runtime(
+        vi.fn(async () => '{"subaction":"search"}'),
+      );
+      const { promise } = extract({
+        runtime: rt,
+        existingParams: { subaction: "" },
+        requiredFields: ["subaction"],
+      });
+      expect(await promise).toEqual({ subaction: "search" });
+    });
+
+    it("preserves planner values that are empty arrays and zero while still filling the missing required field", async () => {
+      const { runtime: rt } = runtime(
+        vi.fn(async () => '{"subaction":"digest","query":"from-llm"}'),
+      );
+      const existingParams = {
+        subaction: "",
+        query: [],
+        limit: 0,
+      } as unknown as Partial<Params>;
+      const { promise } = extract({
+        runtime: rt,
+        existingParams,
+        requiredFields: ["subaction"],
+      });
+      expect(await promise).toEqual({
+        subaction: "digest",
+        query: [],
+        limit: 0,
+      });
+    });
+
+    it("uses the placeholder when state has no RECENT_MESSAGES provider", async () => {
+      const { useModel, promise } = extract({
+        existingParams: { subaction: null },
+        state: { data: { providers: {} } } as unknown as State,
+      });
+      await promise;
+      const prompt = (useModel as ReturnType<typeof vi.fn>).mock.calls[0][1]
+        .prompt as string;
+      expect(prompt).toContain("(no recent conversation context)");
+    });
+
     it("copies extra non-empty planner keys onto the merged result", async () => {
       const { runtime: rt } = runtime(
         vi.fn(async () => '{"subaction":"respond"}'),
