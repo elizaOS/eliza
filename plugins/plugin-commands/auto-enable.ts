@@ -10,7 +10,7 @@ function isFeatureEnabled(
 ): boolean {
 	const f = (config.features as Record<string, unknown> | undefined)?.[key];
 	if (f === true) return true;
-	if (f && typeof f === "object" && f !== null) {
+	if (f && typeof f === "object" && f !== null && !Array.isArray(f)) {
 		return (f as Record<string, unknown>).enabled !== false;
 	}
 	return false;
