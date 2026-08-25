@@ -6,6 +6,12 @@ import {
 	runProgressiveContentFaultRegistry,
 } from "./progressive-content-faults";
 
+class FaultError extends Error {
+	constructor(readonly code: string) {
+		super(code);
+	}
+}
+
 describe("progressive content fault registry", () => {
 	it("retains missing injectors as failed rows", async () => {
 		const report = await runProgressiveContentFaultRegistry({ executors: {} });
@@ -19,11 +25,16 @@ describe("progressive content fault registry", () => {
 		);
 	});
 
-	it("passes only when every injector returns its typed code without effects", async () => {
+	it("passes only when every injector rejects with its typed code without effects", async () => {
 		const executors = Object.fromEntries(
 			PROGRESSIVE_CONTENT_FAULT_CASES.map(([id, , expectedCode]) => [
 				id,
-				() => ({ code: expectedCode, effects: [] }),
+				{
+					execute() {
+						throw new FaultError(expectedCode);
+					},
+					observeEffects: () => [],
+				},
 			]),
 		);
 		const report = await runProgressiveContentFaultRegistry({ executors });
@@ -38,19 +49,47 @@ describe("progressive content fault registry", () => {
 		const executors = Object.fromEntries(
 			PROGRESSIVE_CONTENT_FAULT_CASES.map(([id, , expectedCode]) => [
 				id,
-				() => ({ code: expectedCode, effects: [] }),
+				{
+					execute() {
+						throw new FaultError(expectedCode);
+					},
+					observeEffects: () => [],
+				},
 			]),
 		);
-		executors.unauthorized = () => ({
-			code: "CONTENT_ACCESS_DENIED",
-			effects: ["unauthorized-bytes"],
-		});
+		executors.unauthorized = {
+			execute() {
+				throw new FaultError("CONTENT_ACCESS_DENIED");
+			},
+			observeEffects: () => ["unauthorized-bytes"],
+		};
 		const report = await runProgressiveContentFaultRegistry({ executors });
 		expect(report.status).toBe("failed");
 		expect(report.results[0]).toMatchObject({
 			id: "unauthorized",
 			status: "failed",
 			observedEffects: ["unauthorized-bytes"],
+		});
+	});
+
+	it("fails an executor that returns instead of observing a rejection", async () => {
+		const executors = Object.fromEntries(
+			PROGRESSIVE_CONTENT_FAULT_CASES.map(([id, , expectedCode]) => [
+				id,
+				{
+					execute() {
+						throw new FaultError(expectedCode);
+					},
+				},
+			]),
+		);
+		executors.unauthorized = { execute() {} };
+		const report = await runProgressiveContentFaultRegistry({ executors });
+		expect(report.status).toBe("failed");
+		expect(report.results[0]).toMatchObject({
+			id: "unauthorized",
+			status: "failed",
+			observedCode: "FAULT_NOT_OBSERVED",
 		});
 	});
 });
