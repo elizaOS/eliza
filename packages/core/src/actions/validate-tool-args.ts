@@ -338,6 +338,16 @@ export function validateSchema(
 				);
 				return value;
 			}
+			if (schema.minItems !== undefined && value.length < schema.minItems) {
+				errors.push(
+					`Argument '${formatPath(path)}' must contain at least ${schema.minItems} items, got ${value.length}`,
+				);
+			}
+			if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+				errors.push(
+					`Argument '${formatPath(path)}' must contain at most ${schema.maxItems} items, got ${value.length}`,
+				);
+			}
 			return value.map((entry, index) =>
 				validateSchema(
 					schema.items ?? { type: "string" },
