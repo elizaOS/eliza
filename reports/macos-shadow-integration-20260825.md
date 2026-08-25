@@ -103,6 +103,35 @@ current heads were integrated only for this disposable source proof.
 No native application was launched, no final port was bound, and the shadow
 branch was not pushed.
 
+## iOS current-base and desktop review refresh
+
+PR #27216 advanced to pushed head
+`b204194b8a1d720232d854582843d652aefb3d6d`. The prior iOS head remains an
+ancestor. Rehearsal and the executed merge were tree-neutral against the
+shadow, so all existing Devices-authoritative runtime-management resolutions
+remain unchanged. The refreshed pre-receipt composite is
+`61350ecadf68b9f90e1424a6b8c07ed20c512f11`, with the same source tree
+`ca132772c6a82809869996dec755c57fafa34e84` as the v3 receipt.
+
+Minimal proof after the exact iOS-SHA merge:
+
+- Desktop runtime-preflight/reset contracts: 27/27.
+- Targeted desktop TypeScript compile: passed.
+- App Core package dry run: 1,480 files, 12,864,633 bytes unpacked,
+  5,144,541-byte archive estimate.
+- The merge is byte-neutral relative to its first parent and the new iOS SHA is
+  an ancestor of the refreshed shadow.
+- `git diff --check`: passed.
+
+Draft PR #28826 remains exact at
+`eb74d871f652a550205f297f48617d97bf519aad`. Source static smoke, Windows
+security, and the aggregate gate are terminal green. Fresh exact-head review
+was requested from `standujar` and `lalalune`; no review result existed at the
+time of this receipt.
+
+No native bundle was built or launched, no final port was bound, and the
+shadow branch was not pushed.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
