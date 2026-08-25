@@ -58,11 +58,18 @@ interface OpenAIAPIUsage {
 
 type ModelUsage = TokenUsage | AISDKUsage | OpenAIAPIUsage;
 
-function truncatePrompt(prompt: string): string {
+export function truncatePrompt(prompt: string): string {
   if (prompt.length <= MAX_PROMPT_LENGTH) {
     return prompt;
   }
-  return `${prompt.slice(0, MAX_PROMPT_LENGTH - 1)}…`;
+  let end = MAX_PROMPT_LENGTH - 1;
+  if (end > 0 && end < prompt.length) {
+    const code = prompt.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${prompt.slice(0, end)}…`;
 }
 
 function normalizeUsage(usage: ModelUsage): TokenUsage {

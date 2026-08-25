@@ -173,6 +173,18 @@ const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function resolveRequestedModelName(
   params: GenerateTextParamsWithOpenAIOptions,
   runtime: IAgentRuntime,
@@ -1766,7 +1778,7 @@ function providerErrorBodyMessage(error: unknown): string | undefined {
         // error-policy:J3 untrusted-input sanitizing — a non-JSON error body is
         // still diagnostic; return a bounded excerpt instead of dropping it.
       }
-      return body.replace(/\s+/g, " ").trim().slice(0, 300);
+      return truncateText(body.replace(/\s+/g, " ").trim(), 300);
     }
     node = record.cause;
   }

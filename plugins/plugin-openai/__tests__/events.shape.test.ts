@@ -10,7 +10,7 @@
 import { EventType, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRetryTelemetry } from "../utils/events";
-import { emitModelUsageEvent } from "../utils/events";
+import { emitModelUsageEvent, truncatePrompt } from "../utils/events";
 
 function createRuntime() {
   return {
@@ -221,3 +221,24 @@ describe("emitModelUsageEvent — reasoningTokens on MODEL_USED", () => {
     });
   });
 });
+
+describe("truncatePrompt surrogate safety", () => {
+  it("preserves surrogate pairs when prompt length exceeds MAX_PROMPT_LENGTH", () => {
+    // "🔥" (2 chars * 110 = 220 chars) -> 220 chars > 200 chars
+    // At boundary 199 (MAX_PROMPT_LENGTH - 1), index 198 is the high surrogate of the 100th emoji,
+    // which bisects without boundary backoff.
+    const longEmojiPrompt = "🔥".repeat(110);
+    const truncated = truncatePrompt(longEmojiPrompt);
+
+    expect(truncated.endsWith("…")).toBe(true);
+    expect(truncated.length).toBe(199); // 198 chars (99 full emojis) + 1 ellipsis char
+    for (const char of truncated) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});
+
