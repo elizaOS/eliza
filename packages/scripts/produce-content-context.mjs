@@ -25,7 +25,6 @@ export const DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS = [
   "conformance.json",
   "mutant-kills.json",
   "source-work.json",
-  "benchmark.json",
   "cleanup.json",
   "page-ledger.jsonl",
   "prompt-tokens.json",
@@ -35,6 +34,7 @@ export const DETERMINISTIC_CONTENT_CONTEXT_ARTIFACTS = [
   "scenario-native.jsonl",
 ];
 export const EXTERNAL_CONTENT_CONTEXT_ARTIFACTS = [
+  "benchmark.json",
   "soak.json",
   "postgres.json",
   "trajectories.jsonl",
