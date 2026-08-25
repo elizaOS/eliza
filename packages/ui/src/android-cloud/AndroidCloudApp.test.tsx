@@ -62,7 +62,7 @@ describe("AndroidCloudApp", () => {
         "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
     });
     vi.spyOn(client, "pollLogin").mockResolvedValue({ status: "pending" });
-    const openExternal = vi.fn(async () => undefined);
+    const openExternal = vi.fn(async () => "opened" as const);
     const closeExternal = vi.fn(async () => undefined);
     render(
       <AndroidCloudApp
@@ -89,6 +89,32 @@ describe("AndroidCloudApp", () => {
     expect(
       screen.getByRole("button", { name: "Open Eliza Cloud sign-in" }),
     ).toBeTruthy();
+  });
+
+  it("checks the pairing session after a native Custom Tab closes without background polling", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    const pollLogin = vi
+      .spyOn(client, "pollLogin")
+      .mockResolvedValue({ status: "pending" });
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={async () => "closed" as const}
+        voice={createVoice()}
+      />,
+    );
+
+    await waitFor(() => expect(pollLogin).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole("button", { name: "Open Eliza Cloud sign-in" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("accepts a native share/deep-link compose event without auto-sending", async () => {
