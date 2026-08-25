@@ -15,11 +15,13 @@ import type { PluginAutoEnableContext } from "@elizaos/core";
  * provider keeps serving every tier.
  */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const raw = ctx.env.ELIZA_CHAT_VIA_CLI?.trim().toLowerCase();
+  const raw = ctx.env.ELIZA_CHAT_VIA_CLI;
+  if (typeof raw !== "string") return false;
+  const normalized = raw.trim().toLowerCase();
   return (
-    raw === "claude" ||
-    raw === "claude-sdk" ||
-    raw === "codex" ||
-    raw === "codex-sdk"
+    normalized === "claude" ||
+    normalized === "claude-sdk" ||
+    normalized === "codex" ||
+    normalized === "codex-sdk"
   );
 }
