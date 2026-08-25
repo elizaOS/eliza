@@ -188,6 +188,32 @@ describe("flattenTextValues", () => {
 		});
 	});
 
+	describe("errors", () => {
+		it("renders Error instances as name: message", () => {
+			expect(
+				flattenTextValues(new Error("Database connection timed out")),
+			).toEqual(["Error: Database connection timed out"]);
+			expect(flattenTextValues(new TypeError("Invalid property"))).toEqual([
+				"TypeError: Invalid property",
+			]);
+		});
+
+		it("renders empty message errors as their name", () => {
+			expect(flattenTextValues(new Error(""))).toEqual(["Error"]);
+		});
+
+		it("preserves Errors in nested object properties and arrays", () => {
+			expect(
+				flattenTextValues({
+					lastError: new Error("Request failed"),
+				}),
+			).toEqual(["lastError: Error: Request failed"]);
+			expect(
+				flattenTextValues(["diagnostic", new Error("Timeout")]),
+			).toEqual(["diagnostic", "Error: Timeout"]);
+		});
+	});
+
 	describe("non-plain objects have no enumerable own entries and are dropped", () => {
 		// Map and Set do not have a canonical prompt representation, so they retain
 		// the existing empty-object behavior rather than relying on their toString().

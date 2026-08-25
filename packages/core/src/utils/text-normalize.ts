@@ -131,6 +131,18 @@ function flattenTextValuesWithAncestors(
 				? [Date.prototype.toString.call(value)]
 				: [Date.prototype.toISOString.call(value)];
 		}
+
+		if (
+			value instanceof Error ||
+			Object.prototype.toString.call(value) === "[object Error]"
+		) {
+			const error = value as Error;
+			const message =
+				typeof error.message === "string" ? error.message.trim() : "";
+			const name =
+				typeof error.name === "string" && error.name ? error.name : "Error";
+			return message ? [`${name}: ${message}`] : [name];
+		}
 	}
 
 	if (typeof value === "object") {
