@@ -51,6 +51,7 @@ export function findNextOpenTag(
 	from: number,
 	tagAlternation: string,
 ): TagMatch | null {
+	if (!text || typeof text !== "string") return null;
 	const openRe = new RegExp(`<\\s*(?:${tagAlternation})(?=[\\s/>])`, "gi");
 	openRe.lastIndex = from;
 	const match = openRe.exec(text);
@@ -78,6 +79,7 @@ export function findNextCloseTag(
 	from: number,
 	tagAlternation: string,
 ): TagMatch | null {
+	if (!text || typeof text !== "string") return null;
 	const closeRe = new RegExp(
 		`<\\s*\\/\\s*(?:${tagAlternation})(?=[\\s>])`,
 		"gi",
@@ -115,6 +117,7 @@ export function stripPairedTagBlocks(
 	text: string,
 	tagAlternation: string,
 ): string {
+	if (!text || typeof text !== "string") return "";
 	let lastCloseEnd = -1;
 	for (
 		let close = findNextCloseTag(text, 0, tagAlternation);
@@ -154,6 +157,7 @@ export function stripUnclosedTagSuffix(
 	text: string,
 	tagAlternation: string,
 ): string {
+	if (!text || typeof text !== "string") return "";
 	const open = findNextOpenTag(text, 0, tagAlternation);
 	return open ? text.slice(0, open.start) : text;
 }
@@ -185,6 +189,7 @@ const REASONING_TAG_PREFIX_TEST_RE = new RegExp(
  * the residue lets evaluator parsing and final-egress checks fail closed.
  */
 export function stripReasoningPrefixes(text: string): string {
+	if (!text || typeof text !== "string") return "";
 	let lastCloseEnd = -1;
 	for (
 		let close = findNextCloseTag(text, 0, REASONING_TAG_ALTERNATION);
@@ -213,5 +218,6 @@ export function stripReasoningPrefixes(text: string): string {
  * too — verifying only one of the legs above cannot reveal the other.
  */
 export function hasReasoningResidue(text: string): boolean {
+	if (!text || typeof text !== "string") return false;
 	return REASONING_TAG_PREFIX_TEST_RE.test(text);
 }

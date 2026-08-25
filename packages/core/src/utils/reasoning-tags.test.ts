@@ -171,3 +171,16 @@ describe("malformed-residue scanning stays bounded", () => {
 		expect(Date.now() - started).toBeLessThan(2_000);
 	});
 });
+
+describe("nullish and non-string inputs", () => {
+	it("safely handles null, undefined, and non-string inputs", () => {
+		expect(hasReasoningResidue(null as unknown as string)).toBe(false);
+		expect(hasReasoningResidue(undefined as unknown as string)).toBe(false);
+		expect(stripReasoningPrefixes(null as unknown as string)).toBe("");
+		expect(stripReasoningPrefixes(undefined as unknown as string)).toBe("");
+		expect(stripPairedTagBlocks(null as unknown as string, ALT)).toBe("");
+		expect(stripUnclosedTagSuffix(null as unknown as string, ALT)).toBe("");
+		expect(findNextOpenTag(null as unknown as string, 0, ALT)).toBeNull();
+		expect(findNextCloseTag(null as unknown as string, 0, ALT)).toBeNull();
+	});
+});
