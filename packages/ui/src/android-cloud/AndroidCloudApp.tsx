@@ -23,7 +23,9 @@ export interface AndroidCloudMessage {
 export interface AndroidCloudAppProps {
   client?: AndroidCloudClient;
   /** The Capacitor entry should provide Browser.open or another system-browser adapter. */
-  openExternal?: (url: string) => Promise<void> | void;
+  openExternal?: (
+    url: string,
+  ) => Promise<"closed" | "opened"> | "closed" | "opened";
   closeExternal?: () => Promise<void> | void;
   voice?: AndroidCloudVoiceAdapter;
 }
@@ -40,7 +42,7 @@ function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 
-function defaultExternalOpen(url: string): void {
+function defaultExternalOpen(url: string): "opened" {
   const opened = window.open(url, "_system", "noopener,noreferrer");
   if (!opened) {
     // Deliberately NOT window.location.assign(url). That would load the Cloud
@@ -52,6 +54,7 @@ function defaultExternalOpen(url: string): void {
       "Unable to open the browser for sign-in. Check that a browser is installed and try again.",
     );
   }
+  return "opened";
 }
 
 export function AndroidCloudApp({
@@ -146,7 +149,16 @@ export function AndroidCloudApp({
     setError(null);
     try {
       const attempt = await client.beginLogin();
-      await openExternal(attempt.browserUrl);
+      const externalState = await openExternal(attempt.browserUrl);
+      if (externalState === "closed") {
+        const result = await client.pollLogin(attempt.sessionId);
+        if (result.status === "authenticated") {
+          await restore();
+          return;
+        }
+        if (result.status === "expired") throw new Error(result.error);
+        return;
+      }
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
       while (Date.now() < deadline) {
         await new Promise((resolve) =>
