@@ -137,8 +137,123 @@ beforeAll(async () => {
         organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
         lifecycle_revision numeric(20, 0) NOT NULL,
         activation_generation uuid,
+        activation_previous_generation uuid,
+        activation_lifecycle_revision bigint,
+        activation_purpose text,
+        activation_phase text,
+        activation_backup_id uuid,
+        activation_backup_hash text,
+        activation_receipt jsonb,
+        activation_receipt_hash text,
+        activation_container_id text,
+        activation_node_id text,
+        activation_image_digest text,
+        activation_token_hash text,
+        activation_token_ciphertext text,
+        activation_boot_id uuid,
+        activation_authority_published_at timestamptz,
+        activation_funding_revision bigint,
+        activation_dispatched_at timestamptz,
+        activation_completed_at timestamptz,
+        activation_consent_lifecycle_revision bigint,
+        activation_consent_head_backup_id uuid,
+        activation_consent_head_backup_hash text,
         lifecycle_job_id uuid,
-        lifecycle_execution_generation uuid
+        lifecycle_execution_generation uuid,
+        status text NOT NULL DEFAULT 'pending',
+        deleted_at timestamptz,
+        deletion_attempt_id uuid,
+        deletion_allocation_counted boolean,
+        sandbox_id text,
+        node_id text,
+        container_name text,
+        bridge_url text,
+        health_url text,
+        last_heartbeat_at timestamptz,
+        error_message text,
+        bridge_port integer,
+        web_ui_port integer,
+        headscale_ip text,
+        docker_image text,
+        image_digest text,
+        previous_docker_image text,
+        previous_image_digest text,
+        replacement_cleanup_sandbox_id text,
+        replacement_cleanup_node_id text,
+        replacement_cleanup_node_record_id uuid,
+        replacement_cleanup_node_incarnation uuid,
+        replacement_cleanup_node_history_id uuid,
+        replacement_cleanup_node_hostname text,
+        replacement_cleanup_node_ssh_port integer,
+        replacement_cleanup_node_ssh_user text,
+        replacement_cleanup_node_host_key_fingerprint text,
+        replacement_cleanup_secret_cleanup_version integer,
+        replacement_cleanup_container_name text,
+        replacement_cleanup_attempt_id uuid,
+        replacement_cleanup_container_id text,
+        replacement_cleanup_vpn_node_id text,
+        replacement_cleanup_vpn_node_name text,
+        replacement_cleanup_preserved_vpn_node_id text,
+        replacement_cleanup_vpn_registration_started_at timestamptz,
+        replacement_cleanup_allocation_counted boolean,
+        replacement_cleanup_created_at timestamptz
+      );
+
+      CREATE TABLE docker_nodes (
+        id uuid PRIMARY KEY,
+        node_id text NOT NULL UNIQUE,
+        hostname text NOT NULL,
+        ssh_port integer NOT NULL DEFAULT 22,
+        capacity integer NOT NULL DEFAULT 8,
+        enabled boolean NOT NULL DEFAULT true,
+        placement_state text NOT NULL DEFAULT 'open',
+        status text NOT NULL DEFAULT 'unknown',
+        allocated_count integer NOT NULL DEFAULT 0,
+        last_health_check timestamptz,
+        ssh_user text NOT NULL DEFAULT 'root',
+        host_key_fingerprint text,
+        fleet_kind text,
+        infrastructure_provider text,
+        provider_server_id text,
+        node_incarnation uuid,
+        current_node_history_id uuid,
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE agent_activation_publications (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        agent_id uuid NOT NULL,
+        activation_generation uuid NOT NULL,
+        previous_activation_generation uuid,
+        lifecycle_revision numeric(20, 0) NOT NULL,
+        purpose text NOT NULL,
+        backup_id uuid,
+        backup_manifest_sha256 text,
+        activation_receipt jsonb NOT NULL,
+        activation_receipt_sha256 text NOT NULL,
+        container_id text NOT NULL,
+        node_history_id uuid NOT NULL,
+        docker_node_record_id uuid NOT NULL,
+        node_id text NOT NULL,
+        node_incarnation uuid NOT NULL,
+        image_digest text NOT NULL,
+        token_sha256 text NOT NULL,
+        funding_revision bigint NOT NULL,
+        published_at timestamptz NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE agent_sandbox_backups (
+        id uuid PRIMARY KEY,
+        backup_operation_id uuid,
+        catalog_revision bigint NOT NULL,
+        catalog_organization_id uuid,
+        catalog_agent_id uuid,
+        lifecycle_generation uuid,
+        lifecycle_revision numeric(20, 0),
+        manifest_digest text
       );
 
       CREATE TABLE agent_backup_restore_leases (
@@ -160,6 +275,48 @@ beforeAll(async () => {
         created_at timestamptz NOT NULL DEFAULT now()
       );
 
+      CREATE TABLE agent_backup_restore_operations (
+        id uuid PRIMARY KEY,
+        organization_id uuid NOT NULL,
+        agent_id uuid NOT NULL,
+        backup_id uuid NOT NULL,
+        restore_attempt_id uuid NOT NULL,
+        lease_id uuid NOT NULL,
+        lease_generation uuid NOT NULL,
+        lease_owner_id text NOT NULL,
+        catalog_epoch bigint NOT NULL,
+        copy_role text NOT NULL,
+        phase text NOT NULL DEFAULT 'reserved',
+        resume_phase text,
+        claim_owner text,
+        claim_generation uuid,
+        claim_expires_at timestamptz,
+        attempts integer NOT NULL DEFAULT 0,
+        next_attempt_at timestamptz NOT NULL DEFAULT now(),
+        expected_manifest_sha256 text NOT NULL,
+        expected_operation_id uuid NOT NULL,
+        expected_activation_generation uuid NOT NULL,
+        expected_lifecycle_revision numeric(20, 0) NOT NULL,
+        expected_node_history_id uuid,
+        expected_node_record_id uuid,
+        expected_node_incarnation uuid,
+        expected_node_id text,
+        expected_container_id text,
+        expected_image_digest text,
+        capacity_state text,
+        capacity_reserved_at timestamptz,
+        capacity_settled_at timestamptz,
+        capacity_settlement_receipt_digest text,
+        receipt_digest text,
+        last_error_code text,
+        last_error text,
+        last_failure_generation uuid,
+        last_failure_digest text,
+        completed_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+
       CREATE TABLE agent_sandbox_replacement_attempts (
         id uuid PRIMARY KEY,
         organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -169,6 +326,22 @@ beforeAll(async () => {
         activation_generation uuid NOT NULL,
         lifecycle_job_id uuid,
         lifecycle_execution_generation uuid,
+        previous_placement_absent boolean,
+        previous_sandbox_id text,
+        previous_node_id text,
+        previous_container_name text,
+        previous_container_id text,
+        previous_allocation_counted boolean,
+        previous_node_record_id uuid,
+        previous_node_incarnation uuid,
+        previous_node_history_id uuid,
+        previous_node_hostname text,
+        previous_node_ssh_port integer,
+        previous_node_ssh_user text,
+        previous_node_host_key_fingerprint text,
+        previous_cleanup_state text,
+        previous_cleanup_proven_at timestamptz,
+        previous_cleanup_receipt_digest text,
         restore_lease_id uuid,
         restore_backup_id uuid,
         restore_attempt_id uuid,
@@ -198,6 +371,10 @@ beforeAll(async () => {
         locator_vpn_registration_started_at timestamptz,
         locator_previous_vpn_node_id text,
         locator_recorded_at timestamptz,
+        capacity_state text,
+        capacity_reserved_at timestamptz,
+        capacity_settled_at timestamptz,
+        capacity_settlement_receipt_digest text,
         locator_container_id text,
         locator_container_recorded_at timestamptz,
         locator_vpn_node_id text,
@@ -273,8 +450,16 @@ realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
     const agentId = randomUUID();
     const attemptId = randomUUID();
     const activationGeneration = randomUUID();
+    const previousActivationGeneration = randomUUID();
     const lifecycleJobId = randomUUID();
     const lifecycleExecutionGeneration = randomUUID();
+    const nodeRecordId = randomUUID();
+    const nodeIncarnation = randomUUID();
+    const nodeHistoryId = randomUUID();
+    const nodeId = "replacement-lock-node";
+    const sandboxId = "replacement-lock-sandbox";
+    const containerName = "eliza-replacement-lock";
+    const containerId = "a".repeat(64);
     const seed = new Client({ connectionString: isolatedDsn });
     const holder = new Client({
       connectionString: isolatedDsn,
@@ -297,16 +482,56 @@ realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
     try {
       await seed.query("INSERT INTO organizations(id) VALUES ($1)", [organizationId]);
       await seed.query(
+        `INSERT INTO docker_nodes
+          (id, node_id, hostname, allocated_count, ssh_user, host_key_fingerprint,
+           node_incarnation, current_node_history_id)
+         VALUES ($1, $2, 'replacement-lock.internal', 1, 'root',
+           'SHA256:replacement-lock', $3, $4)`,
+        [nodeRecordId, nodeId, nodeIncarnation, nodeHistoryId],
+      );
+      await seed.query(
         `INSERT INTO agent_sandboxes
           (id, organization_id, lifecycle_revision, activation_generation,
-           lifecycle_job_id, lifecycle_execution_generation)
-         VALUES ($1, $2, 7, $3, $4, $5)`,
+           activation_previous_generation, activation_lifecycle_revision,
+           activation_purpose, activation_phase, activation_token_hash,
+           activation_token_ciphertext, lifecycle_job_id,
+           lifecycle_execution_generation, status, sandbox_id, node_id, container_name)
+         VALUES ($1, $2, 7, $3, $4, 7, 'provision', 'container_pending',
+           $5, 'encrypted-activation-token', $6, $7, 'running', $8, $9, $10)`,
         [
           agentId,
           organizationId,
           activationGeneration,
+          previousActivationGeneration,
+          "1".repeat(64),
           lifecycleJobId,
           lifecycleExecutionGeneration,
+          sandboxId,
+          nodeId,
+          containerName,
+        ],
+      );
+      await seed.query(
+        `INSERT INTO agent_activation_publications
+          (id, organization_id, agent_id, activation_generation, lifecycle_revision,
+           purpose, activation_receipt, activation_receipt_sha256, container_id,
+           node_history_id, docker_node_record_id, node_id, node_incarnation,
+           image_digest, token_sha256, funding_revision)
+         VALUES ($1, $2, $3, $4, 6, 'provision', '{}'::jsonb, $5, $6,
+           $7, $8, $9, $10, $11, $12, 6)`,
+        [
+          randomUUID(),
+          organizationId,
+          agentId,
+          previousActivationGeneration,
+          "2".repeat(64),
+          containerId,
+          nodeHistoryId,
+          nodeRecordId,
+          nodeId,
+          nodeIncarnation,
+          `sha256:${"3".repeat(64)}`,
+          "4".repeat(64),
         ],
       );
 
@@ -360,7 +585,15 @@ realPostgres("replacement attempt PostgreSQL lock and lease barriers", () => {
 
       await expect(startWork).resolves.toMatchObject({
         replayed: false,
-        attempt: { id: attemptId, state: "in_flight_unresolved" },
+        attempt: {
+          id: attemptId,
+          state: "in_flight_unresolved",
+          previous_placement_absent: false,
+          previous_container_id: containerId,
+          previous_node_record_id: nodeRecordId,
+          previous_node_incarnation: nodeIncarnation,
+          previous_node_history_id: nodeHistoryId,
+        },
       });
       const deleteResult = await deleteWork;
       expect(deleteResult).toMatchObject({
