@@ -1202,7 +1202,11 @@ function looksLikeMultiDigitArithmetic(text: string): boolean {
 		Number(left) <= 2199 &&
 		Number(right) >= 1900 &&
 		Number(right) <= 2199;
-	if (isBareCalendarYearRange) {
+	if (
+		isBareCalendarYearRange &&
+		!EXPLICIT_ARITHMETIC_REQUEST_CUE_RE.test(text) &&
+		BARE_AMBIGUOUS_ARITHMETIC_RE.test(text)
+	) {
 		return false;
 	}
 

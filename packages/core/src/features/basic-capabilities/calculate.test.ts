@@ -115,6 +115,8 @@ describe("deterministic arithmetic routing", () => {
 			"what is 3847 - 292",
 			"3847 / 292",
 			"3847 x 292?",
+			"calculate 2024-2025",
+			"what is 2024-2025?",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"CALCULATE",
