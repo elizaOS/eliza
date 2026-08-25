@@ -9,7 +9,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CuratedCodingMemoryService,
+  canonicalRepositoryKey,
   curatedCodingMemoryPath,
+  curatedCodingMemoryPolicy,
   harvestCodingMemoryCandidates,
   redactCodingMemoryText,
 } from "../services/curated-coding-memory.js";
@@ -526,5 +528,52 @@ describe("curated coding memory", () => {
     } finally {
       await rm(workdir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("canonicalRepositoryKey and policy configuration", () => {
+  it("normalizes diverse repository URL and compact formats", () => {
+    expect(canonicalRepositoryKey("https://github.com/elizaOS/eliza.git")).toBe(
+      "elizaos/eliza",
+    );
+    expect(canonicalRepositoryKey("https://github.com/elizaOS/eliza/")).toBe(
+      "elizaos/eliza",
+    );
+    expect(canonicalRepositoryKey("git@github.com:elizaOS/eliza.git")).toBe(
+      "elizaos/eliza",
+    );
+    expect(canonicalRepositoryKey("elizaOS/eliza")).toBe("elizaos/eliza");
+    expect(canonicalRepositoryKey("  owner/repo  ")).toBe("owner/repo");
+    expect(canonicalRepositoryKey("not-a-repo")).toBeUndefined();
+    expect(canonicalRepositoryKey("")).toBeUndefined();
+  });
+
+  it("resolves default and overridden curated coding memory policy", () => {
+    const defaultRuntime = runtime("agent-1");
+    expect(curatedCodingMemoryPolicy(defaultRuntime)).toEqual({
+      enabled: true,
+      injectEnabled: true,
+    });
+
+    const disabledRuntime = runtime("agent-1", {
+      ELIZA_CURATED_CODING_MEMORY: "false",
+      ELIZA_CURATED_CODING_MEMORY_INJECT: "0",
+    });
+    expect(curatedCodingMemoryPolicy(disabledRuntime)).toEqual({
+      enabled: false,
+      injectEnabled: false,
+    });
+  });
+
+  it("redacts PEM private key blocks, emails, and phone numbers", () => {
+    const pem =
+      "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...\n-----END RSA PRIVATE KEY-----";
+    const textWithSecret = `Fix applied by dev@example.com (tel: +1 555 123 4567) with key ${pem}`;
+    const redacted = redactCodingMemoryText(textWithSecret);
+
+    expect(redacted).not.toContain("dev@example.com");
+    expect(redacted).not.toContain("555 123 4567");
+    expect(redacted).not.toContain("BEGIN RSA PRIVATE KEY");
+    expect(redacted).toContain("[REDACTED]");
   });
 });
