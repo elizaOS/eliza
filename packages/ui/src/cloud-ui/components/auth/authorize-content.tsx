@@ -3,11 +3,15 @@
 /**
  * App-authorize screen content: Steward login (Discord/Google) and the return-to handoff.
  */
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  clearStoredStewardToken,
+  readStoredStewardToken,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { DiscordIcon, GoogleIcon, StewardLogin, useAuth } from "@stwd/react";
 import type { StewardProviders } from "@stwd/sdk";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invalidateStewardServerCookieSyncMarker } from "../../../cloud/lib/steward-session-cookie-sync-marker";
 import {
   buildStewardOAuthRedirectUri,
@@ -110,7 +114,12 @@ export function AuthorizeContent() {
   const appId = searchParams.get("app_id");
   const redirectUri = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
-  const mobileRequest = parseMobileAuthorizeRequest(searchParams);
+  const serializedSearchParams = searchParams.toString();
+  const mobileRequest = useMemo(
+    () =>
+      parseMobileAuthorizeRequest(new URLSearchParams(serializedSearchParams)),
+    [serializedSearchParams],
+  );
 
   if (searchParams.get("flow") === "mobile_pkce" && !mobileRequest) {
     return (
@@ -202,6 +211,28 @@ function AuthorizeAuthenticatedContent({
   redirectUri: string;
   state: string | null;
 }) {
+  if (mobileRequest) {
+    const token = readStoredStewardToken()?.trim() || null;
+    return (
+      <AuthorizeFlow
+        appId={appId}
+        auth={{
+          activeTenantId: null,
+          getToken: () => token,
+          isAuthenticated: token !== null,
+          isLoading: false,
+          providers: null,
+          isProvidersLoading: false,
+          signInWithOAuth: async () => undefined,
+          signOut: clearStoredStewardToken,
+        }}
+        mobileRequest={mobileRequest}
+        redirectUri={redirectUri}
+        state={state}
+      />
+    );
+  }
+
   if (isPlaywrightTestAuthEnabled()) {
     return (
       <AuthorizeFlow
@@ -415,6 +446,14 @@ function AuthorizeFlow({
       });
 
       if (!res.ok) {
+        if (mobileRequest && res.status === 401) {
+          invalidateStewardServerCookieSyncMarker();
+          signOut();
+          window.location.assign(
+            buildAppAuthorizeLoginHref(window.location.search),
+          );
+          return;
+        }
         const message =
           res.status === 401
             ? "Authentication failed. Please sign in again."
