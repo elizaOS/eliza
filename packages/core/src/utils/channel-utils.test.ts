@@ -6,10 +6,12 @@
  * @-mentioned it or spam every message in a group.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	formatLocationText,
 	listSenderLabelCandidates,
+	logAckFailure,
+	logTypingFailure,
 	normalizeChatType,
 	resolveMentionGating,
 	resolveMentionGatingWithBypass,
@@ -302,5 +304,45 @@ describe("resolveSenderLabel and listSenderLabelCandidates", () => {
 		expect(candidates).toContain("alice_w");
 		expect(candidates).toContain("u123");
 		expect(candidates).toContain("Alice (u123)");
+	});
+});
+
+describe("channel logging utilities", () => {
+	it("formats typing failure logs using formatError safely", () => {
+		const log = vi.fn();
+		logTypingFailure({
+			log,
+			channel: "discord",
+			target: "#general",
+			action: "start",
+			error: new Error("Rate limit exceeded"),
+		});
+
+		expect(log).toHaveBeenCalledWith(
+			"discord typing action=start failed target=#general: Rate limit exceeded",
+		);
+	});
+
+	it("formats ack cleanup failure logs using formatError safely", () => {
+		const log = vi.fn();
+		logAckFailure({
+			log,
+			channel: "slack",
+			target: "C123",
+			error: new Error("Permission denied"),
+		});
+
+		expect(log).toHaveBeenCalledWith(
+			"slack ack cleanup failed target=C123: Permission denied",
+		);
+	});
+
+	it("handles non-finite coordinates in formatLocationText", () => {
+		expect(
+			formatLocationText({
+				latitude: Number.NaN,
+				longitude: Number.POSITIVE_INFINITY,
+			}),
+		).toBe("📍 0.000000, 0.000000");
 	});
 });
