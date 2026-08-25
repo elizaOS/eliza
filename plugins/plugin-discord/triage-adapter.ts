@@ -104,9 +104,21 @@ function metaString(
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 function clip(value: string, maxLength: number): string {
 	return value.length > maxLength
-		? `${value.slice(0, maxLength - 3)}...`
+		? `${truncateUtf16Safe(value, maxLength - 3)}...`
 		: value;
 }
 

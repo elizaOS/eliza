@@ -354,4 +354,34 @@ describe("DiscordTriageAdapter", () => {
 			),
 		).rejects.toThrow(/no cached draft/);
 	});
+
+	it("preserves UTF-16 surrogate pairs in draft preview clipping", async () => {
+		const service = createFakeDiscordService({
+			channels: [{ channelId: "c1" }],
+			messagesByChannel: {
+				c1: [discordMemory({ messageId: "88", channelId: "c1" })],
+			},
+		});
+		const adapter = new DiscordTriageAdapter();
+		const runtime = createRuntime(service);
+		await adapter.listMessages(runtime, {});
+
+		// "🔥" is 2 code units. 200 repeats = 400 units > 120
+		const longEmoji = "🔥".repeat(200);
+		const { preview } = await adapter.createDraft(runtime, {
+			source: "discord",
+			inReplyToId: "discord:88",
+			to: [{ identifier: "111222333444555666" }],
+			body: longEmoji,
+		});
+
+		expect(preview.endsWith("...")).toBe(true);
+		for (const char of preview) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
 });

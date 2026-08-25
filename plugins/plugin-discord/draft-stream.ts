@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 /**
  * Streams an in-progress agent reply to Discord by editing a single message as
  * draft chunks arrive, using the draft-chunking break logic.
@@ -88,7 +100,7 @@ export function createDraftStreamController(
 
 		const displayText =
 			trimmed.length > maxChars
-				? `${trimmed.slice(0, maxChars - 3)}...`
+				? `${truncateUtf16Safe(trimmed, maxChars - 3)}...`
 				: trimmed;
 		if (displayText === lastSentText) {
 			if (components && components.length > 0 && lastSentMessage) {
