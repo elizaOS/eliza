@@ -116,6 +116,21 @@ describe("transcriptKnowledgeFragments", () => {
       transcriptKnowledgeFragments([{ ...segs[0], endMs: -1 }]),
     ).toThrow(/invalid timing/);
   });
+
+  it("handles large groups without spread stack overflow", () => {
+    const large = Array.from({ length: 200000 }, (_, i) => ({
+      id: `s${i}`,
+      speakerLabel: "Alice",
+      startMs: i * 10,
+      endMs: i * 10 + 5,
+      text: "word",
+      words: [],
+    }));
+    const fragments = transcriptKnowledgeFragments(large, 5_000_000);
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0]?.metadata.startMs).toBe(0);
+    expect(fragments[0]?.metadata.endMs).toBe(200000 * 10 - 5);
+  });
 });
 
 describe("transcriptPreview", () => {

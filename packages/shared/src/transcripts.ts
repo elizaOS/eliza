@@ -324,12 +324,22 @@ export function transcriptKnowledgeFragments(
           .filter((label): label is string => Boolean(label)),
       ),
     ];
+    let startMs = group[0]?.startMs ?? 0;
+    let endMs = group[0]?.endMs ?? 0;
+    for (let i = 1; i < group.length; i += 1) {
+      const seg = group[i];
+      if (!seg) continue;
+      const s = seg.startMs;
+      const e = seg.endMs;
+      if (s < startMs) startMs = s;
+      if (e > endMs) endMs = e;
+    }
     fragments.push({
       text: lines.join("\n"),
       metadata: {
         segmentIds: group.map((segment) => segment.id),
-        startMs: Math.min(...group.map((segment) => segment.startMs)),
-        endMs: Math.max(...group.map((segment) => segment.endMs)),
+        startMs,
+        endMs,
         ...(speakerLabels.length > 0 ? { speakerLabels } : {}),
       },
     });
