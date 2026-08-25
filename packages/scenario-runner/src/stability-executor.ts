@@ -25,6 +25,12 @@ export interface ScenarioStabilityExecutionTarget {
   model: ScenarioStabilityModel;
 }
 
+export interface ScenarioStabilityExecutionAttemptIdentity {
+  attemptNumber: ScenarioStabilityAttemptNumber;
+  attemptId: string;
+  outputDir: string;
+}
+
 export interface ScenarioStabilityExecutionBudgets {
   timeoutMs: number;
   maxInputTokens: number;
@@ -301,6 +307,30 @@ function targetSlug(target: ScenarioStabilityExecutionTarget): string {
   return `${readable}-${digest}`;
 }
 
+/** Derives the exact target-qualified attempt identities used by execution. */
+export function deriveScenarioStabilityExecutionAttemptIdentities(
+  plan: ScenarioStabilityPlan,
+  target: ScenarioStabilityExecutionTarget,
+): readonly ScenarioStabilityExecutionAttemptIdentity[] {
+  const validatedPlan = validateScenarioStabilityPlan(plan);
+  validateTarget(target);
+  const slug = targetSlug(target);
+  return validatedPlan.attempts.map((attempt) => ({
+    attemptNumber: attempt.attemptNumber,
+    attemptId: `${attempt.attemptId}-${slug}`,
+    outputDir: path.join(attempt.outputDir, slug),
+  }));
+}
+
+/** Hashes the validated execution plan exactly as retained aggregate reports do. */
+export function scenarioStabilityExecutionPlanFingerprint(
+  plan: ScenarioStabilityPlan,
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify(validateScenarioStabilityPlan(plan)))
+    .digest("hex");
+}
+
 function tier(passedAttempts: number): ScenarioStabilityTier {
   if (passedAttempts < 0 || passedAttempts > 3) {
     throw new Error(`invalid scenario stability pass count ${passedAttempts}`);
@@ -510,7 +540,35 @@ function normalizedFailureSample(
     .slice(0, 4_000);
 }
 
-function buildFailureClusters(
+/** Deterministically derives the exact failure focus projection from executed cells. */
+export function deriveScenarioStabilityFocusList(
+  cells: readonly ScenarioStabilityExecutedCell[],
+): ScenarioStabilityExecutionReport["focusList"] {
+  return cells
+    .filter((cell) => !cell.strictPassed)
+    .map((cell) => ({
+      scenarioId: cell.scenarioId,
+      provider: cell.model.provider,
+      model: cell.model.model,
+      tier: cell.tier,
+      firstAttemptPassed: cell.firstAttemptPassed,
+      failedAttemptIds: cell.attempts
+        .filter((attempt) => !attempt.passed)
+        .map((attempt) => attempt.attemptId),
+      failureClassifications: [
+        ...new Set(
+          cell.attempts.flatMap((attempt) =>
+            attempt.failureClassification
+              ? [attempt.failureClassification]
+              : [],
+          ),
+        ),
+      ].sort(),
+    }));
+}
+
+/** Deterministically clusters executed failures for reports and verification. */
+export function deriveScenarioStabilityFailureClusters(
   cells: readonly ScenarioStabilityExecutedCell[],
 ): ScenarioStabilityExecutionReport["failureClusters"] {
   const clusters = new Map<
@@ -579,9 +637,11 @@ export async function executeScenarioStability(input: {
     targetKeys.add(key);
     const attempts: ScenarioStabilityExecutedAttempt[] = [];
     let baselineInitialStateHash: string | null = null;
-    for (const attempt of plan.attempts) {
-      const attemptId = `${attempt.attemptId}-${targetSlug(target)}`;
-      const outputDir = path.join(attempt.outputDir, targetSlug(target));
+    for (const attempt of deriveScenarioStabilityExecutionAttemptIdentities(
+      plan,
+      target,
+    )) {
+      const { attemptId, outputDir } = attempt;
       const controller = new AbortController();
       const startedAt = Date.now();
       let execution: ScenarioStabilityAttemptExecution | undefined;
@@ -680,40 +740,18 @@ export async function executeScenarioStability(input: {
       attempts,
     });
   }
-  const focusList = cells
-    .filter((cell) => !cell.strictPassed)
-    .map((cell) => ({
-      scenarioId: cell.scenarioId,
-      provider: cell.model.provider,
-      model: cell.model.model,
-      tier: cell.tier,
-      firstAttemptPassed: cell.firstAttemptPassed,
-      failedAttemptIds: cell.attempts
-        .filter((attempt) => !attempt.passed)
-        .map((attempt) => attempt.attemptId),
-      failureClassifications: [
-        ...new Set(
-          cell.attempts.flatMap((attempt) =>
-            attempt.failureClassification
-              ? [attempt.failureClassification]
-              : [],
-          ),
-        ),
-      ].sort(),
-    }));
+  const focusList = deriveScenarioStabilityFocusList(cells);
   const report: ScenarioStabilityExecutionReport = {
     schemaVersion: 1,
     runId: plan.runId,
-    planFingerprint: createHash("sha256")
-      .update(JSON.stringify(plan))
-      .digest("hex"),
+    planFingerprint: scenarioStabilityExecutionPlanFingerprint(plan),
     status: focusList.length === 0 ? "passed" : "failed",
     attemptCount: 3,
     requiredTier: "3/3",
     budgets: input.budgets,
     cells,
     focusList,
-    failureClusters: buildFailureClusters(cells),
+    failureClusters: deriveScenarioStabilityFailureClusters(cells),
   };
   assertScenarioStabilityBoundedJson(
     report,
