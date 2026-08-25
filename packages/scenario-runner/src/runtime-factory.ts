@@ -865,6 +865,8 @@ export async function createScenarioRuntime(
     fs.mkdirSync(explicitPgliteDir, { recursive: true });
   }
   const prevPgliteDir = process.env.PGLITE_DATA_DIR;
+  let scenarioPlannerNativeToolsOverridden = false;
+  let prevScenarioPlannerNativeTools: string | undefined;
   const prevWebsiteBlockerHostsFilePath =
     process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH;
   const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
@@ -1019,22 +1021,43 @@ export async function createScenarioRuntime(
       "[scenario-runner] Registered deterministic fixture model provider; no live provider key required.",
     );
   } else {
-    const providerModule = (await import(
-      providerConfig.pluginPackage
-    )) as Record<string, unknown>;
-    const providerPlugin = extractPlugin(providerModule, [
-      "default",
-      "elizaPlugin",
-    ]);
-    if (!providerPlugin) {
-      throw new Error(
-        `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
-      );
-    }
-    selectedProviderPlugin = providerPlugin;
-    await runtime.registerPlugin(providerPlugin);
-
     if (providerConfig.name === "cli") {
+      // plugin-cli-inference evaluates its model registry AT IMPORT TIME and
+      // registers ACTION_PLANNER only when ELIZA_PLANNER_NATIVE_TOOLS === "0"
+      // (the XML text planner the free-text CLI can actually emit). With the
+      // variable unset the planner handler is absent, so a required-action
+      // turn falls back to a free-text RESPONSE_HANDLER call that can never
+      // emit an action tool call and retries terminal prose until the turn
+      // deadline (#28378). Scenario runs declare required actions up front,
+      // so default the flag to text-planner mode here — BEFORE the dynamic
+      // import — while an explicit operator value always wins.
+      if (
+        process.env.ELIZA_PLANNER_NATIVE_TOOLS === undefined ||
+        process.env.ELIZA_PLANNER_NATIVE_TOOLS.trim() === ""
+      ) {
+        scenarioPlannerNativeToolsOverridden = true;
+        prevScenarioPlannerNativeTools = process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+        process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+        logger.info(
+          "[scenario-runner] cli provider: defaulting ELIZA_PLANNER_NATIVE_TOOLS=0 so ACTION_PLANNER is registered for required-action turns (#28378)",
+        );
+      }
+
+      const providerModule = (await import(
+        providerConfig.pluginPackage
+      )) as Record<string, unknown>;
+      const providerPlugin = extractPlugin(providerModule, [
+        "default",
+        "elizaPlugin",
+      ]);
+      if (!providerPlugin) {
+        throw new Error(
+          `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+        );
+      }
+      selectedProviderPlugin = providerPlugin;
+      await runtime.registerPlugin(providerPlugin);
+
       // @elizaos/plugin-cli-inference intentionally registers large-tier
       // handlers only (TEXT_LARGE / TEXT_MEGA / RESPONSE_HANDLER, plus
       // ACTION_PLANNER in text-planner mode). Core's MODEL_FALLBACK_CHAINS has
@@ -1057,6 +1080,21 @@ export async function createScenarioRuntime(
       logger.info(
         "[scenario-runner] Registered TEXT_SMALL→TEXT_LARGE bridge (cli provider registers large-tier handlers only)",
       );
+    } else {
+      const providerModule = (await import(
+        providerConfig.pluginPackage
+      )) as Record<string, unknown>;
+      const providerPlugin = extractPlugin(providerModule, [
+        "default",
+        "elizaPlugin",
+      ]);
+      if (!providerPlugin) {
+        throw new Error(
+          `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+        );
+      }
+      selectedProviderPlugin = providerPlugin;
+      await runtime.registerPlugin(providerPlugin);
     }
   }
 
@@ -1223,6 +1261,15 @@ export async function createScenarioRuntime(
       process.env.PGLITE_DATA_DIR = prevPgliteDir;
     } else {
       delete process.env.PGLITE_DATA_DIR;
+    }
+    if (scenarioPlannerNativeToolsOverridden) {
+      // Restore only what THIS factory overrode; unrelated runs keep the
+      // operator's environment untouched.
+      if (prevScenarioPlannerNativeTools !== undefined) {
+        process.env.ELIZA_PLANNER_NATIVE_TOOLS = prevScenarioPlannerNativeTools;
+      } else {
+        delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+      }
     }
     if (prevWebsiteBlockerHostsFilePath !== undefined) {
       process.env.WEBSITE_BLOCKER_HOSTS_FILE_PATH =

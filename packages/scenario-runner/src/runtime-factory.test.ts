@@ -1,4 +1,7 @@
 /** Tests deterministic and live provider selection for scenario runtimes. */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { ModelType } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
@@ -501,4 +504,70 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
     expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBe("http://127.0.0.1:50102/v1");
     expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
   });
+});
+
+describe("cli provider planner-mode default (#28378)", () => {
+  // plugin-cli-inference evaluates buildModels() at IMPORT time and registers
+  // ACTION_PLANNER only when ELIZA_PLANNER_NATIVE_TOOLS === "0". The factory
+  // must therefore default the flag BEFORE its dynamic import of the provider
+  // package — otherwise required-action scenario turns fall back to free-text
+  // RESPONSE_HANDLER prose that can never emit an action tool call and retry
+  // until the turn deadline. This test executes createScenarioRuntime for real
+  // with a sandboxed HOME (fake codex credentials file; handlers are lazy so
+  // no CLI binary or network is touched) and asserts on the REGISTERED runtime
+  // model registry.
+
+  function writeFakeCodexCredentials(home: string): void {
+    fs.mkdirSync(path.join(home, ".codex"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, ".codex", "auth.json"),
+      JSON.stringify({ tokens: { access_token: "test", account_id: "test" } }),
+    );
+  }
+
+  it("registers ACTION_PLANNER on the booted runtime when ELIZA_PLANNER_NATIVE_TOOLS is unset", async () => {
+    const prevHome = process.env.HOME;
+    const prevPlanner = process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+    const prevBackend = process.env.ELIZA_CHAT_VIA_CLI;
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "cli-home-"));
+    writeFakeCodexCredentials(home);
+    process.env.HOME = home;
+    delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+    process.env.ELIZA_CHAT_VIA_CLI = "codex";
+
+    let result:
+      | Awaited<
+          ReturnType<
+            typeof import("./runtime-factory.js").createScenarioRuntime
+          >
+        >
+      | undefined;
+    try {
+      const { createScenarioRuntime } = await import("./runtime-factory.js");
+      result = await createScenarioRuntime({
+        preferredProvider: "cli",
+        executionProfile: "simulated",
+      });
+      expect(result.providerName).toBe("cli");
+      // AgentRuntime.models is a public Map<string, ModelHandler[]>.
+      const models = (
+        result.runtime as unknown as {
+          models: Map<string, unknown[]>;
+        }
+      ).models;
+      expect(models.get(ModelType.ACTION_PLANNER)).toBeDefined();
+      expect(models.get(ModelType.RESPONSE_HANDLER)).toBeDefined();
+      expect(process.env.ELIZA_PLANNER_NATIVE_TOOLS).toBe("0");
+    } finally {
+      await result?.cleanup();
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (prevPlanner === undefined)
+        delete process.env.ELIZA_PLANNER_NATIVE_TOOLS;
+      else process.env.ELIZA_PLANNER_NATIVE_TOOLS = prevPlanner;
+      if (prevBackend === undefined) delete process.env.ELIZA_CHAT_VIA_CLI;
+      else process.env.ELIZA_CHAT_VIA_CLI = prevBackend;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
