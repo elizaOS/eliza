@@ -1209,6 +1209,7 @@ export class DiscordLocalService extends Service {
 			source: DISCORD_LOCAL_SERVICE_NAME,
 			type: roomType,
 			channelId,
+			serverId: serverKey,
 			messageServerId: stringToUuid(
 				`discord-local-server:${serverKey}`,
 			) as UUID,
