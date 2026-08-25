@@ -172,6 +172,22 @@ export class TelegramMembershipAuthority {
    * the tombstone, and only after a fresh registration.
    */
   private readonly removedScopes = new Map<string, string>();
+  /**
+   * Re-add watermarks by scope key (epoch ms). After the bot is re-added,
+   * evidence observed BEFORE the re-add moment is backlogged and must not
+   * re-authorize anything: only observations made while the bot was actually
+   * present may establish authority again.
+   */
+  private readonly scopeReaddWatermarks = new Map<string, number>();
+  /**
+   * Principals whose REVOCATION could not be committed (evidence write
+   * failed; the scope was degraded stale instead). Their prior active
+   * evidence may still be live within its validity window, so admission
+   * denies them through this overlay until fresh evidence for the SAME
+   * principal commits (either direction) — a join/reconcile for an unrelated
+   * principal restoring scope health must not re-authorize them.
+   */
+  private readonly pendingRevocations = new Map<string, Set<UUID>>();
 
   constructor(input: {
     runtime: IAgentRuntime;
@@ -349,6 +365,9 @@ export class TelegramMembershipAuthority {
           ) {
             continue;
           }
+          // error-policy:J2 Generation moved persistently under us: wrap and
+          // rethrow so the caller can escalate (mark the gate broken) rather
+          // than treating the scope as successfully degraded.
           throw error;
         }
       }
@@ -381,6 +400,24 @@ export class TelegramMembershipAuthority {
   }): Promise<boolean> {
     const key = scopeKey(input.scope);
     return this.serialized(key, async () => {
+      // Restart hydration: if this process restarted, the in-memory
+      // bot-removal tombstone map is empty — but the persisted scope health
+      // still says unavailable. Hydrate BEFORE the tombstone check so a
+      // backlogged join redelivery after restart cannot register a fresh
+      // publisher generation and advance the scope back to current.
+      // A re-add watermark (this process cleared the tombstone after a bot
+      // re-add) suppresses hydration: the persisted unavailable state is
+      // stale by the explicit re-add.
+      if (
+        !this.removedScopes.has(key) &&
+        !this.scopes.has(key) &&
+        !this.scopeReaddWatermarks.has(key)
+      ) {
+        const health = await this.service.getScopeHealth(input.scope);
+        if (health?.health === "unavailable") {
+          this.removedScopes.set(key, health.reason || "bot_removed_persisted");
+        }
+      }
       // Bot-removal tombstone: once the bot has been removed from this chat,
       // no evidence (backlogged join redelivery, reconcile) may advance the
       // scope back to current — the bot cannot observe the chat anymore, so
@@ -397,6 +434,27 @@ export class TelegramMembershipAuthority {
             removalReason,
           },
           "Telegram membership evidence rejected for a bot-removed scope; skipping",
+        );
+        return false;
+      }
+      // Re-add watermark: after a bot re-add, only observations made WHILE
+      // the bot was present may (re)establish authority. Evidence stamped
+      // before the re-add moment is backlogged and must not authorize.
+      const readdWatermark = this.scopeReaddWatermarks.get(key);
+      if (
+        readdWatermark !== undefined &&
+        Date.parse(input.observedAt) < readdWatermark
+      ) {
+        logger.debug(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            chatId: input.scope.externalWorldId,
+            telegramUserId: input.canonicalPrincipalId,
+            observedAt: input.observedAt,
+            readdWatermark: new Date(readdWatermark).toISOString(),
+          },
+          "Telegram membership evidence predates the bot re-add; skipping",
         );
         return false;
       }
@@ -470,6 +528,10 @@ export class TelegramMembershipAuthority {
           tracker.generation += 1;
           tracker.sourceVersion = sourceVersion;
           tracker.sourceCursor = sourceCursor;
+          // Fresh evidence for this principal committed: any pending
+          // (uncommittable) revocation overlay for it is now superseded —
+          // the authoritative record speaks again.
+          this.pendingRevocations.get(key)?.delete(input.canonicalPrincipalId);
           return true;
         } catch (error) {
           const code = authorityErrorCode(error);
@@ -593,7 +655,15 @@ export class TelegramMembershipAuthority {
             scope,
             reason: `revocation_write_failed:${input.reason}`,
           });
-          // Degrade landed: admission now fails closed for the scope.
+          // Degrade landed: admission now fails closed for the scope. ALSO
+          // record the pending revocation: the stale degrade is not durable —
+          // unrelated evidence can restore scope health — so this principal
+          // must keep failing closed via the authorize overlay until fresh
+          // evidence for the SAME principal commits.
+          const key = scopeKey(scope);
+          const pending = this.pendingRevocations.get(key) ?? new Set<UUID>();
+          pending.add(input.canonicalPrincipalId);
+          this.pendingRevocations.set(key, pending);
           // error-policy:J7 Evidence-write failure must not kill the poll
           // loop; the failure is reported and the degraded scope carries the
           // security decision.
@@ -738,10 +808,10 @@ export class TelegramMembershipAuthority {
         });
       }
     } catch (error) {
-      // error-policy:J3 createEntity/createWorld/createRoom are idempotent
+      // error-policy:J7 createEntity/createWorld/createRoom are idempotent
       // for existing rows on the adapters in use; a genuine failure surfaces
       // below through applyEvidence's assert codes, so this only guards
-      // duplicate-create races.
+      // duplicate-create races and must not kill the reconcile attempt.
       this.runtime.reportError("telegram:membership-reconcile", error, {
         chatId: input.chatId,
         telegramUserId: input.telegramUserId,
@@ -790,9 +860,26 @@ export class TelegramMembershipAuthority {
       chatId: input.chatId,
       chatRoomKey: input.chatRoomKey,
     });
-    return this.serialized(scopeKey(scope), () =>
-      this.service.authorize(scope, input.canonicalPrincipalId),
-    );
+    const key = scopeKey(scope);
+    return this.serialized(key, async () => {
+      // Pending-revocation overlay: this principal's revocation could not be
+      // committed and the scope was degraded stale — but scope health may
+      // have been restored since by unrelated evidence. Their prior active
+      // fact must keep failing closed until fresh evidence for THIS
+      // principal lands.
+      if (this.pendingRevocations.get(key)?.has(input.canonicalPrincipalId)) {
+        // Reuse membership_revoked: a revocation WAS observed for this
+        // principal, it just could not be committed — admission must fail
+        // closed exactly as if it had.
+        return {
+          decision: "denied",
+          reason: "membership_revoked",
+          generation: null,
+          health: null,
+        } satisfies MembershipAuthorizationDecision;
+      }
+      return this.service.authorize(scope, input.canonicalPrincipalId);
+    });
   }
 
   /**
@@ -874,7 +961,13 @@ export class TelegramMembershipAuthority {
       chatId: input.chatId,
       chatRoomKey: input.chatRoomKey,
     });
-    this.removedScopes.delete(scopeKey(scope));
+    const key = scopeKey(scope);
+    this.removedScopes.delete(key);
+    // Watermark the re-add: backlogged evidence stamped BEFORE this moment
+    // (queued updates from while the bot was absent) must not re-authorize
+    // anything after the clear — only observations made while the bot was
+    // actually present may establish authority again.
+    this.scopeReaddWatermarks.set(key, Date.now());
   }
 
   /** Read-only scope health accessor (used by tests and diagnostics). */

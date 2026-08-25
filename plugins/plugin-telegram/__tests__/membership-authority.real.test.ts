@@ -52,6 +52,13 @@ async function bootMembershipHarness(options?: {
   authority: import("@elizaos/plugin-telegram").TelegramMembershipAuthority;
   getChatMember: ReturnType<typeof vi.fn>;
   membershipService: import("@elizaos/core").MembershipService;
+  /**
+   * Fault injector for evidence-write failures: while true, the NEXT
+   * applyMembership call (and every one until flipped back) throws a generic
+   * authority error, exercising the recordEvent failure path exactly like a
+   * real database outage would.
+   */
+  faults: { failApplyMembership: boolean };
 }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
@@ -65,6 +72,20 @@ async function bootMembershipHarness(options?: {
   if (!membershipService) {
     throw new Error("membership service missing from test runtime");
   }
+
+  const faults = { failApplyMembership: false };
+  // Fault injector: override applyMembership ON THE REAL INSTANCE (instance
+  // property shadows the prototype) and delegate to the bound original when
+  // not faulted. The authority sees a genuine authority outage, not a mock
+  // with fabricated responses; every other method keeps its real receiver.
+  const originalApplyMembership =
+    membershipService.applyMembership.bind(membershipService);
+  membershipService.applyMembership = ((command: never) => {
+    if (faults.failApplyMembership) {
+      throw new Error("injected authority outage (test fault)");
+    }
+    return originalApplyMembership(command);
+  }) as never;
 
   const { getConnectorAccountManager } = await import("@elizaos/core");
   const manager$ = getConnectorAccountManager(harness.runtime);
@@ -113,6 +134,7 @@ async function bootMembershipHarness(options?: {
     authority,
     getChatMember,
     membershipService,
+    faults,
   };
 }
 
@@ -286,7 +308,10 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     admissions = 0;
     getChatMember.mockResolvedValue({
       status: "kicked",
-      user: { id: MEMBER_TG_ID },
+      // Subject must match the SENDER (555002): with the subject-mismatch
+      // guard, a reply describing a different user denies via mismatch and
+      // would mask the kicked-evidence path this test exists to prove.
+      user: { id: MEMBER_TG_ID + 1 },
     });
     await manager.handleMessage(
       groupMessageCtx({
@@ -447,6 +472,8 @@ describe("telegram membership authority vertical (real PGlite)", () => {
     // Stop the first runtime WITHOUT removing the PGlite dir.
     const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
     if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+    // error-policy:J6 Best-effort teardown: a stop() rejection during test
+    // cleanup must not mask the assertions below.
     await first.harness.runtime.stop().catch(() => {});
 
     // Second process over the same database: same stable publisher identity.
@@ -641,5 +668,184 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       canonicalPrincipalId: entityId,
     });
     expect(decision.decision).toBe("denied");
+  }, 120_000);
+
+  it("keeps a pending (uncommitted) revocation denying after unrelated evidence restores scope health", async () => {
+    const { authority, harness, faults } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal A is an admitted member.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    const admitted = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(admitted.decision).toBe("allowed");
+
+    // REAL failure path: an authority outage makes the revocation evidence
+    // write throw; recordEvent degrades the scope stale and records the
+    // pending revocation.
+    faults.failApplyMembership = true;
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    faults.failApplyMembership = false;
+    const staleDecision = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(staleDecision.decision).toBe("denied");
+
+    // Unrelated evidence (another principal's join observed NOW) restores
+    // scope health to current...
+    const otherId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID + 7),
+      ),
+    );
+    await ensurePrincipal(harness, otherId);
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: otherId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID + 7),
+      runtime: { worldId: null, roomId: null, entityId: otherId },
+      observedAt: new Date().toISOString(),
+    });
+
+    // ...but the FIRST principal must remain denied: their prior active
+    // fact is live and their revocation never committed. Without the
+    // pending-revocation overlay this authorize would return allowed.
+    const afterRestore = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      afterRestore.decision,
+      "unrelated evidence restoring scope health must not re-authorize a principal with an uncommitted revocation",
+    ).toBe("denied");
+
+    // Fresh evidence for the FIRST principal (either direction) clears the
+    // overlay — here a later join re-admits them through the authority.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 4,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const reAdmitted = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(reAdmitted.decision).toBe("allowed");
+  }, 120_000);
+
+  it("re-hydrates the bot-removal tombstone from persisted unavailable state after a restart", async () => {
+    const dir = await import("node:fs/promises").then((fs) =>
+      fs.mkdtemp("/tmp/tg-membership-tombstone-"),
+    );
+    const first = await bootMembershipHarness({ pgliteDir: dir });
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        first.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(first.harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    await first.authority.markScopeUnavailable({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      reason: "bot_removed",
+    });
+
+    // Restart: stop the first runtime, boot a second over the same DB.
+    const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
+    if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+    // error-policy:J6 Best-effort teardown: a stop() rejection during test
+    // cleanup must not mask the assertions below.
+    await first.harness.runtime.stop().catch(() => {});
+    const second = await bootMembershipHarness({ pgliteDir: dir });
+
+    // A backlogged join redelivery observed AFTER the removal must NOT
+    // restore the scope: the persisted unavailable state re-hydrates the
+    // tombstone in the restarted process.
+    await second.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const decision = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      decision.decision,
+      "a restarted process must not let backlogged evidence restore a bot-removed scope",
+    ).toBe("denied");
+    cleanups.push(async () => {
+      await import("node:fs/promises").then((fs) =>
+        fs.rm(dir, { recursive: true, force: true }),
+      );
+    });
   }, 120_000);
 });

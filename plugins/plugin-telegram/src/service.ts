@@ -1135,6 +1135,9 @@ export class TelegramService extends Service {
     try {
       return await promise;
     } catch {
+      // error-policy:J4 The gate seeding path already recorded the failure,
+      // marked the manager's gate broken, and reported it; callers treat null
+      // as "no gate" and the broken marker keeps group admission closed.
       return null;
     }
   }
