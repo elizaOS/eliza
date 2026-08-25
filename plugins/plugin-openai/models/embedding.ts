@@ -79,7 +79,19 @@ function hashFeature(feature: string): number {
   return hash >>> 0;
 }
 
-function createDeterministicEmbedding(text: string, dimension: VectorDimension): number[] {
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
+export function createDeterministicEmbedding(text: string, dimension: VectorDimension): number[] {
   const vector = new Array(dimension).fill(0);
   const normalized = text.toLowerCase();
   const tokens = normalized.match(/[a-z0-9]+(?:[_-][a-z0-9]+)*/g) ?? [normalized];
@@ -102,7 +114,7 @@ function createDeterministicEmbedding(text: string, dimension: VectorDimension):
       addFeature(`${tokens[index - 1]} ${token}`, 0.35);
     }
   });
-  addFeature(normalized.slice(0, 512), 0.15);
+  addFeature(truncateUtf16Safe(normalized, 512), 0.15);
 
   const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
   if (norm === 0) {
