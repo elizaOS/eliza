@@ -190,3 +190,31 @@ describe("cleanText", () => {
     expect(cleanText(undefined)).toBe("");
   });
 });
+
+describe("convertMarkdownToTelegram blockquote and plain-text edge cases", () => {
+  it("preserves blockquote markers while escaping the quoted text", () => {
+    expect(convertMarkdownToTelegram("> hello. world")).toBe("> hello\\. world");
+    expect(convertMarkdownToTelegram(">> nested! quote")).toBe(">> nested\\! quote");
+    expect(convertMarkdownToTelegram("> _italic inside quote_")).toBe("> _italic inside quote_");
+  });
+
+  it("escapes plain-text dots and exclamation outside any formatting", () => {
+    expect(convertMarkdownToTelegram("End. Next! Done.")).toBe("End\\. Next\\! Done\\.");
+  });
+
+  it("keeps code spans unescaped inside, escapes outside", () => {
+    expect(convertMarkdownToTelegram("Use `a.b` now.")).toBe("Use `a.b` now\\.");
+    expect(convertMarkdownToTelegram("Code `x_y` and text.")).toBe("Code `x_y` and text\\.");
+  });
+
+  it("handles headers with bold-like content without double-escaping", () => {
+    expect(convertMarkdownToTelegram("# **Bold header**")).toBe("**Bold header**");
+    expect(convertMarkdownToTelegram("## Header with *italic* inside")).toBe("*Header with _italic_ inside*");
+  });
+
+  it("returns empty string for empty input and preserves plain text as escaped", () => {
+    expect(convertMarkdownToTelegram("")).toBe("");
+    expect(convertMarkdownToTelegram("plain")).toBe("plain");
+  });
+});
+
