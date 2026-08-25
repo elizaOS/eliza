@@ -64,21 +64,25 @@ export interface ProgressiveContentFaultReport {
 	}[];
 }
 
+export interface ProgressiveContentFaultExecutor {
+	/** Execute the faulted production operation; a passing vector must reject. */
+	execute(): void | Promise<void>;
+	/** Observe durable effects after rejection through a separate read boundary. */
+	observeEffects?(): readonly string[] | Promise<readonly string[]>;
+}
+
+function faultCode(error: unknown): string {
+	if (error && typeof error === "object") {
+		const code = (error as { code?: unknown }).code;
+		if (typeof code === "string" && code.length > 0) return code;
+	}
+	return `executor-error:${error instanceof Error ? error.name : "unknown"}`;
+}
+
 /** Run every registered injector; missing injectors remain failed report rows. */
 export async function runProgressiveContentFaultRegistry(input: {
 	readonly executors: Partial<
-		Record<
-			ProgressiveContentFaultId,
-			() =>
-				| Promise<{
-						readonly code: string;
-						readonly effects?: readonly string[];
-				  }>
-				| {
-						readonly code: string;
-						readonly effects?: readonly string[];
-				  }
-		>
+		Record<ProgressiveContentFaultId, ProgressiveContentFaultExecutor>
 	>;
 }): Promise<ProgressiveContentFaultReport> {
 	let executed = 0;
@@ -90,14 +94,17 @@ export async function runProgressiveContentFaultRegistry(input: {
 		if (executor) {
 			executed += 1;
 			try {
-				const observed = await executor();
-				observedCode = observed.code;
-				observedEffects = observed.effects ?? [];
+				await executor.execute();
+				observedCode = "FAULT_NOT_OBSERVED";
 			} catch (error) {
-				observedCode = `executor-error:${
-					error instanceof Error ? error.name : "unknown"
-				}`;
-				observedEffects = [];
+				observedCode = faultCode(error);
+			}
+			try {
+				observedEffects = (await executor.observeEffects?.()) ?? [];
+			} catch (error) {
+				observedEffects = [
+					`observer-error:${error instanceof Error ? error.name : "unknown"}`,
+				];
 			}
 		}
 		const forbiddenEffects = PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS;
