@@ -4,10 +4,15 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { listPackages } from "../lib/workspaces.mjs";
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const source = readFileSync(
   join(repoRoot, ".github/workflows/pr-static-smoke.yml"),
+  "utf8",
+);
+const workflowReadme = readFileSync(
+  join(repoRoot, ".github/workflows/README.md"),
   "utf8",
 );
 const workflow = Bun.YAML.parse(source) as {
@@ -27,6 +32,42 @@ const workflow = Bun.YAML.parse(source) as {
     }
   >;
 };
+
+function splitWords(value: string | undefined): string[] {
+  return value?.trim().split(/\s+/).filter(Boolean) ?? [];
+}
+
+function workspaceClosure(seedDirs: readonly string[]): Set<string> {
+  const workspaces = listPackages({ repoRoot });
+  const byName = new Map(
+    workspaces
+      .filter(
+        (workspace): workspace is typeof workspace & { name: string } =>
+          typeof workspace.name === "string" && workspace.name.length > 0,
+      )
+      .map((workspace) => [workspace.name, workspace]),
+  );
+  const seeds = workspaces.filter(({ dir }) => seedDirs.includes(dir));
+  expect(seeds.map(({ dir }) => dir).sort()).toEqual([...seedDirs].sort());
+
+  const closure = new Set<string>();
+  const pending = seeds.map(({ name }) => name);
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (!name) continue;
+    const workspace = byName.get(name);
+    if (!workspace || closure.has(workspace.dir)) continue;
+    closure.add(workspace.dir);
+    for (const dependency of Object.keys({
+      ...workspace.packageJson.dependencies,
+      ...workspace.packageJson.optionalDependencies,
+      ...workspace.packageJson.peerDependencies,
+    })) {
+      if (byName.has(dependency)) pending.push(dependency);
+    }
+  }
+  return closure;
+}
 
 describe("PR Static Smoke workflow", () => {
   test("owns cancelable source, billing replay, and Windows lanes behind the stable admission context", () => {
@@ -55,17 +96,65 @@ describe("PR Static Smoke workflow", () => {
     const billingJob = workflow.jobs?.["billing-payment-replay-e2e"];
     expect(billingJob?.needs).toBeUndefined();
 
+    const workspaceSeeds = splitWords(
+      billingJob?.env?.BILLING_REPLAY_WORKSPACE_SEEDS,
+    );
+    expect(workspaceSeeds).toEqual([
+      "packages/cloud/api",
+      "packages/cloud/e2e",
+      "packages/cloud/shared",
+      "packages/ui",
+    ]);
+    const closure = workspaceClosure(workspaceSeeds);
+    expect([...closure]).toEqual(
+      expect.arrayContaining([
+        "packages/cloud/api",
+        "packages/cloud/e2e",
+        "packages/cloud/shared",
+        "packages/core",
+        "packages/logger",
+        "packages/prompts",
+        "packages/registry",
+        "packages/shared",
+        "packages/ui",
+        "plugins/plugin-cloud-apps",
+        "plugins/plugin-elizacloud",
+        "plugins/plugin-sql",
+      ]),
+    );
+
+    const explicitInputs = splitWords(
+      billingJob?.env?.BILLING_REPLAY_PATH_INPUTS,
+    );
+    expect(explicitInputs).toEqual(
+      expect.arrayContaining([
+        "packages/cloud",
+        "packages/app",
+        "packages/app-core",
+        "packages/scripts/lib/workspaces.mjs",
+        ".github/actions/cloud-setup-test-env",
+        ".github/develop-surface-graph.json",
+        ".github/workflows/develop-full.yml",
+        ".github/workflows/pr-static-smoke.yml",
+        ".github/workflows/cloud-tests.yml",
+      ]),
+    );
+
     const detect = billingJob?.steps?.find(
       (step) => step.id === "billing-diff",
     )?.run;
-    expect(detect).toContain("git merge-base");
-    expect(detect).toContain("'packages/cloud/**'");
-    expect(detect).toContain("'packages/app/**'");
-    expect(detect).toContain("'packages/ui/**'");
-    expect(detect).toContain("bun.lock");
-    expect(detect).toContain("cloud-setup-test-env/**");
-    expect(detect).toContain('case "$diff_status" in');
-    expect(detect).toContain('*) exit "$diff_status"');
+    expect(detect).toContain("listPackages");
+    expect(detect).toContain('git(["merge-base", baseSha, headSha], [0])');
+    expect(detect).toContain("...manifest.dependencies");
+    expect(detect).toContain("...manifest.optionalDependencies");
+    expect(detect).toContain("...manifest.peerDependencies");
+    expect(detect).toContain(
+      "if (byName.has(dependency)) pending.push(dependency)",
+    );
+    expect(detect).toContain('["diff", "--quiet"');
+    expect(detect).toContain("[0, 1]");
+    expect(detect).toContain('appendFileSync(requiredEnv("GITHUB_OUTPUT")');
+    expect(detect).toContain("diff.status === 1");
 
     const replay = billingJob?.steps?.find(
       (step) => step.name === "Run billing payment replay spec",
@@ -101,5 +190,12 @@ describe("PR Static Smoke workflow", () => {
     expect(source).not.toContain("test:plugins");
     expect(source).not.toContain("environment:");
     expect(source).not.toContain("self-hosted");
+  });
+
+  test("documents the required keyless Billing replay lane", () => {
+    expect(workflowReadme).toContain(
+      "mock-backed payment replay Playwright proof",
+    );
+    expect(workflowReadme).not.toMatch(/does\s+not run tests/);
   });
 });

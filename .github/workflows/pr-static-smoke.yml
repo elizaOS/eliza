@@ -165,6 +165,38 @@ jobs:
       HCLOUD_TOKEN: test-token
       CONTAINER_CONTROL_PLANE_TOKEN: test-token
       CRON_SECRET: test-cron-secret
+      # These are the workspace entry points actually executed by the keyless
+      # stack. Detection below walks their runtime workspace dependencies, so a
+      # shared/core/logger/plugin change cannot silently skip the replay proof.
+      # packages/app carries a large native/desktop-only dependency graph, so
+      # its browser source and app-core aliases stay explicit path inputs below.
+      BILLING_REPLAY_WORKSPACE_SEEDS: >-
+        packages/cloud/api
+        packages/cloud/e2e
+        packages/cloud/shared
+        packages/ui
+      BILLING_REPLAY_PATH_INPUTS: >-
+        packages/cloud
+        packages/app
+        packages/app-core
+        package.json
+        bun.lock
+        bunfig.toml
+        turbo.json
+        tsconfig.json
+        tsconfig.base.json
+        packages/scripts/build-core.mjs
+        packages/scripts/build-core-packages.mjs
+        packages/scripts/ci-await-bun-release-server.mjs
+        packages/scripts/ci-fetch-bun-release.mjs
+        packages/scripts/lib/repository-file-integrity.mjs
+        packages/scripts/lib/workspaces.mjs
+        .github/actions/cloud-setup-test-env
+        .github/scripts/install-playwright-browsers.sh
+        .github/develop-surface-graph.json
+        .github/workflows/develop-full.yml
+        .github/workflows/pr-static-smoke.yml
+        .github/workflows/cloud-tests.yml
     steps:
       - name: Checkout candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -180,29 +212,78 @@ jobs:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
-          set -euo pipefail
-          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
-          test -n "$merge_base"
+          node --input-type=module <<'NODE'
+          import { spawnSync } from "node:child_process";
+          import { appendFileSync } from "node:fs";
+          import { listPackages } from "./packages/scripts/lib/workspaces.mjs";
 
-          set +e
-          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
-            'packages/cloud/**' \
-            'packages/app/**' \
-            'packages/ui/**' \
-            package.json \
-            bun.lock \
-            '.github/actions/cloud-setup-test-env/**' \
-            .github/scripts/install-playwright-browsers.sh \
-            .github/workflows/pr-static-smoke.yml \
-            .github/workflows/cloud-tests.yml
-          diff_status=$?
-          set -e
+          function requiredEnv(name) {
+            const value = process.env[name]?.trim();
+            if (!value) throw new Error(`Missing required environment variable: ${name}`);
+            return value;
+          }
 
-          case "$diff_status" in
-            0) echo "run=false" >> "$GITHUB_OUTPUT" ;;
-            1) echo "run=true" >> "$GITHUB_OUTPUT" ;;
-            *) exit "$diff_status" ;;
-          esac
+          function git(args, allowedStatuses) {
+            const result = spawnSync("git", args, { encoding: "utf8" });
+            if (result.error) throw result.error;
+            if (result.signal) throw new Error(`git ${args[0]} received ${result.signal}`);
+            if (!allowedStatuses.includes(result.status)) {
+              throw new Error(
+                `git ${args[0]} exited ${result.status}: ${result.stderr.trim()}`,
+              );
+            }
+            return result;
+          }
+
+          const baseSha = requiredEnv("BASE_SHA");
+          const headSha = requiredEnv("HEAD_SHA");
+          const mergeBase = git(["merge-base", baseSha, headSha], [0]).stdout.trim();
+          if (!mergeBase) throw new Error("git merge-base returned no commit");
+
+          const workspaces = listPackages();
+          const byName = new Map(
+            workspaces
+              .filter(({ name }) => typeof name === "string" && name.length > 0)
+              .map((workspace) => [workspace.name, workspace]),
+          );
+          const seedDirs = new Set(
+            requiredEnv("BILLING_REPLAY_WORKSPACE_SEEDS").split(/\s+/),
+          );
+          const seeds = workspaces.filter(({ dir }) => seedDirs.has(dir));
+          const resolvedSeedDirs = new Set(seeds.map(({ dir }) => dir));
+          const missingSeeds = [...seedDirs].filter((dir) => !resolvedSeedDirs.has(dir));
+          if (missingSeeds.length > 0) {
+            throw new Error(`Unknown Billing replay workspace seed(s): ${missingSeeds.join(", ")}`);
+          }
+
+          const closureDirs = new Set();
+          const pending = seeds.map(({ name }) => name);
+          while (pending.length > 0) {
+            const name = pending.pop();
+            if (!name) continue;
+            const workspace = byName.get(name);
+            if (!workspace || closureDirs.has(workspace.dir)) continue;
+            closureDirs.add(workspace.dir);
+            const manifest = workspace.packageJson;
+            for (const dependency of Object.keys({
+              ...manifest.dependencies,
+              ...manifest.optionalDependencies,
+              ...manifest.peerDependencies,
+            })) {
+              if (byName.has(dependency)) pending.push(dependency);
+            }
+          }
+
+          const pathspecs = [
+            ...closureDirs,
+            ...requiredEnv("BILLING_REPLAY_PATH_INPUTS").split(/\s+/),
+          ].sort();
+          const diff = git(
+            ["diff", "--quiet", `${mergeBase}...${headSha}`, "--", ...pathspecs],
+            [0, 1],
+          );
+          appendFileSync(requiredEnv("GITHUB_OUTPUT"), `run=${diff.status === 1}\n`);
+          NODE
       - if: steps.billing-diff.outputs.run == 'true'
         uses: ./.github/actions/cloud-setup-test-env
       - name: Install Playwright browsers
