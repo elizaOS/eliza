@@ -5245,59 +5245,57 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async compareAndSwapWorldMetadata(
     params: WorldMetadataCompareAndSwapParams
   ): Promise<WorldMetadataMutationResult> {
-    return this.withDatabase(async () => {
-      return this.db.transaction(async (tx) => {
-        const rows = await tx
-          .select()
-          .from(worldTable)
-          .where(and(eq(worldTable.id, params.worldId), eq(worldTable.agentId, this.agentId)))
-          .for("update")
-          .limit(1);
-        const row = rows[0];
-        if (!row) return { status: "not_found" as const };
+    return this.withEntityContext(params.audit?.actorEntityId ?? null, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(worldTable)
+        .where(and(eq(worldTable.id, params.worldId), eq(worldTable.agentId, this.agentId)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" as const };
 
-        const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
-        if (
-          !worldMetadataValueEquals(
-            storedMetadata,
-            params.expectedMetadata as Record<string, unknown>
-          )
-        ) {
-          return { status: "conflict" as const };
-        }
-        const storedRevision = getWorldMetadataRevision(row.metadata as Metadata | undefined);
-        if (storedRevision === null) return { status: "conflict" as const };
+      const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
+      if (
+        !worldMetadataValueEquals(
+          storedMetadata,
+          params.expectedMetadata as Record<string, unknown>
+        )
+      ) {
+        return { status: "conflict" as const };
+      }
+      const storedRevision = getWorldMetadataRevision(row.metadata as Metadata | undefined);
+      if (storedRevision === null) return { status: "conflict" as const };
 
-        if (params.audit) {
-          const audit = params.audit;
-          const sanitizedBody = sanitizeJsonObject({
-            source: "role-write-cas",
-            metadata: {
-              worldId: params.worldId,
-              actorEntityId: audit.actorEntityId,
-              targetEntityId: audit.targetEntityId,
-              previousRole: audit.previousRole,
-              newRole: audit.newRole,
-              grantSource: audit.source,
-              outcome: "committed",
-            },
-          });
-          await tx.insert(logTable).values({
-            entityId: audit.actorEntityId,
-            roomId: audit.roomId,
-            type: ROLE_WRITE_AUDIT_LOG_TYPE,
-            body: sql`${JSON.stringify(sanitizedBody)}::jsonb`,
-          });
-        }
+      if (params.audit) {
+        const audit = params.audit;
+        const sanitizedBody = sanitizeJsonObject({
+          source: "role-write-cas",
+          metadata: {
+            worldId: params.worldId,
+            actorEntityId: audit.actorEntityId,
+            targetEntityId: audit.targetEntityId,
+            previousRole: audit.previousRole,
+            newRole: audit.newRole,
+            grantSource: audit.source,
+            outcome: "committed",
+          },
+        });
+        await tx.insert(logTable).values({
+          entityId: audit.actorEntityId,
+          roomId: audit.roomId,
+          type: ROLE_WRITE_AUDIT_LOG_TYPE,
+          body: sql`${JSON.stringify(sanitizedBody)}::jsonb`,
+        });
+      }
 
-        await tx
-          .update(worldTable)
-          .set({
-            metadata: advanceWorldMetadataRevision(params.replacementMetadata, storedRevision),
-          })
-          .where(eq(worldTable.id, params.worldId));
-        return { status: "updated" as const };
-      });
+      await tx
+        .update(worldTable)
+        .set({
+          metadata: advanceWorldMetadataRevision(params.replacementMetadata, storedRevision),
+        })
+        .where(eq(worldTable.id, params.worldId));
+      return { status: "updated" as const };
     });
   }
 
