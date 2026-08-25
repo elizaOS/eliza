@@ -201,12 +201,20 @@ export async function ensureEmbeddingDimension(
 	// and "no facts available" results. Accept both spellings. On conflict, PLURAL
 	// wins: the DB column must match the embedder's real output dimension, and the
 	// embedder reads the plural key — so it is the source of truth. Warn loudly.
-	const parseDim = (value: unknown): number =>
-		typeof value === "number"
-			? value
-			: typeof value === "string"
-				? parseInt(value, 10)
+	const parseDim = (value: unknown): number => {
+		if (typeof value === "number") {
+			return Number.isFinite(value) && Number.isInteger(value) && value > 0
+				? value
 				: NaN;
+		}
+		if (typeof value === "string") {
+			const trimmed = value.trim();
+			if (!/^\d+$/.test(trimmed)) return NaN;
+			const parsed = Number(trimmed);
+			return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : NaN;
+		}
+		return NaN;
+	};
 	const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"));
 	const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"));
 	const singularValid = Number.isFinite(singular) && singular > 0;

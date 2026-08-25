@@ -153,4 +153,67 @@ describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition prob
 		expect(ensureDim).toHaveBeenCalledWith(384);
 		expect(warnSpy).not.toHaveBeenCalled();
 	});
+
+	it("rejects fractional string dimensions (strict integer)", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536.5",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+		const { runtime: r2, ensureDim: e2 } = makeRuntime({
+			hasModel: true,
+			embeddingDimensions: "768.9",
+		});
+		await ensureEmbeddingDimension(r2);
+		expect(e2).not.toHaveBeenCalled();
+	});
+
+	it("rejects trailing junk, plus-sign, and non-canonical strings", async () => {
+		for (const bad of [
+			"1536abc",
+			"1536.0",
+			"+1536",
+			"-5",
+			"Infinity",
+			"NaN",
+			"15 36",
+			"",
+		]) {
+			const { runtime, ensureDim } = makeRuntime({
+				hasModel: true,
+				embeddingDimension: bad,
+			});
+			await ensureEmbeddingDimension(runtime);
+			expect(ensureDim).not.toHaveBeenCalled();
+		}
+		// whitespace-padded canonical integer is allowed (trimmed)
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: " 1536 ",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).toHaveBeenCalledWith(1536);
+	});
+
+	it("rejects non-integer numeric dimensions", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: 1536.9,
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+		const { runtime: r2, ensureDim: e2 } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: Number.NaN,
+		});
+		await ensureEmbeddingDimension(r2);
+		expect(e2).not.toHaveBeenCalled();
+		const { runtime: r3, ensureDim: e3 } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: Number.POSITIVE_INFINITY,
+		});
+		await ensureEmbeddingDimension(r3);
+		expect(e3).not.toHaveBeenCalled();
+	});
 });
