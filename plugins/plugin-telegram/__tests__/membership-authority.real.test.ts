@@ -1110,4 +1110,105 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       "a healthy hydration read must restore normal authoritative decisions",
     ).toBe("allowed");
   }, 120_000);
+
+  it("does not erase another principal's durable revocation fence when the overlay is unreadable", async () => {
+    const dir = await import("node:fs/promises").then((fs) =>
+      fs.mkdtemp("/tmp/tg-membership-erase-"),
+    );
+    const first = await bootMembershipHarness({ pgliteDir: dir });
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        first.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(first.harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal A: admitted, then their revocation write FAILS -> a durable
+    // pending-revocation fence lands in the cache.
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 10_000).toISOString(),
+    });
+    first.faults.failApplyMembership = true;
+    await first.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "revoked",
+      reason: "left",
+      messageId: 2,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date(Date.now() - 5_000).toISOString(),
+    });
+    first.faults.failApplyMembership = false;
+
+    // Restart WITHOUT removing the PGlite dir, and fail the FIRST hydration
+    // read in the new process: the in-memory overlay stays empty and the
+    // persisted set is unknown.
+    const cleanupIndex = cleanups.indexOf(first.harness.cleanup);
+    if (cleanupIndex >= 0) cleanups.splice(cleanupIndex, 1);
+    await first.harness.runtime.stop().catch(() => {});
+    const second = await bootMembershipHarness({ pgliteDir: dir });
+    second.cacheFaults.failGetCache = true;
+
+    // Unrelated principal B joins DURING the outage: their evidence commits
+    // and the success path runs with an unhydrated overlay. It must NOT
+    // rewrite the persisted overlay — with an empty in-memory set the
+    // pre-fix code calls deleteCache, erasing A's durable fence.
+    const otherId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        second.harness.runtime,
+        "default",
+        String(MEMBER_TG_ID + 11),
+      ),
+    );
+    await ensurePrincipal(second.harness, otherId);
+    await second.authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: otherId,
+      state: "active",
+      reason: "joined",
+      messageId: 3,
+      telegramUserId: String(MEMBER_TG_ID + 11),
+      runtime: { worldId: null, roomId: null, entityId: otherId },
+      observedAt: new Date().toISOString(),
+    });
+
+    // Cache recovers: A's durable fence must STILL be present — B's commit
+    // during the outage did not erase it.
+    second.cacheFaults.failGetCache = false;
+    const otherAdmitted = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: otherId,
+    });
+    expect(otherAdmitted.decision).toBe("allowed");
+    const aDecision = await second.authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      aDecision.decision,
+      "an unrelated evidence commit during a cache outage must not erase principal A's durable revocation fence",
+    ).toBe("denied");
+    expect(aDecision.reason).toBe("membership_revoked");
+    cleanups.push(async () => {
+      await import("node:fs/promises").then((fs) =>
+        fs.rm(dir, { recursive: true, force: true }),
+      );
+    });
+  }, 120_000);
 });

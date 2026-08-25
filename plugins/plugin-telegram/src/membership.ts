@@ -517,9 +517,13 @@ export class TelegramMembershipAuthority {
       // Restart hydration (see authorize): a restart-then-fresh-evidence
       // commit must clear the persisted overlay for this principal, which
       // requires the persisted set to be loaded first. On a cache read
-      // failure the FAIL_CLOSED sentinel denies every principal — safe
-      // (evidence is only recorded, admission is gated in authorize).
-      await this.hydratePendingRevocations(input.scope);
+      // failure hydration returns the FAIL_CLOSED sentinel: evidence is
+      // still recorded (the write path is independent of the overlay), but
+      // the success path below must NOT rewrite the persisted overlay from
+      // an incomplete in-memory set — that would erase other principals'
+      // durable revocation fences.
+      const hydration = await this.hydratePendingRevocations(input.scope);
+      const overlayHydrated = hydration !== FAIL_CLOSED_PENDING;
       // Restart hydration: if this process restarted, the in-memory
       // bot-removal tombstone map is empty — but the persisted scope health
       // still says unavailable. Hydrate BEFORE the tombstone check so a
@@ -651,9 +655,14 @@ export class TelegramMembershipAuthority {
           // Fresh evidence for this principal committed: any pending
           // (uncommittable) revocation overlay for it is now superseded —
           // the authoritative record speaks again. Persist the removal so a
-          // restart does not resurrect the overlay against committed state.
+          // restart does not resurrect the overlay against committed state —
+          // but ONLY when the overlay was successfully hydrated: persisting
+          // an incompletely-hydrated set could erase OTHER principals'
+          // durable revocation fences from the cache.
           this.pendingRevocations.get(key)?.delete(input.canonicalPrincipalId);
-          await this.persistPendingRevocations(input.scope);
+          if (overlayHydrated) {
+            await this.persistPendingRevocations(input.scope);
+          }
           return true;
         } catch (error) {
           const code = authorityErrorCode(error);
@@ -739,6 +748,20 @@ export class TelegramMembershipAuthority {
               this.pendingRevocations.get(key2) ?? new Set<UUID>();
             pending.add(input.canonicalPrincipalId);
             this.pendingRevocations.set(key2, pending);
+            if (!overlayHydrated) {
+              // The persisted set is unknown (cache read failed earlier):
+              // persisting the in-memory set could erase OTHER principals'
+              // durable fences. The in-memory overlay protects this process;
+              // escalate to gate-broken so a restart does not silently
+              // re-authorize.
+              throw new ElizaError(
+                "Telegram membership revocation fence could not be persisted (overlay unreadable)",
+                {
+                  code: "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE",
+                  cause: error,
+                },
+              );
+            }
             const persisted = await this.persistPendingRevocations(input.scope);
             if (!persisted) {
               // The durable overlay did not land: a restart would
