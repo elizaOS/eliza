@@ -581,4 +581,27 @@ describe("PdfService", () => {
 	it("fails cleanup on malformed caller input instead of returning uncleaned content", () => {
 		expect(() => service().cleanUpContent(null as never)).toThrow();
 	});
+
+	it("initializes and stops service via static lifecycle methods", async () => {
+		const mockInstance = service();
+		const stopSpy = vi.spyOn(mockInstance, "stop");
+		const runtime = {
+			getService: vi.fn((type: string) =>
+				type === "pdf" ? mockInstance : null
+			),
+		} as unknown as IAgentRuntime;
+
+		const started = await PdfService.start(runtime);
+		expect(started).toBeInstanceOf(PdfService);
+
+		await PdfService.stop(runtime);
+		expect(stopSpy).toHaveBeenCalledTimes(1);
+
+		const runtimeWithoutService = {
+			getService: vi.fn(() => null),
+		} as unknown as IAgentRuntime;
+		await expect(
+			PdfService.stop(runtimeWithoutService)
+		).resolves.toBeUndefined();
+	});
 });
