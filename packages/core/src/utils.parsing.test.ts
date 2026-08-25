@@ -137,4 +137,34 @@ describe("truncateToCompleteSentence", () => {
 	it("returns text unchanged when it already fits", () => {
 		expect(truncateToCompleteSentence("short", 280)).toBe("short");
 	});
+
+	it("guards non-finite and out-of-range maxLength", () => {
+		const text = "One. Two. Three is longer than limit.";
+		// NaN / Infinity must not bypass the budget — they return empty
+		expect(truncateToCompleteSentence(text, Number.NaN)).toBe("");
+		expect(truncateToCompleteSentence(text, Number.POSITIVE_INFINITY)).toBe("");
+		expect(truncateToCompleteSentence(text, Number.NEGATIVE_INFINITY)).toBe("");
+		// Negative and zero are already guarded but re-assert
+		expect(truncateToCompleteSentence(text, -1)).toBe("");
+		expect(truncateToCompleteSentence(text, -100)).toBe("");
+		// Fractional caps floor to integer
+		expect(
+			truncateToCompleteSentence("alpha beta gamma delta", 12.9).length,
+		).toBeLessThanOrEqual(12);
+		expect(
+			truncateToCompleteSentence("alpha beta gamma delta", 10.1).length,
+		).toBeLessThanOrEqual(10);
+		// Infinity text bypass check: long text must not be returned unchanged
+		const long = "word ".repeat(100).trim();
+		expect(long.length).toBeGreaterThan(100);
+		expect(truncateToCompleteSentence(long, Number.POSITIVE_INFINITY)).toBe("");
+		expect(truncateToCompleteSentence(long, Number.NaN)).toBe("");
+	});
+
+	it("caps output strictly at fractional and small limits", () => {
+		expect(
+			truncateToCompleteSentence("Hello world. Extra.", 5.7).length,
+		).toBeLessThanOrEqual(5);
+		expect(truncateToCompleteSentence("abcdef", 3.9)).toBe("abc");
+	});
 });
