@@ -142,6 +142,14 @@ describe("streaming text named regressions", () => {
       nextText: "😀a😀",
       emittedText: "😀",
     });
+
+    // Canonically equivalent decomposed graphemes are normalized before the
+    // single-code-point decision, so a repeated streamed token is not mistaken
+    // for an unchanged snapshot.
+    const decomposedAcute = "e\u0301";
+    expect(stream([decomposedAcute, decomposedAcute])).toBe(
+      `${decomposedAcute}${decomposedAcute}`,
+    );
   });
 
   it("still ignores genuine multi-character regressive snapshots", () => {
