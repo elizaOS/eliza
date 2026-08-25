@@ -42,13 +42,20 @@ const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;
  * but split slow token streams into word fragments, which made OmniVoice
  * produce filler-like audio and degraded the downstream ASR loop.
  */
+function parsePositiveMs(raw: string | undefined): number | null {
+	if (!raw) return null;
+	const trimmed = raw.trim();
+	// Strict full-string decimal parse. Number.parseInt accepts partial
+	// matches ("1e3" → 1, "700ms" → 700, "0x10" → 0), silently shrinking the
+	// flush budget (or disabling it) on a typo'd env var and fragmenting
+	// TTS output into word-sized phrases.
+	if (!/^\d+(?:\.\d+)?$/.test(trimmed)) return null;
+	const v = Number(trimmed);
+	return Number.isFinite(v) && v > 0 ? v : null;
+}
+
 function resolveDefaultMaxAccumulationMs(): number {
-	const raw = process.env.ELIZA_PHRASE_FLUSH_MS?.trim();
-	if (raw) {
-		const v = Number.parseInt(raw, 10);
-		if (Number.isFinite(v) && v > 0) return v;
-	}
-	return 700;
+	return parsePositiveMs(process.env.ELIZA_PHRASE_FLUSH_MS) ?? 700;
 }
 const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
 
@@ -64,11 +71,8 @@ const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
  */
 function resolveFirstPhraseMs(fullBudgetMs: number): number {
 	if (fullBudgetMs <= 0) return 0;
-	const raw = process.env.ELIZA_PHRASE_FLUSH_FIRST_MS?.trim();
-	if (raw) {
-		const v = Number.parseInt(raw, 10);
-		if (Number.isFinite(v) && v > 0) return Math.min(v, fullBudgetMs);
-	}
+	const v = parsePositiveMs(process.env.ELIZA_PHRASE_FLUSH_FIRST_MS);
+	if (v !== null) return Math.min(v, fullBudgetMs);
 	return Math.min(350, Math.ceil(fullBudgetMs / 2));
 }
 

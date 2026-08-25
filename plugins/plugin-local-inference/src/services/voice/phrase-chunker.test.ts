@@ -1,240 +1,298 @@
-/** Covers `PhraseChunker` punctuation boundaries, time-budget flush, and first-phrase TTFA budget. Deterministic. */
-import { describe, expect, it } from "vitest";
-import { type ClockMs, chunkTokens, PhraseChunker } from "./phrase-chunker";
-import type { TextToken } from "./types";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chunkTokens, PhraseChunker } from "./phrase-chunker";
 
-function tokens(parts: string[]): TextToken[] {
-	return parts.map((text, index) => ({ index, text }));
+type Clock = () => number;
+
+function makeClock() {
+	let now = 0;
+	const clock: Clock = () => now;
+	return { clock, set: (v: number) => (now = v) };
 }
 
 describe("PhraseChunker punctuation boundaries", () => {
-	it("flushes on semicolon and colon boundaries for faster first audio", () => {
-		const phrases = chunkTokens(tokens(["First:", " second;", " third"]), {});
+	it("flushes on a sentence/clause terminator", () => {
+		const chunker = new PhraseChunker({});
+		const phrase = chunker.push({ text: "Hello,", index: 0, acceptedAt: 0 });
+		expect(phrase).not.toBeNull();
+		expect(phrase?.text).toBe("Hello,");
+		expect(phrase?.terminator).toBe("punctuation");
+		expect(phrase?.fromIndex).toBe(0);
+		expect(phrase?.toIndex).toBe(0);
+	});
 
-		expect(phrases.map((phrase) => phrase.text)).toEqual([
-			"First:",
-			" second;",
-			" third",
-		]);
-		expect(phrases.map((phrase) => phrase.terminator)).toEqual([
-			"punctuation",
-			"punctuation",
-			"max-cap",
-		]);
+	it("flushes on each of the default terminator set", () => {
+		for (const mark of [",", ".", "!", "?", ";", ":"]) {
+			const chunker = new PhraseChunker({});
+			const phrase = chunker.push({
+				text: `word${mark}`,
+				index: 0,
+				acceptedAt: 0,
+			});
+			expect(phrase?.terminator).toBe("punctuation");
+		}
+	});
+
+	it("does not flush on a token that does not end with a terminator", () => {
+		const chunker = new PhraseChunker({});
+		expect(chunker.push({ text: "hello", index: 0, acceptedAt: 0 })).toBeNull();
+		expect(chunker.push({ text: "world", index: 1, acceptedAt: 0 })).toBeNull();
+	});
+
+	it("respects a custom terminator set", () => {
+		const chunker = new PhraseChunker({ sentenceTerminators: new Set(["؟"]) });
+		expect(chunker.push({ text: "ok.", index: 0, acceptedAt: 0 })).toBeNull();
+		const phrase = chunker.push({ text: "ok؟", index: 1, acceptedAt: 0 });
+		expect(phrase?.terminator).toBe("punctuation");
 	});
 });
 
-describe("PhraseChunker T3 time-budget flush", () => {
-	it("force-flushes once the time budget elapses on a slow producer", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			// Pin first-phrase budget == full budget so these mechanism tests
-			// exercise the uniform 200ms path (first-phrase shortening is
-			// covered separately below).
-			{
-				maxAccumulationMs: 200,
-				firstPhraseMaxAccumulationMs: 200,
-				maxTokensPerPhrase: 100,
-			},
-			null,
-			clock,
-		);
-
-		expect(chunker.push({ index: 0, text: "hello", acceptedAt: 0 })).toBeNull();
-		now = 100;
-		expect(
-			chunker.push({ index: 1, text: " there", acceptedAt: 0 }),
-		).toBeNull();
-		now = 220;
-		const flushed = chunker.push({ index: 2, text: " friend", acceptedAt: 0 });
-		expect(flushed).not.toBeNull();
-		expect(flushed?.text).toBe("hello there friend");
-		expect(flushed?.terminator).toBe("max-cap");
-	});
-
-	it("does not flush before the budget elapses", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			// Pin first-phrase budget == full budget so these mechanism tests
-			// exercise the uniform 200ms path (first-phrase shortening is
-			// covered separately below).
-			{
-				maxAccumulationMs: 200,
-				firstPhraseMaxAccumulationMs: 200,
-				maxTokensPerPhrase: 100,
-			},
-			null,
-			clock,
-		);
-		expect(chunker.push({ index: 0, text: "a", acceptedAt: 0 })).toBeNull();
-		now = 50;
-		expect(chunker.push({ index: 1, text: "b", acceptedAt: 0 })).toBeNull();
-		now = 150;
-		expect(chunker.push({ index: 2, text: "c", acceptedAt: 0 })).toBeNull();
-	});
-
-	it("flushIfTimeBudgetExceeded triggers on caller poll without a new token", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			// Pin first-phrase budget == full budget so these mechanism tests
-			// exercise the uniform 200ms path (first-phrase shortening is
-			// covered separately below).
-			{
-				maxAccumulationMs: 200,
-				firstPhraseMaxAccumulationMs: 200,
-				maxTokensPerPhrase: 100,
-			},
-			null,
-			clock,
-		);
-		chunker.push({ index: 0, text: "x", acceptedAt: 0 });
-		now = 100;
-		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
-		now = 250;
-		const phrase = chunker.flushIfTimeBudgetExceeded();
-		expect(phrase?.text).toBe("x");
+describe("PhraseChunker max-token cap", () => {
+	it("force-flushes at the configured cap with terminator max-cap", () => {
+		const chunker = new PhraseChunker({ maxTokensPerPhrase: 3 });
+		expect(chunker.push({ text: "a", index: 0, acceptedAt: 0 })).toBeNull();
+		expect(chunker.push({ text: "b", index: 1, acceptedAt: 0 })).toBeNull();
+		const phrase = chunker.push({ text: "c", index: 2, acceptedAt: 0 });
+		expect(phrase?.text).toBe("abc");
 		expect(phrase?.terminator).toBe("max-cap");
-		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		expect(phrase?.fromIndex).toBe(0);
+		expect(phrase?.toIndex).toBe(2);
+	});
+});
+
+describe("PhraseChunker phoneme-stream mode", () => {
+	const fakeTokenizer = {
+		tokenize: (text: string) => Array.from({ length: text.length }),
+	};
+
+	it("throws when phoneme-stream mode has no tokenizer", () => {
+		expect(() => new PhraseChunker({ chunkOn: "phoneme-stream" })).toThrow();
 	});
 
-	it("msUntilTimeBudget reports infinity for an empty buffer or disabled budget", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
+	it("flushes every phonemesPerChunk phonemes", () => {
 		const chunker = new PhraseChunker(
-			// Pin first-phrase budget == full budget so these mechanism tests
-			// exercise the uniform 200ms path (first-phrase shortening is
-			// covered separately below).
-			{
-				maxAccumulationMs: 200,
-				firstPhraseMaxAccumulationMs: 200,
-				maxTokensPerPhrase: 100,
-			},
+			{ chunkOn: "phoneme-stream", phonemesPerChunk: 4 },
+			fakeTokenizer as never,
+		);
+		expect(chunker.push({ text: "a", index: 0, acceptedAt: 0 })).toBeNull();
+		expect(chunker.push({ text: "a", index: 1, acceptedAt: 0 })).toBeNull();
+		expect(chunker.push({ text: "a", index: 2, acceptedAt: 0 })).toBeNull();
+		const phrase = chunker.push({ text: "a", index: 3, acceptedAt: 0 });
+		expect(phrase?.text).toBe("aaaa");
+		expect(phrase?.terminator).toBe("phoneme-stream");
+	});
+});
+
+describe("PhraseChunker time-budget flush (injected clock)", () => {
+	it("flushes via flushIfTimeBudgetExceeded once the budget elapses", () => {
+		const { clock, set } = makeClock();
+		const chunker = new PhraseChunker(
+			{ maxAccumulationMs: 700, firstPhraseMaxAccumulationMs: 700 },
+			null,
+			clock,
+		);
+		chunker.push({ text: "hello", index: 0, acceptedAt: 0 });
+		set(699);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(700);
+		const phrase = chunker.flushIfTimeBudgetExceeded();
+		expect(phrase?.text).toBe("hello");
+		expect(phrase?.terminator).toBe("max-cap");
+	});
+
+	it("applies the shorter first-phrase budget then the full budget", () => {
+		const { clock, set } = makeClock();
+		const chunker = new PhraseChunker({ maxAccumulationMs: 700 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(349);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(350);
+		const first = chunker.flushIfTimeBudgetExceeded();
+		expect(first?.text).toBe("a");
+
+		chunker.push({ text: "b", index: 1, acceptedAt: 0 });
+		set(351);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(1050);
+		expect(chunker.flushIfTimeBudgetExceeded()?.text).toBe("b");
+	});
+
+	it("disables the time budget when maxAccumulationMs is 0", () => {
+		const { clock, set } = makeClock();
+		const chunker = new PhraseChunker({ maxAccumulationMs: 0 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(100_000);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		expect(chunker.msUntilTimeBudget()).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it("reports ms until budget via msUntilTimeBudget", () => {
+		const { clock, set } = makeClock();
+		const chunker = new PhraseChunker(
+			{ maxAccumulationMs: 700, firstPhraseMaxAccumulationMs: 700 },
 			null,
 			clock,
 		);
 		expect(chunker.msUntilTimeBudget()).toBe(Number.POSITIVE_INFINITY);
-		chunker.push({ index: 0, text: "x", acceptedAt: 0 });
-		expect(chunker.msUntilTimeBudget()).toBe(200);
-		now = 75;
-		expect(chunker.msUntilTimeBudget()).toBe(125);
-
-		const disabled = new PhraseChunker(
-			{ maxAccumulationMs: 0, maxTokensPerPhrase: 100 },
-			null,
-			clock,
-		);
-		disabled.push({ index: 0, text: "x", acceptedAt: 0 });
-		expect(disabled.msUntilTimeBudget()).toBe(Number.POSITIVE_INFINITY);
-	});
-
-	it("disabled budget never time-flushes", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			{ maxAccumulationMs: 0, maxTokensPerPhrase: 100 },
-			null,
-			clock,
-		);
-		chunker.push({ index: 0, text: "a", acceptedAt: 0 });
-		now = 10_000;
-		expect(chunker.push({ index: 1, text: " b", acceptedAt: 0 })).toBeNull();
-		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(300);
+		expect(chunker.msUntilTimeBudget()).toBe(400);
+		set(700);
+		expect(chunker.msUntilTimeBudget()).toBe(0);
 	});
 });
 
-describe("PhraseChunker first-phrase budget (TTFA)", () => {
-	it("flushes the first phrase on the shorter budget, later phrases on the full one", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
+describe("PhraseChunker rollback (dropPendingFrom)", () => {
+	it("drops buffered tokens at or after fromIndex and recounts phonemes", () => {
+		const { clock, set } = makeClock();
+		const tokenizer = { tokenize: (text: string) => text.length };
 		const chunker = new PhraseChunker(
-			{
-				maxAccumulationMs: 700,
-				firstPhraseMaxAccumulationMs: 300,
-				maxTokensPerPhrase: 100,
-			},
+			{ chunkOn: "phoneme-stream", phonemesPerChunk: 100 },
+			tokenizer as never,
+			clock,
+		);
+		for (let i = 0; i < 5; i += 1) {
+			chunker.push({ text: "ab", index: i, acceptedAt: 0 });
+		}
+		chunker.dropPendingFrom(3);
+		const phrase = chunker.flushPending();
+		expect(phrase?.text).toBe("ababab");
+		expect(phrase?.fromIndex).toBe(0);
+		expect(phrase?.toIndex).toBe(2);
+	});
+
+	it("is a no-op when nothing is dropped", () => {
+		const chunker = new PhraseChunker({});
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		chunker.dropPendingFrom(1);
+		expect(chunker.flushPending()?.text).toBe("a");
+	});
+});
+
+describe("chunkTokens static helper", () => {
+	it("cuts phrases at punctuation and flushes the tail", () => {
+		const phrases = chunkTokens(
+			[
+				{ text: "Hello", index: 0 },
+				{ text: " there", index: 1 },
+				{ text: ".", index: 2 },
+				{ text: "Next", index: 3 },
+			],
+			{},
+		);
+		expect(phrases).toHaveLength(2);
+		expect(phrases[0].text).toBe("Hello there.");
+		expect(phrases[0].terminator).toBe("punctuation");
+		expect(phrases[1].text).toBe("Next");
+		expect(phrases[1].terminator).toBe("max-cap");
+	});
+
+	it("respects maxTokensPerPhrase", () => {
+		const phrases = chunkTokens(
+			[
+				{ text: "a", index: 0 },
+				{ text: "b", index: 1 },
+				{ text: "c", index: 2 },
+			],
+			{ maxTokensPerPhrase: 2 },
+		);
+		expect(phrases).toHaveLength(2);
+		expect(phrases[0].text).toBe("ab");
+		expect(phrases[1].text).toBe("c");
+	});
+});
+
+describe("ELIZA_PHRASE_FLUSH_MS env parsing (strict numeric)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.resetModules();
+	});
+
+	async function fresh() {
+		return await import("./phrase-chunker");
+	}
+
+	it("falls back to 700 for scientific-notation garbage instead of a 1ms budget", async () => {
+		// "1e3" parses to 1 via parseInt — a near-instant budget that
+		// fragments every phrase into word-sized chunks.
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "1e3");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker(
+			{ firstPhraseMaxAccumulationMs: 700 },
 			null,
 			clock,
 		);
-		// First phrase: silent producer, no punctuation — flushes at 300ms.
-		expect(chunker.push({ index: 0, text: "hello", acceptedAt: 0 })).toBeNull();
-		expect(chunker.msUntilTimeBudget()).toBe(300);
-		now = 300;
-		const first = chunker.flushIfTimeBudgetExceeded();
-		expect(first?.text).toBe("hello");
-		expect(first?.terminator).toBe("max-cap");
-
-		// Second phrase now uses the FULL 700ms budget (no fragmentation).
-		now = 1000;
-		expect(
-			chunker.push({ index: 1, text: " there", acceptedAt: 0 }),
-		).toBeNull();
-		expect(chunker.msUntilTimeBudget()).toBe(700);
-		now = 1300; // 300ms in — would have flushed the first phrase, not this one
+		chunker.push({ text: "hello", index: 0, acceptedAt: 0 });
+		set(699);
 		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
-		now = 1700; // full 700ms elapsed
-		expect(chunker.flushIfTimeBudgetExceeded()?.text).toBe(" there");
+		set(700);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
 	});
 
-	it("derives the first-phrase budget from maxAccumulationMs when unset (half, capped 350)", () => {
-		const now = 0;
-		const clock: ClockMs = () => now;
-		// 700ms full → first-phrase budget = min(350, 350) = 350.
-		const chunker = new PhraseChunker(
-			{ maxAccumulationMs: 700, maxTokensPerPhrase: 100 },
+	it("falls back to 700 for suffix-mixed garbage", async () => {
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "700ms");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker(
+			{ firstPhraseMaxAccumulationMs: 700 },
 			null,
 			clock,
 		);
-		chunker.push({ index: 0, text: "x", acceptedAt: 0 });
-		expect(chunker.msUntilTimeBudget()).toBe(350);
-
-		// 400ms full → half = 200 (below the 350 cap).
-		const small = new PhraseChunker(
-			{ maxAccumulationMs: 400, maxTokensPerPhrase: 100 },
-			null,
-			clock,
-		);
-		small.push({ index: 0, text: "x", acceptedAt: 0 });
-		expect(small.msUntilTimeBudget()).toBe(200);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(699);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(700);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
 	});
 
-	it("resets the first-phrase gate on reset() so each reply gets fast first audio", () => {
-		let now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			{
-				maxAccumulationMs: 700,
-				firstPhraseMaxAccumulationMs: 300,
-				maxTokensPerPhrase: 100,
-			},
+	it("accepts a valid decimal value", async () => {
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_MS", "1500");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker(
+			{ firstPhraseMaxAccumulationMs: 1500 },
 			null,
 			clock,
 		);
-		chunker.push({ index: 0, text: "first", acceptedAt: 0 });
-		now = 300;
-		expect(chunker.flushIfTimeBudgetExceeded()).not.toBeNull(); // phrase #1 flushed
-		chunker.reset();
-		now = 1000;
-		chunker.push({ index: 0, text: "again", acceptedAt: 0 });
-		// Back to the short first-phrase budget after reset.
-		expect(chunker.msUntilTimeBudget()).toBe(300);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(1499);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(1500);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
+	});
+});
+
+describe("ELIZA_PHRASE_FLUSH_FIRST_MS env parsing (strict numeric)", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+		vi.resetModules();
 	});
 
-	it("clamps an explicit first-phrase budget to the full budget", () => {
-		const now = 0;
-		const clock: ClockMs = () => now;
-		const chunker = new PhraseChunker(
-			{
-				maxAccumulationMs: 200,
-				firstPhraseMaxAccumulationMs: 999,
-				maxTokensPerPhrase: 100,
-			},
-			null,
-			clock,
-		);
-		chunker.push({ index: 0, text: "x", acceptedAt: 0 });
-		expect(chunker.msUntilTimeBudget()).toBe(200);
+	async function fresh() {
+		return await import("./phrase-chunker");
+	}
+
+	it("falls back to the default first-phrase budget for scientific notation", async () => {
+		// "1e3" parses to 1 — first audio would flush after 1ms, fragmenting
+		// the opening of every reply.
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_FIRST_MS", "1e3");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker({ maxAccumulationMs: 700 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(2);
+		expect(chunker.flushIfTimeBudgetExceeded()).toBeNull();
+		set(350);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
+	});
+
+	it("honors a valid override capped at the full budget", async () => {
+		vi.stubEnv("ELIZA_PHRASE_FLUSH_FIRST_MS", "500");
+		const { PhraseChunker: FreshChunker } = await fresh();
+		const { clock, set } = makeClock();
+		const chunker = new FreshChunker({ maxAccumulationMs: 400 }, null, clock);
+		chunker.push({ text: "a", index: 0, acceptedAt: 0 });
+		set(400);
+		expect(chunker.flushIfTimeBudgetExceeded()?.terminator).toBe("max-cap");
 	});
 });
