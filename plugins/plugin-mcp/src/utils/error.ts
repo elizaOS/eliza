@@ -34,11 +34,11 @@ export async function handleMcpError(
 
   if (callback) {
     const enhancedState: State = {
-      ...state,
+      ...(state ?? {}),
       values: {
-        ...state.values,
+        ...(state?.values ?? {}),
         mcpProvider,
-        userMessage: message.content.text ?? "",
+        userMessage: message?.content?.text ?? "",
         error: errorMessage,
       },
     };
