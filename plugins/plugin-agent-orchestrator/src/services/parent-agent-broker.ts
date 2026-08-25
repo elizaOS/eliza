@@ -1531,8 +1531,13 @@ interface SpawnCapableTaskService {
       framework?: string;
       workdir?: string;
       nestingDepth?: number;
+      completionRole?: "coordinator" | "contributor";
+      parentSessionId?: string;
+      requiredForTaskCompletion?: boolean;
     },
-  ): Promise<unknown>;
+  ): Promise<{
+    sessions?: Array<{ sessionId: string; parentSessionId?: string | null }>;
+  } | null>;
 }
 
 /**
@@ -1598,6 +1603,9 @@ async function runSpawnSubAgent(request: {
       framework: request.framework,
       workdir: request.workdir,
       nestingDepth: childDepth,
+      completionRole: "contributor",
+      parentSessionId: request.sessionId,
+      requiredForTaskCompletion: true,
     });
     if (!result) {
       return {
@@ -1616,10 +1624,18 @@ async function runSpawnSubAgent(request: {
       },
       `${LOG_PREFIX} spawned nested sub-agent at depth ${childDepth}`,
     );
+    const childSessionId = result.sessions
+      ?.filter((session) => session.parentSessionId === request.sessionId)
+      .at(-1)?.sessionId;
     return {
       success: true,
-      text: `Spawned a sub-agent (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
-      data: { ...data, parentTaskId, nestingDepth: childDepth },
+      text: `Spawned a sub-agent${childSessionId ? ` ${childSessionId}` : ""} (depth ${childDepth}) on task ${parentTaskId}${request.label ? ` named "${request.label}"` : ""}. It runs in parallel on: ${normalizePromptText(prompt)}. Its progress appears in this task's thread — check back rather than blocking on it.`,
+      data: {
+        ...data,
+        parentTaskId,
+        ...(childSessionId ? { childSessionId } : {}),
+        nestingDepth: childDepth,
+      },
     };
   } catch (error) {
     // error-policy:J1 boundary — translates a spawn failure into the structured {success:false} result the child sub-agent reads.
