@@ -15,12 +15,13 @@ import {
 } from "../first-run/first-run-greeting";
 import {
   AndroidCloudClient,
-  type AndroidCloudGoogleIdentityAdapter,
   type AndroidCloudSession,
 } from "./android-cloud-client";
 
 export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
+const LOGIN_POLL_MS = 1_500;
+const LOGIN_TIMEOUT_MS = 10 * 60_000;
 export const ANDROID_CLOUD_COMPOSE_EVENT = "eliza:android-cloud-compose";
 
 export interface AndroidCloudMessage {
@@ -31,7 +32,11 @@ export interface AndroidCloudMessage {
 
 export interface AndroidCloudAppProps {
   client?: AndroidCloudClient;
-  googleIdentity?: AndroidCloudGoogleIdentityAdapter;
+  /** Opens the canonical hosted Eliza Cloud authentication session. */
+  openExternal?: (
+    url: string,
+  ) => Promise<"closed" | "opened"> | "closed" | "opened";
+  closeExternal?: () => Promise<void> | void;
   voice?: AndroidCloudVoiceAdapter;
 }
 
@@ -47,18 +52,20 @@ function errorMessage(error: unknown): string {
     : "Something went wrong. Please try again.";
 }
 
-function isGoogleSignInCancellation(error: unknown): boolean {
-  return (
-    error !== null &&
-    typeof error === "object" &&
-    "code" in error &&
-    error.code === "GOOGLE_SIGN_IN_CANCELLED"
-  );
+function defaultExternalOpen(url: string): "opened" {
+  const opened = window.open(url, "_system", "noopener,noreferrer");
+  if (!opened) {
+    throw new Error(
+      "Unable to open Eliza Cloud sign-in. Check that a browser is installed and try again.",
+    );
+  }
+  return "opened";
 }
 
 export function AndroidCloudApp({
   client: clientOverride,
-  googleIdentity,
+  openExternal = defaultExternalOpen,
+  closeExternal,
   voice,
 }: AndroidCloudAppProps): React.JSX.Element {
   const client = useMemo(
@@ -76,7 +83,6 @@ export function AndroidCloudApp({
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const authAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
 
   const restore = useCallback(async () => {
@@ -125,11 +131,9 @@ export function AndroidCloudApp({
     return () => {
       loginAttemptRef.current += 1;
       abortRef.current?.abort();
-      authAbortRef.current?.abort();
-      if (authAbortRef.current) void googleIdentity?.cancel();
       void voice?.stop();
     };
-  }, [googleIdentity, restore, voice]);
+  }, [restore, voice]);
 
   useEffect(() => {
     const compose = (event: Event) => {
@@ -142,48 +146,60 @@ export function AndroidCloudApp({
       window.removeEventListener(ANDROID_CLOUD_COMPOSE_EVENT, compose);
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    if (!googleIdentity) {
-      setError("Google sign-in is not available on this device.");
-      return;
-    }
+  const signIn = useCallback(async () => {
     const attemptNumber = loginAttemptRef.current + 1;
     loginAttemptRef.current = attemptNumber;
     setBusy(true);
     setError(null);
-    const controller = new AbortController();
-    authAbortRef.current = controller;
     try {
-      await client.signInWithGoogle(googleIdentity, controller.signal);
+      const attempt = await client.beginLogin();
+      const externalState = await openExternal(attempt.browserUrl);
       if (loginAttemptRef.current !== attemptNumber) return;
-      await restore();
+      if (externalState === "closed") {
+        const result = await client.pollLogin(attempt.sessionId);
+        if (result.status === "authenticated") {
+          await restore();
+          return;
+        }
+        if (result.status === "expired") throw new Error(result.error);
+        return;
+      }
+      const deadline = Date.now() + LOGIN_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, LOGIN_POLL_MS),
+        );
+        if (loginAttemptRef.current !== attemptNumber) return;
+        const result = await client.pollLogin(attempt.sessionId);
+        if (result.status === "pending") continue;
+        if (result.status === "expired") throw new Error(result.error);
+        await closeExternal?.();
+        await restore();
+        return;
+      }
+      throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
-      // error-policy:J4 native identity failures remain visible and recoverable.
-      if (
-        loginAttemptRef.current === attemptNumber &&
-        !isGoogleSignInCancellation(signInError)
-      ) {
+      // error-policy:J4 the hosted authentication boundary renders the failure.
+      if (loginAttemptRef.current === attemptNumber) {
         setError(errorMessage(signInError));
       }
     } finally {
       if (loginAttemptRef.current === attemptNumber) {
         setBusy(false);
       }
-      if (authAbortRef.current === controller) authAbortRef.current = null;
     }
-  }, [client, googleIdentity, restore]);
+  }, [client, closeExternal, openExternal, restore]);
 
   const cancelSignIn = useCallback(async () => {
     loginAttemptRef.current += 1;
     setBusy(false);
     try {
-      authAbortRef.current?.abort();
-      await googleIdentity?.cancel();
+      await closeExternal?.();
     } catch (cancelError) {
-      // error-policy:J4 a failed native cancellation remains visible.
+      // error-policy:J4 a failed hosted-session cancellation remains visible.
       setError(errorMessage(cancelError));
     }
-  }, [googleIdentity]);
+  }, [closeExternal]);
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -195,14 +211,6 @@ export function AndroidCloudApp({
       setConversationId(null);
       setMessages([]);
       setPhase("signed-out");
-      try {
-        await googleIdentity?.clearCredentialState();
-      } catch (clearError) {
-        // error-policy:J4 the Cloud session is closed, but provider cleanup failure is visible.
-        setError(
-          `You are signed out, but Google account state could not be cleared: ${errorMessage(clearError)}`,
-        );
-      }
     } catch (signOutError) {
       // error-policy:J4 failed logout remains visible without fabricating a
       // signed-out state that the client did not complete.
@@ -210,7 +218,7 @@ export function AndroidCloudApp({
     } finally {
       setBusy(false);
     }
-  }, [client, googleIdentity]);
+  }, [client]);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -356,7 +364,7 @@ export function AndroidCloudApp({
               {busy ? (
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-white/65" role="status">
-                    Choose your Google account to continue.
+                    Finish signing in with Eliza Cloud, then return here.
                   </p>
                   <Button
                     type="button"
@@ -373,17 +381,11 @@ export function AndroidCloudApp({
                     type="button"
                     variant="surface"
                     size="touch"
-                    disabled={!googleIdentity}
-                    onClick={() => void signInWithGoogle()}
+                    onClick={() => void signIn()}
                     className="w-full max-w-[13.5rem]"
                   >
-                    Continue with Google
+                    Sign in with Eliza Cloud
                   </Button>
-                  {!googleIdentity ? (
-                    <p role="alert" className="text-sm text-red-200/90">
-                      Google sign-in is unavailable on this device.
-                    </p>
-                  ) : null}
                 </div>
               )}
             </ChatBubble>

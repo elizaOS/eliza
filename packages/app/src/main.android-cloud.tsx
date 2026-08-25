@@ -7,6 +7,7 @@
  * ordinary Capacitor lifecycle/deep-link/network/keyboard/status-bar APIs.
  */
 import { App as CapacitorApp } from "@capacitor/app";
+import { Browser } from "@capacitor/browser";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
@@ -62,20 +63,8 @@ interface SecureCredentialsPlugin {
   remove(): Promise<void>;
 }
 
-interface GoogleIdentityPlugin {
-  signIn(options: {
-    serverClientId: string;
-    nonce: string;
-  }): Promise<{ idToken: string }>;
-  cancel(): Promise<{ cancelled: boolean }>;
-  clearCredentialState(): Promise<Record<string, never>>;
-}
-
 const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
   "ElizaSecureCredentials",
-);
-const GoogleIdentity = registerPlugin<GoogleIdentityPlugin>(
-  "ElizaGoogleIdentity",
 );
 
 const androidSecureCredentialStore: AndroidCloudCredentialStore = {
@@ -91,6 +80,7 @@ const androidSecureCredentialStore: AndroidCloudCredentialStore = {
 };
 
 const androidCloudClient = new AndroidCloudClient({
+  cloudApiBase: import.meta.env.VITE_ELIZA_CLOUD_BASE,
   credentialStore: androidSecureCredentialStore,
 });
 
@@ -340,6 +330,29 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
 };
 
+export async function openAndroidCloudSignIn(url: string): Promise<"closed"> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") {
+    throw new Error("Eliza Cloud sign-in must use HTTPS.");
+  }
+  let finishBrowser: (() => void) | null = null;
+  const browserFinished = new Promise<void>((resolve) => {
+    finishBrowser = resolve;
+  });
+  // Android suspends the WebView behind a Custom Tab, so the Cloud session is
+  // checked only after the system reports that the trusted auth tab closed.
+  const listener = await Browser.addListener("browserFinished", () => {
+    finishBrowser?.();
+  });
+  try {
+    await Browser.open({ url: parsed.toString() });
+    await browserFinished;
+    return "closed";
+  } finally {
+    await listener.remove();
+  }
+}
+
 function renderBootFailure(error: unknown): void {
   const root = document.getElementById("root");
   if (!root) return;
@@ -359,7 +372,8 @@ export async function bootAndroidCloudApp(): Promise<void> {
       <ErrorBoundary>
         <AndroidCloudApp
           client={androidCloudClient}
-          googleIdentity={GoogleIdentity}
+          closeExternal={() => Browser.close()}
+          openExternal={openAndroidCloudSignIn}
           voice={androidCloudVoice}
         />
       </ErrorBoundary>
