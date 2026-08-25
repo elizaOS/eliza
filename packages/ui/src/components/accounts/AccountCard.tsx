@@ -209,12 +209,14 @@ export function AccountCard({
   const requiresCredentialRepair =
     account.health === "needs-reauth" || account.health === "invalid";
   const healthReason = account.healthDetail?.lastError?.trim();
+  const testLabel = t("accounts.test", { defaultValue: "Test" });
+  const refreshLabel = t("accounts.refresh", { defaultValue: "Refresh" });
 
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5 transition-opacity",
-        !account.enabled && "opacity-60",
+        "flex flex-col gap-2 rounded-sm border border-border/45 bg-card/35 px-3 py-2.5",
+        !account.enabled && "bg-muted/10",
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -243,7 +245,7 @@ export function AccountCard({
               {account.email}
             </span>
           ) : null}
-          <Badge variant="outline" className="shrink-0 text-2xs uppercase">
+          <Badge variant="outline" size="compact" className="shrink-0">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
                   defaultValue: "Coding plan",
@@ -272,24 +274,22 @@ export function AccountCard({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={isFirst || saving}
             onClick={() => void onMoveUp()}
             aria-label={t("accounts.moveUp", { defaultValue: "Move up" })}
             title={t("accounts.moveUp", { defaultValue: "Move up" })}
-            className="size-7 p-0"
           >
             <ChevronUp className="size-3.5" aria-hidden />
           </Button>
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             disabled={isLast || saving}
             onClick={() => void onMoveDown()}
             aria-label={t("accounts.moveDown", { defaultValue: "Move down" })}
             title={t("accounts.moveDown", { defaultValue: "Move down" })}
-            className="size-7 p-0"
           >
             <ChevronDown className="size-3.5" aria-hidden />
           </Button>
@@ -313,7 +313,6 @@ export function AccountCard({
               size="sm"
               disabled={saving}
               onClick={onReauthenticate}
-              className="h-7 gap-1.5 px-2 text-xs"
             >
               <KeyRound className="size-3.5" aria-hidden />
               {account.source === "oauth"
@@ -331,13 +330,9 @@ export function AccountCard({
             size="sm"
             disabled={testBusy || saving}
             onClick={() => void onTest()}
-            className="h-7 px-2 text-xs"
+            aria-label={testLabel}
           >
-            {testBusy ? (
-              <Spinner className="size-3" />
-            ) : (
-              t("accounts.test", { defaultValue: "Test" })
-            )}
+            {testBusy ? <Spinner className="size-3" aria-hidden /> : testLabel}
           </Button>
           <Button
             type="button"
@@ -345,25 +340,24 @@ export function AccountCard({
             size="sm"
             disabled={refreshBusy || saving}
             onClick={() => void onRefreshUsage()}
-            className="h-7 px-2 text-xs"
+            aria-label={refreshLabel}
           >
             {refreshBusy ? (
-              <Spinner className="size-3" />
+              <Spinner className="size-3" aria-hidden />
             ) : (
-              t("accounts.refresh", { defaultValue: "Refresh" })
+              refreshLabel
             )}
           </Button>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="destructive"
+            size="icon-sm"
             disabled={saving}
             onClick={deleteModal.open}
             aria-label={t("accounts.delete", {
               defaultValue: "Delete account",
             })}
             title={t("accounts.delete", { defaultValue: "Delete account" })}
-            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="size-3.5" aria-hidden />
           </Button>

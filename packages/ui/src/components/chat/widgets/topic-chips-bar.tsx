@@ -71,26 +71,13 @@ export function TopicChipsBar({
           <Button
             key={topic.id}
             type="button"
-            variant={
-              appearance === "overlay"
-                ? "ghost"
-                : isActive
-                  ? "surfaceAccent"
-                  : "outline"
-            }
-            size="sm"
+            variant="selection"
+            size="pillDense"
+            data-state={isActive ? "on" : "off"}
             role="option"
             aria-selected={isActive}
             data-testid={`topic-chip-${topic.id}`}
-            className={cn(
-              appearance === "overlay"
-                ? "h-auto shrink-0 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs-tight font-medium transition-colors"
-                : "h-7 gap-1.5 px-3 text-xs",
-              appearance === "overlay" &&
-                (isActive
-                  ? "border-white/40 bg-white/85 text-black"
-                  : "border-white/15 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"),
-            )}
+            className={appearance === "overlay" ? "shrink-0" : undefined}
             onClick={() => onSelect?.(topic.id)}
           >
             <span className="truncate">{topic.label}</span>

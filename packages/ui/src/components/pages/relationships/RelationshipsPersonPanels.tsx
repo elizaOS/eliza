@@ -312,8 +312,9 @@ function OwnerNameEditor({
       <Button
         ref={editTriggerButton.ref}
         onClick={() => setEditing(true)}
-        variant="ghost"
-        className="group h-auto items-center gap-2 whitespace-normal rounded-sm p-0 text-left font-normal transition hover:bg-card/40"
+        variant="mediaZoom"
+        size="content"
+        align="start"
         aria-label={t("relationships.owner.editAria", {
           defaultValue: "Edit owner name",
         })}
@@ -322,7 +323,7 @@ function OwnerNameEditor({
         <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
           {initialName}
         </span>
-        <Pencil className="size-4 opacity-0 transition group-hover:opacity-60" />
+        <Pencil className="size-4 opacity-60" />
       </Button>
     );
   }
@@ -343,7 +344,9 @@ function OwnerNameEditor({
         }}
         disabled={saving}
         maxLength={60}
-        className="min-w-0 flex-1 rounded-sm border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt"
+        variant="form"
+        density="relaxed"
+        className="min-w-0 flex-1"
         aria-label={t("relationships.owner.nameAria", {
           defaultValue: "Owner name",
         })}
@@ -584,9 +587,8 @@ export function RelationshipsPersonSummaryPanel({
             <Button
               ref={viewMemoriesButton.ref}
               type="button"
-              size="sm"
+              size="badge"
               variant="outline"
-              className="h-7 rounded-full px-3 text-2xs font-semibold"
               onClick={() => onViewMemories(person.memberEntityIds)}
               aria-label={t("relationships.viewMemories", {
                 defaultValue: "View memories",
@@ -1124,9 +1126,9 @@ function DocumentOpenButton({
     <Button
       ref={ref}
       onClick={onOpen}
-      variant="ghost"
-      size="sm"
-      className="mt-2 h-auto gap-1 rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt"
+      variant="outlineMuted"
+      size="badge"
+      className="mt-2"
       {...agentProps}
     >
       <Link2 className="size-3" />

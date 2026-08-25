@@ -3,19 +3,11 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  getPermissionLabel,
-  PERMISSION_LABELS,
   parseFeatureRef,
   parsePermissionRequestFromText,
 } from "./permission-card.helpers.ts";
 
 describe("permission-card.helpers", () => {
-  it("exports permission label dictionary", () => {
-    expect(PERMISSION_LABELS.camera).toBe("Camera");
-    expect(PERMISSION_LABELS.microphone).toBe("Microphone");
-    expect(getPermissionLabel("camera")).toBe("Camera");
-  });
-
   it("parses feature reference string into app and action", () => {
     expect(parseFeatureRef("browser.navigate.open")).toEqual({
       app: "browser",

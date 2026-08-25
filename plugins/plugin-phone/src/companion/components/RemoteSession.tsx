@@ -8,7 +8,7 @@
  * before connecting.
  */
 
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import React, {
   type PointerEvent as ReactPointerEvent,
   type TouchEvent as ReactTouchEvent,
@@ -358,7 +358,13 @@ export function RemoteSession({
   return (
     <main style={styles.root}>
       <header style={styles.header}>
-        <Button unstyled type="button" onClick={onExit} style={styles.back}>
+        <Button
+          variant="link"
+          size="content"
+          type="button"
+          onClick={onExit}
+          style={styles.back}
+        >
           Exit
         </Button>
         <span style={styles.status}>
@@ -367,7 +373,9 @@ export function RemoteSession({
             : statusLabel(connState)}
         </span>
         <Button
-          unstyled
+          variant="outline"
+          size="sm"
+          shape="circle"
           type="button"
           onClick={reconnect}
           disabled={!sessionEndpoints.ok}

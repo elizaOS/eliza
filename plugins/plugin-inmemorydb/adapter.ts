@@ -1276,7 +1276,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<Memory[]> {
     return this.withDocumentMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
-      const limit = params.count ?? params.limit ?? 10;
+      const limit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
@@ -1315,9 +1315,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const memoriesById = new Map(
         readableMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
       );
+      const requestedCount = limit === undefined ? memoriesById.size : limit + offset;
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        limit + offset,
+        requestedCount,
         threshold,
         new Set(memoriesById.keys())
       );

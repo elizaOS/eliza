@@ -174,11 +174,11 @@ export default function JoinPage(): React.JSX.Element {
 
   const signOutButton = (
     <Button
-      variant="ghost"
+      variant="ghostMuted"
+      size="wide"
       type="button"
       disabled={signingOut}
       onClick={() => void handleSignOut()}
-      className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
     >
       {signingOut
         ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
@@ -222,10 +222,10 @@ export default function JoinPage(): React.JSX.Element {
                 })}
             </p>
             <Button
-              variant="ghost"
+              variant="surface"
+              size="wide"
               type="button"
               onClick={handleRetry}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </Button>

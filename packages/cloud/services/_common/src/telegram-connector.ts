@@ -530,31 +530,17 @@ export function splitTelegramMessage(
   maxLength = MAX_MESSAGE_LENGTH,
 ): string[] {
   assertValidTelegramChunkLength(maxLength);
+  if (!text) return [];
   const chunks: string[] = [];
-  if (!text) return chunks;
-  let current = "";
-  for (const line of text.split("\n")) {
-    if (current.length + line.length + 1 <= maxLength) {
-      current += `${current ? "\n" : ""}${line}`;
-      continue;
+  let remaining = text;
+  while (remaining.length > 0) {
+    const head = truncateWellFormedTelegram(remaining, maxLength);
+    if (head.length === 0) {
+      throw new RangeError("telegram chunk limit made no UTF-16 progress");
     }
-    if (current) chunks.push(current);
-    if (line.length <= maxLength) {
-      current = line;
-      continue;
-    }
-    let remaining = line;
-    while (remaining.length > maxLength) {
-      const head = truncateWellFormedTelegram(remaining, maxLength);
-      if (head.length === 0) {
-        throw new RangeError("telegram chunk limit made no UTF-16 progress");
-      }
-      chunks.push(head);
-      remaining = remaining.slice(head.length);
-    }
-    current = remaining;
+    chunks.push(head);
+    remaining = remaining.slice(head.length);
   }
-  if (current) chunks.push(current);
   return chunks;
 }
 

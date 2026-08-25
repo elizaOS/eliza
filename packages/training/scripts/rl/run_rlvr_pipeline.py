@@ -45,7 +45,12 @@ sys.path.insert(0, str(PYTHON_ROOT))
 sys.path.insert(0, str(SCRIPT_DIR))
 
 from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
-from lib.generation_integrity import require_complete_generated_tokens  # noqa: E402
+from lib.generation_integrity import (  # noqa: E402
+    IncompleteGenerationError,
+    model_context_tokens,
+    remaining_model_context_tokens,
+    require_complete_generated_tokens,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -103,7 +108,6 @@ class RLVRConfig:
     grpo_weight_sync_interval: int = 5
     grpo_kl_coeff: float = 0.04  # KL penalty coefficient (beta)
     grpo_replay_lambda: float = 0.08  # Fraction of SFT replay mixed per batch
-    grpo_max_tokens: int = 256  # Max tokens per rollout generation
     grpo_best_cot_threshold: float = 0.8  # Reward threshold for Phase 3 CoT collection
     grpo_scenario_catalog: str = ""  # Path to expanded catalog
     grpo_scenario_limit: int = 0
@@ -931,7 +935,6 @@ def _run_grpo_local(
             import mlx.core as mx
             import mlx.nn as nn
             import mlx.optimizers as optim
-            from mlx_lm import generate as mlx_generate
             from mlx_lm import load as mlx_load
             from mlx_lm.sample_utils import make_sampler
         except ImportError as e:
@@ -1107,13 +1110,17 @@ def _run_grpo_local(
         full_enc = tokenize_with_explicit_limit(
             tokenizer,
             full_text,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                model, tokenizer, source="run_rlvr_pipeline.training"
+            ),
             return_tensors="pt",
         ).to(device)
         prompt_enc = tokenize_with_explicit_limit(
             tokenizer,
             prompt_text,
-            max_tokens=2048,
+            max_tokens=model_context_tokens(
+                model, tokenizer, source="run_rlvr_pipeline.training"
+            ),
             return_tensors="pt",
         )
         prompt_len = prompt_enc["input_ids"].shape[1]
@@ -1172,30 +1179,57 @@ def _run_grpo_local(
             prompt_text = _build_stage_prompt(scenario, stage, transcript)
 
             if backend == "mlx":
-                raw = mlx_generate(
+                prompt_tokens = tokenizer.encode(prompt_text)
+                max_new_tokens = remaining_model_context_tokens(
+                    model,
+                    tokenizer,
+                    prompt_tokens=len(prompt_tokens),
+                    source="run_rlvr_pipeline.mlx",
+                )
+                from mlx_lm.generate import stream_generate
+
+                generated_ids = []
+                finish_reason = None
+                for response in stream_generate(
                     model,
                     tokenizer,
                     prompt=prompt_text,
-                    max_tokens=config.grpo_max_tokens,
+                    max_tokens=max_new_tokens,
                     sampler=sampler,
-                    verbose=False,
-                )
+                ):
+                    if response.finish_reason is None:
+                        generated_ids.append(response.token)
+                    else:
+                        finish_reason = response.finish_reason
                 require_complete_generated_tokens(
-                    tokenizer.encode(raw),
-                    max_new_tokens=config.grpo_max_tokens,
+                    generated_ids,
+                    max_new_tokens=max_new_tokens,
                     source="run_rlvr_pipeline.mlx",
                 )
+                if finish_reason != "stop":
+                    raise IncompleteGenerationError(
+                        "run_rlvr_pipeline.mlx", finish_reason or "missing_finish_reason"
+                    )
+                raw = tokenizer.decode(generated_ids)
             else:
                 inputs = tokenize_with_explicit_limit(
                     tokenizer,
                     prompt_text,
-                    max_tokens=2048,
+                    max_tokens=model_context_tokens(
+                        model, tokenizer, source="run_rlvr_pipeline.transformers"
+                    ),
                     return_tensors="pt",
                 ).to(device)
+                max_new_tokens = remaining_model_context_tokens(
+                    model,
+                    tokenizer,
+                    prompt_tokens=inputs["input_ids"].shape[1],
+                    source="run_rlvr_pipeline.transformers",
+                )
                 with torch.no_grad():
                     outputs = model.generate(
                         **inputs,
-                        max_new_tokens=config.grpo_max_tokens,
+                        max_new_tokens=max_new_tokens,
                         do_sample=True,
                         temperature=0.7,
                         top_p=0.9,
@@ -1203,7 +1237,7 @@ def _run_grpo_local(
                 generated_ids = outputs[0][inputs["input_ids"].shape[1] :]
                 require_complete_generated_tokens(
                     generated_ids,
-                    max_new_tokens=config.grpo_max_tokens,
+                    max_new_tokens=max_new_tokens,
                     source="run_rlvr_pipeline.transformers",
                     terminal_token_ids=tokenizer.eos_token_id,
                 )
@@ -1271,13 +1305,17 @@ def _run_grpo_local(
             full_enc = tokenize_with_explicit_limit(
                 tokenizer,
                 full_text,
-                max_tokens=2048,
+                max_tokens=model_context_tokens(
+                    model_to_use, tokenizer, source="run_rlvr_pipeline.log_probs"
+                ),
                 return_tensors="pt",
             ).to(device)
             prompt_enc = tokenize_with_explicit_limit(
                 tokenizer,
                 prompt_text,
-                max_tokens=2048,
+                max_tokens=model_context_tokens(
+                    model_to_use, tokenizer, source="run_rlvr_pipeline.log_probs"
+                ),
                 return_tensors="pt",
             )
             prompt_len = prompt_enc["input_ids"].shape[1]

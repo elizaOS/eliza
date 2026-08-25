@@ -1176,13 +1176,12 @@ function WalletRailAddress({
 
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="default"
+      align="start"
       ref={ref}
       type="button"
-      className={cn(
-        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm p-2 text-left transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
-        address ? "text-txt hover:text-accent" : "text-muted",
-      )}
+      className="group min-w-0"
       onClick={handleCopy}
       disabled={!address}
       title={address ?? emptyLabel}
@@ -1337,10 +1336,10 @@ function WalletRailRpcButton({
 
   return (
     <Button
-      unstyled
+      variant="ghost"
+      size="sm"
       ref={ref}
       type="button"
-      className="inline-flex min-h-10 items-center gap-2 rounded-sm px-3 text-xs font-semibold text-txt transition-colors pointer-coarse:min-h-touch hover:text-accent [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:px-2"
       onClick={onOpenSettings}
       title={`RPC providers: EVM ${evmProvider}, Solana ${solanaProvider}`}
       aria-label="Open RPC settings"
@@ -1414,13 +1413,12 @@ function WalletRailTabButton({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="default"
       ref={ref}
       type="button"
-      className={cn(
-        "inline-flex min-h-10 min-w-0 items-center justify-center gap-1.5 px-3 py-2 text-sm font-semibold transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
-        active ? "text-txt" : "text-muted hover:text-txt",
-      )}
+      className="min-w-0"
+      data-state={active ? "on" : "off"}
       onClick={() => onSelect(tab.id)}
       aria-label={tab.label}
       aria-current={active ? "true" : undefined}
@@ -1477,10 +1475,10 @@ function TokenRailRowImpl({
         </div>
         <div className="flex gap-1 opacity-70 transition-opacity group-hover:opacity-100">
           <Button
-            unstyled
+            variant="surfaceDestructive"
+            size="icon"
             ref={hideRef}
             type="button"
-            className="flex size-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-danger"
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
@@ -1760,14 +1758,11 @@ function DashboardWindowButton({
   });
   return (
     <Button
-      unstyled
+      variant="selection"
+      size="touch"
       ref={ref}
       type="button"
-      style={{ minWidth: 44 }}
-      className={cn(
-        "min-h-11 rounded-sm px-3 py-2 text-xs font-medium transition-colors",
-        active ? "text-accent" : "text-muted hover:text-txt",
-      )}
+      data-state={active ? "on" : "off"}
       onClick={() => onSelect(window)}
       aria-current={active ? "true" : undefined}
       {...agentProps}

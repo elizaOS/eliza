@@ -92,6 +92,34 @@ describe("Ollama native text plumbing", () => {
     }));
   });
 
+  it("omits output boundaries by default and forwards an explicit caller request", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    await handleTextSmall(createRuntime(), { prompt: "provider maximum" });
+    await handleTextSmall(createRuntime(), { prompt: "explicit", maxTokens: 123 });
+
+    const defaultCall = generateTextMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    const explicitCall = generateTextMock.mock.calls[1]?.[0] as Record<string, unknown>;
+    expect(defaultCall).not.toHaveProperty("maxOutputTokens");
+    expect(explicitCall.maxOutputTokens).toBe(123);
+  });
+
+  it("rejects a length-finished non-streaming response", async () => {
+    generateTextMock.mockResolvedValue({
+      text: "partial",
+      finishReason: "length",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+
+    await expect(
+      handleTextSmall(createRuntime(), { prompt: "complete this" })
+    ).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+  });
+
   it("forwards native ToolSet tools to generateText and returns a GenerateTextResult-shaped payload", async () => {
     generateTextMock.mockResolvedValue({
       text: "ack",
@@ -504,6 +532,28 @@ describe("Ollama native text plumbing", () => {
     }
     expect(chunks).toEqual(["a", "b"]);
     await expect(stream.text).resolves.toBe("ab");
+  });
+
+  it("signals a length-finished live stream at its terminal boundary", async () => {
+    streamTextMock.mockImplementation(() => ({
+      textStream: (async function* () {
+        yield "partial";
+      })(),
+      text: Promise.resolve("partial"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      finishReason: Promise.resolve("length"),
+    }));
+
+    const result = (await handleTextSmall(createRuntime(), {
+      prompt: "complete this",
+      stream: true,
+    })) as TextStreamResult;
+    const chunks: string[] = [];
+    await expect(async () => {
+      for await (const chunk of result.textStream) chunks.push(chunk);
+    }).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
+    expect(chunks).toEqual(["partial"]);
+    await expect(result.text).rejects.toMatchObject({ code: "MODEL_INCOMPLETE_OUTPUT" });
   });
 
   it("emits MODEL_USED once after a successful plain stream is fully consumed", async () => {

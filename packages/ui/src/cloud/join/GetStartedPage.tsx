@@ -253,6 +253,8 @@ export default function GetStartedPage(): React.JSX.Element {
               </span>
             </p>
             <Button
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => {
                 if (telegramClaimToken) {
@@ -262,7 +264,6 @@ export default function GetStartedPage(): React.JSX.Element {
                 const token = peekPendingOnboardingSession();
                 if (token) void redeem(token);
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg"
             >
               Connect this {messagingPlatformLabel(platformIdentity.platform)}{" "}
               account
@@ -286,20 +287,17 @@ export default function GetStartedPage(): React.JSX.Element {
             // href — http(s) only, plus the `sms:` deep link the onboarding
             // service issues for phone gateways (buildMessagingReturnUrl).
             isSafeNavigationUrl(platformIdentity.returnUrl, ["sms:"]) ? (
-              <Button
-                asChild
-                className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
-              >
+              <Button asChild variant="surface" size="wide">
                 <a href={platformIdentity.returnUrl}>
                   Back to {messagingPlatformLabel(platformIdentity.platform)}
                 </a>
               </Button>
             ) : null}
             <Button
-              variant="ghost"
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => navigate("/join")}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.openChat", {
                 defaultValue: "Or chat here instead",
@@ -315,7 +313,8 @@ export default function GetStartedPage(): React.JSX.Element {
             </h1>
             <p className="text-sm text-white/70">{renderedError}</p>
             <Button
-              variant="ghost"
+              variant="surface"
+              size="wide"
               type="button"
               onClick={() => {
                 if (telegramClaimPersistenceBlocked) {
@@ -336,7 +335,6 @@ export default function GetStartedPage(): React.JSX.Element {
                 if (platformIdentity) void redeem(token);
                 else void preview(token);
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
             </Button>

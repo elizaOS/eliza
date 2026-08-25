@@ -69,8 +69,7 @@ export function AccountDeletionDialog({
     <>
       <Button
         size="sm"
-        variant="outline"
-        className="border-danger/40 text-danger"
+        variant="dangerOutline"
         data-testid="delete-account-trigger"
         onClick={() => setOpen(true)}
       >

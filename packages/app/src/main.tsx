@@ -28,7 +28,7 @@ import "./web-ws-base-fix";
  * global-shortcut / chat-overlay wiring. Modules not needed for first paint are
  * deferred onto the idle path. Exports the resolved platform flags.
  */
-import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
+import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
 // Native-only (ios/android/desktop): register the Eliza Cloud Applications
 // dashboard as an in-process app-shell page (`/cloud-apps`) that mounts the

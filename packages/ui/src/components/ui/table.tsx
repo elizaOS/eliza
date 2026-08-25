@@ -7,18 +7,29 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-const Table = React.forwardRef<
-  HTMLTableElement,
-  React.HTMLAttributes<HTMLTableElement>
->(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto border border-border bg-bg/40">
-    <table
-      ref={ref}
-      className={cn("w-full caption-bottom text-sm", className)}
-      {...props}
-    />
-  </div>
-));
+export interface TableProps extends React.HTMLAttributes<HTMLTableElement> {
+  density?: "default" | "compact" | "dense";
+  layout?: "auto" | "fixed";
+}
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(
+  ({ className, density = "default", layout = "auto", ...props }, ref) => (
+    <div className="relative w-full overflow-auto">
+      <table
+        ref={ref}
+        className={cn(
+          "w-full caption-bottom",
+          density === "default" && "text-sm",
+          density === "compact" && "text-xs",
+          density === "dense" && "text-2xs",
+          layout === "fixed" && "table-fixed",
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  ),
+);
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<
@@ -67,7 +78,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-b border-border transition-colors hover:bg-bg-hover data-[state=selected]:bg-bg-accent",
+      "border-b border-border/80 transition-colors hover:bg-bg-hover data-[state=selected]:bg-bg-accent",
       className,
     )}
     {...props}

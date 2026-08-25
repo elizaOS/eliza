@@ -69,7 +69,7 @@ export const Ticking: Story = {
       <AnimatedCounter
         {...args}
         value={value}
-        className="text-3xl font-semibold text-emerald-400"
+        className="text-3xl font-semibold text-status-success"
       />
     );
   },

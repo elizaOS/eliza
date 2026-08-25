@@ -429,14 +429,16 @@ function ConnectorDetailPage({
       <div className="flex flex-col gap-3">
         {/* Mobile already has ViewHeader "Back to Connectors"; keep this control
             desktop-only so we do not double-render an undersized touch target. */}
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="touch"
           onClick={onBack}
-          className="hidden self-start text-xs font-medium text-muted hover:text-txt md:inline-flex min-h-11 items-center"
+          className="hidden self-start md:inline-flex"
           data-testid="connector-detail-back"
         >
           {t("connectors.detail.back", { defaultValue: "← Connectors" })}
-        </button>
+        </Button>
         <div className="flex items-start gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-md border border-border/50 bg-bg-accent/70">
             <Icon className="size-5 text-txt" />
@@ -506,12 +508,7 @@ function ConnectorDetailPage({
                   : undefined
               }
               control={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
-                  asChild
-                >
+                <Button variant="outline" size="sm" asChild>
                   <a href={link.url} target="_blank" rel="noopener noreferrer">
                     {t("connectors.detail.openLink", {
                       defaultValue: "Open",
@@ -596,16 +593,17 @@ function ConnectorsIndex({
             mode: channelModeCopy[otherChannelMode].label,
             names: hiddenConnectors.map((p) => p.name).join(", "),
           })}{" "}
-          <button
+          <Button
             type="button"
-            className="font-medium text-accent underline-offset-2 hover:underline"
+            variant="link"
+            size="content"
             onClick={() => setConnectorChannelMode(otherChannelMode)}
           >
             {t("settings.sections.connectors.channelModeSwitch", {
               defaultValue: "Switch to {{mode}}",
               mode: channelModeCopy[otherChannelMode].label,
             })}
-          </button>
+          </Button>
         </p>
       ) : null}
     </SettingsStack>
@@ -720,12 +718,7 @@ export function ConnectorsSection() {
               id: detailId,
             })}
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={backToIndex}
-            className="h-8 rounded-sm px-3 text-xs-tight font-semibold"
-          >
+          <Button variant="outline" size="sm" onClick={backToIndex}>
             {t("connectors.detail.backToList", {
               defaultValue: "Back to Connectors",
             })}

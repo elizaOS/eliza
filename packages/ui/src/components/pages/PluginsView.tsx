@@ -377,13 +377,10 @@ function PluginListView({
       return (
         <Button
           key={tag.id}
-          variant={isActive ? "default" : "surface"}
-          size="sm"
-          className={`min-h-11 gap-1.5 rounded-full px-3 text-xs-tight font-bold tracking-wide transition-all ${
-            isActive
-              ? "border-transparent bg-accent text-accent-fg hover:bg-accent-muted"
-              : "bg-card/50 text-muted hover:bg-card/80 hover:text-txt"
-          }`}
+          variant="selection"
+          size="touch"
+          shape="circle"
+          data-state={isActive ? "on" : "off"}
           aria-pressed={isActive}
           onClick={() => setSubgroupFilter(tag.id)}
         >
@@ -1387,8 +1384,8 @@ function PluginListView({
                     <Button
                       ref={resetOrderRef}
                       variant="outline"
-                      size="sm"
-                      className="ml-1 min-h-11 rounded-full px-3 text-2xs font-bold tracking-wide text-muted hover:text-txt"
+                      size="badge"
+                      className="ml-1"
                       onClick={handleResetOrder}
                       title={t("pluginsview.ResetToDefaultSor")}
                       {...resetOrderAgentProps}

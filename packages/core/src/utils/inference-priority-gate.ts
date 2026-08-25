@@ -34,13 +34,10 @@
  * device-bridge text handlers (`plugin-capacitor-bridge`). All three run in the
  * same agent process and share the {@link getInferencePriorityGate} singleton.
  *
- * The device-class background budget (#11760 probe seam) lives here too:
- * {@link resolveBackgroundInferenceBudget} declares the largest requested
- * output and queue wait supported by each RAM class. Input and output requests
- * are never clipped; unsupported requests fail before dispatch.
+ * The device-class background wait policy (#11760 probe seam) lives here too:
+ * {@link resolveBackgroundInferenceBudget} limits only how long queued
+ * background work may wait. It never changes prompt or output capacity.
  */
-
-import { ElizaError } from "../errors";
 import type { LocalInferencePriority } from "../types/model";
 
 /**
@@ -68,26 +65,20 @@ export function inferenceRamClassFromEnv(
 }
 
 /**
- * Per-class budget for background-priority generation on the single local
- * lane. Sized from the Pixel 6a (`constrained`) measurements in #11734/#11912:
- * marginal prefill ≈ 5.1 tok/s and decode ≤ 7.9 tok/s, so the constrained caps
- * bound a background job's lock hold to a few minutes worst-case instead of
- * the tens of minutes an uncapped 11k-char / 8192-token job costs.
+ * Per-class queue-wait policy for background-priority generation on the single
+ * local lane. It prevents stale scheduled work from piling up without changing
+ * the generation request once the lane is acquired.
  */
 export interface BackgroundInferenceBudget {
-	/** Cap on `maxTokens` for a background generation. */
-	maxTokens: number;
 	/** Bounded gate wait before the background request fails without running. */
 	lockWaitMs: number;
 }
 
 const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-	maxTokens: 192,
 	lockWaitMs: 120_000,
 };
 
 const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
-	maxTokens: 1_024,
 	lockWaitMs: 300_000,
 };
 
@@ -101,56 +92,15 @@ export function resolveBackgroundInferenceBudget(
 }
 
 /**
- * Validate a background generation request against the device budget. The
- * legacy function name and `clamped` result field remain source-compatible,
- * but accepted requests are returned byte-for-byte with no adjustments.
- * Explicit unsupported output ceilings reject before provider dispatch. An
- * omitted ceiling selects the device-class maximum because no smaller output
- * was requested; it must not turn an otherwise valid background call into a
- * failure merely because the public generation contract leaves maxTokens
- * optional.
+ * Preserve a background generation request while retaining the legacy helper
+ * name and `clamped` result field for source compatibility. Device scheduling
+ * policy belongs to the queue wait; it must not impose a model-output cap.
  */
 export function applyBackgroundInferenceBudget(
 	args: { prompt: string; maxTokens: number | undefined },
-	budget: BackgroundInferenceBudget,
-): { prompt: string; maxTokens: number; clamped: string[] } {
-	if (
-		!Number.isSafeInteger(budget.maxTokens) ||
-		budget.maxTokens <= 0 ||
-		!Number.isSafeInteger(budget.lockWaitMs) ||
-		budget.lockWaitMs <= 0
-	) {
-		throw new ElizaError("Background inference budget is invalid", {
-			code: "INFERENCE_BACKGROUND_BUDGET_INVALID",
-			context: {
-				maxTokens: budget.maxTokens,
-				lockWaitMs: budget.lockWaitMs,
-			},
-		});
-	}
-	const requestedMaxTokens = args.maxTokens ?? budget.maxTokens;
-	if (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0) {
-		throw new ElizaError("Background inference output ceiling is invalid", {
-			code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_INVALID",
-			context: {
-				requestedMaxTokens,
-				supportedMaxTokens: budget.maxTokens,
-			},
-		});
-	}
-	if (requestedMaxTokens > budget.maxTokens) {
-		throw new ElizaError(
-			"Background inference output request exceeds the device-class budget",
-			{
-				code: "INFERENCE_BACKGROUND_OUTPUT_BUDGET_EXCEEDED",
-				context: {
-					requestedMaxTokens,
-					supportedMaxTokens: budget.maxTokens,
-				},
-			},
-		);
-	}
-	return { prompt: args.prompt, maxTokens: requestedMaxTokens, clamped: [] };
+	_budget: BackgroundInferenceBudget,
+): { prompt: string; maxTokens: number | undefined; clamped: string[] } {
+	return { prompt: args.prompt, maxTokens: args.maxTokens, clamped: [] };
 }
 
 /**

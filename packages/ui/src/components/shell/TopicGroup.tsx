@@ -50,7 +50,7 @@ export function TopicGroup({
   );
 }
 
-function TitledTopicGroup({
+export function TitledTopicGroup({
   topic,
   count,
   collapsed,
@@ -92,16 +92,16 @@ function TitledTopicGroup({
     >
       {collapsed ? (
         <Button
-          variant="ghost"
+          variant="transparent"
+          size="content"
+          align="start"
           data-testid="topic-group-pill"
           aria-expanded={false}
           aria-label={`Expand topic ${topic} (${count} messages)`}
           onClick={() => onCollapsedChange(false)}
           {...gesture}
           className={cn(
-            "my-2 w-full touch-none justify-start gap-2 whitespace-normal rounded-full px-3 py-1.5 text-left transition-colors",
-            "border border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white",
-            "  ",
+            "my-2 h-auto w-full touch-none gap-2 whitespace-normal rounded-full border border-inverse/15 bg-inverse/10 px-3 py-1.5 font-normal text-inverse/80 hover:bg-inverse/20 hover:text-inverse",
           )}
         >
           <span
@@ -115,16 +115,16 @@ function TitledTopicGroup({
         </Button>
       ) : (
         <Button
-          variant="ghost"
+          variant="overlayEdge"
+          size="content"
+          align="start"
           data-testid="topic-group-header"
           aria-expanded
           aria-label={`Collapse topic ${topic}`}
           onClick={() => onCollapsedChange(true)}
           {...gesture}
           className={cn(
-            "sticky top-0 z-[1] mb-1 mt-3 w-full touch-none gap-2 whitespace-normal py-1 text-left",
-            "text-white/45 transition-colors hover:text-white/70",
-            "hover:bg-transparent",
+            "sticky top-0 z-[1] mb-1 mt-3 h-auto w-full touch-none gap-2 py-1 font-normal whitespace-normal",
           )}
         >
           <span className="h-px flex-1 bg-white/10" aria-hidden />

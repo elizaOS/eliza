@@ -19,7 +19,10 @@ vi.mock("../src/activity-profile/activity-tracker-repo.js", () => ({
   listActivityEvents: mocks.listActivityEvents,
 }));
 
-import { getLatestForegroundActivity } from "../src/activity-profile/activity-tracker-reporting.js";
+import {
+  getActivityReportBetween,
+  getLatestForegroundActivity,
+} from "../src/activity-profile/activity-tracker-reporting.js";
 
 const RUNTIME = { agentId: "agent-activity" };
 const SINCE_MS = Date.parse("2026-01-15T08:00:00.000Z");
@@ -30,6 +33,7 @@ function event(overrides: {
   eventKind: "activate" | "deactivate";
   bundleId: string;
   appName: string;
+  windowTitle?: string | null;
 }) {
   return {
     id: `event-${overrides.observedAt}`,
@@ -120,5 +124,42 @@ describe("getLatestForegroundActivity", () => {
         untilMs: UNTIL_MS,
       }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("getActivityReportBetween", () => {
+  beforeEach(() => {
+    mocks.listActivityEvents.mockReset();
+  });
+
+  it("preserves every distinct redacted window title", async () => {
+    mocks.listActivityEvents.mockResolvedValueOnce([
+      ...Array.from({ length: 7 }, (_, index) =>
+        event({
+          observedAt: new Date(SINCE_MS + index * 60_000).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.Editor",
+          appName: "Editor",
+          windowTitle: `Document ${index}`,
+        }),
+      ),
+      event({
+        observedAt: new Date(SINCE_MS + 7 * 60_000).toISOString(),
+        eventKind: "deactivate",
+        bundleId: "com.example.Editor",
+        appName: "Editor",
+      }),
+    ]);
+
+    const report = await getActivityReportBetween(
+      RUNTIME as never,
+      "agent-activity",
+      { sinceMs: SINCE_MS, untilMs: SINCE_MS + 8 * 60_000 },
+    );
+
+    expect(report.apps).toHaveLength(1);
+    expect(report.apps[0]?.sampleWindowTitles).toEqual(
+      Array.from({ length: 7 }, (_, index) => `Document ${index}`),
+    );
   });
 });

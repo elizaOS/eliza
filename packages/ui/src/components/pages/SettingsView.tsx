@@ -172,10 +172,10 @@ function SettingsSectionFallback({
         {error.message}
       </p>
       <Button
-        variant="outline"
-        size="sm"
+        variant="outlineAccent"
+        size="regularCompact"
         onClick={onRetry}
-        className="mt-1 h-9 rounded-md border-border bg-card px-3 text-xs font-medium text-txt transition-colors hover:border-accent hover:text-accent"
+        className="mt-1"
       >
         {t("settings.sectionRetry", { defaultValue: "Retry" })}
       </Button>
@@ -209,7 +209,7 @@ function SettingsSectionSurfaceAnchor({
     onActivate: () => onSelect(section.id),
   });
   return (
-    <button
+    <Button
       ref={ref}
       type="button"
       aria-hidden
@@ -482,6 +482,9 @@ function LegacySettingsView({
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
+        className={cn(
+          !inModal && !isDesktop && "mb-[var(--eliza-chat-clearance,5.25rem)]",
+        )}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
         sidebar={desktopSidebar}
         sidebarCollapsible={false}
@@ -489,8 +492,10 @@ function LegacySettingsView({
         <div
           data-testid="settings-shell"
           className={cn(
-            "flex min-h-full w-full",
-            isDesktop ? "flex-row" : "flex-col",
+            "flex w-full",
+            isDesktop
+              ? "min-h-full flex-row"
+              : "h-full min-h-0 flex-col overflow-hidden",
           )}
         >
           {/* Agent-surface anchors: the agent addresses every section by
@@ -507,7 +512,14 @@ function LegacySettingsView({
             ))}
           </div>
 
-          <div className="min-w-0 flex-1 pb-32">
+          <div
+            className={cn(
+              "min-w-0 flex-1",
+              isDesktop
+                ? "pb-32"
+                : "eliza-chat-scroll max-h-[calc(100dvh-var(--eliza-chat-clearance,5.25rem)-5rem)] min-h-0 overflow-y-auto pb-4",
+            )}
+          >
             {isDesktop ? (
               <main
                 data-testid="desktop-settings-work-area"
