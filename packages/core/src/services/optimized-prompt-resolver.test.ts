@@ -269,3 +269,32 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		expect(out).toBe(BASELINE);
 	});
 });
+
+describe("trimDemonstrationInput UTF-16 surrogate safety", () => {
+	test("preserves UTF-16 surrogate pairs when trimming demonstration inputs", () => {
+		// 599 ASCII chars + "🔥" (2 code units) = 601.
+		// Truncating limit is 600. Index 600 lands on high surrogate of "🔥".
+		// Surrogate safe back-off ensures we take index 599, keeping emoji intact.
+		const longUser = "user: " + "a".repeat(599) + "🔥";
+		const service = {
+			getPrompt: () => ({
+				prompt: "OPTIMIZED",
+				fewShotExamples: [{ input: { user: longUser }, expectedOutput: "out" }],
+			}),
+		} as unknown as OptimizedPromptService;
+		const out = resolveOptimizedPromptForRuntime(
+			makeRuntime(service),
+			"response",
+			BASELINE,
+		);
+		expect(out).toContain("a".repeat(599));
+		for (const char of out) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
+});
+

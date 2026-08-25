@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 /**
  * Helper that resolves the system prompt for one of the five core decision
  * tasks. Each runtime call site already constructs a baseline prompt; this
@@ -72,21 +84,22 @@ export function resolveOptimizedPrompt(
  * tool catalog (often ~30K chars); for ICL we only need the user's
  * current-turn request.
  */
-function trimDemonstrationInput(rawInput: string): string {
+function trimDemonstrationInput(rawInput: string | undefined): string {
+	const text = typeof rawInput === "string" ? rawInput : "";
 	const userMatch =
-		rawInput.match(
+		text.match(
 			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
 		) ??
-		rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
+		text.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
 	const candidate = userMatch?.[1]?.trim();
 	if (candidate && candidate.length > 0 && candidate.length <= 600) {
 		return candidate;
 	}
 	if (candidate && candidate.length > 0) {
-		return `${candidate.slice(0, 600).trimEnd()} …`;
+		return `${truncateUtf16Safe(candidate, 600).trimEnd()} …`;
 	}
-	if (rawInput.length <= 600) return rawInput;
-	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+	if (text.length <= 600) return text;
+	return `${truncateUtf16Safe(text, 400).trimEnd()}\n…\n${text.slice(-200).trimStart()}`;
 }
 
 function injectDemonstrations(
