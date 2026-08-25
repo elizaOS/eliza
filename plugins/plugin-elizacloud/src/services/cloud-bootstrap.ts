@@ -89,7 +89,13 @@ export class CloudBootstrapServiceImpl extends Service implements CloudBootstrap
         "ELIZA_CLOUD_ISSUER is not configured — bootstrap-token verification cannot proceed"
       );
     }
-    return trimTrailingSlash(issuer);
+    const normalized = trimTrailingSlash(issuer.trim());
+    if (normalized.length === 0) {
+      throw new Error(
+        "ELIZA_CLOUD_ISSUER is not configured — bootstrap-token verification cannot proceed"
+      );
+    }
+    return normalized;
   }
 
   getJwksUrl(): string {
