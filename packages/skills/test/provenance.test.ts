@@ -47,6 +47,28 @@ function withCuratedTempDir<T>(callback: (stateDir: string) => T): T {
 }
 
 describe("resolveSkillProvenance", () => {
+  it("returns undefined when provenance is absent or not a record", () => {
+    assert.strictEqual(resolveSkillProvenance({}), undefined);
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: null,
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: "human",
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: 123,
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+  });
+
   it("parses a complete provenance block", () => {
     const provenance = resolveSkillProvenance({
       provenance: {
@@ -63,16 +85,42 @@ describe("resolveSkillProvenance", () => {
     assert.strictEqual(provenance?.lastEvalScore, 0.75);
   });
 
-  it("clamps lastEvalScore into [0, 1]", () => {
+  it("resolves valid human provenance with default zero refinedCount", () => {
     const provenance = resolveSkillProvenance({
+      provenance: {
+        source: "human",
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+    } as unknown as SkillFrontmatter);
+    assert.deepStrictEqual(provenance, {
+      source: "human",
+      createdAt: "2025-01-01T00:00:00Z",
+      refinedCount: 0,
+    });
+  });
+
+  it("floor-clamps refinedCount and bounds lastEvalScore between 0 and 1", () => {
+    const provenanceOver = resolveSkillProvenance({
       provenance: {
         source: "agent-refined",
         createdAt: "2025-01-01T00:00:00Z",
-        refinedCount: 1,
+        refinedCount: 3.7,
         lastEvalScore: 1.7,
       },
     } as SkillFrontmatter);
-    assert.strictEqual(provenance?.lastEvalScore, 1);
+    assert.strictEqual(provenanceOver?.refinedCount, 3);
+    assert.strictEqual(provenanceOver?.lastEvalScore, 1.0);
+
+    const provenanceUnder = resolveSkillProvenance({
+      provenance: {
+        source: "agent-refined",
+        createdAt: "2025-01-01T00:00:00Z",
+        refinedCount: -2,
+        lastEvalScore: -0.5,
+      },
+    } as SkillFrontmatter);
+    assert.strictEqual(provenanceUnder?.refinedCount, 0);
+    assert.strictEqual(provenanceUnder?.lastEvalScore, 0.0);
   });
 
   it("returns undefined for invalid source", () => {
@@ -82,11 +130,19 @@ describe("resolveSkillProvenance", () => {
     assert.strictEqual(provenance, undefined);
   });
 
-  it("returns undefined when block is missing createdAt", () => {
-    const provenance = resolveSkillProvenance({
-      provenance: { source: "human" },
-    } as SkillFrontmatter);
-    assert.strictEqual(provenance, undefined);
+  it("returns undefined when block is missing createdAt or not a string", () => {
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: { source: "human" },
+      } as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: { source: "human", createdAt: 12345 },
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
   });
 });
 
@@ -111,6 +167,18 @@ describe("serializeSkillFile", () => {
       "agent-generated",
     );
     assert.match(parsed.body, /## body/);
+  });
+
+  it("trims excess leading newlines from the body", () => {
+    const serialized = serializeSkillFile(
+      {
+        name: "trim-test",
+        description: "Trims body newlines",
+      },
+      "\n\n\n# Trimmed Heading\nContent",
+    );
+
+    assert.ok(serialized.includes("---\n\n# Trimmed Heading\nContent"));
   });
 });
 

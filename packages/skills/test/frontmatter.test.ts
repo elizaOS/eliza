@@ -11,6 +11,8 @@ import {
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
+  resolveSkillProvenance,
+  serializeSkillFile,
   stripFrontmatter,
 } from "../src/frontmatter.js";
 import type { SkillFrontmatter } from "../src/types.js";
@@ -45,7 +47,8 @@ Body`;
   });
 
   it("handles opening delimiter with trailing whitespace", () => {
-    const content = "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
+    const content =
+      "---   \nname: test-trailing\ndescription: Test\n--- \nBody";
     const result = parseFrontmatter<SkillFrontmatter>(content);
     assert.strictEqual(result.frontmatter.name, "test-trailing");
     assert.strictEqual(result.frontmatter.description, "Test");
@@ -324,5 +327,158 @@ describe("resolveSkillInvocationPolicy", () => {
       "user-invocable": true,
     });
     assert.strictEqual(policy.userInvocable, undefined);
+  });
+});
+
+describe("resolveSkillProvenance", () => {
+  it("returns undefined when provenance is absent or not a record", () => {
+    assert.strictEqual(resolveSkillProvenance({}), undefined);
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: null,
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: "human",
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: 123,
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+  });
+
+  it("returns undefined for unrecognized source values", () => {
+    const frontmatter = {
+      provenance: {
+        source: "unknown-generator",
+        createdAt: "2026-08-25T00:00:00Z",
+      },
+    } as unknown as SkillFrontmatter;
+    assert.strictEqual(resolveSkillProvenance(frontmatter), undefined);
+  });
+
+  it("returns undefined when createdAt is missing or not a string", () => {
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: { source: "human" },
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+    assert.strictEqual(
+      resolveSkillProvenance({
+        provenance: { source: "human", createdAt: 12345 },
+      } as unknown as SkillFrontmatter),
+      undefined,
+    );
+  });
+
+  it("resolves valid human provenance with default zero refinedCount", () => {
+    const result = resolveSkillProvenance({
+      provenance: {
+        source: "human",
+        createdAt: "2026-08-25T10:00:00Z",
+      },
+    } as unknown as SkillFrontmatter);
+
+    assert.deepStrictEqual(result, {
+      source: "human",
+      createdAt: "2026-08-25T10:00:00Z",
+      refinedCount: 0,
+    });
+  });
+
+  it("resolves agent-generated provenance with trajectory and clamped score", () => {
+    const result = resolveSkillProvenance({
+      provenance: {
+        source: "agent-generated",
+        createdAt: "2026-08-25T11:00:00Z",
+        derivedFromTrajectory: "traj-uuid-12345",
+        lastEvalScore: 0.95,
+      },
+    } as unknown as SkillFrontmatter);
+
+    assert.deepStrictEqual(result, {
+      source: "agent-generated",
+      createdAt: "2026-08-25T11:00:00Z",
+      refinedCount: 0,
+      derivedFromTrajectory: "traj-uuid-12345",
+      lastEvalScore: 0.95,
+    });
+  });
+
+  it("floor-clamps refinedCount and bounds lastEvalScore between 0 and 1", () => {
+    const resultOver = resolveSkillProvenance({
+      provenance: {
+        source: "agent-refined",
+        createdAt: "2026-08-25T12:00:00Z",
+        refinedCount: 3.7,
+        lastEvalScore: 1.45,
+      },
+    } as unknown as SkillFrontmatter);
+
+    assert.deepStrictEqual(resultOver, {
+      source: "agent-refined",
+      createdAt: "2026-08-25T12:00:00Z",
+      refinedCount: 3,
+      lastEvalScore: 1.0,
+    });
+
+    const resultUnder = resolveSkillProvenance({
+      provenance: {
+        source: "agent-refined",
+        createdAt: "2026-08-25T12:00:00Z",
+        refinedCount: -2,
+        lastEvalScore: -0.5,
+      },
+    } as unknown as SkillFrontmatter);
+
+    assert.deepStrictEqual(resultUnder, {
+      source: "agent-refined",
+      createdAt: "2026-08-25T12:00:00Z",
+      refinedCount: 0,
+      lastEvalScore: 0.0,
+    });
+  });
+});
+
+describe("serializeSkillFile", () => {
+  it("serializes frontmatter block and body with yaml fences", () => {
+    const serialized = serializeSkillFile(
+      {
+        name: "test-serialize",
+        description: "A serialized skill",
+      },
+      "# Test Skill Body\n\nInstructions here.",
+    );
+
+    assert.ok(serialized.startsWith("---\n"));
+    assert.ok(serialized.includes("name: test-serialize\n"));
+    assert.ok(serialized.includes("description: A serialized skill\n"));
+    assert.ok(
+      serialized.endsWith("\n---\n\n# Test Skill Body\n\nInstructions here."),
+    );
+
+    const parsed = parseFrontmatter<SkillFrontmatter>(serialized);
+    assert.strictEqual(parsed.frontmatter.name, "test-serialize");
+    assert.strictEqual(parsed.frontmatter.description, "A serialized skill");
+    assert.strictEqual(parsed.body, "# Test Skill Body\n\nInstructions here.");
+  });
+
+  it("trims excess leading newlines from the body", () => {
+    const serialized = serializeSkillFile(
+      {
+        name: "trim-test",
+        description: "Trims body newlines",
+      },
+      "\n\n\n# Trimmed Heading\nContent",
+    );
+
+    assert.ok(serialized.includes("---\n\n# Trimmed Heading\nContent"));
   });
 });
