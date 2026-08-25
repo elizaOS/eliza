@@ -6,12 +6,27 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-const ENV_KEYS = ["OPENAI_API_KEY", "CEREBRAS_API_KEY", "EVOLINK_API_KEY"] as const;
+const ENV_KEYS = [
+  "OPENAI_API_KEY",
+  "CEREBRAS_API_KEY",
+  "EVOLINK_API_KEY",
+] as const;
 
-/** Enable when an OpenAI-compatible API key is present in the environment. */
+/**
+ * Placeholder patterns treated the same as "unset" — mirrors the canonical
+ * placeholder detection in evm-signing-capability.ts so a stale
+ * "REDACTED"/"PLACEHOLDER" in env (e.g. copied from a template) does not
+ * spoof the gate into enabling the provider with a non-functional key.
+ */
+const PLACEHOLDER_RE =
+  /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
+
+function isConcreteKey(value: string | undefined): boolean {
+  const trimmed = value?.trim();
+  return Boolean(trimmed) && !PLACEHOLDER_RE.test(trimmed as string);
+}
+
+/** Enable when an OpenAI-compatible API key is present and concrete. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  return ENV_KEYS.some((k) => {
-    const v = ctx.env[k];
-    return typeof v === "string" && v.trim() !== "";
-  });
+  return ENV_KEYS.some((k) => isConcreteKey(ctx.env[k]));
 }
