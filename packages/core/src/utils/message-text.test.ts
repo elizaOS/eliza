@@ -7,10 +7,20 @@
 import { describe, expect, it } from "vitest";
 import type { Memory } from "../types/memory";
 import {
+	extractUserText,
 	getUserMessageText,
 	hasDocumentAugmentationEnvelope,
 	stripAugmentationForPersistence,
 } from "./message-text";
+
+describe("extractUserText", () => {
+	it("safely handles nullish and non-string inputs", () => {
+		expect(extractUserText("")).toBe("");
+		expect(extractUserText(null as unknown as string)).toBe("");
+		expect(extractUserText(undefined as unknown as string)).toBe("");
+		expect(extractUserText(123 as unknown as string)).toBe("");
+	});
+});
 
 describe("getUserMessageText", () => {
 	it("prefers connector-provided current-turn text over rendered envelopes", () => {
