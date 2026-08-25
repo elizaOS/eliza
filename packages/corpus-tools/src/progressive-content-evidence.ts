@@ -8,7 +8,7 @@ import {
 import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
 
 export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
-  "elizaos.content-context.result.v2" as const;
+  "elizaos.content-context.result.v3" as const;
 export const CONTENT_CONTEXT_REQUIRED_ARTIFACTS = [
   "corpus-manifest.json",
   "native-realization-ledger.json",
@@ -119,6 +119,21 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function array(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) throw new TypeError(`${label} must be an array`);
   return value;
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  label: string,
+): void {
+  const actual = Object.keys(value).sort();
+  const required = [...expected].sort();
+  if (
+    actual.length !== required.length ||
+    actual.some((key, index) => key !== required[index])
+  ) {
+    throw new TypeError(`${label} fields are not exact`);
+  }
 }
 
 function json(bytes: Uint8Array, label: string): Record<string, unknown> {
@@ -1041,6 +1056,33 @@ export function validateContentContextResult(
   artifactBytes: ContentContextArtifactBytes,
 ): ContentContextResult {
   const input = record(value, "content-context result");
+  exactKeys(
+    input,
+    [
+      "schemaVersion",
+      "commit",
+      "corpusManifestSha256",
+      "generatorRevision",
+      "status",
+      "artifacts",
+    ],
+    "content-context result",
+  );
+  const suppliedArtifactNames = Object.keys(
+    artifactBytes as Readonly<Record<string, Uint8Array>>,
+  );
+  if (
+    suppliedArtifactNames.length !==
+      CONTENT_CONTEXT_REQUIRED_ARTIFACTS.length ||
+    suppliedArtifactNames.some(
+      (name) =>
+        !(CONTENT_CONTEXT_REQUIRED_ARTIFACTS as readonly string[]).includes(
+          name,
+        ),
+    )
+  ) {
+    throw new TypeError("content-context artifact byte fields are not exact");
+  }
   if (
     input.schemaVersion !== CONTENT_CONTEXT_RESULT_SCHEMA_VERSION ||
     typeof input.commit !== "string" ||
@@ -1053,9 +1095,17 @@ export function validateContentContextResult(
   )
     throw new TypeError("content-context result identity or status is invalid");
   const artifacts = array(input.artifacts, "content-context artifacts");
+  if (artifacts.length !== CONTENT_CONTEXT_REQUIRED_ARTIFACTS.length) {
+    throw new TypeError("content-context artifact declarations are not exact");
+  }
   const seen = new Set<string>();
   for (const value of artifacts) {
     const artifact = record(value, "content-context artifact");
+    exactKeys(
+      artifact,
+      ["name", "sha256", "bytes"],
+      "content-context artifact",
+    );
     const name = artifact.name;
     if (
       typeof name !== "string" ||
