@@ -5,6 +5,7 @@
  * native always-on-top app window.
  */
 
+import { Button } from "@elizaos/ui";
 import { client } from "@elizaos/ui/api";
 import { isElectrobunRuntime, openDesktopAppWindow } from "@elizaos/ui/bridge";
 import {
@@ -548,14 +549,14 @@ export function ComputerUseSessionsView({
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <h1 className="text-base font-semibold">Computer sessions</h1>
         {desktopRuntime ? (
-          <button
-            className="min-h-11 rounded-lg bg-orange-500 px-4 text-sm font-medium text-white hover:bg-orange-600"
+          <Button
+            size="touch"
             data-agent-id="computer-sessions-open-floating"
             onClick={() => void openFloating()}
             type="button"
           >
             Open floating
-          </button>
+          </Button>
         ) : null}
       </header>
 
@@ -572,13 +573,14 @@ export function ComputerUseSessionsView({
       ) : state.kind === "error" ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
           <p className="text-sm text-destructive">{state.message}</p>
-          <button
-            className="min-h-11 rounded-lg border border-border px-4 text-sm hover:bg-orange-500/10"
+          <Button
+            variant="outline"
+            size="touch"
             onClick={() => void loadSessions()}
             type="button"
           >
             Retry
-          </button>
+          </Button>
         </div>
       ) : sessions.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -592,18 +594,16 @@ export function ComputerUseSessionsView({
               className="flex gap-2 overflow-x-auto px-3 py-2"
             >
               {sessions.map((session) => (
-                <button
-                  className={`min-h-11 shrink-0 rounded-lg px-3 text-xs ${
-                    selected?.id === session.id
-                      ? "bg-orange-500 text-white"
-                      : "bg-card text-muted-foreground"
-                  }`}
+                <Button
+                  variant={selected?.id === session.id ? "default" : "surface"}
+                  size="touch"
+                  className="shrink-0"
                   key={session.id}
                   onClick={() => setSelectedId(session.id)}
                   type="button"
                 >
                   {session.label}
-                </button>
+                </Button>
               ))}
             </nav>
           ) : null}
@@ -639,31 +639,34 @@ export function ComputerUseSessionsView({
                       {selected.status}
                     </span>
                     {selected.status === "paused" ? (
-                      <button
-                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => void controlSession(selected, "resume")}
                         type="button"
                       >
                         Resume
-                      </button>
+                      </Button>
                     ) : selected.status === "idle" ? (
-                      <button
-                        className="min-h-11 px-1 text-xs hover:text-orange-500"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => void controlSession(selected, "pause")}
                         type="button"
                       >
                         Pause
-                      </button>
+                      </Button>
                     ) : null}
-                    <button
-                      className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                    <Button
+                      variant="dangerGhost"
+                      size="sm"
                       data-agent-id={`computer-session-stop-${selected.id}`}
                       disabled={selected.status === "stopping"}
                       onClick={() => void controlSession(selected, "stop")}
                       type="button"
                     >
                       Stop
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <p className="truncate">
@@ -689,8 +692,11 @@ export function ComputerUseSessionsView({
                     key={session.id}
                   >
                     <div className="flex min-h-11 items-start justify-between gap-2">
-                      <button
-                        className="min-w-0 flex-1 text-left"
+                      <Button
+                        variant="selection"
+                        size="row"
+                        align="start"
+                        className="min-w-0 flex-1"
                         data-agent-id={`computer-session-select-${session.id}`}
                         onClick={() => setSelectedId(session.id)}
                         type="button"
@@ -706,7 +712,7 @@ export function ComputerUseSessionsView({
                               : ""}
                           </p>
                         </div>
-                      </button>
+                      </Button>
                       <div className="flex shrink-0 items-center gap-2">
                         <span
                           className={`rounded-full px-2 py-1 text-[11px] ${statusTone(session.status)}`}
@@ -714,35 +720,38 @@ export function ComputerUseSessionsView({
                           {session.status}
                         </span>
                         {session.status === "paused" ? (
-                          <button
-                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() =>
                               void controlSession(session, "resume")
                             }
                             type="button"
                           >
                             Resume
-                          </button>
+                          </Button>
                         ) : session.status === "idle" ? (
-                          <button
-                            className="min-h-11 px-1 text-xs text-muted-foreground hover:text-orange-500"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() =>
                               void controlSession(session, "pause")
                             }
                             type="button"
                           >
                             Pause
-                          </button>
+                          </Button>
                         ) : null}
-                        <button
-                          className="min-h-11 px-1 text-xs text-destructive hover:text-orange-600 disabled:opacity-50"
+                        <Button
+                          variant="dangerGhost"
+                          size="sm"
                           data-agent-id={`computer-session-stop-${session.id}`}
                           disabled={session.status === "stopping"}
                           onClick={() => void controlSession(session, "stop")}
                           type="button"
                         >
                           Stop
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
