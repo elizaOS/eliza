@@ -4,6 +4,50 @@ This is a nonproduction integration and packaging-readiness receipt. It does not
 authorize or claim a native launch, port lease, TCC change, signing, deployment,
 provider traffic, physical-pointer action, or release acceptance.
 
+## Published desktop preflight follow-up and current-base refresh
+
+The repaired runtime-preflight work is now isolated from the shadow and from
+the obsolete ancestry of PR #27221. Draft PR #28826 publishes one focused
+commit on the then-current `origin/develop`:
+
+- Branch: `codex/desktop-qualified-runtime-access-20260825`
+- Base: `a9a258e6ace7bd91b97f82b7e99b4a55e48c58dc`
+- Commit: `eb74d871f652a550205f297f48617d97bf519aad`
+- Tree: `06c405b3aa226e8901924c34a51bff5cc2f96713`
+- PR: <https://github.com/elizaOS/eliza/pull/28826> (draft)
+
+The focused commit contains only the five Electrobun runtime-preflight,
+main-request-header, and reset-transport files. It includes both unique
+follow-ups from the old PR plus the repaired target-origin and runtime-less
+failure contracts. It does not contain the old PR ancestry, PR #26870, or any
+other shadow lane. Its focused evidence is 27/27 tests, targeted TypeScript,
+Biome, App Core build, package dry run, diff check, and a one-commit gitleaks
+scan. The full clean-base Electrobun lane passed 1,424/1,425; its sole failure
+is the untouched pre-existing shell-relay complete-content expectation that is
+reconciled only in this shadow integration.
+
+The shadow then merged that exact published commit in
+`fcc1eec61d45889cd2b34f04daf52cbe9f2978b1`, making both the published PR SHA
+and `a9a258e6ace7bd91b97f82b7e99b4a55e48c58dc` ancestors. The resulting source
+tree before this receipt update is
+`60ba2d636e0072e4624ae02dc8ef4cf76c2517ad`. This merge also advances the
+shadow through the intervening current-develop Firefox smoke, Computer Use
+conformance, and Android release-hardening commits without a textual conflict.
+
+Current-shadow verification after that exact-SHA merge:
+
+- Complete Electrobun package lane: 1,475/1,475 across 149 files.
+- Targeted runtime-preflight/reset TypeScript compile: passed.
+- Scoped Biome: passed.
+- App Core source-package build: passed.
+- App Core package dry run: 1,480 files, 12,864,633 bytes unpacked,
+  5,144,541-byte archive estimate.
+- `git diff --check`: passed.
+- Gitleaks: 233 feature commits / about 1.92 MB, no leaks.
+
+No native bundle was built or launched, no runtime/state writer was opened, and
+ports `50001`, `5174`, `31337`, and `31338` remained unused by this pass.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
