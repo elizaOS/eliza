@@ -76,6 +76,11 @@ describe("AndroidCloudApp", () => {
     const signInButton = await screen.findByRole("button", {
       name: "Sign in to Eliza Cloud",
     });
+    expect(screen.getByTestId("android-cloud-first-run-greeting")).toBeTruthy();
+    expect(screen.getByTestId("android-cloud-first-run-sign-in")).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("Sign in to start chatting"),
+    ).toHaveProperty("disabled", true);
     expect(openExternal).not.toHaveBeenCalled();
     fireEvent.click(signInButton);
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());

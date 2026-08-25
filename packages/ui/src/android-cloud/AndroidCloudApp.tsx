@@ -1,9 +1,13 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShaderBackground } from "../backgrounds/ShaderBackground";
 import { ChatBubble } from "../components/composites/chat/chat-bubble";
+import { GlassIconButton } from "../components/shell/glass-composer";
+import { GLASS_COMPOSER_CLASS } from "../components/shell/glass-composer.helpers";
 import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import {
   FIRST_RUN_GREETING,
@@ -334,36 +338,42 @@ export function AndroidCloudApp({
   if (phase === "signed-out") {
     return (
       <main className="relative flex min-h-dvh overflow-hidden bg-bg text-txt">
-        <ShaderBackground />
+        <ShaderBackground color="#08090a" glow="#303236" />
         <section
           aria-label="Eliza Cloud sign-in"
-          className="relative z-[1] flex w-full flex-col justify-end px-5 pb-[max(4.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]"
+          className="relative z-[1] flex w-full flex-col justify-between px-4 pb-[max(4.5rem,env(safe-area-inset-bottom))] pt-[max(7rem,env(safe-area-inset-top))]"
         >
-          <div className="mx-auto flex w-full max-w-lg flex-col gap-3">
-            <ChatBubble tone="assistant" className="w-fit text-base">
+          <div className="mx-auto flex w-full max-w-lg flex-col items-start gap-3">
+            <ChatBubble
+              tone="assistant"
+              variant="glass"
+              data-testid="android-cloud-first-run-greeting"
+              className="rounded-2xl rounded-bl-md border border-white/15 bg-black/20 px-3.5 py-2.5 text-base backdrop-blur-md"
+            >
               {FIRST_RUN_GREETING}
             </ChatBubble>
             <ChatBubble
               tone="assistant"
-              className="w-full max-w-[92%] space-y-4 text-base"
+              variant="glass"
+              data-testid="android-cloud-first-run-sign-in"
+              className="w-fit max-w-[88%] rounded-2xl rounded-bl-md border border-white/15 bg-black/20 px-3.5 py-3 text-base backdrop-blur-md"
             >
-              <p>{FIRST_RUN_SIGN_IN_PROMPT}</p>
+              <p className="mb-3">{FIRST_RUN_SIGN_IN_PROMPT}</p>
               {error ? (
-                <p role="alert" className="text-sm text-status-danger">
+                <p role="alert" className="mb-3 text-sm text-red-200/90">
                   {error}
                 </p>
               ) : null}
               {busy ? (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm text-muted">
+                  <p className="text-sm text-white/65">
                     Finish signing in with Steward, then return to Eliza.
                   </p>
                   <Button
                     type="button"
-                    variant="outline"
-                    size="touch"
+                    variant="surface"
+                    size="compact"
                     onClick={() => void cancelSignIn()}
-                    className="w-full"
                   >
                     Cancel sign-in
                   </Button>
@@ -371,10 +381,10 @@ export function AndroidCloudApp({
               ) : (
                 <Button
                   type="button"
-                  variant="default"
+                  variant="surface"
                   size="touch"
                   onClick={() => void signIn()}
-                  className="w-full"
+                  className="w-full max-w-[13.5rem]"
                 >
                   Sign in to Eliza Cloud
                 </Button>
@@ -384,16 +394,38 @@ export function AndroidCloudApp({
                   type="button"
                   variant="mutedLink"
                   onClick={() => void restore()}
+                  className="mt-2"
                 >
                   Check for an existing session
                 </Button>
               ) : null}
             </ChatBubble>
+          </div>
+          <div className="mx-auto w-full max-w-lg">
             <div
-              aria-hidden="true"
-              className="mt-2 flex min-h-14 items-center rounded-2xl border border-border/70 bg-card/85 px-5 text-sm text-muted shadow-lg"
+              className={GLASS_COMPOSER_CLASS}
+              data-testid="android-cloud-locked-composer"
             >
-              Message Eliza
+              <Button
+                type="button"
+                variant="transparent"
+                size="icon-lg"
+                aria-label="chat actions"
+                disabled
+                className="grid shrink-0 place-items-center bg-transparent text-white/40"
+              >
+                <Plus className="size-5" aria-hidden />
+              </Button>
+              <Input
+                type="text"
+                disabled
+                aria-label="message"
+                placeholder="Sign in to start chatting"
+                variant="embeddedName"
+                density="compact"
+                className="min-w-0 flex-1 disabled:opacity-100 placeholder:text-white/55"
+              />
+              <GlassIconButton icon="mic" label="Start voice input" disabled />
             </div>
           </div>
         </section>
