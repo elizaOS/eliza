@@ -1,34 +1,57 @@
 /**
  * Restore-drill harness for the apps tenant Postgres off-host backups
- * (#21729). Consumes one dated backup set produced by the node's
- * tenant-db-backup timer (encrypted archive + plaintext sidecar), verifies
- * archive integrity and freshness, decrypts and checksums the contents, and
- * plans/executes a restore into an ISOLATED verification target — never the
- * production node. Emits a redacted JSON drill report with measured RPO
- * (backup age) and RTO (restore duration) against the declared objectives.
+ * (#21729, authority redesign #23453). Consumes one dated backup set
+ * produced by the node's tenant-db-backup timer (encrypted archive +
+ * plaintext sidecar), verifies archive integrity and freshness, decrypts and
+ * checksums the contents, and plans/executes a restore into an ISOLATED
+ * verification target — never the production node. Emits a redacted JSON
+ * drill report with measured RPO (backup age) and RTO (restore duration)
+ * against the declared objectives.
  *
- * Safety invariants: before any destructive SQL, the direct target must return
- * the operator's unique disposable-target identity from a server-side custom
- * setting; aliases and tunnels therefore cannot bypass the guard, and the
- * setting is consumed (ALTER SYSTEM RESET) in that same guarded session, so
- * a second run with the same identity fails closed rather than replaying it.
- * Isolation is proven by authenticating as every restored tenant role through
- * both direct Postgres and the isolated pgbouncer; a cross-tenant probe may
- * be refused either by Postgres's own CONNECT-privilege denial or by
- * pgbouncer's unlisted-database denial, depending on which layer sees it
- * first — both are treated as the isolation guarantee holding. DSNs,
- * credentials, and tenant names never reach reports or logs (reports
- * reference truncated dump ids only).
+ * Authority model (#23453): destructive work is authorized by a signed,
+ * expiring capability (see restore-capability.ts) that pins exactly one
+ * archive sha256 to exactly one disposable target id. Before any destructive
+ * SQL the drill verifies the capability signature, the archive hash pin, and
+ * a server-side twin setting pair; every destructive session re-checks both
+ * settings through the psql guard; exclusivity is claimed transactionally
+ * (advisory lock + claim record) so two different capabilities cannot drive
+ * the same target; and both settings are consumed (ALTER SYSTEM RESET +
+ * reload + verified unset) only after the drill completes, so a completed
+ * drill's nonce is dead while a crashed drill's target remains recoverable
+ * within the capability TTL.
+ *
+ * RPO is derived from the manifest inside the encrypted, checksummed
+ * archive; the plaintext sidecar's timestamp is only a cross-check and a
+ * tampered or stale sidecar fails closed rather than understating data loss.
+ * The isolation proof is linear: each tenant authenticates to its own
+ * database through both direct Postgres and the isolated pgbouncer, an
+ * admin-side ACL assertion proves PUBLIC is denied and the owner granted on
+ * every restored database, and one pairwise cross-reject sample is retained
+ * as a cross-check. DSNs, credentials, and tenant names never reach reports
+ * or logs (reports reference truncated dump ids only).
  *
  * Usage (operator drill, needs openssl + tar + psql client tools):
+ *   ELIZA_RESTORE_CAPABILITY_KEY=... \
  *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts \
  *     --set-dir /path/to/downloaded/<stamp> \
- *     --target-dsn postgresql://postgres:...@127.0.0.1:5433/postgres \
+ *     --target-dsn postgresql://postgres:***@127.0.0.1:5433/postgres \
  *     --target-id drill-11111111-2222-4333-8444-555555555555 \
+ *     --capability-file /path/to/capability.txt \
  *     --pooler-endpoint 127.0.0.1:6432 \
  *     --tenant-probes-file /path/to/tenant-probes.json \
  *     --passphrase-file /path/to/passphrase \
  *     --rpo-hours 26 --rto-minutes 60 --output /tmp/drill-report.json
+ *
+ * Minting a capability (after downloading the set and hashing the archive):
+ *   ELIZA_RESTORE_CAPABILITY_KEY=... \
+ *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts mint \
+ *     --target-id drill-... --archive-sha256 <sha256> --ttl-minutes 120
+ *
+ * Target provisioning (operator, on the DISPOSABLE target only): set both
+ * twin settings before the drill, e.g.
+ *   ALTER SYSTEM SET eliza.restore_target_id = 'drill-...';
+ *   ALTER SYSTEM SET eliza.restore_capability = '<serialized capability>';
+ *   SELECT pg_reload_conf();
  */
 
 import { spawnSync } from "node:child_process";
@@ -43,29 +66,29 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import {
+  assertRecoveryPointConsistency,
+  mintRestoreCapability,
+  parseRestoreCapability,
+  type RestoreCapability,
+  serializeRestoreCapability,
+  verifyRestoreCapability,
+} from "./restore-capability";
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const DUMP_ID = /^[a-f0-9]{12}$/;
-export const REPORT_SCHEMA_VERSION = 1 as const;
+export const REPORT_SCHEMA_VERSION = 2 as const;
 
 const RESTORE_TARGET_ID =
   /^drill-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PASSWORD_ENV = /^[A-Z][A-Z0-9_]*$/;
 export const POOLER_PORT = 6432;
-
-/**
- * Fail-closed containment for the merged restore orchestrator. The current
- * one-use target marker is cleared before the later guarded restore sessions,
- * and the remaining authority/evidence contracts require a redesign backed by
- * a real disposable Postgres and pgbouncer canary. Keep parsing helpers
- * available to tests, but refuse every destructive drill invocation.
- */
-export function assertRestoreDrillExecutionEnabled(): void {
-  throw new RecoveryDrillError(
-    "RESTORE_DRILL_DISABLED",
-    "tenant restore drills are disabled pending a verified destructive-authority redesign",
-  );
-}
+/** Server-side twin settings: the disposable target id and its capability. */
+const SETTING_TARGET_ID = "eliza.restore_target_id";
+const SETTING_CAPABILITY = "eliza.restore_capability";
+/** Advisory key serializing capability claims against one restore target. */
+export const DRILL_ADVISORY_LOCK_KEY = 0x4552_5a44;
+const SIGNING_KEY_ENV = "ELIZA_RESTORE_CAPABILITY_KEY";
 
 export class RecoveryDrillError extends Error {
   readonly code: string;
@@ -278,6 +301,8 @@ export function assertRestoreTargetIdentity(
 
 export interface RestoreTargetAuthority {
   targetId: string;
+  /** Server-side twin of the serialized capability envelope; '' when unset. */
+  capability: string;
   existingRoles: string[];
 }
 
@@ -304,6 +329,7 @@ export function parseRestoreTargetAuthority(
   const record = raw as Record<string, unknown>;
   if (
     typeof record.target_id !== "string" ||
+    typeof record.capability !== "string" ||
     !Array.isArray(record.existing_roles) ||
     record.existing_roles.some((role) => typeof role !== "string")
   ) {
@@ -314,6 +340,7 @@ export function parseRestoreTargetAuthority(
   }
   return {
     targetId: record.target_id,
+    capability: record.capability,
     existingRoles: record.existing_roles as string[],
   };
 }
@@ -352,35 +379,121 @@ export function assertNoGlobalRoleCollisions(
   }
 }
 
+/**
+ * Every artifact the drill consumes must be checksummed. The manifest is the
+ * authenticated RPO source and globals.sql/dbmap/dumps are executed against
+ * the target, so an archive whose checksums omit any of them would run
+ * unverified bytes (#23453). Dump ids come from the (checksummed) dbmap.
+ */
+export function assertChecksumCoverage(
+  entries: ChecksumEntry[],
+  dumpIds: string[],
+): void {
+  const listed = new Set(entries.map((entry) => entry.file));
+  const required = [
+    "manifest.json",
+    "globals.sql",
+    "dbmap.tsv",
+    ...dumpIds.map((dumpId) => `dumps/${dumpId}.dump`),
+  ];
+  const missing = required.filter((file) => !listed.has(file));
+  if (missing.length > 0) {
+    throw new RecoveryDrillError(
+      "INVALID_METADATA",
+      `checksums.sha256 does not cover required archive artifacts: ${missing.join(", ")}`,
+    );
+  }
+}
+
+/**
+ * Probe roles must come from the archive's authenticated role inventory, not
+ * from the operator-local (unauthenticated) probes file: globals.sql is
+ * checksummed inside the encrypted archive, so its CREATE ROLE set is the
+ * only trustworthy owner list (#23453).
+ */
+export function assertProbesCoverArchiveRoles(
+  probes: TenantProbe[],
+  archiveRoles: string[],
+): void {
+  const authenticated = new Set(archiveRoles);
+  const unauthenticated = probes
+    .filter((probe) => !authenticated.has(probe.role))
+    .map((probe) => probe.dumpId);
+  if (unauthenticated.length > 0) {
+    throw new RecoveryDrillError(
+      "INVALID_PROBE_METADATA",
+      `tenant probe names a role absent from the archive's globals.sql (dump=${unauthenticated.join(",")})`,
+    );
+  }
+}
+
 const TARGET_GUARD_SQL = `\\set ON_ERROR_STOP on
-SELECT COALESCE(current_setting('eliza.restore_target_id', true) = :'expected_target_id', false) AS eliza_restore_target_ok \\gset
+SELECT (COALESCE(current_setting('${SETTING_TARGET_ID}', true), '') = :'expected_target_id' AND COALESCE(current_setting('${SETTING_CAPABILITY}', true), '') = :'expected_capability') AS eliza_restore_target_ok \\gset
 \\if :eliza_restore_target_ok
 \\else
-\\echo 'restore target identity mismatch'
-DO $$ BEGIN RAISE EXCEPTION 'restore target identity mismatch'; END $$;
+\\echo 'restore target authority mismatch'
+DO $$ BEGIN RAISE EXCEPTION 'restore target authority mismatch'; END $$;
 \\endif
 `;
 
-/** Guard one psql session before its first destructive statement. */
+/**
+ * Guard one psql session before its first destructive statement. Both twin
+ * settings — the disposable target id and the serialized capability — must
+ * still be present and exactly equal (supplied via psql --set variables at
+ * invocation), so every destructive session of the drill is individually
+ * authority-checked.
+ */
 export function guardPsqlScript(sql: string): string {
   return `${TARGET_GUARD_SQL}${sql}`;
 }
 
-const CONSUME_TARGET_IDENTITY_SQL = `ALTER SYSTEM RESET eliza.restore_target_id;
+const CONSUME_AUTHORITY_SQL = `ALTER SYSTEM RESET ${SETTING_TARGET_ID};
+ALTER SYSTEM RESET ${SETTING_CAPABILITY};
 SELECT pg_reload_conf();
 `;
 
 /**
- * Guarded script that spends the disposable target identity: it re-checks
- * the nonce through the same guard used for every destructive statement,
- * then clears it in that same session. "One-use" was previously operator
- * convention only — nothing consumed the setting, so a second run (a re-drill
- * against a stale downloaded set, an operator mistake, or a racing process)
- * could replay the same identity. After this runs, `current_setting` returns
- * unset and the very next authority read fails closed.
+ * Guarded script that spends the target authority at the END of the drill:
+ * it re-checks both twin settings through the same guard used for every
+ * destructive statement, then clears both and reloads. After this runs,
+ * `current_setting` returns unset for both and the very next authority read
+ * fails closed, so a completed drill cannot be replayed. A failed drill does
+ * NOT consume the settings — the disposable target stays recoverable for an
+ * idempotent re-run inside the capability TTL.
  */
-export function guardedConsumeTargetIdentitySql(): string {
-  return guardPsqlScript(CONSUME_TARGET_IDENTITY_SQL);
+export function guardedConsumeAuthoritySql(): string {
+  return guardPsqlScript(CONSUME_AUTHORITY_SQL);
+}
+
+/**
+ * Transactional exclusivity claim, taken before the first destructive
+ * statement: under the drill advisory lock, a one-row claim record refuses a
+ * DIFFERENT capability against the same target while remaining idempotent
+ * for the same capability (crash recovery re-runs).
+ */
+export function buildClaimExclusivitySql(
+  capability: RestoreCapability,
+): string {
+  const claimId = createHash("sha256")
+    .update(serializeRestoreCapability(capability))
+    .digest("hex");
+  return guardPsqlScript(
+    `BEGIN;
+SELECT pg_advisory_xact_lock(${DRILL_ADVISORY_LOCK_KEY});
+CREATE TABLE IF NOT EXISTS public.eliza_restore_drill_claim (
+  capability_sha256 text PRIMARY KEY,
+  claimed_at timestamptz NOT NULL DEFAULT now()
+);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM public.eliza_restore_drill_claim WHERE capability_sha256 <> '${claimId}') THEN
+    RAISE EXCEPTION 'a different restore capability already claims this target';
+  END IF;
+END $$;
+DELETE FROM public.eliza_restore_drill_claim WHERE capability_sha256 = '${claimId}';
+INSERT INTO public.eliza_restore_drill_claim (capability_sha256) VALUES ('${claimId}');
+COMMIT;
+`,
+  );
 }
 
 /** Quote an archive-provided PostgreSQL identifier for generated drill SQL. */
@@ -638,10 +751,11 @@ export function evaluateObjectives(
 }
 
 /**
- * Post-restore isolation probes, mirroring the production boundary: each
- * tenant role must connect to its own database and be REJECTED connecting to
- * every other tenant database. Returns check descriptors keyed by dump id so
- * the report never carries tenant names.
+ * Linear isolation plan (#23453): one own-connect per tenant through both
+ * surfaces, plus ONE pairwise cross-reject sample (the first two tenants)
+ * retained as a cross-check of the ACL assertion. Cross-tenant denial for
+ * the remaining pairs is proven by the admin-side ACL assertion instead of
+ * O(n^2) probe pairs.
  */
 export interface IsolationCheck {
   kind: "own-connect" | "cross-reject";
@@ -650,21 +764,17 @@ export interface IsolationCheck {
 }
 
 export function buildIsolationChecks(entries: DbMapEntry[]): IsolationCheck[] {
-  const checks: IsolationCheck[] = [];
-  for (const subject of entries) {
+  const checks: IsolationCheck[] = entries.map((entry) => ({
+    kind: "own-connect" as const,
+    subjectDumpId: entry.dumpId,
+    objectDumpId: entry.dumpId,
+  }));
+  if (entries.length >= 2) {
     checks.push({
-      kind: "own-connect",
-      subjectDumpId: subject.dumpId,
-      objectDumpId: subject.dumpId,
+      kind: "cross-reject",
+      subjectDumpId: entries[0].dumpId,
+      objectDumpId: entries[1].dumpId,
     });
-    for (const object of entries) {
-      if (object.dumpId === subject.dumpId) continue;
-      checks.push({
-        kind: "cross-reject",
-        subjectDumpId: subject.dumpId,
-        objectDumpId: object.dumpId,
-      });
-    }
   }
   return checks;
 }
@@ -673,6 +783,7 @@ export interface CliOptions {
   setDir: string;
   targetDsn: string;
   targetId: string;
+  capabilityFile: string;
   poolerEndpoint: PgEndpoint;
   tenantProbesFile: string;
   passphraseFile: string;
@@ -688,6 +799,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
       "set-dir": { type: "string" },
       "target-dsn": { type: "string" },
       "target-id": { type: "string" },
+      "capability-file": { type: "string" },
       "pooler-endpoint": { type: "string" },
       "tenant-probes-file": { type: "string" },
       "passphrase-file": { type: "string" },
@@ -699,6 +811,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
   const setDir = values["set-dir"];
   const targetDsn = values["target-dsn"];
   const targetId = values["target-id"];
+  const capabilityFile = values["capability-file"];
   const poolerEndpoint = values["pooler-endpoint"];
   const tenantProbesFile = values["tenant-probes-file"];
   const passphraseFile = values["passphrase-file"];
@@ -706,13 +819,14 @@ export function parseCliArgs(argv: string[]): CliOptions {
     !setDir ||
     !targetDsn ||
     !targetId ||
+    !capabilityFile ||
     !poolerEndpoint ||
     !tenantProbesFile ||
     !passphraseFile
   ) {
     throw new RecoveryDrillError(
       "INVALID_ARGS",
-      "required: --set-dir, --target-dsn, --target-id, --pooler-endpoint, --tenant-probes-file, and --passphrase-file",
+      "required: --set-dir, --target-dsn, --target-id, --capability-file, --pooler-endpoint, --tenant-probes-file, and --passphrase-file",
     );
   }
   assertRestoreTargetIdentity(targetId, targetId);
@@ -733,6 +847,7 @@ export function parseCliArgs(argv: string[]): CliOptions {
     setDir,
     targetDsn,
     targetId,
+    capabilityFile,
     poolerEndpoint: parsePoolerEndpoint(poolerEndpoint),
     tenantProbesFile,
     passphraseFile,
@@ -838,15 +953,26 @@ interface DrillReport {
   archiveBytes: number;
   databaseCount: number;
   checksummedFiles: number;
-  isolation: { total: number; passed: number };
+  isolation: { total: number; passed: number; plan: string };
+  /** Where the RPO input came from — always the authenticated manifest. */
+  rpoSource: "manifest";
   objectives: ObjectiveEvaluation & RecoveryObjectives;
 }
 
+function readSigningKey(): string {
+  const key = process.env[SIGNING_KEY_ENV];
+  if (key === undefined || key === "") {
+    throw new RecoveryDrillError(
+      "MISSING_SIGNING_KEY",
+      `${SIGNING_KEY_ENV} must be set to the restore-capability signing key`,
+    );
+  }
+  return key;
+}
+
 /**
- * Read the server-side target authority for one guarded session. Split out
- * so the initial read and the immediately-following consume step
- * (`consumeRestoreTargetIdentity`) are visibly one verify-then-spend
- * sequence rather than an unconsumed read.
+ * Read the server-side target authority for one guarded session: both twin
+ * settings plus the role inventory.
  */
 function readRestoreTargetAuthority(targetDsn: string): RestoreTargetAuthority {
   return parseRestoreTargetAuthority(
@@ -859,29 +985,130 @@ function readRestoreTargetAuthority(targetDsn: string): RestoreTargetAuthority {
       "--dbname",
       targetDsn,
       "--command",
-      "SELECT json_build_object('target_id', current_setting('eliza.restore_target_id', true), 'existing_roles', (SELECT json_agg(rolname ORDER BY rolname) FROM pg_roles))::text",
+      `SELECT json_build_object('target_id', COALESCE(current_setting('${SETTING_TARGET_ID}', true), ''), 'capability', COALESCE(current_setting('${SETTING_CAPABILITY}', true), ''), 'existing_roles', (SELECT json_agg(rolname ORDER BY rolname) FROM pg_roles))::text`,
     ]).trim(),
   );
 }
 
 /**
- * Spend the one-use nonce: the guard re-verifies it server-side, then clears
- * it in the same session (see `guardedConsumeTargetIdentitySql`). Runs
- * before any destructive statement, immediately after the identity is
- * confirmed, so the window in which the nonce is valid but not yet consumed
- * is exactly one guarded round trip.
+ * Verify the full authority chain before any destructive work: the
+ * capability file's signature, its expiry, the server-returned target id,
+ * and byte-for-byte equality between the client capability and the
+ * server-side twin. Exported so the reuse/refusal behavior is directly
+ * testable against a scripted psql double (see the nonce suite).
  */
-function consumeRestoreTargetIdentity(
+export function verifyRestoreAuthority(
   targetDsn: string,
   targetId: string,
+  capability: RestoreCapability,
+  signingKey: string,
+  nowEpochMs: number,
+): RestoreTargetAuthority {
+  const authority = readRestoreTargetAuthority(targetDsn);
+  assertRestoreTargetIdentity(targetId, authority.targetId);
+  const twin = authority.capability;
+  if (twin === "" || twin !== serializeRestoreCapability(capability)) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target did not return the matching restore capability twin",
+    );
+  }
+  verifyRestoreCapability(capability, signingKey, nowEpochMs);
+  return authority;
+}
+
+/**
+ * Spend the target authority at the end of a completed drill: guarded on
+ * both twin settings, reset both, reload, then re-read and require both to
+ * be unset. The re-read is part of the same exported sequence so a half-run
+ * consumption cannot masquerade as success.
+ */
+export function consumeRestoreAuthority(
+  targetDsn: string,
+  targetId: string,
+  capability: RestoreCapability,
   work: string,
 ): void {
-  const script = join(work, "consume-target-identity.sql");
-  writeFileSync(script, guardedConsumeTargetIdentitySql());
+  const script = join(work, "consume-authority.sql");
+  writeFileSync(script, guardedConsumeAuthoritySql());
   run("psql", [
     "--no-psqlrc",
     "--set",
     `expected_target_id=${targetId}`,
+    "--set",
+    `expected_capability=${serializeRestoreCapability(capability)}`,
+    "--dbname",
+    targetDsn,
+    "--file",
+    script,
+  ]);
+  const after = readRestoreTargetAuthority(targetDsn);
+  if (after.targetId !== "" || after.capability !== "") {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "target authority was not fully consumed (settings still present after reset)",
+    );
+  }
+}
+
+/** Admin-side linear isolation assertion for one restored database. */
+function assertTenantAcl(
+  targetDsn: string,
+  database: string,
+  ownerRole: string,
+): void {
+  // OID 0 is the canonical way to probe PUBLIC's privilege (role "PUBLIC"
+  // does not exist as a pg_roles row). Variables are supplied on stdin:
+  // psql -c does not interpolate :'var', but stdin scripts do.
+  const out = run(
+    "psql",
+    [
+      "--no-psqlrc",
+      "--tuples-only",
+      "--no-align",
+      "--set",
+      "ON_ERROR_STOP=1",
+      "--set",
+      `db=${database}`,
+      "--set",
+      `owner=${ownerRole}`,
+      "--dbname",
+      targetDsn,
+    ],
+    {
+      input:
+        "SELECT json_build_object('public_connect', has_database_privilege(0, :'db', 'CONNECT'), 'owner_connect', has_database_privilege(:'owner', :'db', 'CONNECT'))::text",
+    },
+  ).trim();
+  let parsed: { public_connect?: unknown; owner_connect?: unknown };
+  try {
+    parsed = JSON.parse(out) as typeof parsed;
+  } catch {
+    throw new RecoveryDrillError(
+      "ISOLATION_VIOLATION",
+      "target ACL assertion response was not valid JSON",
+    );
+  }
+  if (parsed.public_connect !== false || parsed.owner_connect !== true) {
+    throw new RecoveryDrillError(
+      "ISOLATION_VIOLATION",
+      "restored database ACL does not deny PUBLIC and grant the owner",
+    );
+  }
+}
+
+function guardedPsqlFile(
+  targetDsn: string,
+  targetId: string,
+  capability: string,
+  script: string,
+): void {
+  run("psql", [
+    "--no-psqlrc",
+    "--set",
+    `expected_target_id=${targetId}`,
+    "--set",
+    `expected_capability=${capability}`,
     "--dbname",
     targetDsn,
     "--file",
@@ -889,35 +1116,37 @@ function consumeRestoreTargetIdentity(
   ]);
 }
 
-/**
- * Verify the disposable target identity and consume it atomically as one
- * guarded sequence. Exported so the reuse-rejection behavior is directly
- * testable against a scripted psql double (see the "restore target nonce"
- * describe block): a second call with the same target id observes the
- * cleared setting and fails REFUSED_TARGET_AUTHORITY, not TOOL_FAILED —
- * matching the refusal shape a genuine unauthorized target already gets.
- */
-export function verifyAndConsumeRestoreTargetIdentity(
-  targetDsn: string,
-  targetId: string,
-  work: string,
-): RestoreTargetAuthority {
-  const authority = readRestoreTargetAuthority(targetDsn);
-  assertRestoreTargetIdentity(targetId, authority.targetId);
-  consumeRestoreTargetIdentity(targetDsn, targetId, work);
-  return authority;
-}
-
 /** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
 export function executeDrill(options: CliOptions): DrillReport {
-  assertRestoreDrillExecutionEnabled();
-  const targetUrl = assertDirectTarget(options.targetDsn);
-  const work = mkdtempSync(join(tmpdir(), "tenant-db-drill-"));
+  const signingKey = readSigningKey();
+  let capabilityText: string;
   try {
-    const authority = verifyAndConsumeRestoreTargetIdentity(
+    capabilityText = readFileSync(options.capabilityFile, "utf-8").trim();
+  } catch (cause) {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      `--capability-file could not be read: ${(cause as Error).message}`,
+    );
+  }
+  const capability = parseRestoreCapability(capabilityText);
+  verifyRestoreCapability(capability, signingKey, Date.now());
+  if (capability.targetId !== options.targetId) {
+    throw new RecoveryDrillError(
+      "REFUSED_TARGET_AUTHORITY",
+      "capability does not pin the requested target id",
+    );
+  }
+  const targetUrl = assertDirectTarget(options.targetDsn);
+  const capabilityEnvelope = serializeRestoreCapability(capability);
+  const work = mkdtempSync(join(tmpdir(), "tenant-db-drill-"));
+  let consumed = false;
+  try {
+    const authority = verifyRestoreAuthority(
       options.targetDsn,
       options.targetId,
-      work,
+      capability,
+      signingKey,
+      Date.now(),
     );
     const startedAt = new Date();
 
@@ -941,6 +1170,23 @@ export function executeDrill(options: CliOptions): DrillReport {
         "downloaded archive sha256 differs from sidecar",
       );
     }
+    if (actualSha !== capability.archiveSha256) {
+      throw new RecoveryDrillError(
+        "REFUSED_ARCHIVE_MISMATCH",
+        "archive on disk is not the archive pinned by the restore capability",
+      );
+    }
+
+    // Transactional exclusivity: refuse a different capability on this target
+    // before any destructive statement runs.
+    const claimScript = join(work, "claim-exclusivity.sql");
+    writeFileSync(claimScript, buildClaimExclusivitySql(capability));
+    guardedPsqlFile(
+      options.targetDsn,
+      options.targetId,
+      capabilityEnvelope,
+      claimScript,
+    );
 
     run("openssl", [
       "enc",
@@ -967,11 +1213,19 @@ export function executeDrill(options: CliOptions): DrillReport {
         "manifest/sidecar database_count mismatch",
       );
     }
+    // Authenticated recovery point: the manifest inside the encrypted,
+    // checksummed archive is authoritative; a drifted or future-dated
+    // sidecar/manifest pair fails closed instead of understating loss.
+    assertRecoveryPointConsistency({
+      sidecarCreatedAt: sidecar.createdAt,
+      manifestCreatedAt: manifest.createdAt,
+      nowEpochMs: Date.now(),
+    });
     const checksums = parseChecksumFile(
       readFileSync(join(work, "checksums.sha256"), "utf-8"),
     );
-    const checksummedFiles = verifyChecksums(work, checksums);
     const globalsSql = readFileSync(join(work, "globals.sql"), "utf-8");
+    const archiveRoles = parseGlobalRoleNames(globalsSql);
     assertNoGlobalRoleCollisions(globalsSql, authority.existingRoles);
     const dbMap = parseDbMap(readFileSync(join(work, "dbmap.tsv"), "utf-8"));
     if (dbMap.length !== manifest.databaseCount) {
@@ -980,11 +1234,25 @@ export function executeDrill(options: CliOptions): DrillReport {
         "dbmap entry count differs from manifest database_count",
       );
     }
+    // Checksum coverage is a load-bearing assumption: the manifest is the
+    // authenticated RPO source and globals.sql/dbmap/dumps are executed, so
+    // every consumed artifact must be listed — an archive whose checksums
+    // omit them would run unverified bytes (#23453).
+    assertChecksumCoverage(
+      checksums,
+      dbMap.map((entry) => entry.dumpId),
+    );
+    const checksummedFiles = verifyChecksums(work, checksums);
 
     const probes = parseTenantProbes(
       readFileSync(options.tenantProbesFile, "utf-8"),
       dbMap,
     );
+    // The probes file is operator-local and unauthenticated; the archive's
+    // globals.sql is the authenticated role inventory. A probe naming a role
+    // absent from globals.sql would let a tampered probes file decide who
+    // owns (and can CONNECT to) every restored database (#23453).
+    assertProbesCoverArchiveRoles(probes, archiveRoles);
     const probeById = new Map(probes.map((probe) => [probe.dumpId, probe]));
     const passwords = new Map<string, string>();
     for (const probe of probes) {
@@ -1001,15 +1269,12 @@ export function executeDrill(options: CliOptions): DrillReport {
     const restoreStart = Date.now();
     const guardedGlobals = join(work, "guarded-globals.sql");
     writeFileSync(guardedGlobals, guardPsqlScript(globalsSql));
-    run("psql", [
-      "--no-psqlrc",
-      "--set",
-      `expected_target_id=${options.targetId}`,
-      "--dbname",
+    guardedPsqlFile(
       options.targetDsn,
-      "--file",
+      options.targetId,
+      capabilityEnvelope,
       guardedGlobals,
-    ]);
+    );
     for (const entry of dbMap) {
       const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
       const probe = probeById.get(entry.dumpId);
@@ -1034,15 +1299,12 @@ export function executeDrill(options: CliOptions): DrillReport {
           ].join("\n"),
         ),
       );
-      run("psql", [
-        "--no-psqlrc",
-        "--set",
-        `expected_target_id=${options.targetId}`,
-        "--dbname",
+      guardedPsqlFile(
         options.targetDsn,
-        "--file",
+        options.targetId,
+        capabilityEnvelope,
         guardedDrop,
-      ]);
+      );
       const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
       run("pg_restore", ["--file", rawRestore, dumpFile]);
       const guardedRestore = join(work, `${entry.dumpId}.guarded-restore.sql`);
@@ -1054,6 +1316,8 @@ export function executeDrill(options: CliOptions): DrillReport {
         "--no-psqlrc",
         "--set",
         `expected_target_id=${options.targetId}`,
+        "--set",
+        `expected_capability=${capabilityEnvelope}`,
         "--dbname",
         targetDatabaseDsn(options.targetDsn, entry.databaseName),
         "--file",
@@ -1106,7 +1370,7 @@ export function executeDrill(options: CliOptions): DrillReport {
               "--set",
               "ON_ERROR_STOP=1",
               "--command",
-              "SELECT current_user || '|' || current_database() || '|' || current_setting('eliza.restore_target_id', true)",
+              `SELECT current_user || '|' || current_database() || '|' || current_setting('${SETTING_TARGET_ID}', true)`,
             ],
             { env },
           ).trim();
@@ -1135,9 +1399,22 @@ export function executeDrill(options: CliOptions): DrillReport {
         passed += 1;
       }
     }
+    // Linear admin-side isolation proof: PUBLIC denied, owner granted, for
+    // every restored database — replaces the remaining O(n^2) probe pairs.
+    for (const entry of dbMap) {
+      const probe = probeById.get(entry.dumpId);
+      if (probe === undefined) {
+        throw new RecoveryDrillError(
+          "INVALID_PROBE_METADATA",
+          "ACL assertion references unknown dump id",
+        );
+      }
+      assertTenantAcl(options.targetDsn, entry.databaseName, probe.role);
+      passed += 1;
+    }
 
     const objectives = evaluateObjectives(
-      sidecar.createdAt,
+      manifest.createdAt,
       startedAt,
       restoreSeconds,
       {
@@ -1146,7 +1423,7 @@ export function executeDrill(options: CliOptions): DrillReport {
       },
     );
 
-    return {
+    const report: DrillReport = {
       schemaVersion: REPORT_SCHEMA_VERSION,
       startedAt: startedAt.toISOString(),
       target: redactDsn(options.targetDsn),
@@ -1154,28 +1431,93 @@ export function executeDrill(options: CliOptions): DrillReport {
       archiveBytes: sidecar.archiveBytes,
       databaseCount: sidecar.databaseCount,
       checksummedFiles,
-      isolation: { total: checks.length * surfaces.length, passed },
+      isolation: {
+        total: checks.length * surfaces.length + dbMap.length,
+        passed,
+        plan: "linear",
+      },
+      rpoSource: "manifest",
       objectives: {
         ...objectives,
         rpoHours: options.rpoHours,
         rtoMinutes: options.rtoMinutes,
       },
     };
+
+    // Success path only: spend the authority so the completed drill cannot
+    // be replayed. A failed drill above leaves the target recoverable.
+    consumeRestoreAuthority(
+      options.targetDsn,
+      options.targetId,
+      capability,
+      work,
+    );
+    consumed = true;
+    return report;
   } finally {
-    // Decrypted tenant data must not outlive the drill.
+    // Decrypted tenant data must not outlive the drill. If consumption did
+    // not run (failure path), the target settings remain provisioned for an
+    // idempotent re-run inside the capability TTL — mirrored in stderr so
+    // operators see the recovery path without leaking secrets.
+    if (!consumed) {
+      process.stderr.write(
+        "drill failed before authority consumption; target settings remain for an idempotent re-run within the capability TTL\n",
+      );
+    }
     rmSync(work, { recursive: true, force: true });
   }
 }
 
-if (import.meta.main) {
-  const options = parseCliArgs(process.argv.slice(2));
-  const report = executeDrill(options);
-  const serialized = JSON.stringify(report, null, 2);
-  if (options.output !== undefined) {
-    writeFileSync(options.output, `${serialized}\n`);
+/** Mint a serialized restore capability (operator side, needs signing key). */
+export function runMintCommand(argv: string[]): string {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      "target-id": { type: "string" },
+      "archive-sha256": { type: "string" },
+      "ttl-minutes": { type: "string", default: "120" },
+    },
+  });
+  const targetId = values["target-id"];
+  const archiveSha256 = values["archive-sha256"];
+  const ttlMinutes = Number(values["ttl-minutes"]);
+  if (!targetId || !archiveSha256) {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      "mint requires --target-id and --archive-sha256",
+    );
   }
-  process.stdout.write(`${serialized}\n`);
-  if (!report.objectives.met) {
-    process.exitCode = 2;
+  if (!Number.isFinite(ttlMinutes) || ttlMinutes <= 0) {
+    throw new RecoveryDrillError(
+      "INVALID_ARGS",
+      "--ttl-minutes must be a positive number",
+    );
+  }
+  const signingKey = readSigningKey();
+  const minted = mintRestoreCapability({
+    signingKey,
+    targetId,
+    archiveSha256,
+    expiresAtEpochMs: Date.now() + Math.round(ttlMinutes * 60_000),
+  });
+  return serializeRestoreCapability(minted);
+}
+
+if (import.meta.main) {
+  const argv = process.argv.slice(2);
+  if (argv[0] === "mint") {
+    const serialized = runMintCommand(argv.slice(1));
+    process.stdout.write(`${serialized}\n`);
+  } else {
+    const options = parseCliArgs(argv);
+    const report = executeDrill(options);
+    const serialized = JSON.stringify(report, null, 2);
+    if (options.output !== undefined) {
+      writeFileSync(options.output, `${serialized}\n`);
+    }
+    process.stdout.write(`${serialized}\n`);
+    if (!report.objectives.met) {
+      process.exitCode = 2;
+    }
   }
 }

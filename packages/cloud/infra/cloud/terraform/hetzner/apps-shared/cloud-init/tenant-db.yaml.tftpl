@@ -379,7 +379,10 @@ write_files:
         COUNT=$((COUNT+1))
       done < <(runuser -u postgres -- psql -tAc "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' ORDER BY datname")
 
-      sha256sum globals.sql dbmap.tsv dumps/* > checksums.sha256
+      # manifest.json must be checksummed too: the restore drill derives its
+      # authenticated recovery point from the manifest, and its coverage
+      # assertion (#23453) refuses archives whose checksums omit it.
+      sha256sum manifest.json globals.sql dbmap.tsv dumps/* > checksums.sha256
       jq -n \
         --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         --argjson database_count "$COUNT" \
