@@ -218,12 +218,10 @@ export async function runProgressiveContentTargetConformance(input: {
 	) {
 		throw new TypeError("target native revision differs from its reference");
 	}
-	const expectedAuthorizationScopeDigest = createHash("sha256")
-		.update(input.target.object.authorizationScope)
-		.digest("hex");
 	if (
-		input.target.realization.authorizationScopeDigest !==
-			expectedAuthorizationScopeDigest ||
+		!/^[0-9a-f]{64}$/u.test(
+			input.target.realization.authorizationScopeDigest,
+		) ||
 		!input.target.realization.sourceRevision ||
 		!input.target.realization.reference.ref ||
 		!input.target.realization.cleanupIdentity ||

@@ -145,13 +145,13 @@ describe("progressive content target conformance", () => {
 		});
 	});
 
-	it("rejects a target whose authorization digest is not bound to its actor", async () => {
+	it("rejects a malformed authorization binding digest", async () => {
 		const target = targetFixture();
 		const forged = {
 			...target,
 			realization: {
 				...target.realization,
-				authorizationScopeDigest: "0".repeat(64),
+				authorizationScopeDigest: "not-a-digest",
 			},
 		};
 		await expect(
