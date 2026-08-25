@@ -26,7 +26,7 @@ describe("resolveFallbackOwnerEntityId", () => {
     expect(resolveFallbackOwnerEntityId(runtime)).toBe("owner(agent-1)");
   });
 
-  it("falls back to agentId when the name is blank", () => {
+  it("does not let a blank character name change the stable owner id", () => {
     const runtime = { agentId: "agent-1", character: { name: "  " } } as never;
     expect(resolveFallbackOwnerEntityId(runtime)).toBe("owner(agent-1)");
   });

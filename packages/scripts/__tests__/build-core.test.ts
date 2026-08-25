@@ -72,6 +72,13 @@ function corePrebuildScript(): string {
   return pkg.scripts?.prebuild ?? "";
 }
 
+function packageScripts(relativePath: string): Record<string, string> {
+  const pkg = JSON.parse(
+    readFileSync(path.join(REPO_ROOT, relativePath, "package.json"), "utf8"),
+  ) as { scripts?: Record<string, string> };
+  return pkg.scripts ?? {};
+}
+
 describe("build-core package set (issue #10200)", () => {
   test("every core package resolves to a real workspace package (drift guard)", () => {
     const workspaceNames = collectWorkspacePackageNames();
@@ -163,6 +170,24 @@ describe("build-core package set (issue #10200)", () => {
     expect(body).toContain("bun run --cwd ../cloud/routing build");
     expect(body.indexOf("../logger build")).toBeLessThan(
       body.indexOf("../cloud/routing build"),
+    );
+  });
+
+  test("cross-process plugin verification shares the shared-package build lock", () => {
+    const sharedScripts = packageScripts("packages/shared");
+    const cloudPluginScripts = packageScripts("plugins/plugin-elizacloud");
+    const sharedLockCommand =
+      "node ../scripts/with-package-build-lock.mjs packages/shared --";
+    const pluginSharedLockCommand =
+      "node ../../packages/scripts/with-package-build-lock.mjs packages/shared --";
+
+    expect(sharedScripts.build).toStartWith(sharedLockCommand);
+    expect(sharedScripts.build).toContain("bun run build:unlocked");
+    expect(sharedScripts["build:unlocked"]).toBe(
+      "bun run build:i18n && bun run build:dist",
+    );
+    expect(cloudPluginScripts["build:unlocked"]).toContain(
+      `${pluginSharedLockCommand} node scripts/verify-built-package.mjs`,
     );
   });
 });

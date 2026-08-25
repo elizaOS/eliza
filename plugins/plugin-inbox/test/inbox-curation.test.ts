@@ -328,7 +328,7 @@ describe("dedupeAndOrder safe sort", () => {
         receivedAt: "2026-08-23T10:00:00.000Z",
         threadTopic: "",
       },
-    ];
+    ] satisfies readonly InboxItem[];
     const ordered = dedupeAndOrder(items);
     // c has valid date, should be first; a,b tie on NaN with id tiebreak
     expect(ordered.map((x) => x.id)).toEqual(["c", "a", "b"]);

@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-const migrationUrl = new URL("./0312_personal_shared_group_delivery_attempts.sql", import.meta.url);
+const migrationUrl = new URL("./0314_personal_shared_group_delivery_attempts.sql", import.meta.url);
 const journalUrl = new URL("./meta/_journal.json", import.meta.url);
 
 describe("Personal Shared delivery-attempt migration", () => {
@@ -16,7 +16,7 @@ describe("Personal Shared delivery-attempt migration", () => {
     const entries = journal.entries
       .filter((entry) => entry.tag.includes("personal_shared_group_delivery_attempt"))
       .map(({ idx, tag }) => ({ idx, tag }));
-    expect(entries).toEqual([{ idx: 295, tag: "0312_personal_shared_group_delivery_attempts" }]);
+    expect(entries).toEqual([{ idx: 297, tag: "0314_personal_shared_group_delivery_attempts" }]);
 
     const migration = await Bun.file(migrationUrl).text();
     const lock = migration.indexOf(

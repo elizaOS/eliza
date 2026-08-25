@@ -2071,7 +2071,28 @@
       "idx": 295,
       "version": "7",
       "when": 1794254400003,
-      "tag": "0312_personal_shared_group_delivery_attempts",
+      "tag": "0312_remote_session_two_phase_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 296,
+      "version": "7",
+      "when": 1794254400004,
+      "tag": "0313_remote_host_managed_network",
+      "breakpoints": true
+    },
+    {
+      "idx": 297,
+      "version": "7",
+      "when": 1794254400005,
+      "tag": "0314_personal_shared_group_delivery_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 298,
+      "version": "7",
+      "when": 1794254400006,
+      "tag": "0315_remote_target_initiated_pairing",
       "breakpoints": true
     }
   ]

@@ -141,7 +141,7 @@
     "test:unit": "vitest run __tests__/unit/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
-    "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
+    "build:unlocked": "bun run build.ts && bun run build:views && node ../../packages/scripts/with-package-build-lock.mjs packages/shared -- node scripts/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

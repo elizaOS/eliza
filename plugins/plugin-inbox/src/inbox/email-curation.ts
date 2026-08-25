@@ -1476,13 +1476,18 @@ function bulkReviewForDecision(args: {
   };
 }
 
-function decisionSortScore(decision: CurationDecision): number {
+type CurationDecisionSortInput = Pick<
+  CurationDecision,
+  "candidateId" | "action" | "confidence"
+>;
+
+function decisionSortScore(decision: CurationDecisionSortInput): number {
   return ACTION_WEIGHT[decision.action] * 10 + decision.confidence;
 }
 
 export function compareCurationDecisions(
-  a: CurationDecision,
-  b: CurationDecision,
+  a: CurationDecisionSortInput,
+  b: CurationDecisionSortInput,
 ): number {
   const bScore = decisionSortScore(b);
   const aScore = decisionSortScore(a);
