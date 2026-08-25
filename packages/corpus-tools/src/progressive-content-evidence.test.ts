@@ -425,6 +425,52 @@ function validPostgresEvidence(
   };
 }
 
+function validDeterministicScenarioReport() {
+  return {
+    completedAtIso: "2026-01-01T00:00:01.000Z",
+    evidenceSummary: {},
+    executionProfile: "simulated",
+    failedCount: 0,
+    passedCount: 1,
+    providerName: "deterministic-model-provider",
+    runId: "content-context-deterministic",
+    scenarios: [
+      {
+        actionsCalled: ["FILE", "DOCUMENT", "ATTACHMENT", "MESSAGE"].map(
+          (actionName) => ({ actionName }),
+        ),
+        domain: "progressive-content",
+        durationMs: 1,
+        evidence: {},
+        executionProfile: "simulated",
+        failedAssertions: [],
+        finalChecks: [
+          {
+            label: "progressive action ledger is isolated and exact",
+            status: "passed",
+          },
+        ],
+        id: "deterministic-progressive-content-actions",
+        modelFixtureDiagnostics: {
+          calls: [{}, {}, {}],
+          unexpectedCalls: [],
+        },
+        modelFixtureMode: "strict-fixtures",
+        providerName: "deterministic-model-provider",
+        status: "passed",
+        tags: ["deterministic", "progressive-content", "large-content"],
+        title: "Progressive content actions",
+        turns: [],
+      },
+    ],
+    skippedCount: 0,
+    startedAtIso: "2026-01-01T00:00:00.000Z",
+    totalCostUsd: 0,
+    totalCount: 1,
+    totals: {},
+  };
+}
+
 function evidence() {
   const objects = fixtureObjects.map((object) => ({ ...object }));
   const verifiedObjects = objects.filter(
@@ -645,20 +691,7 @@ function evidence() {
     },
     "soak.json": validSoakEvidence("a".repeat(40), manifestSha),
     "postgres.json": validPostgresEvidence(objects, manifestSha),
-    "scenario.json": {
-      status: "passed",
-      deterministic: true,
-      productionActions: true,
-      strictFixtures: true,
-      lateEvidenceFamilies: [
-        "file",
-        "document",
-        "memory",
-        "email",
-        "attachment",
-        "tool-output",
-      ],
-    },
+    "scenario.json": validDeterministicScenarioReport(),
     "scenario-native.jsonl": `${JSON.stringify({
       format: "eliza_native_v1",
       scenarioStatus: "passed",
