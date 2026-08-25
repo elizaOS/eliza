@@ -21,6 +21,8 @@ export async function pathExists(target: string): Promise<boolean> {
 		await fsp.access(target);
 		return true;
 	} catch {
+		// error-policy:J4 explicit user-facing degrade — an inaccessible or absent
+		// target throws ENOENT/EACCES from fsp.access; translate to false for path probing.
 		return false;
 	}
 }
