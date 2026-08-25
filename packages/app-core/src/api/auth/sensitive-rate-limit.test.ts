@@ -90,4 +90,47 @@ describe("sensitive auth rate limiters", () => {
     expect(routeLimiter.consume("192.0.2.44", now + 21)).toBe(true);
     expect(bootstrapExchangeLimiter.consume("192.0.2.55", now + 21)).toBe(true);
   });
+
+  it("sweep removes expired bucket entries while preserving active ones", () => {
+    const limiter = getSensitiveLimiter("auth.test.sweep");
+    const t0 = 10_000;
+
+    limiter.consume("10.0.0.1", t0);
+    limiter.consume("10.0.0.2", t0 + 20_000);
+
+    // Sweep before any expiration: both entries remain active
+    limiter.sweep(t0 + 50_000);
+    for (let i = 0; i < SENSITIVE_RATE_LIMIT_MAX - 1; i += 1) {
+      expect(limiter.consume("10.0.0.1", t0 + 50_000)).toBe(true);
+    }
+    // 10.0.0.1 is exhausted within its initial window
+    expect(limiter.consume("10.0.0.1", t0 + 50_000)).toBe(false);
+
+    // Sweep at t0 + 75_000: 10.0.0.1 resetAt (70_000) expired and cleaned up; 10.0.0.2 resetAt (90_000) remains
+    limiter.sweep(t0 + 75_000);
+
+    const bucketMap = (limiter as unknown as { buckets: Map<string, unknown> })
+      .buckets;
+    expect(bucketMap.has("10.0.0.1")).toBe(false);
+    expect(bucketMap.has("10.0.0.2")).toBe(true);
+
+    // 10.0.0.1 starts a fresh window
+    expect(limiter.consume("10.0.0.1", t0 + 75_000)).toBe(true);
+    expect(bucketMap.has("10.0.0.1")).toBe(true);
+
+    // 10.0.0.2 remained active in its window and reaches max
+    for (let i = 0; i < SENSITIVE_RATE_LIMIT_MAX - 1; i += 1) {
+      expect(limiter.consume("10.0.0.2", t0 + 75_000)).toBe(true);
+    }
+    expect(limiter.consume("10.0.0.2", t0 + 75_000)).toBe(false);
+
+    // Sweep after all windows expired: cleans up everything
+    limiter.sweep(t0 + 100_000);
+    expect(bucketMap.size).toBe(1); // 10.0.0.1 was consumed at 75_000 (resetAt 135_000); 10.0.0.2 (resetAt 90_000) deleted
+    expect(bucketMap.has("10.0.0.2")).toBe(false);
+    expect(bucketMap.has("10.0.0.1")).toBe(true);
+
+    limiter.sweep(t0 + 140_000);
+    expect(bucketMap.size).toBe(0);
+  });
 });
