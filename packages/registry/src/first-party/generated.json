@@ -1314,7 +1314,7 @@
         "pinTo": [],
         "style": "card",
         "icon": "ShoppingBag",
-        "group": "connectors",
+        "group": "feature-other",
         "groupOrder": 30,
         "actions": ["enable", "configure"]
       },
@@ -2739,7 +2739,7 @@
         "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#instagram"
       },
       "dependsOn": [],
-      "channels": [],
+      "channels": ["instagram"],
       "shortIds": [],
       "kind": "connector",
       "subtype": "messaging",

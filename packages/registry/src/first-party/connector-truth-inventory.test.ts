@@ -34,6 +34,17 @@ const EXTERNAL_TRANSPORT_IDS = [
   "twilio",
 ] as const;
 
+/**
+ * Legacy channel aliases kept for config compatibility with older characters.
+ * Every alias must map to a channel that the same plugin really registers;
+ * the "derives every row" test enforces the mapping per row.
+ */
+const LEGACY_CHANNEL_ALIASES = new Map([
+  ["discordLocal", "discord"],
+  ["twitter", "x"],
+  ["googlechat", "google-chat"],
+]);
+
 describe("external transport unregistration (#24373)", () => {
   it("removes every external transport entry from the first-party registry", () => {
     const ids = new Set(generatedRegistry.entries.map((e) => e.id));
@@ -256,6 +267,26 @@ describe("connector truth inventory (#24373)", () => {
         ).toContain(primaryChannel);
       }
       expect(row.registrations.length).toBeGreaterThan(0);
+
+      // Every claimed channel must be either a registration source or an
+      // explicitly reviewed legacy alias — a channel that is neither is a
+      // false claim the generator would have copied in verbatim.
+      for (const channel of row.channels) {
+        expect(
+          sources.has(channel) || LEGACY_CHANNEL_ALIASES.has(channel),
+          `${row.plugin}: claimed channel "${channel}" is neither a registration source nor a reviewed legacy alias`,
+        ).toBe(true);
+      }
+      // Each reviewed alias must map to a real registration source of the
+      // same row, so the alias table cannot outlive its plugin.
+      for (const [alias, canonical] of LEGACY_CHANNEL_ALIASES) {
+        if (row.channels.includes(alias)) {
+          expect(
+            sources.has(canonical),
+            `${row.plugin}: legacy alias "${alias}" must map to registered source "${canonical}"`,
+          ).toBe(true);
+        }
+      }
     }
   });
 
