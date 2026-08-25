@@ -119,6 +119,23 @@ const deletionAdmissionCredentialStore = secureCredentialStore(
 );
 let volatileDeletionStatusCredential: string | null = null;
 let volatileDeletionRecoveryCredential: string | null = null;
+let deletionCapabilityMutationTail: Promise<void> = Promise.resolve();
+
+async function serializeDeletionCapabilityMutation<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const predecessor = deletionCapabilityMutationTail;
+  let release!: () => void;
+  deletionCapabilityMutationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await predecessor;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 const androidCloudClient = new AndroidCloudClient({
   credentialStore: androidSecureCredentialStore,
@@ -224,53 +241,71 @@ async function readPublicLifecycleStatus(): Promise<AccountDeletionRequestDto | 
     });
     return parseAccountDeletionEnvelope(response.body);
   } catch (error) {
-    if (
-      error instanceof AndroidCloudLifecycleError &&
-      (error.status === 401 || error.status === 404)
-    ) {
-      await Promise.allSettled([
-        deletionStatusCredentialStore.clear(),
-        deletionRecoveryCredentialStore.clear(),
-      ]);
-      volatileDeletionStatusCredential = null;
-      volatileDeletionRecoveryCredential = null;
+    if (error instanceof AndroidCloudLifecycleError && error.status === 401) {
+      await invalidateDeletionStatusCredentialIfCurrent(statusCredential);
       return null;
     }
     throw error;
   }
 }
 
+async function invalidateDeletionStatusCredentialIfCurrent(
+  expectedCredential: string,
+): Promise<boolean> {
+  return await serializeDeletionCapabilityMutation(async () => {
+    let persistedCredential: string | null;
+    try {
+      persistedCredential = await deletionStatusCredentialStore.read();
+    } catch {
+      // A failed read cannot prove which authority is current. Keep both the
+      // durable and volatile capabilities rather than risk deleting a newer
+      // status credential.
+      return false;
+    }
+    const currentCredential =
+      persistedCredential ?? volatileDeletionStatusCredential;
+    if (currentCredential !== expectedCredential) return false;
+    await deletionStatusCredentialStore.clear();
+    if (volatileDeletionStatusCredential === expectedCredential) {
+      volatileDeletionStatusCredential = null;
+    }
+    return true;
+  });
+}
+
 async function persistDeletionCapabilities(input: {
   statusCredential: string;
   recoveryCredential: string;
 }): Promise<void> {
-  volatileDeletionStatusCredential = input.statusCredential;
-  volatileDeletionRecoveryCredential = input.recoveryCredential;
-  try {
-    await deletionStatusCredentialStore.write(input.statusCredential);
-    await deletionRecoveryCredentialStore.write(input.recoveryCredential);
-    const [statusCredential, recoveryCredential] = await Promise.all([
-      deletionStatusCredentialStore.read(),
-      deletionRecoveryCredentialStore.read(),
-    ]);
-    if (
-      statusCredential !== input.statusCredential ||
-      recoveryCredential !== input.recoveryCredential
-    ) {
-      throw new Error("secure capability read-back failed");
+  await serializeDeletionCapabilityMutation(async () => {
+    volatileDeletionStatusCredential = input.statusCredential;
+    volatileDeletionRecoveryCredential = input.recoveryCredential;
+    try {
+      await deletionStatusCredentialStore.write(input.statusCredential);
+      await deletionRecoveryCredentialStore.write(input.recoveryCredential);
+      const [statusCredential, recoveryCredential] = await Promise.all([
+        deletionStatusCredentialStore.read(),
+        deletionRecoveryCredentialStore.read(),
+      ]);
+      if (
+        statusCredential !== input.statusCredential ||
+        recoveryCredential !== input.recoveryCredential
+      ) {
+        throw new Error("secure capability read-back failed");
+      }
+    } catch (cause) {
+      await Promise.allSettled([
+        deletionStatusCredentialStore.clear(),
+        deletionRecoveryCredentialStore.clear(),
+      ]);
+      throw new AndroidCloudLifecycleError(
+        "This device could not preserve account recovery access.",
+        "RECOVERY_STORAGE_UNAVAILABLE",
+        null,
+        { cause },
+      );
     }
-  } catch (cause) {
-    await Promise.allSettled([
-      deletionStatusCredentialStore.clear(),
-      deletionRecoveryCredentialStore.clear(),
-    ]);
-    throw new AndroidCloudLifecycleError(
-      "This device could not preserve account recovery access.",
-      "RECOVERY_STORAGE_UNAVAILABLE",
-      null,
-      { cause },
-    );
-  }
+  });
 }
 
 function createDeletionAdmissionCredential(): string {

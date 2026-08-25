@@ -517,6 +517,115 @@ describe("Android Cloud renderer behavior", () => {
     });
   });
 
+  it("invalidates only the status capability on a public status 401", async () => {
+    const secure = new Map<string, string>([
+      ["accountDeletionStatus", STATUS_CAPABILITY],
+      ["accountDeletionRecovery", RECOVERY_CAPABILITY],
+    ]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    playEntry.httpRequest.mockResolvedValueOnce({
+      status: 401,
+      data: { code: "INVALID_STATUS_CAPABILITY" },
+    });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.getStatus(),
+    ).resolves.toBeNull();
+    expect(secure.has("accountDeletionStatus")).toBe(false);
+    expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+    expect(playEntry.secureClear).toHaveBeenCalledTimes(1);
+    expect(playEntry.secureClear).toHaveBeenCalledWith({
+      key: "accountDeletionStatus",
+    });
+  });
+
+  it("treats a public status 404 as an outage without clearing either capability", async () => {
+    const secure = new Map<string, string>([
+      ["accountDeletionStatus", STATUS_CAPABILITY],
+      ["accountDeletionRecovery", RECOVERY_CAPABILITY],
+    ]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    playEntry.httpRequest.mockResolvedValueOnce({
+      status: 404,
+      data: { error: "route missing" },
+    });
+
+    await expect(
+      entry.androidCloudAccountLifecycle.getStatus(),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(secure.get("accountDeletionStatus")).toBe(STATUS_CAPABILITY);
+    expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+    expect(playEntry.secureClear).not.toHaveBeenCalled();
+  });
+
+  it("does not let a delayed status response invalidate a newer capability pair", async () => {
+    const staleStatusCapability = "a".repeat(43);
+    const staleRecoveryCapability = "b".repeat(43);
+    const secure = new Map<string, string>([
+      ["accountDeletionStatus", staleStatusCapability],
+      ["accountDeletionRecovery", staleRecoveryCapability],
+    ]);
+    playEntry.secureGet.mockImplementation(async (options) => ({
+      value: secure.get(options?.key ?? "session") ?? null,
+    }));
+    playEntry.secureSet.mockImplementation(async ({ key, value }) => {
+      secure.set(key ?? "session", value);
+    });
+    playEntry.secureClear.mockImplementation(async (options) => {
+      secure.delete(options?.key ?? "session");
+    });
+    let resolveStaleStatus!: (value: {
+      status: number;
+      data: Record<string, unknown>;
+    }) => void;
+    const staleStatusResponse = new Promise<{
+      status: number;
+      data: Record<string, unknown>;
+    }>((resolve) => {
+      resolveStaleStatus = resolve;
+    });
+    playEntry.httpRequest
+      .mockReturnValueOnce(staleStatusResponse)
+      .mockResolvedValueOnce({
+        status: 202,
+        data: {
+          request: deletionRequest(),
+          statusCredential: STATUS_CAPABILITY,
+          recoveryCredential: RECOVERY_CAPABILITY,
+        },
+      });
+
+    const staleRead = entry.androidCloudAccountLifecycle.getStatus();
+    await vi.waitFor(() =>
+      expect(playEntry.httpRequest).toHaveBeenCalledOnce(),
+    );
+    secure.set("session", "steward-token");
+    await expect(
+      entry.androidCloudAccountLifecycle.requestDeletion(),
+    ).resolves.toMatchObject({ status: "reserved" });
+    resolveStaleStatus({
+      status: 401,
+      data: { code: "INVALID_STATUS_CAPABILITY" },
+    });
+
+    await expect(staleRead).resolves.toBeNull();
+    expect(secure.get("accountDeletionStatus")).toBe(STATUS_CAPABILITY);
+    expect(secure.get("accountDeletionRecovery")).toBe(RECOVERY_CAPABILITY);
+    expect(playEntry.secureClear).not.toHaveBeenCalledWith({
+      key: "accountDeletionStatus",
+    });
+  });
+
   it("cancels a reservation if durable recovery storage fails", async () => {
     const secure = new Map<string, string>([["session", "steward-token"]]);
     playEntry.secureGet.mockImplementation(async (options) => ({

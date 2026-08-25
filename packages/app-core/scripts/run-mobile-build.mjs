@@ -5829,11 +5829,6 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "SplashScreen",
 ]);
 
-const ANDROID_PLAY_ALLOW_NAVIGATION = Object.freeze([
-  "eliza.app",
-  "*.eliza.app",
-]);
-
 function isJsonRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -5858,7 +5853,6 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
     webDir: "dist",
     server: {
       androidScheme: "https",
-      allowNavigation: [...ANDROID_PLAY_ALLOW_NAVIGATION],
     },
     plugins,
     android: {
@@ -6271,9 +6265,11 @@ export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
+import android.webkit.WebView;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -6303,11 +6299,13 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
     private static final String STATUS_CIPHERTEXT = "account_deletion_status_ciphertext";
     private static final String RECOVERY_CIPHERTEXT = "account_deletion_recovery_ciphertext";
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final String LOCAL_APP_ORIGIN = "https://localhost";
     private static final int GCM_TAG_BITS = 128;
     private static final int MAX_TOKEN_BYTES = 16 * 1024;
 
     @PluginMethod
     public synchronized void get(PluginCall call) {
+        if (!requireExactLocalOrigin(call)) return;
         String storageKey = storageKey(call);
         if (storageKey == null) return;
         String encoded = preferences().getString(storageKey, null);
@@ -6336,6 +6334,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     @PluginMethod
     public synchronized void set(PluginCall call) {
+        if (!requireExactLocalOrigin(call)) return;
         String storageKey = storageKey(call);
         if (storageKey == null) return;
         String value = call.getString("value");
@@ -6366,6 +6365,7 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     @PluginMethod
     public synchronized void remove(PluginCall call) {
+        if (!requireExactLocalOrigin(call)) return;
         String storageKey = storageKey(call);
         if (storageKey == null) return;
         if (!preferences().edit().remove(storageKey).commit()) {
@@ -6373,6 +6373,24 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
             return;
         }
         call.resolve();
+    }
+
+    private boolean requireExactLocalOrigin(PluginCall call) {
+        if (getBridge() == null || !LOCAL_APP_ORIGIN.equals(getBridge().getLocalUrl())) {
+            call.reject("Secure credentials are available only to the packaged app.", "SECURE_CREDENTIAL_ORIGIN_DENIED");
+            return false;
+        }
+        WebView webView = getBridge().getWebView();
+        String currentUrl = webView == null ? null : webView.getUrl();
+        Uri current = currentUrl == null ? null : Uri.parse(currentUrl);
+        if (current == null
+                || !"https".equals(current.getScheme())
+                || !"localhost".equals(current.getHost())
+                || current.getPort() != -1) {
+            call.reject("Secure credentials are available only to the packaged app.", "SECURE_CREDENTIAL_ORIGIN_DENIED");
+            return false;
+        }
+        return true;
     }
 
     private String storageKey(PluginCall call) {

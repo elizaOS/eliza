@@ -234,6 +234,72 @@ describe("AndroidCloudApp", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
   });
 
+  it("discards only the persisted token when sign-in is canceled while closing the browser", async () => {
+    const client = createClient();
+    const restoreSession = vi
+      .spyOn(client, "restoreSession")
+      .mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "persisted-token-a",
+    });
+    const persistLogin = vi
+      .spyOn(client, "persistLogin")
+      .mockResolvedValue(undefined);
+    const discardLogin = vi
+      .spyOn(client, "discardLogin")
+      .mockResolvedValue(undefined);
+    let resolveClose!: () => void;
+    const deferredClose = new Promise<void>((resolve) => {
+      resolveClose = resolve;
+    });
+    const closeExternal = vi
+      .fn<() => Promise<void>>()
+      .mockReturnValueOnce(deferredClose)
+      .mockResolvedValue(undefined);
+    const originalSetTimeout = window.setTimeout.bind(window);
+    vi.spyOn(window, "setTimeout").mockImplementation(
+      (handler, timeout, ...args): ReturnType<typeof setTimeout> =>
+        originalSetTimeout(
+          handler,
+          timeout === 1_500 ? 0 : timeout,
+          ...args,
+        ) as unknown as ReturnType<typeof setTimeout>,
+    );
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={closeExternal}
+        voice={createVoice()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() =>
+      expect(persistLogin).toHaveBeenCalledWith(
+        "persisted-token-a",
+        expect.any(AbortSignal),
+      ),
+    );
+    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    resolveClose();
+
+    await waitFor(() =>
+      expect(discardLogin).toHaveBeenCalledWith("persisted-token-a"),
+    );
+    expect(discardLogin).toHaveBeenCalledOnce();
+    expect(restoreSession).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByText("Ada")).toBeNull();
+  });
+
   it("accepts a native share/deep-link compose event without auto-sending", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(session);

@@ -120,8 +120,8 @@ describe("Android Play manifest policy", () => {
     );
     expect(sanitized.server).toEqual({
       androidScheme: "https",
-      allowNavigation: ["eliza.app", "*.eliza.app"],
     });
+    expect(sanitized.server).not.toHaveProperty("allowNavigation");
     expect(sanitized.android).toEqual({
       backgroundColor: "#000000",
       allowMixedContent: false,
@@ -129,7 +129,7 @@ describe("Android Play manifest policy", () => {
       webContentsDebuggingEnabled: false,
     });
     expect(JSON.stringify(sanitized)).not.toMatch(
-      /localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
+      /eliza\.app|localhost|127\.0\.0\.1|BackgroundRunner|bun-runtime|includePlugins/,
     );
     expect(sanitized).not.toHaveProperty("ios");
   });

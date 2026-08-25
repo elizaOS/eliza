@@ -108,9 +108,21 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain('"accountDeletionRecovery".equals(key)');
     expect(source).toContain("putString(storageKey, encoded).commit()");
     expect(source).toContain("remove(storageKey).commit()");
+    expect(source).toContain(
+      'private static final String LOCAL_APP_ORIGIN = "https://localhost";',
+    );
+    expect(source).toContain(
+      "LOCAL_APP_ORIGIN.equals(getBridge().getLocalUrl())",
+    );
+    expect(source).toContain('!"https".equals(current.getScheme())');
+    expect(source).toContain('!"localhost".equals(current.getHost())');
+    expect(source).toContain("current.getPort() != -1");
+    expect(
+      source.match(/if \(!requireExactLocalOrigin\(call\)\) return;/g),
+    ).toHaveLength(3);
     expect(source).not.toContain("uses-permission");
     expect(source).not.toContain("http://");
-    expect(source).not.toContain("https://");
+    expect(source.match(/https:\/\//g)).toHaveLength(1);
   });
 
   it("saves verified exports with the standard document picker", () => {

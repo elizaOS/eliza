@@ -177,14 +177,17 @@ export function AndroidCloudApp({
     loginAttemptRef.current = attemptNumber;
     const controller = new AbortController();
     loginAbortRef.current = controller;
+    const ownsAttempt = () =>
+      !controller.signal.aborted && loginAttemptRef.current === attemptNumber;
     setBusy(true);
     setError(null);
     try {
       const attempt = await client.beginLogin(controller.signal);
-      if (loginAttemptRef.current !== attemptNumber) return;
+      if (!ownsAttempt()) return;
       await openExternal(attempt.browserUrl);
-      if (loginAttemptRef.current !== attemptNumber) {
+      if (!ownsAttempt()) {
         await closeExternal?.();
+        if (!ownsAttempt()) return;
         return;
       }
       const deadline = Date.now() + LOGIN_TIMEOUT_MS;
@@ -192,27 +195,24 @@ export function AndroidCloudApp({
         await new Promise((resolve) =>
           window.setTimeout(resolve, LOGIN_POLL_MS),
         );
-        if (loginAttemptRef.current !== attemptNumber) return;
+        if (!ownsAttempt()) return;
         const result = await client.pollLogin(
           attempt.sessionId,
           controller.signal,
         );
-        if (
-          controller.signal.aborted ||
-          loginAttemptRef.current !== attemptNumber
-        )
-          return;
+        if (!ownsAttempt()) return;
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
         await client.persistLogin(result.token, controller.signal);
-        if (
-          controller.signal.aborted ||
-          loginAttemptRef.current !== attemptNumber
-        ) {
+        if (!ownsAttempt()) {
           await client.discardLogin(result.token);
           return;
         }
         await closeExternal?.();
+        if (!ownsAttempt()) {
+          await client.discardLogin(result.token);
+          return;
+        }
         await restore();
         return;
       }
