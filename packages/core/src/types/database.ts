@@ -85,7 +85,7 @@ export interface DocumentRequesterContext {
  * context, never a row predicate; document ownership filters are explicit.
  */
 export interface DocumentListQueryParams extends DocumentRequesterContext {
-	limit?: number;
+	limit: number;
 	offset: number;
 	cursor?: DocumentListCursor;
 	query?: string;
