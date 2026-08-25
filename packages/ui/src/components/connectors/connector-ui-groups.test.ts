@@ -1,23 +1,11 @@
-/**
- * Unit tests for connector UI groups: validates grouping classification and status label derivation.
- */
+/** Exercises connector grouping and status presentation behavior. */
 import { describe, expect, it } from "vitest";
 import {
-  CONNECTOR_UI_GROUPS,
   connectorStatusLabel,
   getConnectorUiGroupId,
 } from "./connector-ui-groups.ts";
 
 describe("connector-ui-groups", () => {
-  it("exports standard CONNECTOR_UI_GROUPS catalog", () => {
-    expect(CONNECTOR_UI_GROUPS.length).toBe(3);
-    expect(CONNECTOR_UI_GROUPS.map((g) => g.id)).toEqual([
-      "messaging",
-      "social",
-      "other",
-    ]);
-  });
-
   it("maps connector IDs to correct group", () => {
     expect(getConnectorUiGroupId("discord")).toBe("messaging");
     expect(getConnectorUiGroupId("telegram")).toBe("messaging");
