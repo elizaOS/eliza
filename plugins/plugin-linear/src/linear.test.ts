@@ -306,6 +306,19 @@ describe("LINEAR action", () => {
     expect(result.userFacingText).toContain("ENG-404");
   });
 
+  it.each(["id", "issueId", "key"])(
+    "accepts %s parameter alias for issue lookup",
+    async (paramKey) => {
+      const result = await invoke(runtime, {
+        action: "issue",
+        [paramKey]: "ENG-1",
+      });
+      expect(result.data?.code).toBe("LINEAR_NOT_FOUND");
+      expect(result.userFacingText).toContain("ENG-1");
+      expect(captured[0]?.body.variables?.id).toBe("ENG-1");
+    },
+  );
+
   it("lists teams", async () => {
     const result = await invoke(runtime, { action: "teams" });
     expect(result.success).toBe(true);

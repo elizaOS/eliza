@@ -180,7 +180,10 @@ async function execute(
     const limit = integer(params, "limit", 1, 100);
     switch (action) {
       case "my_issues": {
-        const teamKey = text(params, "teamKey");
+        const teamKey =
+          text(params, "teamKey") ??
+          text(params, "team_key") ??
+          text(params, "team");
         const page = await service.searchIssues({
           assignedToMe: true,
           ...(teamKey ? { teamKey } : {}),
@@ -204,8 +207,14 @@ async function execute(
         );
       }
       case "search": {
-        const query = text(params, "query");
-        const teamKey = text(params, "teamKey");
+        const query =
+          text(params, "query") ??
+          text(params, "q") ??
+          text(params, "searchTerm");
+        const teamKey =
+          text(params, "teamKey") ??
+          text(params, "team_key") ??
+          text(params, "team");
         if (!query && !teamKey && params.state === undefined) {
           throw new LinearError(
             "Linear issue search requires a query, teamKey, or state filter.",
@@ -236,7 +245,12 @@ async function execute(
         );
       }
       case "issue": {
-        const identifier = text(params, "identifier");
+        const identifier =
+          text(params, "identifier") ??
+          text(params, "id") ??
+          text(params, "issueId") ??
+          text(params, "issue_id") ??
+          text(params, "key");
         if (!identifier) {
           throw new LinearError(
             "Linear issue lookup requires an identifier such as ENG-123.",
