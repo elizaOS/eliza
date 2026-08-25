@@ -277,7 +277,15 @@ function formatPending(requests: ReadonlyArray<ApprovalRequest>): string {
 /** Chip labels stay glanceable; the full reason lives in the queue row. */
 function truncateReason(reason: string, max = 48): string {
   const trimmed = reason.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+  if (trimmed.length <= max) return trimmed;
+  let end = max - 1;
+  if (end > 0 && end < trimmed.length) {
+    const code = trimmed.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${trimmed.slice(0, end)}…`;
 }
 
 /**
