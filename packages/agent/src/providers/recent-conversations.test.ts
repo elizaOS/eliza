@@ -83,6 +83,7 @@ function makeRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
     })),
     getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getRoomsForParticipant: vi.fn(async () => [ROOM_ID]),
+    countMemories: vi.fn(async () => 1),
     getMemoriesByRoomIds: vi.fn(async () => [
       { ...message(), createdAt: Number.POSITIVE_INFINITY },
     ]),
@@ -108,7 +109,7 @@ describe("recentConversationsProvider", () => {
     expect(recentConversationsProvider.alwaysInResponseState).toBe(true);
   });
 
-  it("omits empty age labels and their parentheses from provider output", async () => {
+  it("renders room identity without copying a message body into the prompt", async () => {
     const runtime = makeRuntime();
 
     const result = await recentConversationsProvider.get(
@@ -117,15 +118,14 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain("[discord] general user: hello there");
-    expect(result.text).not.toContain("()");
-    expect(result.text).not.toContain("NaN");
+    expect(result.text).toContain(`[discord] general roomId=${ROOM_ID}`);
+    expect(result.text).not.toContain("hello there");
     expect(markOwnerExclusiveDisclosureUsed).toHaveBeenCalledWith(
       expect.objectContaining({ entityId: ENTITY_ID }),
     );
   });
 
-  it("expands linked aliases, dedupes rooms, batches tags, and retains every eligible message", async () => {
+  it("expands linked aliases into a room manifest without reading message bodies", async () => {
     getVerifiedRelatedEntityIds.mockResolvedValue([ENTITY_ID, ALIAS_ENTITY_ID]);
     const completeTexts = Array.from(
       { length: 15 },
@@ -158,6 +158,7 @@ describe("recentConversationsProvider", () => {
     const runtime = makeRuntime({
       getRoomsForParticipants,
       getRoomsForParticipant,
+      countMemories: vi.fn(async () => completeTexts.length),
       getMemoriesByRoomIds,
       getRoomsByIds,
     });
@@ -177,19 +178,22 @@ describe("recentConversationsProvider", () => {
       ALIAS_ENTITY_ID,
     ]);
     expect(getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
-    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
+    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+    expect(runtime.countMemories).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      accessContext: {
-        requesterEntityId: ENTITY_ID,
-        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      },
     });
     expect(getRoomsByIds).toHaveBeenCalledOnce();
     expect(getRoomsByIds).toHaveBeenCalledWith([ROOM_ID, ALIAS_ROOM_ID]);
     expect(result.values?.recentConversationCount).toBe(15);
-    expect(result.data?.messages).toHaveLength(15);
-    for (const text of completeTexts) expect(result.text).toContain(text);
+    expect(result.values?.recentConversationRoomCount).toBe(2);
+    expect(result.data?.rooms).toHaveLength(2);
+    expect(result.text).toContain(
+      "15 stored message(s) across 2 authorized room(s)",
+    );
+    expect(result.text).toContain("discord");
+    expect(result.text).toContain("telegram");
+    for (const text of completeTexts) expect(result.text).not.toContain(text);
   });
 
   it("leaves the current-room transcript to RECENT_MESSAGES in the full agent runtime", async () => {
@@ -216,18 +220,16 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(getMemoriesByRoomIds).toHaveBeenCalledWith({
+    expect(getMemoriesByRoomIds).not.toHaveBeenCalled();
+    expect(runtime.countMemories).toHaveBeenCalledWith({
       tableName: "messages",
       roomIds: [ALIAS_ROOM_ID],
-      accessContext: {
-        requesterEntityId: ENTITY_ID,
-        authorizedRoomIds: [ROOM_ID, ALIAS_ROOM_ID],
-      },
     });
-    expect(result.text).toContain("remote-only context");
+    expect(result.text).toContain(`roomId=${ALIAS_ROOM_ID}`);
+    expect(result.text).not.toContain("remote-only context");
   });
 
-  it("keeps attachment-only cross-platform turns as multimodal context without capability URLs", async () => {
+  it("does not leak attachment bodies or capability URLs through the room manifest", async () => {
     const runtime = makeRuntime({
       getMemoriesByRoomIds: vi.fn(async () => [
         {
@@ -254,23 +256,11 @@ describe("recentConversationsProvider", () => {
       EMPTY_STATE,
     );
 
-    expect(result.text).toContain(
-      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
-    );
+    expect(result.text).not.toContain("receipt.png");
+    expect(result.text).not.toContain("dinner reservation");
     expect(result.text).not.toContain("private.example");
     expect(result.values?.recentConversationCount).toBe(1);
-    expect(result.data?.messages).toEqual([
-      expect.objectContaining({
-        text: undefined,
-        attachments: [
-          expect.objectContaining({
-            id: "photo-1",
-            filename: "receipt.png",
-            mimeType: "image/png",
-          }),
-        ],
-      }),
-    ]);
+    expect(result.data?.rooms).toHaveLength(1);
     expect(JSON.stringify(result.data)).not.toContain("private.example");
   });
 

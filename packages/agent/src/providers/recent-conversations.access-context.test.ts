@@ -171,24 +171,23 @@ describe("recentConversationsProvider access-context integration", () => {
         accessContext: firstAccessContext,
       }),
     ).toHaveLength(2);
+    storageRead.mockClear();
+    const storageCount = vi.spyOn(runtime, "countMemories");
     const beforeRevocation = await recentConversationsProvider.get(
       runtime,
       firstTurn,
       EMPTY_STATE,
     );
 
-    expect(beforeRevocation.text).toContain("retained cross-world message");
-    expect(beforeRevocation.text).toContain("revoked cross-world message");
+    expect(beforeRevocation.text).toContain(`roomId=${RETAINED_ROOM}`);
+    expect(beforeRevocation.text).toContain(`roomId=${REVOKED_ROOM}`);
+    expect(beforeRevocation.text).not.toContain("cross-world message");
     expect(beforeRevocation.values?.recentConversationCount).toBe(2);
-    expect(storageRead).toHaveBeenLastCalledWith(
+    expect(storageRead).not.toHaveBeenCalled();
+    expect(storageCount).toHaveBeenLastCalledWith(
       expect.objectContaining({
         roomIds: expect.arrayContaining([RETAINED_ROOM, REVOKED_ROOM]),
-        accessContext: expect.objectContaining({
-          authorizedRoomIds: expect.arrayContaining([
-            RETAINED_ROOM,
-            REVOKED_ROOM,
-          ]),
-        }),
+        tableName: "messages",
       }),
     );
 
@@ -199,17 +198,12 @@ describe("recentConversationsProvider access-context integration", () => {
       EMPTY_STATE,
     );
 
-    expect(afterRevocation.text).toContain("retained cross-world message");
-    expect(afterRevocation.text).not.toContain("revoked cross-world message");
+    expect(afterRevocation.text).toContain(`roomId=${RETAINED_ROOM}`);
+    expect(afterRevocation.text).not.toContain(`roomId=${REVOKED_ROOM}`);
     expect(afterRevocation.values?.recentConversationCount).toBe(1);
-    const finalRead = storageRead.mock.calls.at(-1)?.[0];
-    expect(finalRead?.roomIds).toContain(RETAINED_ROOM);
-    expect(finalRead?.roomIds).not.toContain(REVOKED_ROOM);
-    expect(finalRead?.accessContext?.authorizedRoomIds).toContain(
-      RETAINED_ROOM,
-    );
-    expect(finalRead?.accessContext?.authorizedRoomIds).not.toContain(
-      REVOKED_ROOM,
-    );
+    expect(storageCount).toHaveBeenLastCalledWith({
+      roomIds: [RETAINED_ROOM],
+      tableName: "messages",
+    });
   });
 });

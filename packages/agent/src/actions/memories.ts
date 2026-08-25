@@ -110,12 +110,23 @@ function scoreText(text: string, query: string): number {
   return whole + matches / terms.length;
 }
 
+function searchableMemoryText(memory: Memory): string {
+  const text = memory.content.text ?? "";
+  const attachments = (memory.content.attachments ?? []).map((attachment) => {
+    const label =
+      attachment.filename ?? attachment.title ?? attachment.id ?? "attachment";
+    const mediaType = attachment.mimeType ?? attachment.contentType;
+    const readableContent = attachment.text ?? attachment.description;
+    return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${readableContent}` : ""}]`;
+  });
+  return [text, ...attachments].filter(Boolean).join(" ");
+}
+
 function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
-  const content = memory.content as Record<string, unknown> | undefined;
   return {
     id: memory.id ?? "",
     type,
-    text: (content?.text as string) ?? "",
+    text: searchableMemoryText(memory),
     entityId: memory.entityId,
     roomId: memory.roomId,
     agentId: memory.agentId ?? null,
@@ -399,8 +410,7 @@ async function collectCandidates(
   }
 
   let filtered = collected.filter((c) => {
-    const text = (c.memory.content as { text?: string } | undefined)?.text;
-    return typeof text === "string" && text.trim().length > 0;
+    return searchableMemoryText(c.memory).trim().length > 0;
   });
 
   if (scope.entityId) {
@@ -415,18 +425,14 @@ async function collectCandidates(
   if (scope.query) {
     const query = scope.query;
     filtered = filtered.filter((c) => {
-      const text =
-        (c.memory.content as { text?: string } | undefined)?.text ?? "";
-      return scoreText(text, query) > 0;
+      return scoreText(searchableMemoryText(c.memory), query) > 0;
     });
   }
 
   filtered.sort((a, b) => {
     if (scope.query) {
-      const leftText =
-        (a.memory.content as { text?: string } | undefined)?.text ?? "";
-      const rightText =
-        (b.memory.content as { text?: string } | undefined)?.text ?? "";
+      const leftText = searchableMemoryText(a.memory);
+      const rightText = searchableMemoryText(b.memory);
       const relevance =
         scoreText(rightText, scope.query) - scoreText(leftText, scope.query);
       if (relevance !== 0) return relevance;
