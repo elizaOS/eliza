@@ -26,6 +26,7 @@ describe("hex / string round-trips", () => {
 		expect(bufferToString(fromHex("48656c6c6f"))).toBe("Hello");
 		// fromHex tolerates separators.
 		expect(bufferToString(fromHex("48 65 6c 6c 6f"))).toBe("Hello");
+		expect(toHex(fromHex("010203"))).toBe("010203");
 	});
 
 	it("base64 ⇄ utf8", () => {

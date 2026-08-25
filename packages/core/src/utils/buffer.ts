@@ -33,9 +33,10 @@ export function fromHex(hex: string): BufferLike {
 	}
 
 	// Browser implementation using Uint8Array
-	const bytes = new Uint8Array(cleanHex.length / 2);
+	const byteLength = Math.floor(cleanHex.length / 2);
+	const bytes = new Uint8Array(byteLength);
 	for (let i = 0; i < bytes.length; i++) {
-		bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+		bytes[i] = parseInt(cleanHex.slice(i * 2, i * 2 + 2), 16);
 	}
 	return bytes;
 }
