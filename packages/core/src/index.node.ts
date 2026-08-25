@@ -128,6 +128,7 @@ export {
 } from "./features/autonomy";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
+export * from "./features/capabilities/index.ts";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
