@@ -14,6 +14,7 @@ import {
 	parseMessageLink,
 	sanitizeThreadName,
 	stripDiscordFormatting,
+	truncateText,
 	truncateUtf16Safe,
 } from "../messaging.ts";
 
@@ -91,5 +92,19 @@ describe("message link build/parse round-trip", () => {
 			messageId: "3",
 		});
 		expect(parseMessageLink("https://example.com/x")).toBeNull();
+	});
+});
+describe("truncateText", () => {
+	it("preserves UTF-16 surrogate pairs when truncating", () => {
+		const emojis = "🎉".repeat(10);
+		const result = truncateText(emojis, 5);
+		expect(result.endsWith("…")).toBe(true);
+		for (const char of result) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
 	});
 });
