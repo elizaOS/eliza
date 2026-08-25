@@ -8,6 +8,7 @@ import {
   buildGoogleMeetCanonicalArtifact,
   classifyGoogleMeetImportError,
   GoogleMeetClient,
+  summarizeTranscript,
 } from "./meet.js";
 
 const CONFERENCE_RECORD = "conferenceRecords/conf_1";
@@ -375,5 +376,31 @@ describe("Google Meet canonical artifact mapping", () => {
       })
     ).rejects.toMatchObject({ code: "GOOGLE_MEET_PAGE_LIMIT_EXCEEDED" });
     expect(list).toHaveBeenCalledTimes(1_000);
+  });
+
+
+  it("preserves UTF-16 surrogate pairs in meet fallback summary truncation", () => {
+    // "🔥" is 2 code units. 300 repeats without punctuation is 600 units > 500
+    const longEmoji = "🔥".repeat(300);
+    const result = summarizeTranscript([
+      {
+        id: "entry-1",
+        speakerName: "Alice",
+        speakerId: PARTICIPANT,
+        text: longEmoji,
+        startTime: "2026-07-04T14:02:00.000Z",
+        endTime: "2026-07-04T14:02:05.000Z",
+        languageCode: "en-US",
+      },
+    ]);
+
+    expect(result.summary.length).toBe(500);
+    for (const char of result.summary) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
   });
 });

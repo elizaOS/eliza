@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * `GoogleMeetClient` — Meet space management and conference-artifact reads
  * behind the workspace service: create/get/end spaces, and list participants,
@@ -562,7 +574,7 @@ function durationMinutes(conference: GoogleMeetConferenceRecord): number {
   return Math.max(0, Math.round((end - start) / 60000));
 }
 
-function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
+export function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
   summary: string;
   keyPoints: string[];
   actionItems: GoogleMeetReport["actionItems"];
@@ -581,7 +593,7 @@ function summarizeTranscript(entries: readonly GoogleMeetTranscript[]): {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
-  const summary = sentences.slice(0, 3).join(" ") || plainText.slice(0, 500);
+  const summary = sentences.slice(0, 3).join(" ") || truncateUtf16Safe(plainText, 500);
   const keyPoints = lines.filter((line) => line.length >= 20).slice(0, 6);
   const actionItems = lines
     .filter((line) => /\b(action item|to[- ]?do|follow up|need to|will|should)\b/i.test(line))

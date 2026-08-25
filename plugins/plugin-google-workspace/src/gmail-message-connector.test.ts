@@ -358,4 +358,33 @@ describe("isEmailAddress", () => {
     expect(isEmailAddress("shadow@localhost")).toBe(false);
     expect(isEmailAddress(42)).toBe(false);
   });
+
+  it("preserves UTF-16 surrogate pairs in derived subject truncation", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    // "🔥" is 2 code units. 70 repeats = 140 units > SUBJECT_MAX_LENGTH (120)
+    const longEmoji = "🔥".repeat(70);
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: longEmoji }
+    );
+
+    expect(sendGmailMessage).toHaveBeenCalled();
+    const callArgs = sendGmailMessage.mock.calls[0][0];
+    const subject = callArgs.subject;
+    expect(subject.endsWith("...")).toBe(true);
+    expect(subject.length).toBe(77);
+    for (const char of subject) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
