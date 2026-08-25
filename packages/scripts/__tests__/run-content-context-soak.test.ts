@@ -86,8 +86,12 @@ describe("content-context soak producer", () => {
     }
   });
 
-  it("accepts only exact six-family production contracts", () => {
-    expect(validateSoakFactoryModule(contract()).targets).toHaveLength(6);
+  it("accepts only exact six-family production contracts", async () => {
+    const validated = validateSoakFactoryModule(contract());
+    expect(validated.targets).toHaveLength(6);
+    await expect(validated.targets[0].create()).rejects.toThrow(
+      /bound production target/u,
+    );
     for (const invalid of [
       contract([]),
       contract(families.slice(0, 5)),

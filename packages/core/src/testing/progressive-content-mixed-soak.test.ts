@@ -1,5 +1,6 @@
 /** Verifies mixed-family scheduling, evidence ineligibility, and exact target coverage deterministically. */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
 	progressiveConformanceAdapter,
@@ -44,6 +45,7 @@ function targets(families: readonly ProgressiveContentSoakFamily[]) {
 	} as const;
 	return families.map((family) => ({
 		family,
+		adapterId: `${family}-production-adapter`,
 		authoritativeStore: realizations[family][0],
 		binaryPolicy: realizations[family][1],
 		productionMethod: `${family}-native-realization`,
@@ -51,24 +53,66 @@ function targets(families: readonly ProgressiveContentSoakFamily[]) {
 			const base = progressiveConformanceAdapter();
 			const fixture = progressiveConformanceFixture();
 			const kind = family === "tool-output" ? "tool-result" : family;
+			const object = {
+				...fixture.object,
+				id: `${family}-object`,
+				family: kind,
+			};
+			let generation = 1;
+			let present = true;
 			return {
-				object: { ...fixture.object, id: `${family}-object`, family: kind },
-				adapter: {
-					...base,
-					adapterId: `${family}-production-test-adapter`,
-					async read(request: Parameters<typeof base.read>[0]) {
-						const page = await base.read({
-							...request,
-							objectId: fixture.object.id,
-						});
-						return {
-							...page,
-							view: {
-								...page.view,
-								reference: { ...page.view.reference, kind },
-							},
-						};
+				family,
+				object,
+				realization: {
+					reference: {
+						kind,
+						ref: `${kind}:opaque-soak-target`,
+						revision: object.revision,
+						resumability: "restart-safe",
 					},
+					sourceRevision: object.revision,
+					authorizationMode: "principal",
+					restartScope: "process",
+					authorizationScopeDigest: createHash("sha256")
+						.update(object.authorizationScope)
+						.digest("hex"),
+					cleanupIdentity: `${kind}:opaque-soak-target`,
+					resolverBindingSha256: object.revision,
+				},
+				async read({ access, offset, limit, expectedRevision }) {
+					if (!present) throw new Error("CONTENT_NOT_FOUND");
+					if (access !== "authorized") throw new Error("CONTENT_ACCESS_DENIED");
+					const page = await base.read({
+						objectId: fixture.object.id,
+						authorizationScope: fixture.object.authorizationScope,
+						offset,
+						limit,
+						expectedRevision,
+					});
+					return {
+						...page,
+						view: {
+							...page.view,
+							reference: { ...page.view.reference, kind },
+						},
+					};
+				},
+				async restart() {
+					generation += 1;
+				},
+				async inspect() {
+					return {
+						resolverGeneration: `generation:${generation}`,
+						present,
+						ownedBytes: present ? object.byteLength : 0,
+						databaseRows: 0,
+						temporaryArtifacts: 0,
+						walBytes: 0,
+					};
+				},
+				async cleanup() {
+					await base.cleanup(fixture.object.id);
+					present = false;
 				},
 			};
 		},
@@ -102,6 +146,9 @@ describe("mixed progressive-content soak", () => {
 		expect(report.families.every(({ failures }) => failures.length === 0)).toBe(
 			true,
 		);
+		expect(
+			report.families.every(({ cleanupVerified }) => cleanupVerified),
+		).toBe(true);
 		expect(report.positiveLeakControlDetected).toBe(true);
 	});
 

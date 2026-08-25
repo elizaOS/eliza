@@ -112,6 +112,7 @@ export function validateSoakFactoryModule(value) {
   return {
     targets: value.targets.map((target) => ({
       family: target.family,
+      adapterId: target.adapterId,
       authoritativeStore: target.authoritativeStore,
       productionMethod: target.productionMethod,
       binaryPolicy: target.binaryPolicy,
@@ -119,13 +120,17 @@ export function validateSoakFactoryModule(value) {
         const realized = await target.create();
         if (
           !plainObject(realized) ||
-          !plainObject(realized.adapter) ||
-          realized.adapter.adapterId !== target.adapterId ||
-          /(?:fixture|mock|stub|test)/iu.test(realized.adapter.adapterId)
+          realized.family !== target.family ||
+          !plainObject(realized.object) ||
+          !plainObject(realized.realization) ||
+          typeof realized.read !== "function" ||
+          typeof realized.restart !== "function" ||
+          typeof realized.inspect !== "function" ||
+          typeof realized.cleanup !== "function"
         )
           throw new ContentContextSoakConfigurationError(
             "SOAK_FACTORY_REALIZATION_INVALID",
-            `${target.family} factory did not realize its declared production adapter`,
+            `${target.family} factory did not realize its declared bound production target`,
           );
         return realized;
       },
