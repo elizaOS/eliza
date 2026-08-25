@@ -131,8 +131,18 @@ export function mergeStreamingText(existing: string, incoming: string): string {
     return incoming;
   }
 
-  // Ignore clearly regressive snapshots.
-  if (existingNorm.startsWith(incomingNorm)) {
+  // Ignore clearly regressive snapshots, but never let this guard swallow a
+  // plausible repeated single-character append. When the buffer already starts
+  // with the same char as an incoming one-char delta, the guard would fire
+  // before the overlap loop and drop every char after the second, so a leading
+  // run of identical chars streamed one token at a time ("...", "!!!", the
+  // "```" of a code fence) rendered truncated. Defer to the overlap loop, which
+  // already appends a single-char delta that matches the tail of the buffer.
+  const isRepeatedCharAppend =
+    incoming.length === 1 &&
+    /\S/u.test(incoming) &&
+    existingNorm.endsWith(incomingNorm);
+  if (existingNorm.startsWith(incomingNorm) && !isRepeatedCharAppend) {
     return existing;
   }
 

@@ -91,6 +91,53 @@ describe("streaming text named regressions", () => {
     });
   });
 
+  it("preserves leading repeated-character runs streamed one token at a time", () => {
+    // Regression for #28041: the regressive-snapshot guard used to fire on a
+    // single-char delta whose char equals the buffer's leading char, dropping
+    // every char after the second. A run of >=3 identical chars anchored at the
+    // string start ("...", "!!!", "---", the "```" code fence) must survive.
+    const stream = (tokens: string[]) =>
+      tokens.reduce((acc, token) => mergeStreamingText(acc, token), "");
+    expect(stream([".", ".", "."])).toBe("...");
+    expect(stream(["!", "!", "!"])).toBe("!!!");
+    expect(stream(["-", "-", "-"])).toBe("---");
+    expect(stream(["#", "#", "#", " ", "H"])).toBe("### H");
+
+    // A markdown code fence followed by a language tag: the third backtick used
+    // to be swallowed, corrupting code-block rendering in the legacy per-token
+    // chat path.
+    let fence = "";
+    for (const token of ["`", "`", "`", "j", "s"]) {
+      fence = mergeStreamingText(fence, token);
+    }
+    expect(fence).toBe("```js");
+
+    // Step-level classification: the third "." is a real append, not unchanged.
+    expect(resolveStreamingUpdate("..", ".")).toEqual({
+      kind: "append",
+      nextText: "...",
+      emittedText: ".",
+    });
+    expect(computeStreamingDelta("``", "`")).toBe("`");
+  });
+
+  it("still ignores genuine regressive snapshots and non-tail single chars", () => {
+    // A multi-char prefix of the buffer is a stale snapshot, not an append.
+    expect(mergeStreamingText("hello world", "hello")).toBe("hello world");
+    expect(resolveStreamingUpdate("hello world", "hello")).toEqual({
+      kind: "unchanged",
+      nextText: "hello world",
+      emittedText: "",
+    });
+    // A single char that is the leading char but does NOT match the tail stays
+    // a regressive no-op (buffer "ab" already advanced past the leading "a").
+    expect(mergeStreamingText("ab", "a")).toBe("ab");
+    // A single whitespace delta remains regressive, matching the equality path.
+    expect(mergeStreamingText("  x", " ")).toBe("  x");
+    // Full-snapshot growth (incoming starts with existing) is unchanged.
+    expect(mergeStreamingText(".", "...")).toBe("...");
+  });
+
   it("deduplicates overlapping suffix/prefix fragments", () => {
     expect(mergeStreamingText("Hello wor", "world")).toBe("Hello world");
     expect(computeStreamingDelta("Hello wor", "world")).toBe("ld");
@@ -156,7 +203,18 @@ describe("streaming text fuzz invariants", () => {
   it("ignores regressive snapshots that are prefixes of existing text", () => {
     fc.assert(
       fc.property(textArbitrary, textArbitrary, (prefix, suffix) => {
-        fc.pre(!(suffix === "" && prefix.length === 1 && /\S/u.test(prefix)));
+        // A single non-whitespace char that also matches the buffer's tail is a
+        // repeated-character append (#28041), not a regressive snapshot, so it
+        // is excluded here alongside the existing equality carve-out.
+        fc.pre(
+          !(
+            prefix.length === 1 &&
+            /\S/u.test(prefix) &&
+            `${prefix}${suffix}`
+              .normalize("NFC")
+              .endsWith(prefix.normalize("NFC"))
+          ),
+        );
         const existing = `${prefix}${suffix}`;
 
         expect(mergeStreamingText(existing, prefix)).toBe(existing);
