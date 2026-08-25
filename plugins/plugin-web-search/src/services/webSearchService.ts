@@ -223,6 +223,7 @@ function freshnessToDays(freshness: NewsSearchOptions["freshness"]): number {
 }
 
 function decodeHtmlEntities(text: string): string {
+    if (!text || typeof text !== "string") return "";
     const decodeNumericEntity = (entity: string, digits: string, radix: number): string => {
         const codePoint = Number.parseInt(digits, radix);
         if (
@@ -334,6 +335,7 @@ async function readBoundedPageHtml(response: Response): Promise<string> {
 }
 
 function extractTitle(content: string, fallbackUrl: string): string {
+    if (!content || typeof content !== "string") return fallbackUrl ?? "";
     const match = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     if (!match?.[1]) return fallbackUrl;
     const cleanText = match[1].replace(/<[^>]+>/g, "").trim();
@@ -346,6 +348,9 @@ function extractMetaTags(content: string): {
 } {
     const metadata: Record<string, string> = {};
     let description = "";
+    if (!content || typeof content !== "string") {
+        return { description, metadata };
+    }
 
     const metaRegex = /<meta\s+([^>]+)>/gi;
     let match = metaRegex.exec(content);
@@ -387,6 +392,7 @@ function resolveHttpUrl(raw: string, baseUrl: URL): string | null {
 
 function extractImages(content: string, baseUrl: URL): string[] {
     const images: string[] = [];
+    if (!content || typeof content !== "string") return images;
     const seen = new Set<string>();
     const imgRegex = /<img\s+[^>]*src=["']([^"']+)["']/gi;
     let match = imgRegex.exec(content);
@@ -409,6 +415,7 @@ function extractImages(content: string, baseUrl: URL): string[] {
 
 function extractLinks(content: string, baseUrl: URL): string[] {
     const links: string[] = [];
+    if (!content || typeof content !== "string") return links;
     const seen = new Set<string>();
     const anchorRegex = /<a\s+[^>]*href=["']([^"']+)["']/gi;
     let match = anchorRegex.exec(content);

@@ -525,4 +525,17 @@ describe("WebSearchService", () => {
         // Policy must reject before the injected transport is invoked.
         expect(fetchImpl).not.toHaveBeenCalled();
     });
+
+    it("handles empty or sparse HTML safely without crashing extraction", async () => {
+        const fetchImpl = vi.fn(async () => new Response(""));
+        setPageInfoHttpTransportForTests({ fetchImpl });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/empty");
+        expect(pageInfo.title).toBe("https://example.test/empty");
+        expect(pageInfo.description).toBe("");
+        expect(pageInfo.metadata).toEqual({});
+        expect(pageInfo.images).toEqual([]);
+        expect(pageInfo.links).toEqual([]);
+    });
 });
