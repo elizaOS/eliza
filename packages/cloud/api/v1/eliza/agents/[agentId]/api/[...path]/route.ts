@@ -330,6 +330,26 @@ app.get("/", async (c) => {
       // the local agent returns when plugin-browser is absent, so the UI
       // loads its designed-empty state rather than a persistent error banner.
       return json(c, { mode: "web", tabs: [] });
+    case "memories/feed":
+      // Shared agents run in-Worker with no persistent memory store; match the
+      // empty-feed shape the local agent returns when plugin-memory is absent.
+      return json(c, { memories: [], count: 0, limit: 50, hasMore: false });
+    case "memories/stats":
+      return json(c, { total: 0, byType: {} });
+    case "relationships/people":
+      // plugin-relationships is not loaded on the shared tier; return the empty
+      // graph shape so the Knowledge hub renders its designed-empty state.
+      return json(c, {
+        data: [],
+        stats: { totalPeople: 0, totalRelationships: 0, totalIdentities: 0 },
+      });
+    case "documents":
+      // plugin-documents is not loaded on the shared tier.
+      return json(c, { documents: [], total: 0, limit: 100, offset: 0 });
+    case "documents/facets":
+      return json(c, {
+        counts: { all: 0, doc: 0, image: 0, audio: 0, video: 0, transcript: 0 },
+      });
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(
@@ -419,6 +439,13 @@ app.post("/", async (c) => {
   // change.
   if (path === "apps/overlay-presence") {
     return json(c, sharedRestOverlayPresence());
+  }
+  // Agent-surface element registration (POST /api/views/:viewId/elements).
+  // These are best-effort planner hints from the UI; ack them rather than
+  // 404'ing so the element-reporter's silent catch does not mask a genuine
+  // server error for other paths.
+  if (/^views\/[^/]+\/elements$/.test(path)) {
+    return json(c, { ok: true });
   }
   const navigateTarget = viewNavigateTarget(path);
   if (navigateTarget !== null) {
