@@ -46,8 +46,8 @@ import {
   resolveInboxRequest,
   toInboxMessages,
 } from "../src/inbox/aggregate.ts";
-import type { InboundMessage } from "../src/inbox/types.ts";
 import { fetchGmailMessages } from "../src/inbox/message-fetcher.ts";
+import type { InboundMessage } from "../src/inbox/types.ts";
 
 // ---------------------------------------------------------------------------
 // Host-seam implementations (contract-true, in-memory)

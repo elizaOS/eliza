@@ -553,13 +553,10 @@ export async function fetchGmailMessages(
   // mixin can group by account and render account chips.
   let triageFeed: LifeOpsGmailTriageFeed;
   try {
-    triageFeed = await source.getGmailTriage(
-      INTERNAL_URL,
-      {
-        ...(opts.grantId ? { grantId: opts.grantId } : {}),
-        ...(limit === undefined ? {} : { maxResults: limit }),
-      },
-    );
+    triageFeed = await source.getGmailTriage(INTERNAL_URL, {
+      ...(opts.grantId ? { grantId: opts.grantId } : {}),
+      ...(limit === undefined ? {} : { maxResults: limit }),
+    });
   } catch (error) {
     logger.warn(
       `[InboxMessageFetcher] gmail triage fetch failed: ${errorMessage(error)}`,
@@ -571,7 +568,9 @@ export async function fetchGmailMessages(
 
   const results: InboundMessage[] = [];
   const messages =
-    limit === undefined ? triageFeed.messages : triageFeed.messages.slice(0, limit);
+    limit === undefined
+      ? triageFeed.messages
+      : triageFeed.messages.slice(0, limit);
   for (const msg of messages) {
     const messageId = requireNonEmptyString(msg.id, "Gmail message id");
     const externalId = requireNonEmptyString(

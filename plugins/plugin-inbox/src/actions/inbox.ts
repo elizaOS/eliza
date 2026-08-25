@@ -410,7 +410,9 @@ async function fetchInboxItems(args: {
     if (result.status === "fulfilled") {
       const hasMore =
         args.limit !== undefined && result.value.length > args.limit;
-      flat.push(...(hasMore ? result.value.slice(0, args.limit) : result.value));
+      flat.push(
+        ...(hasMore ? result.value.slice(0, args.limit) : result.value),
+      );
       if (hasMore) capped.push(platform);
       return;
     }
