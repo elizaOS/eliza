@@ -369,6 +369,59 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@openrelay999/eliza-plugin": {
+      "git": {
+        "repo": "GitVova999/openrelay-eliza-plugin",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@openrelay999/eliza-plugin",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "OpenAI-compatible LLM inference (DeepSeek V4 Flash, Kimi K2.6, MiniMax M2.7) paid per request in USDC via x402 on Solana + Base. Agent's wallet signs micropayment per call — no signup, no API keys, no subscriptions.",
+      "homepage": "https://github.com/GitVova999/openrelay-eliza-plugin",
+      "topics": [
+        "x402",
+        "model-provider",
+        "openai-compatible",
+        "inference",
+        "llm",
+        "usdc",
+        "base",
+        "solana",
+        "payai",
+        "micropayments",
+        "deepseek",
+        "kimi",
+        "minimax"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@ophis/plugin-elizaos": {
       "git": {
         "repo": "ophis-fi/ophis",
