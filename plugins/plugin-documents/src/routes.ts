@@ -105,6 +105,7 @@ function documentPinErrorStatus(cause: ElizaError): number {
   if (cause.code === "DOCUMENT_NOT_FOUND") return 404;
   if (cause.code === "DOCUMENT_MUTATION_FORBIDDEN") return 403;
   if (cause.code === "DOCUMENT_MUTATION_CONFLICT") return 409;
+  if (cause.code === "DOCUMENT_PIN_UNSUPPORTED") return 503;
   return 500;
 }
 

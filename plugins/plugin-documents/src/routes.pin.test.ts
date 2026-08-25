@@ -185,6 +185,27 @@ describe("document pin REST mutations", () => {
     expect(response.status).toBe(409);
   });
 
+  it("maps DOCUMENT_PIN_UNSUPPORTED to 503, not 500", async () => {
+    // A legacy adapter (inherited base updateDocumentPinned) passes the
+    // method-presence check and surfaces the typed unsupported capability
+    // from the service — the route must translate it to the established
+    // 503 unavailable response, never a 500.
+    service.setDocumentPinnedWithAccessContext.mockRejectedValueOnce(
+      new ElizaError(
+        "The configured database adapter does not support document pins",
+        {
+          code: "DOCUMENT_PIN_UNSUPPORTED",
+        },
+      ),
+    );
+    const { ctx, response } = context(
+      `/api/documents/${DOCUMENT_ID}/pin`,
+      "POST",
+    );
+    await handleDocumentsRoutes(ctx as never);
+    expect(response.status).toBe(503);
+  });
+
   it("rejects a malformed document id with 400", async () => {
     const { ctx, response } = context("/api/documents/not-a-uuid/pin", "POST");
     await handleDocumentsRoutes(ctx as never);

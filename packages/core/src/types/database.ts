@@ -1244,9 +1244,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		params: DocumentCompareAndSwapParams,
 	): Promise<DocumentMutationResult>;
 	/**
-	 * Optional capability: adapters that predate pin support may omit this
-	 * method (the DatabaseAdapter base fail-closes it); callers must treat
-	 * not_found on a known-visible document as an unsupported pin surface.
+	 * Optional capability: adapters that predate pin support either omit this
+	 * method or inherit the DatabaseAdapter base, which rejects with a typed
+	 * DOCUMENT_PIN_UNSUPPORTED error; callers surface that explicit capability
+	 * signal instead of interpreting a fabricated result (#23103).
 	 */
 	updateDocumentPinned?(
 		params: DocumentPinUpdateParams,

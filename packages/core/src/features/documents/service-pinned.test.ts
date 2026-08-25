@@ -6,6 +6,7 @@
  * a requester without visibility).
  */
 import { describe, expect, it } from "vitest";
+import { DatabaseAdapter } from "../../database";
 import { readDocumentMutationSnapshot } from "../../database/document-list-query";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
@@ -184,6 +185,31 @@ describe("DocumentService pin management", () => {
 				? unpinned.metadata.pinned
 				: undefined,
 		).not.toBe(true);
+	});
+
+	it("rejects with DOCUMENT_PIN_UNSUPPORTED when a legacy adapter inherits the base method", async () => {
+		// Real legacy-adapter regression (#23103 r3): an adapter that never
+		// overrode updateDocumentPinned still carries the method (so the
+		// presence check passes) but resolves to the DatabaseAdapter base —
+		// the service must surface the typed unsupported capability, never
+		// a fabricated not_found. Simulate by installing the base method as
+		// an own property, matching a pre-pin subclass's inherited shape.
+		const { adapter, runtime, service } = await makeHarness();
+		Object.defineProperty(adapter, "updateDocumentPinned", {
+			value: DatabaseAdapter.prototype.updateDocumentPinned,
+			writable: true,
+			enumerable: false,
+			configurable: true,
+		});
+		await seedDocuments(runtime, adapter);
+
+		await expect(
+			service.setDocumentPinnedWithAccessContext(
+				PINNED_DOC_ID,
+				true,
+				ownerContext,
+			),
+		).rejects.toMatchObject({ code: "DOCUMENT_PIN_UNSUPPORTED" });
 	});
 
 	it("rejects a pin from a requester who can see but not mutate the document", async () => {
