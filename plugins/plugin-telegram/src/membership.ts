@@ -150,6 +150,18 @@ function authorityErrorCode(error: unknown): string {
 }
 
 /**
+ * Fail-closed sentinel for pending-revocation hydration: when the durable
+ * overlay cannot be read, membership decisions must deny rather than trust
+ * possibly-stale active evidence. `has()` always true — the unknown set is
+ * treated as containing every principal.
+ */
+const FAIL_CLOSED_PENDING: ReadonlySet<UUID> = {
+  has: () => true,
+} as unknown as ReadonlySet<UUID>;
+
+const EMPTY_PENDING: ReadonlySet<UUID> = new Set<UUID>();
+
+/**
  * Per-(agent, Telegram account) client for the membership authority. Scope
  * trackers are seeded from persisted scope health on first touch so a
  * restarted process continues the persisted publisher binding instead of
@@ -218,40 +230,47 @@ export class TelegramMembershipAuthority {
   }
 
   /**
-   * Loads the persisted pending-revocation set for a scope into memory
-   * (idempotent per scope per process). Callers on the per-scope chain may
-   * already hold the lock; cache reads are lock-free because they only ever
-   * merge persisted UUIDs into the in-memory overlay.
+   * Loads the persisted pending-revocation set for a scope into memory.
+   * FAIL CLOSED on a cache read failure: when the durable overlay cannot be
+   * read, the safe assumption is that uncommitted revocations exist, so the
+   * returned overlay-conservative fallback denies (below). The hydrated mark
+   * is only set after a successful read (or a definitive empty), so a
+   * transient cache outage never permanently suppresses hydration.
+   * Callers on the per-scope chain may already hold the lock; cache reads
+   * are lock-free because they only ever merge persisted UUIDs into the
+   * in-memory overlay.
    */
   private async hydratePendingRevocations(
     scope: MembershipScope,
-  ): Promise<void> {
+  ): Promise<ReadonlySet<UUID>> {
     const key = scopeKey(scope);
-    if (this.pendingRevocationsHydrated.has(key)) return;
-    this.pendingRevocationsHydrated.add(key);
+    let persisted: UUID[] | undefined;
     try {
-      const persisted = await this.runtime.getCache<UUID[]>(
+      persisted = await this.runtime.getCache<UUID[]>(
         this.pendingRevocationsCacheKey(scope),
       );
-      if (persisted) {
-        const overlay = this.pendingRevocations.get(key) ?? new Set<UUID>();
-        for (const id of persisted) overlay.add(id);
-        this.pendingRevocations.set(key, overlay);
-      }
     } catch (error) {
-      // error-policy:J7 Cache hydration failure must not block admission:
-      // authorize falls through to the authoritative service decision, and
-      // the failure is reported for diagnosis.
+      // error-policy:J4 A cache read failure leaves the durable overlay
+      // unknown: fail closed (deny via the conservative set below) rather
+      // than consult possibly-stale active evidence. Report for diagnosis.
       this.runtime.reportError("telegram:membership-pending-hydration", error, {
         chatId: scope.externalWorldId,
       });
+      return FAIL_CLOSED_PENDING;
     }
+    this.pendingRevocationsHydrated.add(key);
+    if (persisted) {
+      const overlay = this.pendingRevocations.get(key) ?? new Set<UUID>();
+      for (const id of persisted) overlay.add(id);
+      this.pendingRevocations.set(key, overlay);
+    }
+    return this.pendingRevocations.get(key) ?? EMPTY_PENDING;
   }
 
   /** Persists the in-memory pending-revocation set for one scope. */
   private async persistPendingRevocations(
     scope: MembershipScope,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const key = scopeKey(scope);
     const overlay = this.pendingRevocations.get(key);
     try {
@@ -262,14 +281,17 @@ export class TelegramMembershipAuthority {
       } else {
         await this.runtime.deleteCache(this.pendingRevocationsCacheKey(scope));
       }
+      return true;
     } catch (error) {
-      // error-policy:J7 Persistence here is a durability enhancement: the
-      // in-memory overlay is already installed for this process and the
-      // scope was degraded stale; a cache write failure is reported, not
-      // fatal — authorize in THIS process still fails closed.
+      // error-policy:J4 The durable fence did NOT land. The in-memory
+      // overlay still denies in THIS process, but a restart would
+      // re-authorize the departed principal. Report and surface failure so
+      // revocation callers escalate (gate broken) instead of claiming a
+      // durable fail-closed state.
       this.runtime.reportError("telegram:membership-pending-persist", error, {
         chatId: scope.externalWorldId,
       });
+      return false;
     }
   }
 
@@ -494,7 +516,9 @@ export class TelegramMembershipAuthority {
     return this.serialized(key, async () => {
       // Restart hydration (see authorize): a restart-then-fresh-evidence
       // commit must clear the persisted overlay for this principal, which
-      // requires the persisted set to be loaded first.
+      // requires the persisted set to be loaded first. On a cache read
+      // failure the FAIL_CLOSED sentinel denies every principal — safe
+      // (evidence is only recorded, admission is gated in authorize).
       await this.hydratePendingRevocations(input.scope);
       // Restart hydration: if this process restarted, the in-memory
       // bot-removal tombstone map is empty — but the persisted scope health
@@ -715,7 +739,20 @@ export class TelegramMembershipAuthority {
               this.pendingRevocations.get(key2) ?? new Set<UUID>();
             pending.add(input.canonicalPrincipalId);
             this.pendingRevocations.set(key2, pending);
-            await this.persistPendingRevocations(input.scope);
+            const persisted = await this.persistPendingRevocations(input.scope);
+            if (!persisted) {
+              // The durable overlay did not land: a restart would
+              // re-authorize the departed principal. Escalate to gate-broken
+              // (every group admission fails closed) rather than claim a
+              // durable fail-closed state.
+              throw new ElizaError(
+                "Telegram membership revocation fence could not be persisted",
+                {
+                  code: "TELEGRAM_MEMBERSHIP_REVOCATION_UNSAFE",
+                  cause: error,
+                },
+              );
+            }
             // Surface a typed error so recordEvent's caller (the service)
             // can log/report it; the security state itself is already
             // fail-closed at this point.
@@ -983,14 +1020,16 @@ export class TelegramMembershipAuthority {
       // Restart hydration: the in-memory pending-revocation overlay is empty
       // after a restart — load the persisted overlay so a principal whose
       // revocation could not be committed keeps failing closed even if
-      // unrelated evidence restored scope health.
-      await this.hydratePendingRevocations(scope);
+      // unrelated evidence restored scope health. A cache read failure
+      // returns the FAIL_CLOSED sentinel: deny rather than consult
+      // possibly-stale active evidence.
+      const pendingOverlay = await this.hydratePendingRevocations(scope);
       // Pending-revocation overlay: this principal's revocation could not be
       // committed and the scope was degraded stale — but scope health may
       // have been restored since by unrelated evidence. Their prior active
       // fact must keep failing closed until fresh evidence for THIS
       // principal lands.
-      if (this.pendingRevocations.get(key)?.has(input.canonicalPrincipalId)) {
+      if (pendingOverlay.has(input.canonicalPrincipalId)) {
         // Reuse membership_revoked: a revocation WAS observed for this
         // principal, it just could not be committed — admission must fail
         // closed exactly as if it had.
