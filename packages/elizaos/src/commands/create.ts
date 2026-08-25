@@ -99,10 +99,10 @@ async function promptLanguage(
 ): Promise<string | undefined> {
   const template = getTemplateById(templateId);
   if (!template) return undefined;
+  if (initial) return initial;
   if (template.languages.length <= 1) {
     return template.languages[0];
   }
-  if (initial) return initial;
 
   const choice = await clack.select({
     message: "Select a language:",
