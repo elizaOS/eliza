@@ -305,16 +305,25 @@ export function AndroidCloudSettings({
     setLoading(true);
     setError(null);
     try {
-      const nextAvailability = lifecycle.getAvailability
-        ? await lifecycle.getAvailability()
-        : await lifecycle
+      const nextAvailability = request
+        ? await lifecycle
             .getStatus()
             .then(
               (nextRequest): AccountDeletionAvailabilityDto =>
                 nextRequest
                   ? { state: "existing_request", request: nextRequest }
                   : { state: "available", request: null },
-            );
+            )
+        : lifecycle.getAvailability
+          ? await lifecycle.getAvailability()
+          : await lifecycle
+              .getStatus()
+              .then(
+                (nextRequest): AccountDeletionAvailabilityDto =>
+                  nextRequest
+                    ? { state: "existing_request", request: nextRequest }
+                    : { state: "available", request: null },
+              );
       setAvailability(nextAvailability);
       setRequest(nextAvailability.request);
     } catch (cause) {
@@ -324,7 +333,7 @@ export function AndroidCloudSettings({
     } finally {
       setLoading(false);
     }
-  }, [lifecycle]);
+  }, [lifecycle, request]);
 
   useEffect(() => {
     if (!initialRequest) void refresh();

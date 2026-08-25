@@ -299,6 +299,41 @@ describe("AndroidCloudSettings", () => {
     }
   });
 
+  it("polls an existing request through the public-capable status path after logout", async () => {
+    vi.useFakeTimers();
+    try {
+      const completed = request({
+        status: "completed",
+        completedAt: "2026-08-22T00:05:00.000Z",
+        canCancel: false,
+        nextAction: "none",
+      });
+      const getAvailability = vi.fn(async () => {
+        throw new Error("authenticated bearer was cleared after reservation");
+      });
+      const getStatus = vi.fn(async () => completed);
+      render(
+        <AndroidCloudSettings
+          initialRequest={request({ status: "reserved" })}
+          lifecycle={lifecycle({ getAvailability, getStatus })}
+          onBack={vi.fn()}
+          onDeletionReserved={vi.fn()}
+          onSignOut={vi.fn()}
+          openExternal={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(getStatus).toHaveBeenCalledTimes(1);
+      expect(getAvailability).not.toHaveBeenCalled();
+      expect(screen.getByText("Deletion complete")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("shows a status outage and retries the nonterminal reconciliation", async () => {
     vi.useFakeTimers();
     try {
