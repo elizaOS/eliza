@@ -48,6 +48,7 @@ describe("DocumentsView documents JSON deadline", () => {
           fetchDocuments: stalled,
           fetchStats: stalled,
           fetchSearch: stalled,
+          setPinned: async () => {},
         }}
       />,
     );

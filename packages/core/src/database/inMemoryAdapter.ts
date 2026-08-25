@@ -47,6 +47,7 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentPinUpdateParams,
 	DocumentRangeReadParams,
 	DocumentRangeReadResult,
 	DocumentRevisionReplaceParams,
@@ -1043,6 +1044,47 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		}
 		await this.updateMemories([
 			{ ...params.replacement, id: params.documentId },
+		]);
+		const updated = this.memoriesById.get(String(params.documentId));
+		return updated
+			? { status: "updated", document: updated }
+			: { status: "conflict" };
+	}
+
+	async updateDocumentPinned(
+		params: DocumentPinUpdateParams,
+	): Promise<DocumentMutationResult> {
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (
+			!existing ||
+			existing.agentId !== params.agentId ||
+			existing.metadata?.type !== MemoryType.DOCUMENT
+		) {
+			return { status: "not_found" };
+		}
+		// Fail closed before any snapshot or mutation-policy result can
+		// distinguish an existing document from an unknown id (#23103).
+		if (!isDocumentVisibleToRequester(existing, params)) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		const metadata: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+		if (params.pinned) {
+			metadata.pinned = true;
+		} else {
+			delete metadata.pinned;
+		}
+		await this.updateMemories([
+			{
+				...existing,
+				id: params.documentId,
+				metadata: metadata as Memory["metadata"],
+			},
 		]);
 		const updated = this.memoriesById.get(String(params.documentId));
 		return updated

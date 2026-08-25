@@ -98,6 +98,11 @@ export interface DocumentsServiceLike {
     documentId: UUID,
     accessContext: AccessContext,
   ): Promise<Memory | null>;
+  setDocumentPinnedWithAccessContext?(
+    documentId: UUID,
+    pinned: boolean,
+    accessContext: AccessContext,
+  ): Promise<Memory>;
   setDocumentDirectGrantsWithAccessContext?(
     documentId: UUID,
     directGrantEntityIds: UUID[],

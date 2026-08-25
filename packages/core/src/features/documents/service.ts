@@ -601,6 +601,95 @@ export class DocumentService extends Service {
 			: null;
 	}
 
+	async setDocumentPinnedWithAccessContext(
+		documentId: UUID,
+		pinned: boolean,
+		accessContext: AccessContext,
+	): Promise<Memory> {
+		const { snapshot, requestContext } = await this.getDocumentPinTarget(
+			documentId,
+			accessContext,
+		);
+		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
+		if (!updateDocumentPinned) {
+			// Legacy adapters without pin support surface an explicit
+			// unsupported capability rather than a fabricated result.
+			throw new ElizaError(
+				"The configured database adapter does not support document pins",
+				{
+					code: "DOCUMENT_PIN_UNSUPPORTED",
+					context: { documentId },
+				},
+			);
+		}
+		const result = await updateDocumentPinned.call(this.runtime.adapter, {
+			...requestContext,
+			documentId,
+			expected: snapshot,
+			pinned,
+		});
+		if (result.status !== "updated") {
+			throw new ElizaError("Document authorization changed before pin update", {
+				code:
+					result.status === "not_found"
+						? "DOCUMENT_NOT_FOUND"
+						: result.status === "forbidden"
+							? "DOCUMENT_MUTATION_FORBIDDEN"
+							: "DOCUMENT_MUTATION_CONFLICT",
+				context: { documentId, status: result.status },
+			});
+		}
+		return result.document;
+	}
+
+	private async getDocumentPinTarget(
+		documentId: UUID,
+		accessContext: AccessContext,
+	) {
+		const requester = await resolveDocumentRequesterFromAccessContext(
+			this.runtime,
+			accessContext,
+		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const document = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		if (!document) {
+			throw new ElizaError(`Document ${documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId },
+			});
+		}
+		const snapshot = readDocumentMutationSnapshot(document);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!canRequesterMutateDocument(document, requestContext)) {
+			throw new ElizaError("Requester cannot mutate this document", {
+				code: "DOCUMENT_MUTATION_FORBIDDEN",
+				context: {
+					documentId,
+					requesterEntityId: requester.entityId,
+					requesterRole: requester.role,
+				},
+			});
+		}
+		return { snapshot, requestContext };
+	}
+
 	async setDocumentDirectGrantsWithAccessContext(
 		documentId: UUID,
 		directGrantEntityIds: UUID[],
@@ -2600,6 +2689,81 @@ export class DocumentService extends Service {
 		});
 
 		await Promise.all(processingPromises);
+	}
+
+	/** Pins or unpins one document for provider context priority (#23103). */
+	async setDocumentPinned(
+		documentId: UUID,
+		pinned: boolean,
+		message?: Memory,
+	): Promise<void> {
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const existingDocument = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId,
+		});
+		if (!existingDocument) {
+			throw new ElizaError(`Document ${documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId },
+			});
+		}
+		const snapshot = readDocumentMutationSnapshot(existingDocument);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!canRequesterMutateDocument(existingDocument, requestContext)) {
+			throw new ElizaError("Requester cannot mutate this document", {
+				code: "DOCUMENT_MUTATION_FORBIDDEN",
+				context: {
+					documentId,
+					requesterEntityId: requester.entityId,
+					requesterRole: requester.role,
+				},
+			});
+		}
+		const updateDocumentPinned = this.runtime.adapter.updateDocumentPinned;
+		if (!updateDocumentPinned) {
+			// Legacy adapters without pin support surface an explicit
+			// unsupported capability rather than a fabricated result.
+			throw new ElizaError(
+				"The configured database adapter does not support document pins",
+				{
+					code: "DOCUMENT_PIN_UNSUPPORTED",
+					context: { documentId },
+				},
+			);
+		}
+		const result = await updateDocumentPinned.call(this.runtime.adapter, {
+			...requestContext,
+			documentId,
+			expected: snapshot,
+			pinned,
+		});
+		if (result.status !== "updated") {
+			throw new ElizaError("Document authorization changed before pin update", {
+				code:
+					result.status === "not_found"
+						? "DOCUMENT_NOT_FOUND"
+						: result.status === "forbidden"
+							? "DOCUMENT_MUTATION_FORBIDDEN"
+							: "DOCUMENT_MUTATION_CONFLICT",
+				context: { documentId, status: result.status },
+			});
+		}
 	}
 
 	async updateDocument(options: {

@@ -84,3 +84,29 @@ describe("getDocumentTitleFromMetadata — derived-title truncation", () => {
     expect(title.endsWith("...")).toBe(true);
   });
 });
+
+describe("presentDocument — pinned passthrough (#23103)", () => {
+  it("surfaces pinned: true for a pinned document", () => {
+    const dto = presentDocument(
+      docMemory({ type: "document", filename: "rules.txt", pinned: true }),
+      1,
+    );
+    expect(dto.pinned).toBe(true);
+  });
+
+  it("omits pinned for an unpinned document", () => {
+    const dto = presentDocument(
+      docMemory({ type: "document", filename: "rules.txt" }),
+      1,
+    );
+    expect(dto.pinned).toBeUndefined();
+  });
+
+  it("does not treat a non-boolean pinned value as pinned", () => {
+    const dto = presentDocument(
+      docMemory({ type: "document", filename: "rules.txt", pinned: "yes" }),
+      1,
+    );
+    expect(dto.pinned).toBeUndefined();
+  });
+});

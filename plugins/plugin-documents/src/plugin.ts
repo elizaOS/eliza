@@ -288,6 +288,8 @@ const DOCUMENT_ROUTES: Array<{ type: string; path: string }> = [
   { type: "PATCH", path: "/api/documents/:id" },
   { type: "PATCH", path: "/api/documents/:id/access" },
   { type: "GET", path: "/api/documents/:id/access" },
+  { type: "POST", path: "/api/documents/:id/pin" },
+  { type: "DELETE", path: "/api/documents/:id/pin" },
   { type: "DELETE", path: "/api/documents/:id" },
   { type: "GET", path: "/api/documents/:id/fragments" },
 ];

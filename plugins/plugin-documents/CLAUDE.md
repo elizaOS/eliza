@@ -27,6 +27,8 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 | PATCH  | `/api/documents/:id` | Update document text content (re-fragments) |
 | PATCH  | `/api/documents/:id/access` | Replace bounded direct entity read grants (OWNER or room ADMIN) |
 | GET    | `/api/documents/:id/access` | Read direct grants through the same management authority |
+| POST   | `/api/documents/:id/pin` | Pin a document for always-inject provider context (metadata-only; canonical mutation policy) |
+| DELETE | `/api/documents/:id/pin` | Remove the always-inject pin (metadata-only; canonical mutation policy) |
 | DELETE | `/api/documents/:id` | Delete document and all its fragments |
 
 **Actions:** none registered here. `OWNER_DOCUMENTS` is registered by

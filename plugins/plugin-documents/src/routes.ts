@@ -101,6 +101,20 @@ function documentGrantErrorStatus(cause: ElizaError): number {
   return 500;
 }
 
+function documentPinErrorStatus(cause: ElizaError): number {
+  if (cause.code === "DOCUMENT_NOT_FOUND") return 404;
+  if (cause.code === "DOCUMENT_MUTATION_FORBIDDEN") return 403;
+  if (cause.code === "DOCUMENT_MUTATION_CONFLICT") return 409;
+  return 500;
+}
+
+/** Committed document revision after a pin mutation (reporting only). */
+function documentPinnedRevision(document: Memory): number | undefined {
+  const metadata = asRecord(document.metadata);
+  const revision = metadata?.documentRevision;
+  return typeof revision === "number" ? revision : undefined;
+}
+
 type DocumentFilter = SharedDocumentFilter & {
   /**
    * Hub display facet (#13594): the coarse client-facing bucket the Knowledge
@@ -998,6 +1012,48 @@ export async function handleDocumentsRoutes(
 
   const docIdMatch = /^\/api\/documents\/([^/]+)$/.exec(pathname);
   const docAccessMatch = /^\/api\/documents\/([^/]+)\/access$/.exec(pathname);
+  const docPinMatch = /^\/api\/documents\/([^/]+)\/pin$/.exec(pathname);
+  if (
+    (method === "POST" || method === "DELETE") &&
+    docPinMatch &&
+    accessContext
+  ) {
+    const decodedDocumentId = decodeMatchedPathComponent(
+      ctx,
+      docPinMatch[1],
+      "document id",
+    );
+    if (!decodedDocumentId) return true;
+    if (!isUuidValue(decodedDocumentId)) {
+      error(res, "document id must be a valid UUID");
+      return true;
+    }
+    if (!documentsService.setDocumentPinnedWithAccessContext) {
+      error(res, "Canonical document pin authority is unavailable", 503);
+      return true;
+    }
+    try {
+      const document =
+        await documentsService.setDocumentPinnedWithAccessContext(
+          decodedDocumentId.trim() as UUID,
+          method === "POST",
+          accessContext,
+        );
+      json(res, {
+        ok: true,
+        documentId: decodedDocumentId.trim(),
+        pinned: method === "POST",
+        revision: documentPinnedRevision(document),
+      });
+    } catch (cause) {
+      // error-policy:J1 The HTTP boundary translates typed pin failures
+      // without exposing storage details.
+      if (!(cause instanceof ElizaError)) throw cause;
+      error(res, cause.message, documentPinErrorStatus(cause));
+    }
+    return true;
+  }
+
   if (method === "GET" && docAccessMatch) {
     const decodedDocumentId = decodeMatchedPathComponent(
       ctx,

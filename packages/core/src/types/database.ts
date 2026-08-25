@@ -189,6 +189,13 @@ export interface DocumentRevisionReplaceParams
 	fragments: Memory[];
 }
 
+/** Atomic metadata-only pin toggle under canonical mutation policy. */
+export interface DocumentPinUpdateParams extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	pinned: boolean;
+}
+
 /** Compare-and-swap document deletion under canonical mutation policy. */
 export interface DocumentDeleteParams extends DocumentRequesterContext {
 	documentId: UUID;
@@ -1235,6 +1242,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	): Promise<Memory[]>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	/**
+	 * Optional capability: adapters that predate pin support may omit this
+	 * method (the DatabaseAdapter base fail-closes it); callers must treat
+	 * not_found on a known-visible document as an unsupported pin surface.
+	 */
+	updateDocumentPinned?(
+		params: DocumentPinUpdateParams,
 	): Promise<DocumentMutationResult>;
 	updateDocumentDirectGrants(
 		params: DocumentDirectGrantUpdateParams,

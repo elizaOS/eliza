@@ -32,6 +32,7 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentPinUpdateParams,
 	DocumentRevisionReplaceParams,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -166,6 +167,20 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
 	): Promise<DocumentMutationResult>;
+
+	/**
+	 * Atomic metadata-only pin toggle under canonical mutation policy.
+	 * Concrete adapters implement this with CAS fencing; the base class
+	 * fail-closes (not_found) so legacy third-party adapters that predate
+	 * pin support remain source-compatible while the service layer surfaces
+	 * an explicit unsupported capability (#23103).
+	 */
+	updateDocumentPinned(
+		params: DocumentPinUpdateParams,
+	): Promise<DocumentMutationResult> {
+		void params;
+		return Promise.resolve({ status: "not_found" });
+	}
 
 	abstract updateDocumentDirectGrants(
 		params: DocumentDirectGrantUpdateParams,

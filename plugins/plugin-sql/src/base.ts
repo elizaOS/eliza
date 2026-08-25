@@ -41,6 +41,7 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentPinUpdateParams,
   type DocumentRangeReadParams,
   type DocumentRangeReadResult,
   type DocumentRevisionReplaceParams,
@@ -2287,7 +2288,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   private documentReadConditions(
-    params: DocumentGetQueryParams | DocumentCompareAndSwapParams | DocumentDeleteParams
+    params:
+      | DocumentGetQueryParams
+      | DocumentCompareAndSwapParams
+      | DocumentDeleteParams
+      | DocumentPinUpdateParams
   ): SQL[] {
     const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
     return [
@@ -2582,6 +2587,48 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           unique: replacement.unique ?? row.unique,
           metadata: replacement.metadata ?? {},
         })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return updated[0]
+        ? { status: "updated", document: memoryFromRow(updated[0]) }
+        : { status: "conflict" };
+    });
+  }
+
+  async updateDocumentPinned(params: DocumentPinUpdateParams): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      // Read through the visibility-aware conditions so an unauthorized
+      // requester cannot distinguish an existing document from an unknown id
+      // (#23103); invisible targets resolve as not_found before any snapshot
+      // or mutation-policy result is produced.
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentReadConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterMutateDocument(existing, params)) {
+        return { status: "forbidden" };
+      }
+      const metadata = { ...((row.metadata ?? {}) as Record<string, unknown>) };
+      if (params.pinned) {
+        metadata.pinned = true;
+      } else {
+        delete metadata.pinned;
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ metadata })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
       return updated[0]

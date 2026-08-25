@@ -85,6 +85,8 @@ export interface DocumentsFetchers {
     query: string,
     signal?: AbortSignal,
   ) => Promise<DocumentsSearchWire>;
+  /** Toggle one document's always-inject pin (#23103). */
+  setPinned: (documentId: string, pinned: boolean) => Promise<void>;
 }
 
 /** Documents JSON GETs are short UI reads — same 15s family as TodosView / GoalsView. */
@@ -134,6 +136,20 @@ const defaultFetchers: DocumentsFetchers = {
       `/api/documents/search?q=${encodeURIComponent(query)}`,
       signal,
     ),
+  setPinned: async (documentId, pinned) => {
+    const response = await fetch(
+      `${client.getBaseUrl()}/api/documents/${documentId}/pin`,
+      {
+        method: pinned ? "POST" : "DELETE",
+        signal: AbortSignal.timeout(DOCUMENTS_VIEW_JSON_TIMEOUT_MS),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Pin request failed (${response.status}): /api/documents/${documentId}/pin`,
+      );
+    }
+  },
 };
 
 export interface DocumentsViewProps {
@@ -190,6 +206,7 @@ function toCard(document: PresentedDocument): DocumentCard {
     id: document.id,
     title: document.filename,
     meta: documentMeta(document),
+    ...(document.pinned ? { pinned: true } : {}),
   };
 }
 
@@ -242,9 +259,23 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchState>({ kind: "idle" });
+  const [pinError, setPinError] = useState<
+    { documentId: string; message: string } | undefined
+  >(undefined);
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
+  // Mirror of `state` for event handlers that must read the current snapshot
+  // synchronously (React state updaters run lazily).
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  // Per-document pin-mutation tokens: an inflight toggle's late rejection may
+  // only roll back if no newer toggle for that document has started since.
+  const pinMutationTokens = useRef(new Map<string, number>());
+  // Documents with a pin mutation currently inflight; toggles are serialized
+  // per document so a rollback baseline is never another toggle's optimistic
+  // state.
+  const pinInflight = useRef(new Set<string>());
   const activeLoadRef = useRef<AbortController | null>(null);
   const activeSearchRef = useRef<AbortController | null>(null);
 
@@ -392,12 +423,14 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
       fragmentCount,
       query,
       search: searchSnapshot,
+      pinError,
     };
-  }, [state, query, searchSnapshot]);
+  }, [state, query, searchSnapshot, pinError]);
 
   const onAction = useCallback(
     (action: string) => {
       if (action === "retry") {
+        setPinError(undefined);
         load();
         return;
       }
@@ -412,6 +445,102 @@ export function DocumentsView(props: DocumentsViewProps = {}): ReactNode {
       }
       if (action.startsWith("open:")) {
         requestOpenDocument(action.slice("open:".length));
+        return;
+      }
+      if (action.startsWith("pin:")) {
+        const documentId = action.slice("pin:".length);
+        // Per-document mutations are SERIALIZED: while a toggle is inflight,
+        // further toggles for the same document are ignored. This guarantees
+        // the rollback baseline is always the last toggle's captured value —
+        // never another toggle's optimistic state (RP review round-2
+        // must-fix). Pin is metadata-only, so a skipped click costs the user
+        // nothing: retrying after the inflight toggle settles.
+        if (pinInflight.current.has(documentId)) return;
+        // Optimistic flip, then the authoritative reload; a failed toggle
+        // rolls ONLY the pin field back (guarded by a per-document token so a
+        // late rejection cannot overwrite a newer reload's authoritative
+        // state, and conditioned on the row still carrying this toggle's
+        // optimistic value) and surfaces a visible error state. The target is
+        // read from the state ref — reading it inside the setState updater
+        // would observe the updater's lazy execution order and always send
+        // `true`.
+        const current = stateRef.current;
+        const target =
+          current.kind === "ready"
+            ? current.data.documents.find(
+                (document) => document.id === documentId,
+              )
+            : undefined;
+        const priorPinned = target?.pinned === true;
+        const nextPinned = !priorPinned;
+        pinInflight.current.add(documentId);
+        const token = (pinMutationTokens.current.get(documentId) ?? 0) + 1;
+        pinMutationTokens.current.set(documentId, token);
+        setPinError(undefined);
+        setState((cur) => {
+          if (cur.kind !== "ready") return cur;
+          return {
+            ...cur,
+            data: {
+              ...cur.data,
+              documents: cur.data.documents.map((document) => {
+                if (document.id !== documentId) return document;
+                if (!nextPinned) {
+                  const { pinned: _pinned, ...rest } = document;
+                  return rest as typeof document;
+                }
+                return { ...document, pinned: true } as typeof document;
+              }),
+            },
+          };
+        });
+        void fetchersRef.current
+          .setPinned(documentId, nextPinned)
+          .catch((error: unknown) => {
+            // error-policy:J4 a failed toggle becomes a visibly distinct
+            // error state; the optimistic pin bit rolls back to the captured
+            // pre-toggle value (pin field only, and only while the row still
+            // carries this toggle's optimistic value so an authoritative
+            // reload that already replaced it is never reversed). A silent
+            // reload failure must never leave a fabricated pin state.
+            if (pinMutationTokens.current.get(documentId) !== token) return;
+            setPinError({
+              documentId,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "Could not change the pin",
+            });
+            setState((cur) => {
+              if (cur.kind !== "ready") return cur;
+              return {
+                ...cur,
+                data: {
+                  ...cur.data,
+                  documents: cur.data.documents.map((document) => {
+                    if (document.id !== documentId) return document;
+                    // Restore the captured pre-toggle value only when the
+                    // row still shows this toggle's optimistic outcome
+                    // (pinned === true when pinning, pinned absent when
+                    // unpinning).
+                    if ((document.pinned === true) !== nextPinned) {
+                      return document;
+                    }
+                    return priorPinned
+                      ? ({ ...document, pinned: true } as typeof document)
+                      : (() => {
+                          const { pinned: _drop, ...rest } = document;
+                          return rest as typeof document;
+                        })();
+                  }),
+                },
+              };
+            });
+          })
+          .finally(() => {
+            pinInflight.current.delete(documentId);
+            load({ silent: true });
+          });
         return;
       }
     },

@@ -35,6 +35,7 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentPinUpdateParams,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
   ElizaError,
@@ -897,6 +898,39 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       };
       await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
       return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async updateDocumentPinned(params: DocumentPinUpdateParams): Promise<DocumentMutationResult> {
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      // Fail closed before any snapshot or mutation-policy result can
+      // distinguish an existing document from an unknown id (#23103).
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const metadata = { ...((stored.metadata ?? {}) as Record<string, unknown>) };
+      if (params.pinned) {
+        metadata.pinned = true;
+      } else {
+        delete metadata.pinned;
+      }
+      const updated: StoredMemory = {
+        ...stored,
+        metadata: metadata as MemoryMetadata,
+      };
+      await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, updated);
+      return { status: "updated", document: toMemory(updated) };
     });
   }
 

@@ -42,6 +42,8 @@ export interface PresentedDocument {
   editabilityReason?: string;
   canDelete: boolean;
   deleteabilityReason?: string;
+  /** True when the document is pinned for always-inject provider context. */
+  pinned?: boolean;
   content?: { text?: string };
   /** When this document is the searchable mirror of a voice Transcript, the
    *  original transcript record id (so the Knowledge view can link back to it)
@@ -426,6 +428,7 @@ export function presentDocument(
     editabilityReason: editability.reason,
     canDelete: deleteability.canDelete,
     deleteabilityReason: deleteability.reason,
+    ...(metadata?.pinned === true ? { pinned: true } : {}),
     ...(previewText ? { content: { text: previewText } } : {}),
     ...(asString(metadata?.transcriptId)
       ? { transcriptId: asString(metadata?.transcriptId) }

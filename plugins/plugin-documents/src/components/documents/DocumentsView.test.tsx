@@ -100,6 +100,7 @@ function makeFetchers(
     fetchDocuments: async () => documentsList(),
     fetchStats: async () => documentsStats(),
     fetchSearch: async (query: string) => searchResponse(query),
+    setPinned: async () => {},
     ...overrides,
   };
 }
@@ -256,5 +257,285 @@ describe("DocumentsView — open affordance", () => {
     await screen.findByText("Quarterly Plan.md");
     fireEvent.click(agent("open:doc-1"));
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DocumentsView — pin affordance", () => {
+  it("optimistically flips the pin control, calls setPinned, and reloads", async () => {
+    let listCalls = 0;
+    const fetchDocuments = async () => {
+      listCalls += 1;
+      return documentsList([presentedDocument({ id: "doc-1", pinned: true })]);
+    };
+    const setPinned = vi.fn(async () => {});
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    // Pinned row renders the filled star.
+    expect(agent("pin:doc-1").textContent).toContain("★");
+
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      // The next authoritative reload re-renders the still-pinned state
+      // (fetchDocuments keeps returning pinned: true — the flip targeted
+      // unpin, and the reload restores storage truth).
+      expect(listCalls).toBeGreaterThan(1);
+    });
+    expect(setPinned).toHaveBeenCalledWith("doc-1", false);
+  });
+
+  it("sends pin=true for an unpinned row", async () => {
+    const setPinned = vi.fn(async () => {});
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    expect(agent("pin:doc-1").textContent).toContain("☆");
+
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      expect(setPinned).toHaveBeenCalledWith("doc-1", true);
+    });
+  });
+
+  it("rolls the optimistic flip back when both the mutation and the reload fail", async () => {
+    // RP review round-1 P1: a rejected setPinned followed by a failing silent
+    // reload must not leave the fabricated optimistic state on screen.
+    const fetchDocuments = vi.fn(async () => {
+      return documentsList([presentedDocument({ id: "doc-1", pinned: true })]);
+    });
+    const setPinned = vi.fn(async () => {
+      throw new Error("pin denied");
+    });
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    expect(agent("pin:doc-1").textContent).toContain("★");
+
+    // Make every subsequent reload fail too (silent loads preserve state).
+    fetchDocuments.mockRejectedValue(new Error("network down"));
+
+    fireEvent.click(agent("pin:doc-1"));
+    // The rollback restores the captured pre-toggle row (pinned), even though
+    // no authoritative reload can ever arrive.
+    await waitFor(() => {
+      expect(agent("pin:doc-1").textContent).toContain("★");
+    });
+    expect(setPinned).toHaveBeenCalledWith("doc-1", false);
+  });
+
+  it("surfaces a visibly distinct error state when a pin toggle fails", async () => {
+    const setPinned = vi.fn(async () => {
+      throw new Error("403 from storage");
+    });
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    fireEvent.click(agent("pin:doc-1"));
+    await screen.findByText("Pin change failed");
+    expect(screen.getByText(/403 from storage/)).toBeTruthy();
+  });
+
+  it("clears the pin error on retry", async () => {
+    let fail = true;
+    const setPinned = vi.fn(async () => {
+      if (fail) throw new Error("nope");
+    });
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    fireEvent.click(agent("pin:doc-1"));
+    await screen.findByText("Pin change failed");
+    fail = false;
+    fireEvent.click(agent("retry"));
+    await waitFor(() => {
+      expect(screen.queryByText("Pin change failed")).toBeNull();
+    });
+  });
+
+  it("ignores a second click while a toggle is inflight and keeps state consistent", async () => {
+    // Toggles are serialized per document (RP review round-2): a second
+    // click during an inflight toggle is ignored, so no rollback baseline can
+    // ever be another toggle's optimistic state.
+    const deferred: Array<(reason?: Error) => void> = [];
+    const setPinned = vi.fn(
+      async () => new Promise<never>((_, reject) => deferred.push(reject)),
+    );
+    const fetchDocuments = vi.fn(async () =>
+      documentsList([presentedDocument({ id: "doc-1", pinned: true })]),
+    );
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+
+    // Toggle 1 (unpin) stays pending; toggle 2 must be ignored.
+    fireEvent.click(agent("pin:doc-1")); // unpin -> deferred
+    fireEvent.click(agent("pin:doc-1")); // ignored (inflight)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(setPinned).toHaveBeenCalledTimes(1);
+
+    // Toggle 1 rejects; rollback restores the pre-toggle pinned truth and
+    // the reload re-affirms it. The rejection surfaces the visible error
+    // state (single-delivery), and no fabricated unpinned state remains.
+    deferred[0]?.(new Error("stale"));
+    await waitFor(() => {
+      expect(agent("pin:doc-1").textContent).toContain("★");
+      expect(screen.getByText("Pin change failed")).toBeTruthy();
+    });
+  });
+
+  it("reloads from storage after a failed toggle instead of keeping the optimistic flip", async () => {
+    let listCalls = 0;
+    const fetchDocuments = async () => {
+      listCalls += 1;
+      return documentsList([presentedDocument({ id: "doc-1" })]);
+    };
+    const setPinned = vi.fn(async () => {
+      throw new Error("pin denied");
+    });
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      expect(listCalls).toBeGreaterThan(1);
+    });
+    // The authoritative reload keeps the unpinned state — no fabricated pin.
+    expect(agent("pin:doc-1").textContent).toContain("☆");
+  });
+
+  it("does not reverse an older toggle's authoritative reload on a newer rejection", async () => {
+    // RP review round-1 must-fix repro: (1) start pinned, (2) unpin succeeds
+    // and its silent reload lands authoritative pinned:false, (3) a second
+    // toggle (pin) is issued and later rejects, with its own reload also
+    // failing — the late rejection must NOT re-add the pin bit the
+    // authoritative reload removed.
+    let call = 0;
+    let resolveDeferredReload: (() => void) | undefined;
+    const fetchDocuments = vi.fn(async () => {
+      call += 1;
+      if (call === 1) {
+        return documentsList([
+          presentedDocument({ id: "doc-1", pinned: true }),
+        ]);
+      }
+      if (call > 2) {
+        // Any reload after the deferred one fails outright — no further
+        // authoritative state can arrive once the race is set up.
+        throw new Error("network down");
+      }
+      // Toggle 1's silent reload: authoritative unpinned truth, but deferred
+      // so it lands only when the test chooses — WHILE toggle 2 is pending.
+      return new Promise((resolve) => {
+        resolveDeferredReload = () =>
+          resolve(documentsList([presentedDocument({ id: "doc-1" })]));
+      }) as never;
+    });
+    const setPinned = vi.fn(async (_id: string, pinned: boolean) => {
+      if (pinned) {
+        // Toggle 2 (pin) stays pending until the test rejects it.
+        await new Promise<never>((_, reject) => {
+          rejectPinToggle2 = reject as () => void;
+        });
+      }
+    });
+    let rejectPinToggle2: (() => void) | undefined;
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+    // Toggle 1: unpin succeeds; its silent reload is deferred (pending).
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      expect(setPinned).toHaveBeenCalledWith("doc-1", false);
+    });
+    // Toggle 2: pin flips optimistically (★) and stays pending.
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      expect(setPinned).toHaveBeenLastCalledWith("doc-1", true);
+    });
+    expect(agent("pin:doc-1").textContent).toContain("★");
+    // Now toggle 1's deferred reload lands the authoritative unpinned truth
+    // while toggle 2 is still pending — replacing the optimistic flip.
+    resolveDeferredReload?.();
+    await waitFor(() => {
+      expect(agent("pin:doc-1").textContent).toContain("☆");
+    });
+    // Toggle 2's late rejection must not reverse that authoritative state.
+    rejectPinToggle2?.(new Error("late failure"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // The row must still reflect the authoritative unpinned truth — the late
+    // rejection may not re-add the pin bit.
+    expect(agent("pin:doc-1").textContent).toContain("☆");
+  });
+
+  it("serializes per-document toggles so overlapping double rejection cannot fabricate state", async () => {
+    // RP review round-2 must-fix repro: with concurrent toggles, the second
+    // toggle captured the first's OPTIMISTIC value as its rollback baseline;
+    // when both rejected and every reload failed, the fabricated optimistic
+    // state stayed on screen. Toggles for one document are now serialized —
+    // a click while a toggle is inflight is ignored.
+    // First (initial) load must succeed for render; only later loads fail.
+    let initial = true;
+    const fetchDocuments = vi.fn(async () => {
+      if (initial) {
+        initial = false;
+        return documentsList([presentedDocument({ id: "doc-1" })]);
+      }
+      throw new Error("network down");
+    });
+    let rejectToggle: ((reason: Error) => void) | undefined;
+    const setPinned = vi.fn(
+      async () =>
+        new Promise<void>((_, reject) => {
+          rejectToggle = reject;
+        }),
+    );
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchDocuments, setPinned }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+
+    // Toggle 1: pin — stays pending (deferred rejection).
+    fireEvent.click(agent("pin:doc-1"));
+    await waitFor(() => {
+      expect(setPinned).toHaveBeenCalledWith("doc-1", true);
+    });
+    expect(agent("pin:doc-1").textContent).toContain("★");
+    // Toggle 2 while inflight: MUST be ignored (serialized).
+    fireEvent.click(agent("pin:doc-1"));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(setPinned).toHaveBeenCalledTimes(1);
+
+    // Toggle 1 rejects; reload fails. Rollback restores the captured
+    // pre-toggle truth: unpinned.
+    rejectToggle?.(new Error("denied"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(agent("pin:doc-1").textContent).toContain("☆");
   });
 });

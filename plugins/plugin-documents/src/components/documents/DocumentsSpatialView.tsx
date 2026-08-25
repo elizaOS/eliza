@@ -36,6 +36,8 @@ export interface DocumentCard {
   title: string;
   /** Pre-formatted meta line (e.g. "markdown · 4 KB · Jun 16"), or empty. */
   meta: string;
+  /** True when the row's pin control should show the pinned state. */
+  pinned?: boolean;
 }
 
 /** A single search result row, already projected by the wrapper. */
@@ -67,6 +69,8 @@ export interface DocumentsSnapshot {
   query: string;
   /** Search sub-state (only surfaced when state === "ready"). */
   search: DocumentsSearchState;
+  /** Pin-toggle failure message (visible distinct error state; cleared by retry or a new toggle). */
+  pinError?: { documentId: string; message: string };
   /** Error message when state === "error". */
   error?: string;
 }
@@ -84,10 +88,11 @@ export interface DocumentsSpatialViewProps {
   snapshot: DocumentsSnapshot;
   /**
    * Dispatch by action id:
-   *   `retry`         — reload after an error,
+   *   `retry`         — reload after an error (also clears a pin failure),
    *   `search:<text>` — set the search text and run a document search,
    *   `clear-search`  — drop the active search and show the full list,
-   *   `open:<id>`     — open/inspect the document `<id>`.
+   *   `open:<id>`     — open/inspect the document `<id>`,
+   *   `pin:<id>`      — toggle the always-inject pin on document `<id>`.
    */
   onAction?: (action: string) => void;
 }
@@ -164,6 +169,20 @@ function DocumentsReadyBody({
 
       <DocumentsSearchBody search={snapshot.search} onAction={onAction} />
 
+      {snapshot.pinError ? (
+        <>
+          <Text bold>Pin change failed</Text>
+          <Text tone="danger" style="caption">
+            {snapshot.pinError.message} — showing the stored pin state.
+          </Text>
+          <HStack gap={1}>
+            <Button agent="retry" onPress={() => onAction?.("retry")}>
+              Retry
+            </Button>
+          </HStack>
+        </>
+      ) : null}
+
       <Text style="caption" tone="muted">
         Documents ({snapshot.documents.length})
       </Text>
@@ -208,6 +227,14 @@ function DocumentRow({
         </Text>
       ) : null}
       <HStack gap={1} justify="end">
+        <Button
+          variant="outline"
+          tone={doc.pinned ? "primary" : "default"}
+          agent={`pin:${doc.id}`}
+          onPress={() => onAction?.(`pin:${doc.id}`)}
+        >
+          {doc.pinned ? "★" : "☆"}
+        </Button>
         <Button
           variant="outline"
           tone="default"

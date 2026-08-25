@@ -69,6 +69,8 @@ type DocumentSubAction =
 	| "write"
 	| "edit"
 	| "delete"
+	| "pin"
+	| "unpin"
 	| "import_file"
 	| "import_url";
 
@@ -170,6 +172,19 @@ const DOCUMENT_SUBACTIONS: SubactionsMap<DocumentSubAction> = {
 	delete: {
 		description: "Delete a stored document by id.",
 		descriptionCompressed: "delete document by id",
+		required: [],
+		optional: ["id", "documentId"],
+	},
+	pin: {
+		description:
+			"Pin a stored document so it is always injected into your context.",
+		descriptionCompressed: "pin document by id",
+		required: [],
+		optional: ["id", "documentId"],
+	},
+	unpin: {
+		description: "Remove the always-inject pin from a stored document.",
+		descriptionCompressed: "unpin document by id",
 		required: [],
 		optional: ["id", "documentId"],
 	},
@@ -1150,6 +1165,59 @@ async function handleDelete(
 	});
 }
 
+/** Handles the pin/unpin subactions: metadata-only context-priority toggles. */
+async function handleSetPinned(
+	service: DocumentService,
+	message: Memory,
+	params: DocumentActionParameters,
+	pinned: boolean,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const subaction = pinned ? "pin" : "unpin";
+	const documentId = getDocumentId(params, message);
+	if (!documentId) {
+		const text = `No valid document id found in the request; ask the user which document to ${subaction}.`;
+		return result(false, text, subaction, {
+			values: { error: "invalid_id" },
+		});
+	}
+
+	// error-policy:J1 boundary translation — the action is the boundary between
+	// the service's typed pin errors and the model-visible ActionResult, mirroring
+	// handleDelete. Refusals become structured results; transport faults still
+	// propagate (they are not refusals).
+	try {
+		await service.setDocumentPinned(documentId, pinned, message);
+	} catch (error) {
+		const code = error instanceof ElizaError ? error.code : undefined;
+		if (code === "DOCUMENT_MUTATION_FORBIDDEN") {
+			const text =
+				"Only the owner can pin or unpin global and owner-private documents; tell the user this one is off limits.";
+			return result(false, text, subaction, {
+				values: { error: "forbidden", documentId },
+			});
+		}
+		if (code === "DOCUMENT_NOT_FOUND") {
+			const text = `Document ${documentId} was not found; tell the user there's nothing to ${subaction}.`;
+			return result(false, text, subaction, {
+				values: { error: "not_found", documentId },
+			});
+		}
+		throw error;
+	}
+	// Humanized single delivery: the pin state change is the complete answer.
+	const text = pinned
+		? "Pinned the document; it will now always be in context."
+		: "Unpinned the document.";
+	await emit(callback, { text, actions: ["DOCUMENT"] });
+	return result(true, text, subaction, {
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
+		values: { documentId, pinned },
+	});
+}
+
 function parseTimestampParam(value: unknown): number | undefined {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
 	if (typeof value === "string" && value.trim()) {
@@ -1492,15 +1560,15 @@ export const documentAction: Action = {
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	roleGate: { minRole: "USER" },
 	description:
-		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
+		"List, search, read, write, edit, delete, pin, unpin, and import stored documents. Select one action and provide the fields needed for that operation.",
 	descriptionCompressed:
-		"documents action=list|search|read|write|edit|delete|import_file|import_url",
+		"documents action=list|search|read|write|edit|delete|pin|unpin|import_file|import_url",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
 			name: "action",
 			description:
-				"Document operation to perform: list, search, read, write, edit, delete, import_file, or import_url.",
+				"Document operation to perform: list, search, read, write, edit, delete, pin, unpin, import_file, or import_url.",
 			required: true,
 			schema: {
 				type: "string",
@@ -1752,6 +1820,22 @@ export const documentAction: Action = {
 					return await handleEdit(service, message, params, callback);
 				case "delete":
 					return await handleDelete(service, message, params, callback);
+				case "pin":
+					return await handleSetPinned(
+						service,
+						message,
+						params,
+						true,
+						callback,
+					);
+				case "unpin":
+					return await handleSetPinned(
+						service,
+						message,
+						params,
+						false,
+						callback,
+					);
 				case "list":
 					return await handleList(service, message, params, callback);
 				case "import_file":
