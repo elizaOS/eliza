@@ -73,6 +73,11 @@ describe("AndroidCloudApp", () => {
       />,
     );
 
+    const signInButton = await screen.findByRole("button", {
+      name: "Sign in to Eliza Cloud",
+    });
+    expect(openExternal).not.toHaveBeenCalled();
+    fireEvent.click(signInButton);
     await waitFor(() => expect(openExternal).toHaveBeenCalledOnce());
     expect(openExternal).toHaveBeenCalledWith(
       "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
@@ -80,14 +85,15 @@ describe("AndroidCloudApp", () => {
     expect(
       screen.queryByText(/Google|Discord|Telegram|magic link/i),
     ).toBeNull();
+    expect(screen.getByText("Hi, I'm Eliza.")).toBeTruthy();
     expect(
-      screen.getByText("Finish signing in with Steward to continue."),
+      screen.getByText("Finish signing in with Steward, then return to Eliza."),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
     expect(
-      screen.getByRole("button", { name: "Open Eliza Cloud sign-in" }),
+      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
     ).toBeTruthy();
   });
 
@@ -110,9 +116,12 @@ describe("AndroidCloudApp", () => {
       />,
     );
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Sign in to Eliza Cloud" }),
+    );
     await waitFor(() => expect(pollLogin).toHaveBeenCalledOnce());
     expect(
-      screen.getByRole("button", { name: "Open Eliza Cloud sign-in" }),
+      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
     ).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });

@@ -1,8 +1,14 @@
 /** Minimal Google Play consumer shell: Cloud auth, text/voice chat and history. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ShaderBackground } from "../backgrounds/ShaderBackground";
+import { ChatBubble } from "../components/composites/chat/chat-bubble";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
+import {
+  FIRST_RUN_GREETING,
+  FIRST_RUN_SIGN_IN_PROMPT,
+} from "../first-run/first-run-greeting";
 import {
   AndroidCloudClient,
   type AndroidCloudSession,
@@ -79,7 +85,6 @@ export function AndroidCloudApp({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
-  const autoLoginStartedRef = useRef(false);
 
   const restore = useCallback(async () => {
     setError(null);
@@ -183,19 +188,6 @@ export function AndroidCloudApp({
     }
   }, [client, closeExternal, openExternal, restore]);
 
-  useEffect(() => {
-    if (
-      phase !== "signed-out" ||
-      busy ||
-      error ||
-      autoLoginStartedRef.current
-    ) {
-      return;
-    }
-    autoLoginStartedRef.current = true;
-    void signIn();
-  }, [busy, error, phase, signIn]);
-
   const cancelSignIn = useCallback(async () => {
     loginAttemptRef.current += 1;
     setBusy(false);
@@ -217,7 +209,6 @@ export function AndroidCloudApp({
       setSession(null);
       setConversationId(null);
       setMessages([]);
-      autoLoginStartedRef.current = true;
       setPhase("signed-out");
     } catch (signOutError) {
       // error-policy:J4 failed logout remains visible without fabricating a
@@ -342,49 +333,69 @@ export function AndroidCloudApp({
 
   if (phase === "signed-out") {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-bg p-6 text-txt">
-        <section className="w-full max-w-sm space-y-5 rounded-2xl border border-border bg-card p-6 text-center">
-          <h1 className="text-2xl font-semibold">Eliza Cloud</h1>
-          <p className="text-sm text-muted">
-            {busy
-              ? "Finish signing in with Steward to continue."
-              : "Open the secure Eliza Cloud sign-in to continue."}
-          </p>
-          {error ? (
-            <p role="alert" className="text-sm text-status-danger">
-              {error}
-            </p>
-          ) : null}
-          {busy ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="touch"
-              onClick={() => void cancelSignIn()}
-              className="w-full"
+      <main className="relative flex min-h-dvh overflow-hidden bg-bg text-txt">
+        <ShaderBackground />
+        <section
+          aria-label="Eliza Cloud sign-in"
+          className="relative z-[1] flex w-full flex-col justify-end px-5 pb-[max(4.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]"
+        >
+          <div className="mx-auto flex w-full max-w-lg flex-col gap-3">
+            <ChatBubble tone="assistant" className="w-fit text-base">
+              {FIRST_RUN_GREETING}
+            </ChatBubble>
+            <ChatBubble
+              tone="assistant"
+              className="w-full max-w-[92%] space-y-4 text-base"
             >
-              Cancel sign-in
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="default"
-              size="touch"
-              onClick={() => void signIn()}
-              className="w-full"
+              <p>{FIRST_RUN_SIGN_IN_PROMPT}</p>
+              {error ? (
+                <p role="alert" className="text-sm text-status-danger">
+                  {error}
+                </p>
+              ) : null}
+              {busy ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm text-muted">
+                    Finish signing in with Steward, then return to Eliza.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="touch"
+                    onClick={() => void cancelSignIn()}
+                    className="w-full"
+                  >
+                    Cancel sign-in
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="touch"
+                  onClick={() => void signIn()}
+                  className="w-full"
+                >
+                  Sign in to Eliza Cloud
+                </Button>
+              )}
+              {error ? (
+                <Button
+                  type="button"
+                  variant="mutedLink"
+                  onClick={() => void restore()}
+                >
+                  Check for an existing session
+                </Button>
+              ) : null}
+            </ChatBubble>
+            <div
+              aria-hidden="true"
+              className="mt-2 flex min-h-14 items-center rounded-2xl border border-border/70 bg-card/85 px-5 text-sm text-muted shadow-lg"
             >
-              Open Eliza Cloud sign-in
-            </Button>
-          )}
-          {error ? (
-            <Button
-              type="button"
-              variant="mutedLink"
-              onClick={() => void restore()}
-            >
-              Retry session check
-            </Button>
-          ) : null}
+              Message Eliza
+            </div>
+          </div>
         </section>
       </main>
     );
