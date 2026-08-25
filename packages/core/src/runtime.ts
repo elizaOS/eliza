@@ -693,6 +693,18 @@ function coerceOutgoingMessageText(text: unknown): string {
 	return String(text);
 }
 
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 function stringifyStructuredForPrompt(value: unknown): string {
 	return stringifyForModel(value);
 }
@@ -9227,7 +9239,9 @@ ${section_end}`;
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 497)}...` : content;
+								content.length > 500
+									? `${truncateUtf16Safe(content, 497)}...`
+									: content;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);
