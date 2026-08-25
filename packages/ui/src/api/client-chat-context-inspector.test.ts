@@ -16,10 +16,10 @@ describe("context inspector client", () => {
     const fetchMock = vi.fn(async () => ({ entries: [] }));
     client.fetch = fetchMock as unknown as typeof client.fetch;
 
-    await client.getContextInspector(
-      "00000000-0000-4000-8000-000000000123",
-      { offset: 20, limit: 20 },
-    );
+    await client.getContextInspector("00000000-0000-4000-8000-000000000123", {
+      offset: 20,
+      limit: 20,
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/context-inspector?conversationId=00000000-0000-4000-8000-000000000123&offset=20&limit=20",
