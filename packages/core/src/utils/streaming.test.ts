@@ -127,3 +127,97 @@ describe("createStreamingContext", () => {
 		expect(callback).toHaveBeenCalledWith("new", "msg-revision", "new", 7);
 	});
 });
+
+describe("createStreamingRetryState guards", () => {
+	it("ignores non-string appendText inputs and keeps existing text", () => {
+		const extractor = new PassthroughExtractor();
+		const retryState = createStreamingRetryState(extractor);
+		retryState.appendText("hello");
+		retryState.appendText(undefined as unknown as string);
+		retryState.appendText(null as unknown as string);
+		retryState.appendText(123 as unknown as string);
+		retryState.appendText({} as unknown as string);
+		expect(retryState.getStreamedText()).toBe("hello");
+	});
+
+	it("handles nullish extractor without throwing for isComplete and getStreamedText", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+		const retryState = createStreamingRetryState(null as unknown as any);
+		expect(() => retryState.isComplete()).not.toThrow();
+		expect(retryState.isComplete()).toBe(false);
+		expect(() => retryState.getStreamedText()).not.toThrow();
+		expect(retryState.getStreamedText()).toBe("");
+		expect(() => retryState.reset()).not.toThrow();
+	});
+
+	it("handles extractor missing optional methods without throwing", () => {
+		// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+		const extractor = { done: false } as unknown as any;
+		const retryState = createStreamingRetryState(extractor);
+		expect(() => retryState.getStreamedText()).not.toThrow();
+		expect(retryState.getStreamedText()).toBe("");
+		expect(() => retryState.reset()).not.toThrow();
+		expect(retryState.isComplete()).toBe(false);
+	});
+
+	it("treats flush returning non-string as empty and preserves text", () => {
+		const extractor = {
+			done: false,
+			flush: () => 123 as unknown as string,
+			reset: () => {},
+			// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+		} as unknown as any;
+		const retryState = createStreamingRetryState(extractor);
+		retryState.appendText("a");
+		expect(retryState.getStreamedText()).toBe("a123");
+	});
+});
+
+describe("createStreamingContext guards", () => {
+	it("does not throw when onStreamChunk is not a function", async () => {
+		const extractor = new MarkableExtractor();
+		const context = createStreamingContext(
+			extractor,
+			// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+			null as unknown as any,
+			"msg",
+		);
+		await expect(context.onStreamChunk("hello")).resolves.toBeUndefined();
+		expect(context.getStreamedText()).toBe("hello");
+	});
+
+	it("does not throw when extractor is nullish and does not call callback", async () => {
+		const callback = vi.fn();
+		const context = createStreamingContext(
+			// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+			null as unknown as any,
+			callback,
+			"msg",
+		);
+		await expect(context.onStreamChunk("hello")).resolves.toBeUndefined();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("does not forward non-string extractor output and does not call callback", async () => {
+		const extractor = {
+			done: false,
+			push: () => 123 as unknown as string,
+			// biome-ignore lint/suspicious/noExplicitAny: test guard uses nullish mock
+		} as unknown as any;
+		const callback = vi.fn();
+		const context = createStreamingContext(extractor, callback, "msg");
+		await context.onStreamChunk("chunk");
+		expect(callback).not.toHaveBeenCalled();
+		expect(context.getStreamedText()).toBe("");
+	});
+
+	it("ignores chunks when extractor is already done without calling callback", async () => {
+		const extractor = new MarkableExtractor();
+		extractor.markComplete();
+		const callback = vi.fn();
+		const context = createStreamingContext(extractor, callback, "msg");
+		await context.onStreamChunk("should-be-ignored");
+		expect(callback).not.toHaveBeenCalled();
+		expect(context.getStreamedText()).toBe("");
+	});
+});

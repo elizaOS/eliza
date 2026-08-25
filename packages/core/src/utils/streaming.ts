@@ -1316,19 +1316,20 @@ export function createStreamingRetryState(
 
 	return {
 		getStreamedText: () => {
-			const buffered = extractor.flush?.() ?? "";
+			const buffered = extractor?.flush?.() ?? "";
 			if (buffered) {
 				streamedText += buffered;
 			}
 			return streamedText;
 		},
-		isComplete: () => extractor.done,
+		isComplete: () => Boolean(extractor?.done),
 		reset: () => {
-			extractor.reset?.();
+			extractor?.reset?.();
 			streamedText = "";
 		},
 		/** Append text to the streamed content buffer */
 		appendText: (text: string) => {
+			if (typeof text !== "string") return;
 			streamedText += text;
 		},
 	};
@@ -1357,10 +1358,12 @@ export function createStreamingContext(
 			accumulated?: string,
 			streamRevision?: number,
 		) => {
-			if (extractor.done) return;
-			const textToStream = extractor.push(chunk);
-			if (textToStream) {
-				retryState.appendText(textToStream);
+			if (extractor?.done) return;
+			const textToStream = extractor?.push?.(chunk) ?? "";
+			if (!textToStream) return;
+			if (typeof textToStream !== "string") return;
+			retryState.appendText(textToStream);
+			if (typeof onStreamChunk === "function") {
 				await onStreamChunk(textToStream, msgId, accumulated, streamRevision);
 			}
 		},
