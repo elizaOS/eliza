@@ -35,7 +35,7 @@ function serviceWith({
 
 describe("bridge target capability manifest", () => {
   it("advertises only read-mostly subactions as supported", () => {
-    expect(["get", "list", "state", "tab"].sort()).toEqual([
+    expect([...BRIDGE_SUPPORTED_SUBACTIONS].sort()).toEqual([
       "get",
       "list",
       "state",
