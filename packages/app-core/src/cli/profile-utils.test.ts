@@ -12,6 +12,7 @@ describe("profile-utils", () => {
       expect(isValidProfileName("stage_01")).toBe(true);
       expect(isValidProfileName("test-profile-2")).toBe(true);
       expect(isValidProfileName("a")).toBe(true);
+      expect(isValidProfileName("a".repeat(64))).toBe(true);
     });
 
     it("rejects empty or invalid profile names", () => {
@@ -20,6 +21,7 @@ describe("profile-utils", () => {
       expect(isValidProfileName("_leading-underscore")).toBe(false);
       expect(isValidProfileName("invalid/slash")).toBe(false);
       expect(isValidProfileName("with space")).toBe(false);
+      expect(isValidProfileName("a;rm")).toBe(false);
       expect(isValidProfileName("a".repeat(65))).toBe(false);
     });
   });
