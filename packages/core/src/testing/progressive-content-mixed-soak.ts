@@ -657,6 +657,10 @@ export async function runProgressiveContentMixedSoakContract(input: {
 			elapsedMs: operation,
 			sample,
 		})),
+		// The production process may already have a multi-gigabyte SQL baseline;
+		// the deliberate 32 MiB allocation must be judged against the absolute
+		// detector allowance, not hidden by the normal percentage ceiling.
+		maximumMemoryGrowthRatio: 0,
 	});
 	const positiveLeakControlDetected =
 		positiveLeakControlDrift.status === "failed";
