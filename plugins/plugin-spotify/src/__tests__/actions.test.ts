@@ -100,6 +100,24 @@ describe("SPOTIFY action", () => {
     expect(data.tracks).toHaveLength(1);
   });
 
+  it.each(["q", "searchTerm"])("search accepts %s parameter alias", async (alias) => {
+    const mock = tokenRoute(new MockSpotify()).on("GET", `${API}/v1/search`, () =>
+      jsonResponse(200, {
+        tracks: pagedEnvelope({
+          items: [rawTrack("t1", "Song One", "Band")],
+          total: 1,
+          offset: 0,
+          limit: 10,
+          base: `${API}/v1/search`,
+        }),
+      })
+    );
+    const runtime = makeRuntime(mock);
+    const { result } = await run(runtime, { action: "search", [alias]: "song" });
+    expect(result?.success).toBe(true);
+    expect(result?.userFacingText).toContain("Song One — Band");
+  });
+
   it("search without a query is invalid input, not an upstream call", async () => {
     const mock = tokenRoute(new MockSpotify());
     const runtime = makeRuntime(mock);

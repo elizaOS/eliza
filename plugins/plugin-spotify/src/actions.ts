@@ -202,7 +202,7 @@ async function execute(
 
   switch (subaction) {
     case "search": {
-      const query = text(params.query);
+      const query = text(params.query) ?? text(params.q) ?? text(params.searchTerm);
       if (!query) return invalidInput(subaction, "Spotify search needs a query.");
       const rawTypes = stringList(params.types).filter((t): t is SpotifySearchType =>
         ["track", "album", "artist", "playlist"].includes(t)
@@ -239,7 +239,7 @@ async function execute(
       });
     }
     case "library_save": {
-      const ids = stringList(params.trackIds);
+      const ids = stringList(params.trackIds ?? params.ids ?? params.tracks);
       if (ids.length === 0) return invalidInput(subaction, "Saving tracks needs trackIds.");
       await service.saveTracks(ref, ids);
       return success(subaction, `Saved ${ids.length} track(s) to the Spotify library.`, {
@@ -247,7 +247,7 @@ async function execute(
       });
     }
     case "library_remove": {
-      const ids = stringList(params.trackIds);
+      const ids = stringList(params.trackIds ?? params.ids ?? params.tracks);
       if (ids.length === 0) return invalidInput(subaction, "Removing tracks needs trackIds.");
       await service.removeSavedTracks(ref, ids);
       return success(subaction, `Removed ${ids.length} track(s) from the Spotify library.`, {
@@ -271,7 +271,7 @@ async function execute(
       });
     }
     case "playlist_create": {
-      const name = text(params.name);
+      const name = text(params.name) ?? text(params.title) ?? text(params.playlistName);
       if (!name) return invalidInput(subaction, "Creating a playlist needs a name.");
       const description = text(params.description);
       const playlist = await service.createPlaylist(ref, {
@@ -285,8 +285,8 @@ async function execute(
       });
     }
     case "playlist_add": {
-      const playlistId = text(params.playlistId);
-      const uris = stringList(params.trackUris);
+      const playlistId = text(params.playlistId) ?? text(params.id);
+      const uris = stringList(params.trackUris ?? params.uris ?? params.tracks);
       if (!playlistId) return invalidInput(subaction, "Adding tracks needs a playlistId.");
       if (uris.length === 0) return invalidInput(subaction, "Adding tracks needs trackUris.");
       await service.addTracksToPlaylist(ref, playlistId, uris);
@@ -305,9 +305,9 @@ async function execute(
       return success(subaction, summary, { state: state as unknown as Record<string, unknown> });
     }
     case "play": {
-      const deviceId = text(params.deviceId);
-      const contextUri = text(params.contextUri);
-      const uris = stringList(params.trackUris);
+      const deviceId = text(params.deviceId) ?? text(params.device_id);
+      const contextUri = text(params.contextUri) ?? text(params.uri) ?? text(params.context_uri);
+      const uris = stringList(params.trackUris ?? params.uris ?? params.tracks);
       await service.play(ref, {
         ...(deviceId !== undefined ? { deviceId } : {}),
         ...(contextUri !== undefined ? { contextUri } : {}),
@@ -322,31 +322,34 @@ async function execute(
       });
     }
     case "pause": {
-      await service.pause(ref, text(params.deviceId));
+      const deviceId = text(params.deviceId) ?? text(params.device_id);
+      await service.pause(ref, deviceId);
       return success(subaction, "Paused Spotify playback.", {
         receipt: {
           operation: "pause",
-          target: text(params.deviceId) ?? "active-device",
+          target: deviceId ?? "active-device",
           detail: "",
         },
       });
     }
     case "next": {
-      await service.nextTrack(ref, text(params.deviceId));
+      const deviceId = text(params.deviceId) ?? text(params.device_id);
+      await service.nextTrack(ref, deviceId);
       return success(subaction, "Skipped to the next track.", {
         receipt: {
           operation: "next",
-          target: text(params.deviceId) ?? "active-device",
+          target: deviceId ?? "active-device",
           detail: "",
         },
       });
     }
     case "previous": {
-      await service.previousTrack(ref, text(params.deviceId));
+      const deviceId = text(params.deviceId) ?? text(params.device_id);
+      await service.previousTrack(ref, deviceId);
       return success(subaction, "Went back to the previous track.", {
         receipt: {
           operation: "previous",
-          target: text(params.deviceId) ?? "active-device",
+          target: deviceId ?? "active-device",
           detail: "",
         },
       });
@@ -362,7 +365,7 @@ async function execute(
       });
     }
     case "transfer": {
-      const deviceId = text(params.deviceId);
+      const deviceId = text(params.deviceId) ?? text(params.device_id) ?? text(params.id);
       if (!deviceId) return invalidInput(subaction, "Device handoff needs a deviceId.");
       await service.transferPlayback(ref, deviceId, { play: params.play !== false });
       return success(subaction, `Transferred Spotify playback to device ${deviceId}.`, {
