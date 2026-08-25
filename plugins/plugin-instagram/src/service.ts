@@ -139,7 +139,15 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
 }
 
 function truncateInstagramComment(text: string): string {
-  return text.length > MAX_COMMENT_LENGTH ? `${text.slice(0, MAX_COMMENT_LENGTH - 3)}...` : text;
+  if (text.length <= MAX_COMMENT_LENGTH) return text;
+  let end = MAX_COMMENT_LENGTH - 3;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.slice(0, end)}...`;
 }
 
 function getInstagramPostMetadata(content: Content): Record<string, unknown> {
