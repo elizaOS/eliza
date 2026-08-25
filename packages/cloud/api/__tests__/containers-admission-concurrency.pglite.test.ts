@@ -11,12 +11,14 @@
 import {
   afterAll,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
   spyOn,
   test,
 } from "bun:test";
+import { eq } from "drizzle-orm";
 import type { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import type { AccountBillingSnapshot } from "../../shared/src/types/account-billing-snapshot";
@@ -174,7 +176,7 @@ class DockerTransportRecorder {
   }
 }
 
-const dockerTransport = new DockerTransportRecorder();
+let dockerTransport = new DockerTransportRecorder();
 const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: USER_ID,
   organization_id: ORGANIZATION_ID,
@@ -343,7 +345,26 @@ afterAll(async () => {
   }
 });
 
-async function postContainer(projectName: string): Promise<Response> {
+beforeEach(async () => {
+  dockerTransport = new DockerTransportRecorder();
+  projectAdmissionSpy.mockClear();
+  await dbWrite
+    .delete(schemas.containers)
+    .where(eq(schemas.containers.organization_id, ORGANIZATION_ID));
+  await dbWrite
+    .update(schemas.organizationConfig)
+    .set({ settings: { max_containers: 1 } })
+    .where(eq(schemas.organizationConfig.id, ORGANIZATION_CONFIG_ID));
+  await dbWrite
+    .update(schemas.dockerNodes)
+    .set({ status: "unknown", allocated_count: 0 })
+    .where(eq(schemas.dockerNodes.id, DOCKER_NODE_RECORD_ID));
+});
+
+async function postContainer(
+  projectName: string,
+  requestId = projectName,
+): Promise<Response> {
   return containersApp.request(
     "/api/v1/containers",
     {
@@ -351,7 +372,7 @@ async function postContainer(projectName: string): Promise<Response> {
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": "container-admission-test-key",
-        "X-Request-Id": `container-admission-${projectName}`,
+        "X-Request-Id": `container-admission-${requestId}`,
       },
       body: JSON.stringify({
         name: `Container ${projectName}`,
@@ -363,7 +384,10 @@ async function postContainer(projectName: string): Promise<Response> {
   );
 }
 
-async function expectContainerLimitSnapshot(): Promise<void> {
+async function expectContainerLimitSnapshot(
+  limit = 1,
+  remaining = 0,
+): Promise<void> {
   const snapshotResponse = await billingLimitsApp.request(
     "/api/v1/billing/limits",
     { headers: { "X-API-Key": "container-admission-test-key" } },
@@ -386,16 +410,168 @@ async function expectContainerLimitSnapshot(): Promise<void> {
     },
     limit: {
       status: "available",
-      value: { value: "1", unit: "count" },
+      value: { value: String(limit), unit: "count" },
     },
     remaining: {
       status: "available",
-      value: { value: "0", unit: "count" },
+      value: { value: String(remaining), unit: "count" },
     },
   });
 }
 
 describe("container admission and provisioning through generated API routes", () => {
+  test(
+    "coalesces same-project requests into one Docker provisioning sequence",
+    async () => {
+      await dbWrite
+        .update(schemas.organizationConfig)
+        .set({ settings: { max_containers: 2 } })
+        .where(eq(schemas.organizationConfig.id, ORGANIZATION_CONFIG_ID));
+
+      const projectName = "project-shared";
+      const left = postContainer(projectName, "project-shared-left");
+      const right = postContainer(projectName, "project-shared-right");
+      const responseDrain = Promise.allSettled([left, right]);
+      let blockedPhaseFailure: { error: unknown } | undefined;
+
+      try {
+        await withTimeout(
+          dockerTransport.connectEntered.promise,
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "No same-project request reached the Docker connect barrier",
+        );
+
+        const reused = await withTimeout(
+          Promise.race([left, right]),
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "The reused same-project response did not settle while provisioning was blocked",
+        );
+        expect(reused.status).toBe(201);
+        const reusedBody = (await reused.clone().json()) as {
+          success: true;
+          data: { id: string; project_name: string };
+        };
+
+        const pendingRows = await dbWrite
+          .select({
+            id: schemas.containers.id,
+            projectName: schemas.containers.project_name,
+            status: schemas.containers.status,
+          })
+          .from(schemas.containers);
+        expect(pendingRows).toHaveLength(1);
+        const pendingRow = pendingRows[0];
+        if (!pendingRow) throw new Error("The shared pending row was missing");
+        expect(pendingRow).toEqual({
+          id: reusedBody.data.id,
+          projectName,
+          status: "pending",
+        });
+        expect(projectAdmissionSpy).toHaveBeenCalledTimes(2);
+        expect(
+          projectAdmissionSpy.mock.calls.map(
+            ([candidate]) => candidate.project_name,
+          ),
+        ).toEqual([projectName, projectName]);
+        expect(dockerTransport.connectCalls).toBe(1);
+        expect(dockerTransport.execCommands).toHaveLength(0);
+        expect(dockerTransport.execStdinCalls).toHaveLength(0);
+        await expectContainerLimitSnapshot(2, 1);
+
+        dockerTransport.releaseConnect();
+        await withTimeout(
+          dockerTransport.createEntered.promise,
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "The shared request did not reach the Docker create barrier",
+        );
+
+        const buildingRows = await dbWrite
+          .select({
+            id: schemas.containers.id,
+            projectName: schemas.containers.project_name,
+            status: schemas.containers.status,
+          })
+          .from(schemas.containers);
+        expect(buildingRows).toEqual([
+          { id: pendingRow.id, projectName, status: "building" },
+        ]);
+        expect(dockerTransport.execStdinCalls).toHaveLength(1);
+        expect(
+          dockerTransport.execCommands.filter((command) =>
+            DOCKER_START_COMMAND_PATTERN.test(command),
+          ),
+        ).toHaveLength(0);
+      } catch (error) {
+        blockedPhaseFailure = { error };
+      } finally {
+        dockerTransport.releaseConnect();
+        dockerTransport.releaseCreate();
+      }
+
+      let responseSettlements: PromiseSettledResult<Response>[];
+      try {
+        responseSettlements = await withTimeout(
+          responseDrain,
+          BLOCKED_RESPONSE_TIMEOUT_MS,
+          "The same-project requests did not settle after releasing Docker create",
+        );
+      } catch (drainError) {
+        if (blockedPhaseFailure) throw blockedPhaseFailure.error;
+        throw drainError;
+      }
+      if (blockedPhaseFailure) throw blockedPhaseFailure.error;
+
+      const responses = responseSettlements.map((result) => {
+        if (result.status === "rejected") throw result.reason;
+        return result.value;
+      });
+      expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+      const responseBodies = await Promise.all(
+        responses.map(
+          async (response) =>
+            (await response.json()) as {
+              success: true;
+              data: { id: string; project_name: string };
+            },
+        ),
+      );
+
+      const finalRows = await dbWrite
+        .select({
+          id: schemas.containers.id,
+          projectName: schemas.containers.project_name,
+          status: schemas.containers.status,
+          nodeId: schemas.containers.node_id,
+        })
+        .from(schemas.containers);
+      expect(finalRows).toEqual([
+        {
+          id: responseBodies[0]?.data.id,
+          projectName,
+          status: "deploying",
+          nodeId: DOCKER_NODE_ID,
+        },
+      ]);
+      expect(responseBodies.map(({ data }) => data.id)).toEqual([
+        finalRows[0]?.id,
+        finalRows[0]?.id,
+      ]);
+      expect(responseBodies.map(({ data }) => data.project_name)).toEqual([
+        projectName,
+        projectName,
+      ]);
+      expect(dockerTransport.connectCalls).toBe(1);
+      expect(dockerTransport.execStdinCalls).toHaveLength(1);
+      expect(
+        dockerTransport.execCommands.filter((command) =>
+          DOCKER_START_COMMAND_PATTERN.test(command),
+        ),
+      ).toHaveLength(1);
+      await expectContainerLimitSnapshot(2, 1);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
   test(
     "admits one request into one Docker provisioning sequence while the other receives 402",
     async () => {

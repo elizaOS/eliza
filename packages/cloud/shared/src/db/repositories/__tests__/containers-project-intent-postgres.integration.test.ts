@@ -1,9 +1,8 @@
 /**
  * Proves container project-intent quota admission with independent real
  * PostgreSQL sessions. An external holder parks both repository transactions
- * on the organization row lock before release, so a one-slot organization can
- * commit exactly one distinct project while the loser observes the committed
- * row and fails with the canonical quota error.
+ * on the organization row lock before release, proving both same-project
+ * single-flight admission and one-slot distinct-project quota serialization.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -244,6 +243,86 @@ beforeAll(async () => {
 const realPostgres = postgres ? describe : describe.skip;
 
 realPostgres("container project-intent PostgreSQL admission", () => {
+  test("two independent same-project contenders reuse one durable intent", async () => {
+    if (!isolatedDsn || !dbWrite || !containersRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const repository = containersRepository;
+    const organizationId = randomUUID();
+    const userId = randomUUID();
+    const projectName = `same-${randomUUID()}`;
+
+    await dbWrite.execute(
+      sql`INSERT INTO organizations (id, credit_balance) VALUES (${organizationId}, 0)`,
+    );
+    await dbWrite.execute(sql`
+      INSERT INTO organization_config (id, organization_id, settings)
+      VALUES (${randomUUID()}, ${organizationId}, ${JSON.stringify({ max_containers: 2 })}::jsonb)
+    `);
+
+    const holder = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([holder.connect(), observer.connect()]);
+    await holder.query("BEGIN");
+    await holder.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId]);
+
+    const creates = [
+      repository.createWithProjectIntentAndQuotaCheck(
+        candidate(organizationId, userId, projectName),
+      ),
+      repository.createWithProjectIntentAndQuotaCheck(
+        candidate(organizationId, userId, projectName),
+      ),
+    ];
+    let holderReleased = false;
+
+    try {
+      const blockedPids = await waitUntilBlockedWaiters(observer, 2);
+      expect(blockedPids).toHaveLength(2);
+      expect(new Set(blockedPids).size).toBe(2);
+
+      await holder.query("COMMIT");
+      holderReleased = true;
+
+      const outcomes = await Promise.all(creates);
+      expect(
+        outcomes.map(({ created }) => created).sort((left, right) => Number(right) - Number(left)),
+      ).toEqual([true, false]);
+      expect(new Set(outcomes.map(({ container }) => container.id)).size).toBe(1);
+      expect(outcomes.map(({ container }) => container.project_name)).toEqual([
+        projectName,
+        projectName,
+      ]);
+
+      const durable = await observer.query<{
+        id: string;
+        name: string;
+        project_name: string;
+        organization_id: string;
+        status: string;
+      }>(
+        `SELECT id, name, project_name, organization_id, status
+         FROM containers
+         WHERE organization_id = $1 AND project_name = $2`,
+        [organizationId, projectName],
+      );
+      expect(durable.rows).toHaveLength(1);
+      const row = durable.rows[0];
+      if (!row) throw new Error("same-project container intent did not persist");
+      expect(row).toMatchObject({
+        id: outcomes[0]?.container.id,
+        name: projectName,
+        project_name: projectName,
+        organization_id: organizationId,
+        status: "pending",
+      });
+    } finally {
+      if (!holderReleased) await holder.query("ROLLBACK");
+      await Promise.allSettled(creates);
+      await Promise.all([holder.end(), observer.end()]);
+    }
+  }, 30_000);
+
   test("two independent contenders for a one-slot organization commit one durable row", async () => {
     if (!isolatedDsn || !dbWrite || !containersRepository || !QuotaExceededError) {
       throw new Error("real PostgreSQL harness was not initialized");
