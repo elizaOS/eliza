@@ -18,11 +18,10 @@ import {
   STAGING_DIRECT_CLOUD_API_BASE_URL,
 } from "../api/direct-cloud-endpoints";
 
-const SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
-const GOOGLE_NONCE_PATTERN = /^[0-9a-f]{64}$/;
+const MOBILE_APP_AUTH_CLIENT_ID = "ai.elizaos.app";
+const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
 
 export interface AndroidCloudIdentity {
   id: string;
@@ -42,23 +41,17 @@ export interface AndroidCloudTranscriptMessage {
 }
 
 export interface AndroidCloudLoginAttempt {
-  sessionId: string;
+  state: string;
   browserUrl: string;
 }
 
-export interface AndroidCloudGoogleIdentityAdapter {
-  signIn(options: {
-    serverClientId: string;
-    nonce: string;
-  }): Promise<{ idToken: string }>;
-  cancel(): Promise<unknown>;
-  clearCredentialState(): Promise<unknown>;
+interface AndroidCloudPendingLogin {
+  clientId: typeof MOBILE_APP_AUTH_CLIENT_ID;
+  codeVerifier: string;
+  environment: "staging" | "production";
+  redirectUri: typeof MOBILE_APP_AUTH_REDIRECT_URI;
+  state: string;
 }
-
-export type AndroidCloudLoginPoll =
-  | { status: "pending" }
-  | { status: "expired"; error: string }
-  | { status: "authenticated"; token: string };
 
 export interface AndroidCloudClientOptions {
   cloudApiBase?: string;
@@ -100,8 +93,7 @@ async function responseJson(response: Response): Promise<JsonRecord> {
   const text = await response.text();
   // An empty body is legitimate (204, and some error responses); a body that
   // is present but unparsable is a broken endpoint. Collapsing both to {} made
-  // a malformed 200 look like "no session yet", so pollLogin spun for its full
-  // ten minutes instead of reporting that Cloud returned something unusable.
+  // an unreadable 200 must never look like a valid empty protocol response.
   if (text.trim().length === 0) return {};
   let parsed: unknown;
   try {
@@ -210,6 +202,7 @@ export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
+  private pendingLogin: AndroidCloudPendingLogin | null = null;
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
@@ -268,46 +261,8 @@ export class AndroidCloudClient {
   }
 
   async beginLogin(): Promise<AndroidCloudLoginAttempt> {
-    const requestId = globalThis.crypto?.randomUUID?.();
-    if (!requestId || !SESSION_ID_PATTERN.test(requestId)) {
-      throw new Error("Secure sign-in is unavailable on this device.");
-    }
-    const response = await this.fetchImpl(
-      `${this.apiBase}/api/auth/cli-session`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: requestId }),
-      },
-    );
-    const body = await responseJson(response);
-    if (!response.ok) {
-      throw new Error(
-        responseError(body, `Unable to start sign-in (${response.status}).`),
-      );
-    }
-    const sessionId = stringField(body.sessionId);
-    if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
-      throw new Error("Eliza Cloud returned an invalid sign-in session.");
-    }
-    // Pair the login origin with the API the session was minted against: a
-    // staging build must not send users to the production login, where the
-    // session it just created does not exist.
-    const url = new URL(
-      "/auth/cli-login",
-      directCloudAppBaseForApi(this.apiBase),
-    );
-    url.searchParams.set("session", sessionId);
-    return { sessionId, browserUrl: url.toString() };
-  }
-
-  async signInWithGoogle(
-    adapter: AndroidCloudGoogleIdentityAdapter,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    signal?.throwIfAborted();
-    const clientId = "ai.elizaos.app";
-    const redirectUri = "https://eliza.app/auth/callback";
+    const clientId = MOBILE_APP_AUTH_CLIENT_ID;
+    const redirectUri = MOBILE_APP_AUTH_REDIRECT_URI;
     const environment =
       this.apiBase === STAGING_DIRECT_CLOUD_API_BASE_URL
         ? "staging"
@@ -316,93 +271,107 @@ export class AndroidCloudClient {
     const codeVerifier = randomBinding(64);
     const codeChallenge = await s256Challenge(codeVerifier);
     const binding = { clientId, environment, redirectUri };
-    const pkceBinding = {
-      ...binding,
-      state,
-      codeChallenge,
-      codeChallengeMethod: "S256",
-      deviceName: "Android",
-    };
-
     const configUrl = new URL(`${this.apiBase}/api/v1/app-auth/mobile/config`);
     for (const [key, value] of Object.entries(binding))
       configUrl.searchParams.set(key, value);
-    const configResponse = await this.fetchImpl(configUrl, { signal });
+    const configResponse = await this.fetchImpl(configUrl);
     const configBody = await responseJson(configResponse);
     if (!configResponse.ok) {
       throw new Error(
         mobileAuthResponseError(
           configBody,
-          "Native Google sign-in is unavailable.",
+          "Eliza Cloud sign-in is unavailable.",
         ),
       );
     }
-    const google = record(configBody.google);
-    const serverClientId = stringField(google?.serverClientId);
-    if (!serverClientId)
-      throw new Error("Native Google sign-in is not configured.");
-
-    const nonceResponse = await this.fetchImpl(
-      `${this.apiBase}/api/v1/app-auth/mobile/google/nonce`,
-      {
-        method: "POST",
-        signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pkceBinding),
-      },
-    );
-    const nonceBody = await responseJson(nonceResponse);
-    if (!nonceResponse.ok) {
-      throw new Error(
-        mobileAuthResponseError(
-          nonceBody,
-          "Google sign-in could not be started.",
-        ),
-      );
-    }
-    const nonce = stringField(nonceBody.nonce);
-    if (!nonce || !GOOGLE_NONCE_PATTERN.test(nonce)) {
-      throw new Error(
-        "Eliza Cloud returned an invalid Google sign-in challenge.",
-      );
+    if (
+      configBody.success !== true ||
+      stringField(configBody.clientId) !== clientId ||
+      stringField(configBody.environment) !== environment ||
+      stringField(configBody.redirectUri) !== redirectUri ||
+      stringField(configBody.codeChallengeMethod) !== "S256"
+    ) {
+      throw new Error("Eliza Cloud returned invalid mobile sign-in metadata.");
     }
 
-    signal?.throwIfAborted();
-    const identity = await adapter.signIn({ serverClientId, nonce });
-    signal?.throwIfAborted();
-    if (!identity.idToken.trim())
-      throw new Error("Google returned no identity token.");
-    const approvalResponse = await this.fetchImpl(
-      `${this.apiBase}/api/v1/app-auth/mobile/google`,
-      {
-        method: "POST",
-        signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...pkceBinding,
-          googleIdToken: identity.idToken,
-          nonce,
-        }),
-      },
+    this.pendingLogin = {
+      clientId,
+      codeVerifier,
+      environment,
+      redirectUri,
+      state,
+    };
+
+    const authorizePath = new URL(
+      "/app-auth/authorize",
+      directCloudAppBaseForApi(this.apiBase),
     );
-    const approval = await responseJson(approvalResponse);
-    if (!approvalResponse.ok) {
+    authorizePath.searchParams.set("flow", "mobile_pkce");
+    authorizePath.searchParams.set("client_id", clientId);
+    authorizePath.searchParams.set("environment", environment);
+    authorizePath.searchParams.set("redirect_uri", redirectUri);
+    authorizePath.searchParams.set("state", state);
+    authorizePath.searchParams.set("code_challenge", codeChallenge);
+    authorizePath.searchParams.set("code_challenge_method", "S256");
+    authorizePath.searchParams.set("device_name", "Android");
+
+    const loginUrl = new URL("/login", directCloudAppBaseForApi(this.apiBase));
+    loginUrl.searchParams.set(
+      "returnTo",
+      `${authorizePath.pathname}${authorizePath.search}`,
+    );
+    return { state, browserUrl: loginUrl.toString() };
+  }
+
+  cancelLogin(): void {
+    this.pendingLogin = null;
+  }
+
+  async completeLogin(
+    callbackUrl: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    signal?.throwIfAborted();
+    const pending = this.pendingLogin;
+    if (!pending) throw new Error("No Eliza Cloud sign-in is waiting.");
+    let callback: URL;
+    try {
+      callback = new URL(callbackUrl);
+    } catch {
+      throw new Error("Eliza Cloud returned an invalid app callback.");
+    }
+    if (
+      callback.protocol !== "elizaos:" ||
+      [callback.host, callback.pathname]
+        .join("/")
+        .replace(/\/+/g, "/")
+        .replace(/^\/+|\/+$/g, "") !== "auth/callback"
+    ) {
+      throw new Error("Eliza Cloud returned an untrusted app callback.");
+    }
+    const returnedState = callback.searchParams.get("state")?.trim();
+    if (!returnedState || returnedState !== pending.state) {
+      throw new Error("Eliza Cloud sign-in state did not match this device.");
+    }
+    const callbackError = callback.searchParams.get("error")?.trim();
+    if (callbackError) {
+      this.pendingLogin = null;
       throw new Error(
-        mobileAuthResponseError(
-          approval,
-          "Google sign-in could not be completed.",
-        ),
+        callback.searchParams.get("error_description")?.trim() ||
+          "Eliza Cloud sign-in was cancelled.",
       );
     }
-    const code = stringField(approval.code);
+    const code = callback.searchParams.get("code")?.trim();
     if (!code) throw new Error("Eliza Cloud returned no authorization code.");
 
     const tokenRequest = {
-      ...binding,
+      clientId: pending.clientId,
+      environment: pending.environment,
       grantType: "authorization_code",
-      state,
+      redirectUri: pending.redirectUri,
+      state: pending.state,
       code,
-      codeVerifier,
+      codeVerifier: pending.codeVerifier,
     };
     const tokenResponse = await this.fetchImpl(
       `${this.apiBase}/api/v1/app-auth/mobile/token`,
@@ -458,48 +427,12 @@ export class AndroidCloudClient {
           "Eliza Cloud returned an invalid mobile session acknowledgement.",
         );
       }
+      this.pendingLogin = null;
     } catch (error) {
       if (previousSecret) await this.credentialStore.write(previousSecret);
       else await this.credentialStore.clear();
       throw error;
     }
-  }
-
-  async pollLogin(sessionId: string): Promise<AndroidCloudLoginPoll> {
-    if (!SESSION_ID_PATTERN.test(sessionId)) {
-      throw new Error("The sign-in session is invalid.");
-    }
-    const response = await this.fetchImpl(
-      `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
-    );
-    if (response.status === 404) {
-      return { status: "expired", error: "Sign-in expired. Please try again." };
-    }
-    const body = await responseJson(response);
-    if (!response.ok) {
-      throw new Error(
-        responseError(body, `Unable to finish sign-in (${response.status}).`),
-      );
-    }
-    const data = record(body.data) ?? body;
-    const status = stringField(data.status)?.toLowerCase();
-    if (status === "authenticated") {
-      const token =
-        stringField(data.token) ??
-        stringField(data.apiKey) ??
-        stringField(data.accessToken) ??
-        stringField(data.access_token);
-      if (!token) throw new Error("Sign-in completed without a session token.");
-      await this.credentialStore.write(token);
-      return { status: "authenticated", token };
-    }
-    if (status === "expired" || status === "error") {
-      return {
-        status: "expired",
-        error: responseError(data, "Sign-in expired. Please try again."),
-      };
-    }
-    return { status: "pending" };
   }
 
   async sendChat(
@@ -578,8 +511,6 @@ export class AndroidCloudClient {
     } catch {
       // error-policy:J6 remote logout is best-effort teardown; the authoritative
       // local credential removal is awaited in the finally block below.
-      // Remote logout is best-effort. Local credential removal is authoritative
-      // for this device and must still complete while offline.
     } finally {
       await this.credentialStore.clear();
     }

@@ -15,6 +15,7 @@ import { StatusBar, Style } from "@capacitor/status-bar";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import {
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
+  ANDROID_CLOUD_DEEP_LINK_EVENT,
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "@elizaos/ui/android-cloud/AndroidCloudApp";
@@ -27,8 +28,7 @@ import "@elizaos/ui/styles";
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-export const ANDROID_CLOUD_DEEP_LINK_EVENT =
-  "eliza:android-cloud-deep-link" as const;
+export { ANDROID_CLOUD_DEEP_LINK_EVENT };
 export const APP_RESUME_EVENT = "eliza:app-resume" as const;
 export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const NETWORK_STATUS_CHANGE_EVENT =

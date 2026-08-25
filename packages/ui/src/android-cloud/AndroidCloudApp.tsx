@@ -20,9 +20,8 @@ import {
 
 export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
-const LOGIN_POLL_MS = 1_500;
-const LOGIN_TIMEOUT_MS = 10 * 60_000;
 export const ANDROID_CLOUD_COMPOSE_EVENT = "eliza:android-cloud-compose";
+export const ANDROID_CLOUD_DEEP_LINK_EVENT = "eliza:android-cloud-deep-link";
 
 export interface AndroidCloudMessage {
   id: string;
@@ -146,52 +145,89 @@ export function AndroidCloudApp({
       window.removeEventListener(ANDROID_CLOUD_COMPOSE_EVENT, compose);
   }, []);
 
+  useEffect(() => {
+    const completeHostedSignIn = async (event: Event) => {
+      const url = (event as CustomEvent<{ url?: unknown }>).detail?.url;
+      if (typeof url !== "string") return;
+      let callback: URL;
+      try {
+        callback = new URL(url);
+      } catch {
+        return;
+      }
+      if (
+        callback.protocol !== "elizaos:" ||
+        [callback.host, callback.pathname]
+          .join("/")
+          .replace(/\/+/g, "/")
+          .replace(/^\/+|\/+$/g, "") !== "auth/callback"
+      ) {
+        return;
+      }
+
+      const activeAttempt = loginAttemptRef.current;
+      setBusy(true);
+      setError(null);
+      try {
+        await client.completeLogin(url);
+        loginAttemptRef.current = activeAttempt + 1;
+        await closeExternal?.();
+        await restore();
+      } catch (completionError) {
+        loginAttemptRef.current = activeAttempt + 1;
+        client.cancelLogin();
+        try {
+          await closeExternal?.();
+        } catch {
+          // error-policy:J4 the authentication failure below remains the
+          // visible boundary even if Android cannot close its Custom Tab.
+        }
+        setError(errorMessage(completionError));
+      } finally {
+        setBusy(false);
+      }
+    };
+    document.addEventListener(
+      ANDROID_CLOUD_DEEP_LINK_EVENT,
+      completeHostedSignIn,
+    );
+    return () =>
+      document.removeEventListener(
+        ANDROID_CLOUD_DEEP_LINK_EVENT,
+        completeHostedSignIn,
+      );
+  }, [client, closeExternal, restore]);
+
   const signIn = useCallback(async () => {
     const attemptNumber = loginAttemptRef.current + 1;
     loginAttemptRef.current = attemptNumber;
     setBusy(true);
     setError(null);
+    let awaitingCallback = false;
     try {
       const attempt = await client.beginLogin();
       const externalState = await openExternal(attempt.browserUrl);
       if (loginAttemptRef.current !== attemptNumber) return;
       if (externalState === "closed") {
-        const result = await client.pollLogin(attempt.sessionId);
-        if (result.status === "authenticated") {
-          await restore();
-          return;
-        }
-        if (result.status === "expired") throw new Error(result.error);
+        client.cancelLogin();
         return;
       }
-      const deadline = Date.now() + LOGIN_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) =>
-          window.setTimeout(resolve, LOGIN_POLL_MS),
-        );
-        if (loginAttemptRef.current !== attemptNumber) return;
-        const result = await client.pollLogin(attempt.sessionId);
-        if (result.status === "pending") continue;
-        if (result.status === "expired") throw new Error(result.error);
-        await closeExternal?.();
-        await restore();
-        return;
-      }
-      throw new Error("Sign-in timed out. Please try again.");
+      awaitingCallback = true;
     } catch (signInError) {
       // error-policy:J4 the hosted authentication boundary renders the failure.
       if (loginAttemptRef.current === attemptNumber) {
         setError(errorMessage(signInError));
       }
     } finally {
-      if (loginAttemptRef.current === attemptNumber) {
+      if (!awaitingCallback && loginAttemptRef.current === attemptNumber) {
         setBusy(false);
       }
     }
-  }, [client, closeExternal, openExternal, restore]);
+  }, [client, openExternal]);
 
   const cancelSignIn = useCallback(async () => {
     loginAttemptRef.current += 1;
+    client.cancelLogin();
     setBusy(false);
     try {
       await closeExternal?.();
@@ -199,7 +235,7 @@ export function AndroidCloudApp({
       // error-policy:J4 a failed hosted-session cancellation remains visible.
       setError(errorMessage(cancelError));
     }
-  }, [closeExternal]);
+  }, [client, closeExternal]);
 
   const signOut = useCallback(async () => {
     setBusy(true);

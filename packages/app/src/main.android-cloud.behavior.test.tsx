@@ -40,6 +40,7 @@ vi.mock("@capacitor/browser", () => ({
 vi.mock("react-dom/client", () => ({ createRoot: playEntry.createRoot }));
 vi.mock("@elizaos/ui/android-cloud/AndroidCloudApp", () => ({
   ANDROID_CLOUD_CONVERSATION_ID_KEY: "eliza:android-cloud-conversation-id",
+  ANDROID_CLOUD_DEEP_LINK_EVENT: "eliza:android-cloud-deep-link",
   AndroidCloudApp: () => null,
 }));
 vi.mock("@elizaos/ui/components/ui/error-boundary", () => ({
@@ -128,13 +129,13 @@ describe("Android Cloud renderer behavior", () => {
     ).rejects.toThrow("must use HTTPS");
 
     const opening = entry.openAndroidCloudSignIn(
-      "https://cloud-staging.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+      "https://cloud-staging.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fflow%3Dmobile_pkce",
     );
     await vi.waitFor(() =>
       expect(playEntry.browserOpen).toHaveBeenCalledOnce(),
     );
     expect(playEntry.browserOpen).toHaveBeenCalledWith({
-      url: "https://cloud-staging.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+      url: "https://cloud-staging.eliza.app/login?returnTo=%2Fapp-auth%2Fauthorize%3Fflow%3Dmobile_pkce",
     });
     playEntry.browserFinished?.();
     await expect(opening).resolves.toBe("closed");
