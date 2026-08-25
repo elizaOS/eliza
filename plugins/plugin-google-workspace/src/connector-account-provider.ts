@@ -535,6 +535,28 @@ function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
   });
 }
 
+async function resolveOAuthRoleAtStart(
+  request: ConnectorOAuthStartRequest,
+  manager: ConnectorAccountManager
+): Promise<ConnectorAccountRole> {
+  const accountId = nonEmptyString(request.accountId);
+  if (!accountId) {
+    return roleFromMetadata(request.metadata);
+  }
+  const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
+  if (!account) {
+    throw new ElizaError(
+      "Google OAuth cannot reauthorize a connector account that no longer exists.",
+      {
+        code: "GOOGLE_OAUTH_REAUTH_ACCOUNT_NOT_FOUND",
+        context: { accountId },
+        severity: "fatal",
+      }
+    );
+  }
+  return roleFromMetadata({ role: account.role });
+}
+
 function parseIdTokenHeader(idToken: string): Record<string, unknown> {
   const segments = idToken.split(".");
   if (segments.length !== 3) {
@@ -870,6 +892,9 @@ export function createGoogleConnectorAccountProvider(
       // an unreachable callback fails here instead of stranding the grant.
       const config = readClientConfig(runtime, request.servedOrigin);
       const redirectUri = config.redirectUri;
+      // Validate authorization before issuing a consent URL. A new grant must
+      // carry an explicit role; reauthorization retains only the stored role.
+      const requestedRole = await resolveOAuthRoleAtStart(request, manager);
       const capabilities = normalizeRequestedCapabilities(
         await resolveRequestedScopes(request, manager)
       );
@@ -901,6 +926,7 @@ export function createGoogleConnectorAccountProvider(
         codeVerifier,
         metadata: {
           ...request.metadata,
+          requestedRole,
           requestedCapabilities: capabilities,
           requestedScopes: oauthScopes,
           redirectUri,

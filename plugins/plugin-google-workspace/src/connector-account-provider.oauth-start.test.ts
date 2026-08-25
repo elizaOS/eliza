@@ -45,6 +45,7 @@ async function startWith(redirectUri: string, servedOrigin?: string) {
       flow: flow(),
       scopes: ["gmail.read"],
       servedOrigin,
+      metadata: { requestedRole: "OWNER" },
     },
     managerStub
   );

@@ -130,6 +130,7 @@ describe("google plugin", () => {
         {
           provider: "google",
           scopes: ["google.calendar.read"],
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-invalid-capability",
             provider: "google",
@@ -165,6 +166,7 @@ describe("google plugin", () => {
             GOOGLE_OAUTH_SCOPES.profile.email,
             GOOGLE_OAUTH_SCOPES.profile.profile,
           ],
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-identity-only",
             provider: "google",
@@ -207,6 +209,7 @@ describe("google plugin", () => {
         {
           provider: "google",
           scopes,
+          metadata: { requestedRole: "OWNER" },
           flow: {
             id: "flow-missing-capabilities",
             provider: "google",
@@ -237,6 +240,7 @@ describe("google plugin", () => {
     const getAccount = vi.fn(async (_provider: string, accountId: string) => ({
       id: accountId,
       provider: "google",
+      role: "OWNER",
       metadata: { grantedCapabilities: ["gmail.read", "calendar.read"] },
     }));
 
@@ -309,9 +313,7 @@ describe("google plugin", () => {
         },
         { getAccount: vi.fn(async () => null) } as never
       )
-    ).rejects.toThrow(
-      "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
-    );
+    ).rejects.toThrow("Google OAuth cannot reauthorize a connector account that no longer exists.");
   });
 
   it("keeps failing closed when the account has no recorded granted capabilities", async () => {
@@ -344,6 +346,7 @@ describe("google plugin", () => {
           getAccount: vi.fn(async () => ({
             id: "acct-no-grant",
             provider: "google",
+            role: "OWNER",
             metadata: {},
           })),
         } as never
@@ -353,7 +356,7 @@ describe("google plugin", () => {
     );
   });
 
-  it("lets explicit scopes win over the recorded grant without consulting the account", async () => {
+  it("lets explicit scopes win while retaining the stored reauthorization role", async () => {
     const runtime = {
       getSetting: (key: string) =>
         ({
@@ -367,6 +370,7 @@ describe("google plugin", () => {
     const getAccount = vi.fn(async () => ({
       id: "acct-reauth-2",
       provider: "google",
+      role: "TEAM",
       metadata: {
         grantedCapabilities: ["gmail.read", "gmail.send", "calendar.read", "drive.read"],
       },
@@ -389,7 +393,8 @@ describe("google plugin", () => {
       { getAccount } as never
     );
 
-    expect(getAccount).not.toHaveBeenCalled();
+    expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-2");
+    expect(result?.metadata).toMatchObject({ requestedRole: "TEAM" });
     const url = new URL(result?.authUrl ?? "");
     expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
@@ -416,6 +421,7 @@ describe("google plugin", () => {
       {
         provider: "google",
         scopes: ["gmail.read", "calendar.read"],
+        metadata: { requestedRole: "OWNER" },
         flow: {
           id: "flow-gmail-calendar-read",
           provider: "google",
@@ -467,6 +473,7 @@ describe("google plugin", () => {
       {
         provider: "google",
         scopes: ["calendar.read"],
+        metadata: { requestedRole: "OWNER" },
         flow: {
           id: "flow-calendar-read",
           provider: "google",
