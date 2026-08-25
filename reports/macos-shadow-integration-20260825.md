@@ -48,6 +48,61 @@ Current-shadow verification after that exact-SHA merge:
 No native bundle was built or launched, no runtime/state writer was opened, and
 ports `50001`, `5174`, `31337`, and `31338` remained unused by this pass.
 
+## Live-head refresh after PR publication
+
+The live inputs moved again after draft PR #28826 was published. The shadow was
+refreshed in place without changing or pushing any source-owner branch:
+
+- `origin/develop`: `4eaf54db749ece00d2c3860a3239db13891a9c30`
+- Computer Use PR #27215: `888d3d74e567b25f98d29ecb8ca7d0b9c2bcc3af`
+- Devices PR #25427: `0425fc53469cbc2cd68f331f19a4aa54c4aea006`
+- iOS PR #27216: `f69c25de5fbc496c1f1d6bb9f0869b9c83d40f98`
+  (unchanged)
+- Shared PR #27103: `91c1cd94bcf16661a04c3f5273efd3e151538cea`
+- Desktop preflight PR #28826:
+  `eb74d871f652a550205f297f48617d97bf519aad`
+
+The new Computer, Devices, and Shared commits each retain the prior frozen PR
+head as their first parent and merge `ff93d58e05577f4334ee455cdbc37098c16b7f24`
+as their current-base parent. Because both parents were already represented in
+the shadow, rehearsed and executed merges were tree-neutral and conflict-free.
+The iOS head was already an ancestor. Current `develop` added one Skills
+frontmatter parsing fix in two files and merged without conflict.
+
+The refreshed source composite before this receipt update is
+`f075630f0edcc0399f272b5281bb13e632769992`, tree
+`101365c3d9371e4e8508c6d6c770e385f3806086`. It contains every exact SHA above
+as an ancestor.
+
+Refresh verification:
+
+- Complete Electrobun lane: 1,475/1,475 across 149 files.
+- Skills frontmatter regression: 35/35.
+- Skills build and strict typecheck: passed.
+- Targeted desktop runtime-preflight/reset TypeScript compile: passed.
+- App Core source-package build: passed.
+- Scoped Biome on the owned desktop files plus the merged Skills source:
+  passed.
+- App Core package dry run: 1,480 files, 12,864,633 bytes unpacked,
+  5,144,541-byte archive estimate.
+- Skills package dry run: 90 files, 416,242 bytes unpacked, 140,223-byte
+  archive estimate.
+- `git diff --check`: passed.
+- Gitleaks: 234 feature commits / about 1.92 MB, no leaks.
+
+The exact current-develop test file `packages/skills/test/frontmatter.test.ts`
+has two pre-existing Biome formatting findings. Its 35 behavioral tests pass,
+and the Skills source itself is Biome-clean, builds, and typechecks. That
+base-only formatting issue was not rewritten as an integration or macOS change.
+
+At the final read, PR #28826 remained draft, exact at `eb74d871f652...`,
+mergeable, with no review findings and hosted static-smoke jobs still running.
+Computer, Devices, iOS, and Shared remained draft with changes requested; their
+current heads were integrated only for this disposable source proof.
+
+No native application was launched, no final port was bound, and the shadow
+branch was not pushed.
+
 ## Frozen inputs
 
 - Base `origin/develop`: `69c0291954942c9ae375fe5aacc82729a24bac6f`
