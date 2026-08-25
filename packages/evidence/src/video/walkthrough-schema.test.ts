@@ -227,5 +227,4 @@ describe("shipped walkthrough definitions", () => {
     expect(def.slug).toBeTruthy();
     expect(def.steps.length).toBeGreaterThan(0);
   });
-
 });
