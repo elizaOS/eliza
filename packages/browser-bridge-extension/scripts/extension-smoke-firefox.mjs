@@ -248,6 +248,21 @@ async function runInstalledFirefoxSmoke() {
         `Firefox pairing state did not persist: ${JSON.stringify(persistedState)}`,
       );
     }
+    // The externally opened Firefox popup can retain its initial DOM while
+    // BiDi reports a stale about:blank navigation identity. Re-dispatch the
+    // page's real startup event so the production refresh path reads the
+    // persisted background state, then require the connected user-facing
+    // label before capturing the success artifact.
+    await popupPage.evaluate(() => {
+      document.dispatchEvent(new Event("DOMContentLoaded"));
+    });
+    await popupPage.waitForFunction(
+      () =>
+        document.querySelector("#statusTitle")?.textContent ===
+        "Connected to Eliza",
+      undefined,
+      { timeout: 20_000 },
+    );
     await saveScreenshot(popupPage, "firefox-pair-and-sync-success");
     await popupPage.close();
     await waitForFirefoxAction(appPage, mockServer.requests);
