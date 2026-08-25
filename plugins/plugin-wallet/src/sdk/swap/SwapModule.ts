@@ -39,6 +39,18 @@ export function calcProtocolFee(amount: bigint, feeBps: number): bigint {
 
 /** Apply slippage: floor(amount * (10_000 - slippageBps) / 10_000) */
 export function applySlippage(amount: bigint, slippageBps: number): bigint {
+  if (
+    !Number.isInteger(slippageBps) ||
+    slippageBps < 0 ||
+    slippageBps > 10_000
+  ) {
+    // error-policy:J3 — an out-of-range slippage would silently produce a
+    // zero or negative amountOutMinimum, disabling slippage protection and
+    // letting the swap succeed at any output (including sandwich theft).
+    throw new RangeError(
+      `SwapModule: slippageBps must be an integer between 0 and 10_000, got ${slippageBps}`,
+    );
+  }
   return (amount * BigInt(10000 - slippageBps)) / 10000n;
 }
 
