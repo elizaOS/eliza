@@ -3,8 +3,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
-  PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION,
-  PROGRESSIVE_CONTENT_MUTANTS,
+  PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
 import {
   buildContentContextResult,
@@ -397,19 +397,23 @@ function evidence() {
       })),
     },
     "mutant-kills.json": {
-      schemaVersion: PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION,
+      schemaVersion: PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
       status: "passed",
-      required: PROGRESSIVE_CONTENT_MUTANTS.length,
-      executed: PROGRESSIVE_CONTENT_MUTANTS.length,
-      killed: PROGRESSIVE_CONTENT_MUTANTS.length,
+      required: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+      executed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+      killed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
       killRate: 1,
-      results: PROGRESSIVE_CONTENT_MUTANTS.map(([id, seam, killingVector]) => ({
-        id,
-        seam,
-        killingVector,
-        status: "killed",
-        failureVectors: [killingVector],
-      })),
+      results: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.map(
+        ({ id, seam, killingVector, executor, killingTestId }) => ({
+          id,
+          seam,
+          killingVector,
+          executor,
+          killingTestId,
+          status: "killed",
+          failureVectors: [killingVector],
+        }),
+      ),
     },
     "source-work.json": {
       samples: objects.map((object) => ({
