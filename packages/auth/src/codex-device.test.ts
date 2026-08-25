@@ -323,4 +323,89 @@ describe("startCodexDeviceLogin", () => {
     expect(existsSync(codexHome)).toBe(false);
     expect(rmSyncMock).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects credentials when auth.json contains malformed JSON or is missing required tokens", async () => {
+    const child = mockChild();
+    const start = startCodexDeviceLogin();
+    const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
+    emitPrompt(child);
+    const flow = await start;
+
+    writeFileSync(path.join(codexHome, "auth.json"), "{not-json");
+    child.process.emit("close", 0, null);
+
+    const error = await flow.credentials.catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ElizaError);
+    expect(error).toMatchObject({
+      code: "codex_device.credentials_invalid",
+    });
+    expect(existsSync(codexHome)).toBe(false);
+  });
+
+  it("rejects credentials when the access token has an invalid or non-finite exp claim", async () => {
+    const child = mockChild();
+    const start = startCodexDeviceLogin();
+    const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
+    emitPrompt(child);
+    const flow = await start;
+
+    const badToken = `header.${Buffer.from(JSON.stringify({ exp: "not-a-number" })).toString("base64url")}.sig`;
+    writeFileSync(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          access_token: badToken,
+          refresh_token: "refresh-fixture",
+        },
+      }),
+    );
+
+    child.process.emit("close", 0, null);
+
+    const error = await flow.credentials.catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(ElizaError);
+    expect(error).toMatchObject({
+      code: "codex_device.invalid_access_token",
+    });
+    expect(existsSync(codexHome)).toBe(false);
+  });
+
+  it("strips ANSI color codes across stdout and stderr streams when parsing prompt", async () => {
+    const child = mockChild();
+    const start = startCodexDeviceLogin();
+    const codexHome = spawnedCodexHome();
+    child.process.emit("spawn");
+
+    child.stdout.write(
+      "\x1b[32mVisit \x1b[1mhttps://auth.openai.com/codex/device\x1b[0m\n",
+    );
+    child.stderr.write("\x1b[33mEnter code \x1b[36mABCD-98765\x1b[0m\n");
+
+    const flow = await start;
+    expect(flow.authUrl).toBe("https://auth.openai.com/codex/device");
+    expect(flow.userCode).toBe("ABCD-98765");
+
+    const exp = 2_000_000_000;
+    writeFileSync(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          access_token: accessToken(exp),
+          refresh_token: "refresh-fixture",
+        },
+      }),
+    );
+
+    child.process.emit("close", 0, null);
+    const creds = await flow.credentials;
+    expect(creds).toEqual({
+      access: accessToken(exp),
+      refresh: "refresh-fixture",
+      expires: exp * 1000,
+    });
+    expect(creds.idToken).toBeUndefined();
+    expect(existsSync(codexHome)).toBe(false);
+  });
 });
