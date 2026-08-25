@@ -71,7 +71,10 @@ export function resolveAssetAddress(
  */
 export function resolveAssetDecimals(asset: string, network: string): number {
   const chainId = parseNetworkChainId(network);
-  if (chainId == null) return 6;
+  // An unparseable network string (e.g. from an untrusted 402 response)
+  // carries no asset context — fall back to the documented default for
+  // unknown assets (18) instead of assuming a 6-decimal stablecoin.
+  if (chainId == null) return 18;
 
   const registry = getGlobalRegistry();
 
