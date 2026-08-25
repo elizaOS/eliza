@@ -19,7 +19,7 @@ import type {
   MembershipService,
   UUID,
 } from "@elizaos/core";
-import { logger, ServiceType } from "@elizaos/core";
+import { ChannelType, logger, ServiceType } from "@elizaos/core";
 
 /** Evidence freshness window for Telegram point proofs (under the authority's 24h cap). */
 export const TELEGRAM_MEMBERSHIP_TTL_MS = 60 * 60 * 1_000;
@@ -101,13 +101,17 @@ export function telegramStatusToMembership(member: {
     case "administrator":
     case "member":
       return { state: "active", reason: "reconciled_present" };
-    case "restricted":
-      // A restricted user is only a member while is_member is true; Telegram
-      // reports restricted non-members (e.g. unbanned-but-not-rejoined) with
-      // is_member: false, which must NOT admit as active membership.
-      return member.is_member === false
-        ? { state: "revoked", reason: "left" }
-        : { state: "active", reason: "reconciled_present" };
+    case "restricted": {
+      // A restricted user is a member only while is_member is true. Telegram
+      // always reports is_member on restricted, so a missing field means an
+      // incomplete/untrusted provider response: fail CLOSED (treat as not a
+      // member) rather than fabricating active membership at an external
+      // provider boundary.
+      if (member.is_member !== true) {
+        return { state: "revoked", reason: "left" };
+      }
+      return { state: "active", reason: "reconciled_present" };
+    }
     case "left":
       return { state: "revoked", reason: "left" };
     case "kicked":
@@ -292,22 +296,52 @@ export class TelegramMembershipAuthority {
    * evidence itself (e.g. entity bootstrap failed): the safe representation
    * of "we saw a leave but the authority did not record it" is a scope whose
    * evidence can no longer authorize anyone until fresh evidence lands.
+   * Runs inside the per-scope serialized chain (ordered against evidence
+   * writes and admissions) and retries generation fencing so a concurrent
+   * write cannot starve the degrade. THROWS on persistent failure so callers
+   * can escalate (mark the gate broken) — failure is never silently
+   * converted back to an authorizing state.
    */
   async markScopeStale(input: {
     scope: MembershipScope;
     reason: string;
   }): Promise<void> {
-    const health = await this.service.getScopeHealth(input.scope);
-    const expectedGeneration = health?.generation ?? 0;
-    await this.service.setScopeHealth({
-      ...input.scope,
-      expectedGeneration,
-      idempotencyKey: `tg:${this.connectorAccountId}:${input.scope.externalWorldId}:stale:${input.reason}:${expectedGeneration}`,
-      health: "stale",
-      reason: input.reason,
-      observedAt: new Date().toISOString(),
+    const key = scopeKey(input.scope);
+    await this.serialized(key, async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const health = await this.service.getScopeHealth(input.scope);
+        const expectedGeneration = health?.generation ?? 0;
+        try {
+          const receipt = await this.service.setScopeHealth({
+            ...input.scope,
+            expectedGeneration,
+            idempotencyKey: `tg:${this.connectorAccountId}:${input.scope.externalWorldId}:stale:${input.reason}:${expectedGeneration}:${attempt}`,
+            health: "stale",
+            reason: input.reason,
+            observedAt: new Date().toISOString(),
+          });
+          if (receipt.operation === "health") {
+            this.scopes.delete(key);
+            return;
+          }
+        } catch (error) {
+          // Generation moved under us (a concurrent write committed between
+          // the health read and the fenced update): re-read health and retry
+          // the fence so the degrade still lands.
+          if (
+            error instanceof Error &&
+            error.message.includes("MEMBERSHIP_GENERATION_MISMATCH") &&
+            attempt < 2
+          ) {
+            continue;
+          }
+          throw error;
+        }
+      }
+      throw new Error(
+        `Telegram membership scope stale-degrade exhausted retries for ${input.scope.externalWorldId}`,
+      );
     });
-    this.scopes.delete(scopeKey(input.scope));
   }
 
   /**
@@ -482,16 +516,24 @@ export class TelegramMembershipAuthority {
             scope,
             reason: `revocation_write_failed:${input.reason}`,
           });
+          // Degrade landed: admission now fails closed for the scope.
+          // error-policy:J7 Evidence-write failure must not kill the poll
+          // loop; the failure is reported and the degraded scope carries the
+          // security decision.
+          this.runtime.reportError("telegram:membership-evidence", error, {
+            chatId: input.chatId,
+            messageId: input.messageId,
+            telegramUserId: input.telegramUserId,
+          });
+          return;
         } catch (degradeError) {
-          this.runtime.reportError(
-            "telegram:membership-evidence",
-            degradeError,
-            {
-              chatId: input.chatId,
-              messageId: input.messageId,
-              telegramUserId: input.telegramUserId,
-              originalError: String(error),
-            },
+          // error-policy:J2 BOTH the evidence write AND the fail-closed
+          // degrade failed: propagate a typed error so the connector layer
+          // can mark the admission gate broken (every group admission then
+          // fails closed) instead of leaving active evidence authorizing.
+          throw new Error(
+            "Telegram membership revocation could not be committed or degraded",
+            { cause: degradeError },
           );
         }
       }
@@ -521,6 +563,7 @@ export class TelegramMembershipAuthority {
     getChatMember: () => Promise<{
       status: string;
       custom_title?: string;
+      is_member?: boolean;
       user: { id: number };
     }>;
     observedAt?: string;
@@ -532,6 +575,7 @@ export class TelegramMembershipAuthority {
     let member: {
       status: string;
       custom_title?: string;
+      is_member?: boolean;
       user: { id: number };
     };
     try {
@@ -552,6 +596,50 @@ export class TelegramMembershipAuthority {
       chatId: input.chatId,
       chatRoomKey: input.chatRoomKey,
     });
+    // The authority requires the principal's entity row AND the chat's world/
+    // room rows to exist before evidence can be applied
+    // (MEMBERSHIP_PRINCIPAL_NOT_FOUND / MEMBERSHIP_RUNTIME_MAPPING_INVALID
+    // otherwise). A never-seen principal reaching reconcile is the backfill
+    // case: create the ENTITY row for the principal and the WORLD/ROOM rows
+    // for the CHAT — all sender-membership-neutral. Room-participant
+    // association for the SENDER happens only AFTER admission in
+    // handleMessage, so a denied sender still mutates no participant state.
+    try {
+      await this.runtime.createEntity({
+        id: input.canonicalPrincipalId,
+        agentId: this.runtime.agentId,
+        names: [`telegram-${input.telegramUserId}`],
+        metadata: { source: "telegram", telegramUserId: input.telegramUserId },
+      });
+      if (input.runtime.worldId) {
+        await this.runtime.createWorld({
+          id: input.runtime.worldId,
+          name: input.chatId,
+          agentId: this.runtime.agentId,
+          metadata: { source: "telegram", chatId: input.chatId },
+        });
+      }
+      if (input.runtime.roomId && input.runtime.worldId) {
+        await this.runtime.createRoom({
+          id: input.runtime.roomId,
+          name: input.chatRoomKey,
+          source: "telegram",
+          type: ChannelType.GROUP,
+          channelId: input.chatId,
+          worldId: input.runtime.worldId,
+        });
+      }
+    } catch (error) {
+      // error-policy:J3 createEntity/createWorld/createRoom are idempotent
+      // for existing rows on the adapters in use; a genuine failure surfaces
+      // below through applyEvidence's assert codes, so this only guards
+      // duplicate-create races.
+      this.runtime.reportError("telegram:membership-reconcile", error, {
+        chatId: input.chatId,
+        telegramUserId: input.telegramUserId,
+        stage: "principal-bootstrap",
+      });
+    }
     try {
       await this.applyEvidence({
         scope,
@@ -615,27 +703,46 @@ export class TelegramMembershipAuthority {
       chatRoomKey: input.chatRoomKey,
     });
     const key = scopeKey(scope);
-    try {
-      await this.serialized(key, async () => {
+    // Runs inside the per-scope serialized chain and RETRIES generation
+    // fencing. THROWS on persistent failure: the bot-removal caller must be
+    // able to detect that the scope could NOT be marked unavailable and
+    // escalate (mark the message gate broken so admission fails closed)
+    // instead of continuing on an authorizable scope.
+    await this.serialized(key, async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
         const health = await this.service.getScopeHealth(scope);
         const expectedGeneration = health?.generation ?? 0;
-        await this.service.setScopeHealth({
-          ...scope,
-          expectedGeneration,
-          idempotencyKey: `tg:${this.connectorAccountId}:${input.chatId}:${input.reason}:${expectedGeneration}`,
-          health: "unavailable",
-          reason: input.reason,
-          observedAt: new Date().toISOString(),
-        });
-        this.scopes.delete(key);
-      });
-    } catch (error) {
-      // error-policy:J7 Bot-removal bookkeeping must not kill the poll loop.
-      this.runtime.reportError("telegram:membership-scope-health", error, {
-        chatId: input.chatId,
-        reason: input.reason,
-      });
-    }
+        try {
+          const receipt = await this.service.setScopeHealth({
+            ...scope,
+            expectedGeneration,
+            idempotencyKey: `tg:${this.connectorAccountId}:${input.chatId}:${input.reason}:${expectedGeneration}:${attempt}`,
+            health: "unavailable",
+            reason: input.reason,
+            observedAt: new Date().toISOString(),
+          });
+          if (receipt.operation === "health") {
+            this.scopes.delete(key);
+            return;
+          }
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message.includes("MEMBERSHIP_GENERATION_MISMATCH") &&
+            attempt < 2
+          ) {
+            continue;
+          }
+          // error-policy:J2 Degrade-bookkeeping failure propagates to the
+          // caller as a typed boundary decision (gate marked broken); the
+          // poll loop is protected by the update handler's own catch.
+          throw error;
+        }
+      }
+      throw new Error(
+        `Telegram membership scope unavailable-degrade exhausted retries for ${input.chatId}`,
+      );
+    });
   }
 
   /** Read-only scope health accessor (used by tests and diagnostics). */

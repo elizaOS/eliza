@@ -29,12 +29,13 @@ describe("telegramStatusToMembership", () => {
     ).toEqual({ state: "revoked", reason: "left" });
   });
 
-  it("maps restricted without is_member (unknown) to active (fail toward provider truth)", () => {
-    // Telegram always sends is_member on restricted; absence is treated as
-    // membership true to match the Bot API contract default.
+  it("maps restricted WITHOUT is_member (incomplete provider response) to REVOKED (fail closed)", () => {
+    // Telegram always sends is_member on restricted; absence means an
+    // incomplete/untrusted provider response, which must not establish
+    // active membership at an external provider boundary.
     expect(telegramStatusToMembership({ status: "restricted" })).toEqual({
-      state: "active",
-      reason: "reconciled_present",
+      state: "revoked",
+      reason: "left",
     });
   });
 

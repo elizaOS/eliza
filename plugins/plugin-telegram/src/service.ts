@@ -505,6 +505,9 @@ export class TelegramService extends Service {
 
   private setDefaultAccountState(state: TelegramAccountRuntime): void {
     this.accountStates.set(state.accountId, state);
+    // The manager for this account just became available: (re)bind any
+    // membership gate that resolved before the state was installed.
+    void this.bindAccountMembershipGates(state.accountId);
     if (state.accountId === this.defaultAccountId || !this.bot) {
       this.bot = state.bot;
       this.messageManager = state.messageManager;
@@ -1061,31 +1064,62 @@ export class TelegramService extends Service {
       });
       this.membershipGates.set(accountId, gatePromise);
       // error-policy:J4 Absent authority service resolves to null (legacy
-      // degrade-with-warning mode). A bootstrap FAILURE is recorded so
-      // admission can distinguish "never configured" from "broken" and fail
-      // closed on the latter.
-      // error-policy:J4 Absent authority service (null gate) means the
-      // deployment never registered the authority: the manager gate stays in
-      // documented legacy degrade-with-warning mode. A bootstrap FAILURE is
-      // different: the authority exists but is broken, so the manager gate is
-      // marked broken and every group admission fails closed.
+      // degrade-with-warning mode). A bootstrap FAILURE throws and is
+      // recorded here so admission can distinguish "never configured" from
+      // "broken" and fail closed on the latter.
       try {
         const gate = await gatePromise;
         if (gate) {
-          const manager =
-            this.getAccountState(accountId)?.messageManager ??
-            this.messageManager;
-          manager?.bindMembershipGate(gate);
+          // Bind ONLY this account's own manager: a fallback to the default
+          // manager would gate the wrong connector (and leave the secondary
+          // ungated) when the account state is not installed yet. If the
+          // manager is not ready, defer to bindAccountMembershipGates(),
+          // which runs at account-state installation.
+          this.getAccountState(accountId)?.messageManager?.bindMembershipGate(
+            gate,
+          );
         }
       } catch (error) {
         this.membershipGateFailures.add(accountId);
-        (
-          this.getAccountState(accountId)?.messageManager ?? this.messageManager
-        )?.markMembershipGateBroken();
+        this.getAccountState(
+          accountId,
+        )?.messageManager?.markMembershipGateBroken();
         this.runtime.reportError("telegram:membership-bootstrap", error, {
           accountId,
         });
       }
+    }
+  }
+
+  /**
+   * (Re)binds resolved membership gates to the account's own MessageManager.
+   * Called whenever an account state (with its manager) is installed so a
+   * gate that resolved BEFORE the manager existed still lands on the right
+   * manager — the bootstrap race can no longer strand a secondary account
+   * ungated or bind it to the default manager.
+   */
+  private async bindAccountMembershipGates(accountId: string): Promise<void> {
+    const promise = this.membershipGates.get(accountId);
+    if (!promise) {
+      return;
+    }
+    const manager = this.getAccountState(accountId)?.messageManager;
+    if (!manager) {
+      return;
+    }
+    if (this.membershipGateFailures.has(accountId)) {
+      manager.markMembershipGateBroken();
+      return;
+    }
+    try {
+      const gate = await promise;
+      if (gate) {
+        manager.bindMembershipGate(gate);
+      }
+    } catch {
+      // The seeding path already recorded the failure and marked whatever
+      // manager existed broken; this late-binding pass re-marks THIS manager.
+      manager.markMembershipGateBroken();
     }
   }
 
@@ -1871,17 +1905,37 @@ export class TelegramService extends Service {
       });
       return;
     }
-    await gate.authority.recordEvent({
-      chatId,
-      chatRoomKey,
-      canonicalPrincipalId: event.canonicalPrincipalId,
-      state: event.state,
-      reason: event.reason,
-      runtime: event.runtime,
-      messageId: event.messageId,
-      telegramUserId: event.telegramUserId,
-      observedAt: event.observedAt,
-    });
+    try {
+      await gate.authority.recordEvent({
+        chatId,
+        chatRoomKey,
+        canonicalPrincipalId: event.canonicalPrincipalId,
+        state: event.state,
+        reason: event.reason,
+        runtime: event.runtime,
+        messageId: event.messageId,
+        telegramUserId: event.telegramUserId,
+        observedAt: event.observedAt,
+      });
+    } catch (error) {
+      // error-policy:J2 recordEvent only throws when a REVOCATION could be
+      // neither committed nor degraded fail-closed (or the entity bootstrap
+      // above failed the same way): the authority can no longer be trusted
+      // for this account, so mark the admission gate broken — every group
+      // admission fails closed until a later boot rebinds a healthy gate.
+      // The poll loop survives; this update is dropped either way.
+      const manager =
+        this.getAccountState(accountId)?.messageManager ?? this.messageManager;
+      manager?.markMembershipGateBroken();
+      this.membershipGateFailures.add(accountId);
+      this.membershipGates.delete(accountId);
+      this.runtime.reportError("telegram:membership-evidence", error, {
+        chatId,
+        accountId,
+        telegramUserId: event.telegramUserId,
+        degraded: "gate-broken",
+      });
+    }
   }
 
   /**
@@ -2011,11 +2065,30 @@ export class TelegramService extends Service {
         // the scope fails closed instead of fabricating stale authority. Any
         // further evidence write would advance the scope back to current and
         // re-authorize stale member facts, so stop handling this update.
-        await gate.authority.markScopeUnavailable({
-          chatId: chat,
-          chatRoomKey,
-          reason: "bot_removed",
-        });
+        try {
+          await gate.authority.markScopeUnavailable({
+            chatId: chat,
+            chatRoomKey,
+            reason: "bot_removed",
+          });
+        } catch (error) {
+          // error-policy:J2 The unavailable-degrade itself failed: the scope
+          // may still authorize on stale evidence. Mark the admission gate
+          // broken so every group admission fails closed rather than
+          // continuing on an un-degraded scope.
+          (
+            this.getAccountState(accountId)?.messageManager ??
+            this.messageManager
+          )?.markMembershipGateBroken();
+          this.membershipGateFailures.add(accountId);
+          this.membershipGates.delete(accountId);
+          this.runtime.reportError("telegram:membership-scope-health", error, {
+            chatId: chat,
+            accountId,
+            reason: "bot_removed",
+            degraded: "gate-broken",
+          });
+        }
         return;
       }
 
