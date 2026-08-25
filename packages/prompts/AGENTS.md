@@ -45,7 +45,7 @@ packages/prompts/
     registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
-  test/prompts.test.js  regression tests for prompt boundaries (bun test)
+  test/prompts.test.js  rendered composition, injection, and lossless-context contracts (bun test)
 ```
 
 ## Key exports / surface
@@ -102,13 +102,17 @@ Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Never cap, condense, summarize, abbreviate, or otherwise rewrite model-facing
   prompt content. Provider limits reject before dispatch; explicit pagination
   must be lossless and caller requested.
+- Test observable rendered contracts rather than prompt wording. Prose-only
+  regex and substring assertions create copy-edit churn without proving model-facing behavior.
 - The generated action inventory is a public-surface audit, not a substitute
   for runtime action-registration tests.
 
 ## Package completion evidence
 
 Follow the repository-wide definition of done in the root guide. For prompt or
-spec changes, regenerate every owned artifact, inspect the diff, run prompt and
-secret tests, and execute affected behavior against a live model. Review the
-full trajectory—including rendered prompt, raw output, validation, action
-selection, and result—rather than approving a string diff alone.
+spec changes, regenerate every owned artifact, inspect the diff, and run prompt
+and secret tests. A deterministic test or guide change that does not alter a
+model-facing prompt needs rendered-contract evidence, not a live-model run.
+When prompt behavior changes, execute the affected behavior against a live model
+and review the full trajectory—including rendered prompt, raw output,
+validation, action selection, and result.
