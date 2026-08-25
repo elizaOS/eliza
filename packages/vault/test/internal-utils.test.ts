@@ -50,6 +50,8 @@ describe("optsCaller", () => {
 
   it("returns empty object when caller is absent or empty", () => {
     expect(optsCaller({})).toEqual({});
+    expect(optsCaller(null)).toEqual({});
+    expect(optsCaller(undefined)).toEqual({});
     // Untyped JavaScript callers can still pass an explicit undefined value.
     expect(optsCaller({ caller: undefined } as never)).toEqual({});
     expect(optsCaller({ caller: "" })).toEqual({});
@@ -63,6 +65,11 @@ describe("toWellFormedUnicode", () => {
     expect(toWellFormedUnicode("\uD83D\uDE00")).toBe("\uD83D\uDE00");
   });
 
+  it("handles nullish or non-string inputs safely", () => {
+    expect(toWellFormedUnicode(null as unknown as string)).toBe("");
+    expect(toWellFormedUnicode(undefined as unknown as string)).toBe("");
+  });
+
   it("sanitizes lone high or low surrogates", () => {
     const loneHigh = "bad \uD800 char";
     const loneLow = "bad \uDC00 char";
@@ -70,8 +77,8 @@ describe("toWellFormedUnicode", () => {
     const wellFormedHigh = toWellFormedUnicode(loneHigh);
     const wellFormedLow = toWellFormedUnicode(loneLow);
 
-    expect(wellFormedHigh).not.toContain("\uD800");
-    expect(wellFormedLow).not.toContain("\uDC00");
+    expect(wellFormedHigh).toBe("bad \uFFFD char");
+    expect(wellFormedLow).toBe("bad \uFFFD char");
   });
 });
 
@@ -80,6 +87,8 @@ describe("truncateWellFormed", () => {
     expect(truncateWellFormed("hello", 0)).toBe("");
     expect(truncateWellFormed("hello", -5)).toBe("");
     expect(truncateWellFormed("hello", Number.NaN)).toBe("");
+    expect(truncateWellFormed(null as unknown as string, 5)).toBe("");
+    expect(truncateWellFormed(undefined as unknown as string, 5)).toBe("");
   });
 
   it("returns original text when text length is within maxLength", () => {

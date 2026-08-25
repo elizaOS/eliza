@@ -13,8 +13,10 @@ export function assertKey(key: string): void {
   }
 }
 
-export function optsCaller(opts: SetOptions): { caller?: string } {
-  return opts.caller ? { caller: opts.caller } : {};
+export function optsCaller(opts?: SetOptions | null): { caller?: string } {
+  return typeof opts?.caller === "string" && opts.caller.trim() !== ""
+    ? { caller: opts.caller }
+    : {};
 }
 
 // Surrogate-safe truncation for audit reason (leaf-local copy of
@@ -25,7 +27,7 @@ const HIGH_SURROGATE_START = 0xd800;
 const HIGH_SURROGATE_END = 0xdbff;
 const LOW_SURROGATE_START = 0xdc00;
 const LOW_SURROGATE_END = 0xdfff;
-const REPLACEMENT_CHARACTER = "�";
+const REPLACEMENT_CHARACTER = "\uFFFD";
 function isHighSurrogate(code: number): boolean {
   return code >= HIGH_SURROGATE_START && code <= HIGH_SURROGATE_END;
 }
@@ -55,6 +57,7 @@ function replaceLoneSurrogates(text: string): string {
   return out;
 }
 export function toWellFormedUnicode(text: string): string {
+  if (!text || typeof text !== "string") return "";
   const nativeToWellFormed = (
     String.prototype as { toWellFormed?: (this: string) => string }
   ).toWellFormed;
@@ -66,6 +69,7 @@ export function toWellFormedUnicode(text: string): string {
   return replaceLoneSurrogates(text);
 }
 export function truncateWellFormed(text: string, maxLength: number): string {
+  if (!text || typeof text !== "string") return "";
   if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
   if (text.length <= maxLength) return text;
   const end =
