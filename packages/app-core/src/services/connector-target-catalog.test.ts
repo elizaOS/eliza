@@ -122,4 +122,53 @@ describe("createElizaConnectorTargetCatalog", () => {
       ...slackGroups,
     ]);
   });
+
+  it("concatenates multiple sources registered for the same platform in order", async () => {
+    const discordGroups2: TargetGroup[] = [
+      {
+        platform: "discord",
+        groupId: "g2",
+        groupName: "Designers",
+        targets: [{ id: "c2", name: "showcase", kind: "channel" }],
+      },
+    ];
+    const catalog = createElizaConnectorTargetCatalog({
+      listSources: () => [
+        discordSource(),
+        discordSource(async () => discordGroups2),
+      ],
+      getConfig: () => ({}),
+    });
+    expect(await catalog.listGroups({ platform: "discord" })).toEqual([
+      ...DISCORD_GROUPS,
+      ...discordGroups2,
+    ]);
+  });
+
+  it("passes undefined for optional context properties when omitted from options", async () => {
+    const enumerate = vi.fn<TargetSource["enumerate"]>(async () => []);
+    const getConfig = () => ({});
+    const catalog = createElizaConnectorTargetCatalog({
+      listSources: () => [{ platform: "telegram", enumerate }],
+      getConfig,
+    });
+    await catalog.listGroups();
+
+    const ctx = enumerate.mock.calls.at(0)?.[0];
+    expect(ctx).toBeDefined();
+    expect(ctx?.groupId).toBeUndefined();
+    expect(ctx?.fetchImpl).toBeUndefined();
+    expect(ctx?.now).toBeUndefined();
+    expect(ctx?.logger).toBeUndefined();
+    expect(ctx?.getConfig).toBe(getConfig);
+  });
+
+  it("implements a safe no-op stop lifecycle method", async () => {
+    const catalog = createElizaConnectorTargetCatalog({
+      listSources: () => [discordSource()],
+      getConfig: () => ({}),
+    });
+    await expect(catalog.stop()).resolves.toBeUndefined();
+    await expect(catalog.stop()).resolves.toBeUndefined();
+  });
 });
