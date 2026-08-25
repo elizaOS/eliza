@@ -455,11 +455,13 @@ async function revokeLinuxHostCloudFirst(
   }
 }
 
+export interface DevicesRuntimesContainerProps {
+  className?: string;
+}
+
 export function DevicesRuntimesContainer({
   className,
-}: {
-  className?: string;
-}) {
+}: DevicesRuntimesContainerProps) {
   const [registry, setRegistry] = useState(() => loadAgentProfileRegistry());
   const [directory, setDirectory] = useState<RemoteHostDirectory | null>(null);
   const [controller, setController] =
