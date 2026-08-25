@@ -20,6 +20,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -187,8 +188,14 @@ export async function globHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath =
-    requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+  let targetPath: string;
+  if (requestedPath === undefined) {
+    targetPath = (await session.getExistingCwd(conversationId)).cwd;
+  } else {
+    const input = resolveInputPath(runtime, conversationId, requestedPath);
+    if (!input.ok) return failureToActionResult(input.failure);
+    targetPath = input.value;
+  }
 
   const validation = await sandbox.validatePath(conversationId, targetPath);
   if (validation.ok === false) {

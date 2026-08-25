@@ -17,10 +17,12 @@ import type {
 import {
   failureToActionResult,
   fencePreformatted,
+  readParam,
   readStringParam,
   successActionResult,
   userFacingSuccessResult,
 } from "../lib/format.js";
+import { isAbsolutePath } from "../lib/path-utils.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 import { editFileHandler } from "./edit.js";
 import { globHandler } from "./glob.js";
@@ -81,6 +83,116 @@ const FILE_ACTIONS: Record<FileOperation, FileHandler> = {
   glob: globHandler,
   ls: lsHandler,
 };
+
+const WORKSPACE_OPERATION_PARAMETERS: Record<FileOperation, readonly string[]> =
+  {
+    read: ["file_path", "offset", "limit", "unit", "expectedRevision"],
+    write: ["file_path", "content", "overwrite"],
+    edit: [
+      "file_path",
+      "old_string",
+      "new_string",
+      "replace_all",
+      "allow_literal_escapes",
+    ],
+    grep: [
+      "pattern",
+      "path",
+      "glob",
+      "type",
+      "output_mode",
+      "-A",
+      "-B",
+      "-C",
+      "case_insensitive",
+      "multiline",
+      "head_limit",
+      "show_line_numbers",
+    ],
+    glob: ["pattern", "path"],
+    ls: ["path", "ignore"],
+  };
+
+const EMPTY_STRING_PAYLOAD_PARAMETERS = new Set([
+  "content",
+  "old_string",
+  "new_string",
+]);
+
+const OPTIONAL_ZERO_PARAMETERS = new Set([
+  "offset",
+  "limit",
+  "-A",
+  "-B",
+  "-C",
+  "head_limit",
+]);
+
+function nonEmptyStringParam(
+  options: unknown,
+  name: string,
+): string | undefined {
+  const value = readStringParam(options, name);
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function looksLikeRelativeGlob(value: string): boolean {
+  return !isAbsolutePath(value) && /[*?[\]{}]/.test(value);
+}
+
+/**
+ * Narrows the umbrella schema to the selected operation before dispatch. Some
+ * strict decoders materialize every optional property in FILE's union-shaped
+ * schema as an empty string, false, zero, or empty array. Those placeholders
+ * are not requests for another operation and must not override an operation's
+ * own defaults. Empty write/edit payload strings remain exact user data.
+ */
+function normalizeWorkspaceFileOptions(
+  operation: FileOperation,
+  options: unknown,
+): HandlerOptions {
+  const parameters: Record<string, unknown> = {};
+
+  for (const name of WORKSPACE_OPERATION_PARAMETERS[operation]) {
+    const value = readParam(options, name);
+    if (value === undefined) continue;
+    if (
+      typeof value === "string" &&
+      value.length === 0 &&
+      !EMPTY_STRING_PAYLOAD_PARAMETERS.has(name)
+    ) {
+      continue;
+    }
+    if (
+      typeof value === "number" &&
+      value === 0 &&
+      OPTIONAL_ZERO_PARAMETERS.has(name)
+    ) {
+      continue;
+    }
+    if (Array.isArray(value) && value.length === 0) continue;
+    parameters[name] = value;
+  }
+
+  if (operation === "glob") {
+    const canonicalPattern = nonEmptyStringParam(options, "pattern");
+    const compatibilityPattern = nonEmptyStringParam(options, "glob");
+    const requestedPath = nonEmptyStringParam(options, "path");
+    const pattern = canonicalPattern ?? compatibilityPattern;
+
+    if (pattern !== undefined) parameters.pattern = pattern;
+    if (requestedPath !== undefined) {
+      if (looksLikeRelativeGlob(requestedPath)) {
+        if (pattern === undefined) parameters.pattern = requestedPath;
+        delete parameters.path;
+      } else {
+        parameters.path = requestedPath;
+      }
+    }
+  }
+
+  return { parameters } as HandlerOptions;
+}
 
 const FILE_OPERATION_ALIASES: Record<string, FileOperation> = {
   cat: "read",
@@ -464,16 +576,24 @@ export const fileAction: Action = {
         message: "FILE requires action=read/write/edit/grep/glob/ls",
       });
     }
-    const { operation, target } = routing;
+    let { operation } = routing;
+    const { target } = routing;
     if (target === "device") {
       return deviceFileHandler(operation, runtime, options, callback);
+    }
+    if (
+      operation === "ls" &&
+      (nonEmptyStringParam(options, "pattern") !== undefined ||
+        nonEmptyStringParam(options, "glob") !== undefined)
+    ) {
+      operation = "glob";
     }
     const handler = FILE_ACTIONS[operation];
     const result = await handler(
       runtime,
       message,
       state,
-      options as HandlerOptions | undefined,
+      normalizeWorkspaceFileOptions(operation, options),
       callback,
     );
     return result;

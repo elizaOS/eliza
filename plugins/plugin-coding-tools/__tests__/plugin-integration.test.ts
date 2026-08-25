@@ -222,6 +222,14 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       "# heading\n\nbody text\n",
       "utf8",
     );
+    await fs.mkdir(path.join(tmpDir, "internal", "config"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, "internal", "config", "config.go"),
+      "package config\n",
+      "utf8",
+    );
 
     services = new Map();
     runtime = {
@@ -273,6 +281,39 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   function makeMessage(text = ""): Memory {
     return { roomId: "smoke-room", content: { text } } as Memory;
+  }
+
+  function guidedFileParameters(
+    overrides: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return {
+      action: "glob",
+      target: "workspace",
+      file_path: "",
+      path: "",
+      content: "",
+      old_string: "",
+      new_string: "",
+      replace_all: false,
+      pattern: "",
+      glob: "",
+      type: "",
+      output_mode: "files_with_matches",
+      "-A": 0,
+      "-B": 0,
+      "-C": 0,
+      case_insensitive: false,
+      multiline: false,
+      head_limit: 0,
+      show_line_numbers: false,
+      offset: 0,
+      limit: 0,
+      unit: "line",
+      expectedRevision: "",
+      ignore: [],
+      encoding: "utf8",
+      ...overrides,
+    };
   }
 
   it("FILE action=read returns a known file's contents", async () => {
@@ -371,6 +412,161 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("needle.txt");
+  });
+
+  it("FILE dispatches the exact dense guided-decode glob shape from a live coding trajectory", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "glob",
+        path: "**/config.go",
+        glob: "**/internal/config/config.go",
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      path.join(tmpDir, "internal", "config", "config.go"),
+    );
+  });
+
+  it("FILE resolves an explicit relative glob root against the session cwd", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: {
+        action: "glob",
+        pattern: "*.go",
+        path: "internal/config",
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      path.join(tmpDir, "internal", "config", "config.go"),
+    );
+  });
+
+  it("FILE treats dense decoder defaults as absent for a valid read", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "read",
+        file_path: path.join(tmpDir, "needle.txt"),
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("NEEDLE");
+  });
+
+  it("FILE preserves an empty write payload while dropping unrelated decoder defaults", async () => {
+    const action = findAction("FILE");
+    const target = path.join(tmpDir, "guided-empty.txt");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "write",
+        file_path: target,
+        content: "",
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(target, "utf8")).toBe("");
+  });
+
+  it("FILE preserves an empty edit replacement while dropping unrelated decoder defaults", async () => {
+    const action = findAction("FILE");
+    const target = path.join(tmpDir, "guided-edit.txt");
+    await fs.writeFile(target, "remove me\nkeep me\n", "utf8");
+    const readResult = await action.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        parameters: { action: "read", file_path: target },
+      },
+    );
+    expect(readResult.success).toBe(true);
+
+    const editResult = await action.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        parameters: guidedFileParameters({
+          action: "edit",
+          file_path: target,
+          old_string: "remove me\n",
+          new_string: "",
+        }),
+      },
+    );
+
+    expect(editResult.success).toBe(true);
+    expect(await fs.readFile(target, "utf8")).toBe("keep me\n");
+  });
+
+  it("FILE ignores empty grep filters emitted by a dense decoder", async (ctx) => {
+    const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
+    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
+    if (!rg) return;
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(rg.binary(), ["--version"], { stdio: "ignore" });
+    } catch {
+      ctx.skip(`ripgrep unavailable: '${rg.binary()}' is not runnable`);
+      return;
+    }
+
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "grep",
+        pattern: "package config",
+        path: "internal/config",
+        output_mode: "content",
+        show_line_numbers: true,
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("config.go");
+  });
+
+  it("FILE routes a dense decoder's filtered ls request through glob", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({
+        action: "ls",
+        path: ".",
+        glob: "*",
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("needle.txt");
+    expect(result.text).toContain("other.md");
+  });
+
+  it("FILE resolves a dense decoder's relative ls path when filters are empty", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({ action: "ls", path: "." }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("needle.txt");
+    expect(result.text).toContain("other.md");
+  });
+
+  it("FILE preserves a missing-pattern failure for a dense grep call", async () => {
+    const action = findAction("FILE");
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: guidedFileParameters({ action: "grep", path: "." }),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("missing_param: pattern is required");
   });
 
   it("WORKTREE action=enter in a non-git dir fails cleanly", async () => {

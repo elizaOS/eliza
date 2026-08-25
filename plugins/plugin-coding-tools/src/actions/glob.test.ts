@@ -108,13 +108,16 @@ describe("GLOB", () => {
     expect(result.text).toMatch(/^3 files\n/);
   });
 
-  it("rejects a relative path", async () => {
+  it("resolves a relative path against the session cwd", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
       parameters: { pattern: "**/*.ts", path: "./foo" },
     });
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("invalid_param");
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    const files = (data?.files as string[] | undefined) ?? [];
+    expect(files).toHaveLength(3);
+    expect(files.every((filePath) => filePath.endsWith(".ts"))).toBe(true);
   });
 
   it("rejects a path under the blocklist", async () => {
@@ -213,10 +216,9 @@ describe("globHandler — result ordering", () => {
     expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown> | undefined;
     const files = (data?.files as string[] | undefined) ?? [];
-    expect(files.map((filePath) => path.relative(orderDir, filePath))).toEqual([
-      "m-newest.ts",
-      path.join("sub", "a-tied.ts"),
-      "z-tied.ts",
-    ]);
+    const canonicalOrderDir = await fs.realpath(orderDir);
+    expect(
+      files.map((filePath) => path.relative(canonicalOrderDir, filePath)),
+    ).toEqual(["m-newest.ts", path.join("sub", "a-tied.ts"), "z-tied.ts"]);
   });
 });
