@@ -2,10 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import type {
-	ProgressiveConformanceObject,
-	ProgressiveContentConformanceAdapter,
-} from "./progressive-content-conformance";
+import type { ProgressiveContentTarget } from "./progressive-content-target";
 
 export const PROGRESSIVE_CONTENT_STRESS_SCHEMA_VERSION =
 	"elizaos.progressive-content.stress.v1" as const;
@@ -305,8 +302,8 @@ export function analyzeProgressiveContentResourceDrift(input: {
 
 /** Exercise deterministic pages at each required concurrency and record bounded work. */
 export async function runProgressiveContentStress(input: {
-	readonly adapter: ProgressiveContentConformanceAdapter;
-	readonly object: ProgressiveConformanceObject;
+	readonly adapterId: string;
+	readonly target: ProgressiveContentTarget;
 	readonly concurrency?: readonly number[];
 	readonly operationsPerWorker?: number;
 	readonly pageBytes?: number;
@@ -326,7 +323,10 @@ export async function runProgressiveContentStress(input: {
 	const measure = input.measureResources ?? defaultResourceSample;
 	const before = await measure();
 	const cases: ProgressiveContentStressCase[] = [];
-	const pageCount = Math.max(1, Math.ceil(input.object.byteLength / pageBytes));
+	const pageCount = Math.max(
+		1,
+		Math.ceil(input.target.object.byteLength / pageBytes),
+	);
 
 	for (const concurrency of levels) {
 		const latencies: number[] = [];
@@ -347,12 +347,11 @@ export async function runProgressiveContentStress(input: {
 					const offset = pageIndex * pageBytes;
 					const pageStartedAt = performance.now();
 					try {
-						const page = await input.adapter.read({
-							objectId: input.object.id,
-							authorizationScope: input.object.authorizationScope,
+						const page = await input.target.read({
+							access: "authorized",
 							offset,
 							limit: pageBytes,
-							expectedRevision: input.object.revision,
+							expectedRevision: input.target.object.revision,
 						});
 						latencies.push(performance.now() - pageStartedAt);
 						bytesRead += page.sourceWork.bytesRead;
@@ -361,7 +360,7 @@ export async function runProgressiveContentStress(input: {
 						parentScans += page.sourceWork.parentScans;
 						const end = offset + page.bytes.byteLength;
 						if (
-							page.view.reference.revision !== input.object.revision ||
+							page.view.reference.revision !== input.target.object.revision ||
 							page.view.slice.range.start !== offset ||
 							page.view.slice.range.end !== end ||
 							page.view.slice.sliceSha256 !==
@@ -407,8 +406,8 @@ export async function runProgressiveContentStress(input: {
 			: after.fileDescriptors - before.fileDescriptors;
 	return {
 		schemaVersion: PROGRESSIVE_CONTENT_STRESS_SCHEMA_VERSION,
-		adapterId: input.adapter.adapterId,
-		objectId: input.object.id,
+		adapterId: input.adapterId,
+		objectId: input.target.object.id,
 		status: cases.every(({ failures }) => failures.length === 0)
 			? "passed"
 			: "failed",
@@ -428,8 +427,8 @@ export async function runProgressiveContentStress(input: {
 
 /** Run the same stress contract until both the duration and operation targets are met. */
 export async function runProgressiveContentSoak(input: {
-	readonly adapter: ProgressiveContentConformanceAdapter;
-	readonly object: ProgressiveConformanceObject;
+	readonly adapterId: string;
+	readonly target: ProgressiveContentTarget;
 	readonly requiredDurationMs?: number;
 	readonly requiredOperations?: number;
 	readonly batchOperationsPerWorker?: number;
@@ -474,8 +473,8 @@ export async function runProgressiveContentSoak(input: {
 	const resourceSamples: ProgressiveContentResourcePoint[] = [];
 	do {
 		latest = await runProgressiveContentStress({
-			adapter: input.adapter,
-			object: input.object,
+			adapterId: input.adapterId,
+			target: input.target,
 			concurrency: [concurrency],
 			operationsPerWorker: batchOperationsPerWorker,
 			measureResources: input.measureResources,
@@ -536,8 +535,8 @@ export async function runProgressiveContentSoak(input: {
 		failures.push(...resourceDrift.failures);
 	return {
 		schemaVersion: PROGRESSIVE_CONTENT_STRESS_SCHEMA_VERSION,
-		adapterId: input.adapter.adapterId,
-		objectId: input.object.id,
+		adapterId: input.adapterId,
+		objectId: input.target.object.id,
 		status:
 			failures.length === 0 &&
 			latest.status === "passed" &&
