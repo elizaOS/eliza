@@ -21,6 +21,7 @@ import type {
 } from "./progressive-content.ts";
 import {
   openProgressiveContentBoundedSource,
+  PROGRESSIVE_CONTENT_SOURCE_PAGE_BYTES,
   type ProgressiveNativeRealizationEntry,
   type ProgressiveSourceWork,
 } from "./progressive-content-realization.ts";
@@ -32,7 +33,7 @@ export interface ProgressiveContentTargetHarnessEntry {
   readonly objectId: string;
   readonly family: ProgressiveContentFamily;
   readonly adapterId: string;
-  readonly status: "verified" | "failed";
+  readonly status: "verified" | "typed-rejected" | "failed";
   readonly sourceSha256: string;
   readonly sourceRevision: string;
   readonly nativeRevision?: string;
@@ -42,7 +43,20 @@ export interface ProgressiveContentTargetHarnessEntry {
   readonly conformance?: ProgressiveContentConformanceReport;
   readonly receipts?: readonly ProgressiveContentTargetReceipt[];
   readonly code?: string;
+  readonly rejectionCode?:
+    | "CONTENT_BINARY_UNSUPPORTED"
+    | "CONTENT_INVALID_UTF8";
   readonly blocker?: string;
+}
+
+function expectedTypedRejection(input: {
+  readonly factory: ProgressiveContentTargetFactory;
+  readonly object: ProgressiveContentObject;
+}): "CONTENT_BINARY_UNSUPPORTED" | "CONTENT_INVALID_UTF8" | undefined {
+  if (input.factory.binaryPolicy !== "typed-rejection") return undefined;
+  if (input.object.format === "binary") return "CONTENT_BINARY_UNSUPPORTED";
+  if (input.object.format === "invalid-utf8") return "CONTENT_INVALID_UTF8";
+  return undefined;
 }
 
 export interface ProgressiveContentTargetHarnessReport {
@@ -134,6 +148,7 @@ export async function runProgressiveContentTargetHarness(input: {
       input.corpusRoot,
       object,
     );
+    const expectedRejection = expectedTypedRejection({ factory, object });
     let target: ProgressiveContentTarget | undefined;
     try {
       target = await factory.create({
@@ -149,6 +164,11 @@ export async function runProgressiveContentTargetHarness(input: {
         },
         source: opened.source,
       });
+      if (expectedRejection) {
+        throw new Error(
+          `${factory.adapterId} accepted ${object.format} instead of ${expectedRejection}`,
+        );
+      }
       if (!opened.exactCoverage()) {
         await target.cleanup();
         throw new Error(`factory did not consume ${object.id} exactly once`);
@@ -199,20 +219,33 @@ export async function runProgressiveContentTargetHarness(input: {
               : String(cleanupError);
         }
       }
+      const code = errorCode(error);
+      const sourceWork = opened.source.work();
+      const rejectedAsDeclared =
+        target === undefined &&
+        expectedRejection !== undefined &&
+        code === expectedRejection &&
+        cleanupFailure === undefined &&
+        sourceWork.bytesRead <= PROGRESSIVE_CONTENT_SOURCE_PAGE_BYTES &&
+        sourceWork.maxReadBytes <= PROGRESSIVE_CONTENT_SOURCE_PAGE_BYTES;
       entries.push({
         objectId: object.id,
         family: object.family,
         adapterId: factory.adapterId,
-        status: "failed",
+        status: rejectedAsDeclared ? "typed-rejected" : "failed",
         sourceSha256: object.sourceSha256,
         sourceRevision: object.revision,
         sourceBytes: object.byteLength,
-        sourceWork: opened.source.work(),
-        code: errorCode(error),
-        blocker: [
-          error instanceof Error ? error.message : String(error),
-          ...(cleanupFailure ? [`cleanup: ${cleanupFailure}`] : []),
-        ].join("; "),
+        sourceWork,
+        code,
+        ...(rejectedAsDeclared
+          ? { rejectionCode: expectedRejection }
+          : {
+              blocker: [
+                error instanceof Error ? error.message : String(error),
+                ...(cleanupFailure ? [`cleanup: ${cleanupFailure}`] : []),
+              ].join("; "),
+            }),
       });
     } finally {
       await opened.close();
@@ -222,7 +255,7 @@ export async function runProgressiveContentTargetHarness(input: {
     schemaVersion: PROGRESSIVE_CONTENT_TARGET_HARNESS_SCHEMA_VERSION,
     corpusManifestSha256: input.manifest.manifestSha256,
     generatorRevision: input.manifest.generatorRevision,
-    status: entries.every(({ status }) => status === "verified")
+    status: entries.every(({ status }) => status !== "failed")
       ? "passed"
       : "failed",
     factories: PROGRESSIVE_CONTENT_TARGET_FAMILIES.map((family) => {
