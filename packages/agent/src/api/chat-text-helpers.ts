@@ -159,10 +159,10 @@ function stripWrappedStageDirections(input: string, pattern: RegExp): string {
       const prev = source[offset - 1] ?? "";
       const next = source[offset + match.length] ?? "";
       const hasSafeLeftBoundary =
-        offset === 0 || /[\s([{>"'"'.!?,;:-]/.test(prev);
+        offset === 0 || /[\s([{>"'“‘.!?,;:–—\-]/.test(prev);
       const hasSafeRightBoundary =
         offset + match.length >= source.length ||
-        /[\s)\]}<"'"'.!?,;:-]/.test(next);
+        /[\s)\]}<"'”’.!?,;:–—\-]/.test(next);
       if (
         !hasSafeLeftBoundary ||
         !hasSafeRightBoundary ||
