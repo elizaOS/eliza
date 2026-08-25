@@ -835,6 +835,12 @@ export class SocketRedis {
     return unwrap(value);
   }
 
+  /** Execute a read-only Lua script without permitting a mutating fallback. */
+  async evalRo(script: string, keys: string[], args: Array<string | number>): Promise<unknown> {
+    const [value] = await this.conn.send([["EVAL_RO", script, keys.length, ...keys, ...args]]);
+    return unwrap(value);
+  }
+
   pipeline(): Pipeline {
     return new Pipeline(this.conn);
   }

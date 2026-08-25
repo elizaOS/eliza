@@ -178,6 +178,23 @@ describe("SocketRedis connection resilience", () => {
     await redis.quit();
   });
 
+  test("serializes read-only Lua with EVAL_RO and never EVAL", async () => {
+    let request = "";
+    const server = createServer((socket: NetSocket) => {
+      socket.once("data", (chunk) => {
+        request = chunk.toString("utf8");
+        socket.write("*2\r\n$8\r\nsnapshot\r\n$-1\r\n");
+      });
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+
+    expect(await redis.evalRo("return 1", ["agent"], [])).toEqual(["snapshot", null]);
+    expect(request).toBe("*4\r\n$7\r\nEVAL_RO\r\n$8\r\nreturn 1\r\n$1\r\n1\r\n$5\r\nagent\r\n");
+
+    await redis.quit();
+  });
+
   test("propagates an error nested inside an EVAL response", async () => {
     const server = createServer((socket: NetSocket) => {
       socket.once("data", () => socket.write("*2\r\n:1\r\n-ERR script failed\r\n"));

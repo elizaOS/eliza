@@ -1,13 +1,22 @@
 /** Verifies direct Redis transport selection without opening network connections. */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Redis as UpstashRedis } from "@upstash/redis";
-import { buildRedisClient, hasRedisConfig } from "../redis-factory";
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  evalRedisReadOnly,
+  hasRedisConfig,
+} from "../redis-factory";
 import { SocketRedis } from "../socket-redis";
 
 const TCP_URL = "redis://default:test@unreachable.example.test:6379";
 const REST_URL = "https://redis-rest.example.test";
 const REST_TOKEN = "test-token";
+const READ_ONLY_SCRIPTS = {
+  directRedis: "return 'direct'",
+  upstashRedis: "#!lua flags=no-writes\nreturn 'rest'",
+};
 
 describe("direct Redis transport selection", () => {
   test("missing or blank selection preserves automatic TCP-first behavior", () => {
@@ -166,5 +175,38 @@ describe("direct Redis transport selection", () => {
       expect(buildRedisClient(env)).toBeNull();
       expect(hasRedisConfig(env)).toBe(false);
     }
+  });
+
+  test("selects the exact read-only script for each known transport", async () => {
+    const direct = new SocketRedis(TCP_URL);
+    const directEvalRo = spyOn(direct, "evalRo").mockResolvedValue("direct");
+    const requestBodies: unknown[] = [];
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requestBodies.push(JSON.parse(String(init?.body)) as unknown);
+      return new Response(JSON.stringify([{ result: "cmVzdA==" }]), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const rest = new UpstashRedis({ url: REST_URL, token: REST_TOKEN });
+
+    try {
+      expect(await evalRedisReadOnly(direct, READ_ONLY_SCRIPTS, ["key"], [])).toBe("direct");
+      expect(directEvalRo).toHaveBeenCalledWith(READ_ONLY_SCRIPTS.directRedis, ["key"], []);
+      expect(await evalRedisReadOnly(rest, READ_ONLY_SCRIPTS, ["key"], [])).toBe("rest");
+      expect(requestBodies).toEqual([[["eval_ro", READ_ONLY_SCRIPTS.upstashRedis, 1, "key"]]]);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  test("rejects an unknown structural evalRo backend", () => {
+    const unknownBackend = {
+      evalRo: async () => "unexpected",
+    } as unknown as CompatibleRedis;
+
+    expect(() => evalRedisReadOnly(unknownBackend, READ_ONLY_SCRIPTS, ["key"], [])).toThrow(
+      "Unknown Redis backend for read-only Lua evaluation",
+    );
   });
 });

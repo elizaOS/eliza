@@ -3,9 +3,17 @@
  * them to the assigned agent server. When no compatible runtime is assigned,
  * callers receive a typed dedicated-upgrade or retryable-unavailable response.
  */
+
+import {
+  ACTIVATION_ROUTING_REDIS_EVAL_RO_SCRIPT,
+  ACTIVATION_ROUTING_UPSTASH_READ_ONLY_SCRIPT,
+  type ActivationRoutingSnapshotKeys,
+  type AgentServerRoutingReader,
+  resolveAgentServerRouting,
+} from "@elizaos/cloud-services-common";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { buildRedisClient, evalRedisReadOnly } from "@/lib/cache/redis-factory";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -26,6 +34,21 @@ const DEDICATED_LAZY_INACTIVE_STATUSES = new Set([
   "sleeping",
   "disconnected",
 ]);
+const ROUTING_VALUE_SNAPSHOT_SENTINEL = "agent-server-routing-value:v1";
+const ROUTING_VALUE_MISSING_SENTINEL = "agent-server-routing-missing:v1";
+const ROUTING_VALUE_PREFIX = "agent-server-routing:v1:";
+const ROUTING_VALUE_READ_SCRIPT_BODY = `if #KEYS ~= 1 or #ARGV ~= 0 then
+  return redis.error_reply("agent-server routing read requires exactly 1 key and 0 args")
+end
+
+local value = redis.call("GET", KEYS[1])
+if value == false then
+  return {"${ROUTING_VALUE_SNAPSHOT_SENTINEL}", "${ROUTING_VALUE_MISSING_SENTINEL}"}
+end
+return {"${ROUTING_VALUE_SNAPSHOT_SENTINEL}", "${ROUTING_VALUE_PREFIX}" .. value}
+`;
+const ROUTING_VALUE_REDIS_EVAL_RO_SCRIPT = ROUTING_VALUE_READ_SCRIPT_BODY;
+const ROUTING_VALUE_UPSTASH_READ_ONLY_SCRIPT = `#!lua flags=no-writes,allow-key-locking\n${ROUTING_VALUE_READ_SCRIPT_BODY}`;
 
 type WorkflowAgentExecutionTier =
   | "shared"
@@ -77,20 +100,61 @@ function envString(c: AppContext | undefined, key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function resolveAgentServerUrl(
-  c: AppContext,
-  agentId: string,
-): Promise<string | null> {
-  const redis = buildRedisClient(c.env);
-  if (!redis) return null;
+function decodeRoutingValueSnapshot(evaluated: unknown): string | null {
+  if (
+    !Array.isArray(evaluated) ||
+    evaluated.length !== 2 ||
+    evaluated[0] !== ROUTING_VALUE_SNAPSHOT_SENTINEL
+  ) {
+    throw new TypeError("Invalid agent-server routing value snapshot");
+  }
 
-  const serverName = await redis.get<string>(`agent:${agentId}:server`);
-  if (!serverName) return null;
+  const encoded = evaluated[1];
+  if (encoded === ROUTING_VALUE_MISSING_SENTINEL) return null;
+  if (
+    typeof encoded !== "string" ||
+    !encoded.startsWith(ROUTING_VALUE_PREFIX)
+  ) {
+    throw new TypeError("Invalid agent-server routing value envelope");
+  }
+  return encoded.slice(ROUTING_VALUE_PREFIX.length);
+}
 
-  const serverUrl = await redis.get<string>(`server:${serverName}:url`);
-  return typeof serverUrl === "string" && serverUrl.trim()
-    ? serverUrl.trim()
-    : null;
+function createWorkflowRoutingReader(c: AppContext): AgentServerRoutingReader {
+  let redis: ReturnType<typeof buildRedisClient> | undefined;
+  const requireRedis = (): NonNullable<ReturnType<typeof buildRedisClient>> => {
+    if (redis === undefined) redis = buildRedisClient(c.env);
+    if (!redis) throw new Error("Redis is not configured");
+    return redis;
+  };
+
+  return {
+    readActivationRoutingSnapshot(
+      keys: ActivationRoutingSnapshotKeys,
+    ): Promise<unknown> {
+      return evalRedisReadOnly(
+        requireRedis(),
+        {
+          directRedis: ACTIVATION_ROUTING_REDIS_EVAL_RO_SCRIPT,
+          upstashRedis: ACTIVATION_ROUTING_UPSTASH_READ_ONLY_SCRIPT,
+        },
+        [...keys],
+        [],
+      );
+    },
+    async readAgentServerRoutingValue(key: string): Promise<string | null> {
+      const evaluated = await evalRedisReadOnly(
+        requireRedis(),
+        {
+          directRedis: ROUTING_VALUE_REDIS_EVAL_RO_SCRIPT,
+          upstashRedis: ROUTING_VALUE_UPSTASH_READ_ONLY_SCRIPT,
+        },
+        [key],
+        [],
+      );
+      return decodeRoutingValueSnapshot(evaluated);
+    },
+  };
 }
 
 function buildTargetUrl(
@@ -186,6 +250,7 @@ async function forwardWorkflowToAgentServer(params: {
   ctx: AppContext;
   request: Request;
   agentId: string;
+  runtimeAgentId: string | null;
   suffix: string;
   user: { id: string; organization_id: string };
   executionTier: WorkflowAgentExecutionTier;
@@ -208,8 +273,14 @@ async function forwardWorkflowToAgentServer(params: {
     return wakeDedicatedLazyRuntime(params);
   }
 
-  const serverUrl = await resolveAgentServerUrl(params.ctx, params.agentId);
-  if (!serverUrl) {
+  const routing = await resolveAgentServerRouting(
+    createWorkflowRoutingReader(params.ctx),
+    {
+      managedAgentId: params.agentId,
+      runtimeAgentId: params.runtimeAgentId ?? "",
+    },
+  );
+  if (routing.kind !== "ready") {
     if (params.executionTier === "dedicated-lazy" && params.canWakeRuntime) {
       return wakeDedicatedLazyRuntime(params);
     }
@@ -248,9 +319,9 @@ async function forwardWorkflowToAgentServer(params: {
       : await params.request.arrayBuffer();
   return fetch(
     buildTargetUrl(
-      serverUrl,
+      routing.serverUrl,
       params.request.url,
-      params.agentId,
+      routing.runtimeAgentId,
       params.suffix,
     ),
     {
@@ -293,7 +364,8 @@ export async function handleWorkflowProxyRequest(
     const forwarded = await forwardWorkflowToAgentServer({
       ctx,
       request,
-      agentId,
+      agentId: agent.id,
+      runtimeAgentId: agent.character_id,
       suffix,
       user,
       executionTier: agent.execution_tier,

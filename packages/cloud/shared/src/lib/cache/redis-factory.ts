@@ -46,15 +46,25 @@ export interface EvalCapableRedis {
   eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown>;
 }
 
+export interface EvalRoCapableRedis {
+  evalRo(script: string, keys: string[], args: Array<string | number>): Promise<unknown>;
+}
+
+export interface RedisReadOnlyEvalScripts {
+  readonly directRedis: string;
+  readonly upstashRedis: string;
+}
+
 type CompatibleSocketRedis = Pick<
   SocketRedis,
-  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline" | "eval">
+  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline" | "eval" | "evalRo">
 > & {
   pipeline(): CompatibleRedisPipeline;
   // The in-memory factory client intentionally has no Lua support. Keeping the
   // capability optional makes that limitation visible instead of hiding it
   // behind a cast at the durable-store boundary.
   eval?: EvalCapableRedis["eval"];
+  evalRo?: EvalRoCapableRedis["evalRo"];
 };
 export type CompatibleRedis = CompatibleSocketRedis | UpstashRedis;
 
@@ -62,6 +72,34 @@ export function supportsRedisEval(
   redis: CompatibleRedis,
 ): redis is CompatibleRedis & EvalCapableRedis {
   return typeof redis.eval === "function";
+}
+
+export function supportsRedisEvalRo(
+  redis: CompatibleRedis,
+): redis is CompatibleRedis & EvalRoCapableRedis {
+  return typeof redis.evalRo === "function";
+}
+
+/**
+ * Execute a purpose-bound read-only script on either direct Redis or Upstash.
+ * There is deliberately no fallback to mutating EVAL.
+ */
+export function evalRedisReadOnly(
+  redis: CompatibleRedis,
+  scripts: RedisReadOnlyEvalScripts,
+  keys: string[],
+  args: Array<string | number>,
+): Promise<unknown> {
+  if (!supportsRedisEvalRo(redis)) {
+    throw new TypeError("Redis backend does not support read-only Lua evaluation");
+  }
+  if (redis instanceof SocketRedis) {
+    return redis.evalRo(scripts.directRedis, keys, args);
+  }
+  if (redis instanceof UpstashRedis) {
+    return redis.evalRo(scripts.upstashRedis, keys, args);
+  }
+  throw new TypeError("Unknown Redis backend for read-only Lua evaluation");
 }
 
 export interface RedisFactoryEnv {

@@ -11,6 +11,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { createHash } from "node:crypto";
 import * as authActual from "@/lib/auth";
 import * as redisFactoryActual from "@/lib/cache/redis-factory";
 import * as billingGateActual from "@/lib/services/agent-billing-gate";
@@ -18,6 +19,20 @@ import * as elizaSandboxActual from "@/lib/services/eliza-sandbox";
 import * as provisioningJobsActual from "@/lib/services/provisioning-jobs";
 import * as workerHealthActual from "@/lib/services/provisioning-worker-health";
 import type { AppContext } from "@/types/cloud-worker-env";
+
+const MANAGED_AGENT_ID = "00000000-0000-4000-8000-0000000000a1";
+const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-0000000000b2";
+const OTHER_RUNTIME_AGENT_ID = "00000000-0000-4000-8000-0000000000b3";
+const GENERATION = "00000000-0000-4000-8000-0000000000c3";
+const PUBLICATION_ID = "00000000-0000-4000-8000-0000000000d4";
+const MANAGED_SERVER_NAME = `sandbox-${GENERATION}`;
+const MANAGED_SERVER_URL = "https://sandbox.internal:3000/";
+const ACTIVATION_SNAPSHOT_SENTINEL = "activation-routing-snapshot:v1";
+const ACTIVATION_MISSING_SENTINEL = "activation-routing-missing:v1";
+const ACTIVATION_VALUE_PREFIX = "activation-routing:v1:";
+const ROUTING_VALUE_SNAPSHOT_SENTINEL = "agent-server-routing-value:v1";
+const ROUTING_VALUE_MISSING_SENTINEL = "agent-server-routing-missing:v1";
+const ROUTING_VALUE_PREFIX = "agent-server-routing:v1:";
 
 const requireAuth = mock(async () => ({
   user: { id: "user-1", organization_id: "org-1" },
@@ -29,6 +44,7 @@ type AgentExecutionTier =
   | "custom";
 type AgentFixture = {
   id: string;
+  character_id?: string | null;
   execution_tier: AgentExecutionTier;
   status?: string;
   bridge_url?: string | null;
@@ -36,8 +52,26 @@ type AgentFixture = {
 };
 const getAgent = mock<
   (_agentId: string, _organizationId: string) => Promise<AgentFixture | null>
->(async () => ({ id: "agent-1", execution_tier: "shared" }));
+>(async () => ({ id: MANAGED_AGENT_ID, execution_tier: "shared" }));
 const buildRedisClient = mock((_env: unknown) => null as unknown);
+const evalRedisReadOnly = mock(
+  async (
+    redis: {
+      evalRo?: (
+        script: string,
+        keys: string[],
+        args: Array<string | number>,
+      ) => Promise<unknown>;
+    },
+    scripts: { upstashRedis: string },
+    keys: string[],
+    args: Array<string | number>,
+  ) => {
+    if (!redis.evalRo)
+      throw new Error("read-only Redis evaluation unavailable");
+    return redis.evalRo(scripts.upstashRedis, keys, args);
+  },
+);
 const checkAgentCreditGate = mock(async (_organizationId: string) => ({
   allowed: true,
 }));
@@ -56,6 +90,7 @@ mock.module("@/lib/auth", () => ({
 mock.module("@/lib/cache/redis-factory", () => ({
   ...redisFactoryActual,
   buildRedisClient,
+  evalRedisReadOnly,
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
@@ -102,8 +137,9 @@ beforeEach(() => {
   triggerImmediate.mockClear();
   buildRedisClient.mockReset();
   buildRedisClient.mockImplementation(() => null as unknown);
+  evalRedisReadOnly.mockClear();
   getAgent.mockImplementation(async () => ({
-    id: "agent-1",
+    id: MANAGED_AGENT_ID,
     execution_tier: "shared" as const,
   }));
   checkAgentCreditGate.mockImplementation(async () => ({ allowed: true }));
@@ -137,30 +173,109 @@ function context(env: Record<string, unknown> = {}): AppContext {
 
 function workflowRequest(headers?: HeadersInit): Request {
   return new Request(
-    "https://api.example.test/api/v1/eliza/agents/agent-1/workflows",
+    `https://api.example.test/api/v1/eliza/agents/${MANAGED_AGENT_ID}/workflows`,
     { headers },
   );
 }
 
-function installLiveRedisAssignment() {
-  const redisGet = mock(async (key: string) => {
-    if (key === "agent:agent-1:server") return "server-1";
-    if (key === "server:server-1:url") return "https://agent-server.test";
-    return null;
+function managedRoutingValues(
+  runtimeAgentId: string = RUNTIME_AGENT_ID,
+): Map<string, string> {
+  const endpoint = {
+    version: 1,
+    generation: GENERATION,
+    kind: "dedicated-sandbox",
+    serverName: MANAGED_SERVER_NAME,
+    runtimeAgentId,
+    registryUrl: MANAGED_SERVER_URL,
+    bridgeUrl: "http://100.64.0.3:3000",
+    healthUrl: "http://100.64.0.3:3000/health",
+  };
+  const endpointSha256 = createHash("sha256")
+    .update(JSON.stringify(endpoint), "utf8")
+    .digest("hex");
+  return new Map([
+    [
+      `agent:${MANAGED_AGENT_ID}:routing-managed`,
+      JSON.stringify({ version: 1, managed: true }),
+    ],
+    [
+      `agent:${MANAGED_AGENT_ID}:registration-authority`,
+      JSON.stringify({
+        version: 1,
+        state: "active",
+        generation: GENERATION,
+        publicationId: PUBLICATION_ID,
+        endpointSha256,
+      }),
+    ],
+    [
+      `agent:${MANAGED_AGENT_ID}:activation-route`,
+      JSON.stringify({
+        version: 1,
+        kind: "dedicated-sandbox",
+        generation: GENERATION,
+        publicationId: PUBLICATION_ID,
+        endpointSha256,
+        endpoint,
+      }),
+    ],
+    [`server:${MANAGED_SERVER_NAME}:url`, MANAGED_SERVER_URL],
+  ]);
+}
+
+function installRoutingRedis(values = managedRoutingValues()) {
+  const evalRo = mock(
+    async (_script: string, keys: string[], args: Array<string | number>) => {
+      if (args.length !== 0) throw new Error("unexpected routing script args");
+      if (keys.length === 3) {
+        return [
+          ACTIVATION_SNAPSHOT_SENTINEL,
+          ...keys.map((key) =>
+            values.has(key)
+              ? `${ACTIVATION_VALUE_PREFIX}${values.get(key)}`
+              : ACTIVATION_MISSING_SENTINEL,
+          ),
+        ];
+      }
+      if (keys.length === 1) {
+        const key = keys[0];
+        return [
+          ROUTING_VALUE_SNAPSHOT_SENTINEL,
+          key !== undefined && values.has(key)
+            ? `${ROUTING_VALUE_PREFIX}${values.get(key)}`
+            : ROUTING_VALUE_MISSING_SENTINEL,
+        ];
+      }
+      throw new Error("unexpected routing key count");
+    },
+  );
+  const evalWrite = mock(async () => {
+    throw new Error("mutating EVAL must not be used for workflow routing");
   });
-  buildRedisClient.mockImplementation(() => ({ get: redisGet }) as unknown);
-  return redisGet;
+  const get = mock(async () => {
+    throw new Error(
+      "auto-deserializing GET must not be used for workflow routing",
+    );
+  });
+  buildRedisClient.mockImplementation(
+    () => ({ evalRo, eval: evalWrite, get }) as unknown,
+  );
+  return { evalRo, evalWrite, get, values };
 }
 
 describe("workflow capability responses", () => {
   test("returns an explicit, non-automatic upgrade path for shared agents", async () => {
-    const redisGet = installLiveRedisAssignment();
-    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    const routingRedis = installRoutingRedis();
+    const fetchRequest = mock(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({ ok: true }),
+    );
     globalThis.fetch = fetchRequest as unknown as typeof fetch;
 
     const response = await handleWorkflowProxyRequest(
       workflowRequest(),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "",
       context(),
     );
@@ -179,23 +294,23 @@ describe("workflow capability responses", () => {
       upgrade: {
         automatic: false,
         method: "POST",
-        endpoint: "/api/v1/eliza/agents/agent-1/upgrade-tier",
+        endpoint: `/api/v1/eliza/agents/${MANAGED_AGENT_ID}/upgrade-tier`,
       },
     });
     expect(buildRedisClient).not.toHaveBeenCalled();
-    expect(redisGet).not.toHaveBeenCalled();
+    expect(routingRedis.evalRo).not.toHaveBeenCalled();
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
   test("distinguishes a dedicated runtime outage from an upgrade requirement", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
       execution_tier: "dedicated-always" as const,
     }));
 
     const response = await handleWorkflowProxyRequest(
       workflowRequest(),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "",
       context(),
     );
@@ -215,7 +330,7 @@ describe("workflow capability responses", () => {
 
   test("credit-gates and enqueues a scale-to-zero agent wake on workflow use", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
       execution_tier: "dedicated-lazy" as const,
       status: "sleeping",
       bridge_url: null,
@@ -224,7 +339,7 @@ describe("workflow capability responses", () => {
 
     const response = await handleWorkflowProxyRequest(
       workflowRequest(),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "",
       context(),
     );
@@ -244,7 +359,7 @@ describe("workflow capability responses", () => {
     });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(enqueueAgentWakeOnce).toHaveBeenCalledWith({
-      agentId: "agent-1",
+      agentId: MANAGED_AGENT_ID,
       organizationId: "org-1",
       userId: "user-1",
     });
@@ -253,19 +368,19 @@ describe("workflow capability responses", () => {
 
   test("ignores a stale live assignment when a dedicated-lazy agent is stopped", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
       execution_tier: "dedicated-lazy" as const,
       status: "stopped",
       bridge_url: "https://stale-bridge.example.test",
       health_url: "https://stale-health.example.test",
     }));
-    const redisGet = installLiveRedisAssignment();
+    const routingRedis = installRoutingRedis();
     const fetchRequest = mock(async () => Response.json({ ok: true }));
     globalThis.fetch = fetchRequest as unknown as typeof fetch;
 
     const response = await handleWorkflowProxyRequest(
       workflowRequest(),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "",
       context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
     );
@@ -279,13 +394,13 @@ describe("workflow capability responses", () => {
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(enqueueAgentWakeOnce).toHaveBeenCalledTimes(1);
     expect(buildRedisClient).not.toHaveBeenCalled();
-    expect(redisGet).not.toHaveBeenCalled();
+    expect(routingRedis.evalRo).not.toHaveBeenCalled();
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
   test("does not let a stale sleeping assignment bypass the credit gate", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
       execution_tier: "dedicated-lazy" as const,
       status: "sleeping",
       bridge_url: null,
@@ -296,13 +411,13 @@ describe("workflow capability responses", () => {
       balance: 0,
       error: "Insufficient credits",
     }));
-    const redisGet = installLiveRedisAssignment();
+    const routingRedis = installRoutingRedis();
     const fetchRequest = mock(async () => Response.json({ ok: true }));
     globalThis.fetch = fetchRequest as unknown as typeof fetch;
 
     const response = await handleWorkflowProxyRequest(
       workflowRequest(),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "",
       context(),
     );
@@ -316,7 +431,7 @@ describe("workflow capability responses", () => {
     expect(enqueueAgentWakeOnce).not.toHaveBeenCalled();
     expect(triggerImmediate).not.toHaveBeenCalled();
     expect(buildRedisClient).not.toHaveBeenCalled();
-    expect(redisGet).not.toHaveBeenCalled();
+    expect(routingRedis.evalRo).not.toHaveBeenCalled();
     expect(fetchRequest).not.toHaveBeenCalled();
   });
 
@@ -346,18 +461,197 @@ describe("workflow proxy timeout budgets", () => {
   });
 });
 
+describe("workflow routing authority", () => {
+  test("fails before Redis when the sandbox has no canonical runtime identity", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: null,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(buildRedisClient).not.toHaveBeenCalled();
+    expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  test("rejects a managed endpoint bound to another runtime before heartbeat or fetch", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const routingRedis = installRoutingRedis(
+      managedRoutingValues(OTHER_RUNTIME_AGENT_ID),
+    );
+    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(routingRedis.evalRo).toHaveBeenCalledTimes(1);
+    expect(routingRedis.evalRo.mock.calls[0]?.[1]).toEqual([
+      `agent:${MANAGED_AGENT_ID}:routing-managed`,
+      `agent:${MANAGED_AGENT_ID}:registration-authority`,
+      `agent:${MANAGED_AGENT_ID}:activation-route`,
+    ]);
+    expect(routingRedis.get).not.toHaveBeenCalled();
+    expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  test("never consults legacy routing after a managed authority is revoked", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const values = managedRoutingValues();
+    values.set(
+      `agent:${MANAGED_AGENT_ID}:registration-authority`,
+      JSON.stringify({
+        version: 1,
+        state: "revoked",
+        generation: GENERATION,
+        publicationId: null,
+        endpointSha256: null,
+      }),
+    );
+    values.delete(`agent:${MANAGED_AGENT_ID}:activation-route`);
+    values.set(`agent:${RUNTIME_AGENT_ID}:server`, "stale-server");
+    values.set("server:stale-server:url", "https://stale.internal:3000");
+    const routingRedis = installRoutingRedis(values);
+    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    const readKeys = routingRedis.evalRo.mock.calls.flatMap((call) => call[1]);
+    expect(readKeys).not.toContain(`agent:${RUNTIME_AGENT_ID}:server`);
+    expect(readKeys).not.toContain("server:stale-server:url");
+    expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  test("keeps literal null distinct from a missing legacy pointer", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const routingRedis = installRoutingRedis(
+      new Map([[`agent:${RUNTIME_AGENT_ID}:server`, "null"]]),
+    );
+    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    const readKeys = routingRedis.evalRo.mock.calls.flatMap((call) => call[1]);
+    expect(readKeys).toContain(`agent:${RUNTIME_AGENT_ID}:server`);
+    expect(readKeys).not.toContain(`agent:${MANAGED_AGENT_ID}:server`);
+    expect(readKeys).not.toContain("server:null:url");
+    expect(routingRedis.get).not.toHaveBeenCalled();
+    expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when read-only Redis evaluation is unavailable", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const routingRedis = installRoutingRedis();
+    routingRedis.evalRo.mockImplementation(async () => {
+      throw new Error("Redis unavailable");
+    });
+    const fetchRequest = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(routingRedis.evalRo).toHaveBeenCalledTimes(1);
+    expect(routingRedis.evalWrite).not.toHaveBeenCalled();
+    expect(routingRedis.get).not.toHaveBeenCalled();
+    expect(fetchRequest).not.toHaveBeenCalled();
+  });
+
+  test("uses only the runtime identity for an unmanaged legacy pointer", async () => {
+    getAgent.mockImplementation(async () => ({
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
+      execution_tier: "dedicated-always" as const,
+    }));
+    const legacyServerUrl = "https://legacy-agent.internal:3000";
+    const routingRedis = installRoutingRedis(
+      new Map([
+        [`agent:${RUNTIME_AGENT_ID}:server`, "legacy-agent"],
+        ["server:legacy-agent:url", legacyServerUrl],
+      ]),
+    );
+    const fetchRequest = mock(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({ ok: true }),
+    );
+    globalThis.fetch = fetchRequest as unknown as typeof fetch;
+
+    const response = await handleWorkflowProxyRequest(
+      workflowRequest(),
+      MANAGED_AGENT_ID,
+      "generate",
+      context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
+    );
+
+    expect(response.status).toBe(200);
+    const readKeys = routingRedis.evalRo.mock.calls.flatMap((call) => call[1]);
+    expect(readKeys).toContain(`agent:${RUNTIME_AGENT_ID}:server`);
+    expect(readKeys).not.toContain(`agent:${MANAGED_AGENT_ID}:server`);
+    expect(String(fetchRequest.mock.calls[0]?.[0])).toBe(
+      `${legacyServerUrl}/agents/${RUNTIME_AGENT_ID}/workflows/generate`,
+    );
+    expect(routingRedis.evalWrite).not.toHaveBeenCalled();
+    expect(routingRedis.get).not.toHaveBeenCalled();
+  });
+});
+
 describe("workflow principal forwarding", () => {
   test("overwrites caller identity headers with the authenticated principal", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
       execution_tier: "dedicated-always" as const,
     }));
-    const redisGet = mock(async (key: string) => {
-      if (key === "agent:agent-1:server") return "server-1";
-      if (key === "server:server-1:url") return "https://agent-server.test";
-      return null;
-    });
-    buildRedisClient.mockImplementation(() => ({ get: redisGet }) as unknown);
+    const routingRedis = installRoutingRedis();
     const fetchRequest = mock(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         Response.json({ ok: true }),
@@ -366,7 +660,7 @@ describe("workflow principal forwarding", () => {
 
     const response = await handleWorkflowProxyRequest(
       new Request(
-        "https://api.example.test/api/v1/eliza/agents/agent-1/workflows/resolve-clarification",
+        `https://api.example.test/api/v1/eliza/agents/${MANAGED_AGENT_ID}/workflows/resolve-clarification`,
         {
           method: "POST",
           headers: {
@@ -377,7 +671,7 @@ describe("workflow principal forwarding", () => {
           body: JSON.stringify({ draft: {}, resolutions: [] }),
         },
       ),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "resolve-clarification",
       context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
     );
@@ -388,8 +682,11 @@ describe("workflow principal forwarding", () => {
       [RequestInfo | URL, RequestInit]
     >;
     expect(String(call[0]?.[0])).toBe(
-      "https://agent-server.test/agents/agent-1/workflows/resolve-clarification",
+      `${MANAGED_SERVER_URL}agents/${RUNTIME_AGENT_ID}/workflows/resolve-clarification`,
     );
+    expect(routingRedis.evalRo).toHaveBeenCalledTimes(3);
+    expect(routingRedis.evalWrite).not.toHaveBeenCalled();
+    expect(routingRedis.get).not.toHaveBeenCalled();
     expect(call[0]?.[1].method).toBe("POST");
     expect(
       JSON.parse(new TextDecoder().decode(call[0]?.[1].body as ArrayBuffer)),
@@ -402,15 +699,11 @@ describe("workflow principal forwarding", () => {
 
   test("forwards the evaluation-samples suffix and query without a body", async () => {
     getAgent.mockImplementation(async () => ({
-      id: "agent-1",
+      id: MANAGED_AGENT_ID,
+      character_id: RUNTIME_AGENT_ID,
       execution_tier: "dedicated-always" as const,
     }));
-    const redisGet = mock(async (key: string) => {
-      if (key === "agent:agent-1:server") return "server-1";
-      if (key === "server:server-1:url") return "https://agent-server.test";
-      return null;
-    });
-    buildRedisClient.mockImplementation(() => ({ get: redisGet }) as unknown);
+    const routingRedis = installRoutingRedis();
     const fetchRequest = mock(
       async (_input: RequestInfo | URL, _init?: RequestInit) =>
         Response.json({ workflowId: "workflow-1" }),
@@ -419,9 +712,9 @@ describe("workflow principal forwarding", () => {
 
     const response = await handleWorkflowProxyRequest(
       new Request(
-        "https://api.example.test/api/v1/eliza/agents/agent-1/workflows/workflow-1/evaluation-samples?limit=7",
+        `https://api.example.test/api/v1/eliza/agents/${MANAGED_AGENT_ID}/workflows/workflow-1/evaluation-samples?limit=7`,
       ),
-      "agent-1",
+      MANAGED_AGENT_ID,
       "workflow-1/evaluation-samples",
       context({ AGENT_SERVER_SHARED_SECRET: "server-secret" }),
     );
@@ -431,8 +724,11 @@ describe("workflow principal forwarding", () => {
       [RequestInfo | URL, RequestInit]
     >;
     expect(String(call[0]?.[0])).toBe(
-      "https://agent-server.test/agents/agent-1/workflows/workflow-1/evaluation-samples?limit=7",
+      `${MANAGED_SERVER_URL}agents/${RUNTIME_AGENT_ID}/workflows/workflow-1/evaluation-samples?limit=7`,
     );
+    expect(routingRedis.evalRo).toHaveBeenCalledTimes(3);
+    expect(routingRedis.evalWrite).not.toHaveBeenCalled();
+    expect(routingRedis.get).not.toHaveBeenCalled();
     expect(call[0]?.[1].method).toBe("GET");
     expect(call[0]?.[1].body).toBeUndefined();
     const forwardedHeaders = new Headers(call[0]?.[1].headers);
