@@ -262,4 +262,27 @@ describe("SAVED_NOTES provider", () => {
     expect(text).toContain("(truncated)");
     expect(text.length).toBeLessThan(1_000);
   });
+  it("truncates an oversized note body without bisecting surrogate pairs", () => {
+    const emojis = "🎉".repeat(3000);
+    const text = renderSavedNotesText([
+      {
+        id: "note-emoji",
+        title: "emojis",
+        body: emojis,
+        color: "slate",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+
+    expect(text).toContain("emojis");
+    expect(text).toContain("(truncated)");
+    for (const char of text) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

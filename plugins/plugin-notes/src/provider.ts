@@ -43,11 +43,23 @@ const UNAVAILABLE: ProviderResult = {
 };
 
 /** One line per note: the label is the note's own first line, never invented. */
+function truncateNoteText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function noteLine(note: StickyNote): string {
   const body = note.body.trim();
   const full = body.length > 0 ? `${note.title} — ${body}` : note.title;
   return full.length > MAX_NOTE_LINE_LENGTH
-    ? `${full.slice(0, MAX_NOTE_LINE_LENGTH - "… (truncated)".length)}… (truncated)`
+    ? `${truncateNoteText(full, MAX_NOTE_LINE_LENGTH - "… (truncated)".length)}… (truncated)`
     : full;
 }
 

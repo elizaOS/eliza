@@ -49,10 +49,22 @@ function sentence(value: string): string {
   return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
+function truncateDetailsText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function humanDetails(value: string): string {
   const details = value.trim();
   return details.length > 0
-    ? ` — ${details.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
+    ? ` — ${truncateDetailsText(details, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
     : "";
 }
 
