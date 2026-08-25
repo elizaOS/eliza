@@ -1,3 +1,5 @@
+/** Verifies Windows Sandbox availability gating and injectable lifecycle control. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SandboxBackendUnavailableError } from "./types";
 import { isWindowsSandboxAvailable, WSBBackend } from "./wsb-backend";
@@ -159,18 +161,16 @@ describe("WSBBackend lifecycle", () => {
       launcher,
       rpcUrl: "http://host:7777/cua",
     });
-    // TS private is erased at runtime; transport opts carry the resolved URL.
-    const transport = (
-      backend as unknown as { _transport: { opts: { url: string } } }
-    )._transport;
-    expect(transport.opts.url).toBe("http://host:7777/cua");
+    // TS private is erased at runtime; the transport retains the resolved URL.
+    const transport = (backend as unknown as { _transport: { url: string } })
+      ._transport;
+    expect(transport.url).toBe("http://host:7777/cua");
   });
 
   it("defaults the guest RPC URL to the local port", () => {
     const backend = new WSBBackend({ launcher });
-    const transport = (
-      backend as unknown as { _transport: { opts: { url: string } } }
-    )._transport;
-    expect(transport.opts.url).toBe("http://127.0.0.1:8000/cua");
+    const transport = (backend as unknown as { _transport: { url: string } })
+      ._transport;
+    expect(transport.url).toBe("http://127.0.0.1:8000/cua");
   });
 });
