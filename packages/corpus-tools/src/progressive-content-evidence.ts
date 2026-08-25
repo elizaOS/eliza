@@ -2,8 +2,8 @@
 
 import { createHash } from "node:crypto";
 import {
-  PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION,
-  PROGRESSIVE_CONTENT_MUTANTS,
+  PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
 import { validateProgressiveContentPostgresEvidence } from "./progressive-content-postgres-evidence.ts";
 
@@ -542,16 +542,24 @@ function semanticFailures(
   );
   const requiredMutants = new Map<
     string,
-    { readonly seam: string; readonly killingVector: string }
+    {
+      readonly seam: string;
+      readonly killingVector: string;
+      readonly executor: string;
+      readonly killingTestId: string;
+    }
   >(
-    PROGRESSIVE_CONTENT_MUTANTS.map(([id, seam, killingVector]) => [
-      id,
-      { seam, killingVector },
-    ]),
+    PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.map(
+      ({ id, seam, killingVector, executor, killingTestId }) => [
+        id,
+        { seam, killingVector, executor, killingTestId },
+      ],
+    ),
   );
   const observedMutantIds = new Set(mutantResults.map(({ id }) => id));
   if (
-    mutants.schemaVersion !== PROGRESSIVE_CONTENT_MUTANT_SCHEMA_VERSION ||
+    mutants.schemaVersion !==
+      PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION ||
     mutants.status !== "passed" ||
     mutants.required !== requiredMutants.size ||
     mutants.executed !== requiredMutants.size ||
@@ -561,13 +569,23 @@ function semanticFailures(
     observedMutantIds.size !== mutantResults.length ||
     [...requiredMutants.keys()].some((id) => !observedMutantIds.has(id)) ||
     mutantResults.some(
-      ({ id, seam, killingVector, status, failureVectors }) => {
+      ({
+        id,
+        seam,
+        killingVector,
+        executor,
+        killingTestId,
+        status,
+        failureVectors,
+      }) => {
         const expected =
           typeof id === "string" ? requiredMutants.get(id) : undefined;
         return (
           !expected ||
           seam !== expected.seam ||
           killingVector !== expected.killingVector ||
+          executor !== expected.executor ||
+          killingTestId !== expected.killingTestId ||
           status !== "killed" ||
           !Array.isArray(failureVectors) ||
           !failureVectors.includes(expected.killingVector)

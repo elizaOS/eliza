@@ -8,6 +8,8 @@ import {
 import {
 	applyProgressiveContentMutant,
 	PROGRESSIVE_CONTENT_MUTANTS,
+	PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
+	runProgressiveContentMutantRegistry,
 	runProgressiveContentMutants,
 } from "./progressive-content-mutants";
 
@@ -28,6 +30,46 @@ describe("progressive content mutant registry", () => {
 		for (const result of report.results) {
 			expect(result.failureVectors).toContain(result.killingVector);
 		}
+	});
+
+	it("fails closed when any non-adapter seam has no executor", async () => {
+		const { object } = progressiveConformanceFixture();
+		const report = await runProgressiveContentMutantRegistry({
+			object,
+			createAdapter: progressiveConformanceAdapter,
+			externalExecutors: {},
+		});
+		expect(report.status).toBe("failed");
+		expect(report.required).toBe(PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length);
+		expect(report.executed).toBe(PROGRESSIVE_CONTENT_MUTANTS.length);
+		expect(
+			report.results
+				.filter(({ executor }) => executor !== "adapter")
+				.every(({ failureVectors }) =>
+					failureVectors.includes("executor-missing"),
+				),
+		).toBe(true);
+	});
+
+	it("orchestrates every registered seam under one exact report", async () => {
+		const { object } = progressiveConformanceFixture();
+		const externalExecutors = Object.fromEntries(
+			PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.filter(
+				({ executor }) => executor !== "adapter",
+			).map(({ id, killingVector }) => [id, () => [killingVector]]),
+		);
+		const report = await runProgressiveContentMutantRegistry({
+			object,
+			createAdapter: progressiveConformanceAdapter,
+			externalExecutors,
+		});
+		expect(report).toMatchObject({
+			status: "passed",
+			required: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+			executed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+			killed: PROGRESSIVE_CONTENT_REQUIRED_MUTANTS.length,
+			killRate: 1,
+		});
 	});
 
 	it("mutates measured work instead of accepting a self-report", async () => {
