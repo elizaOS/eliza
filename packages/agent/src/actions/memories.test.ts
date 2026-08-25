@@ -701,6 +701,35 @@ describe("MEMORY op:delete by query", () => {
 });
 
 describe("MEMORY op:search complete traversal", () => {
+  it("finds attachment descriptions without exposing capability URLs", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "", entityId: USER_ID });
+    rows[0].memory.content = {
+      attachments: [
+        {
+          id: "receipt-photo",
+          url: "https://private.example/receipt.png",
+          thumbnailUrl: "https://private.example/receipt-thumb.png",
+          filename: "receipt.png",
+          mimeType: "image/png",
+          description: "A receipt showing a 6:30 PM dinner reservation",
+        },
+      ],
+    };
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "dinner reservation",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      "[attachment: receipt.png; image/png; A receipt showing a 6:30 PM dinner reservation]",
+    );
+    expect(result.text).not.toContain("private.example");
+  });
+
   it("ranks an exact all-term match ahead of newer partial decoys", async () => {
     const { runtime, rows } = makeRuntime();
     const targetId = seedFact(rows, {
