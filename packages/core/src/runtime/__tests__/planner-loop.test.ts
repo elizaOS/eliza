@@ -28,6 +28,18 @@ import {
 } from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
+function renderedMessagePrompt(
+	messages: Array<{ role?: string; content?: unknown }> | undefined,
+): string {
+	return (messages ?? [])
+		.map((message) =>
+			typeof message.content === "string"
+				? message.content
+				: JSON.stringify(message.content ?? null),
+		)
+		.join("\n\n");
+}
+
 describe("v5 planner loop skeleton", () => {
 	it("parses planner tool calls", () => {
 		const output = parsePlannerOutput(`{
@@ -2939,12 +2951,11 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"previous planner response was not valid",
-		);
-		expect(retryParams.messages?.[1]?.content).toContain(
+		const retryPrompt = renderedMessagePrompt(retryParams.messages);
+		expect(retryPrompt).toContain("previous planner response was not valid");
+		expect(retryPrompt).toContain(
 			'do not answer with "saved", "done", or similar prose unless a tool call result proves the side effect happened',
 		);
 		expect(executeToolCall).toHaveBeenCalledWith(
@@ -4480,13 +4491,12 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
-			"unavailable_tool_calls",
-		);
-		expect(retryParams.messages?.[1]?.content).toContain("GET_PRICE");
-		expect(retryParams.messages?.[1]?.content).toContain("SHELL");
+		const retryPrompt = renderedMessagePrompt(retryParams.messages);
+		expect(retryPrompt).toContain("unavailable_tool_calls");
+		expect(retryPrompt).toContain("GET_PRICE");
+		expect(retryPrompt).toContain("SHELL");
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{
@@ -4623,9 +4633,9 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 		const retryParams = runtime.useModel.mock.calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
+			messages?: Array<{ role?: string; content?: unknown }>;
 		};
-		expect(retryParams.messages?.[1]?.content).toContain(
+		expect(renderedMessagePrompt(retryParams.messages)).toContain(
 			"silent_failed_finish",
 		);
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
