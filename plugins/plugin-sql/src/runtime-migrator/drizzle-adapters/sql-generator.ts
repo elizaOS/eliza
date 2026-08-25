@@ -141,8 +141,7 @@ function normalizeType(type: string | undefined): string {
     return "timestamp";
   }
 
-  // Handle serial vs integer with identity
-  // serial is essentially integer with auto-increment
+  // serial/identity aliases
   if (normalized === "serial") {
     return "integer";
   }
@@ -153,12 +152,38 @@ function normalizeType(type: string | undefined): string {
     return "smallint";
   }
 
+  // integer family aliases
+  if (normalized === "int" || normalized === "int4") {
+    return "integer";
+  }
+  if (normalized === "int2") {
+    return "smallint";
+  }
+  if (normalized === "int8") {
+    return "bigint";
+  }
+
+  // boolean alias
+  if (normalized === "bool") {
+    return "boolean";
+  }
+
+  // floating-point aliases
+  if (normalized === "float4") {
+    return "real";
+  }
+  if (normalized === "float8") {
+    return "double precision";
+  }
+
   // Handle numeric/decimal equivalence
   if (normalized.startsWith("numeric") || normalized.startsWith("decimal")) {
     // Extract precision and scale if present
     const match = normalized.match(/\((\d+)(?:,\s*(\d+))?\)/);
     if (match) {
-      return `numeric(${match[1]}${match[2] ? `,${match[2]}` : ""})`;
+      // A missing scale defaults to 0 in Postgres, so `numeric(10)` is the
+      // same type as `numeric(10,0)`.
+      return `numeric(${match[1]},${match[2] ?? "0"})`;
     }
     return "numeric";
   }
