@@ -81,4 +81,36 @@ describe("createSerialise", () => {
       run("not-a-func" as unknown as () => Promise<void>),
     ).rejects.toThrow("Expected function for serialised execution");
   });
+
+  it("queue continues after non-function rejection and isolates per-instance locks", async () => {
+    const run = createSerialise();
+    const order: string[] = [];
+    // Non-function rejection must not block the queue
+    const bad = run(null as unknown as () => Promise<void>);
+    await expect(bad).rejects.toThrow(
+      "Expected function for serialised execution",
+    );
+    const good = run(async () => {
+      order.push("after-bad");
+      return "ok";
+    });
+    expect(await good).toBe("ok");
+    expect(order).toEqual(["after-bad"]);
+
+    // Two independent serialisers must not interfere
+    const runA = createSerialise();
+    const runB = createSerialise();
+    const aOrder: number[] = [];
+    const bOrder: number[] = [];
+    const a1 = runA(async () => {
+      await new Promise((r) => setTimeout(r, 15));
+      aOrder.push(1);
+    });
+    const b1 = runB(async () => {
+      bOrder.push(1);
+    });
+    await Promise.all([a1, b1]);
+    expect(aOrder).toEqual([1]);
+    expect(bOrder).toEqual([1]);
+  });
 });
