@@ -118,7 +118,7 @@ export function mergeStreamingText(existing: string, incoming: string): string {
   // Normalize unicode for comparison, but return original incoming when selected.
   const existingNorm = existing.normalize("NFC");
   const incomingNorm = incoming.normalize("NFC");
-  const isSingleCodePointDelta = isSingleNonWhitespaceCodePoint(incoming);
+  const isSingleCodePointDelta = isSingleNonWhitespaceCodePoint(incomingNorm);
 
   if (incomingNorm === existingNorm) {
     return isSingleCodePointDelta ? `${existing}${incoming}` : incoming;
