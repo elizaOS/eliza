@@ -201,8 +201,7 @@ export class TraceStore {
       const current = this.requireSession(params.sessionId);
       current.metadata = {
         ...(current.metadata ?? {}),
-        errorDetails:
-          safeJsonValue(params.details) ?? null,
+        errorDetails: safeJsonValue(params.details) ?? null,
       };
       return cloneSession(current);
     }
@@ -274,8 +273,9 @@ export class TraceStore {
     params: { limit?: number; status?: TraceSessionStatus } = {},
   ): TraceSession[] {
     const limit = this.normalizeLimit(params.limit);
-    const matching = [...this.sessions.values()]
-      .filter((session) => !params.status || session.status === params.status);
+    const matching = [...this.sessions.values()].filter(
+      (session) => !params.status || session.status === params.status,
+    );
     return (limit === undefined ? matching : matching.slice(-limit))
       .map(cloneSession)
       .reverse();
@@ -339,42 +339,43 @@ export class TraceStore {
     const limit = this.normalizeLimit(params.limit);
     const query = params.query?.trim();
     const events = [...this.events.values()].flat();
-    const matching = events
-      .filter((event) => {
-        const session = this.sessions.get(event.sessionId);
-        if (!session) return false;
-        if (params.kinds && !params.kinds.includes(event.kind)) return false;
-        if (
-          params.source &&
-          event.source !== params.source &&
-          session.source !== params.source
-        ) {
-          return false;
-        }
-        if (
-          params.runId &&
-          event.runId !== params.runId &&
-          session.runId !== params.runId
-        ) {
-          return false;
-        }
-        if (
-          params.agentId &&
-          event.agentId !== params.agentId &&
-          session.agentId !== params.agentId
-        ) {
-          return false;
-        }
-        if (
-          params.conversationId &&
-          event.conversationId !== params.conversationId &&
-          session.conversationId !== params.conversationId
-        ) {
-          return false;
-        }
-        return !query || eventMatchesText(event, query);
-      });
-    return (limit === undefined ? matching : matching.slice(-limit)).map(cloneEvent).reverse();
+    const matching = events.filter((event) => {
+      const session = this.sessions.get(event.sessionId);
+      if (!session) return false;
+      if (params.kinds && !params.kinds.includes(event.kind)) return false;
+      if (
+        params.source &&
+        event.source !== params.source &&
+        session.source !== params.source
+      ) {
+        return false;
+      }
+      if (
+        params.runId &&
+        event.runId !== params.runId &&
+        session.runId !== params.runId
+      ) {
+        return false;
+      }
+      if (
+        params.agentId &&
+        event.agentId !== params.agentId &&
+        session.agentId !== params.agentId
+      ) {
+        return false;
+      }
+      if (
+        params.conversationId &&
+        event.conversationId !== params.conversationId &&
+        session.conversationId !== params.conversationId
+      ) {
+        return false;
+      }
+      return !query || eventMatchesText(event, query);
+    });
+    return (limit === undefined ? matching : matching.slice(-limit))
+      .map(cloneEvent)
+      .reverse();
   }
 
   private closeSession(

@@ -1,8 +1,8 @@
 /** Verifies browser workspace diagnostics remain complete unless pagination is explicitly requested. */
 import { describe, expect, it } from "vitest";
 import {
-  BrowserWorkspaceManager,
   type BrowserWorkspaceEvent,
+  BrowserWorkspaceManager,
 } from "./browser-workspace";
 
 type BrowserWorkspaceInternals = {

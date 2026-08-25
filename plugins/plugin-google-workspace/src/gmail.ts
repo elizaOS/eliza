@@ -468,10 +468,7 @@ export class GoogleGmailClient {
         userId: "me",
         q: query,
         includeSpamTrash: false,
-        maxResults:
-          maxMessages === undefined
-            ? 100
-            : Math.min(100, maxMessages - results.length),
+        maxResults: maxMessages === undefined ? 100 : Math.min(100, maxMessages - results.length),
         pageToken,
       });
       const batch = await mapWithConcurrency(

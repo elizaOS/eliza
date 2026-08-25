@@ -107,7 +107,10 @@ describe("TraceStore", () => {
 
   it("rejects cyclic payloads instead of storing a partial substitute", () => {
     const traces = store();
-    const session = traces.createSession({ title: "Agent run", source: "agent" });
+    const session = traces.createSession({
+      title: "Agent run",
+      source: "agent",
+    });
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
 
@@ -160,9 +163,16 @@ describe("TraceStore", () => {
 
   it("retains every event beyond the retired per-session window", () => {
     const traces = new TraceStore();
-    const session = traces.createSession({ title: "long run", source: "agent" });
+    const session = traces.createSession({
+      title: "long run",
+      source: "agent",
+    });
     for (let i = 0; i < 5_250; i++) {
-      traces.recordEvent({ sessionId: session.id, kind: "log", text: `event-${i}` });
+      traces.recordEvent({
+        sessionId: session.id,
+        kind: "log",
+        text: `event-${i}`,
+      });
     }
     const events = traces.tailEvents({ sessionId: session.id }).events;
     expect(events).toHaveLength(5_250);

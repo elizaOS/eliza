@@ -377,10 +377,7 @@ export class VoiceService {
 
   async recentTurns(params: { limit?: number } = {}): Promise<VoiceTurn[]> {
     const limit = params.limit;
-    if (
-      limit !== undefined &&
-      (!Number.isSafeInteger(limit) || limit <= 0)
-    ) {
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
       throw new VoiceError(
         "VOICE_RECENT_TURNS_LIMIT_INVALID",
         "Voice recent-turn limit must be a positive integer when explicitly requested.",

@@ -170,9 +170,13 @@ describe("NewsDataService RSS timeout", () => {
     ).join("");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        makeResponse(`<?xml version="1.0"?><rss><channel>${items}</channel></rss>`),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          makeResponse(
+            `<?xml version="1.0"?><rss><channel>${items}</channel></rss>`,
+          ),
+        ),
     );
 
     const articles = await makeService().getLatestNews();

@@ -14,7 +14,8 @@ const ROOM_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 function memoryAt(index: number): Memory {
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}` as UUID,
-    entityId: `00000000-0000-4000-8001-${String(index).padStart(12, "0")}` as UUID,
+    entityId:
+      `00000000-0000-4000-8001-${String(index).padStart(12, "0")}` as UUID,
     agentId: "00000000-0000-0000-0000-000000000002" as UUID,
     roomId: ROOM_ID,
     content: { text: `complete memory ${index}`, source: "discord" },
@@ -26,7 +27,10 @@ describe("cross-channel search context integrity", () => {
   it("returns every memory across internal pages even when a legacy limit is supplied", async () => {
     const memories = Array.from({ length: 501 }, (_, index) => memoryAt(index));
     const searchMemories = vi.fn(
-      async (params: { offset?: number; limit?: number }): Promise<Memory[]> => {
+      async (params: {
+        offset?: number;
+        limit?: number;
+      }): Promise<Memory[]> => {
         const offset = params.offset ?? 0;
         const limit = params.limit ?? memories.length;
         return memories.slice(offset, offset + limit);

@@ -261,7 +261,10 @@ function isSensitiveEventPayloadKey(key: string): boolean {
   );
 }
 
-function scrubEventPayloadValue(value: unknown, ancestors = new WeakSet<object>()): unknown {
+function scrubEventPayloadValue(
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+): unknown {
   if (value instanceof Error) {
     return { error: value.message || "Internal error" };
   }
@@ -277,12 +280,16 @@ function scrubEventPayloadValue(value: unknown, ancestors = new WeakSet<object>(
   if (typeof value === "undefined") return null;
   if (value && typeof value === "object") {
     if (ancestors.has(value)) {
-      throw new TypeError("Browser workspace event payload must not contain cycles");
+      throw new TypeError(
+        "Browser workspace event payload must not contain cycles",
+      );
     }
     ancestors.add(value);
   }
   if (Array.isArray(value)) {
-    const scrubbed = value.map((entry) => scrubEventPayloadValue(entry, ancestors));
+    const scrubbed = value.map((entry) =>
+      scrubEventPayloadValue(entry, ancestors),
+    );
     ancestors.delete(value);
     return scrubbed;
   }
@@ -492,11 +499,10 @@ export class BrowserWorkspaceManager {
         ? options.after
         : 0;
     const limit = options.limit;
-    if (
-      limit !== undefined &&
-      (!Number.isInteger(limit) || limit <= 0)
-    ) {
-      throw new TypeError("Browser workspace event limit must be a positive integer");
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+      throw new TypeError(
+        "Browser workspace event limit must be a positive integer",
+      );
     }
     const tabId = options.tabId?.trim();
     const type = options.type;
@@ -504,7 +510,8 @@ export class BrowserWorkspaceManager {
       .filter((event) => event.seq > after)
       .filter((event) => !tabId || event.tabId === tabId)
       .filter((event) => !type || event.type === type);
-    const events = limit === undefined ? matchingEvents : matchingEvents.slice(-limit);
+    const events =
+      limit === undefined ? matchingEvents : matchingEvents.slice(-limit);
     return {
       events,
       latestSequence: this.eventSequence,

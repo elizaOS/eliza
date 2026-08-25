@@ -201,8 +201,9 @@ describe("ATTACHMENT read delivery selection", () => {
 
 		expect(calls[0]?.prompt).toContain("COMPLETE-ATTACHMENT-END");
 		expect(result?.text).toBe(completeText);
+		if (!result) throw new Error("READ_ATTACHMENT did not return a result");
 		expect(
-			(result?.data as { readView: { slice: { completeness: string } } })
+			(result.data as { readView: { slice: { completeness: string } } })
 				.readView.slice.completeness,
 		).toBe("complete");
 	});

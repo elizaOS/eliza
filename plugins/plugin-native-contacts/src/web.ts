@@ -17,11 +17,7 @@ import type {
 
 function normalizeLimit(limit: unknown): number | undefined {
   if (limit === undefined) return undefined;
-  if (
-    typeof limit !== "number" ||
-    !Number.isSafeInteger(limit) ||
-    limit < 1
-  ) {
+  if (typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1) {
     throw new Error("limit must be a positive safe integer");
   }
   return limit;

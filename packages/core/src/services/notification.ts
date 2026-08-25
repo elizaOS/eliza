@@ -337,8 +337,9 @@ export class NotificationService extends Service {
 			this.cacheKey,
 		);
 		if (Array.isArray(stored)) {
-			this.notifications = stored
-				.filter((n) => n && typeof n.id === "string" && n.title);
+			this.notifications = stored.filter(
+				(n) => n && typeof n.id === "string" && n.title,
+			);
 		}
 	}
 
@@ -357,10 +358,9 @@ export class NotificationService extends Service {
 			this.cacheKey,
 		);
 		this.notifications = Array.isArray(stored)
-			? stored
-					.filter(
-						(entry) => entry && typeof entry.id === "string" && entry.title,
-					)
+			? stored.filter(
+					(entry) => entry && typeof entry.id === "string" && entry.title,
+				)
 			: previous;
 	}
 

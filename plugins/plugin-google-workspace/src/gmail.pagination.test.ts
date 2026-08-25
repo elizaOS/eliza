@@ -140,10 +140,7 @@ describe("searchGmailMessages pagination", () => {
       query: "in:inbox",
     });
 
-    expect(result.map((message) => message.externalId)).toEqual([
-      "first",
-      "second",
-    ]);
+    expect(result.map((message) => message.externalId)).toEqual(["first", "second"]);
     expect(list).toHaveBeenCalledTimes(2);
   });
 });

@@ -123,8 +123,9 @@ describe("DOCUMENT progressive read", () => {
 			{ unit: "line", offset: 0 },
 			request(),
 		);
+		if (!result) throw new Error("DOCUMENT read did not return a result");
 		expect(
-			(result?.data as { readView: { slice: { completeness: string } } })
+			(result.data as { readView: { slice: { completeness: string } } })
 				.readView.slice.completeness,
 		).toBe("complete");
 	});

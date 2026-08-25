@@ -532,17 +532,13 @@ async function readJoinedRoomMessages(
   const chunks = await Promise.all(
     rooms.map((room) => service.getRoomMessages(room.roomId, limit, accountId))
   );
-  const sorted = chunks
-    .flat()
-    .sort((left, right) => {
-      const r =
-        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
-          ? right.createdAt
-          : 0;
-      const l =
-        typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
-      return r - l;
-    });
+  const sorted = chunks.flat().sort((left, right) => {
+    const r =
+      typeof right.createdAt === "number" && Number.isFinite(right.createdAt) ? right.createdAt : 0;
+    const l =
+      typeof left.createdAt === "number" && Number.isFinite(left.createdAt) ? left.createdAt : 0;
+    return r - l;
+  });
   return limit === undefined ? sorted : sorted.slice(0, limit);
 }
 
@@ -1563,11 +1559,7 @@ export class MatrixService extends Service implements IMatrixService {
     const channelType = room.getJoinedMemberCount() <= 2 ? ChannelType.DM : ChannelType.GROUP;
     const events = room.getLiveTimeline().getEvents();
     const out: Memory[] = [];
-    for (
-      let i = events.length - 1;
-      i >= 0 && (limit === undefined || out.length < limit);
-      i -= 1
-    ) {
+    for (let i = events.length - 1; i >= 0 && (limit === undefined || out.length < limit); i -= 1) {
       const event = events[i];
       const message = buildMatrixMessage(event, room);
       if (message) {

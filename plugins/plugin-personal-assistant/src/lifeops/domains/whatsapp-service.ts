@@ -275,7 +275,10 @@ export class WhatsAppDomain {
     messages: WhatsAppMessage[];
   }> {
     if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
-      fail(400, "WhatsApp message limit must be a positive integer when provided.");
+      fail(
+        400,
+        "WhatsApp message limit must be a positive integer when provided.",
+      );
     }
     const delegated = await fetchWhatsAppMessagesWithRuntimeService({
       runtime: this.ctx.runtime,

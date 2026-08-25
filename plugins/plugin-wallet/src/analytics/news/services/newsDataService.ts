@@ -161,10 +161,7 @@ export class NewsDataService extends Service {
   }): Promise<RealWorldNewsArticle[]> {
     try {
       const limit = options?.limit;
-      if (
-        limit !== undefined &&
-        (!Number.isSafeInteger(limit) || limit < 0)
-      ) {
+      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0)) {
         throw new RangeError("limit must be a non-negative safe integer");
       }
       const query = options?.query?.toLowerCase();

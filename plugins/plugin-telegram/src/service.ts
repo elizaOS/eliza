@@ -141,7 +141,9 @@ type TelegramTargetParts = {
   threadId?: number;
 };
 
-function normalizeConnectorLimit(limit: number | undefined): number | undefined {
+function normalizeConnectorLimit(
+  limit: number | undefined,
+): number | undefined {
   if (limit === undefined) {
     return undefined;
   }
@@ -162,10 +164,10 @@ function filterMemoriesByQuery(
   const normalized = query.trim().toLowerCase();
   const matches = normalized
     ? memories.filter((memory) => {
-      const text =
-        typeof memory.content.text === "string" ? memory.content.text : "";
-      return text.toLowerCase().includes(normalized);
-    })
+        const text =
+          typeof memory.content.text === "string" ? memory.content.text : "";
+        return text.toLowerCase().includes(normalized);
+      })
     : memories;
   return limit === undefined ? matches : matches.slice(0, limit);
 }

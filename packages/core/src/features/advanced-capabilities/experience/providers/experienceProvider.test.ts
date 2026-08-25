@@ -131,9 +131,7 @@ describe("experienceProvider", () => {
 				includeRelated: true,
 			},
 		]);
-		expect(listCalls).toEqual([
-			{ minConfidence: 0.7, minImportance: 0.7 },
-		]);
+		expect(listCalls).toEqual([{ minConfidence: 0.7, minImportance: 0.7 }]);
 	});
 
 	it("renders every relevant experience beyond the former default limits", async () => {
@@ -150,7 +148,10 @@ describe("experienceProvider", () => {
 			makeMessage("retrieve every relevant experience"),
 		);
 
-		expect(result.data).toMatchObject({ count: 20, experiences: [...semantic, ...top] });
+		expect(result.data).toMatchObject({
+			count: 20,
+			experiences: [...semantic, ...top],
+		});
 		expect(result.text).toContain("20. DO: learning-top-7");
 	});
 
