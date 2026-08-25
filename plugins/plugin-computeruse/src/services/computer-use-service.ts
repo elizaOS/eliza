@@ -457,19 +457,22 @@ export class ComputerUseService extends Service {
   async executeCommand(
     command: string,
     parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<ComputerUseResult> {
+    this.throwIfAborted(signal);
     switch (command) {
       case "app_list_apps":
       case "list_apps":
         return {
           success: true,
-          data: { apps: await this.listApps() },
+          data: { apps: await this.listApps(signal) },
         } as ComputerActionResult;
       case "app_get_state":
       case "get_app_state": {
         const app = this.requireStringParameter(parameters, "app");
         const state = await this.getAppState(app, {
           disableDiff: parameters.disableDiff === true,
+          signal,
         });
         return { success: true, data: { state } } as ComputerActionResult;
       }
@@ -482,7 +485,7 @@ export class ComputerUseService extends Service {
       case "app_select_text":
       case "app_secondary_action":
       case "app_hover_target":
-        return this.executeAppAction(command, parameters);
+        return this.executeAppAction(command, parameters, signal);
       case "screenshot":
       case "click":
       case "click_with_modifiers":
@@ -506,10 +509,13 @@ export class ComputerUseService extends Service {
       case "launch":
       case "kill_app":
       case "set_value":
-        return this.executeDesktopAction({
-          ...commandParameters<DesktopActionParams>(parameters),
-          action: this.mapDesktopCommandToAction(command),
-        });
+        return this.executeDesktopAction(
+          {
+            ...commandParameters<DesktopActionParams>(parameters),
+            action: this.mapDesktopCommandToAction(command),
+          },
+          signal,
+        );
       case "browser_open":
       case "browser_connect":
       case "browser_close":
@@ -531,10 +537,13 @@ export class ComputerUseService extends Service {
       case "browser_open_tab":
       case "browser_close_tab":
       case "browser_switch_tab":
-        return this.executeBrowserAction({
-          ...commandParameters<BrowserActionParams>(parameters),
-          action: this.mapBrowserCommandToAction(command),
-        });
+        return this.executeBrowserAction(
+          {
+            ...commandParameters<BrowserActionParams>(parameters),
+            action: this.mapBrowserCommandToAction(command),
+          },
+          signal,
+        );
       case "list_windows":
       case "switch_to_window":
       case "arrange_windows":
@@ -543,10 +552,13 @@ export class ComputerUseService extends Service {
       case "maximize_window":
       case "restore_window":
       case "close_window":
-        return this.executeWindowAction({
-          ...commandParameters<WindowActionParams>(parameters),
-          action: this.mapWindowCommandToAction(command),
-        });
+        return this.executeWindowAction(
+          {
+            ...commandParameters<WindowActionParams>(parameters),
+            action: this.mapWindowCommandToAction(command),
+          },
+          signal,
+        );
       case "file_read":
       case "file_write":
       case "file_edit":
@@ -656,7 +668,9 @@ export class ComputerUseService extends Service {
     const approvalError = await this.awaitApproval(
       command,
       this.appApprovalParameters(parameters),
+      signal,
     );
+    this.throwIfAborted(signal);
     if (approvalError) return { success: false, error: approvalError };
     try {
       const outcome: AppActionOutcome = await this.appControl.act(
@@ -892,7 +906,11 @@ export class ComputerUseService extends Service {
           signal,
         );
       }
-      return this.executeCommand(action.command, action.parameters ?? {});
+      return this.executeCommand(
+        action.command,
+        action.parameters ?? {},
+        signal,
+      );
     }
 
     const targetId = target.targetId;
@@ -911,7 +929,11 @@ export class ComputerUseService extends Service {
           error: `Command is not allowed in a browser session: ${action.command}`,
         };
       }
-      return this.executeCommand(action.command, action.parameters ?? {});
+      return this.executeCommand(
+        action.command,
+        action.parameters ?? {},
+        signal,
+      );
     }
 
     return {
@@ -953,6 +975,7 @@ export class ComputerUseService extends Service {
 
   async executeDesktopAction(
     rawParams: DesktopActionParams,
+    signal?: AbortSignal,
   ): Promise<ComputerActionResult> {
     const params = this.normalizeDesktopActionParams(rawParams);
     const entry = this.createEntry(params.action, this.toParamsRecord(params));
@@ -968,10 +991,12 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.desktopApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
+      this.throwIfAborted(signal);
 
       if (params.action === "ocr" || params.action === "detect_elements") {
         return this.runOcrOrDetect(entry, params);
@@ -1338,6 +1363,7 @@ export class ComputerUseService extends Service {
 
   async executeBrowserAction(
     rawParams: BrowserActionParams,
+    signal?: AbortSignal,
   ): Promise<BrowserActionResult> {
     const action = this.normalizeBrowserAction(rawParams.action);
     let params: BrowserActionParams;
@@ -1361,14 +1387,16 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.browserApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
+      this.throwIfAborted(signal);
 
       const result = await this.runBrowserAction(params);
       if (this.shouldAutoOpenBrowser(params.action, result.error)) {
-        return await this.retryBrowserActionAfterOpen(entry, params);
+        return await this.retryBrowserActionAfterOpen(entry, params, signal);
       }
       return result.success
         ? this.succeedEntry(entry, result)
@@ -1378,7 +1406,7 @@ export class ComputerUseService extends Service {
       // designed auto-open retry; every other failure (and the retry's own
       // failure) returns as a structured {success:false,error} entry.
       if (this.shouldAutoOpenBrowser(params.action, error)) {
-        return await this.retryBrowserActionAfterOpen(entry, params);
+        return await this.retryBrowserActionAfterOpen(entry, params, signal);
       }
       return this.failEntry(entry, {
         success: false,
@@ -1390,8 +1418,10 @@ export class ComputerUseService extends Service {
   private async retryBrowserActionAfterOpen(
     entry: ActionHistoryEntry,
     params: BrowserActionParams,
+    signal?: AbortSignal,
   ): Promise<BrowserActionResult> {
     try {
+      this.throwIfAborted(signal);
       const openResult = await this.runBrowserAction({
         ...params,
         action: "open",
@@ -1400,6 +1430,7 @@ export class ComputerUseService extends Service {
         return this.failEntry(entry, openResult);
       }
 
+      this.throwIfAborted(signal);
       const retryResult = await this.runBrowserAction(params);
       return retryResult.success
         ? this.succeedEntry(entry, retryResult)
@@ -1634,6 +1665,7 @@ export class ComputerUseService extends Service {
 
   async executeWindowAction(
     rawParams: WindowActionParams,
+    signal?: AbortSignal,
   ): Promise<WindowActionResult> {
     const params = this.normalizeWindowActionParams(rawParams);
     const entry = this.createEntry(
@@ -1650,10 +1682,12 @@ export class ComputerUseService extends Service {
       const approvalError = await this.awaitApproval(
         this.windowApprovalCommand(params.action),
         this.toParamsRecord(params),
+        signal,
       );
       if (approvalError) {
         return this.failEntry(entry, { success: false, error: approvalError });
       }
+      this.throwIfAborted(signal);
 
       switch (params.action) {
         case "list": {
@@ -2503,7 +2537,9 @@ export class ComputerUseService extends Service {
   private async awaitApproval(
     command: string,
     parameters: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<string | null> {
+    this.throwIfAborted(signal);
     if (this.approvalManager.shouldAutoApprove(command)) {
       return null;
     }
@@ -2513,7 +2549,9 @@ export class ComputerUseService extends Service {
     const decision = await this.approvalManager.requestApproval(
       command,
       parameters,
+      signal,
     );
+    this.throwIfAborted(signal);
     if (decision.approved) {
       return null;
     }
@@ -2525,6 +2563,13 @@ export class ComputerUseService extends Service {
     return decision.reason
       ? `Computer-use approval rejected: ${decision.reason}`
       : `Computer-use approval rejected for "${command}".`;
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (!signal?.aborted) return;
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error("Computer-use action cancelled");
   }
 
   /**

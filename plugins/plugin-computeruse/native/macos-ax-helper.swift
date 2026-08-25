@@ -79,13 +79,17 @@ func appObject(_ app: NSRunningApplication) -> [String: Any] {
     return value
 }
 
-func findApp(_ identifier: String) throws -> NSRunningApplication {
+func findApp(_ identifier: String, expectedPid: pid_t? = nil) throws -> NSRunningApplication {
     guard let app = runningApps().first(where: {
-        appId($0) == identifier ||
-        $0.bundleIdentifier == identifier ||
-        $0.localizedName?.localizedCaseInsensitiveCompare(identifier) == .orderedSame
+        (expectedPid == nil || $0.processIdentifier == expectedPid) &&
+        (appId($0) == identifier ||
+         $0.bundleIdentifier == identifier ||
+         $0.localizedName?.localizedCaseInsensitiveCompare(identifier) == .orderedSame)
     }) else {
-        throw HelperFailure.appNotFound("Running app not found: \(identifier)")
+        throw HelperFailure.appNotFound(
+            expectedPid.map { "Running app not found: \(identifier) with pid \($0)" } ??
+            "Running app not found: \(identifier)"
+        )
     }
     return app
 }
@@ -138,15 +142,34 @@ func children(_ element: AXUIElement) -> [AXUIElement] {
     (copyAttribute(element, kAXChildrenAttribute as CFString) as? [AXUIElement]) ?? []
 }
 
-func isSecure(role: String, subrole: String?, description: String?) -> Bool {
-    let haystack = [role, subrole ?? "", description ?? ""].joined(separator: " ").lowercased()
-    return haystack.contains("secure") || haystack.contains("password")
+func elementAttribute(_ element: AXUIElement, _ attribute: CFString) -> AXUIElement? {
+    guard let object = copyAttribute(element, attribute),
+          CFGetTypeID(object) == AXUIElementGetTypeID() else { return nil }
+    return unsafeBitCast(object, to: AXUIElement.self)
+}
+
+func isSecure(role: String, subrole: String?, label: String?, description: String?) -> Bool {
+    let normalizedRole = role.lowercased()
+    if normalizedRole.contains("textfield") || normalizedRole.contains("textarea") ||
+       normalizedRole.contains("searchfield") || normalizedRole.contains("combobox") {
+        return true
+    }
+    let haystack = [role, subrole ?? "", label ?? "", description ?? ""]
+        .joined(separator: " ").lowercased()
+    let sensitiveTerms = [
+        "secure", "password", "passcode", "api key", "apikey", "token",
+        "secret", "authorization", "private key", "seed phrase",
+    ]
+    return sensitiveTerms.contains(where: haystack.contains)
 }
 
 func redactSensitive(_ value: String) -> String {
     let patterns = [
         #"(?i)\b(api[_-]?key|token|secret|password|authorization)\b\s*[:=]\s*\S+"#,
         #"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"#,
+        #"\b(sk|rk|pk)-[A-Za-z0-9_-]{12,}\b"#,
+        #"\bgh[pousr]_[A-Za-z0-9]{20,}\b"#,
+        #"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"#,
         #"://[^/@\s]+:[^/@\s]+@"#,
     ]
     var redacted = value
@@ -191,7 +214,12 @@ func snapshot(_ app: NSRunningApplication) -> [String: Any] {
         let title = stringAttribute(item.element, kAXTitleAttribute as CFString)
         let rawLabel = title ?? stringAttribute(item.element, kAXLabelValueAttribute as CFString)
         let rawDescription = stringAttribute(item.element, kAXDescriptionAttribute as CFString)
-        let secure = isSecure(role: role, subrole: subrole, description: rawDescription)
+        let secure = isSecure(
+            role: role,
+            subrole: subrole,
+            label: rawLabel,
+            description: rawDescription
+        )
         let label = rawLabel.map(redactSensitive)
         let description = rawDescription.map(redactSensitive)
         let rawValue = secure ? nil : stringAttribute(item.element, kAXValueAttribute as CFString).map(redactSensitive)
@@ -223,6 +251,9 @@ func snapshot(_ app: NSRunningApplication) -> [String: Any] {
             queue.append(WalkItem(element: child, locator: item.locator + [index]))
         }
     }
+    if let focusedWindow = elementAttribute(root, kAXFocusedWindowAttribute as CFString) {
+        focusedWindowBounds = boundsObject(focusedWindow)
+    }
     var result: [String: Any] = [
         "app": appObject(app),
         "capturedAt": ISO8601DateFormatter().string(from: Date()),
@@ -250,12 +281,35 @@ func matchesExpected(_ element: AXUIElement, _ expected: [String: Any]?) -> Bool
     guard let expected else { return true }
     if let role = expected["role"] as? String,
        role != stringAttribute(element, kAXRoleAttribute as CFString) { return false }
+    if let subrole = expected["subrole"] as? String,
+       subrole != stringAttribute(element, kAXSubroleAttribute as CFString) { return false }
     if let label = expected["label"] as? String {
         let actual = stringAttribute(element, kAXTitleAttribute as CFString) ??
             stringAttribute(element, kAXLabelValueAttribute as CFString)
         if actual.map(redactSensitive) != label { return false }
     }
+    if let expectedBounds = expected["bounds"] as? [String: Any],
+       !sameBounds(boundsObject(element), expectedBounds) { return false }
     return true
+}
+
+func sameBounds(_ actual: [String: Any]?, _ expected: [String: Any]) -> Bool {
+    guard let actual,
+          let actualX = (actual["x"] as? NSNumber)?.doubleValue,
+          let actualY = (actual["y"] as? NSNumber)?.doubleValue,
+          let actualWidth = (actual["width"] as? NSNumber)?.doubleValue,
+          let actualHeight = (actual["height"] as? NSNumber)?.doubleValue,
+          let expectedX = (expected["x"] as? NSNumber)?.doubleValue,
+          let expectedY = (expected["y"] as? NSNumber)?.doubleValue,
+          let expectedWidth = (expected["width"] as? NSNumber)?.doubleValue,
+          let expectedHeight = (expected["height"] as? NSNumber)?.doubleValue else {
+        return false
+    }
+    let tolerance = 0.5
+    return abs(actualX - expectedX) <= tolerance &&
+        abs(actualY - expectedY) <= tolerance &&
+        abs(actualWidth - expectedWidth) <= tolerance &&
+        abs(actualHeight - expectedHeight) <= tolerance
 }
 
 func postKey(pid: pid_t, keyCode: CGKeyCode, modifiers: CGEventFlags = []) -> Bool {
@@ -344,11 +398,18 @@ func paste(pid: pid_t, text: String, format: String) -> (success: Bool, restored
 func perform(_ request: [String: Any]) throws -> [String: Any] {
     guard AXIsProcessTrusted() else { throw HelperFailure.accessibilityDenied }
     guard let identifier = request["app"] as? String,
+          let expectedPid = (request["pid"] as? NSNumber)?.int32Value,
           let action = request["action"] as? String else {
-        throw HelperFailure.invalidRequest("perform requires app and action")
+        throw HelperFailure.invalidRequest("perform requires app, pid, and action")
     }
-    let app = try findApp(identifier)
+    let app = try findApp(identifier, expectedPid: expectedPid)
     let root = AXUIElementCreateApplication(app.processIdentifier)
+    if let expectedWindowBounds = request["expectedWindowBounds"] as? [String: Any] {
+        guard let focusedWindow = elementAttribute(root, kAXFocusedWindowAttribute as CFString),
+              sameBounds(boundsObject(focusedWindow), expectedWindowBounds) else {
+            throw HelperFailure.staleElement("Focused accessibility window no longer matches the captured state")
+        }
+    }
     let locator = request["locator"] as? [Int]
     let element = try locator.map { try resolve(root, locator: $0) }
     if let element, !matchesExpected(element, request["expected"] as? [String: Any]) {

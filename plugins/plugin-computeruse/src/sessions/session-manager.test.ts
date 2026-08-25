@@ -127,6 +127,51 @@ describe("ComputerUseSessionManager", () => {
     expect(manager.create({ target: { kind: "host" } }).status).toBe("idle");
   });
 
+  it("revokes an in-flight host dispatch when its lease timer expires", async () => {
+    vi.useFakeTimers();
+    try {
+      let now = Date.parse("2026-08-19T00:00:00.000Z");
+      let dispatchedSignal: AbortSignal | undefined;
+      const manager = new ComputerUseSessionManager({
+        now: () => now,
+        idFactory: () => "session-one",
+        executor: async (_target, _action, signal) => {
+          dispatchedSignal = signal;
+          await new Promise<void>((_resolve, reject) => {
+            signal?.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+          return { success: true };
+        },
+      });
+      const host = manager.create({
+        target: { kind: "host" },
+        leaseTtlMs: 5_000,
+      });
+
+      const running = manager.execute(host.id, action("action-one", 0));
+      await vi.waitFor(() => expect(dispatchedSignal).toBeDefined());
+      const rejection = expect(running).rejects.toMatchObject({
+        code: "HOST_LEASE_EXPIRED",
+      });
+      now += 5_001;
+      await vi.advanceTimersByTimeAsync(5_001);
+
+      await rejection;
+      expect(dispatchedSignal?.aborted).toBe(true);
+      expect(manager.get(host.id)).toMatchObject({
+        status: "closed",
+        lastOutcome: {
+          status: "UNCERTAIN_EFFECT",
+          errorCode: "CANCELLED_AFTER_DISPATCH",
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("allows concurrent isolated sessions without cursor leakage", async () => {
     let id = 0;
     const releases = new Map<string, () => void>();
@@ -203,6 +248,9 @@ describe("ComputerUseSessionManager", () => {
       target: { kind: "browser", targetId: "browser-one" },
     });
     const running = manager.execute(session.id, action("action-one", 0));
+    await expect(
+      manager.execute(session.id, action("action-two", 0)),
+    ).rejects.toMatchObject({ code: "SESSION_BUSY" });
     await vi.waitFor(() => expect(release).toBeTypeOf("function"));
     await expect(
       manager.execute(session.id, action("action-two", 0)),
@@ -433,7 +481,10 @@ describe("ComputerUseSessionManager", () => {
     expect(manager.get(session.id)).toMatchObject({
       status: "closed",
       canonicalState: "stopped",
-      lastOutcome: { status: "FAILED_NO_EFFECT", errorCode: "CANCELLED" },
+      lastOutcome: {
+        status: "UNCERTAIN_EFFECT",
+        errorCode: "CANCELLED_AFTER_DISPATCH",
+      },
     });
     release?.();
   });

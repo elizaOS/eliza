@@ -148,6 +148,27 @@ describe("AppControlCoordinator", () => {
     });
   });
 
+  it("atomically claims an app state before concurrent adapter dispatch", async () => {
+    let release: (() => void) | undefined;
+    const { adapter, coordinator } = fixture();
+    vi.mocked(adapter.perform).mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { success: true };
+    });
+    const before = await coordinator.getAppState(app.id);
+
+    const first = coordinator.act(action(before.stateId));
+    await expect(coordinator.act(action(before.stateId))).rejects.toMatchObject(
+      { code: "STALE_APP_STATE" },
+    );
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(adapter.perform).toHaveBeenCalledOnce();
+    release?.();
+    await expect(first).resolves.toMatchObject({ success: true });
+  });
+
   it("uses the semantic AX action first and automatically recaptures state", async () => {
     const { adapter, coordinator } = fixture();
     const before = await coordinator.getAppState(app.id);

@@ -147,6 +147,7 @@ export interface AppControlAdapter {
     app: AppDescriptor,
     element: NativeAppElement | undefined,
     request: AppActionRequest,
+    expectedWindowBounds?: AppElementBounds,
     signal?: AbortSignal,
   ): Promise<NativeAppActionResult>;
 }

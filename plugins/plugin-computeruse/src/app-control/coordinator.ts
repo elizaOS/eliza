@@ -35,6 +35,7 @@ export class AppControlError extends Error {
 interface StoredState {
   publicState: AppState;
   nativeElements: NativeAppElement[];
+  focusedWindowBounds?: AppState["screenshotBounds"];
 }
 
 interface AppControlCoordinatorOptions {
@@ -98,6 +99,7 @@ function makeDiff(previous: AppState, next: AppState): AppState["diff"] {
 
 export class AppControlCoordinator {
   private readonly states = new Map<string, StoredState>();
+  private readonly claimedStateIds = new Set<string>();
   private readonly adapter: AppControlAdapter;
   private readonly capture: AppStateCapture;
   private readonly grounder?: AppControlGrounder;
@@ -180,9 +182,13 @@ export class AppControlCoordinator {
     const previous = this.states.get(native.app.id)?.publicState;
     if (previous && !options.disableDiff)
       state.diff = makeDiff(previous, state);
+    if (previous) this.claimedStateIds.delete(previous.stateId);
     this.states.set(native.app.id, {
       publicState: state,
       nativeElements: native.elements,
+      ...(native.focusedWindowBounds
+        ? { focusedWindowBounds: native.focusedWindowBounds }
+        : {}),
     });
     return state;
   }
@@ -217,6 +223,13 @@ export class AppControlCoordinator {
         );
       }
     }
+    if (this.claimedStateIds.has(request.stateId)) {
+      throw new AppControlError(
+        "STALE_APP_STATE",
+        "This app state was already claimed by another action; recapture before retrying",
+      );
+    }
+    this.claimedStateIds.add(request.stateId);
 
     if (request.kind === "hover_target") {
       const after = await this.getAppState(request.app, { signal });
@@ -250,6 +263,7 @@ export class AppControlCoordinator {
       stored.publicState.app,
       element,
       request,
+      stored.focusedWindowBounds,
       signal,
     );
     let physicalPointerMoved = false;

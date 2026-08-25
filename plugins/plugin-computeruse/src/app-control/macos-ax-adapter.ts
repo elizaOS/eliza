@@ -7,6 +7,7 @@ import type {
   AppActionRequest,
   AppControlAdapter,
   AppDescriptor,
+  AppElementBounds,
   NativeAppActionResult,
   NativeAppElement,
   NativeAppSnapshot,
@@ -39,11 +40,49 @@ export function resolveMacosAxHelper(): string | null {
   return helperCandidates().find((candidate) => existsSync(candidate)) ?? null;
 }
 
+export function createMacosAxPerformRequest(
+  app: AppDescriptor,
+  element: NativeAppElement | undefined,
+  request: AppActionRequest,
+  expectedWindowBounds: AppElementBounds,
+): Record<string, unknown> {
+  return {
+    command: "perform",
+    app: app.id,
+    pid: app.pid,
+    action: request.kind,
+    expectedWindowBounds,
+    ...(element
+      ? {
+          locator: element.locator,
+          expected: {
+            role: element.role,
+            subrole: element.subrole,
+            label: element.label,
+            bounds: element.bounds,
+          },
+        }
+      : {}),
+    ...(request.text !== undefined ? { text: request.text } : {}),
+    ...(request.key !== undefined ? { key: request.key } : {}),
+    ...(request.modifiers ? { modifiers: request.modifiers } : {}),
+    ...(request.direction ? { direction: request.direction } : {}),
+    ...(request.amount !== undefined ? { amount: request.amount } : {}),
+    ...(request.format ? { format: request.format } : {}),
+    ...(request.secondaryAction
+      ? { secondaryAction: request.secondaryAction }
+      : {}),
+  };
+}
+
 async function invokeHelper<T>(
   helper: string,
   request: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
+  if (signal?.aborted) {
+    throw new Error("macOS AX helper call cancelled");
+  }
   return new Promise<T>((resolve, reject) => {
     const child = spawn(helper, [], {
       stdio: ["pipe", "pipe", "pipe"],
@@ -71,6 +110,10 @@ async function invokeHelper<T>(
     }, HELPER_TIMEOUT_MS);
     timer.unref();
     signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     child.stdout.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_HELPER_OUTPUT_BYTES) {
@@ -152,34 +195,19 @@ export class MacosAxAdapter implements AppControlAdapter {
     app: AppDescriptor,
     element: NativeAppElement | undefined,
     request: AppActionRequest,
+    expectedWindowBounds?: AppElementBounds,
     signal?: AbortSignal,
   ): Promise<NativeAppActionResult> {
+    if (!expectedWindowBounds) {
+      return {
+        success: false,
+        error:
+          "The captured macOS focused-window bounds are unavailable; recapture before acting",
+      };
+    }
     return invokeHelper<NativeAppActionResult>(
       this.requireHelper(),
-      {
-        command: "perform",
-        app: app.id,
-        action: request.kind,
-        ...(element
-          ? {
-              locator: element.locator,
-              expected: {
-                role: element.role,
-                label: element.label,
-                bounds: element.bounds,
-              },
-            }
-          : {}),
-        ...(request.text !== undefined ? { text: request.text } : {}),
-        ...(request.key !== undefined ? { key: request.key } : {}),
-        ...(request.modifiers ? { modifiers: request.modifiers } : {}),
-        ...(request.direction ? { direction: request.direction } : {}),
-        ...(request.amount !== undefined ? { amount: request.amount } : {}),
-        ...(request.format ? { format: request.format } : {}),
-        ...(request.secondaryAction
-          ? { secondaryAction: request.secondaryAction }
-          : {}),
-      },
+      createMacosAxPerformRequest(app, element, request, expectedWindowBounds),
       signal,
     );
   }

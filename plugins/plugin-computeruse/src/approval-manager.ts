@@ -65,6 +65,7 @@ type ApprovalDecision = {
 
 type PendingApprovalRecord = PendingApproval & {
   resolve: (result: ApprovalDecision) => void;
+  cleanup?: () => void;
 };
 
 type ApprovalListener = (snapshot: ApprovalSnapshot) => void;
@@ -119,18 +120,46 @@ export class ComputerUseApprovalManager {
   requestApproval(
     command: string,
     parameters: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<ApprovalDecision> {
+    if (signal?.aborted) {
+      return Promise.resolve({
+        approved: false,
+        cancelled: true,
+        reason: "Computer-use approval request was cancelled",
+      });
+    }
     const id = `approval_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const requestedAt = new Date().toISOString();
 
     return new Promise((resolve) => {
-      this.pending.set(id, {
+      const record: PendingApprovalRecord = {
         id,
         command,
         parameters,
         requestedAt,
         resolve,
-      });
+      };
+      const onAbort = () => {
+        if (this.pending.get(id) !== record) return;
+        this.pending.delete(id);
+        record.cleanup?.();
+        resolve({
+          approved: false,
+          cancelled: true,
+          reason: "Computer-use approval request was cancelled",
+        });
+        this.emit();
+      };
+      this.pending.set(id, record);
+      if (signal) {
+        signal.addEventListener("abort", onAbort, { once: true });
+        record.cleanup = () => signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+      }
       this.emit();
     });
   }
@@ -161,6 +190,7 @@ export class ComputerUseApprovalManager {
     }
 
     this.pending.delete(id);
+    pending.cleanup?.();
     pending.resolve({ approved, cancelled: false, reason });
     this.emit();
 
@@ -178,6 +208,7 @@ export class ComputerUseApprovalManager {
 
   cancelAll(reason?: string): void {
     for (const pending of this.pending.values()) {
+      pending.cleanup?.();
       pending.resolve({ approved: false, cancelled: true, reason });
     }
     this.pending.clear();

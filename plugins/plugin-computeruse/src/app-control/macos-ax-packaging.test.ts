@@ -41,5 +41,13 @@ describe("macOS AX helper packaging", () => {
     expect(source).toContain("AXUIElementSetAttributeValue");
     expect(source).toContain("redactSensitive");
     expect(source).toContain("[redacted]");
+    expect(source).toContain('normalizedRole.contains("textfield")');
+    expect(source).toContain("gh[pousr]_");
+    expect(source).toContain('request["pid"]');
+    expect(source).toContain("findApp(identifier, expectedPid: expectedPid)");
+    expect(source).toContain('request["expectedWindowBounds"]');
+    expect(source).toContain(
+      "sameBounds(boundsObject(element), expectedBounds)",
+    );
   });
 });

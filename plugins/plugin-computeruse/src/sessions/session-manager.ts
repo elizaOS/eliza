@@ -89,6 +89,7 @@ interface MutableSession extends ComputerUseSessionSnapshot {
   lastActionFingerprint?: string;
   lastActionObservationSha256?: string;
   activeAbortController?: AbortController;
+  activeLeaseTimer?: ReturnType<typeof setTimeout>;
 }
 
 interface ComputerUseSessionManagerOptions {
@@ -216,6 +217,7 @@ function cloneSnapshot(session: MutableSession): ComputerUseSessionSnapshot {
     lastActionFingerprint: _lastActionFingerprint,
     lastActionObservationSha256: _lastActionObservationSha256,
     activeAbortController: _activeAbortController,
+    activeLeaseTimer: _activeLeaseTimer,
     ...snapshot
   } = session;
   return {
@@ -499,20 +501,6 @@ export class ComputerUseSessionManager {
       );
     }
     const observation = this.assertObservationBinding(session, action);
-    try {
-      await authorizeCompatibilitySessionAction(
-        cloneSnapshot(session),
-        action,
-        this.now(),
-      );
-    } catch {
-      // error-policy:J3 the compatibility DTO must satisfy the canonical core
-      // interaction contract before any adapter or approval boundary sees it.
-      throw new ComputerUseSessionError(
-        "INVALID_SESSION_INPUT",
-        "Action does not satisfy the canonical interaction contract",
-      );
-    }
     const fingerprint = this.actionFingerprint(action);
     if (
       observation &&
@@ -539,12 +527,15 @@ export class ComputerUseSessionManager {
       );
     }
 
+    const authorizationSnapshot = cloneSnapshot(session);
     this.recordActionId(session, action.actionId);
     if (observation)
       session.consumedObservationIds.add(observation.observationId);
     session.sequence += 1;
     session.status = "running";
     session.canonicalState = "running";
+    session.generation += 1;
+    const reservationGeneration = session.generation;
     session.activeActionId = action.actionId;
     session.lastActionId = action.actionId;
     session.lastCommand = action.command;
@@ -552,6 +543,7 @@ export class ComputerUseSessionManager {
     session.updatedAt = timestamp(this.now());
     const abortController = new AbortController();
     session.activeAbortController = abortController;
+    this.armHostLeaseExpiry(session, abortController);
     this.emit(
       "action.started",
       session,
@@ -561,7 +553,47 @@ export class ComputerUseSessionManager {
       observation?.observationId,
     );
 
+    let dispatchStarted = false;
     try {
+      try {
+        await authorizeCompatibilitySessionAction(
+          authorizationSnapshot,
+          action,
+          this.now(),
+        );
+      } catch (error) {
+        if (abortController.signal.aborted) throw error;
+        // error-policy:J3 the compatibility DTO must satisfy the canonical core
+        // interaction contract before any adapter or approval boundary sees it.
+        throw new ComputerUseSessionError(
+          "INVALID_SESSION_INPUT",
+          "Action does not satisfy the canonical interaction contract",
+        );
+      }
+      if (
+        abortController.signal.aborted ||
+        session.status !== "running" ||
+        session.generation !== reservationGeneration ||
+        session.activeActionId !== action.actionId
+      ) {
+        throw (
+          abortController.signal.reason ??
+          new Error("Computer-use action reservation was revoked")
+        );
+      }
+      if (
+        session.target.kind === "host" &&
+        (!session.leaseExpiresAt ||
+          Date.parse(session.leaseExpiresAt) <= this.now())
+      ) {
+        const leaseError = new ComputerUseSessionError(
+          "HOST_LEASE_EXPIRED",
+          `Host lease expired for session ${id} before dispatch`,
+        );
+        abortController.abort(leaseError);
+        throw leaseError;
+      }
+      dispatchStarted = true;
       let result = await this.executor(
         { ...session.target },
         action,
@@ -620,8 +652,10 @@ export class ComputerUseSessionManager {
       session.status = stopRequested ? "closed" : "idle";
       session.canonicalState = stopRequested ? "stopped" : "ready";
       if (stopRequested) this.releaseSessionOwnership(session);
+      else session.generation += 1;
       delete session.activeActionId;
       delete session.activeAbortController;
+      this.clearActiveLeaseTimer(session);
       session.updatedAt = occurredAt;
       const outcomeStatus = stopRequested
         ? "UNCERTAIN_EFFECT"
@@ -673,26 +707,37 @@ export class ComputerUseSessionManager {
       // error-policy:J1 action boundary — the manager records and rethrows the
       // typed/adapter failure so the route or planner can translate it once.
       const stopRequested = abortController.signal.aborted;
+      const outcomeStatus =
+        stopRequested && dispatchStarted
+          ? "UNCERTAIN_EFFECT"
+          : "FAILED_NO_EFFECT";
       session.status = stopRequested ? "closed" : "idle";
       session.canonicalState = stopRequested ? "stopped" : "ready";
       if (stopRequested) this.releaseSessionOwnership(session);
+      else session.generation += 1;
       delete session.activeActionId;
       delete session.activeAbortController;
+      this.clearActiveLeaseTimer(session);
       session.lastError = ACTION_FAILURE_SUMMARY;
       session.updatedAt = timestamp(this.now());
       session.lastOutcome = {
         actionId: action.actionId,
-        status: "FAILED_NO_EFFECT",
+        status: outcomeStatus,
         completedAt: session.updatedAt,
         ...(observation ? { observationId: observation.observationId } : {}),
-        errorCode: stopRequested ? "CANCELLED" : "ADAPTER_FAILURE",
+        errorCode:
+          stopRequested && dispatchStarted
+            ? "CANCELLED_AFTER_DISPATCH"
+            : stopRequested
+              ? "CANCELLED"
+              : "ADAPTER_FAILURE",
       };
       this.emit(
         "action.failed",
         session,
         action,
         session.lastError,
-        "FAILED_NO_EFFECT",
+        outcomeStatus,
         observation?.observationId,
       );
       this.expireHostLease(this.now());
@@ -985,6 +1030,42 @@ export class ComputerUseSessionManager {
       "HOST_LEASE_EXPIRED",
       `Host lease expired for session ${session.id}`,
     );
+  }
+
+  private armHostLeaseExpiry(
+    session: MutableSession,
+    abortController: AbortController,
+  ): void {
+    this.clearActiveLeaseTimer(session);
+    if (session.target.kind !== "host" || !session.leaseExpiresAt) return;
+    const check = () => {
+      if (abortController.signal.aborted) return;
+      const remaining = session.leaseExpiresAt
+        ? Date.parse(session.leaseExpiresAt) - this.now()
+        : 0;
+      if (remaining > 0) {
+        session.activeLeaseTimer = setTimeout(check, remaining);
+        session.activeLeaseTimer.unref?.();
+        return;
+      }
+      abortController.abort(
+        new ComputerUseSessionError(
+          "HOST_LEASE_EXPIRED",
+          `Host lease expired for session ${session.id} while its action was pending`,
+        ),
+      );
+    };
+    const remaining = Math.max(
+      0,
+      Date.parse(session.leaseExpiresAt) - this.now(),
+    );
+    session.activeLeaseTimer = setTimeout(check, remaining);
+    session.activeLeaseTimer.unref?.();
+  }
+
+  private clearActiveLeaseTimer(session: MutableSession): void {
+    if (session.activeLeaseTimer) clearTimeout(session.activeLeaseTimer);
+    delete session.activeLeaseTimer;
   }
 
   private recordActionId(session: MutableSession, actionId: string): void {
