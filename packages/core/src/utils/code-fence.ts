@@ -8,9 +8,22 @@ export function unwrapWholeCodeFence(
 		return null;
 	}
 	const lowerValue = value.toLowerCase();
-	const acceptedLanguage = [...languages]
-		.sort((left, right) => right.length - left.length)
-		.find((language) => lowerValue.startsWith(language.toLowerCase(), 3));
+	const sorted = [...languages].sort(
+		(left, right) => right.length - left.length,
+	);
+	let acceptedLanguage: string | undefined;
+	for (const language of sorted) {
+		const lowerLang = language.toLowerCase();
+		if (!lowerValue.startsWith(lowerLang, 3)) continue;
+		const afterIdx = 3 + language.length;
+		let extEnd = afterIdx;
+		while (extEnd < value.length && /[A-Za-z0-9]/.test(value[extEnd])) {
+			extEnd += 1;
+		}
+		if (extEnd > afterIdx && /\s/u.test(value[extEnd] ?? "")) continue;
+		acceptedLanguage = language;
+		break;
+	}
 	let cursor = acceptedLanguage ? 3 + acceptedLanguage.length : 3;
 	if (!acceptedLanguage) {
 		while (cursor < value.length && /[A-Za-z0-9]/.test(value[cursor]))

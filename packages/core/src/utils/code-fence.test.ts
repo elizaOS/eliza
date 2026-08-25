@@ -28,4 +28,20 @@ describe("unwrapWholeCodeFence", () => {
 			"x",
 		);
 	});
+
+	it("rejects prefix-overmatched languages without a delimiter", () => {
+		expect(unwrapWholeCodeFence("```jsonata\nhello\n```", ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence("```jsonATA\nhello\n```", ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence("```js\nhello\n```", ["json"])).toBeNull();
+		expect(unwrapWholeCodeFence("```json\nhello\n```", ["json"])).toBe("hello");
+		expect(
+			unwrapWholeCodeFence("```jsonata\nhello\n```", ["json", "jsonata"]),
+		).toBe("hello");
+		expect(
+			unwrapWholeCodeFence("```json\nhello\n```", ["json", "jsonata"]),
+		).toBe("hello");
+		expect(unwrapWholeCodeFence("```json \nhello\n```", ["json"])).toBe(
+			"hello",
+		);
+	});
 });
