@@ -7,6 +7,7 @@
  * `DiscordEventTypes` events.
  */
 import {
+	ElizaError,
 	getConnectorAccountManager,
 	type IAgentRuntime,
 	logger,
@@ -123,10 +124,16 @@ const discordPlugin: Plugin = {
 				typeof applicationId === "string" ? applicationId : null,
 			);
 		} catch (err) {
-			// error-policy:J4 user-facing degrade — registration failure
-			// degrades install diagnostics to the manual-activation catalog
-			// path below (the load-promise retry still runs); it must not
-			// abort plugin init over a diagnostics contribution.
+			// error-policy:J4 user-facing degrade — the ONLY expected failure
+			// shape here is a malformed-contribution ElizaError
+			// (INSTALLATION_INVALID_CONTRIBUTION) thrown by registration-time
+			// validation; it degrades Discord install diagnostics to the
+			// manual-activation path (the load-promise retry still runs) and
+			// surfaces as INSTALLATION_MISSING_CONTRIBUTION on diagnostic
+			// reads. Unexpected errors rethrow to fail fast.
+			if (!(err instanceof ElizaError)) {
+				throw err;
+			}
 			logger.warn(
 				{
 					src: "plugin:discord",

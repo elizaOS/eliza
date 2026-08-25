@@ -7,7 +7,7 @@
  */
 
 import { ElizaError } from "../errors";
-import type { JsonObject, UUID } from "../types/primitives";
+import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import { Service, ServiceType } from "../types/service";
 import { stableStringify } from "../utils/deterministic";

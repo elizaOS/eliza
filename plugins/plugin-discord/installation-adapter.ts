@@ -209,6 +209,17 @@ export async function reportDiscordGuildJoined(
 		externalWorldId: string;
 		guildName: string;
 		worldId: UUID;
+		/**
+		 * Provider-observed join timestamp (guild.joinedAt — when the bot
+		 * actually joined, per Discord). Used as observedAt for the
+		 * recreate-critical invite_created so a delayed re-delivery of an
+		 * OLD guildCreate (processed after a removal) carries the OLD join
+		 * time and is fenced by the removal-ordering check; a genuine
+		 * re-invite carries a fresh joinedAt. Falls back to now only when
+		 * Discord does not supply one (rare; at that point ordering falls
+		 * back to local observation honesty).
+		 */
+		joinedAt?: string | null;
 	},
 ): Promise<"ready" | "degraded" | "permissions_verifying" | "rejected"> {
 	const service = resolveService(runtime);
@@ -220,6 +231,16 @@ export async function reportDiscordGuildJoined(
 		externalWorldId: input.externalWorldId,
 	};
 	const observedAt = new Date().toISOString();
+	// Provider ordering token: the invite that (re)creates the installation
+	// is observed at the provider's join time, not local clock time, so the
+	// reducer's removal-ordering fence can distinguish a genuine re-invite
+	// (joinedAt after the removal) from a delayed old guildCreate redelivery
+	// (joinedAt before the removal).
+	const inviteObservedAt =
+		typeof input.joinedAt === "string" &&
+		!Number.isNaN(Date.parse(input.joinedAt))
+			? input.joinedAt
+			: observedAt;
 	// Live reads per event: the record advances with every accepted apply,
 	// and the reducer's dual fence (epoch + generation) rejects events whose
 	// numbers are behind OR ahead of the live record, so each event must
@@ -263,12 +284,13 @@ export async function reportDiscordGuildJoined(
 	const mk = (
 		idempotencyKey: string,
 		transition: InstallationTransitionEvent["transition"],
+		observedAtOverride?: string,
 	): InstallationTransitionEvent => ({
 		contractVersion: INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
 		scope,
 		reinstallVersion: currentEpoch(),
 		observedGeneration: currentGeneration(),
-		observedAt,
+		observedAt: observedAtOverride ?? observedAt,
 		idempotencyKey: `discord:${input.externalWorldId}:v${currentEpoch()}:${idempotencyKey}`,
 		transition,
 	});
@@ -277,10 +299,11 @@ export async function reportDiscordGuildJoined(
 	// — a downstream consumer can distinguish it from an OAuth-verified
 	// authorization milestone instead of trusting a comment.
 	service.apply(
-		mk(`guildCreate:${input.externalWorldId}:invite`, {
-			kind: "invite_created",
-			externalGroupLabel: input.guildName,
-		}),
+		mk(
+			`guildCreate:${input.externalWorldId}:invite`,
+			{ kind: "invite_created", externalGroupLabel: input.guildName },
+			inviteObservedAt,
+		),
 	);
 	service.apply(
 		mk(`guildCreate:${input.externalWorldId}:authorized`, {

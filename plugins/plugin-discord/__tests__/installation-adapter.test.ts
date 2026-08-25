@@ -221,6 +221,8 @@ describe("discord installation reporting", () => {
 			externalWorldId: "g1",
 			guildName: "G1",
 			worldId: stringToUuid("w1"),
+			// Genuine re-invite: provider join time strictly after the removal.
+			joinedAt: new Date(Date.now() + 60_000).toISOString(),
 		});
 		const record = service.get({
 			agentId,
@@ -253,12 +255,14 @@ describe("discord installation reporting", () => {
 				externalWorldId: "g2",
 			}),
 		).toBe(true);
-		// Rejoin recreates at reinstallVersion 2.
+		// Rejoin recreates at reinstallVersion 2 (join time strictly after
+		// the removal — the provider ordering token).
 		await reportDiscordGuildJoined(runtime, {
 			connectorAccountId: stringToUuid("acct"),
 			externalWorldId: "g2",
 			guildName: "G2",
 			worldId: stringToUuid("w2"),
+			joinedAt: new Date(Date.now() + 60_000).toISOString(),
 		});
 		expect(service.get(scopeFor("g2"))?.reinstallVersion).toBe(2);
 		expect(service.get(scopeFor("g2"))?.state).toBe("permissions_verifying");
@@ -379,5 +383,79 @@ describe("discord installation traffic gate", () => {
 				externalWorldId: "g1",
 			}),
 		).toBe(true);
+	});
+});
+
+describe("round-3: provider ordering token fences stale guildCreate redelivery", () => {
+	it("a removed installation is NOT recreated by a redelivered old guildCreate (old joinedAt)", async () => {
+		const service = new InstallationLifecycleService();
+		const runtime = makeRuntime(service);
+		const input = {
+			connectorAccountId: stringToUuid("acct"),
+			externalWorldId: "g1",
+		};
+		// Original join at 10:00 (provider timestamp).
+		await reportDiscordGuildJoined(runtime, {
+			...input,
+			guildName: "G1",
+			worldId: stringToUuid("w1"),
+			joinedAt: "2026-08-25T10:00:00Z",
+		});
+		await reportDiscordGuildRemoved(runtime, input);
+		expect(
+			service.get({
+				agentId,
+				connectorId: "discord",
+				...input,
+			})?.state,
+		).toBe("removed");
+		// Redelivered OLD guildCreate processed AFTER the removal: it still
+		// carries the old provider join time (10:00 < removal ~now), so the
+		// removal-ordering fence must reject the recreation instead of
+		// manufacturing a fresh epoch from local clock state.
+		const result = await reportDiscordGuildJoined(runtime, {
+			...input,
+			guildName: "G1",
+			worldId: stringToUuid("w1"),
+			joinedAt: "2026-08-25T10:00:00Z",
+		});
+		expect(result).toBe("rejected");
+		const record = service.get({
+			agentId,
+			connectorId: "discord",
+			...input,
+		});
+		expect(record?.state).toBe("removed");
+		expect(record?.reinstallVersion).toBe(1);
+	});
+
+	it("a genuine re-invite with a fresh provider joinedAt recreates the installation", async () => {
+		const service = new InstallationLifecycleService();
+		const runtime = makeRuntime(service);
+		const input = {
+			connectorAccountId: stringToUuid("acct"),
+			externalWorldId: "g2",
+		};
+		await reportDiscordGuildJoined(runtime, {
+			...input,
+			guildName: "G2",
+			worldId: stringToUuid("w2"),
+			joinedAt: "2026-08-25T10:00:00Z",
+		});
+		await reportDiscordGuildRemoved(runtime, input);
+		const result = await reportDiscordGuildJoined(runtime, {
+			...input,
+			guildName: "G2",
+			worldId: stringToUuid("w2"),
+			joinedAt: new Date(Date.now() + 60_000).toISOString(),
+		});
+		expect(result).toBe("permissions_verifying");
+		const record = service.get({
+			agentId,
+			connectorId: "discord",
+			...input,
+		});
+		expect(record?.state).toBe("permissions_verifying");
+		expect(record?.reinstallVersion).toBe(2);
 	});
 });

@@ -374,6 +374,19 @@ export function applyInstallationTransition(
 				{ code: "INSTALLATION_NO_RECORD" },
 			);
 		}
+		// Initial creation is always epoch 1: any other epoch number (a
+		// replayed or fabricated reinstallVersion) is caller error, not a
+		// state-machine verdict — fail fast instead of silently normalizing
+		// an epoch the record does not actually carry.
+		if (
+			!Number.isInteger(event.reinstallVersion) ||
+			event.reinstallVersion !== 1
+		) {
+			throw new ElizaError(
+				"Initial invite_created must carry reinstallVersion 1; the reducer does not normalize caller-supplied epochs.",
+				{ code: "INSTALLATION_INVALID_EVENT", context: { scope: event.scope } },
+			);
+		}
 		const created: GroupInstallationRecord = {
 			contractVersion: INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
 			installationId: stringToUuid(
@@ -709,11 +722,13 @@ export function recreateInstallationAfterRemoval(
 			`Re-creating invite must carry epoch ${record.reinstallVersion + 1} (terminal record is at ${record.reinstallVersion}).`,
 		);
 	}
-	// Removal ordering: a re-invite observed strictly BEFORE the removal that
-	// terminated the previous installation is a delayed re-delivery of an old
-	// invite and is fenced. The same-millisecond case is allowed: sequential
-	// adapter flows mint observedAt per event, so an invite at the exact
-	// removal instant is a fresh join, not a stale redelivery.
+	// Removal ordering: a re-invite observed at or before the removal that
+	// terminated the previous installation is fenced. Millisecond timestamps
+	// cannot prove ordering between equal values (sequential events can share
+	// a timestamp), so equality stays fenced — matching the public
+	// isStaleAgainstRemoval helper, which also treats <= the removal fence
+	// as stale. Callers minting observedAt from provider evidence (the
+	// Discord adapter passes guild.joinedAt) get a genuine ordering token.
 	const removalMs = Date.parse(record.removedAt ?? record.updatedAt);
 	const inviteMs = Date.parse(event.observedAt);
 	if (!Number.isFinite(removalMs) || !Number.isFinite(inviteMs)) {
@@ -723,7 +738,7 @@ export function recreateInstallationAfterRemoval(
 			"Re-creating invite requires parseable observedAt and removal timestamps.",
 		);
 	}
-	if (inviteMs < removalMs) {
+	if (inviteMs <= removalMs) {
 		return reject(
 			record,
 			"STALE_EPOCH",

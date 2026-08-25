@@ -684,6 +684,10 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				externalWorldId: guild.id,
 				guildName: guild.name,
 				worldId: createUniqueUuid(service.runtime, guild.id),
+				// Provider ordering token: when the bot actually joined this
+				// guild per Discord — drives the removal-ordering fence on
+				// re-creation after removal.
+				joinedAt: guild.joinedAt?.toISOString() ?? null,
 			});
 			await service.handleGuildCreate(guild);
 		} catch (error) {

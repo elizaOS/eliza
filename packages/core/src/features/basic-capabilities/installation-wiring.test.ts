@@ -71,6 +71,7 @@ describe("installation lifecycle production wiring", () => {
 		const receipt = service?.apply({
 			contractVersion: INSTALLATION_LIFECYCLE_CONTRACT_VERSION,
 			scope,
+			reinstallVersion: 1,
 			observedGeneration: 0,
 			observedAt: new Date().toISOString(),
 			idempotencyKey: "wiring:invite",

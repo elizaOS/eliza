@@ -717,7 +717,13 @@ describe("round-1: epoch fencing and cross-epoch idempotency", () => {
 		expect(removed.accepted).toBe(true);
 		// Re-create at epoch 2 (generation resets to 1).
 		const recreated = service.apply(
-			event({ kind: "invite_created" }, 1, OBSERVED_AT, "re", 2),
+			event(
+				{ kind: "invite_created" },
+				1,
+				"2026-08-25T13:00:00Z", // strictly after the removal observation
+				"re",
+				2,
+			),
 		);
 		expect(recreated.accepted).toBe(true);
 		expect(recreated.record.reinstallVersion).toBe(2);
@@ -754,7 +760,13 @@ describe("round-1: epoch fencing and cross-epoch idempotency", () => {
 		);
 		expect(removed1.accepted).toBe(true);
 		const recreated = service.apply(
-			event({ kind: "invite_created" }, 1, OBSERVED_AT, "re", 2),
+			event(
+				{ kind: "invite_created" },
+				1,
+				"2026-08-25T13:00:00Z", // strictly after the removal observation
+				"re",
+				2,
+			),
 		);
 		expect(recreated.accepted).toBe(true);
 		const secondRemoval = service.apply(
@@ -1494,5 +1506,76 @@ describe("round-2: capability catalog and proof guards", () => {
 			}),
 		);
 		expect(overlap.accepted).toBe(false);
+	});
+});
+
+describe("round-3: ordering fence parity and initial-epoch fail-fast", () => {
+	it("an invite at the exact removal timestamp is fenced (parity with isStaleAgainstRemoval)", () => {
+		const service = new InstallationLifecycleService();
+		for (const transition of [
+			{ kind: "invite_created" } as const,
+			{ kind: "provider_authorized", evidence: "connector_observed" } as const,
+			{ kind: "agent_joined", worldId: stringToUuid("w") } as const,
+		]) {
+			const receipt = service.apply(
+				next(
+					service.get(scope),
+					transition,
+					OBSERVED_AT,
+					`d3-${transition.kind}-${Math.random()}`,
+				),
+			);
+			if (!receipt.accepted)
+				throw new Error(`drive failed at ${transition.kind}`);
+		}
+		// Removal observed at 12:00:00.500.
+		const removalAt = "2026-08-25T12:00:00.500Z";
+		const removal = service.apply(
+			next(
+				service.get(scope),
+				{ kind: "removal", reason: "kicked" },
+				removalAt,
+				`r3-removal-${Math.random()}`,
+			),
+		);
+		expect(removal.accepted).toBe(true);
+		const removed = service.get(scope);
+		if (!removed) throw new Error("removed record missing");
+		// Re-invite carrying the SAME provider join timestamp: equality cannot
+		// prove ordering, so it must be fenced exactly like
+		// isStaleAgainstRemoval (<=) fences it.
+		const sameMoment = service.apply({
+			...next(
+				removed,
+				{ kind: "invite_created" },
+				removalAt,
+				`r3-same-${Math.random()}`,
+			),
+			reinstallVersion: removed.reinstallVersion + 1,
+			observedAt: removalAt,
+		});
+		expect(sameMoment.accepted).toBe(false);
+		expect(sameMoment.rejection?.code).toBe("STALE_EPOCH");
+	});
+
+	it("initial invite_created with a non-1 epoch throws (no silent normalization)", () => {
+		expect(() =>
+			applyInstallationTransition(
+				null,
+				event({ kind: "invite_created" }, 1, OBSERVED_AT, "bad-epoch", 5),
+			),
+		).toThrowError(/reinstallVersion 1/);
+		expect(() =>
+			applyInstallationTransition(
+				null,
+				event(
+					{ kind: "invite_created" },
+					1,
+					OBSERVED_AT,
+					"nan-epoch",
+					Number.NaN,
+				),
+			),
+		).toThrowError(/reinstallVersion 1/);
 	});
 });
