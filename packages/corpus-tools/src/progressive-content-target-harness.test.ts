@@ -82,7 +82,7 @@ function factory(
           reference,
           sourceRevision: object.sourceRevision,
           authorizationMode: "principal",
-          restartScope: "process",
+          restartScope: "resolver",
           authorizationScopeDigest: createHash("sha256")
             .update(object.authorizationScope)
             .digest("hex"),
