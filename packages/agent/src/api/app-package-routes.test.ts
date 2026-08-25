@@ -150,4 +150,59 @@ describe("dynamic app-package route dispatch", () => {
     expect(readJsonBody).toHaveBeenCalledWith(req, res, { maxBytes: 1_024 });
     expect(error).not.toHaveBeenCalled();
   });
+
+  it("resolves and delegates to legacy camelCase handler name when handleAppRoutes is absent", async () => {
+    const { context, error } = createContext(
+      "/api/apps/weather-forecast/query",
+    );
+    const legacyHandler = vi.fn(async () => true);
+    importAppRouteModuleMock.mockResolvedValue({
+      handleAppsWeatherForecastRoutes: legacyHandler,
+    });
+
+    const handled = await handleAppPackageRoutes(context);
+    expect(handled).toBe(true);
+    expect(importAppRouteModuleMock).toHaveBeenCalledWith("weather-forecast");
+    expect(legacyHandler).toHaveBeenCalledOnce();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("returns false when route module export does not match standard or legacy name", async () => {
+    const { context, error } = createContext("/api/apps/custom-plugin/action");
+    importAppRouteModuleMock.mockResolvedValue({
+      unrelatedExport: vi.fn(),
+    });
+
+    const handled = await handleAppPackageRoutes(context);
+    expect(handled).toBe(false);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("returns false when app package route module fails to import", async () => {
+    const { context, error } = createContext(
+      "/api/apps/non-installed-app/status",
+    );
+    importAppRouteModuleMock.mockResolvedValue(null);
+
+    const handled = await handleAppPackageRoutes(context);
+    expect(handled).toBe(false);
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "info",
+    "installed",
+    "launch",
+    "plugins",
+    "refresh",
+    "runs",
+    "search",
+    "stop",
+  ])("skips reserved top-level app slug %s", async (reservedSlug) => {
+    const { context, error } = createContext(`/api/apps/${reservedSlug}`);
+    const handled = await handleAppPackageRoutes(context);
+    expect(handled).toBe(false);
+    expect(error).not.toHaveBeenCalled();
+    expect(importAppRouteModuleMock).not.toHaveBeenCalled();
+  });
 });
