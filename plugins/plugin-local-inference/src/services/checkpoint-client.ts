@@ -220,7 +220,7 @@ export class CheckpointClient {
 }
 
 function stripTrailingSlash(url: string): string {
-	return url.endsWith("/") ? url.slice(0, -1) : url;
+	return url.replace(/\/+$/, "");
 }
 
 function assertSlotId(slotId: number): void {
@@ -242,6 +242,14 @@ function assertCheckpointName(name: string): void {
 	if (!CHECKPOINT_NAME_RE.test(name)) {
 		throw new TypeError(
 			`[checkpoint-client] invalid checkpoint name: ${JSON.stringify(name)} (allowed chars: A-Z a-z 0-9 . _ -)`,
+		);
+	}
+	// Dot-only names ("." / ".." / "...") pass the character allowlist but
+	// resolve to the save directory itself or its parent — the server would
+	// target a directory entry instead of a checkpoint file.
+	if (/^\.+$/.test(name)) {
+		throw new TypeError(
+			`[checkpoint-client] invalid checkpoint name: ${JSON.stringify(name)} (dot-only names are not valid checkpoint filenames)`,
 		);
 	}
 }
