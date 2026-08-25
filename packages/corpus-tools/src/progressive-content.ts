@@ -704,9 +704,16 @@ export async function verifyProgressiveContentCorpus(
       familyOrdinal,
       profile,
     );
-    const expectedFormat =
+    const scheduledFormat =
       FORMAT_ORDER[index % FORMAT_ORDER.length] ?? "single-line";
-    const expectedCanaries = canariesFor(expectedId, expectedByteLength);
+    const expectedFormat =
+      scheduledFormat === "invalid-utf8" && expectedByteLength === 0
+        ? "single-line"
+        : scheduledFormat;
+    const expectedCanaries =
+      expectedFormat === "invalid-utf8"
+        ? []
+        : canariesFor(expectedId, expectedByteLength);
     const expectedSourceSha256 = deterministicObjectSha256(
       expectedByteLength,
       expectedCanaries,
@@ -1130,8 +1137,8 @@ function deterministicObjectChunk(
   ) {
     chunk[byteLength - 1 - offset] = 0x7a;
   }
-  if (format === "invalid-utf8" && byteLength > 256) {
-    const invalidAt = 127;
+  if (format === "invalid-utf8" && byteLength > 0) {
+    const invalidAt = Math.min(127, byteLength - 1);
     if (offset <= invalidAt && invalidAt < offset + length) {
       chunk[invalidAt - offset] = 0xff;
     }
@@ -1275,12 +1282,20 @@ export async function generateProgressiveContentCorpus(options: {
     for (let index = 0; index < shape.counts[family]; index += 1) {
       const id = progressiveContentObjectId(options.rootSeed, family, index);
       const byteLength = objectByteLength(shape, family, index, profile);
-      const format =
+      const scheduledFormat =
         FORMAT_ORDER[objectOrdinal % FORMAT_ORDER.length] ?? "single-line";
+      const format =
+        scheduledFormat === "invalid-utf8" && byteLength === 0
+          ? "single-line"
+          : scheduledFormat;
       objectOrdinal += 1;
       const relativePath = path.posix.join("objects", family, `${id}.txt`);
       expectedPaths.add(relativePath);
-      const canaries = canariesFor(id, byteLength);
+      // Malformed UTF-8 objects are rejection fixtures, not text-retrieval
+      // fixtures. Keeping canaries off them prevents valid canary bytes from
+      // overwriting the deliberately malformed byte in very small objects.
+      const canaries =
+        format === "invalid-utf8" ? [] : canariesFor(id, byteLength);
       const sourceSha256 = await writeStreamedObject(
         outputRoot,
         relativePath,

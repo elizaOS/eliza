@@ -133,7 +133,9 @@ describe("progressive content corpus", () => {
           bytes.subarray(canary.byteStart, canary.byteEnd).toString(),
         ).toBe(canary.text);
       }
-      if (object.format === "invalid-utf8" && object.byteLength > 256) {
+      if (object.format === "invalid-utf8") {
+        expect(object.byteLength).toBeGreaterThan(0);
+        expect(object.canaries).toEqual([]);
         expect(() =>
           new TextDecoder("utf-8", { fatal: true }).decode(bytes),
         ).toThrow();
