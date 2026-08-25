@@ -194,4 +194,56 @@ describe("XDmAdapter", () => {
 
     expect(sendDirectMessageForAccount).not.toHaveBeenCalled();
   });
+
+  it("preserves UTF-16 surrogate pairs in snippet and draft preview truncation", async () => {
+    // "🔥" (2 code units * 120 = 240 units) -> > 200
+    const longEmoji = "🔥".repeat(120);
+    const memory: Memory = {
+      id: "memory-emoji",
+      agentId: "agent-1",
+      entityId: "entity-1",
+      roomId: "room-1",
+      createdAt: Date.parse("2026-05-08T00:00:00.000Z"),
+      content: { text: longEmoji },
+      metadata: {
+        messageIdFull: "native-emoji",
+        sender: { id: "sender-1", username: "alice" },
+        x: {
+          dmEventId: "dm-emoji",
+          conversationId: "conversation-1",
+          senderId: "x-user-1",
+          senderUsername: "alice_x",
+        },
+      },
+    } as Memory;
+    const fetchDirectMessagesForAccount = vi.fn(async () => [memory]);
+    const adapter = new XDmAdapter();
+    const runtime = runtimeWithXService({ fetchDirectMessagesForAccount });
+
+    const refs = await adapter.listMessages(runtime, { limit: 1 });
+    expect(refs).toHaveLength(1);
+    const snippet = refs[0]?.snippet;
+    expect(snippet?.length).toBe(200);
+    for (const char of snippet!) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+
+    const { preview } = await adapter.createDraft(runtime, {
+      to: [{ identifier: "x-user-2" }],
+      body: longEmoji,
+    });
+    expect(preview.endsWith("...")).toBe(true);
+    expect(preview.length).toBe(199);
+    for (const char of preview) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
