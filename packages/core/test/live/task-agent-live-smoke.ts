@@ -48,6 +48,19 @@ function createMessage(content: Record<string, unknown> = {}) {
 	};
 }
 
+function sessionIdFromSpawnResult(result: unknown): string | undefined {
+	if (!result || typeof result !== "object") return undefined;
+	const data = (result as Record<string, unknown>).data;
+	if (!data || typeof data !== "object") return undefined;
+	const record = data as Record<string, unknown>;
+	if (typeof record.sessionId === "string") return record.sessionId;
+	if (!Array.isArray(record.agents)) return undefined;
+	const first = record.agents[0];
+	if (!first || typeof first !== "object") return undefined;
+	const sessionId = (first as Record<string, unknown>).sessionId;
+	return typeof sessionId === "string" ? sessionId : undefined;
+}
+
 async function wait(ms: number): Promise<void> {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -138,43 +151,20 @@ function sawTaskCompletion(
 }
 
 async function waitForTrackedSession(
-	runtime: AgentRuntime,
+	service: {
+		getSession: (id: string) => Promise<{ agentType?: string } | null>;
+	},
 	sessionId: string,
 	expectedAgentType: Framework,
 ): Promise<void> {
-	let listResult:
-		| Awaited<ReturnType<typeof listAgentsAction.handler>>
-		| undefined;
 	await waitFor(
 		async () => {
-			listResult = await listAgentsAction.handler(
-				runtime,
-				createMessage({}) as never,
-			);
-			if (!listResult?.success) {
-				return false;
-			}
-			const sessions = Array.isArray(listResult.data?.sessions)
-				? listResult.data.sessions
-				: [];
-			const tasks = Array.isArray(listResult.data?.tasks)
-				? listResult.data.tasks
-				: [];
-			return (
-				sessions.some((entry) => entry.id === sessionId) &&
-				tasks.some(
-					(entry) =>
-						entry.sessionId === sessionId &&
-						entry.agentType === expectedAgentType,
-				)
-			);
+			const session = await service.getSession(sessionId);
+			return session?.agentType === expectedAgentType;
 		},
 		45_000,
 		1_000,
 	);
-
-	assert.ok(listResult?.text.includes(sessionId));
-	assert.ok(listResult?.text.includes(expectedAgentType));
 }
 
 async function runSequentialSmoke(agentType: Framework): Promise<void> {
@@ -210,6 +200,17 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			createMessage({
 				agentType,
 				workdir,
+				approvalPreset: "autonomous",
+				lockWorkdir: true,
+				metadata: {
+					validator: {
+						service: "app-verification",
+						method: "verifyPlugin",
+						params: { workdir },
+					},
+					maxRetries: 1,
+					onVerificationFail: "retry",
+				},
 				task:
 					`Create a file named ${firstFileName} in the current directory containing exactly "${agentType}-first". ` +
 					`Then print exactly "${firstSentinel}". Do not ask follow-up questions.`,
@@ -219,10 +220,10 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			undefined,
 		);
 		assert.equal(spawnResult?.success, true);
-		assert.ok(spawnResult?.data?.sessionId);
+		assert.ok(sessionIdFromSpawnResult(spawnResult));
 
-		const sessionId = String(spawnResult?.data?.sessionId);
-		await waitForTrackedSession(runtime, sessionId, agentType);
+		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
+		await waitForTrackedSession(service, sessionId, agentType);
 		const firstTaskEventStart = events.length;
 
 		await waitFor(
@@ -242,23 +243,24 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 						details.instructions || "framework authentication is required",
 					);
 				}
-				if (
-					sessionInfo.status === "stopped" ||
-					sessionInfo.status === "error"
-				) {
-					const output = await service.getSessionOutput(sessionId, 200);
-					throw new Error(
-						`session ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
-					);
-				}
 				if (!fs.existsSync(firstFilePath)) return false;
 				const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
 				if (fileText !== `${agentType}-first`) return false;
 				const output = cleanForChat(await service.getSessionOutput(sessionId));
-				return (
+				if (
 					output.includes(firstSentinel) ||
 					sawTaskCompletion(events, firstTaskEventStart)
-				);
+				)
+					return true;
+				if (
+					sessionInfo.status === "stopped" ||
+					sessionInfo.status === "error"
+				) {
+					throw new Error(
+						`session ended before verified completion with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+					);
+				}
+				return false;
 			},
 			6 * 60 * 1000,
 			3000,
@@ -267,14 +269,16 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		const secondTaskEventStart = events.length;
 		const sendResult = await sendToAgentAction.handler(
 			runtime,
-			createMessage({
-				sessionId,
-				task:
-					`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
-					`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
-			}) as never,
+			createMessage({ sessionId }) as never,
 			undefined,
-			{},
+			{
+				parameters: {
+					action: "send",
+					input:
+						`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
+						`Then print exactly "${secondSentinel}". Stay available for more work afterward and do not ask follow-up questions.`,
+				},
+			},
 			undefined,
 		);
 		assert.equal(sendResult?.success, true);
@@ -341,6 +345,7 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			createMessage({
 				agentType,
 				workdir,
+				approvalPreset: "autonomous",
 				task:
 					`Open the reference page at ${reference.url} and read it using your web or browser tools. ` +
 					`Create an index.html in the current directory that includes the exact phrases "Benchmark Ready" and "Task agents stay reusable." ` +
@@ -354,10 +359,10 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			undefined,
 		);
 		assert.equal(spawnResult?.success, true);
-		assert.ok(spawnResult?.data?.sessionId);
+		assert.ok(sessionIdFromSpawnResult(spawnResult));
 
-		const sessionId = String(spawnResult?.data?.sessionId);
-		await waitForTrackedSession(runtime, sessionId, agentType);
+		const sessionId = sessionIdFromSpawnResult(spawnResult) as string;
+		await waitForTrackedSession(service, sessionId, agentType);
 		const webTaskEventStart = events.length;
 
 		await waitFor(
