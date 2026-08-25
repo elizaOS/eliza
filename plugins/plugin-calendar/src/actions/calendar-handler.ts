@@ -3446,6 +3446,18 @@ function extractCalendarGroundedMatchIds(
   return [...new Set(ids)];
 }
 
+function truncateCalendarText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 function formatCalendarCandidateForGrounding(
   candidate: RankedCalendarSearchCandidate,
 ): string {
@@ -3459,7 +3471,7 @@ function formatCalendarCandidateForGrounding(
     `title: ${candidate.event.title}`,
     `startAt: ${candidate.event.startAt}`,
     `location: ${candidate.event.location}`,
-    `description: ${(candidate.event.description).slice(0, 240)}`,
+    `description: ${truncateCalendarText(candidate.event.description, 240)}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -3631,7 +3643,7 @@ export function formatCalendarSearchResults(
       lines.push(`  Location: ${event.location}`);
     }
     if (event.description) {
-      lines.push(`  ${event.description.slice(0, 120)}`);
+      lines.push(`  ${truncateCalendarText(event.description, 120)}`);
     }
   }
   return lines.join("\n");
