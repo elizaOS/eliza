@@ -491,6 +491,47 @@ describe("computer-use-conformance", () => {
 			);
 		});
 
+		it("rejects a fixture action that targets another registered surface", async () => {
+			const misdirected = conformanceFixtures().map((fixture) =>
+				fixture.name === "success"
+					? {
+							...fixture,
+							action: { ...fixture.action, surface: secondarySurface },
+						}
+					: fixture,
+			);
+			await expect(runConformance({ fixtures: misdirected })).rejects.toEqual(
+				expect.objectContaining({
+					code: "INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+					message:
+						"Conformance action does not target the supplied session surface.",
+				}),
+			);
+		});
+
+		it("wraps an invalid action-result payload and preserves the cause", async () => {
+			const invalidPayload: unknown = {};
+			const lyingAdapter: InteractionAdapter = {
+				...truthfulAdapter,
+				execute: async () => invalidPayload as InteractionActionResult,
+			};
+			const outcome = await runConformance({ adapter: lyingAdapter }).catch(
+				(error: unknown) => error,
+			);
+			expect(outcome).toBeInstanceOf(ElizaError);
+			const conformanceError = outcome as ElizaError;
+			expect(conformanceError.code).toBe(
+				"INTERACTION_ADAPTER_CONFORMANCE_FAILED",
+			);
+			expect(conformanceError.message).toBe(
+				"Adapter returned an invalid action result payload.",
+			);
+			expect(conformanceError.cause).toBeInstanceOf(ElizaError);
+			expect((conformanceError.cause as ElizaError).code).toBe(
+				"INVALID_INTERACTION_CONTRACT",
+			);
+		});
+
 		it("rejects an unsupported fixture built on an advertised action", async () => {
 			const confused = REQUIRED_INTERACTION_CONFORMANCE_CASES.map((name) => ({
 				name,
