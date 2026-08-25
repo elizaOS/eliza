@@ -1,0 +1,41 @@
+name: "Build"
+on:
+  pull_request:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: cachix/install-nix-action@v18
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+
+      - name: setup dapp binary cache
+        uses: cachix/cachix-action@v12
+        with:
+          name: dapp
+
+      - name: install dapptools
+        run: nix profile install github:dapphub/dapptools#dapp --accept-flake-config
+
+      - name: install foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: test with solc-0.5.17
+        run: dapp --use solc-0.5.17 test -v
+
+      - name: test with solc-0.6.11
+        run: dapp --use solc-0.6.11 test -v
+
+      - name: test with solc-0.7.6
+        run: dapp --use solc-0.7.6 test -v
+
+      - name: test with solc-0.8.18
+        run: dapp --use solc-0.8.18 test -v
+
+      - name: Run tests with foundry
+        run: forge test -vvv
+

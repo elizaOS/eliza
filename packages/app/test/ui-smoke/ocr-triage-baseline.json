@@ -1,0 +1,5 @@
+{
+  "note": "slug::viewport of pixel-broken renders the DOM audit passed, already tracked by an issue. Remove an entry once the underlying render is fixed; the gate then fails if it regresses. New keys must NOT be added here without an accompanying issue — a new pixel-broken render should fail the gate, not be baselined away.",
+  "known": [],
+  "tracking": {}
+}
