@@ -315,7 +315,6 @@ describe("documentAction.handler structured routing", () => {
 		expect(res?.values).toMatchObject({ error: "DOCUMENT_INVALID_LIMIT" });
 	});
 
-
 	it("marks pinned documents in the action list surface", async () => {
 		// Reviewer finding 3 (#23103): the list formatter emitted only title
 		// and id, so the action surface could not tell which documents the
