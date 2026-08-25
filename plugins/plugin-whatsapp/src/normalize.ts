@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * Phone/JID normalization and outbound-text chunking for the WhatsApp connector.
  * Parses E.164 numbers, recognizes user JIDs and LIDs, detects chat type, and
@@ -323,7 +335,7 @@ export function truncateText(text: string, maxLength: number): string {
   if (maxLength <= 3) {
     return "...".slice(0, maxLength);
   }
-  return `${text.slice(0, maxLength - 3)}...`;
+  return `${truncateUtf16Safe(text, maxLength - 3)}...`;
 }
 
 /**

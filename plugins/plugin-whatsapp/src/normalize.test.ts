@@ -115,4 +115,19 @@ describe("text chunking", () => {
     expect(truncateText("short", 20)).toBe("short");
     expect(truncateText("abcdefghij", 5).length).toBeLessThanOrEqual(5);
   });
+
+  it("preserves UTF-16 surrogate pairs during truncateText", () => {
+    // "a" + "🔥".repeat(5) -> 1 + 10 = 11 chars. Truncate to 6 chars (limit 6 - 3 = 3 content chars).
+    // index 3 lands inside the second emoji "🔥".
+    // Surrogate safe back-off ensures we take index 2 ("a🔥"), producing "a🔥..." (5 chars <= 6).
+    const truncated = truncateText("a🔥🔥🔥🔥🔥", 6);
+    expect(truncated).toBe("a🔥...");
+    for (const char of truncated) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });
