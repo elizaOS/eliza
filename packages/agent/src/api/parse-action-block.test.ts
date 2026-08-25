@@ -84,6 +84,36 @@ describe("parseActionBlock", () => {
       '```json\n{"action":"respond","reasoning":"x","response":"hi","permission":"reminders"}\n```';
     expect(parseActionBlock(text)).toBeNull();
   });
+
+  it("parses escalate and complete actions", () => {
+    const escalateResult = parseActionBlock(
+      'Need help.\n```json\n{"action":"escalate","reasoning":"requires human operator"}\n```',
+    );
+    expect(escalateResult?.action).toBe("escalate");
+    expect(escalateResult?.reasoning).toBe("requires human operator");
+
+    const completeResult = parseActionBlock(
+      'All done.\n{"action":"complete","reasoning":"task finished"}',
+    );
+    expect(completeResult?.action).toBe("complete");
+    expect(completeResult?.reasoning).toBe("task finished");
+  });
+
+  it("parses respond with useKeys array", () => {
+    const result = parseActionBlock(
+      'Pressing shortcut.\n```json\n{"action":"respond","reasoning":"send keystroke","useKeys":true,"keys":["Enter","Escape"]}\n```',
+    );
+    expect(result?.action).toBe("respond");
+    expect(result?.useKeys).toBe(true);
+    expect(result?.keys).toEqual(["Enter", "Escape"]);
+  });
+
+  it("rejects respond with empty keys array and no response text", () => {
+    const result = parseActionBlock(
+      '```json\n{"action":"respond","reasoning":"no keys","useKeys":true,"keys":[]}\n```',
+    );
+    expect(result).toBeNull();
+  });
 });
 
 describe("stripActionBlockFromDisplay", () => {
@@ -93,6 +123,14 @@ describe("stripActionBlockFromDisplay", () => {
       '{"action":"permission_request","reasoning":"x","permission":"camera","reason":"y","feature":"a.b.c"}' +
       "\n```";
     expect(stripActionBlockFromDisplay(text)).toBe("Here is the result.");
+  });
+
+  it("strips a fenced respond block", () => {
+    const text =
+      "Here is the message.\n```json\n" +
+      '{"action":"respond","reasoning":"test","response":"hi"}' +
+      "\n```";
+    expect(stripActionBlockFromDisplay(text)).toBe("Here is the message.");
   });
 
   it("strips a bare permission_request block", () => {
@@ -105,5 +143,11 @@ describe("stripActionBlockFromDisplay", () => {
     expect(stripActionBlockFromDisplay("just plain text")).toBe(
       "just plain text",
     );
+  });
+
+  it("leaves text with unknown action block unchanged", () => {
+    const text =
+      'Look at this: ```json\n{"action":"custom_external","data":123}\n```';
+    expect(stripActionBlockFromDisplay(text)).toBe(text);
   });
 });
