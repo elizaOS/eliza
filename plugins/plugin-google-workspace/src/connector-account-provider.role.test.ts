@@ -28,6 +28,41 @@ describe("Google connector account role admission", () => {
     ).resolves.toMatchObject({ provider: "google", role: "AGENT" });
   });
 
+  it("returns a role-bound consent URL for a valid new grant", async () => {
+    const oauthProvider = createGoogleConnectorAccountProvider({
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: () => null,
+    } as never);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const result = await oauthProvider.startOAuth?.(
+      {
+        provider: "google",
+        scopes: ["gmail.read"],
+        metadata: { requestedRole: "AGENT" },
+        flow: {
+          id: "flow-valid-new-grant",
+          provider: "google",
+          state: "state-valid-new-grant",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      {} as never
+    );
+
+    expect(result?.authUrl).toContain("accounts.google.com/o/oauth2/v2/auth");
+    expect(result?.metadata).toMatchObject({ requestedRole: "AGENT" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
   it.each([
     ["missing", undefined, "GOOGLE_CONNECTOR_ROLE_REQUIRED"],
     ["invalid", { requestedRole: "administrator" }, "GOOGLE_CONNECTOR_ROLE_INVALID"],
@@ -105,5 +140,47 @@ describe("Google connector account role admission", () => {
 
     expect(result?.metadata).toMatchObject({ requestedRole: "TEAM" });
     expect(getAccount).toHaveBeenCalledWith("google", "account-1");
+  });
+
+  it("rejects an invalid stored reauthorization role before consent", async () => {
+    const oauthProvider = createGoogleConnectorAccountProvider({
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: () => null,
+    } as never);
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const getAccount = vi.fn(async () => ({
+      id: "account-invalid-role",
+      provider: "google",
+      role: "administrator",
+      metadata: { grantedCapabilities: ["gmail.read"] },
+    }));
+
+    await expect(
+      oauthProvider.startOAuth?.(
+        {
+          provider: "google",
+          accountId: "account-invalid-role",
+          scopes: ["gmail.read"],
+          metadata: { requestedRole: "OWNER" },
+          flow: {
+            id: "flow-invalid-reauth-role",
+            provider: "google",
+            state: "state-invalid-reauth-role",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        { getAccount } as never
+      )
+    ).rejects.toMatchObject({ code: "GOOGLE_CONNECTOR_ROLE_INVALID" });
+    expect(getAccount).toHaveBeenCalledWith("google", "account-invalid-role");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 });
