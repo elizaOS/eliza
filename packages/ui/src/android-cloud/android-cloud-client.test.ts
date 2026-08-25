@@ -131,10 +131,15 @@ describe("AndroidCloudClient", () => {
       state: attempt.state,
       grantType: "authorization_code",
     });
-    expect(JSON.parse(String(acknowledgementRequest?.body))).toMatchObject({
+    expect(JSON.parse(String(acknowledgementRequest?.body))).toEqual({
+      clientId: "ai.elizaos.app",
+      environment: "production",
+      redirectUri: "https://eliza.app/auth/callback",
       credentialId: MOBILE_CREDENTIAL_ID,
       secret: MOBILE_SECRET,
       state: attempt.state,
+      code: `emac_${"a".repeat(64)}`,
+      codeVerifier: expect.any(String),
     });
   });
 
