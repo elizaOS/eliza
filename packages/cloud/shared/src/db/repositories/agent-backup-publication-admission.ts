@@ -1,4 +1,4 @@
-/** Atomic global-lane admission for one exact, live-source backup capture. */
+/** Atomic global-lane admission for source-node-detached backup publication. */
 
 import { ElizaError } from "@elizaos/core";
 import { and, eq, gt, sql } from "drizzle-orm";
@@ -11,12 +11,7 @@ import {
 } from "../schemas/agent-backup-operation-lane";
 import { agentActivationPublications } from "../schemas/agent-backup-restore-history";
 import { agentNodeIncarnationHistories } from "../schemas/agent-node-incarnation-histories";
-import {
-  agentSandboxBackups,
-  agentSandboxes,
-  type StoredAgentSandboxBackup,
-} from "../schemas/agent-sandboxes";
-import { dockerNodes } from "../schemas/docker-nodes";
+import { agentSandboxBackups, type StoredAgentSandboxBackup } from "../schemas/agent-sandboxes";
 import { organizations } from "../schemas/organizations";
 import type { AgentBackupOperationClaim } from "./agent-backup-catalog";
 import {
@@ -31,18 +26,24 @@ import {
   renewAgentBackupOperationLaneInTransaction,
 } from "./agent-backup-operation-lane";
 
-const CAPTURE_OWNED_STATES = ["scheduled", "capturing"] as const;
+const PUBLICATION_OWNED_STATES = [
+  "captured",
+  "uploading",
+  "primary_uploaded",
+  "primary_verified",
+  "secondary_pending",
+] as const;
 
-export interface AgentBackupOperationAdmission {
+export interface AgentBackupPublicationAdmission {
   readonly claim: Readonly<AgentBackupOperationClaim>;
   readonly laneExecution: Readonly<AgentBackupOperationLaneExecution>;
   readonly sourceNodeHistoryId: string;
 }
 
-export type AgentBackupOperationAdmissionResult =
+export type AgentBackupPublicationAdmissionResult =
   | {
       readonly kind: "claimed" | "replayed";
-      readonly admission: AgentBackupOperationAdmission;
+      readonly admission: AgentBackupPublicationAdmission;
     }
   | { readonly kind: "empty" }
   | {
@@ -51,7 +52,7 @@ export type AgentBackupOperationAdmissionResult =
       readonly databaseNow: Date;
     };
 
-interface ExactSourceAuthority {
+interface DetachedSourceAuthority {
   readonly sourceNodeHistoryId: string;
   readonly sourceNodeRecordId: string;
   readonly sourceNodeIncarnation: string;
@@ -59,7 +60,7 @@ interface ExactSourceAuthority {
 
 function admissionLost(message: string): ElizaError {
   return new ElizaError(message, {
-    code: "AGENT_BACKUP_OPERATION_ADMISSION_LOST",
+    code: "AGENT_BACKUP_PUBLICATION_ADMISSION_LOST",
     severity: "fatal",
   });
 }
@@ -78,21 +79,21 @@ function observedLane(lane: AgentBackupOperationLane): Readonly<AgentBackupOpera
 
 function targetFor(backup: StoredAgentSandboxBackup): AgentBackupOperationLaneTarget {
   if (!backup.catalog_organization_id || !backup.backup_operation_id) {
-    throw admissionLost("Backup operation is missing its exact catalogue target");
+    throw admissionLost("Backup publication is missing its exact catalogue target");
   }
   return Object.freeze({
     organizationId: backup.catalog_organization_id,
     backupId: backup.id,
     operationId: backup.backup_operation_id,
-    operationPhase: "capture" as const,
+    operationPhase: "publication" as const,
   });
 }
 
 function activeState(backup: StoredAgentSandboxBackup): boolean {
   return (
-    CAPTURE_OWNED_STATES.some((state) => state === backup.catalog_state) ||
+    PUBLICATION_OWNED_STATES.some((state) => state === backup.catalog_state) ||
     (backup.catalog_state === "failed_retryable" &&
-      CAPTURE_OWNED_STATES.some((state) => state === backup.catalog_resume_state))
+      PUBLICATION_OWNED_STATES.some((state) => state === backup.catalog_resume_state))
   );
 }
 
@@ -107,7 +108,7 @@ function admissionFor(params: {
   backup: StoredAgentSandboxBackup;
   execution: AgentBackupOperationLaneExecution;
   sourceNodeHistoryId: string;
-}): AgentBackupOperationAdmission {
+}): AgentBackupPublicationAdmission {
   const backup = Object.freeze({ ...params.backup });
   const execution = Object.freeze({ ...params.execution });
   return Object.freeze({
@@ -125,6 +126,9 @@ async function lockBackupByTargetInTransaction(
   tx: DbTransaction,
   target: AgentBackupOperationLaneTarget,
 ): Promise<StoredAgentSandboxBackup> {
+  if (target.operationPhase !== "publication") {
+    throw admissionLost("Global lane target is not a publication execution");
+  }
   const [backup] = await tx
     .select()
     .from(agentSandboxBackups)
@@ -138,51 +142,23 @@ async function lockBackupByTargetInTransaction(
     .for("update")
     .limit(1);
   if (!backup || !activeState(backup)) {
-    throw admissionLost("Global lane target no longer names an executable backup operation");
+    throw admissionLost("Global lane target no longer names an executable publication");
   }
   return backup;
 }
 
 /**
- * The global lane is already held before this function locks the backup row.
- * Only live-source capture states are eligible here. Publication, verification,
- * and GC must use a detached admission path that survives source-node loss.
+ * The singleton is already locked. Publication deliberately avoids mutable
+ * sandbox and docker-node rows: its source is the captured manifest plus the
+ * append-only activation publication and node-occurrence history.
  */
-async function lockNextDueBackupInTransaction(
+async function lockNextDuePublicationInTransaction(
   tx: DbTransaction,
 ): Promise<StoredAgentSandboxBackup | null> {
   const [candidate] = await tx
     .select({ id: agentSandboxBackups.id })
     .from(agentSandboxBackups)
-    .innerJoin(
-      agentSandboxes,
-      and(
-        eq(agentSandboxes.id, agentSandboxBackups.sandbox_record_id),
-        eq(agentSandboxes.id, agentSandboxBackups.catalog_agent_id),
-        eq(agentSandboxes.organization_id, agentSandboxBackups.catalog_organization_id),
-        eq(agentSandboxes.status, "running"),
-        eq(agentSandboxes.activation_phase, "active"),
-        eq(agentSandboxes.activation_generation, agentSandboxBackups.lifecycle_generation),
-        sql`${agentSandboxes.lifecycle_revision}::numeric
-          = ${agentSandboxBackups.lifecycle_revision}`,
-        sql`${agentSandboxes.activation_lifecycle_revision}::numeric
-          = ${agentSandboxBackups.lifecycle_revision}`,
-        eq(agentSandboxes.node_id, agentSandboxBackups.source_node_id),
-        eq(agentSandboxes.activation_node_id, agentSandboxBackups.source_node_id),
-        eq(agentSandboxes.sandbox_id, agentSandboxBackups.source_provider_handle),
-        eq(agentSandboxes.activation_container_id, agentSandboxBackups.source_container_id),
-        eq(agentSandboxes.activation_boot_id, agentSandboxBackups.source_node_incarnation),
-        sql`${agentSandboxes.activation_receipt} IS NOT NULL`,
-        sql`${agentSandboxes.activation_receipt_hash} IS NOT NULL`,
-        sql`${agentSandboxes.activation_image_digest} IS NOT NULL`,
-        sql`${agentSandboxes.activation_boot_id} IS NOT NULL`,
-        sql`${agentSandboxes.activation_token_hash} IS NOT NULL`,
-        sql`${agentSandboxes.activation_funding_revision} IS NOT NULL`,
-        sql`${agentSandboxes.activation_authority_published_at} IS NOT NULL`,
-        sql`${agentSandboxes.activation_dispatched_at} IS NOT NULL`,
-        sql`${agentSandboxes.activation_completed_at} IS NOT NULL`,
-      ),
-    )
+    .innerJoin(organizations, eq(organizations.id, agentSandboxBackups.catalog_organization_id))
     .innerJoin(
       agentActivationPublications,
       and(
@@ -196,25 +172,7 @@ async function lockNextDueBackupInTransaction(
           agentSandboxBackups.lifecycle_generation,
         ),
         eq(agentActivationPublications.lifecycle_revision, agentSandboxBackups.lifecycle_revision),
-        eq(agentActivationPublications.purpose, agentSandboxes.activation_purpose),
-        sql`${agentActivationPublications.previous_activation_generation}
-          IS NOT DISTINCT FROM ${agentSandboxes.activation_previous_generation}`,
-        sql`${agentActivationPublications.backup_id}
-          IS NOT DISTINCT FROM ${agentSandboxes.activation_backup_id}`,
-        sql`${agentActivationPublications.backup_manifest_sha256}
-          IS NOT DISTINCT FROM ${agentSandboxes.activation_backup_hash}`,
-        sql`${agentActivationPublications.activation_receipt}
-          = ${agentSandboxes.activation_receipt}`,
-        eq(
-          agentActivationPublications.activation_receipt_sha256,
-          agentSandboxes.activation_receipt_hash,
-        ),
         eq(agentActivationPublications.container_id, agentSandboxBackups.source_container_id),
-        eq(agentActivationPublications.image_digest, agentSandboxes.activation_image_digest),
-        eq(
-          agentActivationPublications.published_at,
-          agentSandboxes.activation_authority_published_at,
-        ),
         eq(
           agentActivationPublications.docker_node_record_id,
           agentSandboxBackups.source_node_record_id,
@@ -224,38 +182,57 @@ async function lockNextDueBackupInTransaction(
           agentActivationPublications.node_incarnation,
           agentSandboxBackups.source_node_incarnation,
         ),
-        eq(agentActivationPublications.node_incarnation, agentSandboxes.activation_boot_id),
-        eq(agentActivationPublications.token_sha256, agentSandboxes.activation_token_hash),
-        eq(
-          agentActivationPublications.funding_revision,
-          agentSandboxes.activation_funding_revision,
-        ),
-      ),
-    )
-    .innerJoin(
-      dockerNodes,
-      and(
-        eq(dockerNodes.id, agentSandboxBackups.source_node_record_id),
-        eq(dockerNodes.node_id, agentSandboxBackups.source_node_id),
-        eq(dockerNodes.node_incarnation, agentSandboxBackups.source_node_incarnation),
-        eq(dockerNodes.current_node_history_id, agentActivationPublications.node_history_id),
+        eq(agentActivationPublications.image_digest, agentSandboxBackups.image_digest),
+        sql`jsonb_typeof(${agentActivationPublications.activation_receipt}) = 'object'`,
+        sql`${agentActivationPublications.activation_receipt} -> 'schemaVersion' = '1'::jsonb`,
+        sql`${agentActivationPublications.activation_receipt} -> 'generation'
+          = to_jsonb(${agentSandboxBackups.lifecycle_generation}::text)`,
+        sql`${agentActivationPublications.activation_receipt} -> 'purpose'
+          = to_jsonb(${agentActivationPublications.purpose})`,
+        sql`${agentActivationPublications.activation_receipt} -> 'agentId'
+          = to_jsonb(${agentSandboxBackups.catalog_agent_id}::text)`,
+        sql`${agentActivationPublications.activation_receipt} -> 'organizationId'
+          = to_jsonb(${agentSandboxBackups.catalog_organization_id}::text)`,
+        sql`${agentActivationPublications.activation_receipt} -> 'lifecycleRevision'
+          = to_jsonb(${agentSandboxBackups.lifecycle_revision}::text)`,
+        sql`(
+          (${agentActivationPublications.backup_id} IS NULL
+            AND ${agentActivationPublications.activation_receipt} -> 'backupId' = 'null'::jsonb)
+          OR (${agentActivationPublications.backup_id} IS NOT NULL
+            AND ${agentActivationPublications.activation_receipt} -> 'backupId'
+              = to_jsonb(${agentActivationPublications.backup_id}::text))
+        )`,
+        sql`(
+          (${agentActivationPublications.backup_manifest_sha256} IS NULL
+            AND ${agentActivationPublications.activation_receipt} -> 'backupHash' = 'null'::jsonb)
+          OR (${agentActivationPublications.backup_manifest_sha256} IS NOT NULL
+            AND ${agentActivationPublications.activation_receipt} -> 'backupHash'
+              = to_jsonb(${agentActivationPublications.backup_manifest_sha256}))
+        )`,
+        sql`${agentActivationPublications.activation_receipt} -> 'containerId'
+          = to_jsonb(${agentSandboxBackups.source_container_id})`,
+        sql`${agentActivationPublications.activation_receipt} -> 'imageDigest'
+          = to_jsonb(${agentSandboxBackups.image_digest})`,
+        sql`${agentActivationPublications.activation_receipt} -> 'restored' = 'true'::jsonb`,
       ),
     )
     .innerJoin(
       agentNodeIncarnationHistories,
       and(
         eq(agentNodeIncarnationHistories.id, agentActivationPublications.node_history_id),
-        eq(agentNodeIncarnationHistories.docker_node_record_id, dockerNodes.id),
-        eq(agentNodeIncarnationHistories.node_id, dockerNodes.node_id),
-        eq(agentNodeIncarnationHistories.node_incarnation, dockerNodes.node_incarnation),
-        eq(agentNodeIncarnationHistories.fleet_kind, dockerNodes.fleet_kind),
         eq(
-          agentNodeIncarnationHistories.infrastructure_provider,
-          dockerNodes.infrastructure_provider,
+          agentNodeIncarnationHistories.docker_node_record_id,
+          agentSandboxBackups.source_node_record_id,
         ),
+        eq(agentNodeIncarnationHistories.node_id, agentSandboxBackups.source_node_id),
+        eq(
+          agentNodeIncarnationHistories.node_incarnation,
+          agentSandboxBackups.source_node_incarnation,
+        ),
+        eq(agentNodeIncarnationHistories.infrastructure_provider, "hetzner"),
         sql`${agentNodeIncarnationHistories.provider_server_id}
-          IS NOT DISTINCT FROM ${dockerNodes.provider_server_id}`,
-        eq(agentNodeIncarnationHistories.host_key_fingerprint, dockerNodes.host_key_fingerprint),
+          IS NOT DISTINCT FROM ${agentSandboxBackups.source_provider_server_id}`,
+        sql`btrim(${agentNodeIncarnationHistories.host_key_fingerprint}) <> ''`,
       ),
     )
     .leftJoin(
@@ -269,7 +246,7 @@ async function lockNextDueBackupInTransaction(
       agentBackupOperationNodeWatermarks,
       eq(
         agentBackupOperationNodeWatermarks.source_node_history_id,
-        dockerNodes.current_node_history_id,
+        agentActivationPublications.node_history_id,
       ),
     )
     .where(
@@ -277,7 +254,10 @@ async function lockNextDueBackupInTransaction(
         eq(agentSandboxBackups.catalog_version, 2),
         sql`${agentSandboxBackups.sandbox_record_id} IS NOT NULL`,
         sql`${agentSandboxBackups.catalog_organization_id} IS NOT NULL`,
+        sql`${agentSandboxBackups.catalog_agent_id} IS NOT NULL`,
         sql`${agentSandboxBackups.backup_operation_id} IS NOT NULL`,
+        sql`${agentSandboxBackups.lifecycle_generation} IS NOT NULL`,
+        sql`${agentSandboxBackups.lifecycle_revision} IS NOT NULL`,
         sql`${agentSandboxBackups.source_provider} IN ('operator-onboarded', 'hetzner-cloud')`,
         sql`${agentSandboxBackups.source_node_record_id} IS NOT NULL`,
         sql`${agentSandboxBackups.source_node_id} IS NOT NULL
@@ -286,21 +266,27 @@ async function lockNextDueBackupInTransaction(
         sql`${agentSandboxBackups.source_provider_handle} IS NOT NULL
           AND ${agentSandboxBackups.source_provider_handle} <> ''`,
         sql`${agentSandboxBackups.source_container_id} ~ '^[0-9a-f]{64}$'`,
-        eq(dockerNodes.infrastructure_provider, "hetzner"),
+        sql`${agentSandboxBackups.image_digest} ~ '^sha256:[0-9a-f]{64}$'`,
         sql`(
           (${agentSandboxBackups.source_provider} = 'operator-onboarded'
             AND ${agentSandboxBackups.source_provider_server_id} IS NULL
-            AND ${dockerNodes.fleet_kind} = 'robot'
-            AND ${dockerNodes.provider_server_id} IS NULL)
+            AND ${agentNodeIncarnationHistories.fleet_kind} = 'robot')
           OR
           (${agentSandboxBackups.source_provider} = 'hetzner-cloud'
-            AND ${dockerNodes.fleet_kind} = 'cloud'
-            AND ${dockerNodes.provider_server_id}
-              = ${agentSandboxBackups.source_provider_server_id})
+            AND ${agentNodeIncarnationHistories.fleet_kind} = 'cloud'
+            AND CASE
+              WHEN ${agentSandboxBackups.source_provider_server_id} ~ '^[1-9][0-9]{0,19}$'
+                THEN ${agentSandboxBackups.source_provider_server_id}::numeric
+                  <= 18446744073709551615
+              ELSE FALSE
+            END)
         )`,
-        sql`(${agentSandboxBackups.catalog_state} IN ('scheduled', 'capturing')
-          OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
-            AND ${agentSandboxBackups.catalog_resume_state} IN ('scheduled', 'capturing')))`,
+        sql`(${agentSandboxBackups.catalog_state} IN (
+            'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+          ) OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
+            AND ${agentSandboxBackups.catalog_resume_state} IN (
+              'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+            )))`,
         sql`(${agentSandboxBackups.catalog_next_attempt_at} IS NULL
           OR ${agentSandboxBackups.catalog_next_attempt_at} <= clock_timestamp())`,
         sql`(${agentSandboxBackups.catalog_lease_expires_at} IS NULL
@@ -326,92 +312,29 @@ async function lockNextDueBackupInTransaction(
     .where(eq(agentSandboxBackups.id, candidate.id))
     .for("update")
     .limit(1);
-  if (!backup) throw admissionLost("Selected backup operation disappeared while locked");
+  if (!backup) throw admissionLost("Selected backup publication disappeared while locked");
   return backup;
 }
 
-async function lockExactSourceAuthorityInTransaction(
+async function lockDetachedSourceAuthorityInTransaction(
   tx: DbTransaction,
   backup: StoredAgentSandboxBackup,
-): Promise<ExactSourceAuthority> {
+): Promise<DetachedSourceAuthority> {
   if (
     !backup.sandbox_record_id ||
     !backup.catalog_organization_id ||
     !backup.catalog_agent_id ||
+    !backup.lifecycle_generation ||
+    backup.lifecycle_revision === null ||
     !backup.source_node_record_id ||
     !backup.source_node_id ||
     !backup.source_node_incarnation ||
     !backup.source_provider ||
     !backup.source_provider_handle ||
-    !backup.source_container_id
+    !backup.source_container_id ||
+    !backup.image_digest
   ) {
-    throw admissionLost("Backup operation is missing its immutable source authority");
-  }
-
-  const [sandbox] = await tx
-    .select({
-      id: agentSandboxes.id,
-      status: agentSandboxes.status,
-      nodeId: agentSandboxes.node_id,
-      providerHandle: agentSandboxes.sandbox_id,
-      lifecycleRevision: sql<string>`${agentSandboxes.lifecycle_revision}::text`,
-      activationGeneration: agentSandboxes.activation_generation,
-      activationLifecycleRevision: sql<
-        string | null
-      >`${agentSandboxes.activation_lifecycle_revision}::text`,
-      activationPhase: agentSandboxes.activation_phase,
-      activationPurpose: agentSandboxes.activation_purpose,
-      activationPreviousGeneration: agentSandboxes.activation_previous_generation,
-      activationBackupId: agentSandboxes.activation_backup_id,
-      activationBackupHash: agentSandboxes.activation_backup_hash,
-      activationReceipt: agentSandboxes.activation_receipt,
-      activationReceiptHash: agentSandboxes.activation_receipt_hash,
-      activationContainerId: agentSandboxes.activation_container_id,
-      activationNodeId: agentSandboxes.activation_node_id,
-      activationImageDigest: agentSandboxes.activation_image_digest,
-      activationBootId: agentSandboxes.activation_boot_id,
-      activationTokenHash: agentSandboxes.activation_token_hash,
-      activationFundingRevision: agentSandboxes.activation_funding_revision,
-      activationAuthorityPublishedAt: agentSandboxes.activation_authority_published_at,
-      activationDispatchedAt: agentSandboxes.activation_dispatched_at,
-      activationCompletedAt: agentSandboxes.activation_completed_at,
-    })
-    .from(agentSandboxes)
-    .where(
-      and(
-        eq(agentSandboxes.id, backup.sandbox_record_id),
-        eq(agentSandboxes.organization_id, backup.catalog_organization_id),
-      ),
-    )
-    .for("update")
-    .limit(1);
-  if (!sandbox || sandbox.id !== backup.catalog_agent_id) {
-    throw admissionLost("Backup source sandbox authority disappeared or changed tenant");
-  }
-  if (
-    backup.lifecycle_revision === null ||
-    !backup.lifecycle_generation ||
-    sandbox.status !== "running" ||
-    sandbox.activationPhase !== "active" ||
-    sandbox.activationGeneration !== backup.lifecycle_generation ||
-    sandbox.lifecycleRevision !== backup.lifecycle_revision.toString() ||
-    sandbox.activationLifecycleRevision !== backup.lifecycle_revision.toString() ||
-    !sandbox.activationPurpose ||
-    !sandbox.activationReceipt ||
-    !sandbox.activationReceiptHash ||
-    !sandbox.activationImageDigest ||
-    sandbox.activationBootId !== backup.source_node_incarnation ||
-    !sandbox.activationTokenHash ||
-    sandbox.activationFundingRevision === null ||
-    !sandbox.activationAuthorityPublishedAt ||
-    !sandbox.activationDispatchedAt ||
-    !sandbox.activationCompletedAt ||
-    sandbox.nodeId !== backup.source_node_id ||
-    sandbox.activationNodeId !== backup.source_node_id ||
-    sandbox.providerHandle !== backup.source_provider_handle ||
-    sandbox.activationContainerId !== backup.source_container_id
-  ) {
-    throw admissionLost("Backup capture source is no longer the exact active sandbox generation");
+    throw admissionLost("Backup publication is missing its captured source authority");
   }
 
   const [organization] = await tx
@@ -420,13 +343,12 @@ async function lockExactSourceAuthorityInTransaction(
     .where(eq(organizations.id, backup.catalog_organization_id))
     .for("update")
     .limit(1);
-  if (!organization) throw admissionLost("Backup organization authority disappeared");
+  if (!organization) throw admissionLost("Backup publication organization disappeared");
 
   const [publication] = await tx
     .select({
       lifecycleRevision: sql<string>`${agentActivationPublications.lifecycle_revision}::text`,
       purpose: agentActivationPublications.purpose,
-      previousActivationGeneration: agentActivationPublications.previous_activation_generation,
       backupId: agentActivationPublications.backup_id,
       backupManifestHash: agentActivationPublications.backup_manifest_sha256,
       activationReceipt: agentActivationPublications.activation_receipt,
@@ -450,72 +372,41 @@ async function lockExactSourceAuthorityInTransaction(
       ),
     )
     .limit(1);
+  const receipt = publication?.activationReceipt;
   if (
     !publication ||
     publication.lifecycleRevision !== backup.lifecycle_revision.toString() ||
-    publication.purpose !== sandbox.activationPurpose ||
-    publication.previousActivationGeneration !== sandbox.activationPreviousGeneration ||
-    publication.backupId !== sandbox.activationBackupId ||
-    publication.backupManifestHash !== sandbox.activationBackupHash ||
-    JSON.stringify(publication.activationReceipt) !== JSON.stringify(sandbox.activationReceipt) ||
-    publication.activationReceiptHash !== sandbox.activationReceiptHash ||
     publication.containerId !== backup.source_container_id ||
     publication.nodeRecordId !== backup.source_node_record_id ||
     publication.nodeId !== backup.source_node_id ||
     publication.nodeIncarnation !== backup.source_node_incarnation ||
-    publication.imageDigest !== sandbox.activationImageDigest ||
-    publication.tokenHash !== sandbox.activationTokenHash ||
-    publication.fundingRevision !== sandbox.activationFundingRevision ||
-    publication.publishedAt.getTime() !== sandbox.activationAuthorityPublishedAt.getTime()
+    publication.imageDigest !== backup.image_digest ||
+    !publication.activationReceiptHash ||
+    !publication.tokenHash ||
+    publication.fundingRevision < 0n ||
+    !publication.publishedAt ||
+    !receipt ||
+    receipt.schemaVersion !== 1 ||
+    receipt.generation !== backup.lifecycle_generation ||
+    receipt.purpose !== publication.purpose ||
+    receipt.agentId !== backup.catalog_agent_id ||
+    receipt.organizationId !== backup.catalog_organization_id ||
+    receipt.lifecycleRevision !== backup.lifecycle_revision.toString() ||
+    receipt.backupId !== publication.backupId ||
+    receipt.backupHash !== publication.backupManifestHash ||
+    receipt.containerId !== backup.source_container_id ||
+    receipt.imageDigest !== backup.image_digest ||
+    receipt.restored !== true
   ) {
-    throw admissionLost("Backup capture source lost its immutable activation publication");
-  }
-
-  const [node] = await tx
-    .select({
-      recordId: dockerNodes.id,
-      nodeId: dockerNodes.node_id,
-      incarnation: dockerNodes.node_incarnation,
-      historyId: dockerNodes.current_node_history_id,
-      fleetKind: dockerNodes.fleet_kind,
-      infrastructureProvider: dockerNodes.infrastructure_provider,
-      providerServerId: dockerNodes.provider_server_id,
-      hostKeyFingerprint: dockerNodes.host_key_fingerprint,
-    })
-    .from(dockerNodes)
-    .where(
-      and(
-        eq(dockerNodes.id, backup.source_node_record_id),
-        eq(dockerNodes.node_id, backup.source_node_id),
-        eq(dockerNodes.node_incarnation, backup.source_node_incarnation),
-        eq(dockerNodes.current_node_history_id, publication.nodeHistoryId),
-      ),
-    )
-    .for("update")
-    .limit(1);
-  if (!node?.incarnation || !node.historyId) {
-    throw admissionLost("Backup source node is no longer the reserved exact occurrence");
-  }
-  const expectedFleetKind =
-    backup.source_provider === "operator-onboarded"
-      ? "robot"
-      : backup.source_provider === "hetzner-cloud"
-        ? "cloud"
-        : null;
-  if (
-    !expectedFleetKind ||
-    node.fleetKind !== expectedFleetKind ||
-    node.infrastructureProvider !== "hetzner" ||
-    node.providerServerId !== backup.source_provider_server_id ||
-    !node.hostKeyFingerprint?.trim()
-  ) {
-    throw admissionLost("Backup source Robot/Cloud provider authority changed");
+    throw admissionLost("Backup publication lost its immutable activation authority");
   }
 
   const [history] = await tx
     .select({
       id: agentNodeIncarnationHistories.id,
+      nodeRecordId: agentNodeIncarnationHistories.docker_node_record_id,
       nodeId: agentNodeIncarnationHistories.node_id,
+      nodeIncarnation: agentNodeIncarnationHistories.node_incarnation,
       fleetKind: agentNodeIncarnationHistories.fleet_kind,
       infrastructureProvider: agentNodeIncarnationHistories.infrastructure_provider,
       providerServerId: agentNodeIncarnationHistories.provider_server_id,
@@ -525,27 +416,35 @@ async function lockExactSourceAuthorityInTransaction(
     .where(
       and(
         eq(agentNodeIncarnationHistories.id, publication.nodeHistoryId),
-        eq(agentNodeIncarnationHistories.docker_node_record_id, node.recordId),
-        eq(agentNodeIncarnationHistories.node_incarnation, node.incarnation),
+        eq(agentNodeIncarnationHistories.docker_node_record_id, backup.source_node_record_id),
+        eq(agentNodeIncarnationHistories.node_incarnation, backup.source_node_incarnation),
       ),
     )
-    .for("share")
     .limit(1);
+  const expectedFleetKind =
+    backup.source_provider === "operator-onboarded"
+      ? "robot"
+      : backup.source_provider === "hetzner-cloud"
+        ? "cloud"
+        : null;
   if (
     !history ||
-    history.nodeId !== node.nodeId ||
-    history.fleetKind !== node.fleetKind ||
-    history.infrastructureProvider !== node.infrastructureProvider ||
-    history.providerServerId !== node.providerServerId ||
-    history.hostKeyFingerprint !== node.hostKeyFingerprint
+    history.nodeRecordId !== publication.nodeRecordId ||
+    history.nodeId !== publication.nodeId ||
+    history.nodeIncarnation !== publication.nodeIncarnation ||
+    !expectedFleetKind ||
+    history.fleetKind !== expectedFleetKind ||
+    history.infrastructureProvider !== "hetzner" ||
+    history.providerServerId !== backup.source_provider_server_id ||
+    !history.hostKeyFingerprint.trim()
   ) {
-    throw admissionLost("Backup source node-history occurrence disappeared or changed");
+    throw admissionLost("Backup publication node-history authority disappeared or changed");
   }
 
   return Object.freeze({
     sourceNodeHistoryId: history.id,
-    sourceNodeRecordId: node.recordId,
-    sourceNodeIncarnation: node.incarnation,
+    sourceNodeRecordId: history.nodeRecordId,
+    sourceNodeIncarnation: history.nodeIncarnation,
   });
 }
 
@@ -557,6 +456,7 @@ function assertCatalogueReplay(params: {
   databaseNow: Date;
 }): void {
   if (
+    params.target.operationPhase !== "publication" ||
     params.backup.catalog_organization_id !== params.target.organizationId ||
     params.backup.id !== params.target.backupId ||
     params.backup.backup_operation_id !== params.target.operationId ||
@@ -566,18 +466,15 @@ function assertCatalogueReplay(params: {
     params.backup.catalog_lease_expires_at.getTime() !== params.laneExpiry.getTime() ||
     params.backup.catalog_lease_expires_at.getTime() <= params.databaseNow.getTime()
   ) {
-    throw admissionLost("Catalogue lease does not replay the exact active global lane");
+    throw admissionLost("Catalogue lease does not replay the exact publication lane");
   }
 }
 
-/**
- * Lock the singleton first, then atomically claim one exact live-source capture
- * and stamp both cross-tick fairness receipts. No provider runs here.
- */
-export async function claimNextAgentBackupOperationAdmission(params: {
+/** Atomically claim one detached publication; no provider or mutable node runs here. */
+export async function claimNextAgentBackupPublicationAdmission(params: {
   readonly callerToken: AgentBackupOperationLaneCallerToken;
   readonly leaseMs: number;
-}): Promise<AgentBackupOperationAdmissionResult> {
+}): Promise<AgentBackupPublicationAdmissionResult> {
   const callerToken = normalizeAgentBackupOperationLaneCallerToken(params.callerToken);
   const leaseMs = normalizeAgentBackupOperationLaneLeaseMs(params.leaseMs);
 
@@ -587,7 +484,7 @@ export async function claimNextAgentBackupOperationAdmission(params: {
       if (
         initial.lane.owner_id !== callerToken.ownerId ||
         initial.lane.generation !== callerToken.generation ||
-        initial.lane.operation_phase !== "capture"
+        initial.lane.operation_phase !== "publication"
       ) {
         return Object.freeze({
           kind: "busy" as const,
@@ -596,16 +493,16 @@ export async function claimNextAgentBackupOperationAdmission(params: {
         });
       }
       if (!initial.lane.organization_id || !initial.lane.backup_id || !initial.lane.operation_id) {
-        throw admissionLost("Active global lane is missing its exact catalogue target");
+        throw admissionLost("Active publication lane is missing its exact catalogue target");
       }
       const target = Object.freeze({
         organizationId: initial.lane.organization_id,
         backupId: initial.lane.backup_id,
         operationId: initial.lane.operation_id,
-        operationPhase: "capture" as const,
+        operationPhase: "publication" as const,
       });
       const backup = await lockBackupByTargetInTransaction(tx, target);
-      const source = await lockExactSourceAuthorityInTransaction(tx, backup);
+      const source = await lockDetachedSourceAuthorityInTransaction(tx, backup);
       const replay = await claimAgentBackupOperationLaneInTransaction(tx, {
         ...target,
         callerToken,
@@ -613,9 +510,9 @@ export async function claimNextAgentBackupOperationAdmission(params: {
         fairness: source,
       });
       if (replay.kind === "busy") {
-        throw admissionLost("Exact active global lane unexpectedly became foreign");
+        throw admissionLost("Exact active publication lane unexpectedly became foreign");
       }
-      const laneExpiry = exactLeaseExpiry(replay.proof.lane, "Replayed admission");
+      const laneExpiry = exactLeaseExpiry(replay.proof.lane, "Replayed publication admission");
       assertCatalogueReplay({
         backup,
         callerToken,
@@ -633,10 +530,10 @@ export async function claimNextAgentBackupOperationAdmission(params: {
       });
     }
 
-    const backup = await lockNextDueBackupInTransaction(tx);
+    const backup = await lockNextDuePublicationInTransaction(tx);
     if (!backup) return Object.freeze({ kind: "empty" as const });
     const target = targetFor(backup);
-    const source = await lockExactSourceAuthorityInTransaction(tx, backup);
+    const source = await lockDetachedSourceAuthorityInTransaction(tx, backup);
     const laneClaim = await claimAgentBackupOperationLaneInTransaction(tx, {
       ...target,
       callerToken,
@@ -651,9 +548,9 @@ export async function claimNextAgentBackupOperationAdmission(params: {
       });
     }
     if (laneClaim.kind !== "claimed") {
-      throw admissionLost("Fresh catalogue candidate unexpectedly replayed the global lane");
+      throw admissionLost("Fresh publication candidate unexpectedly replayed the global lane");
     }
-    const laneExpiry = exactLeaseExpiry(laneClaim.proof.lane, "Claimed admission");
+    const laneExpiry = exactLeaseExpiry(laneClaim.proof.lane, "Claimed publication admission");
     const [claimed] = await tx
       .update(agentSandboxBackups)
       .set({
@@ -667,22 +564,26 @@ export async function claimNextAgentBackupOperationAdmission(params: {
           eq(agentSandboxBackups.id, target.backupId),
           eq(agentSandboxBackups.catalog_organization_id, target.organizationId),
           eq(agentSandboxBackups.backup_operation_id, target.operationId),
-          sql`(${agentSandboxBackups.catalog_state} IN ('scheduled', 'capturing')
-            OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
-              AND ${agentSandboxBackups.catalog_resume_state} IN ('scheduled', 'capturing')))`,
+          sql`(${agentSandboxBackups.catalog_state} IN (
+              'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+            ) OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
+              AND ${agentSandboxBackups.catalog_resume_state} IN (
+                'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+              )))`,
           sql`(${agentSandboxBackups.catalog_lease_expires_at} IS NULL
             OR ${agentSandboxBackups.catalog_lease_expires_at} <= clock_timestamp())`,
         ),
       )
       .returning();
     if (!claimed) {
-      throw admissionLost("Catalogue operation changed after the global lane was claimed");
+      throw admissionLost("Catalogue publication changed after the global lane was claimed");
     }
     const finalProof = await refreshAgentBackupOperationLaneProofInTransaction(tx, laneClaim.proof);
     if (
-      exactLeaseExpiry(finalProof.lane, "Committed admission").getTime() !== laneExpiry.getTime()
+      exactLeaseExpiry(finalProof.lane, "Committed publication admission").getTime() !==
+      laneExpiry.getTime()
     ) {
-      throw admissionLost("Catalogue lease diverged from the global lane before commit");
+      throw admissionLost("Catalogue publication lease diverged from the lane before commit");
     }
     return Object.freeze({
       kind: "claimed" as const,
@@ -695,14 +596,14 @@ export async function claimNextAgentBackupOperationAdmission(params: {
   });
 }
 
-/** Renew the global and catalogue leases atomically; never shorten either. */
-export async function renewAgentBackupOperationAdmission(params: {
-  readonly admission: AgentBackupOperationAdmission;
+/** Renew publication and catalogue leases atomically without a live source node. */
+export async function renewAgentBackupPublicationAdmission(params: {
+  readonly admission: AgentBackupPublicationAdmission;
   readonly leaseMs: number;
-}): Promise<AgentBackupOperationAdmission> {
+}): Promise<AgentBackupPublicationAdmission> {
   const input = params.admission;
   if (!input?.claim?.backup || !input.laneExecution || !input.sourceNodeHistoryId) {
-    throw admissionLost("Admission is missing its exact catalogue and lane authorities");
+    throw admissionLost("Publication admission is missing its catalogue and lane authorities");
   }
   const target = targetFor(input.claim.backup);
   const execution = Object.freeze({
@@ -726,14 +627,14 @@ export async function renewAgentBackupOperationAdmission(params: {
       !(backup.catalog_lease_expires_at instanceof Date) ||
       backup.catalog_lease_expires_at.getTime() <= renewedProof.databaseNow.getTime()
     ) {
-      throw admissionLost("Catalogue lease was lost before atomic admission renewal");
+      throw admissionLost("Catalogue publication lease was lost before atomic renewal");
     }
-    const source = await lockExactSourceAuthorityInTransaction(tx, backup);
+    const source = await lockDetachedSourceAuthorityInTransaction(tx, backup);
     if (source.sourceNodeHistoryId !== sourceNodeHistoryId) {
-      throw admissionLost("Backup source occurrence changed before admission renewal");
+      throw admissionLost("Publication source occurrence changed before admission renewal");
     }
     const currentProof = await refreshAgentBackupOperationLaneProofInTransaction(tx, renewedProof);
-    const laneExpiry = exactLeaseExpiry(currentProof.lane, "Renewed admission");
+    const laneExpiry = exactLeaseExpiry(currentProof.lane, "Renewed publication admission");
     const [renewed] = await tx
       .update(agentSandboxBackups)
       .set({
@@ -748,13 +649,16 @@ export async function renewAgentBackupOperationAdmission(params: {
           eq(agentSandboxBackups.catalog_lease_owner, execution.ownerId),
           eq(agentSandboxBackups.catalog_lease_generation, execution.generation),
           gt(agentSandboxBackups.catalog_lease_expires_at, sql`clock_timestamp()`),
-          sql`(${agentSandboxBackups.catalog_state} IN ('scheduled', 'capturing')
-            OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
-              AND ${agentSandboxBackups.catalog_resume_state} IN ('scheduled', 'capturing')))`,
+          sql`(${agentSandboxBackups.catalog_state} IN (
+              'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+            ) OR (${agentSandboxBackups.catalog_state} = 'failed_retryable'
+              AND ${agentSandboxBackups.catalog_resume_state} IN (
+                'captured', 'uploading', 'primary_uploaded', 'primary_verified', 'secondary_pending'
+              )))`,
         ),
       )
       .returning();
-    if (!renewed) throw admissionLost("Catalogue lease was lost during atomic admission renewal");
+    if (!renewed) throw admissionLost("Catalogue publication lease was lost during renewal");
     await refreshAgentBackupOperationLaneProofInTransaction(tx, currentProof);
     return admissionFor({
       backup: renewed,

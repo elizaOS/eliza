@@ -8,6 +8,7 @@ import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
 import {
   type AgentBackupOperationLane,
+  type AgentBackupOperationLanePhase,
   agentBackupOperationLane,
   agentBackupOperationNodeWatermarks,
   agentBackupOperationTenantWatermarks,
@@ -32,6 +33,7 @@ export interface AgentBackupOperationLaneTarget {
   readonly organizationId: string;
   readonly backupId: string;
   readonly operationId: string;
+  readonly operationPhase: AgentBackupOperationLanePhase;
 }
 
 export interface AgentBackupOperationLaneFairness {
@@ -138,6 +140,7 @@ function authorityLost(
         organizationId: target.organizationId,
         backupId: target.backupId,
         operationId: target.operationId,
+        operationPhase: target.operationPhase,
         ...executionContext(execution),
       },
     },
@@ -162,6 +165,7 @@ function claimExpired(
       organizationId: target.organizationId,
       backupId: target.backupId,
       operationId: target.operationId,
+      operationPhase: target.operationPhase,
       ...executionContext(execution),
     },
   });
@@ -178,6 +182,7 @@ function fairnessMismatch(
       organizationId: target.organizationId,
       backupId: target.backupId,
       operationId: target.operationId,
+      operationPhase: target.operationPhase,
       ...executionContext(execution),
     },
   });
@@ -186,6 +191,13 @@ function fairnessMismatch(
 function requireCanonicalUuid(value: unknown, field: string): string {
   if (typeof value !== "string" || !isValidUUID(value) || value !== value.toLowerCase()) {
     throw invalidInput(`${field} must be a canonical lowercase UUID`, field);
+  }
+  return value;
+}
+
+function requireOperationPhase(value: unknown): AgentBackupOperationLanePhase {
+  if (value !== "capture" && value !== "publication") {
+    throw invalidInput("operationPhase must be capture or publication", "operationPhase");
   }
   return value;
 }
@@ -249,12 +261,16 @@ function snapshotTarget(
   target: AgentBackupOperationLaneTarget,
 ): Readonly<AgentBackupOperationLaneTarget> {
   if (!target || typeof target !== "object") {
-    throw invalidInput("target must identify an organization, backup, and operation", "target");
+    throw invalidInput(
+      "target must identify an organization, backup, operation, and operation phase",
+      "target",
+    );
   }
   return Object.freeze({
     organizationId: requireCanonicalUuid(target.organizationId, "organizationId"),
     backupId: requireCanonicalUuid(target.backupId, "backupId"),
     operationId: requireCanonicalUuid(target.operationId, "operationId"),
+    operationPhase: requireOperationPhase(target.operationPhase),
   });
 }
 
@@ -362,7 +378,8 @@ function callerTokenMatches(
     lane.generation === token.generation &&
     lane.organization_id === target.organizationId &&
     lane.backup_id === target.backupId &&
-    lane.operation_id === target.operationId
+    lane.operation_id === target.operationId &&
+    lane.operation_phase === target.operationPhase
   );
 }
 
@@ -569,6 +586,7 @@ export async function claimAgentBackupOperationLaneInTransaction(
       organization_id: target.organizationId,
       backup_id: target.backupId,
       operation_id: target.operationId,
+      operation_phase: target.operationPhase,
       claimed_at: databaseNow,
       lease_expires_at: leaseExpiresAt,
       released_at: null,
@@ -664,6 +682,7 @@ export async function renewAgentBackupOperationLaneInTransaction(
         eq(agentBackupOperationLane.organization_id, target.organizationId),
         eq(agentBackupOperationLane.backup_id, target.backupId),
         eq(agentBackupOperationLane.operation_id, target.operationId),
+        eq(agentBackupOperationLane.operation_phase, target.operationPhase),
         eq(agentBackupOperationLane.claim_sequence, execution.claimSequence),
         sql`${agentBackupOperationLane.released_at} IS NULL`,
         sql`${agentBackupOperationLane.lease_expires_at} > clock_timestamp()`,
@@ -718,6 +737,7 @@ export async function releaseAgentBackupOperationLaneInTransaction(
         eq(agentBackupOperationLane.organization_id, target.organizationId),
         eq(agentBackupOperationLane.backup_id, target.backupId),
         eq(agentBackupOperationLane.operation_id, target.operationId),
+        eq(agentBackupOperationLane.operation_phase, target.operationPhase),
         eq(agentBackupOperationLane.claim_sequence, execution.claimSequence),
         sql`${agentBackupOperationLane.released_at} IS NULL`,
         sql`${agentBackupOperationLane.lease_expires_at} > clock_timestamp()`,

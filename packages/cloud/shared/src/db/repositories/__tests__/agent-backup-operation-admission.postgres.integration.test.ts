@@ -454,6 +454,7 @@ realPostgres("backup operation admission contention", () => {
         organization_id: ORGANIZATION_ID,
         backup_id: winner.admission.claim.backup.id,
         operation_id: winner.admission.claim.backup.backup_operation_id,
+        operation_phase: "capture",
         released_at: null,
         claim_sequence: 1n,
       });

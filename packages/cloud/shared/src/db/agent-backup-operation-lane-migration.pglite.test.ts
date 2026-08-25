@@ -4,9 +4,17 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
-const migrationUrl = new URL("./migrations/0313_agent_backup_operation_lane.sql", import.meta.url);
+const baseMigrationUrl = new URL(
+  "./migrations/0313_agent_backup_operation_lane.sql",
+  import.meta.url,
+);
+const phaseMigrationUrl = new URL(
+  "./migrations/0314_agent_backup_detached_publication_lane.sql",
+  import.meta.url,
+);
 const journalUrl = new URL("./migrations/meta/_journal.json", import.meta.url);
-const migration = readFileSync(migrationUrl, "utf8");
+const baseMigration = readFileSync(baseMigrationUrl, "utf8");
+const phaseMigration = readFileSync(phaseMigrationUrl, "utf8");
 
 const ORGANIZATION_A = "00000000-0000-4000-8000-00000000f001";
 const ORGANIZATION_B = "00000000-0000-4000-8000-00000000f002";
@@ -43,17 +51,22 @@ async function createPrerequisites(database: PGlite): Promise<void> {
   `);
 }
 
-async function applyMigration(database: PGlite): Promise<void> {
+async function applyMigration(database: PGlite, migration: string): Promise<void> {
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await database.exec(statement);
   }
 }
 
-async function withDatabase(run: (database: PGlite) => Promise<void>): Promise<void> {
+async function withDatabase(
+  run: (database: PGlite) => Promise<void>,
+  prepareBeforePhase?: (database: PGlite) => Promise<void>,
+): Promise<void> {
   const database = new PGlite();
   try {
     await createPrerequisites(database);
-    await applyMigration(database);
+    await applyMigration(database, baseMigration);
+    await prepareBeforePhase?.(database);
+    await applyMigration(database, phaseMigration);
     await run(database);
   } finally {
     await database.close();
@@ -65,25 +78,27 @@ describe("agent backup operation lane migration", () => {
     const journal = (await Bun.file(journalUrl).json()) as {
       entries: Array<{ idx: number; tag: string }>;
     };
-    expect(
-      journal.entries
-        .filter((entry) => entry.tag.includes("agent_backup_operation_lane"))
-        .map(({ idx, tag }) => ({ idx, tag })),
-    ).toEqual([{ idx: 296, tag: "0313_agent_backup_operation_lane" }]);
+    expect(journal.entries.slice(-2).map(({ idx, tag }) => ({ idx, tag }))).toEqual([
+      { idx: 296, tag: "0313_agent_backup_operation_lane" },
+      { idx: 297, tag: "0314_agent_backup_detached_publication_lane" },
+    ]);
   });
 
-  test("applies twice and preserves exactly one seeded singleton", async () => {
+  test("applies the phase migration twice and preserves one blank singleton", async () => {
     await withDatabase(async (database) => {
-      await applyMigration(database);
+      await applyMigration(database, phaseMigration);
       const rows = await database.query<{
         singleton: boolean;
         claim_sequence: string;
         owner_id: string | null;
+        operation_phase: string | null;
       }>(`
-        SELECT singleton, claim_sequence::text, owner_id
+        SELECT singleton, claim_sequence::text, owner_id, operation_phase
         FROM agent_backup_operation_lane
       `);
-      expect(rows.rows).toEqual([{ singleton: true, claim_sequence: "0", owner_id: null }]);
+      expect(rows.rows).toEqual([
+        { singleton: true, claim_sequence: "0", owner_id: null, operation_phase: null },
+      ]);
       await expect(
         database.exec(`INSERT INTO agent_backup_operation_lane (singleton) VALUES (false)`),
       ).rejects.toThrow(/singleton_check/);
@@ -91,6 +106,39 @@ describe("agent backup operation lane migration", () => {
         database.exec(`INSERT INTO agent_backup_operation_lane (singleton) VALUES (true)`),
       ).rejects.toThrow(/duplicate key|unique constraint/i);
     });
+  });
+
+  test("backfills active and released legacy ownership as capture", async () => {
+    for (const releasedAt of [null, "2026-08-25T10:03:00Z"]) {
+      await withDatabase(
+        async (database) => {
+          const lane = await database.query<{ operation_phase: string; released: boolean }>(`
+            SELECT operation_phase, released_at IS NOT NULL AS released
+            FROM agent_backup_operation_lane
+          `);
+          expect(lane.rows).toEqual([
+            { operation_phase: "capture", released: releasedAt !== null },
+          ]);
+
+          await database.exec(`
+            UPDATE agent_backup_operation_lane SET operation_phase = 'publication'
+          `);
+          await expect(
+            database.exec(`UPDATE agent_backup_operation_lane SET operation_phase = 'invalid'`),
+          ).rejects.toThrow(/shape_check/);
+        },
+        async (database) => {
+          await database.exec(`
+            UPDATE agent_backup_operation_lane SET
+              owner_id = 'legacy-worker', generation = '${GENERATION}',
+              organization_id = '${ORGANIZATION_A}', backup_id = '${BACKUP_ID}',
+              operation_id = '${OPERATION_ID}', claimed_at = '2026-08-25T10:00:00Z',
+              lease_expires_at = '2026-08-25T10:05:00Z',
+              released_at = ${releasedAt === null ? "NULL" : `'${releasedAt}'`}, claim_sequence = 1
+          `);
+        },
+      );
+    }
   });
 
   test("rejects partial claims and enforces the 255-byte canonical owner boundary", async () => {
@@ -103,7 +151,8 @@ describe("agent backup operation lane migration", () => {
         UPDATE agent_backup_operation_lane SET
           owner_id = '${"a".repeat(255)}', generation = '${GENERATION}',
           organization_id = '${ORGANIZATION_A}', backup_id = '${BACKUP_ID}',
-          operation_id = '${OPERATION_ID}', claimed_at = '2026-08-25T10:00:00Z',
+          operation_id = '${OPERATION_ID}', operation_phase = 'capture',
+          claimed_at = '2026-08-25T10:00:00Z',
           lease_expires_at = '2026-08-25T10:05:00Z', claim_sequence = 1
       `);
       await expect(
@@ -181,7 +230,7 @@ describe("agent backup operation lane migration", () => {
     });
   });
 
-  test("keys node fairness by exact history occurrence and cleans it with the live node", async () => {
+  test("keeps node fairness after live-node deletion and protects exact history", async () => {
     await withDatabase(async (database) => {
       await database.exec(`
         INSERT INTO agent_backup_operation_node_watermarks (
@@ -224,15 +273,25 @@ describe("agent backup operation lane migration", () => {
           )
         `),
       ).rejects.toThrow(/sequence_uidx|unique constraint/i);
-      await expect(
-        database.exec(`DELETE FROM agent_node_incarnation_histories WHERE id = '${HISTORY_A1}'`),
-      ).rejects.toThrow(/foreign key/i);
-
       await database.exec(`DELETE FROM docker_nodes WHERE id = '${NODE_A}'`);
       const remaining = await database.query<{ count: number }>(`
         SELECT count(*)::integer AS count FROM agent_backup_operation_node_watermarks
       `);
-      expect(remaining.rows).toEqual([{ count: 0 }]);
+      expect(remaining.rows).toEqual([{ count: 2 }]);
+
+      const foreignKeys = await database.query<{ conname: string }>(`
+        SELECT conname
+        FROM pg_constraint
+        WHERE conrelid = 'agent_backup_operation_node_watermarks'::regclass
+          AND contype = 'f'
+        ORDER BY conname
+      `);
+      expect(foreignKeys.rows).toEqual([
+        { conname: "agent_backup_op_node_watermarks_occurrence_fkey" },
+      ]);
+      await expect(
+        database.exec(`DELETE FROM agent_node_incarnation_histories WHERE id = '${HISTORY_A1}'`),
+      ).rejects.toThrow(/foreign key/i);
     });
   });
 });

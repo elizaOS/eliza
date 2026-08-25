@@ -48,6 +48,7 @@ const target: AgentBackupOperationLaneTarget = {
   organizationId: ORGANIZATION_ID,
   backupId: BACKUP_ID,
   operationId: OPERATION_ID,
+  operationPhase: "capture",
 };
 
 const fairness: AgentBackupOperationLaneFairness = {
@@ -234,6 +235,7 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
       organization_id: ORGANIZATION_ID,
       backup_id: BACKUP_ID,
       operation_id: OPERATION_ID,
+      operation_phase: "capture",
       claim_sequence: 1n,
       released_at: null,
     });
@@ -261,12 +263,44 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
     ]);
   });
 
+  test("retains exact-node fairness after the mutable Docker node is deleted", async () => {
+    requireSuccessfulClaim(await claimCommitted());
+
+    await dbWrite.delete(dockerNodesTable).where(eq(dockerNodesTable.id, NODE_RECORD_ID));
+
+    expect(await dbWrite.select().from(dockerNodesTable)).toEqual([]);
+    expect((await readWatermarks()).nodes).toEqual([
+      expect.objectContaining({
+        source_node_history_id: NODE_HISTORY_ID,
+        source_node_record_id: NODE_RECORD_ID,
+        source_node_incarnation: NODE_INCARNATION,
+        last_service_sequence: 1n,
+      }),
+    ]);
+    await expect(
+      dbWrite
+        .delete(nodeHistoriesTable)
+        .where(eq(nodeHistoriesTable.id, NODE_HISTORY_ID))
+        .execute(),
+    ).rejects.toThrow();
+    expect(
+      await dbWrite
+        .select({ id: nodeHistoriesTable.id })
+        .from(nodeHistoriesTable)
+        .where(eq(nodeHistoriesTable.id, NODE_HISTORY_ID)),
+    ).toEqual([{ id: NODE_HISTORY_ID }]);
+  });
+
   test("requires an explicit transaction to turn the row lock into authority", async () => {
     await expectElizaError(
       repository.lockAgentBackupOperationLaneInTransaction(dbWrite as unknown as DbTransaction),
       "AGENT_BACKUP_OPERATION_LANE_TRANSACTION_REQUIRED",
     );
-    expect(await readLane()).toMatchObject({ owner_id: null, claim_sequence: 0n });
+    expect(await readLane()).toMatchObject({
+      owner_id: null,
+      operation_phase: null,
+      claim_sequence: 0n,
+    });
     expect(await readWatermarks()).toEqual({ tenants: [], nodes: [] });
   });
 
@@ -285,6 +319,7 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
         mutableParams.organizationId = OTHER_BACKUP_ID;
         mutableParams.backupId = OTHER_BACKUP_ID;
         mutableParams.operationId = OTHER_OPERATION_ID;
+        mutableParams.operationPhase = "publication";
         mutableParams.callerToken.ownerId = OWNER_B;
         mutableParams.callerToken.generation = GENERATION_B;
         mutableParams.fairness.sourceNodeHistoryId = OTHER_BACKUP_ID;
@@ -303,6 +338,7 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
       organization_id: ORGANIZATION_ID,
       backup_id: BACKUP_ID,
       operation_id: OPERATION_ID,
+      operation_phase: "capture",
     });
     const { tenants, nodes } = await readWatermarks();
     expect(tenants[0]).toMatchObject({ organization_id: ORGANIZATION_ID });
@@ -330,6 +366,66 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
     const { tenants, nodes } = await readWatermarks();
     expect(tenants[0]?.service_count).toBe(1n);
     expect(nodes[0]?.service_count).toBe(1n);
+  });
+
+  test("persists publication phase and fences every operation against phase drift", async () => {
+    const publicationTarget: AgentBackupOperationLaneTarget = {
+      ...target,
+      operationPhase: "publication",
+    };
+    const claimed = requireSuccessfulClaim(await claimCommitted({ target: publicationTarget }));
+    expect(claimed.proof.lane.operation_phase).toBe("publication");
+
+    await expectElizaError(claimCommitted(), "AGENT_BACKUP_OPERATION_LANE_LOST");
+    await expectElizaError(
+      dbWrite.transaction((tx) =>
+        repository.assertAgentBackupOperationLaneInTransaction(tx, {
+          ...target,
+          execution: claimed.execution,
+        }),
+      ),
+      "AGENT_BACKUP_OPERATION_LANE_LOST",
+    );
+    await expectElizaError(
+      dbWrite.transaction((tx) =>
+        repository.renewAgentBackupOperationLaneInTransaction(tx, {
+          ...target,
+          execution: claimed.execution,
+          leaseMs: 60_000,
+        }),
+      ),
+      "AGENT_BACKUP_OPERATION_LANE_LOST",
+    );
+    await expectElizaError(
+      dbWrite.transaction((tx) =>
+        repository.releaseAgentBackupOperationLaneInTransaction(tx, {
+          ...target,
+          execution: claimed.execution,
+        }),
+      ),
+      "AGENT_BACKUP_OPERATION_LANE_LOST",
+    );
+
+    const beforeRelease = await readLane();
+    expect(beforeRelease.operation_phase).toBe("publication");
+    await expect(
+      dbWrite.transaction((tx) =>
+        repository.assertAgentBackupOperationLaneInTransaction(tx, {
+          ...publicationTarget,
+          execution: claimed.execution,
+        }),
+      ),
+    ).resolves.toMatchObject({ active: true });
+    const released = await dbWrite.transaction((tx) =>
+      repository.releaseAgentBackupOperationLaneInTransaction(tx, {
+        ...publicationTarget,
+        execution: claimed.execution,
+      }),
+    );
+    expect(released).toMatchObject({
+      kind: "released",
+      lane: { operation_phase: "publication" },
+    });
   });
 
   test("returns one active winner and a non-mutating busy result to another token", async () => {
@@ -602,6 +698,7 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
       organization_id: null,
       backup_id: null,
       operation_id: null,
+      operation_phase: null,
       claim_sequence: 0n,
     });
     expect(await readWatermarks()).toEqual({ tenants: [], nodes: [] });
@@ -639,6 +736,7 @@ describe("agent backup operation lane lifecycle on primary PGlite", () => {
 
     for (const invalidClaim of [
       { target: { ...target, organizationId: UPPERCASE_UUID } },
+      { target: { ...target, operationPhase: "restore" as never } },
       { callerToken: { ...callerB, generation: UPPERCASE_UUID } },
       { fairness: { ...fairness, sourceNodeHistoryId: UPPERCASE_UUID } },
       { leaseMs: 0 },

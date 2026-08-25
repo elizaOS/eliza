@@ -14,8 +14,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { agentNodeIncarnationHistories } from "./agent-node-incarnation-histories";
-import { dockerNodes } from "./docker-nodes";
 import { organizations } from "./organizations";
+
+export type AgentBackupOperationLanePhase = "capture" | "publication";
 
 /**
  * The one database-serialized authority for backup provider mutations.
@@ -33,6 +34,7 @@ export const agentBackupOperationLane = pgTable(
     organization_id: uuid("organization_id"),
     backup_id: uuid("backup_id"),
     operation_id: uuid("operation_id"),
+    operation_phase: text("operation_phase").$type<AgentBackupOperationLanePhase>(),
     claimed_at: timestamp("claimed_at", { withTimezone: true }),
     lease_expires_at: timestamp("lease_expires_at", { withTimezone: true }),
     released_at: timestamp("released_at", { withTimezone: true }),
@@ -49,6 +51,7 @@ export const agentBackupOperationLane = pgTable(
         AND ${table.organization_id} IS NULL
         AND ${table.backup_id} IS NULL
         AND ${table.operation_id} IS NULL
+        AND ${table.operation_phase} IS NULL
         AND ${table.claimed_at} IS NULL
         AND ${table.lease_expires_at} IS NULL
         AND ${table.released_at} IS NULL
@@ -61,6 +64,7 @@ export const agentBackupOperationLane = pgTable(
         AND ${table.organization_id} IS NOT NULL
         AND ${table.backup_id} IS NOT NULL
         AND ${table.operation_id} IS NOT NULL
+        AND ${table.operation_phase} IN ('capture', 'publication')
         AND ${table.claimed_at} IS NOT NULL
         AND ${table.lease_expires_at} > ${table.claimed_at}
         AND (${table.released_at} IS NULL OR ${table.released_at} >= ${table.claimed_at})
@@ -111,11 +115,6 @@ export const agentBackupOperationNodeWatermarks = pgTable(
     last_served_at: timestamp("last_served_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
-    source_node_fk: foreignKey({
-      name: "agent_backup_op_node_watermarks_node_fkey",
-      columns: [table.source_node_record_id],
-      foreignColumns: [dockerNodes.id],
-    }).onDelete("cascade"),
     node_occurrence_fk: foreignKey({
       name: "agent_backup_op_node_watermarks_occurrence_fkey",
       columns: [

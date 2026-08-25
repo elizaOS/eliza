@@ -168,4 +168,68 @@ describe("agent backup global lock order", () => {
       "capture admission renewal",
     );
   });
+
+  test("detached publication admission locks the lane before immutable source authority", () => {
+    const admission = source("agent-backup-publication-admission.ts");
+    const sourceLockStart = admission.indexOf(
+      "async function lockDetachedSourceAuthorityInTransaction",
+    );
+    const sourceLockEnd = admission.indexOf("function assertCatalogueReplay", sourceLockStart);
+    expect(sourceLockStart).toBeGreaterThanOrEqual(0);
+    expect(sourceLockEnd).toBeGreaterThan(sourceLockStart);
+    const sourceLocks = admission.slice(sourceLockStart, sourceLockEnd);
+    const sourceAnchors = [
+      ".from(organizations)",
+      ".from(agentActivationPublications)",
+      ".from(agentNodeIncarnationHistories)",
+    ];
+    let previous = -1;
+    for (const anchor of sourceAnchors) {
+      const index = sourceLocks.indexOf(anchor, previous + 1);
+      expect(index, `publication admission: missing ordered authority ${anchor}`).toBeGreaterThan(
+        previous,
+      );
+      previous = index;
+    }
+
+    expect(admission, "detached publication must not read the mutable sandbox row").not.toContain(
+      ".from(agentSandboxes)",
+    );
+    expect(admission, "detached publication must not read the mutable node row").not.toContain(
+      ".from(dockerNodes)",
+    );
+
+    const publicationReadStart = sourceLocks.indexOf(".from(agentActivationPublications)");
+    const historyReadStart = sourceLocks.indexOf(
+      ".from(agentNodeIncarnationHistories)",
+      publicationReadStart,
+    );
+    expect(
+      sourceLocks.slice(publicationReadStart, historyReadStart),
+      "immutable activation publication must not be row-locked",
+    ).not.toContain('.for("');
+    expect(
+      sourceLocks.slice(historyReadStart),
+      "append-only node history must not be row-locked",
+    ).not.toContain('.for("');
+
+    const claim = exportedFunction(
+      admission,
+      "claimNextAgentBackupPublicationAdmission",
+      "renewAgentBackupPublicationAdmission",
+    );
+    expectOrder(
+      claim,
+      "lockAgentBackupOperationLaneInTransaction(tx)",
+      "lockNextDuePublicationInTransaction(tx)",
+      "publication admission",
+    );
+    const renew = exportedFunction(admission, "renewAgentBackupPublicationAdmission");
+    expectOrder(
+      renew,
+      "renewAgentBackupOperationLaneInTransaction(tx",
+      "lockBackupByTargetInTransaction(tx",
+      "publication admission renewal",
+    );
+  });
 });
