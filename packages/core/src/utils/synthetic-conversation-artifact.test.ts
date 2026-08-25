@@ -175,6 +175,8 @@ describe("isSyntheticConversationArtifactMemory", () => {
 			["null metadata", memory("hello", null)],
 			["non-object metadata", memory("hello", "compaction")],
 			["non-string content text", memory(123, {})],
+			["absent content", { metadata: {} } as never],
+			["null content", { content: null, metadata: {} } as never],
 			["clean memory", memory("hello", { source: "discord", tags: ["chat"] })],
 		])("returns false for %s", (_label, value) => {
 			expect(isSyntheticConversationArtifactMemory(value)).toBe(false);
