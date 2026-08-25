@@ -14,9 +14,12 @@ import {
 	deriveAvailableContexts,
 	getActiveRoutingContexts,
 	getActiveRoutingContextsForTurn,
+	getContextRoutingFromMessage,
+	inferContextRoutingFromMessage,
 	inferContextRoutingFromText,
 	mergeContextRouting,
 	routingContextsOverlap,
+	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./context-routing.ts";
 
@@ -326,5 +329,34 @@ describe("mergeContextRouting", () => {
 			(context) => `${context}`.toLowerCase() === "knowledge",
 		).length;
 		expect(countKnowledge).toBe(1);
+	});
+});
+
+describe("safe message context routing helpers", () => {
+	it("getContextRoutingFromMessage returns empty object for nullish or invalid message", () => {
+		expect(getContextRoutingFromMessage(null)).toEqual({});
+		expect(getContextRoutingFromMessage(undefined)).toEqual({});
+		expect(
+			getContextRoutingFromMessage({
+				content: {} as unknown,
+			} as unknown as Memory),
+		).toEqual({});
+	});
+
+	it("inferContextRoutingFromMessage handles nullish message and empty content", () => {
+		expect(inferContextRoutingFromMessage(null)).toEqual({
+			primaryContext: "general",
+			secondaryContexts: [],
+		});
+		expect(inferContextRoutingFromMessage(undefined)).toEqual({
+			primaryContext: "general",
+			secondaryContexts: [],
+		});
+	});
+
+	it("setContextRoutingMetadata is a safe no-op on invalid message content", () => {
+		const invalidMsg = { content: null } as unknown as Memory;
+		setContextRoutingMetadata(invalidMsg, { primaryContext: "code" });
+		expect(invalidMsg.content).toBeNull();
 	});
 });
