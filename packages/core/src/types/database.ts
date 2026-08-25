@@ -40,6 +40,40 @@ export interface MessageSearchHit {
 	trigramSimilarity: number;
 }
 
+/** Adapter-issued fence for a complete, stable retrieval traversal. */
+export interface StableRetrievalSnapshot {
+	version: 1;
+	upperCreatedAt: number;
+	upperId: UUID;
+	totalCount: number;
+	queryFingerprint: string;
+	fingerprint: string;
+}
+
+/** Exclusive continuation key carrying the snapshot it belongs to. */
+export interface StableRetrievalCursor {
+	createdAt: number;
+	id: UUID;
+	similarity?: number;
+	snapshot: StableRetrievalSnapshot;
+}
+
+/** One verified vector-memory page in stable relevance order. */
+export interface StableMemorySearchPage {
+	items: Memory[];
+	snapshot: StableRetrievalSnapshot;
+	nextCursor?: StableRetrievalCursor;
+	hasMore: boolean;
+}
+
+/** One verified authorized document-fragment page. */
+export interface StableDocumentFragmentPage {
+	items: Memory[];
+	snapshot: StableRetrievalSnapshot;
+	nextCursor?: StableRetrievalCursor;
+	hasMore: boolean;
+}
+
 /**
  * Stable newest-first cursor for document-list pagination. New cursors carry
  * the first page's upper ordering bound so later pages exclude ordinary
@@ -146,6 +180,39 @@ export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	embedding?: number[];
 	matchThreshold?: number;
 }
+
+/** Canonical vector-memory search request shared by every first-party adapter. */
+export interface VectorMemorySearchParams {
+	embedding: number[];
+	match_threshold?: number;
+	count?: number;
+	limit?: number;
+	offset?: number;
+	unique?: boolean;
+	tableName: string;
+	query?: string;
+	roomId?: UUID;
+	worldId?: UUID;
+	entityId?: UUID;
+	accessContext?: AccessContext;
+}
+
+/** Stable-page form excludes offset/count aliases and requires a page size. */
+export type StableMemorySearchParams = Omit<
+	VectorMemorySearchParams,
+	"count" | "offset"
+> & {
+	limit: number;
+	cursor?: StableRetrievalCursor;
+};
+
+/** Stable-page form of the authorized fragment query. */
+export type StableDocumentFragmentQueryParams = Omit<
+	DocumentFragmentQueryParams,
+	"offset"
+> & {
+	cursor?: StableRetrievalCursor;
+};
 
 /**
  * Authorization-sensitive fields observed before a document mutation. SQL
@@ -702,6 +769,8 @@ export interface AgentRunSummaryResult {
  * See DATABASE_BATCH_API.md for the full design rationale and migration guide.
  */
 export interface IDatabaseAdapter<DB extends object = object> {
+	/** Native adapter-issued snapshot/keyset retrieval pages. */
+	readonly stableRetrievalCapability?: 1;
 	/** Database instance */
 	db: DB;
 
@@ -1175,6 +1244,9 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]>;
+	queryDocumentFragmentsPage?(
+		params: StableDocumentFragmentQueryParams,
+	): Promise<StableDocumentFragmentPage>;
 	compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
 	): Promise<DocumentMutationResult>;
@@ -1312,25 +1384,10 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		entityId?: UUID;
 	}): Promise<AgentRunSummaryResult>;
 
-	searchMemories(params: {
-		embedding: number[];
-		match_threshold?: number;
-		count?: number;
-		limit?: number;
-		offset?: number;
-		unique?: boolean;
-		tableName: string;
-		query?: string;
-		roomId?: UUID;
-		worldId?: UUID;
-		entityId?: UUID;
-		/**
-		 * Requester authority used to intersect disclosure scope and any supplied
-		 * world/authorized-room bounds before vector ranking and pagination. When
-		 * omitted, no access-context filtering is applied (single-tenant behavior).
-		 */
-		accessContext?: AccessContext;
-	}): Promise<Memory[]>;
+	searchMemories(params: VectorMemorySearchParams): Promise<Memory[]>;
+	searchMemoriesPage?(
+		params: StableMemorySearchParams,
+	): Promise<StableMemorySearchPage>;
 
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────
 	// WHY batch-only: memory ingestion (e.g. bulk import of conversation

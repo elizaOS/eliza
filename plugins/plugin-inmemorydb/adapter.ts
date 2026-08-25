@@ -23,6 +23,7 @@ import {
   canRequesterMutateDocument,
   compareMemoryIds,
   compareTasksForQuery,
+  createStableRetrievalPage,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
@@ -67,6 +68,11 @@ import {
   type Relationship,
   type Room,
   rankMessageSearch,
+  type StableDocumentFragmentPage,
+  type StableDocumentFragmentQueryParams,
+  type StableMemorySearchPage,
+  type StableMemorySearchParams,
+  stableRetrievalQueryFingerprint,
   type Task,
   type UUID,
   validateDocumentDirectGrantEntityIds,
@@ -385,6 +391,7 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
 }
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  readonly stableRetrievalCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   private vectorIndex: EphemeralHNSW;
@@ -825,6 +832,41 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         storedMemoryTableName(memory) === "document_fragments"
     );
     return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+  }
+
+  async queryDocumentFragmentsPage(
+    params: StableDocumentFragmentQueryParams
+  ): Promise<StableDocumentFragmentPage> {
+    return this.withDocumentMutationLock(async () => {
+      const { cursor, ...query } = params;
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          storedMemoryTableName(memory) === "documents" ||
+          storedMemoryTableName(memory) === "document_fragments"
+      );
+      const source = memories.map(toMemory);
+      const ordered: Memory[] = [];
+      for (let offset = 0; ; offset += 1_000) {
+        const page = queryDocumentFragmentsInMemory(
+          source,
+          { ...query, limit: 1_000, offset },
+          this.embeddingDimension
+        );
+        ordered.push(...page);
+        if (page.length < 1_000) break;
+      }
+      return createStableRetrievalPage(ordered, {
+        limit: params.limit,
+        cursor,
+        rankBySimilarity: params.embedding !== undefined,
+        queryFingerprint: stableRetrievalQueryFingerprint({
+          kind: "document-fragments",
+          ...query,
+          limit: undefined,
+        }),
+      });
+    });
   }
 
   private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -1275,7 +1317,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
     return this.withDocumentMutationLock(async () => {
-      const threshold = params.match_threshold ?? 0.5;
+      const threshold = params.match_threshold ?? -1;
       const limit = params.count ?? params.limit;
       const offset = params.offset ?? 0;
 
@@ -1326,6 +1368,62 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       return results.slice(offset).flatMap((result) => {
         const memory = memoriesById.get(result.id);
         return memory ? [{ ...memory, similarity: result.similarity }] : [];
+      });
+    });
+  }
+
+  async searchMemoriesPage(params: StableMemorySearchParams): Promise<StableMemorySearchPage> {
+    return this.withDocumentMutationLock(async () => {
+      const threshold = params.match_threshold ?? -1;
+      const eligibleMemories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
+          (!params.roomId || memory.roomId === params.roomId) &&
+          (!params.worldId || memory.worldId === params.worldId) &&
+          (!params.entityId || memory.entityId === params.entityId) &&
+          (!params.unique || !!memory.unique)
+      );
+      const readableMemories = params.accessContext
+        ? filterMemoryReadByAccessContext(
+            eligibleMemories.map(toMemory),
+            params.accessContext,
+            this.agentId,
+            params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+              ? "room"
+              : "private"
+          )
+        : eligibleMemories.map(toMemory);
+      const memoriesById = new Map(
+        readableMemories.flatMap((memory) => (memory.id ? ([[memory.id, memory]] as const) : []))
+      );
+      const results = await this.vectorIndex.searchExact(
+        params.embedding,
+        memoriesById.size,
+        threshold,
+        new Set(memoriesById.keys())
+      );
+      const ordered = results
+        .flatMap((result) => {
+          const memory = memoriesById.get(result.id);
+          return memory ? [{ ...memory, similarity: result.similarity }] : [];
+        })
+        .sort(
+          (left, right) =>
+            (right.similarity ?? -1) - (left.similarity ?? -1) ||
+            (right.createdAt ?? 0) - (left.createdAt ?? 0) ||
+            compareMemoryIds(String(right.id ?? ""), String(left.id ?? ""))
+        );
+      return createStableRetrievalPage(ordered, {
+        limit: params.limit,
+        cursor: params.cursor,
+        rankBySimilarity: true,
+        queryFingerprint: stableRetrievalQueryFingerprint({
+          kind: "memory-vector",
+          ...params,
+          limit: undefined,
+          cursor: undefined,
+        }),
       });
     });
   }

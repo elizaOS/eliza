@@ -277,6 +277,8 @@ import {
 	ServiceType,
 	type ServiceTypeName,
 	type SetConnectorAccountCredentialRefParams,
+	type StableMemorySearchPage,
+	type StableMemorySearchParams,
 	type State,
 	type StateValue,
 	type StreamChunkCallback,
@@ -11802,6 +11804,23 @@ ${section_end}`;
 			return rerankedMemories;
 		}
 		return memories;
+	}
+	async searchMemoriesPage(
+		params: StableMemorySearchParams,
+	): Promise<StableMemorySearchPage> {
+		if (!this.adapter.searchMemoriesPage) {
+			throw new ElizaError(
+				"Database adapter does not support stable memory paging",
+				{
+					code: "RETRIEVAL_STABLE_PAGING_UNSUPPORTED",
+					context: {
+						adapter: this.adapter.constructor.name,
+						limit: params.limit,
+					},
+				},
+			);
+		}
+		return this.adapter.searchMemoriesPage(params);
 	}
 	async rerankMemories(query: string, memories: Memory[]): Promise<Memory[]> {
 		const docs = memories.map((memory) => ({

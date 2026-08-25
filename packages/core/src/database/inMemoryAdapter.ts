@@ -78,6 +78,10 @@ import type {
 	Relationship,
 	Room,
 	SetConnectorAccountCredentialRefParams,
+	StableDocumentFragmentPage,
+	StableDocumentFragmentQueryParams,
+	StableMemorySearchPage,
+	StableMemorySearchParams,
 	Task,
 	UpdateOAuthFlowStateParams,
 	UpsertConnectorAccountParams,
@@ -104,6 +108,10 @@ import {
 	validateDocumentDirectGrantEntityIds,
 	validateDocumentRevisionReplacement,
 } from "./document-list-query";
+import {
+	createStableRetrievalPage,
+	stableRetrievalQueryFingerprint,
+} from "./stable-retrieval";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -302,6 +310,7 @@ function dataContainsFilter(
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
+	readonly stableRetrievalCapability = 1 as const;
 	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	readonly documentRangeReadCapability = 1 as const;
 	db: Record<string, never> = {};
@@ -992,6 +1001,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		});
 	}
 
+	async queryDocumentFragmentsPage(
+		params: StableDocumentFragmentQueryParams,
+	): Promise<StableDocumentFragmentPage> {
+		const { cursor, ...query } = params;
+		const memories = Array.from(this.memoriesById.values());
+		const ordered: Memory[] = [];
+		for (let offset = 0; ; offset += 1_000) {
+			const page = queryDocumentFragmentsInMemory(memories, {
+				...query,
+				limit: 1_000,
+				offset,
+			});
+			ordered.push(...page);
+			if (page.length < 1_000) break;
+		}
+		return createStableRetrievalPage(ordered, {
+			limit: params.limit,
+			cursor,
+			rankBySimilarity: params.embedding !== undefined,
+			queryFingerprint: stableRetrievalQueryFingerprint({
+				kind: "document-fragments",
+				...query,
+				limit: undefined,
+			}),
+		});
+	}
+
 	async compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
 	): Promise<DocumentMutationResult> {
@@ -1528,6 +1564,52 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		);
 		const offset = params.offset ?? 0;
 		return scored.slice(offset, offset + limit);
+	}
+
+	async searchMemoriesPage(
+		params: StableMemorySearchParams,
+	): Promise<StableMemorySearchPage> {
+		const candidates = (
+			await this.getMemories({
+				tableName: params.tableName,
+				roomId: params.roomId,
+				worldId: params.worldId,
+				unique: params.unique,
+				accessContext: params.accessContext,
+			})
+		).filter(
+			(memory) => !params.entityId || memory.entityId === params.entityId,
+		);
+		const scored: Memory[] = [];
+		for (const memory of candidates) {
+			if (!Array.isArray(memory.embedding) || memory.embedding.length === 0)
+				continue;
+			const similarity = cosineSimilarity(memory.embedding, params.embedding);
+			if (similarity === null) continue;
+			if (
+				params.match_threshold !== undefined &&
+				similarity < params.match_threshold
+			)
+				continue;
+			scored.push({ ...memory, similarity });
+		}
+		scored.sort(
+			(left, right) =>
+				(right.similarity ?? -1) - (left.similarity ?? -1) ||
+				(right.createdAt ?? 0) - (left.createdAt ?? 0) ||
+				compareMemoryIds(String(right.id ?? ""), String(left.id ?? "")),
+		);
+		return createStableRetrievalPage(scored, {
+			limit: params.limit,
+			cursor: params.cursor,
+			rankBySimilarity: true,
+			queryFingerprint: stableRetrievalQueryFingerprint({
+				kind: "memory-vector",
+				...params,
+				limit: undefined,
+				cursor: undefined,
+			}),
+		});
 	}
 
 	// Batch memory methods

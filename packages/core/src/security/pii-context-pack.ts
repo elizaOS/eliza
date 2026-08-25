@@ -39,7 +39,13 @@
  * to this chunk, never the whole secret artifact and never a real alias.
  */
 
+import { validateStableRetrievalPageEnvelope } from "../database/stable-retrieval.js";
 import { ElizaError } from "../errors.js";
+import type {
+	StableMemorySearchPage,
+	StableRetrievalCursor,
+	StableRetrievalSnapshot,
+} from "../types/database.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import type { Memory, UUID } from "../types/index.js";
 import type {
@@ -237,7 +243,11 @@ async function readStableCompletePrefix<T>(
 				`PII context ${source} source changed during traversal`,
 				{
 					code: "PII_CONTEXT_SOURCE_UNSTABLE",
-					context: { source, requested: limit },
+					context: {
+						source,
+						requested: limit,
+						action: "retry-from-first-page",
+					},
 				},
 			);
 		}
@@ -270,7 +280,11 @@ async function readStableCompletePrefix<T>(
 					`PII context ${source} source changed during verification`,
 					{
 						code: "PII_CONTEXT_SOURCE_UNSTABLE",
-						context: { source, requested: limit },
+						context: {
+							source,
+							requested: limit,
+							action: "retry-from-first-page",
+						},
 					},
 				);
 			}
@@ -289,6 +303,75 @@ async function readStableCompletePrefix<T>(
 			);
 		}
 		limit *= 2;
+	}
+}
+
+async function readStableCompleteMemoryPages(
+	fetchPage: (
+		cursor?: StableRetrievalCursor,
+	) => Promise<StableMemorySearchPage>,
+): Promise<Memory[]> {
+	const memories: Memory[] = [];
+	const seenIds = new Set<string>();
+	let cursor: StableRetrievalCursor | undefined;
+	let snapshot: StableRetrievalSnapshot | undefined;
+	for (;;) {
+		const page = await fetchPage(cursor);
+		validateStableRetrievalPageEnvelope(page, {
+			limit: COMPLETE_SOURCE_INITIAL_PREFIX,
+			requestCursor: cursor,
+			rankBySimilarity: true,
+		});
+		if (
+			snapshot &&
+			JSON.stringify(snapshot) !== JSON.stringify(page.snapshot)
+		) {
+			throw new ElizaError("PII memory snapshot changed during traversal", {
+				code: "PII_CONTEXT_SOURCE_UNSTABLE",
+				context: {
+					source: "memories",
+					returned: memories.length,
+					action: "restart-from-first-page",
+				},
+			});
+		}
+		snapshot = page.snapshot;
+		for (const memory of page.items) {
+			if (!memory.id || seenIds.has(memory.id)) {
+				throw new ElizaError("PII memory traversal repeated a row", {
+					code: "PII_CONTEXT_SOURCE_UNSTABLE",
+					context: { source: "memories", id: memory.id },
+				});
+			}
+			seenIds.add(memory.id);
+			memories.push(memory);
+		}
+		if (!page.hasMore) {
+			if (memories.length !== page.snapshot.totalCount) {
+				throw new ElizaError("PII memory snapshot omitted rows", {
+					code: "PII_CONTEXT_SOURCE_INCOMPLETE",
+					context: {
+						source: "memories",
+						expected: page.snapshot.totalCount,
+						returned: memories.length,
+					},
+				});
+			}
+			return memories;
+		}
+		if (!page.nextCursor || page.items.length === 0) {
+			throw new ElizaError("PII memory traversal made no progress", {
+				code: "PII_CONTEXT_SOURCE_INCOMPLETE",
+				context: { source: "memories", returned: memories.length },
+			});
+		}
+		if (cursor && JSON.stringify(cursor) === JSON.stringify(page.nextCursor)) {
+			throw new ElizaError("PII memory traversal repeated its cursor", {
+				code: "PII_CONTEXT_SOURCE_UNSTABLE",
+				context: { source: "memories", returned: memories.length },
+			});
+		}
+		cursor = page.nextCursor;
 	}
 }
 
@@ -581,18 +664,32 @@ export function sourcesFromRuntime(
 				ModelType.TEXT_EMBEDDING,
 				params,
 			);
-			const memories = await readStableCompletePrefix(
-				"memories",
-				async ({ limit, offset }) =>
-					runtime.searchMemories({
-						embedding,
-						query,
-						tableName: "messages",
-						count: limit,
-						offset,
-					}),
-			);
-			return memories
+			const canRerankOnce = typeof runtime.rerankMemories === "function";
+			const memories =
+				runtime.adapter.stableRetrievalCapability === 1
+					? await readStableCompleteMemoryPages(async (cursor) =>
+							runtime.searchMemoriesPage({
+								embedding,
+								tableName: "messages",
+								limit: COMPLETE_SOURCE_INITIAL_PREFIX,
+								...(cursor ? { cursor } : {}),
+							}),
+						)
+					: await readStableCompletePrefix(
+							"memories",
+							async ({ limit, offset }) =>
+								runtime.searchMemories({
+									embedding,
+									...(canRerankOnce ? {} : { query }),
+									tableName: "messages",
+									count: limit,
+									offset,
+								}),
+						);
+			const ranked = canRerankOnce
+				? await runtime.rerankMemories(query, [...memories])
+				: memories;
+			return ranked
 				.filter((memory) => typeof memory.content.text === "string")
 				.map((memory) => ({
 					text: memory.content.text as string,

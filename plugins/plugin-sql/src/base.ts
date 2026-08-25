@@ -26,6 +26,7 @@ import {
   type CreateOAuthFlowStateParams,
   canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
+  createStableRetrievalPage,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
@@ -79,6 +80,11 @@ import {
   type Room,
   type RunStatus,
   type SetConnectorAccountCredentialRefParams,
+  type StableDocumentFragmentPage,
+  type StableDocumentFragmentQueryParams,
+  type StableMemorySearchPage,
+  type StableMemorySearchParams,
+  stableRetrievalQueryFingerprint,
   type Task,
   type TaskMetadata,
   type UpsertConnectorAccountParams,
@@ -652,6 +658,7 @@ import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
+  readonly stableRetrievalCapability = 1 as const;
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   readonly documentRangeReadCapability = 1 as const;
   protected readonly maxRetries: number = 3;
@@ -2535,6 +2542,143 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     });
   }
 
+  async queryDocumentFragmentsPage(
+    params: StableDocumentFragmentQueryParams
+  ): Promise<StableDocumentFragmentPage> {
+    const expectedEmbeddingDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension);
+    const queryFingerprint = stableRetrievalQueryFingerprint({
+      source: "document_fragments",
+      agentId: params.agentId,
+      requesterEntityId: params.requesterEntityId,
+      requesterRoomIds: [...params.requesterRoomIds].sort(),
+      requesterRole: params.requesterRole,
+      documentId: params.documentId,
+      roomId: params.roomId,
+      worldId: params.worldId,
+      entityId: params.entityId,
+      embedding: params.embedding,
+      matchThreshold: params.matchThreshold,
+    });
+    if (params.cursor && params.cursor.snapshot.queryFingerprint !== queryFingerprint) {
+      throw new ElizaError("Document fragment cursor belongs to a different query", {
+        code: "RETRIEVAL_SNAPSHOT_CONFLICT",
+        context: { source: "document_fragments", action: "restart" },
+      });
+    }
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const parent = alias(memoryTable, "stable_document_parent");
+      const fragment = alias(memoryTable, "stable_document_fragment");
+      const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
+      const conditions: SQL[] = [
+        eq(parent.type, "documents"),
+        eq(parent.agentId, params.agentId),
+        isNotNull(parent.roomId),
+        isNotNull(parent.entityId),
+        sql`${parent.metadata}->>'type' = 'document'`,
+        eq(fragment.type, "document_fragments"),
+        eq(fragment.agentId, params.agentId),
+        sql`${fragment.metadata}->>'type' = 'fragment'`,
+        validDocumentRevision(fragment.metadata),
+        sql`${documentRevisionExpression(fragment.metadata)}
+          = ${documentRevisionExpression(parent.metadata)}`,
+        sql`(
+          NOT (${parent.metadata} ? 'revisionAttemptId')
+          OR ${fragment.metadata}->>'revisionAttemptId'
+            = ${parent.metadata}->>'revisionAttemptId'
+        )`,
+        documentVisibilityCondition(params, parent.metadata),
+      ];
+      if (!hasGlobalVisibility) {
+        conditions.push(
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(parent.roomId, params.requesterRoomIds)
+              : sql`false`,
+            parent.metadata
+          )
+        );
+      }
+      if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
+      if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
+      if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
+      if (params.documentId) conditions.push(eq(parent.id, params.documentId));
+
+      const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
+      if (!params.embedding) {
+        const rows = await tx
+          .select({
+            memory: fragment,
+            sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+          })
+          .from(fragment)
+          .innerJoin(parent, parentJoin)
+          .where(and(...conditions))
+          .orderBy(desc(fragment.createdAt), desc(fragment.id));
+        const orderedSource = rows.map((row) => {
+          const memory = memoryFromRow(row.memory);
+          return {
+            ...memory,
+            metadata: {
+              ...(memory.metadata ?? {}),
+              sourceFingerprint: `md5:${row.sourceFingerprint}`,
+            } as Memory["metadata"],
+          };
+        });
+        return createStableRetrievalPage(orderedSource, {
+          limit: params.limit,
+          cursor: params.cursor,
+          rankBySimilarity: false,
+          queryFingerprint,
+        });
+      }
+
+      const activeColumn = embeddingTable[this.embeddingDimension];
+      const distance = cosineDistance(activeColumn, params.embedding);
+      const similarity = sql<number>`1 - (${distance})`;
+      conditions.push(isNotNull(activeColumn));
+      if (params.matchThreshold !== undefined) {
+        conditions.push(gte(similarity, params.matchThreshold));
+      }
+      const rows = await tx
+        .select({
+          memory: fragment,
+          embedding: activeColumn,
+          similarity,
+          sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+        })
+        .from(embeddingTable)
+        .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
+        .innerJoin(parent, parentJoin)
+        .where(and(...conditions))
+        .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id));
+      const orderedSource = rows.map((row) => {
+        const memory = memoryFromRow(
+          row.memory,
+          row.embedding ? Array.from(row.embedding) : undefined,
+          row.similarity
+        );
+        return {
+          ...memory,
+          metadata: {
+            ...(memory.metadata ?? {}),
+            sourceFingerprint: `md5:${row.sourceFingerprint}`,
+          } as Memory["metadata"],
+        };
+      });
+      return createStableRetrievalPage(orderedSource, {
+        limit: params.limit,
+        cursor: params.cursor,
+        rankBySimilarity: true,
+        queryFingerprint,
+      });
+    });
+  }
+
   async compareAndSwapDocument(
     params: DocumentCompareAndSwapParams
   ): Promise<DocumentMutationResult> {
@@ -3873,6 +4017,79 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       unique: params.unique,
       tableName: params.tableName,
       accessContext: params.accessContext,
+    });
+  }
+
+  async searchMemoriesPage(params: StableMemorySearchParams): Promise<StableMemorySearchPage> {
+    const queryFingerprint = stableRetrievalQueryFingerprint({
+      source: "vector_memories",
+      tableName: params.tableName,
+      embedding: params.embedding,
+      matchThreshold: params.match_threshold,
+      unique: params.unique,
+      query: params.query,
+      roomId: params.roomId,
+      worldId: params.worldId,
+      entityId: params.entityId,
+      accessContext: params.accessContext,
+      agentId: this.agentId,
+    });
+    if (params.cursor && params.cursor.snapshot.queryFingerprint !== queryFingerprint) {
+      throw new ElizaError("Memory cursor belongs to a different query", {
+        code: "RETRIEVAL_SNAPSHOT_CONFLICT",
+        context: { source: "memories", action: "restart" },
+      });
+    }
+    return this.withEntityContext(params.entityId ?? null, async (tx) => {
+      const cleanVector = params.embedding.map((value) =>
+        Number.isFinite(value) ? Number(value.toFixed(6)) : 0
+      );
+      const activeColumn = embeddingTable[this.embeddingDimension];
+      const distance = cosineDistance(activeColumn, cleanVector);
+      const similarity = sql<number>`1 - (${distance})`;
+      const conditions = [
+        isNotNull(activeColumn),
+        eq(memoryTable.type, params.tableName),
+        eq(memoryTable.agentId, this.agentId),
+        ...memoryAccessContextConditions(params.accessContext, this.agentId, params.tableName),
+      ];
+      if (params.unique) conditions.push(eq(memoryTable.unique, true));
+      if (params.roomId) conditions.push(eq(memoryTable.roomId, params.roomId));
+      if (params.worldId) conditions.push(eq(memoryTable.worldId, params.worldId));
+      if (params.entityId) conditions.push(eq(memoryTable.entityId, params.entityId));
+
+      const rows = await tx
+        .select({ memory: memoryTable, similarity, embedding: activeColumn })
+        .from(embeddingTable)
+        .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .where(and(...conditions))
+        .orderBy(asc(distance), desc(memoryTable.createdAt), desc(memoryTable.id));
+      const matchThreshold = params.match_threshold;
+      const orderedSource = (
+        matchThreshold !== undefined ? rows.filter((row) => row.similarity >= matchThreshold) : rows
+      ).map((row) => ({
+        id: row.memory.id as UUID,
+        type: row.memory.type,
+        createdAt: row.memory.createdAt.getTime(),
+        content:
+          typeof row.memory.content === "string"
+            ? JSON.parse(row.memory.content)
+            : row.memory.content,
+        entityId: row.memory.entityId as UUID,
+        agentId: row.memory.agentId as UUID,
+        roomId: row.memory.roomId as UUID,
+        worldId: row.memory.worldId as UUID | undefined,
+        unique: row.memory.unique,
+        metadata: row.memory.metadata as MemoryMetadata,
+        embedding: row.embedding ?? undefined,
+        similarity: row.similarity,
+      }));
+      return createStableRetrievalPage(orderedSource, {
+        limit: params.limit,
+        cursor: params.cursor,
+        rankBySimilarity: true,
+        queryFingerprint,
+      });
     });
   }
 

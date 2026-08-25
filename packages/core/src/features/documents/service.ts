@@ -27,6 +27,7 @@ import {
 	readDocumentMutationSnapshot,
 	validateDocumentDirectGrantEntityIds,
 } from "../../database/document-list-query";
+import { validateStableRetrievalPageEnvelope } from "../../database/stable-retrieval";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
@@ -48,6 +49,8 @@ import {
 	type Metadata,
 	ModelType,
 	Service,
+	type StableRetrievalCursor,
+	type StableRetrievalSnapshot,
 	type UUID,
 } from "../../types";
 import { splitChunks, validateUuid } from "../../utils";
@@ -2011,13 +2014,117 @@ export class DocumentService extends Service {
 		return filterByAccessContext(results, accessContext, this.runtime.agentId);
 	}
 
-	private async scanDocumentFragments(
+	private async scanStableDocumentFragments(
+		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
+	): Promise<Memory[]> {
+		const stablePage = this.runtime.adapter.queryDocumentFragmentsPage;
+		if (typeof stablePage !== "function") {
+			throw new ElizaError(
+				"Database adapter advertised stable paging without implementing it",
+				{
+					code: "RETRIEVAL_STABLE_PAGING_UNSUPPORTED",
+					context: {
+						adapter: this.runtime.adapter.constructor.name,
+						action: "upgrade-adapter",
+					},
+				},
+			);
+		}
+		const fragments: Memory[] = [];
+		const seenIds = new Set<string>();
+		let cursor: StableRetrievalCursor | undefined;
+		let snapshot: StableRetrievalSnapshot | undefined;
+
+		for (;;) {
+			const page = await stablePage.call(this.runtime.adapter, {
+				...params,
+				limit: DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE,
+				...(cursor ? { cursor } : {}),
+			});
+			validateStableRetrievalPageEnvelope(page, {
+				limit: DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE,
+				requestCursor: cursor,
+				rankBySimilarity: params.embedding !== undefined,
+			});
+			if (page.items.length > DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE) {
+				throw new ElizaError(
+					"Document fragment source returned an invalid page",
+					{
+						code: "DOCUMENT_SEARCH_INVALID_PAGE",
+						context: {
+							requested: DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE,
+							received: page.items.length,
+						},
+						severity: "fatal",
+					},
+				);
+			}
+			if (
+				snapshot &&
+				JSON.stringify(snapshot) !== JSON.stringify(page.snapshot)
+			) {
+				throw new ElizaError(
+					"Document fragment snapshot changed during traversal",
+					{
+						code: "DOCUMENT_SEARCH_PAGINATION_CONFLICT",
+						context: {
+							returned: fragments.length,
+							action: "restart-from-first-page",
+						},
+					},
+				);
+			}
+			snapshot = page.snapshot;
+			for (const item of page.items) {
+				if (!item.id || seenIds.has(item.id)) {
+					throw new ElizaError("Document fragment traversal repeated a row", {
+						code: "DOCUMENT_SEARCH_PAGINATION_CONFLICT",
+						context: { id: item.id, returned: fragments.length },
+					});
+				}
+				seenIds.add(item.id);
+				fragments.push(item);
+			}
+			if (!page.hasMore) {
+				if (fragments.length !== page.snapshot.totalCount) {
+					throw new ElizaError("Document fragment snapshot omitted rows", {
+						code: "DOCUMENT_SEARCH_PAGINATION_CONFLICT",
+						context: {
+							expected: page.snapshot.totalCount,
+							returned: fragments.length,
+						},
+					});
+				}
+				return fragments;
+			}
+			if (!page.nextCursor || page.items.length === 0) {
+				throw new ElizaError("Document fragment traversal did not advance", {
+					code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
+					context: { returned: fragments.length },
+				});
+			}
+			if (
+				cursor &&
+				JSON.stringify(cursor) === JSON.stringify(page.nextCursor)
+			) {
+				throw new ElizaError(
+					"Document fragment traversal repeated its cursor",
+					{
+						code: "DOCUMENT_SEARCH_PAGINATION_STALLED",
+						context: { returned: fragments.length },
+					},
+				);
+			}
+			cursor = page.nextCursor;
+		}
+	}
+
+	private async scanLegacyDocumentFragments(
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const fragments: Memory[] = [];
 		let offset = 0;
 		let previousPage: readonly Memory[] = [];
-
 		for (;;) {
 			const page = await this.runtime.adapter.queryDocumentFragments({
 				...params,
@@ -2048,7 +2155,6 @@ export class DocumentService extends Service {
 					context: { offset },
 				});
 			}
-
 			fragments.push(...page);
 			if (page.length < DOCUMENT_FRAGMENT_TRAVERSAL_PAGE_SIZE) {
 				const continuation = await this.runtime.adapter.queryDocumentFragments({
@@ -2089,8 +2195,11 @@ export class DocumentService extends Service {
 	private async queryCompleteDocumentFragments(
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
-		const first = await this.scanDocumentFragments(params);
-		const verified = await this.scanDocumentFragments(params);
+		if (this.runtime.adapter.stableRetrievalCapability === 1) {
+			return this.scanStableDocumentFragments(params);
+		}
+		const first = await this.scanLegacyDocumentFragments(params);
+		const verified = await this.scanLegacyDocumentFragments(params);
 		if (JSON.stringify(first) !== JSON.stringify(verified)) {
 			throw new ElizaError(
 				"Document fragment source changed during traversal",
@@ -2214,9 +2323,9 @@ export class DocumentService extends Service {
 			return this._keywordSearch(queryText, filterScope, requester);
 		}
 
-		// Traverse both ranked vector matches and the full keyword corpus. Their
-		// union keeps semantic-only rows in the blend while allowing BM25-only rows
-		// to compete; each traversal verifies a stable complete source snapshot.
+		// Traverse ranked vector matches plus the full keyword corpus so BM25 corpus
+		// statistics remain complete. The corpus union is not result eligibility:
+		// only a real vector hit or a positive BM25 match survives below.
 		const vectorCandidates = await this.queryCompleteDocumentFragments({
 			agentId: this.runtime.agentId,
 			requesterEntityId: requester.entityId,
@@ -2240,34 +2349,52 @@ export class DocumentService extends Service {
 		for (const candidate of vectorCandidates) {
 			if (candidate.id) candidatesById.set(candidate.id, candidate);
 		}
-		const valid = [...candidatesById.values()].filter(
+		const corpus = [...candidatesById.values()].filter(
 			(f) => f.id !== undefined && f.content.text,
+		);
+		if (corpus.length === 0) return [];
+
+		const docs = corpus.map((fragment) => ({
+			id: fragment.id as string,
+			text: fragment.content.text ?? "",
+		}));
+		const rawBm25 = bm25Scores(queryText, docs);
+		const relevantKeywordIds = new Set(
+			rawBm25.filter((score) => score.score > 0).map((score) => score.id),
+		);
+		const vectorIds = new Set(
+			vectorCandidates.flatMap((candidate) =>
+				candidate.id ? [candidate.id as string] : [],
+			),
+		);
+		const valid = corpus.filter(
+			(fragment) =>
+				vectorIds.has(fragment.id as string) ||
+				relevantKeywordIds.has(fragment.id as string),
 		);
 		if (valid.length === 0) return [];
 
 		// Normalise vector scores to [0, 1]
-		const rawSimilarities = valid.map((f) =>
+		const rawSimilarities = vectorCandidates.map((f) =>
 			typeof f.similarity === "number" ? f.similarity : 0,
 		);
-		const maxSim = Math.max(...rawSimilarities);
-		const minSim = Math.min(...rawSimilarities);
+		const maxSim =
+			rawSimilarities.length > 0 ? Math.max(...rawSimilarities) : 0;
+		const minSim =
+			rawSimilarities.length > 0 ? Math.min(...rawSimilarities) : 0;
 		const simRange = maxSim - minSim;
 
-		const normVectorScore = (raw: number): number =>
-			simRange === 0 ? 1 : (raw - minSim) / simRange;
+		const normVectorScore = (id: string, raw: number): number =>
+			!vectorIds.has(id) ? 0 : simRange === 0 ? 1 : (raw - minSim) / simRange;
 
 		// BM25 over candidate set
-		const docs = valid.map((f) => ({
-			id: f.id as string,
-			text: f.content.text ?? "",
-		}));
-		const rawBm25 = bm25Scores(queryText, docs);
 		const normBm25 = normalizeBm25Scores(rawBm25);
 		const bm25Map = new Map(normBm25.map((s) => [s.id, s.score]));
 
 		return valid
 			.map((fragment) => {
 				const vectorNorm = normVectorScore(
+					fragment.id as string,
 					typeof fragment.similarity === "number" ? fragment.similarity : 0,
 				);
 				const bm25Norm = bm25Map.get(fragment.id as string) ?? 0;

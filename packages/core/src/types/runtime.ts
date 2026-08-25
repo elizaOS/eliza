@@ -30,7 +30,13 @@ import type {
 	Provider,
 	StreamChunkCallback,
 } from "./components";
-import type { IDatabaseAdapter, LogBody, PatchOp } from "./database";
+import type {
+	IDatabaseAdapter,
+	LogBody,
+	PatchOp,
+	StableMemorySearchPage,
+	StableMemorySearchParams,
+} from "./database";
 import type {
 	Component,
 	Entity,
@@ -623,6 +629,8 @@ type RuntimeDatabaseAdapterSurface = Omit<
 	| "queryDocuments"
 	| "getDocument"
 	| "queryDocumentFragments"
+	| "queryDocumentFragmentsPage"
+	| "searchMemoriesPage"
 	| "compareAndSwapDocument"
 	| "updateDocumentDirectGrants"
 	| "replaceDocumentRevision"
@@ -633,6 +641,10 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;
+	searchMemoriesPage(
+		params: StableMemorySearchParams,
+	): Promise<StableMemorySearchPage>;
+	rerankMemories(query: string, memories: Memory[]): Promise<Memory[]>;
 	agentId: UUID;
 	/** Opaque identity of this concrete runtime instance, never character-derived. */
 	runtimeInstanceId: UUID;

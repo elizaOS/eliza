@@ -10,6 +10,7 @@
  * rather than silently succeeding.
  */
 
+import { ElizaError } from "./errors";
 import type {
 	AccessContext,
 	Agent,
@@ -57,10 +58,15 @@ import type {
 	Relationship,
 	Room,
 	SetConnectorAccountCredentialRefParams,
+	StableDocumentFragmentPage,
+	StableDocumentFragmentQueryParams,
+	StableMemorySearchPage,
+	StableMemorySearchParams,
 	Task,
 	UpdateOAuthFlowStateParams,
 	UpsertConnectorAccountParams,
 	UUID,
+	VectorMemorySearchParams,
 	World,
 } from "./types";
 
@@ -158,6 +164,19 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	abstract queryDocumentFragments(
 		params: DocumentFragmentQueryParams,
 	): Promise<Memory[]>;
+	queryDocumentFragmentsPage(
+		params: StableDocumentFragmentQueryParams,
+	): Promise<StableDocumentFragmentPage> {
+		return Promise.reject(
+			new ElizaError(
+				"Database adapter does not support stable fragment paging",
+				{
+					code: "RETRIEVAL_STABLE_PAGING_UNSUPPORTED",
+					context: { adapter: this.constructor.name, limit: params.limit },
+				},
+			),
+		);
+	}
 
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
@@ -452,20 +471,20 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	 * @param params An object containing parameters for the memory search.
 	 * @returns A Promise that resolves to an array of Memory objects.
 	 */
-	abstract searchMemories(params: {
-		tableName: string;
-		embedding: number[];
-		match_threshold?: number;
-		count?: number;
-		limit?: number;
-		offset?: number;
-		unique?: boolean;
-		query?: string;
-		roomId?: UUID;
-		worldId?: UUID;
-		entityId?: UUID;
-		accessContext?: AccessContext;
-	}): Promise<Memory[]>;
+	abstract searchMemories(params: VectorMemorySearchParams): Promise<Memory[]>;
+	searchMemoriesPage(
+		params: StableMemorySearchParams,
+	): Promise<StableMemorySearchPage> {
+		return Promise.reject(
+			new ElizaError("Database adapter does not support stable memory paging", {
+				code: "RETRIEVAL_STABLE_PAGING_UNSUPPORTED",
+				context: {
+					adapter: this.constructor.name,
+					tableName: params.tableName,
+				},
+			}),
+		);
+	}
 
 	// ── Memory CRUD (batch-only) ─────────────────────────────────────────
 	abstract createMemories(
