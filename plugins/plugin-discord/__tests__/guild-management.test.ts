@@ -130,9 +130,11 @@ function makeChannel(
 			async edit(target: string, options: Record<string, boolean | null>) {
 				const allow: string[] = [];
 				const deny: string[] = [];
+				const reset: string[] = [];
 				for (const [name, value] of Object.entries(options)) {
 					if (value === true) allow.push(name);
 					if (value === false) deny.push(name);
+					if (value === null) reset.push(name);
 				}
 				const existing = overwrites.get(target);
 				const mergedAllow = new Set([
@@ -145,6 +147,10 @@ function makeChannel(
 				]);
 				for (const name of allow) mergedDeny.delete(name);
 				for (const name of deny) mergedAllow.delete(name);
+				for (const name of reset) {
+					mergedAllow.delete(name);
+					mergedDeny.delete(name);
+				}
 				overwrites.set(target, {
 					id: target,
 					allow: permissionSet([...mergedAllow]),
@@ -774,6 +780,19 @@ describe("guild management verbs", () => {
 		expect(guild.channelsMap.size).toBe(0);
 	});
 
+	it("rejects direct channel topics beyond Discord's limit before writing", async () => {
+		const guild = makeGuild();
+		await expectError(
+			run(guild, {
+				operation: "create_channel",
+				name: "general",
+				topic: "x".repeat(1025),
+			}),
+			"TOPIC_TOO_LONG",
+		);
+		expect(guild.log).toHaveLength(0);
+	});
+
 	it("assign_role is idempotent (already-assigned reports unchanged)", async () => {
 		const guild = makeGuild();
 		const role = makeRole(guild, { name: "Dev", position: 2 });
@@ -905,6 +924,53 @@ describe("apply_template reconcile", () => {
 		expect(lounge?.name).toBe("lounge");
 	});
 
+	it("reconcile removes stale extra permissions from managed overwrites", async () => {
+		const guild = makeGuild();
+		const stateStore = memoryStateStore();
+		await run(
+			guild,
+			{ operation: "apply_template", template: "project-team" },
+			{ stateStore },
+		);
+		const dev = [...guild.channelsMap.values()].find(
+			(channel) => channel.name === "dev",
+		) as
+			| (ManageableChannel & {
+					__overwrites: Map<
+						string,
+						{
+							id: string;
+							allow: ReturnType<typeof permissionSet>;
+							deny: ReturnType<typeof permissionSet>;
+						}
+					>;
+			  })
+			| undefined;
+		expect(dev).toBeDefined();
+		const everyone = dev?.__overwrites.get(guild.roles.everyone.id);
+		expect(everyone).toBeDefined();
+		if (dev && everyone) {
+			dev.__overwrites.set(everyone.id, {
+				...everyone,
+				allow: permissionSet(["ManageChannels"]),
+			});
+		}
+
+		const second = await run(
+			guild,
+			{ operation: "apply_template", template: "project-team" },
+			{ stateStore },
+		);
+		expect(
+			second.entries.find((entry) => entry.key === "dev/@everyone")?.action,
+		).toBe("updated");
+		expect(
+			dev?.__overwrites
+				.get(guild.roles.everyone.id)
+				?.allow.has("ManageChannels"),
+		).toBe(false);
+	});
+
 	it("NEVER deletes unmanaged channels or roles", async () => {
 		const guild = makeGuild();
 		const manualChannel = makeChannel(guild, {
@@ -970,6 +1036,37 @@ describe("apply_template reconcile", () => {
 			}),
 			"TEMPLATE_INVALID",
 		);
+	});
+
+	it("rejects malformed inline template collections without entering reconcile", async () => {
+		const guild = makeGuild();
+		await expectError(
+			run(guild, {
+				operation: "apply_template",
+				templateSpec: {
+					id: "malformed",
+					roles: {} as never,
+				},
+			}),
+			"TEMPLATE_INVALID",
+		);
+		expect(guild.log).toHaveLength(0);
+	});
+
+	it("rejects template variables that render names beyond Discord's limit", async () => {
+		const guild = makeGuild();
+		await expectError(
+			run(guild, {
+				operation: "apply_template",
+				templateSpec: {
+					id: "render-bound",
+					roles: [{ key: "agent", name: "{{agent}}" }],
+				},
+				variables: { agent: "x".repeat(101) },
+			}),
+			"TEMPLATE_RENDER_INVALID",
+		);
+		expect(guild.log).toHaveLength(0);
 	});
 
 	it("rejects inline template specs that request Administrator", async () => {

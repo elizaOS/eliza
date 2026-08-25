@@ -130,6 +130,7 @@ export function normalizeGuildManagementOperation(
 
 export interface ManageablePermissionSet {
 	has(permission: string): boolean;
+	toArray?(): string[];
 }
 
 export interface ManageableRole {
@@ -560,6 +561,18 @@ function requireName(request: GuildManagementRequest): string {
 	return name;
 }
 
+function normalizeTopic(topic: string | undefined): string | undefined {
+	if (topic === undefined) return undefined;
+	const normalized = topic.trim();
+	if (normalized.length > GUILD_TEMPLATE_LIMITS.maxTopicLength) {
+		throw new GuildManagementError(
+			"TOPIC_TOO_LONG",
+			`Channel topics are limited to ${GUILD_TEMPLATE_LIMITS.maxTopicLength} characters.`,
+		);
+	}
+	return normalized;
+}
+
 function parseColor(raw: string | undefined): number | undefined {
 	if (!raw) return undefined;
 	const match = /^#?([0-9a-fA-F]{6})$/.exec(raw.trim());
@@ -727,6 +740,7 @@ async function createChannelOp(
 	const type = isCategory
 		? ChannelType.GuildCategory
 		: resolveChannelType(request.channelType);
+	const topic = normalizeTopic(request.topic);
 	let parentId: string | undefined;
 	if (!isCategory && request.parentId) {
 		const parent = await fetchChannel(guild, request.parentId);
@@ -751,7 +765,7 @@ async function createChannelOp(
 		name,
 		type,
 		...(parentId ? { parent: parentId } : {}),
-		...(request.topic ? { topic: request.topic.trim() } : {}),
+		...(topic ? { topic } : {}),
 		reason: auditReason(context, request),
 	});
 	return receipt(
@@ -777,7 +791,8 @@ async function editChannelOp(
 	const channel = await fetchChannel(guild, request.channelId);
 	const changes: Record<string, unknown> = {};
 	if (request.name?.trim()) changes.name = requireName(request);
-	if (request.topic !== undefined) changes.topic = request.topic;
+	if (request.topic !== undefined)
+		changes.topic = normalizeTopic(request.topic);
 	if (request.parentId) {
 		const parent = await fetchChannel(guild, request.parentId);
 		if (parent.type !== ChannelType.GuildCategory) {
@@ -1433,6 +1448,42 @@ function renderVars(
 	};
 }
 
+function renderTemplateName(
+	value: string,
+	variables: Record<string, string>,
+	label: string,
+): string {
+	const rendered = renderTemplateString(value, variables).trim();
+	if (!rendered) {
+		throw new GuildManagementError(
+			"TEMPLATE_RENDER_INVALID",
+			`${label} rendered to an empty name.`,
+		);
+	}
+	if (rendered.length > GUILD_TEMPLATE_LIMITS.maxNameLength) {
+		throw new GuildManagementError(
+			"TEMPLATE_RENDER_INVALID",
+			`${label} rendered beyond the ${GUILD_TEMPLATE_LIMITS.maxNameLength}-character name limit.`,
+		);
+	}
+	return rendered;
+}
+
+function renderTemplateTopic(
+	value: string,
+	variables: Record<string, string>,
+	label: string,
+): string {
+	const rendered = renderTemplateString(value, variables).trim();
+	if (rendered.length > GUILD_TEMPLATE_LIMITS.maxTopicLength) {
+		throw new GuildManagementError(
+			"TEMPLATE_RENDER_INVALID",
+			`${label} rendered beyond the ${GUILD_TEMPLATE_LIMITS.maxTopicLength}-character topic limit.`,
+		);
+	}
+	return rendered;
+}
+
 async function applyTemplateOp(
 	context: GuildManagementContext,
 	request: GuildManagementRequest,
@@ -1557,7 +1608,11 @@ async function reconcileRoles(
 	const { guild } = context;
 	for (const spec of template.roles ?? []) {
 		const stateKey = `role:${spec.key}`;
-		const renderedName = renderTemplateString(spec.name, variables);
+		const renderedName = renderTemplateName(
+			spec.name,
+			variables,
+			`template role "${spec.key}"`,
+		);
 		const permissions = normalizePermissionList(
 			spec.permissions,
 			`template role "${spec.key}"`,
@@ -1691,7 +1746,11 @@ async function reconcileCategories(
 	const { guild } = context;
 	for (const spec of template.categories ?? []) {
 		const stateKey = `category:${spec.key}`;
-		const renderedName = renderTemplateString(spec.name, variables);
+		const renderedName = renderTemplateName(
+			spec.name,
+			variables,
+			`template category "${spec.key}"`,
+		);
 		const existing = await resolveTrackedChannel(
 			guild,
 			maps.state[stateKey],
@@ -1768,10 +1827,18 @@ async function reconcileChannels(
 	const { guild } = context;
 	for (const spec of template.channels ?? []) {
 		const stateKey = `channel:${spec.key}`;
-		const renderedName = renderTemplateString(spec.name, variables);
+		const renderedName = renderTemplateName(
+			spec.name,
+			variables,
+			`template channel "${spec.key}"`,
+		);
 		const renderedTopic =
 			spec.topic !== undefined
-				? renderTemplateString(spec.topic, variables)
+				? renderTemplateTopic(
+						spec.topic,
+						variables,
+						`template channel "${spec.key}"`,
+					)
 				: undefined;
 		const type = CHANNEL_TYPE_MAP[spec.type ?? "text"];
 		const parentId = spec.parent
@@ -1878,13 +1945,26 @@ function overwriteSatisfied(
 	deny: string[],
 ): boolean {
 	if (!existing) return allow.length === 0 && deny.length === 0;
-	for (const name of allow) {
-		if (!existing.allow.has(name)) return false;
-	}
-	for (const name of deny) {
-		if (!existing.deny.has(name)) return false;
-	}
-	return true;
+	const existingAllow = existing.allow.toArray?.().sort();
+	const existingDeny = existing.deny.toArray?.().sort();
+	if (!existingAllow || !existingDeny) return false;
+	return (
+		existingAllow.join("|") === allow.join("|") &&
+		existingDeny.join("|") === deny.join("|")
+	);
+}
+
+function exactOverwriteOptions(
+	existing: ManageableOverwrite | undefined,
+	allow: string[],
+	deny: string[],
+): Record<string, boolean | null> {
+	const options: Record<string, boolean | null> = {};
+	for (const name of existing?.allow.toArray?.() ?? []) options[name] = null;
+	for (const name of existing?.deny.toArray?.() ?? []) options[name] = null;
+	for (const name of allow) options[name] = true;
+	for (const name of deny) options[name] = false;
+	return options;
 }
 
 async function reconcileOverwrites(
@@ -1970,9 +2050,7 @@ async function reconcileOverwrites(
 				});
 				continue;
 			}
-			const optionsMap: Record<string, boolean | null> = {};
-			for (const name of allow) optionsMap[name] = true;
-			for (const name of deny) optionsMap[name] = false;
+			const optionsMap = exactOverwriteOptions(existing, allow, deny);
 			await channel.permissionOverwrites.edit(subjectId, optionsMap, {
 				reason: options.reason,
 			});

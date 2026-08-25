@@ -477,15 +477,29 @@ export function renderTemplateString(
 export function validateGuildTemplate(template: GuildTemplate): string[] {
 	const errors: string[] = [];
 	const limits = GUILD_TEMPLATE_LIMITS;
-	if (!template || typeof template !== "object") {
+	if (!template || typeof template !== "object" || Array.isArray(template)) {
 		return ["template must be an object"];
 	}
 	if (typeof template.id !== "string" || !template.id.trim()) {
 		errors.push("template.id is required");
 	}
-	const roles = template.roles ?? [];
-	const categories = template.categories ?? [];
-	const channels = template.channels ?? [];
+	if (template.roles !== undefined && !Array.isArray(template.roles)) {
+		errors.push("template.roles must be an array");
+	}
+	if (
+		template.categories !== undefined &&
+		!Array.isArray(template.categories)
+	) {
+		errors.push("template.categories must be an array");
+	}
+	if (template.channels !== undefined && !Array.isArray(template.channels)) {
+		errors.push("template.channels must be an array");
+	}
+	const roles = Array.isArray(template.roles) ? template.roles : [];
+	const categories = Array.isArray(template.categories)
+		? template.categories
+		: [];
+	const channels = Array.isArray(template.channels) ? template.channels : [];
 	if (roles.length > limits.maxRoles) {
 		errors.push(`template.roles exceeds ${limits.maxRoles} entries`);
 	}
@@ -498,11 +512,16 @@ export function validateGuildTemplate(template: GuildTemplate): string[] {
 	const seenKeys = new Set<string>();
 	const checkKeyedName = (
 		kind: string,
-		entry: { key?: unknown; name?: unknown },
+		entry: unknown,
 		index: number,
-	): void => {
-		const key = typeof entry.key === "string" ? entry.key.trim() : "";
-		const name = typeof entry.name === "string" ? entry.name.trim() : "";
+	): entry is { key: string; name: string } & Record<string, unknown> => {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+			errors.push(`${kind}[${index}] must be an object`);
+			return false;
+		}
+		const record = entry as Record<string, unknown>;
+		const key = typeof record.key === "string" ? record.key.trim() : "";
+		const name = typeof record.name === "string" ? record.name.trim() : "";
 		if (!key) errors.push(`${kind}[${index}].key is required`);
 		if (!name) errors.push(`${kind}[${index}].name is required`);
 		if (name.length > limits.maxNameLength) {
@@ -515,26 +534,53 @@ export function validateGuildTemplate(template: GuildTemplate): string[] {
 			errors.push(`duplicate ${kind} key "${key}"`);
 		}
 		seenKeys.add(qualified);
+		return Boolean(key && name);
 	};
 	roles.forEach((role, index) => {
-		checkKeyedName("roles", role, index);
-		if (
-			role.permissions &&
+		if (!checkKeyedName("roles", role, index)) return;
+		if (role.permissions !== undefined && !Array.isArray(role.permissions)) {
+			errors.push(`roles[${index}].permissions must be an array`);
+		} else if (
+			Array.isArray(role.permissions) &&
 			role.permissions.length > limits.maxPermissionEntries
 		) {
 			errors.push(
 				`roles[${index}].permissions exceeds ${limits.maxPermissionEntries} entries`,
 			);
 		}
+		if (
+			Array.isArray(role.permissions) &&
+			role.permissions.some((permission) => typeof permission !== "string")
+		) {
+			errors.push(`roles[${index}].permissions must contain only strings`);
+		}
 	});
 	categories.forEach((category, index) => {
 		checkKeyedName("categories", category, index);
 	});
-	const categoryKeys = new Set(categories.map((category) => category.key));
-	const roleKeys = new Set(roles.map((role) => role.key));
+	const categoryKeys = new Set(
+		categories.flatMap((category) =>
+			category &&
+			typeof category === "object" &&
+			typeof category.key === "string"
+				? [category.key]
+				: [],
+		),
+	);
+	const roleKeys = new Set(
+		roles.flatMap((role) =>
+			role && typeof role === "object" && typeof role.key === "string"
+				? [role.key]
+				: [],
+		),
+	);
 	channels.forEach((channel, index) => {
-		checkKeyedName("channels", channel, index);
-		if (channel.parent && !categoryKeys.has(channel.parent)) {
+		if (!checkKeyedName("channels", channel, index)) return;
+		if (
+			typeof channel.parent === "string" &&
+			channel.parent &&
+			!categoryKeys.has(channel.parent)
+		) {
 			errors.push(
 				`channels[${index}].parent "${channel.parent}" is not a category key in this template`,
 			);
@@ -547,17 +593,65 @@ export function validateGuildTemplate(template: GuildTemplate): string[] {
 				`channels[${index}].topic exceeds ${limits.maxTopicLength} characters`,
 			);
 		}
-		const overwrites = channel.overwrites ?? [];
+		if (
+			channel.type !== undefined &&
+			!["text", "voice", "announcement", "forum", "stage"].includes(
+				String(channel.type),
+			)
+		) {
+			errors.push(`channels[${index}].type is not supported`);
+		}
+		if (
+			channel.overwrites !== undefined &&
+			!Array.isArray(channel.overwrites)
+		) {
+			errors.push(`channels[${index}].overwrites must be an array`);
+		}
+		const overwrites = Array.isArray(channel.overwrites)
+			? channel.overwrites
+			: [];
 		if (overwrites.length > limits.maxOverwritesPerChannel) {
 			errors.push(
 				`channels[${index}].overwrites exceeds ${limits.maxOverwritesPerChannel} entries`,
 			);
 		}
 		overwrites.forEach((overwrite, overwriteIndex) => {
+			if (
+				!overwrite ||
+				typeof overwrite !== "object" ||
+				Array.isArray(overwrite)
+			) {
+				errors.push(
+					`channels[${index}].overwrites[${overwriteIndex}] must be an object`,
+				);
+				return;
+			}
+			if (typeof overwrite.role !== "string" || !overwrite.role.trim()) {
+				errors.push(
+					`channels[${index}].overwrites[${overwriteIndex}].role is required`,
+				);
+				return;
+			}
 			if (overwrite.role !== "@everyone" && !roleKeys.has(overwrite.role)) {
 				errors.push(
 					`channels[${index}].overwrites[${overwriteIndex}].role "${overwrite.role}" is not a role key in this template`,
 				);
+			}
+			for (const field of ["allow", "deny"] as const) {
+				const permissions = overwrite[field];
+				if (permissions !== undefined && !Array.isArray(permissions)) {
+					errors.push(
+						`channels[${index}].overwrites[${overwriteIndex}].${field} must be an array`,
+					);
+				} else if (
+					Array.isArray(permissions) &&
+					(permissions.length > limits.maxPermissionEntries ||
+						permissions.some((permission) => typeof permission !== "string"))
+				) {
+					errors.push(
+						`channels[${index}].overwrites[${overwriteIndex}].${field} must contain at most ${limits.maxPermissionEntries} strings`,
+					);
+				}
 			}
 		});
 	});
