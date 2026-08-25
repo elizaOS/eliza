@@ -195,3 +195,140 @@ describe("scanManifest symlink-escape boundary", () => {
 		}
 	});
 });
+
+describe("scanManifest rule verification", () => {
+	const BASE_DIR = "/skills/test-skill";
+
+	it("flags all supported binary executable extensions as critical", () => {
+		const binaries = [
+			"bin/app.exe",
+			"lib/addon.node.dll",
+			"lib/libfoo.so",
+			"lib/libfoo.dylib",
+			"dist/module.wasm",
+			"payload.bin",
+			"legacy.com",
+			"run.bat",
+			"setup.cmd",
+			"install.msi",
+			"pkg.deb",
+			"pkg.rpm",
+			"installer.dmg",
+			"MyApp.app",
+			"exec.elf",
+			"main.o",
+			"libstatic.a",
+			"win.lib",
+			"win.obj",
+			"payload.EXE",
+		];
+		const entries: ManifestFileEntry[] = [
+			{ relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+			...binaries.map((b) => ({ relativePath: b, sizeBytes: 100, isSymlink: false })),
+		];
+		const findings = scanManifest(entries, BASE_DIR);
+		const binaryFindings = findings.filter((f) => f.ruleId === "binary-file");
+		expect(binaryFindings).toHaveLength(binaries.length);
+		for (const f of binaryFindings) {
+			expect(f.severity).toBe("critical");
+			expect(f.message).toContain("Binary executable file detected");
+		}
+	});
+
+	it("flags missing SKILL.md as critical", () => {
+		const entries: ManifestFileEntry[] = [
+			{ relativePath: "index.js", sizeBytes: 100, isSymlink: false },
+			{ relativePath: "README.md", sizeBytes: 50, isSymlink: false },
+		];
+		const findings = scanManifest(entries, BASE_DIR);
+		const missingSkillMd = findings.find((f) => f.ruleId === "missing-skill-md");
+		expect(missingSkillMd).toBeDefined();
+		expect(missingSkillMd?.severity).toBe("critical");
+		expect(missingSkillMd?.file).toBe("SKILL.md");
+
+		// Suffix match alone (EVILSKILL.md) is not SKILL.md
+		const evilEntries: ManifestFileEntry[] = [
+			{ relativePath: "EVILSKILL.md", sizeBytes: 50, isSymlink: false },
+		];
+		expect(
+			scanManifest(evilEntries, BASE_DIR).some((f) => f.ruleId === "missing-skill-md"),
+		).toBe(true);
+
+		// Nested SKILL.md satisfies the requirement
+		const nestedEntries: ManifestFileEntry[] = [
+			{ relativePath: "docs/nested/SKILL.md", sizeBytes: 50, isSymlink: false },
+		];
+		expect(
+			scanManifest(nestedEntries, BASE_DIR).some((f) => f.ruleId === "missing-skill-md"),
+		).toBe(false);
+	});
+
+	it("flags unauthorized hidden files but allows standard dotfiles", () => {
+		const entries: ManifestFileEntry[] = [
+			{ relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+			{ relativePath: ".gitignore", sizeBytes: 10, isSymlink: false },
+			{ relativePath: ".env.example", sizeBytes: 10, isSymlink: false },
+			{ relativePath: ".editorconfig", sizeBytes: 10, isSymlink: false },
+			{ relativePath: ".scan-results.json", sizeBytes: 10, isSymlink: false },
+			{ relativePath: ".hidden_secret", sizeBytes: 10, isSymlink: false },
+			{ relativePath: "nested/.dotdir/file.txt", sizeBytes: 10, isSymlink: false },
+		];
+		const findings = scanManifest(entries, BASE_DIR);
+		const hiddenFindings = findings.filter((f) => f.ruleId === "hidden-file");
+		expect(hiddenFindings).toHaveLength(2);
+		expect(hiddenFindings.map((f) => f.file).sort()).toEqual([
+			".hidden_secret",
+			"nested/.dotdir/file.txt",
+		]);
+		for (const f of hiddenFindings) {
+			expect(f.severity).toBe("warn");
+		}
+	});
+
+	it("flags all shell script extensions as warnings", () => {
+		const scripts = [
+			"run.sh",
+			"build.bash",
+			"deploy.ps1",
+			"module.psm1",
+			"init.zsh",
+			"RUN.SH",
+		];
+		const entries: ManifestFileEntry[] = [
+			{ relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+			...scripts.map((s) => ({ relativePath: s, sizeBytes: 50, isSymlink: false })),
+		];
+		const findings = scanManifest(entries, BASE_DIR);
+		const scriptFindings = findings.filter((f) => f.ruleId === "shell-script");
+		expect(scriptFindings).toHaveLength(scripts.length);
+		for (const f of scriptFindings) {
+			expect(f.severity).toBe("warn");
+		}
+	});
+
+	it("flags excessive file count and total size violations", () => {
+		const excessiveCountEntries: ManifestFileEntry[] = [
+			{ relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+			...Array.from({ length: 205 }, (_, i) => ({
+				relativePath: `files/file_${i}.txt`,
+				sizeBytes: 10,
+				isSymlink: false,
+			})),
+		];
+		const countFindings = scanManifest(excessiveCountEntries, BASE_DIR);
+		const countViolation = countFindings.find((f) => f.ruleId === "excessive-files");
+		expect(countViolation).toBeDefined();
+		expect(countViolation?.severity).toBe("warn");
+		expect(countViolation?.message).toContain("206 files");
+
+		const excessiveSizeEntries: ManifestFileEntry[] = [
+			{ relativePath: "SKILL.md", sizeBytes: 10, isSymlink: false },
+			{ relativePath: "huge_data.txt", sizeBytes: 6 * 1024 * 1024, isSymlink: false },
+		];
+		const sizeFindings = scanManifest(excessiveSizeEntries, BASE_DIR);
+		const sizeViolation = sizeFindings.find((f) => f.ruleId === "excessive-size");
+		expect(sizeViolation).toBeDefined();
+		expect(sizeViolation?.severity).toBe("warn");
+		expect(sizeViolation?.message).toContain("6.0MB");
+	});
+});
