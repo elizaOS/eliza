@@ -22,7 +22,7 @@ const families = [
 
 function contract(selected: readonly string[] = families) {
   const realizations = {
-    file: ["filesystem", "native-bytes"],
+    file: ["filesystem", "typed-rejection"],
     document: ["document-store", "typed-rejection"],
     memory: ["memory-store", "typed-rejection"],
     email: ["message-store", "typed-rejection"],
