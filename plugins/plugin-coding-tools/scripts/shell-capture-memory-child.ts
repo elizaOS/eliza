@@ -22,7 +22,9 @@ const stateDir = await fs.mkdtemp(
   path.join(os.tmpdir(), "shell-memory-child-"),
 );
 process.env.ELIZA_STATE_DIR = stateDir;
-process.env.SHELL_JOB_TTL_MS = "60000";
+// Keep the evidence readable for the entire slowest 32 MiB sample even on a
+// contended host; expiry behavior is covered separately by artifact tests.
+process.env.SHELL_JOB_TTL_MS = "600000";
 
 const runtime = {
   character: { settings: { secrets: { TEST_SECRET: secret } } },
