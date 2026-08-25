@@ -179,4 +179,90 @@ describe("TraceStore", () => {
     expect(events[0]?.text).toBe("event-0");
     expect(events.at(-1)?.text).toBe("event-5249");
   });
+
+  it("rejects non-positive, float, and NaN limit parameters across queries", () => {
+    const traces = store();
+    const session = traces.createSession({ title: "limits", source: "agent" });
+
+    expect(() => traces.listSessions({ limit: 0 })).toThrow(TraceError);
+    expect(() => traces.listSessions({ limit: -10 })).toThrow(TraceError);
+    expect(() => traces.listSessions({ limit: 2.5 })).toThrow(TraceError);
+    expect(() => traces.listSessions({ limit: Number.NaN })).toThrow(
+      TraceError,
+    );
+
+    expect(() =>
+      traces.tailEvents({ sessionId: session.id, limit: 0 }),
+    ).toThrow(TraceError);
+    expect(() =>
+      traces.tailEvents({ sessionId: session.id, limit: -5 }),
+    ).toThrow(TraceError);
+
+    expect(() => traces.searchEvents({ limit: 0 })).toThrow(TraceError);
+  });
+
+  it("validates non-empty string constraints on session title", () => {
+    const traces = store();
+
+    expect(() => traces.createSession({ title: "", source: "agent" })).toThrow(
+      TraceError,
+    );
+    expect(() =>
+      traces.createSession({ title: "   ", source: "agent" }),
+    ).toThrow(TraceError);
+  });
+
+  it("merges metadata and computes summary statistics accurately", () => {
+    let tick = 1000;
+    const traces = new TraceStore({ now: () => new Date(tick) });
+    const session = traces.createSession({
+      title: "stat run",
+      source: "agent",
+      metadata: { initial: "v1" },
+    });
+
+    tick += 500;
+    traces.recordEvent({
+      sessionId: session.id,
+      kind: "tool.started",
+      toolName: "calc",
+    });
+
+    tick += 500;
+    traces.recordEvent({
+      sessionId: session.id,
+      kind: "model.request.started",
+      modelId: "claude-3",
+    });
+
+    tick += 500;
+    traces.recordEvent({
+      sessionId: session.id,
+      kind: "capability.invoke.started",
+      capabilityId: "cap-1",
+    });
+
+    tick += 500;
+    traces.recordEvent({
+      sessionId: session.id,
+      kind: "operation.error",
+      error: "timed out",
+    });
+
+    tick += 500;
+    const closed = traces.completeSession({
+      sessionId: session.id,
+      metadata: { extra: "v2" },
+    });
+
+    expect(closed.metadata).toEqual({ initial: "v1", extra: "v2" });
+
+    const summary = traces.summarizeSession(session.id);
+    expect(summary.eventCount).toBe(4);
+    expect(summary.toolCount).toBe(1);
+    expect(summary.modelCallCount).toBe(1);
+    expect(summary.capabilityCallCount).toBe(1);
+    expect(summary.errorCount).toBe(1);
+    expect(summary.durationMs).toBe(2500);
+  });
 });
