@@ -119,10 +119,14 @@ export async function createProgressiveFileTargetFactory(input: {
       if (object.family !== "file" || source.byteLength !== object.byteLength) {
         throw new TypeError("FILE target received a mismatched corpus object");
       }
+      if (object.format === "binary") {
+        throw new ProgressiveFileTargetError("CONTENT_BINARY_UNSUPPORTED");
+      }
       const targetName = `${createHash("sha256").update(object.id).digest("hex")}.txt`;
       const targetPath = path.join(targetRoot, targetName);
       const handle = await fs.open(targetPath, "wx", 0o600);
       const digest = createHash("sha256");
+      const decoder = new TextDecoder("utf-8", { fatal: true });
       let offset = 0;
       try {
         try {
@@ -137,6 +141,11 @@ export async function createProgressiveFileTargetFactory(input: {
               throw new ProgressiveFileTargetError(
                 "PROGRESSIVE_REALIZATION_NO_PROGRESS",
               );
+            }
+            try {
+              decoder.decode(page, { stream: true });
+            } catch {
+              throw new ProgressiveFileTargetError("CONTENT_INVALID_UTF8");
             }
             let pageOffset = 0;
             while (pageOffset < page.byteLength) {
@@ -155,6 +164,11 @@ export async function createProgressiveFileTargetFactory(input: {
             }
             digest.update(page);
             offset += page.byteLength;
+          }
+          try {
+            decoder.decode();
+          } catch {
+            throw new ProgressiveFileTargetError("CONTENT_INVALID_UTF8");
           }
           await handle.sync();
         } finally {
