@@ -144,4 +144,22 @@ describe("progressive content target conformance", () => {
 			message: "isolation receipt failed",
 		});
 	});
+
+	it("rejects a target whose authorization digest is not bound to its actor", async () => {
+		const target = targetFixture();
+		const forged = {
+			...target,
+			realization: {
+				...target.realization,
+				authorizationScopeDigest: "0".repeat(64),
+			},
+		};
+		await expect(
+			runProgressiveContentTargetConformance({
+				manifestSha256: "c".repeat(64),
+				adapterId: "authorization-digest-mutant",
+				target: forged,
+			}),
+		).rejects.toThrow(/realization binding/u);
+	});
 });
