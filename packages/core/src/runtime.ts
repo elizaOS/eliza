@@ -4769,7 +4769,6 @@ export class AgentRuntime implements IAgentRuntime {
 		messageServerId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
-		roomMetadata?: Record<string, JsonValue>;
 	}) {
 		const result = await ensureConnectionStandalone(this.adapter, {
 			agentId: this.agentId,

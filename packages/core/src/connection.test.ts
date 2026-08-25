@@ -9,7 +9,7 @@ import { recordOwnerGrant, recordRoleGrant } from "./roles";
 import { stringToUuid } from "./utils";
 
 describe("ensureConnection", () => {
-	it("persists an exact Discord server and account binding on the room", async () => {
+	it("persists an exact Discord server binding on the room", async () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		const agentId = stringToUuid("discord-binding-agent");
 		const entityId = stringToUuid("discord-binding-requester");
@@ -28,7 +28,6 @@ describe("ensureConnection", () => {
 			source: "discord",
 			channelId: "323456789012345678",
 			metadata: { accountId: "primary" },
-			roomMetadata: { accountId: "primary" },
 		});
 
 		const [room] = await adapter.getRoomsByIds([roomId]);
@@ -38,7 +37,6 @@ describe("ensureConnection", () => {
 			source: "discord",
 			serverId,
 			messageServerId,
-			metadata: { accountId: "primary" },
 		});
 	});
 

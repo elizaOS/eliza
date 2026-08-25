@@ -772,7 +772,6 @@ const askCommand: SlashCommand = {
 			...(context?.accountId
 				? {
 						metadata: { accountId: context.accountId },
-						roomMetadata: { accountId: context.accountId },
 					}
 				: {}),
 		});

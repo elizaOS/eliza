@@ -82,7 +82,6 @@ function makeDurableHarness(): DurableHarness {
 			type?: string;
 			serverId?: string;
 			messageServerId?: UUID;
-			metadata?: Record<string, unknown>;
 		}
 	>();
 	const participantsByRoom = new Map<UUID, UUID[]>();
@@ -116,14 +115,12 @@ function makeDurableHarness(): DurableHarness {
 				type?: string;
 				serverId?: string;
 				messageServerId?: UUID;
-				roomMetadata?: Record<string, unknown>;
 			}) => {
 				rooms.set(params.roomId, {
 					id: params.roomId,
 					type: params.type,
 					serverId: params.serverId,
 					messageServerId: params.messageServerId,
-					metadata: params.roomMetadata,
 				});
 				participantsByRoom.set(params.roomId, [params.entityId, AGENT_ID]);
 			},
@@ -300,7 +297,7 @@ async function turnState(
 }
 
 describe("Discord durable turn / outbox state machine", () => {
-	it("persists the inbound guild and connector-account room binding", async () => {
+	it("persists the inbound guild room binding", async () => {
 		const messageId = "666000000000000999";
 		const guildId = "999000000000000000";
 		const harness = makeDurableHarness();
@@ -323,7 +320,6 @@ describe("Discord durable turn / outbox state machine", () => {
 		).resolves.toMatchObject({
 			serverId: guildId,
 			messageServerId: stringToUuid(guildId),
-			metadata: { accountId: "default" },
 		});
 	});
 

@@ -57,7 +57,6 @@ function authorizationHarness() {
 							type: "GROUP",
 							serverId: GUILD_ID,
 							messageServerId: stringToUuid(GUILD_ID),
-							metadata: { accountId: ACCOUNT_ID },
 						},
 					]
 				: [],
@@ -134,6 +133,29 @@ describe("Discord guild-management authorization", () => {
 			accountId: ACCOUNT_ID,
 			serverId: GUILD_ID,
 		});
+	});
+
+	it("allows either configured account to use one shared durable guild room", async () => {
+		const { runtime } = authorizationHarness();
+		for (const accountId of [ACCOUNT_ID, "secondary"]) {
+			const destination = resolveDiscordManageServerDestination(
+				runtime,
+				{ serverId: GUILD_ID },
+				accountId,
+			);
+			const authorization = await authorizeManageServerDestination(
+				runtime,
+				REQUESTER_ID,
+				destination,
+			);
+			const fresh = await revalidateDiscordManageServerAuthorization(
+				runtime,
+				authorization,
+				accountId,
+				GUILD_ID,
+			);
+			expect(fresh.accountId).toBe(accountId);
+		}
 	});
 
 	it("fails when membership is revoked between core authorization and mutation", async () => {

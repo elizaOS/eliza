@@ -1746,7 +1746,6 @@ export class MessageManager {
 					),
 					accountId: this.accountId,
 				},
-				roomMetadata: { accountId: this.accountId },
 			});
 			try {
 				await attestDeliveryAudienceFromCanonicalRoom(this.runtime, newMessage);

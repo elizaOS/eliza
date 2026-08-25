@@ -259,10 +259,13 @@ authorization or lookup key. For example:
 Before Discord is queried or changed, core requires a verified identity related
 to the requester to be both a member and `ADMIN` or `OWNER` in that exact
 destination world. The destination must also have an exact Discord room binding
-for the selected connector account (`room.source`, raw guild `room.serverId`,
-and `room.metadata.accountId`). The Discord connector independently revalidates
-the same binding, membership, and role immediately before mutation, so revoked,
-unbound, cross-account, and cross-guild requests fail closed.
+(`room.source`, raw guild `room.serverId`, and `room.messageServerId`). The
+selected account's Discord client must then fetch that exact guild before any
+write. The connector independently revalidates the same world binding,
+membership, role, account provenance, and live guild id immediately before
+mutation, so revoked, unbound, cross-account, and cross-guild requests fail
+closed. Shared guild rooms remain valid when more than one configured Discord
+account can access the same guild.
 
 **Every structural write fails closed.** The `actions.channels`,
 `actions.roles`, `actions.permissions`, and `actions.moderation` gates all

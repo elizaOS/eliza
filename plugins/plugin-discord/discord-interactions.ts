@@ -163,7 +163,6 @@ export async function handleInteractionCreate(
 			...buildDiscordWorldMetadata(service.runtime, interaction.guild?.ownerId),
 			accountId,
 		},
-		roomMetadata: { accountId },
 	});
 
 	if (interaction.isCommand()) {

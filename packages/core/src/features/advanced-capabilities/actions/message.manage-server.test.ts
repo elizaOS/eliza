@@ -49,7 +49,6 @@ function harness(options?: {
 	omitHandler?: boolean;
 	authorizedEntityId?: UUID | null;
 	includeBinding?: boolean;
-	bindingAccountId?: string;
 	resolverAccountId?: string;
 	verifiedRelatedEntityIds?: UUID[];
 }) {
@@ -137,9 +136,6 @@ function harness(options?: {
 							type: "GROUP",
 							serverId: activeServerId,
 							messageServerId: stringToUuid(activeServerId),
-							metadata: {
-								accountId: options?.bindingAccountId ?? ACCOUNT_ID,
-							},
 						},
 					]
 				: [],
@@ -365,21 +361,6 @@ describe("MESSAGE op=manage_server routing", () => {
 		});
 		expect(result.success).toBe(false);
 		expect(result.data?.error).toBe("MANAGE_SERVER_DESTINATION_UNBOUND");
-		expect(calls).toHaveLength(0);
-	});
-
-	it("fails closed when the exact room belongs to another connector account", async () => {
-		const { runtime, calls } = harness({ bindingAccountId: "secondary" });
-		const result = await invoke(runtime, {
-			action: "create_invite",
-			source: "discord",
-			accountId: ACCOUNT_ID,
-			serverId: "223456789012345678",
-		});
-		expect(result.success).toBe(false);
-		expect(result.data?.error).toBe(
-			"MANAGE_SERVER_DESTINATION_ACCOUNT_MISMATCH",
-		);
 		expect(calls).toHaveLength(0);
 	});
 

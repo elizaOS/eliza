@@ -1218,7 +1218,6 @@ export class DiscordLocalService extends Service {
 				discordChannelId: channelId,
 				...(guildId ? { discordServerId: guildId } : {}),
 			},
-			roomMetadata: { accountId: this.accountId },
 		} as EnsureConnectionArg);
 
 		const attachments: Media[] = (message.attachments ?? []).flatMap(

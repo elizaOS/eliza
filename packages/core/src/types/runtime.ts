@@ -939,7 +939,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		type,
 		worldId,
 		userId,
-		roomMetadata,
 	}: {
 		entityId: UUID;
 		roomId: UUID;
@@ -955,7 +954,6 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		worldId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
-		roomMetadata?: Record<string, JsonValue>;
 	}): Promise<void>;
 
 	ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>;

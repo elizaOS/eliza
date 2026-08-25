@@ -22,16 +22,6 @@ import type {
 	UUID,
 } from "../types/index.ts";
 
-function metadataAccountId(metadata: unknown): string | undefined {
-	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-		return undefined;
-	}
-	const accountId = (metadata as Record<string, unknown>).accountId;
-	return typeof accountId === "string" && accountId.length > 0
-		? accountId
-		: undefined;
-}
-
 function deny(
 	code: string,
 	message: string,
@@ -76,20 +66,10 @@ export async function authorizeManageServerDestination(
 			room.serverId === destination.serverId &&
 			room.messageServerId === destination.messageServerId,
 	);
-	const destinationRooms = serverRooms.filter(
-		(room) => metadataAccountId(room.metadata) === destination.accountId,
-	);
-	if (destinationRooms.length === 0) {
-		if (serverRooms.length > 0) {
-			deny(
-				"MANAGE_SERVER_DESTINATION_ACCOUNT_MISMATCH",
-				"The requested server room binding does not belong to the selected connector account.",
-				destination,
-			);
-		}
+	if (serverRooms.length === 0) {
 		deny(
 			"MANAGE_SERVER_DESTINATION_UNBOUND",
-			"The requested server has no exact persisted room binding for the selected connector account.",
+			"The requested server has no exact persisted room binding.",
 			destination,
 		);
 	}
@@ -111,7 +91,7 @@ export async function authorizeManageServerDestination(
 		runtime.getRoomsForParticipant(runtime.agentId),
 	]);
 	const agentRooms = new Set(agentRoomIds);
-	const destinationRoomIds = new Set(destinationRooms.map((room) => room.id));
+	const destinationRoomIds = new Set(serverRooms.map((room) => room.id));
 
 	for (let index = 0; index < requesterEntityIds.length; index += 1) {
 		const entityId = requesterEntityIds[index];
