@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+	if (text.length <= maxLength) return text;
+	let end = maxLength;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
 /**
  * Fetches remote media through DNS-pinned SSRF protection, enforces byte
  * limits, and derives safe filenames and MIME metadata.
@@ -107,7 +119,8 @@ async function readErrorBodySnippet(
 		if (collapsed.length <= maxChars) {
 			return collapsed;
 		}
-		return `${collapsed.slice(0, maxChars - 1)}…`;
+		const truncated = truncateUtf16Safe(collapsed, maxChars - 1);
+		return `${truncated}…`;
 	} catch {
 		// error-policy:J7 The HTTP status remains authoritative when its optional
 		// diagnostic body snippet cannot be read.

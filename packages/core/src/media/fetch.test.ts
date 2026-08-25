@@ -79,3 +79,26 @@ describe("fetchRemoteMedia", () => {
 		expect(result.fileName).toBe("report.txt");
 	});
 });
+
+describe("readErrorBodySnippet UTF-16 surrogate safety", () => {
+	it("preserves UTF-16 surrogate pairs in error body snippets", async () => {
+		// 198 ASCII chars + "🔥" (2 code units) = 200 chars.
+		// maxChars is 200, so maxChars - 1 is 199.
+		// Slicing at 199 lands on high surrogate of "🔥".
+		// Surrogate safe back-off ensures we take 198 chars, keeping emoji intact.
+		const body = "a".repeat(198) + "🔥" + "extra";
+		await expect(
+			fetchRemoteMedia({
+				url: "https://example.com/error.png",
+				lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+				pinnedFetchImpl: async () =>
+					new Response(body, {
+						status: 500,
+						statusText: "Internal Server Error",
+						headers: { "content-type": "text/plain" },
+					}),
+			}),
+		).rejects.toThrow();
+	});
+});
+
