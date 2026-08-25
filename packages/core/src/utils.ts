@@ -1045,10 +1045,15 @@ export async function splitChunks(
 	bleed = 20,
 ): Promise<string[]> {
 	const characterstoTokens = 3.5;
+	const safeChunkSize =
+		Number.isFinite(chunkSize) && chunkSize > 0 ? Math.floor(chunkSize) : 512;
+	const safeBleed =
+		Number.isFinite(bleed) && bleed >= 0 ? Math.floor(bleed) : 20;
+	const effectiveBleed = Math.min(safeBleed, Math.max(0, safeChunkSize - 1));
 
 	const textSplitter = new RecursiveCharacterTextSplitter({
-		chunkSize: Number(Math.floor(chunkSize * characterstoTokens)),
-		chunkOverlap: Number(Math.floor(bleed * characterstoTokens)),
+		chunkSize: Number(Math.floor(safeChunkSize * characterstoTokens)),
+		chunkOverlap: Number(Math.floor(effectiveBleed * characterstoTokens)),
 	});
 
 	const chunks = await textSplitter.splitText(content);

@@ -11,6 +11,7 @@ import {
 	parseBooleanFromText,
 	parseJSONObjectFromText,
 	parseToonKeyValue,
+	splitChunks,
 	stringToUuid,
 	truncateToCompleteSentence,
 	validateUuid,
@@ -136,5 +137,56 @@ describe("truncateToCompleteSentence", () => {
 
 	it("returns text unchanged when it already fits", () => {
 		expect(truncateToCompleteSentence("short", 280)).toBe("short");
+	});
+});
+
+describe("splitChunks", () => {
+	it("guards non-finite and out-of-range chunkSize and bleed", async () => {
+		const text = "word ".repeat(200).trim();
+		// Valid baseline with defaults
+		const baseline = await splitChunks(text);
+		expect(baseline.length).toBeGreaterThan(0);
+		expect(baseline.join("").length).toBeGreaterThan(0);
+
+		// Non-finite chunkSize should fall back to default (512) and not throw
+		for (const bad of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+			-1,
+			0,
+		]) {
+			const out = await splitChunks(text, bad as unknown as number, 20);
+			expect(out.length).toBeGreaterThan(0);
+			// Should match baseline length when chunkSize falls back
+			expect(out.length).toBe(baseline.length);
+		}
+
+		// Non-finite bleed should fall back to 20 and not throw
+		for (const badBleed of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
+			const out = await splitChunks(text, 512, badBleed as unknown as number);
+			expect(out.length).toBeGreaterThan(0);
+			expect(out.length).toBe(baseline.length);
+		}
+
+		// Fractional values should floor
+		const frac = await splitChunks(text, 512.9, 20.9);
+		expect(frac.length).toBe(baseline.length);
+
+		// Both NaN should still produce valid chunks
+		const bothBad = await splitChunks(text, Number.NaN, Number.NaN);
+		expect(bothBad.length).toBeGreaterThan(0);
+		expect(bothBad.length).toBe(baseline.length);
+	});
+
+	it("respects explicit chunkSize and handles bleed clamping", async () => {
+		const text = "a ".repeat(500).trim();
+		const small = await splitChunks(text, 10, 2);
+		const large = await splitChunks(text, 100, 2);
+		// Smaller chunkSize should produce more chunks
+		expect(small.length).toBeGreaterThan(large.length);
+		// Bleed larger than chunkSize should be clamped and not throw
+		const clamped = await splitChunks(text, 10, 50);
+		expect(clamped.length).toBeGreaterThan(0);
 	});
 });
