@@ -472,4 +472,38 @@ describe("verifyGoalCompletion (orchestration paths)", () => {
     expect(result.summary).toBe("tests not run");
     expect(result.missing).toEqual(["test suite green"]);
   });
+
+  it("preserves surrogate pairs when parsing verifier summary and error messages", async () => {
+    // "x" + "🎯" * 150 -> 301 code units > 280 (bisects at index 280)
+    const longEmoji = "x" + "🎯".repeat(150);
+    const parsed = parseJudgeResponse(
+      JSON.stringify({ passed: true, summary: longEmoji, missing: [] }),
+      ["c1"],
+    );
+    expect(parsed.passed).toBe(true);
+    for (const char of parsed.summary) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+
+    // Error detail bisecting at index 200
+    const longError = "x" + "🔥".repeat(110);
+    const runtime = makeMockRuntime({ shouldThrow: new Error(longError) });
+    const result = await verifyGoalCompletion(runtime, {
+      goal: "x",
+      acceptanceCriteria: ["c1"],
+      completionEvidence: "evidence",
+    });
+    expect(result.passed).toBe(false);
+    for (const char of result.summary) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

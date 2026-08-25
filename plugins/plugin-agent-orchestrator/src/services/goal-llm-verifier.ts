@@ -377,6 +377,18 @@ function findFirstJsonObject(raw: string): string | null {
   return null;
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 export function parseJudgeResponse(
   raw: string,
   acceptanceCriteria: readonly string[],
@@ -422,7 +434,7 @@ export function parseJudgeResponse(
   const passed = passedRaw === true && missing.length === 0;
   const summary =
     typeof summaryRaw === "string" && summaryRaw.trim().length > 0
-      ? summaryRaw.trim().slice(0, 280)
+      ? truncateText(summaryRaw.trim(), 280)
       : passed
         ? "All acceptance criteria confirmed by verifier."
         : "Verifier did not confirm every acceptance criterion.";
@@ -473,7 +485,7 @@ export async function verifyGoalCompletion(
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
-      summary: `Verifier model call failed: ${detail.slice(0, 200)}`,
+      summary: `Verifier model call failed: ${truncateText(detail, 200)}`,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
     };
