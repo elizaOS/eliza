@@ -39,6 +39,7 @@ import {
   isPermissionDeniedError,
 } from "./permissions.js";
 import { psHostAvailable, runPsHost } from "./ps-host.js";
+import { tryCaptureWaylandGrim } from "./wayland-grim.js";
 import {
   canUseWaylandScreenshotPortal,
   captureWaylandPortalScreenshot,
@@ -142,7 +143,8 @@ export async function captureDisplayRegion(
   );
   try {
     if (os === "darwin") captureRegionDarwin(tmpFile, globalRegion);
-    else if (os === "linux") captureRegionLinux(tmpFile, globalRegion);
+    else if (os === "linux")
+      captureRegionLinux(tmpFile, globalRegion, display.name);
     else if (os === "win32") await captureRegionWindows(tmpFile, globalRegion);
     const data = readFileSync(tmpFile);
     return { display, frame: data };
@@ -201,7 +203,18 @@ function captureRegionDarwin(tmpFile: string, region: ScreenRegion): void {
 
 function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
   const [x, y, w, h] = display.bounds;
-  if (tryCaptureWaylandPortal(tmpFile)) return;
+  if (isWaylandSession()) {
+    if (tryCaptureWaylandGrim(tmpFile, undefined, display.name)) return;
+    if (
+      display.primary &&
+      listDisplays().length === 1 &&
+      tryCaptureWaylandPortal(tmpFile)
+    )
+      return;
+    throw new Error(
+      "Wayland per-display capture requires grim; portal capture cannot select a non-primary output.",
+    );
+  }
   if (commandExists("import")) {
     runCommandBuffer(
       "import",
@@ -243,12 +256,23 @@ function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
   }
   throw new Error(
     isWaylandSession()
-      ? "No screenshot tool available. Install xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
+      ? "No screenshot tool available. Install grim or xdg-desktop-portal with gdbus/python3 for Wayland, or ImageMagick (import), scrot, gnome-screenshot, or ffmpeg for X11 fallback."
       : "No screenshot tool available. Install ImageMagick (import), scrot, gnome-screenshot, or ffmpeg.",
   );
 }
 
-function captureRegionLinux(tmpFile: string, region: ScreenRegion): void {
+function captureRegionLinux(
+  tmpFile: string,
+  region: ScreenRegion,
+  outputName?: string,
+): void {
+  if (isWaylandSession() && tryCaptureWaylandGrim(tmpFile, region, outputName))
+    return;
+  if (isWaylandSession()) {
+    throw new Error(
+      "Wayland region capture requires grim; portal capture does not provide region selection.",
+    );
+  }
   if (commandExists("import")) {
     runCommandBuffer(
       "import",

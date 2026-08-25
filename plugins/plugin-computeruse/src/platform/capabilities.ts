@@ -123,7 +123,9 @@ export function detectPlatformCapabilities(
     };
     caps.clipboard = { available: true, tool: "pbpaste / pbcopy (built-in)" };
   } else if (options.osName === "linux") {
-    if (options.commandExists("import")) {
+    if (options.commandExists("grim")) {
+      caps.screenshot = { available: true, tool: "grim (Wayland)" };
+    } else if (options.commandExists("import")) {
       caps.screenshot = { available: true, tool: "ImageMagick import" };
     } else if (options.commandExists("scrot")) {
       caps.screenshot = { available: true, tool: "scrot" };
@@ -134,7 +136,7 @@ export function detectPlatformCapabilities(
     } else {
       caps.screenshot = {
         available: false,
-        tool: "none (install ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
+        tool: "none (install grim, ImageMagick, scrot, gnome-screenshot, or ffmpeg)",
       };
     }
 
