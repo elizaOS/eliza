@@ -109,6 +109,9 @@ export function derivePopupStatusModel(args: {
         (state.lastError
           ? "Connection needs attention"
           : "Open Eliza to connect"),
+      connectionLabel === null && state.lastError
+        ? { kind: "recover", label: "Reconnect" }
+        : null,
     );
   }
 

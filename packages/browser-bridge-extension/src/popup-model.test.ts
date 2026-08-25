@@ -142,6 +142,16 @@ describe("derivePopupStatusModel", () => {
     });
   });
 
+  it("keeps an unexpected unenrolled native failure recoverable", () => {
+    expect(
+      derive(baseState({ lastError: "Unexpected native host response" })),
+    ).toMatchObject({
+      kind: "error",
+      label: "Connection needs attention",
+      action: { kind: "recover", label: "Reconnect" },
+    });
+  });
+
   it("keeps an explicit disconnect reversible without resuming in the background", () => {
     expect(
       derive(
