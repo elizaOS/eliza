@@ -28,6 +28,10 @@ export const CONTENT_CONTEXT_RESULT_SCHEMA_VERSION =
   "elizaos.content-context.result.v3" as const;
 export const CONTENT_CONTEXT_E2E_SCHEMA_VERSION =
   "elizaos.content-context.e2e.v1" as const;
+export const CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION =
+  "elizaos.content-context.live-trajectory.v1" as const;
+export const CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION =
+  "elizaos.content-context.live-observer.v1" as const;
 export const CONTENT_CONTEXT_REQUIRED_ARTIFACTS = [
   "corpus-manifest.json",
   "native-realization-ledger.json",
@@ -167,6 +171,23 @@ function exactKeys(
   ) {
     throw new TypeError(`${label} fields are not exact`);
   }
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entry = value as Record<string, unknown>;
+    return `{${Object.keys(entry)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(entry[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Hash a strict JSON value using the canonical representation required by live evidence. */
+export function contentContextCanonicalEvidenceSha256(value: unknown): string {
+  return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
 
 function json(bytes: Uint8Array, label: string): Record<string, unknown> {
@@ -851,6 +872,153 @@ function deterministicScenarioFailures(
     );
   }
   return failures;
+}
+
+const LIVE_TRAJECTORY_KEYS = [
+  "schemaVersion",
+  "repetition",
+  "family",
+  "status",
+  "commit",
+  "corpusManifestSha256",
+  "providerQualified",
+  "provider",
+  "model",
+  "continuationDiscovered",
+  "lateEvidenceRecovered",
+  "exactAnswer",
+  "answerLeakageDetected",
+  "canaryLeakageDetected",
+  "toolCalls",
+  "noProgressReads",
+  "latencyMs",
+  "inputTokens",
+  "outputTokens",
+  "costUsd",
+  "controllerDecision",
+  "observerEvidence",
+  "observerEvidenceSha256",
+  "trajectory",
+  "trajectorySha256",
+] as const;
+
+function validLiveTrajectory(
+  entry: Record<string, unknown>,
+  result: ContentContextResult,
+): boolean {
+  try {
+    exactKeys(entry, LIVE_TRAJECTORY_KEYS, "live trajectory");
+    const trajectory = record(entry.trajectory, "live trajectory payload");
+    exactKeys(
+      trajectory,
+      ["schemaVersion", "messages", "toolCalls", "modelCalls", "finalAnswer"],
+      "live trajectory payload",
+    );
+    const messages = array(trajectory.messages, "live trajectory messages");
+    const toolCalls = array(trajectory.toolCalls, "live trajectory tool calls");
+    const modelCalls = array(
+      trajectory.modelCalls,
+      "live trajectory model calls",
+    );
+    const observer = record(entry.observerEvidence, "live observer evidence");
+    exactKeys(
+      observer,
+      [
+        "schemaVersion",
+        "judgeProvider",
+        "judgeModel",
+        "judgeResponse",
+        "expectedAnswerSha256",
+        "observedAnswerSha256",
+        "continuationDiscovered",
+        "lateEvidenceRecovered",
+        "exactAnswer",
+        "answerLeakageDetected",
+        "canaryLeakageDetected",
+        "toolCalls",
+        "noProgressReads",
+      ],
+      "live observer evidence",
+    );
+    record(observer.judgeResponse, "live observer judge response");
+    const validIdentity =
+      entry.schemaVersion === CONTENT_CONTEXT_LIVE_TRAJECTORY_SCHEMA_VERSION &&
+      typeof entry.repetition === "number" &&
+      Number.isSafeInteger(entry.repetition) &&
+      entry.repetition >= 0 &&
+      entry.repetition < 5 &&
+      entry.status === "passed" &&
+      entry.commit === result.commit &&
+      entry.corpusManifestSha256 === result.corpusManifestSha256 &&
+      entry.providerQualified === true &&
+      typeof entry.provider === "string" &&
+      entry.provider.length > 0 &&
+      typeof entry.model === "string" &&
+      entry.model.length > 0 &&
+      !/fixture|mock|test|deterministic/iu.test(
+        `${entry.provider} ${entry.model}`,
+      );
+    const validClaims =
+      CONTENT_CONTEXT_FAMILIES.includes(
+        entry.family as (typeof CONTENT_CONTEXT_FAMILIES)[number],
+      ) &&
+      entry.continuationDiscovered === true &&
+      entry.lateEvidenceRecovered === true &&
+      entry.exactAnswer === true &&
+      entry.answerLeakageDetected === false &&
+      entry.canaryLeakageDetected === false &&
+      typeof entry.toolCalls === "number" &&
+      Number.isSafeInteger(entry.toolCalls) &&
+      entry.toolCalls >= 2 &&
+      entry.noProgressReads === 0 &&
+      typeof entry.latencyMs === "number" &&
+      Number.isFinite(entry.latencyMs) &&
+      entry.latencyMs > 0 &&
+      typeof entry.inputTokens === "number" &&
+      Number.isSafeInteger(entry.inputTokens) &&
+      entry.inputTokens > 0 &&
+      typeof entry.outputTokens === "number" &&
+      Number.isSafeInteger(entry.outputTokens) &&
+      entry.outputTokens > 0 &&
+      typeof entry.costUsd === "number" &&
+      Number.isFinite(entry.costUsd) &&
+      entry.costUsd >= 0 &&
+      entry.controllerDecision === "qualified";
+    const validTrajectory =
+      trajectory.schemaVersion ===
+        "elizaos.content-context.normalized-trajectory.v1" &&
+      messages.length > 0 &&
+      toolCalls.length >= 2 &&
+      modelCalls.length > 0 &&
+      typeof trajectory.finalAnswer === "string" &&
+      trajectory.finalAnswer.length > 0 &&
+      entry.trajectorySha256 ===
+        contentContextCanonicalEvidenceSha256(trajectory);
+    const validObserver =
+      observer.schemaVersion === CONTENT_CONTEXT_LIVE_OBSERVER_SCHEMA_VERSION &&
+      typeof observer.judgeProvider === "string" &&
+      observer.judgeProvider.length > 0 &&
+      typeof observer.judgeModel === "string" &&
+      observer.judgeModel.length > 0 &&
+      !/fixture|mock|test|deterministic/iu.test(
+        `${observer.judgeProvider} ${observer.judgeModel}`,
+      ) &&
+      typeof observer.expectedAnswerSha256 === "string" &&
+      /^[0-9a-f]{64}$/u.test(observer.expectedAnswerSha256) &&
+      observer.observedAnswerSha256 === observer.expectedAnswerSha256 &&
+      observer.continuationDiscovered === entry.continuationDiscovered &&
+      observer.lateEvidenceRecovered === entry.lateEvidenceRecovered &&
+      observer.exactAnswer === entry.exactAnswer &&
+      observer.answerLeakageDetected === entry.answerLeakageDetected &&
+      observer.canaryLeakageDetected === entry.canaryLeakageDetected &&
+      observer.toolCalls === entry.toolCalls &&
+      observer.noProgressReads === entry.noProgressReads &&
+      entry.observerEvidenceSha256 ===
+        contentContextCanonicalEvidenceSha256(observer);
+    return validIdentity && validClaims && validTrajectory && validObserver;
+  } catch {
+    return false;
+  }
 }
 
 function semanticFailures(
@@ -1618,6 +1786,13 @@ function semanticFailures(
   if (
     trajectories.length !== 5 * CONTENT_CONTEXT_FAMILIES.length ||
     repetitions.size !== 5 ||
+    [...repetitions].some(
+      (repetition) =>
+        typeof repetition !== "number" ||
+        !Number.isSafeInteger(repetition) ||
+        repetition < 0 ||
+        repetition >= 5,
+    ) ||
     trajectoryCoordinates.size !== trajectories.length ||
     [...repetitions].some((repetition) =>
       CONTENT_CONTEXT_FAMILIES.some(
@@ -1625,49 +1800,7 @@ function semanticFailures(
           !trajectoryCoordinates.has(`${String(repetition)}:${family}`),
       ),
     ) ||
-    trajectories.some(
-      (entry) =>
-        entry.status !== "passed" ||
-        entry.commit !== result.commit ||
-        entry.corpusManifestSha256 !== result.corpusManifestSha256 ||
-        entry.providerQualified !== true ||
-        typeof entry.provider !== "string" ||
-        !entry.provider ||
-        typeof entry.model !== "string" ||
-        !entry.model ||
-        /fixture|mock|test|deterministic/iu.test(
-          `${entry.provider} ${entry.model}`,
-        ) ||
-        !CONTENT_CONTEXT_FAMILIES.includes(
-          entry.family as (typeof CONTENT_CONTEXT_FAMILIES)[number],
-        ) ||
-        entry.continuationDiscovered !== true ||
-        entry.lateEvidenceRecovered !== true ||
-        entry.exactAnswer !== true ||
-        entry.answerLeakageDetected !== false ||
-        entry.canaryLeakageDetected !== false ||
-        typeof entry.toolCalls !== "number" ||
-        !Number.isSafeInteger(entry.toolCalls) ||
-        entry.toolCalls < 2 ||
-        entry.noProgressReads !== 0 ||
-        typeof entry.latencyMs !== "number" ||
-        !Number.isFinite(entry.latencyMs) ||
-        entry.latencyMs <= 0 ||
-        typeof entry.inputTokens !== "number" ||
-        !Number.isSafeInteger(entry.inputTokens) ||
-        entry.inputTokens <= 0 ||
-        typeof entry.outputTokens !== "number" ||
-        !Number.isSafeInteger(entry.outputTokens) ||
-        entry.outputTokens <= 0 ||
-        typeof entry.costUsd !== "number" ||
-        !Number.isFinite(entry.costUsd) ||
-        entry.costUsd < 0 ||
-        entry.controllerDecision !== "qualified" ||
-        typeof entry.observerEvidenceSha256 !== "string" ||
-        !/^[0-9a-f]{64}$/u.test(entry.observerEvidenceSha256) ||
-        typeof entry.trajectorySha256 !== "string" ||
-        !/^[0-9a-f]{64}$/u.test(entry.trajectorySha256),
-    )
+    trajectories.some((entry) => !validLiveTrajectory(entry, result))
   )
     failures.push(
       "live-model trajectories lack five qualified clean six-family repetitions",
