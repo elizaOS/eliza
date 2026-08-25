@@ -162,6 +162,15 @@ export function classifyFramesToSegments(
 				winnerProb = probs[c];
 			}
 		}
+		// A model that emits a class outside the known powerset (wrong ONNX
+		// export / extra class) would otherwise be silently treated as
+		// silence, dropping that speaker's frames from the transcript.
+		if (winner >= PYANNOTE_CLASS_TO_SPEAKERS.length) {
+			throw new DiarizerUnavailableError(
+				"model-shape-mismatch",
+				`[pyannote] class ${winner} outside known powerset (max ${PYANNOTE_CLASS_TO_SPEAKERS.length - 1})`,
+			);
+		}
 		const activeSpeakers = PYANNOTE_CLASS_TO_SPEAKERS[winner] ?? [];
 		const isOverlap = activeSpeakers.length > 1;
 		if (activeSpeakers.length > 0) speechFrames += 1;
