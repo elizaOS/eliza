@@ -67,4 +67,22 @@ describe("Ollama model availability", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it("truncates error response detail without bisecting surrogate pairs", async () => {
+    const emojis = "🔥".repeat(400); // 800 code units > 500
+    const fetchMock = vi.fn(async () => new Response(emojis, { status: 500 }));
+
+    try {
+      await ensureModelAvailable("qwen3:0.6b", "http://localhost:11434/api", fetchMock);
+      expect.fail("should have thrown");
+    } catch (err: any) {
+      expect(err.code).toBe("OLLAMA_MODEL_LOOKUP_FAILED");
+      for (const char of err.message) {
+        expect(
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+            char,
+          ),
+        ).toBe(false);
+      }
+    }
+  });
 });

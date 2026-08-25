@@ -141,10 +141,22 @@ async function fetchAudioFromUrl(url: string, signal?: AbortSignal): Promise<Blo
   }
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function readHttpErrorDetail(response: Response): Promise<string> {
   try {
     const detail = (await response.text()).trim();
-    return detail.length > 0 ? detail.slice(0, 500) : "empty response body";
+    return detail.length > 0 ? truncateText(detail, 500) : "empty response body";
   } catch (error) {
     // error-policy:J4 the status remains authoritative and the unavailable
     // diagnostic body is represented explicitly.

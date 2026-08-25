@@ -4,10 +4,22 @@
  */
 import { ElizaError, logger } from "@elizaos/core";
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function responseDetail(response: Response): Promise<string> {
   try {
     const body = (await response.text()).trim();
-    return body.length > 0 ? body.slice(0, 500) : response.statusText;
+    return body.length > 0 ? truncateText(body, 500) : response.statusText;
   } catch (error) {
     // error-policy:J4 the HTTP status remains authoritative; preserve an
     // explicit unavailable marker instead of disguising the missing body.
