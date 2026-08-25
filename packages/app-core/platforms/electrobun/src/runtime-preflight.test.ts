@@ -3,6 +3,7 @@ import { createServer, type ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {
   probeExternalAgent,
+  resolveDesktopApiRequestToken,
   resolveDesktopRuntimeForBoot,
   resolveQualifiedExternalToken,
 } from "./runtime-preflight";
@@ -188,8 +189,42 @@ describe("resolveDesktopRuntimeForBoot", () => {
     });
 
     expect(result.mode).toBe("external");
+    expect(result.externalReachability).toBe("verified");
     expect(result.externalApi.base).toBe("http://127.0.0.1:2250");
     expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it("qualifies a configured external bearer against the actual request origin", () => {
+    const resolution = {
+      mode: "external" as const,
+      externalApi: {
+        base: "https://remote.example",
+        source: "ELIZA_DESKTOP_API_BASE" as const,
+        invalidSources: [],
+      },
+    };
+
+    expect(
+      resolveDesktopApiRequestToken({
+        resolution,
+        targetUrl: "https://remote.example/api/config",
+        configuredToken: " remote-secret ",
+      }),
+    ).toBe("remote-secret");
+    for (const targetUrl of [
+      "http://127.0.0.1:31337/api/agent/reset",
+      "http://localhost:31337/api/config",
+      "https://remote.example.evil.test/api/config",
+      "not a URL",
+    ]) {
+      expect(
+        resolveDesktopApiRequestToken({
+          resolution,
+          targetUrl,
+          configuredToken: "remote-secret",
+        }),
+      ).toBeUndefined();
+    }
   });
 
   it("passes only the persisted target token to the readiness probe", async () => {
@@ -204,6 +239,7 @@ describe("resolveDesktopRuntimeForBoot", () => {
     });
 
     expect(result.mode).toBe("external");
+    expect(result.externalReachability).toBe("verified");
     expect(probe).toHaveBeenCalledWith(
       "http://127.0.0.1:2250",
       "remote-secret",
@@ -213,6 +249,24 @@ describe("resolveDesktopRuntimeForBoot", () => {
     ).toBe("remote-secret");
     expect(
       resolveQualifiedExternalToken(result, "http://127.0.0.1:2251/api/chat"),
+    ).toBeUndefined();
+    expect(
+      resolveDesktopApiRequestToken({
+        resolution: result,
+        targetUrl: "http://127.0.0.1:2250/api/config",
+      }),
+    ).toBe("remote-secret");
+    expect(
+      resolveDesktopApiRequestToken({
+        resolution: result,
+        targetUrl: "http://127.0.0.1:2251/api/agent/reset",
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveDesktopApiRequestToken({
+        resolution: result,
+        targetUrl: "not a URL",
+      }),
     ).toBeUndefined();
   });
 
@@ -267,16 +321,50 @@ describe("resolveDesktopRuntimeForBoot", () => {
     expect(result.externalApi.base).toBeNull();
   });
 
-  it("does not fabricate local runtime in a cloud-only package", async () => {
-    const probe = vi.fn(async () => false);
+  it("qualifies persisted access in a runtime-less external package", async () => {
+    const probe = vi.fn(async () => true);
     const result = await resolveDesktopRuntimeForBoot({
       env: { ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" },
-      deployment: remoteDeployment,
+      deployment: {
+        ...remoteDeployment,
+        remoteAccessToken: " remote-secret ",
+      },
       probe,
     });
 
     expect(result.mode).toBe("external");
-    expect(probe).not.toHaveBeenCalled();
+    expect(result.externalReachability).toBe("verified");
+    expect(probe).toHaveBeenCalledWith(
+      "http://127.0.0.1:2250",
+      "remote-secret",
+    );
+    expect(
+      resolveQualifiedExternalToken(result, "http://127.0.0.1:2250/api/chat"),
+    ).toBe("remote-secret");
+  });
+
+  it("keeps a failed runtime-less probe external but unavailable", async () => {
+    const probe = vi.fn(async () => false);
+    const result = await resolveDesktopRuntimeForBoot({
+      env: { ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT: "1" },
+      deployment: {
+        ...remoteDeployment,
+        remoteAccessToken: " remote-secret ",
+      },
+      probe,
+    });
+
+    expect(result.mode).toBe("external");
+    expect(result.externalApi.base).toBe("http://127.0.0.1:2250");
+    expect(result.externalReachability).toBe("unavailable");
+    expect(result.qualifiedAccess).toBeUndefined();
+    expect(probe).toHaveBeenCalledWith(
+      "http://127.0.0.1:2250",
+      "remote-secret",
+    );
+    expect(
+      resolveQualifiedExternalToken(result, "http://127.0.0.1:2250/api/chat"),
+    ).toBeUndefined();
   });
 
   it("preserves explicit env targets without probing persisted state", async () => {

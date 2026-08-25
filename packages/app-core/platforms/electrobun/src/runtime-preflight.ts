@@ -27,6 +27,7 @@ export interface QualifiedExternalAccess {
 export interface DesktopRuntimeBootResolution
   extends DesktopRuntimeModeResolution {
   qualifiedAccess?: QualifiedExternalAccess;
+  externalReachability?: "verified" | "unavailable";
 }
 
 export function resolveQualifiedExternalToken(
@@ -37,6 +38,33 @@ export function resolveQualifiedExternalToken(
   return targetOrigin && resolution.qualifiedAccess?.origin === targetOrigin
     ? resolution.qualifiedAccess.token
     : undefined;
+}
+
+export function resolveDesktopApiRequestToken(options: {
+  resolution: DesktopRuntimeBootResolution;
+  targetUrl: string;
+  configuredToken?: string | null;
+}): string | undefined {
+  const configuredToken = options.configuredToken?.trim() || undefined;
+  if (options.resolution.mode === "local") {
+    return configuredToken;
+  }
+  if (options.resolution.mode !== "external") {
+    return undefined;
+  }
+
+  const targetOrigin = normalizeApiBase(options.targetUrl);
+  const externalOrigin = normalizeApiBase(
+    options.resolution.externalApi.base ?? undefined,
+  );
+  if (!targetOrigin || !externalOrigin || targetOrigin !== externalOrigin) {
+    return undefined;
+  }
+
+  return (
+    configuredToken ??
+    resolveQualifiedExternalToken(options.resolution, options.targetUrl)
+  );
 }
 
 function hasExplicitExternalTarget(
@@ -131,20 +159,23 @@ export async function resolveDesktopRuntimeForBoot(options: {
     return resolved;
   }
 
-  // A runtime-less package cannot recover to an agent it does not ship.
   const envOnly = resolveDesktopRuntimeMode(env);
-  if (envOnly.mode === "disabled") {
-    return resolved;
-  }
-
   const token = deployment?.remoteAccessToken?.trim() || undefined;
   if (await probe(resolved.externalApi.base, token)) {
     return token
       ? {
           ...resolved,
+          externalReachability: "verified",
           qualifiedAccess: { origin: resolved.externalApi.base, token },
         }
-      : resolved;
+      : { ...resolved, externalReachability: "verified" };
+  }
+
+  // A runtime-less package cannot recover to an agent it does not ship. Keep
+  // the persisted topology external but unqualified so callers render an
+  // unavailable external runtime instead of silently inventing a local one.
+  if (envOnly.mode === "disabled") {
+    return { ...resolved, externalReachability: "unavailable" };
   }
 
   return envOnly;
