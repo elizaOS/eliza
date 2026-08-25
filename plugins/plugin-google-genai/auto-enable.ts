@@ -12,10 +12,21 @@ const ENV_KEYS = [
   "GEMINI_API_KEY",
 ] as const;
 
-/** Enable when a Google Generative AI / Gemini API key is present. */
+/**
+ * Placeholder patterns treated the same as "unset" — mirrors the canonical
+ * placeholder detection in evm-signing-capability.ts so a stale
+ * "REDACTED"/"PLACEHOLDER" in env (e.g. copied from a template) does not
+ * spoof the gate into enabling the provider with a non-functional key.
+ */
+const PLACEHOLDER_RE =
+  /^\[?\s*(REDACTED|PLACEHOLDER|T(?:O)D(?:O)|CHANGEME|EMPTY)\s*]?$/i;
+
+function isConcreteKey(value: string | undefined): boolean {
+  const trimmed = value?.trim();
+  return Boolean(trimmed) && !PLACEHOLDER_RE.test(trimmed as string);
+}
+
+/** Enable when a Google Generative AI / Gemini API key is present and concrete. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  return ENV_KEYS.some((k) => {
-    const v = ctx.env[k];
-    return typeof v === "string" && v.trim() !== "";
-  });
+  return ENV_KEYS.some((k) => isConcreteKey(ctx.env[k]));
 }
