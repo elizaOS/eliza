@@ -430,4 +430,52 @@ describe("GET_MEETING_TRANSCRIPT", () => {
     expect(await v(has.runtime, msg("hello there"), NO_STATE)).toBe(false);
     expect(await v(has.runtime, msg("show me the notes"), NO_STATE)).toBe(true);
   });
+
+  it("preserves UTF-16 surrogate pairs when clipping long transcripts", async () => {
+    // "🔥" is 2 code units. 2000 repeats = 4000 code units > MAX_REPLY_CHARS (3500)
+    // MAX_REPLY_CHARS is 3500 (even), but if text starts with an offset or emoji boundary
+    // let us use an odd prefix "a" + 2000 emojis so index 3500 lands inside a pair
+    const longEmoji = "a" + "🔥".repeat(2000);
+    const row = {
+      id: "trans-emoji",
+      content: {
+        text: "Alice: " + longEmoji,
+        transcript: JSON.stringify({
+          id: "trans-emoji",
+          status: "ready",
+          segments: [
+            {
+              id: "s1",
+              speakerLabel: "Alice",
+              startMs: 0,
+              endMs: 1000,
+              text: longEmoji,
+              words: [],
+            },
+          ],
+        }),
+      },
+      metadata: { type: "custom", source: "transcript" },
+    } as unknown as Memory;
+    const h = harness({
+      service: svc([session({ transcriptId: "trans-emoji" })]),
+      memories: { "trans-emoji": row },
+    });
+    const res = await getMeetingTranscriptAction.handler(
+      h.runtime,
+      msg("show the transcript"),
+      NO_STATE,
+      {},
+      h.cb,
+    );
+    expect(res.success).toBe(true);
+    expect(res.text).toContain("truncated");
+    for (const char of res.text) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
 });

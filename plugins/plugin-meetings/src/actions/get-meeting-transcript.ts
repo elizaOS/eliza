@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * `GET_MEETING_TRANSCRIPT` — return the (live or final) transcript text of a
  * meeting the bot attended. Targets the session named by URL/sessionId when
@@ -72,7 +84,7 @@ async function handler(
   }
   const clipped =
     text.length > MAX_REPLY_CHARS
-      ? `${text.slice(0, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
+      ? `${truncateUtf16Safe(text, MAX_REPLY_CHARS)}\n… (truncated — open transcript ${transcript.id} in the Transcripts view for the full record)`
       : text;
   return reply(
     callback,
