@@ -454,6 +454,72 @@ function validateRunBoundBenchmark(
         `run-bound benchmark sample matrix failed: ${report.failures.join("; ")}`,
       );
     }
+    const cases = array(benchmark.cases, "run-bound benchmark cases");
+    if (cases.length !== 18) {
+      failures.push("run-bound benchmark case aggregate is incomplete");
+    }
+    for (const value of cases) {
+      const entry = record(value, "run-bound benchmark case");
+      const sourceBytes = entry.sourceBytes;
+      if (
+        typeof sourceBytes !== "number" ||
+        !Number.isSafeInteger(sourceBytes) ||
+        sourceBytes <= 0
+      ) {
+        failures.push("run-bound benchmark case source size is invalid");
+        continue;
+      }
+      for (const phaseName of ["cold", "warm"]) {
+        const phase = record(
+          entry[phaseName],
+          `run-bound benchmark ${phaseName}`,
+        );
+        const latency = record(
+          phase.pageLatencyMs,
+          `run-bound benchmark ${phaseName} latency`,
+        );
+        const growth = record(
+          phase.resourceGrowth,
+          `run-bound benchmark ${phaseName} resources`,
+        );
+        const rssGrowth = record(growth.rssBytes, "RSS growth");
+        const databaseGrowth = record(growth.databaseBytes, "database growth");
+        if (
+          !finiteNonNegative(latency.maximum) ||
+          latency.maximum >
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs ||
+          !finiteNonNegative(rssGrowth.maximum) ||
+          rssGrowth.maximum >
+            CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes ||
+          !finiteNonNegative(databaseGrowth.maximum) ||
+          databaseGrowth.maximum >
+            sourceBytes *
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark
+                .maxDatabaseGrowthRatio
+        ) {
+          failures.push(
+            `run-bound benchmark ${phaseName} exceeded a resource ceiling`,
+          );
+        }
+        const sourceWork = record(
+          phase.sourceWork,
+          "run-bound benchmark source work",
+        );
+        if (
+          !finiteNonNegative(sourceWork.bytesRead) ||
+          !finiteNonNegative(phase.bytesReturned) ||
+          sourceWork.bytesRead >
+            phase.bytesReturned *
+              CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark
+                .maxReadAmplification +
+              64 * 1024
+        ) {
+          failures.push(
+            `run-bound benchmark ${phaseName} read amplification exceeded`,
+          );
+        }
+      }
+    }
   } catch (error) {
     failures.push(`run-bound benchmark samples are invalid: ${String(error)}`);
   }
@@ -1640,40 +1706,44 @@ function semanticFailures(
   const benchmarkCases = array(benchmark.cases, "benchmark cases").map(
     (value) => record(value, "benchmark case"),
   );
-  for (const minimum of [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024]) {
-    if (!benchmarkCases.some(({ sourceBytes }) => sourceBytes === minimum))
-      failures.push(`benchmark lacks ${minimum} byte scale`);
-  }
-  for (const entry of benchmarkCases) {
-    const observed = record(entry.observed, "benchmark observed");
-    const ceilings = record(entry.ceilings, "benchmark ceilings");
-    const sourceBytes = entry.sourceBytes;
-    if (
-      typeof sourceBytes !== "number" ||
-      !Number.isSafeInteger(sourceBytes) ||
-      sourceBytes <= 0
-    ) {
-      failures.push("benchmark source size is invalid");
-      continue;
+  if (
+    benchmark.schemaVersion !== PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION
+  ) {
+    for (const minimum of [1024 * 1024, 10 * 1024 * 1024, 100 * 1024 * 1024]) {
+      if (!benchmarkCases.some(({ sourceBytes }) => sourceBytes === minimum))
+        failures.push(`benchmark lacks ${minimum} byte scale`);
     }
-    const policy = {
-      maxPageLatencyMs:
-        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
-      rssGrowthBytes:
-        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
-      databaseGrowthBytes:
-        sourceBytes *
-        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxDatabaseGrowthRatio,
-      readAmplification:
-        CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
-    };
-    for (const [metric, maximum] of Object.entries(policy)) {
+    for (const entry of benchmarkCases) {
+      const observed = record(entry.observed, "benchmark observed");
+      const ceilings = record(entry.ceilings, "benchmark ceilings");
+      const sourceBytes = entry.sourceBytes;
       if (
-        !finiteNonNegative(observed[metric]) ||
-        observed[metric] > maximum ||
-        ceilings[metric] !== maximum
-      )
-        failures.push(`benchmark ${metric} exceeded ceiling`);
+        typeof sourceBytes !== "number" ||
+        !Number.isSafeInteger(sourceBytes) ||
+        sourceBytes <= 0
+      ) {
+        failures.push("benchmark source size is invalid");
+        continue;
+      }
+      const policy = {
+        maxPageLatencyMs:
+          CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxPageLatencyMs,
+        rssGrowthBytes:
+          CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxRssGrowthBytes,
+        databaseGrowthBytes:
+          sourceBytes *
+          CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxDatabaseGrowthRatio,
+        readAmplification:
+          CONTENT_CONTEXT_PERFORMANCE_POLICY.benchmark.maxReadAmplification,
+      };
+      for (const [metric, maximum] of Object.entries(policy)) {
+        if (
+          !finiteNonNegative(observed[metric]) ||
+          observed[metric] > maximum ||
+          ceilings[metric] !== maximum
+        )
+          failures.push(`benchmark ${metric} exceeded ceiling`);
+      }
     }
   }
   failures.push(
