@@ -710,19 +710,52 @@ export const generateMediaAction = {
 		},
 		{
 			name: "duration",
-			description: "Target duration seconds for video/audio.",
+			description:
+				"Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default.",
 			required: false,
 			schema: { type: "number" as const },
 		},
 		{
 			name: "aspectRatio",
-			description: "Video aspect ratio, e.g. 16:9, 9:16, 1:1.",
+			description:
+				"Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing.",
 			required: false,
-			schema: { type: "string" as const },
+			schema: {
+				type: "string" as const,
+				enum: ["auto", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
+			},
+		},
+		{
+			name: "resolution",
+			description:
+				"Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p.",
+			required: false,
+			schema: { type: "string" as const, enum: ["480p", "720p"] },
+		},
+		{
+			name: "audio",
+			description:
+				"Whether video generation should include synchronized audio. Omit it to include audio.",
+			required: false,
+			schema: { type: "boolean" as const },
+		},
+		{
+			name: "seed",
+			description:
+				"Optional non-negative integer seed for reproducible media generation.",
+			required: false,
+			schema: { type: "number" as const },
 		},
 		{
 			name: "size",
 			description: "Image size/provider preset.",
+			required: false,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "imageUrl",
+			description:
+				"Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context.",
 			required: false,
 			schema: { type: "string" as const },
 		},
