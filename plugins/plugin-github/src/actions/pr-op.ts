@@ -177,7 +177,7 @@ async function runReview(
 
   const preview =
     `About to ${action.replace("-", " ")} PR ${repo}#${number}` +
-    (body ? ` with body: "${body.slice(0, 120)}"` : "") +
+    (body ? ` with body: "${truncateBody(body, 120)}"` : "") +
     ` as ${describeSelection(selection)}.`;
   const decision = await requireConfirmation({
     runtime,
@@ -223,6 +223,18 @@ async function runReview(
   });
   await callback?.({ text: `Submitted ${action} review on ${repo}#${number}` });
   return { success: true, data: { op: "review", id: resp.data.id } };
+}
+
+function truncateBody(text: string, maxChars = 120): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
 }
 
 export const prOpAction: Action = {

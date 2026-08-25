@@ -279,12 +279,24 @@ function buildPreview(
       case "label":
         return ` with [${labels?.join(", ") ?? ""}]`;
       case "comment":
-        return body ? ` body: "${body.slice(0, 120)}"` : "";
+        return body ? ` body: "${truncateBody(body, 120)}"` : "";
       default:
         return "";
     }
   })();
   return `${head}${target}${detail} as ${identity}. Re-invoke with confirmed: true to proceed.`;
+}
+
+function truncateBody(text: string, maxChars = 120): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
 }
 
 export const issueOpAction: Action = {
