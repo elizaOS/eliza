@@ -1,6 +1,7 @@
 /** Verifies AuthorizeContent through the package's configured test harness. */
 // @vitest-environment jsdom
 
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 /**
  * Component tests for AuthorizeContent, the app-authorize consent screen. Drives
  * the signed-in and signed-out branches and the OAuth-start / cancel-redirect
@@ -120,6 +121,7 @@ describe("AuthorizeContent", () => {
   let locationAssignMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    window.localStorage.clear();
     invalidateStewardServerCookieSyncMarker();
     locationAssignMock = vi.fn();
     Object.defineProperty(window, "location", {
@@ -347,6 +349,7 @@ describe("AuthorizeContent", () => {
   });
 
   it("automatically completes first-party mobile PKCE without a consent interstitial", async () => {
+    window.localStorage.setItem(STEWARD_TOKEN_KEY, "token-1");
     searchParamsRef.current = new URLSearchParams({
       flow: "mobile_pkce",
       client_id: "ai.elizaos.app",
@@ -444,6 +447,7 @@ describe("AuthorizeContent", () => {
 
   it("returns a failed mobile connection to the app instead of leaving a spinner", async () => {
     const user = userEvent.setup();
+    window.localStorage.setItem(STEWARD_TOKEN_KEY, "token-1");
     searchParamsRef.current = new URLSearchParams({
       flow: "mobile_pkce",
       client_id: "ai.elizaos.app",
