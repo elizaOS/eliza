@@ -128,4 +128,96 @@ describe("skill code scanner", () => {
 		).toEqual([]);
 		expect(report.status).toBe("clean");
 	});
+
+	it("identifies all scannable code extensions and rejects non-code or extensionless files", () => {
+		expect(isScannableCode("Makefile")).toBe(false);
+		expect(isScannableCode("Dockerfile")).toBe(false);
+		expect(isScannableCode("package.json")).toBe(false);
+		expect(isScannableCode("styles.css")).toBe(false);
+		expect(isScannableCode("image.png")).toBe(false);
+
+		expect(isScannableCode("index.js")).toBe(true);
+		expect(isScannableCode("index.mjs")).toBe(true);
+		expect(isScannableCode("index.cjs")).toBe(true);
+		expect(isScannableCode("index.ts")).toBe(true);
+		expect(isScannableCode("index.mts")).toBe(true);
+		expect(isScannableCode("index.cts")).toBe(true);
+		expect(isScannableCode("Component.jsx")).toBe(true);
+		expect(isScannableCode("Component.tsx")).toBe(true);
+		expect(isScannableCode("UPPERCASE.JSX")).toBe(true);
+		expect(isScannableCode("UPPERCASE.TSX")).toBe(true);
+	});
+
+	it("ignores standard WebSocket ports and flags non-standard ports as suspicious", () => {
+		for (const port of [80, 443, 8080, 8443, 3000]) {
+			const safeFindings = scanCodeSource(
+				`const ws = new WebSocket("ws://127.0.0.1:${port}");`,
+				"client.ts",
+			);
+			expect(
+				safeFindings.find((f) => f.ruleId === "suspicious-network"),
+			).toBeUndefined();
+		}
+
+		const suspiciousFindings = scanCodeSource(
+			'const ws = new WebSocket("ws://127.0.0.1:9999");',
+			"client.ts",
+		);
+		const finding = suspiciousFindings.find(
+			(f) => f.ruleId === "suspicious-network",
+		);
+		expect(finding).toBeDefined();
+		expect(finding?.severity).toBe("warn");
+		expect(finding?.line).toBe(1);
+	});
+
+	it("detects obfuscated hex sequences and large base64 decode payloads", () => {
+		const hexFindings = scanCodeSource(
+			'const code = "\\x65\\x76\\x61\\x6c\\x28\\x61\\x29";',
+			"obfuscated.js",
+		);
+		expect(hexFindings.map((f) => f.ruleId)).toContain("obfuscated-code");
+
+		const base64Findings = scanCodeSource(
+			`const payload = Buffer.from("${"A".repeat(250)}");`,
+			"obfuscated.js",
+		);
+		expect(base64Findings.map((f) => f.ruleId)).toContain("obfuscated-code");
+	});
+
+	it("detects crypto mining signatures with critical severity", () => {
+		const stratumFindings = scanCodeSource(
+			'const pool = "stratum+tcp://mine.monero.org:3333";',
+			"miner.ts",
+		);
+		expect(
+			stratumFindings.find((f) => f.ruleId === "crypto-mining")?.severity,
+		).toBe("critical");
+
+		const xmrigFindings = scanCodeSource(
+			'const bin = "xmrig --donate-level 1";',
+			"miner.ts",
+		);
+		expect(
+			xmrigFindings.find((f) => f.ruleId === "crypto-mining")?.severity,
+		).toBe("critical");
+	});
+
+	it("enforces context requirements before flagging dangerous-exec and env-harvesting", () => {
+		const execWithoutChildProcess = scanCodeSource(
+			'const result = exec("calc");',
+			"safe-custom-exec.ts",
+		);
+		expect(
+			execWithoutChildProcess.find((f) => f.ruleId === "dangerous-exec"),
+		).toBeUndefined();
+
+		const envWithoutNetwork = scanCodeSource(
+			'const port = process.env.PORT || "3000";\nconsole.log(port);',
+			"server.ts",
+		);
+		expect(
+			envWithoutNetwork.find((f) => f.ruleId === "env-harvesting"),
+		).toBeUndefined();
+	});
 });
