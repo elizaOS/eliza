@@ -40,9 +40,22 @@ async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
   assertBrowserWorkspaceConnectorSecretsNotExported(tab?.partition, operation);
 }
 
+function truncateText(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  let end = maxChars;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 async function readErrorBody(response: Response): Promise<string> {
   try {
-    return (await response.text()).trim().slice(0, 240);
+    const trimmed = (await response.text()).trim();
+    return truncateText(trimmed, 240);
   } catch {
     return "";
   }
