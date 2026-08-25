@@ -55,7 +55,10 @@ import {
 	setInferenceModelProvider,
 } from "./inference-timing";
 import { createLogger } from "./logger";
-import { installRuntimePluginLifecycle } from "./plugin-lifecycle";
+import {
+	installRuntimePluginLifecycle,
+	trackPluginRouteRegistration,
+} from "./plugin-lifecycle";
 import { createCoreSecurityHooksPlugin } from "./plugins/core-security-hooks";
 import {
 	getNativeRuntimeFeaturePlugin,
@@ -2509,12 +2512,14 @@ export class AgentRuntime implements IAgentRuntime {
 				const routePath = route.path.startsWith("/")
 					? route.path
 					: `/${route.path}`;
-				this.routes.push({
+				const registeredRoute = {
 					...route,
 					path: route.rawPath
 						? routePath
 						: `/${pluginToRegister.name}${routePath}`,
-				});
+				};
+				this.routes.push(registeredRoute);
+				trackPluginRouteRegistration(registeredRoute);
 			}
 		}
 		if (pluginToRegister.events) {
