@@ -2,6 +2,12 @@
 
 import { createHash } from "node:crypto";
 import {
+  buildProgressiveContentBenchmarkReport,
+  PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS,
+  PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION,
+  PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES,
+} from "../../core/src/testing/progressive-content-benchmark.ts";
+import {
   PROGRESSIVE_CONTENT_FAULT_CASES,
   PROGRESSIVE_CONTENT_FAULT_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_FORBIDDEN_FAULT_EFFECTS,
@@ -15,6 +21,7 @@ import {
   PROGRESSIVE_CONTENT_MUTANT_REGISTRY_SCHEMA_VERSION,
   PROGRESSIVE_CONTENT_REQUIRED_MUTANTS,
 } from "../../core/src/testing/progressive-content-mutants.ts";
+import { PROGRESSIVE_CONTENT_TARGET_FAMILIES } from "../../core/src/testing/progressive-content-target.ts";
 import {
   PROGRESSIVE_CONTENT_ANCHOR_TIME,
   PROGRESSIVE_CONTENT_SCHEMA_VERSION,
@@ -386,6 +393,71 @@ function p95(values: readonly number[]): number {
 
 function finiteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function validateRunBoundBenchmark(
+  benchmark: Record<string, unknown>,
+  commit: string,
+  corpusManifestSha256: string,
+  generatorRevision: string,
+): string[] {
+  if (benchmark.schemaVersion !== PROGRESSIVE_CONTENT_BENCHMARK_SCHEMA_VERSION)
+    return [];
+  const failures: string[] = [];
+  if (
+    benchmark.status !== "passed" ||
+    benchmark.evidenceEligible !== true ||
+    benchmark.commit !== commit ||
+    benchmark.corpusManifestSha256 !== corpusManifestSha256 ||
+    benchmark.generatorRevision !== generatorRevision ||
+    benchmark.repetitions !== PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS ||
+    benchmark.processCount !==
+      PROGRESSIVE_CONTENT_TARGET_FAMILIES.length *
+        PROGRESSIVE_CONTENT_BENCHMARK_SOURCE_BYTES.length *
+        PROGRESSIVE_CONTENT_BENCHMARK_REPETITIONS
+  ) {
+    failures.push("run-bound benchmark identity or exact matrix is invalid");
+  }
+  const backendPolicy = record(
+    benchmark.backendPolicy,
+    "run-bound benchmark backend policy",
+  );
+  const expectedBackendPolicy = {
+    file: "filesystem",
+    document: "postgres",
+    memory: "postgres",
+    email: "postgres",
+    attachment: "content-addressed-media-store",
+    "tool-output": "runtime-tool-output-store",
+  };
+  for (const [family, backend] of Object.entries(expectedBackendPolicy)) {
+    if (backendPolicy[family] !== backend)
+      failures.push(`run-bound benchmark backend changed for ${family}`);
+  }
+  const environment = record(
+    benchmark.environment,
+    "run-bound benchmark environment",
+  );
+  if (environment.runtime !== "bun" || environment.sqlBackend !== "postgres")
+    failures.push("run-bound benchmark did not use Bun and PostgreSQL");
+  try {
+    const samples = array(benchmark.samples, "run-bound benchmark samples");
+    const report = buildProgressiveContentBenchmarkReport({
+      samples: samples as never,
+    });
+    if (
+      report.status !== "passed" ||
+      report.evidenceEligible !== true ||
+      report.processCount !== 90
+    ) {
+      failures.push(
+        `run-bound benchmark sample matrix failed: ${report.failures.join("; ")}`,
+      );
+    }
+  } catch (error) {
+    failures.push(`run-bound benchmark samples are invalid: ${String(error)}`);
+  }
+  return failures;
 }
 
 function seriesDetectsLeak(
@@ -1604,6 +1676,14 @@ function semanticFailures(
         failures.push(`benchmark ${metric} exceeded ceiling`);
     }
   }
+  failures.push(
+    ...validateRunBoundBenchmark(
+      benchmark,
+      result.commit,
+      result.corpusManifestSha256,
+      result.generatorRevision,
+    ),
+  );
 
   const cleanup = json(bytes["cleanup.json"], "cleanup");
   const cleanupProbes = array(cleanup.probes, "cleanup probes").map((value) =>
