@@ -27,6 +27,7 @@ import {
   CONTENT_CONTEXT_PERFORMANCE_POLICY,
 } from "../../corpus-tools/src/progressive-content-evidence.ts";
 import { PROGRESSIVE_CONTENT_REALIZATION_SCHEMA_VERSION } from "../../corpus-tools/src/progressive-content-realization.ts";
+import { createProgressiveContentPostgresEvidenceFixture } from "../../corpus-tools/src/testing/progressive-content-postgres-evidence-fixture.ts";
 import { createBundle } from "../../evidence/src/bundle.ts";
 import {
   captureSiloSnapshot,
@@ -197,182 +198,56 @@ function validPostgresEvidence(
   }[],
   corpusManifestSha256: string,
 ) {
-  const mappings = [
-    ["file", "filesystem", "READ.byteWindow", "typed-rejection", false],
-    [
-      "document",
-      "document-store",
-      "DatabaseAdapter.readDocumentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "memory",
-      "memory-store",
-      "DatabaseAdapter.readMessageContentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "email",
-      "message-store",
-      "DatabaseAdapter.readMessageContentRange",
-      "typed-rejection",
-      true,
-    ],
-    [
-      "attachment",
-      "content-addressed-media",
-      "media-store.readStoredMediaByteRange",
-      "native-bytes",
-      false,
-    ],
-    [
-      "tool-output",
-      "filesystem",
-      "readShellOutputArtifactPage",
-      "native-bytes",
-      false,
-    ],
-  ] as const;
-  const commit = "a".repeat(40);
-  return {
-    schemaVersion: "elizaos.content-context.postgres.v3",
-    status: "passed",
-    backend: "postgres",
-    commit,
+  return createProgressiveContentPostgresEvidenceFixture({
+    objects,
     corpusManifestSha256,
-    server: { version: "PostgreSQL 17.1", versionNum: 170_001 },
-    command: {
-      executable: "bun",
-      argv: [
-        "packages/scripts/produce-content-context-postgres.mjs",
-        `--commit=${commit}`,
-      ],
-      cwd: ".",
-    },
-    performance: {
-      durationMs: 1_000,
-      peakRssBytes: 128 * 1024 * 1024,
-      peakHeapUsedBytes: 64 * 1024 * 1024,
-      peakExternalBytes: 16 * 1024 * 1024,
-      rssDeltaBytes: 1024,
-      heapUsedStartBytes: 32 * 1024 * 1024,
-      heapUsedEndBytes: 33 * 1024 * 1024,
-      externalStartBytes: 1024,
-      externalEndBytes: 2048,
-      databaseSizeBytes: 64 * 1024 * 1024,
-      totalPostgresRows: 96,
-    },
-    familyMappings: mappings.map(
-      ([
-        family,
-        authoritativeStore,
-        productionMethod,
-        binaryPolicy,
-        postgresBacked,
-      ]) => ({
-        family,
-        authoritativeStore,
-        productionMethod,
-        binaryPolicy,
-        postgresRows: postgresBacked ? 32 : 0,
-      }),
-    ),
-    sharedVectors: mappings
-      .filter((mapping) => mapping[4])
-      .map(([family, , productionMethod]) => ({
-        family,
-        status: "passed",
-        productionMethod,
-        authorizationDenied: true,
-        isolationDenied: true,
-        restartVerified: true,
-        indexNames: [
-          family === "document"
-            ? "idx_document_source_byte_seek"
-            : "idx_message_content_byte_seek",
+    commit: "a".repeat(40),
+  });
+}
+
+function validDeterministicScenarioReport() {
+  return {
+    completedAtIso: "2026-01-01T00:00:01.000Z",
+    evidenceSummary: {},
+    executionProfile: "simulated",
+    failedCount: 0,
+    passedCount: 1,
+    providerName: "deterministic-model-provider",
+    runId: "content-context-deterministic",
+    scenarios: [
+      {
+        actionsCalled: ["FILE", "DOCUMENT", "ATTACHMENT", "MESSAGE"].map(
+          (actionName) => ({ actionName }),
+        ),
+        domain: "progressive-content",
+        durationMs: 1,
+        evidence: {},
+        executionProfile: "simulated",
+        failedAssertions: [],
+        finalChecks: [
+          {
+            label: "progressive action ledger is isolated and exact",
+            status: "passed",
+          },
         ],
-        seekPlan: {
-          indexName:
-            family === "document"
-              ? "idx_document_source_byte_seek"
-              : "idx_message_content_byte_seek",
-          nodeTypes: ["Limit", "Bitmap Heap Scan", "Bitmap Index Scan"],
-          actualRows: 1,
-          sharedHitBlocks: 1,
-          sharedReadBlocks: 0,
-          planningTimeMs: 0.1,
-          executionTimeMs: 0.1,
+        id: "deterministic-progressive-content-actions",
+        modelFixtureDiagnostics: {
+          calls: [{}, {}, {}],
+          unexpectedCalls: [],
         },
-      })),
-    objects: objects.map((object) => {
-      const postgresBacked =
-        mappings.find(([family]) => family === object.family)?.[4] === true;
-      const typedRejection =
-        postgresBacked &&
-        (object.format === "binary" || object.format === "invalid-utf8");
-      const pageBytes = 64 * 1024;
-      const postgresRows = typedRejection
-        ? 0
-        : postgresBacked
-          ? Math.ceil(object.byteLength / pageBytes)
-          : 0;
-      return {
-        objectId: object.id,
-        family: object.family,
-        sourceBytes: object.byteLength,
-        sourceSha256: object.sourceSha256,
-        revision: object.revision,
-        authorizationScope: object.authorizationScope,
-        disposition: typedRejection
-          ? "typed-rejected"
-          : postgresBacked
-            ? "postgres-text-reassembled"
-            : "native-store-reassembled",
-        postgresRows,
-        reassembledSha256: typedRejection ? null : object.sourceSha256,
-        rejectionCode: typedRejection
-          ? object.format === "binary"
-            ? "CONTENT_BINARY_UNSUPPORTED"
-            : "CONTENT_INVALID_UTF8"
-          : null,
-        storageWrites: postgresRows,
-        authorizationVerified: true,
-        isolationVerified: true,
-        restartVerified: true,
-        durationMs: 10,
-        sourceWork: {
-          pageBytes,
-          bytesRead: typedRejection
-            ? Math.min(pageBytes, object.byteLength)
-            : object.byteLength,
-          readCalls: typedRejection
-            ? 1
-            : Math.ceil(object.byteLength / pageBytes),
-          rowsRead:
-            postgresBacked && !typedRejection
-              ? Math.ceil(object.byteLength / pageBytes)
-              : 0,
-          parentScans: 0,
-          readAmplification: 1,
-        },
-      };
-    }),
-    negativeVectors: ["document", "memory", "email"].flatMap((family) =>
-      ["binary", "invalid-utf8"].map((format) => ({
-        family,
-        format,
+        modelFixtureMode: "strict-fixtures",
+        providerName: "deterministic-model-provider",
         status: "passed",
-        rejectionCode:
-          format === "binary"
-            ? "CONTENT_BINARY_UNSUPPORTED"
-            : "CONTENT_INVALID_UTF8",
-        postgresRows: 0,
-        storageWrites: 0,
-      })),
-    ),
-    cleanup: { databaseDropped: true, postDropProbe: "absent" },
+        tags: ["deterministic", "progressive-content", "large-content"],
+        title: "Progressive content actions",
+        turns: [],
+      },
+    ],
+    skippedCount: 0,
+    startedAtIso: "2026-01-01T00:00:00.000Z",
+    totalCostUsd: 0,
+    totalCount: 1,
+    totals: {},
   };
 }
 
@@ -651,20 +526,7 @@ function evidenceValues() {
     },
     "soak.json": validSoakEvidence(commit, manifestSha256),
     "postgres.json": validPostgresEvidence(objects, manifestSha256),
-    "scenario.json": {
-      status: "passed",
-      deterministic: true,
-      productionActions: true,
-      strictFixtures: true,
-      lateEvidenceFamilies: [
-        "file",
-        "document",
-        "memory",
-        "email",
-        "attachment",
-        "tool-output",
-      ],
-    },
+    "scenario.json": validDeterministicScenarioReport(),
     "scenario-native.jsonl": `${JSON.stringify({
       format: "eliza_native_v1",
       scenarioStatus: "passed",
