@@ -7,20 +7,48 @@
 
 import { formatError } from "@elizaos/core";
 
+const TIMEOUT_CODES = new Set([
+  "ETIMEDOUT",
+  "ESOCKETTIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+function hasTimeoutCode(error: unknown, maxDepth = 4): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < maxDepth && current != null; depth++) {
+    if (typeof current === "object") {
+      const code = (current as { code?: unknown }).code;
+      if (typeof code === "string" && TIMEOUT_CODES.has(code)) return true;
+      current = (current as { cause?: unknown }).cause;
+    } else {
+      break;
+    }
+  }
+  return false;
+}
+
 /** Classify an error as a fetch/AbortSignal timeout. */
 export function isTimeoutError(error: unknown): boolean {
   if (!error) return false;
   if (error instanceof Error) {
     if (error.name === "TimeoutError" || error.name === "AbortError")
       return true;
+    if (hasTimeoutCode(error)) return true;
     const msg = error.message.toLowerCase();
     return msg.includes("timed out") || msg.includes("timeout");
   }
   if (typeof error === "object") {
-    const candidate = error as { name?: unknown; message?: unknown };
+    const candidate = error as {
+      name?: unknown;
+      message?: unknown;
+      code?: unknown;
+    };
     if (candidate.name === "TimeoutError" || candidate.name === "AbortError") {
       return true;
     }
+    if (hasTimeoutCode(error)) return true;
     if (typeof candidate.message === "string") {
       const msg = candidate.message.toLowerCase();
       return msg.includes("timed out") || msg.includes("timeout");

@@ -39,6 +39,53 @@ describe("isTimeoutError", () => {
     expect(isTimeoutError({ message: "Invalid payload" })).toBe(false);
   });
 
+  it("identifies error code properties (ETIMEDOUT, ESOCKETTIMEDOUT, etc.)", () => {
+    const etimedout = Object.assign(new Error("Connection failed"), {
+      code: "ETIMEDOUT",
+    });
+    expect(isTimeoutError(etimedout)).toBe(true);
+
+    const undConnect = Object.assign(new Error("Headers failed"), {
+      code: "UND_ERR_CONNECT_TIMEOUT",
+    });
+    expect(isTimeoutError(undConnect)).toBe(true);
+
+    const undBody = Object.assign(new Error("Body stalled"), {
+      code: "UND_ERR_BODY_TIMEOUT",
+    });
+    expect(isTimeoutError(undBody)).toBe(true);
+
+    expect(isTimeoutError({ code: "ESOCKETTIMEDOUT" })).toBe(true);
+    expect(isTimeoutError({ code: "ECONNREFUSED" })).toBe(false);
+  });
+
+  it("does not classify ABORT_ERR as a timeout", () => {
+    const abortCode = Object.assign(new Error("Aborted"), {
+      code: "ABORT_ERR",
+    });
+    expect(isTimeoutError(abortCode)).toBe(false);
+  });
+
+  it("follows .cause chain for timeout codes", () => {
+    const inner = Object.assign(new Error("connect timeout"), {
+      code: "UND_ERR_CONNECT_TIMEOUT",
+    });
+    const outer = new TypeError("fetch failed", { cause: inner });
+    expect(isTimeoutError(outer)).toBe(true);
+
+    const deepInner = Object.assign(new Error("ETIMEDOUT"), {
+      code: "ETIMEDOUT",
+    });
+    const mid = new Error("wrapped", { cause: deepInner });
+    const top = new TypeError("outer", { cause: mid });
+    expect(isTimeoutError(top)).toBe(true);
+  });
+
+  it("identifies DOMException TimeoutError", () => {
+    const domTimeout = new DOMException("signal timed out", "TimeoutError");
+    expect(isTimeoutError(domTimeout)).toBe(true);
+  });
+
   it("returns false for null, undefined, and non-timeout values", () => {
     expect(isTimeoutError(null)).toBe(false);
     expect(isTimeoutError(undefined)).toBe(false);
