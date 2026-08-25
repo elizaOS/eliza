@@ -53,5 +53,12 @@ describe("app-registry", () => {
 
 		expect(apps1).not.toBe(apps2);
 		expect(apps1).toEqual(apps2);
+
+		apps1.push({
+			slug: "mutated-slug",
+			canonicalName: "Mutated",
+			aliases: [],
+		});
+		expect(getRegisteredCuratedApps()).toEqual(apps2);
 	});
 });

@@ -62,4 +62,14 @@ describe("build-variant", () => {
 		expect(DEFAULT_BUILD_VARIANT).toBe("direct");
 		expect(BUILD_VARIANTS).toEqual(["store", "direct"]);
 	});
+
+	it("caches the resolved variant across calls", () => {
+		process.env.ELIZA_BUILD_VARIANT = "store";
+		expect(getBuildVariant()).toBe("store");
+		// After resolution, changing the env has no effect until reset.
+		process.env.ELIZA_BUILD_VARIANT = "direct";
+		expect(getBuildVariant()).toBe("store");
+		_resetBuildVariantForTests();
+		expect(getBuildVariant()).toBe("direct");
+	});
 });

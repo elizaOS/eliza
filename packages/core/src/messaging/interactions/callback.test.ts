@@ -30,10 +30,18 @@ describe("encodeReplyCallback", () => {
 		expect(encodeReplyCallback("")).toBe("ia1:");
 	});
 
-	it("handles unicode byte length", () => {
+	it("encodes within the default 64-byte limit and rejects over length", () => {
+		expect(encodeReplyCallback("a".repeat(60))).not.toBeNull();
+		expect(encodeReplyCallback("a".repeat(61))).toBeNull();
+	});
+
+	it("measures bytes not characters for multi-byte unicode", () => {
 		const emoji = "\u{1F600}";
 		const out = encodeReplyCallback(emoji, { maxBytes: 64 });
 		expect(typeof out).toBe("string");
+		// 💖 is 4 bytes; 15 emoji + prefix ("ia1:") = exactly 64, 16 exceeds.
+		expect(encodeReplyCallback("💖".repeat(15))).not.toBeNull();
+		expect(encodeReplyCallback("💖".repeat(16))).toBeNull();
 	});
 });
 
