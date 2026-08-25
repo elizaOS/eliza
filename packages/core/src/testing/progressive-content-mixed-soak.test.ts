@@ -8,7 +8,9 @@ import {
 } from "./progressive-content-conformance.fixture";
 import {
 	PROGRESSIVE_CONTENT_SOAK_FAMILIES,
+	PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS,
 	type ProgressiveContentSoakFamily,
+	type ProgressiveContentSoakLifecycleContract,
 	runProgressiveContentMixedSoakContract,
 } from "./progressive-content-mixed-soak";
 
@@ -119,6 +121,50 @@ function targets(families: readonly ProgressiveContentSoakFamily[]) {
 	}));
 }
 
+function lifecycle(
+	unsupported?: "eviction",
+): ProgressiveContentSoakLifecycleContract {
+	const expectedCodes = {
+		abort: "CONTENT_READ_CANCELLED",
+		revoke: "CONTENT_ACCESS_REVOKED",
+		mutate: "CONTENT_STALE_REVISION",
+		expire: "CONTENT_EXPIRED",
+		compaction: "CONTENT_MANIFEST_COMMIT_FAILED",
+		eviction: "CONTENT_CONTINUITY_LEDGER_MISMATCH",
+	} as const;
+	return {
+		declarations: PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.map((id) => {
+			if (id === "restart") {
+				return { id, semantics: "target-transition" as const };
+			}
+			if (id === unsupported) {
+				return {
+					id,
+					semantics: "unsupported" as const,
+					reason: "production eviction transition is not implemented",
+				};
+			}
+			const expectedCode = expectedCodes[id];
+			return {
+				id,
+				semantics:
+					id === "eviction"
+						? ("mutant-rejection" as const)
+						: ("fault-rejection" as const),
+				expectedCode,
+				executor: {
+					execute() {
+						throw Object.assign(new Error(expectedCode), {
+							code: expectedCode,
+						});
+					},
+					observeEffects: () => [],
+				},
+			};
+		}),
+	};
+}
+
 describe("mixed progressive-content soak", () => {
 	it("round-robins every family and marks shortened injected runs ineligible", async () => {
 		let tick = 0;
@@ -127,6 +173,7 @@ describe("mixed progressive-content soak", () => {
 			corpusManifestSha256: "b".repeat(64),
 			targets: targets(PROGRESSIVE_CONTENT_SOAK_FAMILIES),
 			measureResources: measuredResource,
+			lifecycle: lifecycle(),
 			policy: {
 				requiredDurationMs: 1,
 				requiredOperations: 12,
@@ -150,6 +197,51 @@ describe("mixed progressive-content soak", () => {
 			report.families.every(({ cleanupVerified }) => cleanupVerified),
 		).toBe(true);
 		expect(report.positiveLeakControlDetected).toBe(true);
+		expect(report.lifecycle).toMatchObject({
+			status: "passed",
+			completedCycles: 1,
+			required: PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS,
+		});
+		expect(report.lifecycle.results).toHaveLength(
+			PROGRESSIVE_CONTENT_SOAK_LIFECYCLE_IDS.length,
+		);
+		expect(
+			report.lifecycle.results.find(({ id }) => id === "restart"),
+		).toMatchObject({
+			semantics: "target-transition",
+			status: "passed",
+			targetFamily: "file",
+			beforeGeneration: "generation:1",
+			afterGeneration: "generation:2",
+		});
+	});
+
+	it("reports unsupported lifecycle semantics and fails the soak closed", async () => {
+		let tick = 0;
+		const report = await runProgressiveContentMixedSoakContract({
+			commit: "a".repeat(40),
+			corpusManifestSha256: "b".repeat(64),
+			targets: targets(PROGRESSIVE_CONTENT_SOAK_FAMILIES),
+			measureResources: measuredResource,
+			lifecycle: lifecycle("eviction"),
+			policy: {
+				requiredDurationMs: 1,
+				requiredOperations: 6,
+				batchOperations: 6,
+				now: () => tick++,
+				clockSource: "injected-contract-test",
+			},
+		});
+		expect(report.status).toBe("failed");
+		expect(report.evidenceEligible).toBe(false);
+		expect(report.lifecycle.status).toBe("failed");
+		expect(
+			report.lifecycle.results.find(({ id }) => id === "eviction"),
+		).toMatchObject({
+			semantics: "unsupported",
+			status: "unsupported",
+			reason: "production eviction transition is not implemented",
+		});
 	});
 
 	it.each([
@@ -169,6 +261,7 @@ describe("mixed progressive-content soak", () => {
 				corpusManifestSha256: "b".repeat(64),
 				targets: targets(families),
 				measureResources: () => stableResource,
+				lifecycle: lifecycle(),
 				policy: {
 					requiredDurationMs: 1,
 					requiredOperations: 1,
@@ -178,5 +271,50 @@ describe("mixed progressive-content soak", () => {
 				},
 			}),
 		).rejects.toThrow(/exactly six|required family/u);
+	});
+
+	it("rejects lifecycle declarations that do not cover the closed catalog", async () => {
+		await expect(
+			runProgressiveContentMixedSoakContract({
+				commit: "a".repeat(40),
+				corpusManifestSha256: "b".repeat(64),
+				targets: targets(PROGRESSIVE_CONTENT_SOAK_FAMILIES),
+				measureResources: () => stableResource,
+				lifecycle: {
+					declarations: lifecycle().declarations.slice(0, -1),
+				},
+				policy: {
+					requiredDurationMs: 1,
+					requiredOperations: 1,
+					batchOperations: 1,
+					now: () => 1,
+					clockSource: "injected-contract-test",
+				},
+			}),
+		).rejects.toThrow(/exactly seven/u);
+	});
+
+	it("rejects lifecycle declarations that relabel a fixed rejection", async () => {
+		const changed = lifecycle().declarations.map((declaration) =>
+			declaration.id === "abort" && declaration.semantics !== "unsupported"
+				? { ...declaration, expectedCode: "CONTENT_READ_FAILED" }
+				: declaration,
+		);
+		await expect(
+			runProgressiveContentMixedSoakContract({
+				commit: "a".repeat(40),
+				corpusManifestSha256: "b".repeat(64),
+				targets: targets(PROGRESSIVE_CONTENT_SOAK_FAMILIES),
+				measureResources: () => stableResource,
+				lifecycle: { declarations: changed },
+				policy: {
+					requiredDurationMs: 1,
+					requiredOperations: 1,
+					batchOperations: 1,
+					now: () => 1,
+					clockSource: "injected-contract-test",
+				},
+			}),
+		).rejects.toThrow(/fixed rejection contract/u);
 	});
 });

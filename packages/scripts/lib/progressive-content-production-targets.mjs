@@ -7,6 +7,11 @@
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { createCoreProgressiveContentExternalMutantExecutors } from "../../core/src/testing/progressive-content-external-mutant-executors.ts";
+import {
+  cleanupProgressiveContentProductionFaults,
+  createProgressiveContentProductionFaultExecutors,
+} from "../../core/src/testing/progressive-content-production-faults.ts";
 import { openProgressiveContentBoundedSource } from "../../corpus-tools/src/progressive-content-realization.ts";
 
 const TARGET_FAMILIES = [
@@ -124,6 +129,73 @@ async function countFileDescriptors() {
   throw new Error("process file-descriptor inventory is unavailable");
 }
 
+/** Bind the fixed lifecycle catalog to production fault and continuity oracles. */
+export async function createProgressiveContentProductionLifecycleContract(
+  input,
+) {
+  const faultRoot = path.join(path.resolve(input.workRoot), "lifecycle-faults");
+  const faults = await createProgressiveContentProductionFaultExecutors({
+    workRoot: faultRoot,
+  });
+  const mutants = createCoreProgressiveContentExternalMutantExecutors();
+  const faultDeclaration = (id, faultId, expectedCode) => ({
+    id,
+    semantics: "fault-rejection",
+    expectedCode,
+    executor: faults[faultId],
+  });
+  return {
+    lifecycle: {
+      declarations: [
+        faultDeclaration(
+          "abort",
+          "read-cancellation",
+          "CONTENT_READ_CANCELLED",
+        ),
+        faultDeclaration(
+          "revoke",
+          "revoked-authorization",
+          "CONTENT_ACCESS_REVOKED",
+        ),
+        faultDeclaration(
+          "mutate",
+          "concurrent-replace",
+          "CONTENT_STALE_REVISION",
+        ),
+        { id: "restart", semantics: "target-transition" },
+        faultDeclaration("expire", "retention-expiry", "CONTENT_EXPIRED"),
+        faultDeclaration(
+          "compaction",
+          "compaction-failure",
+          "CONTENT_MANIFEST_COMMIT_FAILED",
+        ),
+        {
+          id: "eviction",
+          semantics: "mutant-rejection",
+          expectedCode: "CONTENT_CONTINUITY_LEDGER_MISMATCH",
+          executor: {
+            async execute() {
+              try {
+                await mutants["canonical-ledger-count-eviction"].execute();
+              } catch (error) {
+                if (error?.vector === "continuity-loss") {
+                  throw Object.assign(
+                    new Error("canonical eviction was rejected"),
+                    { code: "CONTENT_CONTINUITY_LEDGER_MISMATCH" },
+                  );
+                }
+                throw error;
+              }
+            },
+            observeEffects: () => [],
+          },
+        },
+      ],
+    },
+    cleanup: () => cleanupProgressiveContentProductionFaults(faultRoot),
+  };
+}
+
 /** Build fixed six-family soak targets and an observed resource sampler. */
 export async function createProgressiveContentProductionSoakContract(input) {
   const factories = await createProgressiveContentProductionFactories({
@@ -149,8 +221,13 @@ export async function createProgressiveContentProductionSoakContract(input) {
       },
     };
   });
+  const lifecycleContract =
+    await createProgressiveContentProductionLifecycleContract({
+      workRoot: input.workRoot,
+    });
   return {
     targets,
+    lifecycle: lifecycleContract.lifecycle,
     async measureResources() {
       const memory = process.memoryUsage();
       let temporaryArtifacts = 0;
@@ -178,6 +255,7 @@ export async function createProgressiveContentProductionSoakContract(input) {
         await target.cleanup();
       }
       activeTargets.clear();
+      await lifecycleContract.cleanup();
       await fs.rm(path.resolve(input.workRoot), { recursive: true });
     },
   };
