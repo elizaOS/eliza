@@ -349,6 +349,34 @@ describe("gmail send handler", () => {
   });
 });
 
+
+  it("preserves UTF-16 surrogate pairs when deriving subject from long first line", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+
+    const emojis = "🎉".repeat(100); // 200 code units > SUBJECT_MAX_LENGTH (120)
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: emojis }
+    );
+
+    expect(sendGmailMessage).toHaveBeenCalledTimes(1);
+    const callArg = sendGmailMessage.mock.calls[0][0];
+    const subject = callArg.subject;
+    expect(subject.endsWith("...")).toBe(true);
+    for (const char of subject) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+
 describe("isEmailAddress", () => {
   it("accepts literal addresses and rejects names/handles", () => {
     expect(isEmailAddress("shadow@example.com")).toBe(true);
