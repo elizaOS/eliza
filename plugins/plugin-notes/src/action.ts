@@ -257,7 +257,12 @@ export const notesAction: Action = {
       });
     }
 
-    const replacement = readString(params.body) ?? readString(params.newText);
+    const replacement =
+      readString(params.body) ??
+      readString(params.newText) ??
+      readString(params.replacement) ??
+      readString(params.newContent) ??
+      readString(params.newNote);
     if (!replacement) {
       return failure(
         "Tell me what the note should say after the change.",

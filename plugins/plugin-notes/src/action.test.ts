@@ -238,6 +238,30 @@ describe("identical-duplicate notes", () => {
     expect(after.text).toContain("i already bought milk");
   });
 
+  it.each([
+    ["replacement", "i already bought milk via replacement"],
+    ["newContent", "i already bought milk via newContent"],
+    ["newText", "i already bought milk via newText"],
+  ])(
+    "accepts %s parameter alias for update replacement text",
+    async (key, val) => {
+      const runtime = await harness();
+      await run(runtime, {
+        action: "create",
+        content: "i need to buy milk",
+      });
+
+      const result = await run(runtime, {
+        action: "update",
+        content: "milk",
+        [key]: val,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(val);
+    },
+  );
+
   it("keeps same-text notes with different visible colors distinct", async () => {
     const runtime = await harness();
     const service = runtime.getService<NotesService>(NOTES_SERVICE_TYPE);
