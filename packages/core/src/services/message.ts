@@ -92,6 +92,10 @@ import {
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
 import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
+import {
+	applyCodingActionProfile,
+	parseCodingActionProfile,
+} from "../runtime/coding-action-profile";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -243,6 +247,7 @@ import {
 } from "../trajectory-context";
 import { withEvaluatorStep } from "../trajectory-utils";
 import type { CharacterSettings } from "../types/agent";
+import type { CodingActionProfile } from "../types/coding";
 import type {
 	Action,
 	ActionResult,
@@ -1532,6 +1537,7 @@ function _resolvePromptAttachments(
 type ResolvedMessageOptions = {
 	maxRetries: number;
 	codingMode: boolean;
+	codingActionProfile?: CodingActionProfile;
 	continueAfterActions: boolean;
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
@@ -3130,6 +3136,10 @@ type V5PlannerActionSurfaceSummary = {
 	queryTokens: string[];
 	candidateActions: string[];
 	parentActionHints: string[];
+	codingActionProfile?: {
+		kind: "pi";
+		includeWorktree: boolean;
+	};
 	fallback?: string;
 };
 
@@ -3534,6 +3544,7 @@ function buildFullV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	candidateActions?: readonly string[];
 	parentActionHints?: readonly string[];
+	codingActionProfile?: CodingActionProfile;
 }): V5PlannerActionSurface {
 	const exposedActionNames = new Set(
 		params.actions.map((action) => normalizeActionIdentifier(action.name)),
@@ -3553,6 +3564,15 @@ function buildFullV5PlannerActionSurface(params: {
 			queryTokens: [],
 			candidateActions: [...(params.candidateActions ?? [])],
 			parentActionHints: [...(params.parentActionHints ?? [])],
+			...(params.codingActionProfile
+				? {
+						codingActionProfile: {
+							kind: params.codingActionProfile.kind,
+							includeWorktree:
+								params.codingActionProfile.includeWorktree === true,
+						},
+					}
+				: {}),
 		},
 	};
 }
@@ -3603,6 +3623,7 @@ export function getCachedActionCatalog(
 function buildV5PlannerActionSurface(params: {
 	actions: readonly Action[];
 	forceFullSurface?: boolean;
+	codingActionProfile?: CodingActionProfile;
 	message: Memory;
 	state?: State;
 	messageHandler: MessageHandlerResult;
@@ -3661,6 +3682,15 @@ function buildV5PlannerActionSurface(params: {
 				queryTokens: [],
 				candidateActions: [],
 				parentActionHints: [],
+				...(params.codingActionProfile
+					? {
+							codingActionProfile: {
+								kind: params.codingActionProfile.kind,
+								includeWorktree:
+									params.codingActionProfile.includeWorktree === true,
+							},
+						}
+					: {}),
 			},
 		};
 	}
@@ -3671,6 +3701,7 @@ function buildV5PlannerActionSurface(params: {
 			actions: params.actions,
 			candidateActions,
 			parentActionHints,
+			codingActionProfile: params.codingActionProfile,
 		});
 	}
 
@@ -3817,6 +3848,15 @@ function buildV5PlannerActionSurface(params: {
 			queryTokens: retrieval.query.tokens,
 			candidateActions,
 			parentActionHints,
+			...(params.codingActionProfile
+				? {
+						codingActionProfile: {
+							kind: params.codingActionProfile.kind,
+							includeWorktree:
+								params.codingActionProfile.includeWorktree === true,
+						},
+					}
+				: {}),
 		},
 	};
 }
@@ -8152,6 +8192,8 @@ export async function runV5MessageRuntimeStage1(args: {
 	responseId: UUID;
 	/** Trusted per-turn direct coding-loop selection. */
 	codingMode?: boolean;
+	/** Optional model-facing action policy for this trusted coding turn. */
+	codingActionProfile?: CodingActionProfile;
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
@@ -8180,6 +8222,18 @@ export async function runV5MessageRuntimeStage1(args: {
 	/** Stops after Stage-1 routing, before reply generation, planning, or tools. */
 	stage1DecisionOnly?: boolean;
 }): Promise<V5MessageRuntimeStage1Result> {
+	const codingActionProfile = parseCodingActionProfile(
+		args.codingActionProfile,
+	);
+	if (codingActionProfile && args.codingMode !== true) {
+		throw new ElizaError(
+			"Coding action profile requires codingMode to be enabled",
+			{
+				code: "CODING_ACTION_PROFILE_REQUIRES_CODING_MODE",
+				context: { kind: codingActionProfile.kind },
+			},
+		);
+	}
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
 		(await resolveStage1SenderRole(args.runtime, args.message));
@@ -8261,6 +8315,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				// (#13775). Threading it here makes the file trajectory join the DB
 				// row and any spawned sub-agent trajectory on one traceId.
 				traceId: getTrajectoryContext()?.traceId,
+				...(codingActionProfile
+					? {
+							codingActionProfile: {
+								kind: codingActionProfile.kind,
+								includeWorktree: codingActionProfile.includeWorktree === true,
+							},
+						}
+					: {}),
 				rootMessage: {
 					id: String(args.message.id ?? args.responseId),
 					text: getUserMessageText(args.message) ?? "",
@@ -9224,14 +9286,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			};
 		}
 		// A focused coding turn receives every action whose ordinary execution gates
-		// pass for the coding contexts. Relevance or a fixed name list may order or
-		// describe the tools, but cannot hide a newly registered authorized action.
+		// pass for the coding contexts unless its trusted host selected an explicit
+		// per-turn profile. Generic coding mode keeps the complete authorized surface.
 		const useFullSurface = args.codingMode === true;
-		const plannerCandidateActions = useFullSurface
+		const authorizedCodingActions = useFullSurface
 			? (args.runtime.actions ?? []).filter((action) =>
 					// The execution gates are the authority for a focused coding turn.
-					// Names may rank tools but cannot form a second fixed allowlist that
-					// silently hides newly registered coding capabilities.
+					// Absent an explicit profile, names cannot form a second fixed allowlist
+					// that silently hides newly registered coding capabilities.
 					canActionRun(action, {
 						activeContexts: CODING_SUB_AGENT_CONTEXTS,
 						userRoles: [senderRole],
@@ -9240,6 +9302,9 @@ export async function runV5MessageRuntimeStage1(args: {
 						skipPrivateGate: true,
 					}),
 				)
+			: undefined;
+		const plannerCandidateActions = authorizedCodingActions
+			? applyCodingActionProfile(authorizedCodingActions, codingActionProfile)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,
 					message: args.message,
@@ -9393,6 +9458,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
 			forceFullSurface: args.codingMode === true,
+			codingActionProfile,
 			message: args.message,
 			state: plannerState,
 			messageHandler,
@@ -12863,6 +12929,22 @@ export class DefaultMessageService implements IMessageService {
 		callback?: HandlerCallback,
 		options?: MessageProcessingOptions,
 	): Promise<MessageProcessingResult> {
+		// Validate trusted host policy before touching the message, runtime events,
+		// action hooks, or callbacks. A profile is meaningful only on the explicit
+		// direct coding path; accepting it elsewhere would make telemetry claim a
+		// restriction that ordinary routing never applied.
+		const codingActionProfile = parseCodingActionProfile(
+			options?.codingActionProfile,
+		);
+		if (codingActionProfile && options?.codingMode !== true) {
+			throw new ElizaError(
+				"Coding action profile requires codingMode to be enabled",
+				{
+					code: "CODING_ACTION_PROFILE_REQUIRES_CODING_MODE",
+					context: { kind: codingActionProfile.kind },
+				},
+			);
+		}
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
 		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
@@ -13191,6 +13273,7 @@ export class DefaultMessageService implements IMessageService {
 				const opts: ResolvedMessageOptions = {
 					maxRetries: options?.maxRetries ?? 3,
 					codingMode: options?.codingMode === true,
+					...(codingActionProfile ? { codingActionProfile } : {}),
 					continueAfterActions:
 						options?.continueAfterActions ??
 						parseBooleanFromText(
@@ -14216,6 +14299,9 @@ export class DefaultMessageService implements IMessageService {
 							state,
 							responseId,
 							codingMode: opts.codingMode,
+							...(opts.codingActionProfile
+								? { codingActionProfile: opts.codingActionProfile }
+								: {}),
 							...(callback ? { callback } : {}),
 							deliveredVisibleTexts,
 							...(opts.roomHandlerLease
