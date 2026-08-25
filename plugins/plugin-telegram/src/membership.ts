@@ -267,30 +267,51 @@ export class TelegramMembershipAuthority {
     return this.pendingRevocations.get(key) ?? EMPTY_PENDING;
   }
 
-  /** Persists the in-memory pending-revocation set for one scope. */
+  /**
+   * Persists the in-memory pending-revocation set for one scope. Returns
+   * false when the durable write did NOT land: the runtime cache contract
+   * (`IAgentRuntime.setCache` / `deleteCache`) resolves `false` when the
+   * write failed without throwing — a false resolution is treated exactly
+   * like a thrown persistence failure, never as success.
+   */
   private async persistPendingRevocations(
     scope: MembershipScope,
   ): Promise<boolean> {
     const key = scopeKey(scope);
     const overlay = this.pendingRevocations.get(key);
+    const entries = overlay ? [...overlay] : [];
+    const writing = entries.length > 0;
     try {
-      if (overlay && overlay.size > 0) {
-        await this.runtime.setCache(this.pendingRevocationsCacheKey(scope), [
-          ...overlay,
-        ]);
-      } else {
-        await this.runtime.deleteCache(this.pendingRevocationsCacheKey(scope));
+      const persisted = writing
+        ? await this.runtime.setCache(
+            this.pendingRevocationsCacheKey(scope),
+            entries,
+          )
+        : await this.runtime.deleteCache(
+            this.pendingRevocationsCacheKey(scope),
+          );
+      if (persisted !== true) {
+        // error-policy:J4 The durable overlay write did not land: the cache
+        // adapter resolved false. For a fence WRITE (setCache) a restart
+        // would re-authorize the departed principal; for a fence CLEAR
+        // (deleteCache) the stale durable fence keeps denying that
+        // principal until a later clear lands. Either way the persisted
+        // overlay state is unconfirmed — return failure so the caller
+        // reports once with its fuller context (revocation path escalates
+        // REVOCATION_UNSAFE; clear path reports telegram:membership-pending-clear)
+        // instead of claiming a durable fail-closed state here.
+        return false;
       }
       return true;
-    } catch (error) {
-      // error-policy:J4 The durable fence did NOT land. The in-memory
-      // overlay still denies in THIS process, but a restart would
-      // re-authorize the departed principal. Report and surface failure so
-      // revocation callers escalate (gate broken) instead of claiming a
-      // durable fail-closed state.
-      this.runtime.reportError("telegram:membership-pending-persist", error, {
-        chatId: scope.externalWorldId,
-      });
+    } catch {
+      // error-policy:J4 The durable fence did NOT land (the cache call
+      // threw). The in-memory overlay still denies in THIS process, but a
+      // restart would re-authorize the departed principal. Surface failure
+      // so the caller reports ONCE with its fuller context — the revocation
+      // path escalates REVOCATION_UNSAFE (carrying the original authority
+      // error as cause); the clear path reports
+      // telegram:membership-pending-clear with principal context — instead
+      // of the helper emitting a second, lower-context report here.
       return false;
     }
   }
@@ -661,7 +682,27 @@ export class TelegramMembershipAuthority {
           // durable revocation fences from the cache.
           this.pendingRevocations.get(key)?.delete(input.canonicalPrincipalId);
           if (overlayHydrated) {
-            await this.persistPendingRevocations(input.scope);
+            const overlayCleared = await this.persistPendingRevocations(
+              input.scope,
+            );
+            if (!overlayCleared) {
+              // error-policy:J7 The committed evidence is authoritative in
+              // this process, but the durable overlay clear did not land: a
+              // restart would re-hydrate the stale fence and deny this
+              // principal until fresh evidence lands. That is fail-closed
+              // (denial), never fail-open — report so the persistence fault
+              // is diagnosable; the next successful persist self-heals it.
+              this.runtime.reportError(
+                "telegram:membership-pending-clear",
+                new Error(
+                  "durable pending-revocation overlay clear did not land (stale fence may deny after restart until fresh evidence)",
+                ),
+                {
+                  chatId: input.scope.externalWorldId,
+                  telegramUserId: input.canonicalPrincipalId,
+                },
+              );
+            }
           }
           return true;
         } catch (error) {
