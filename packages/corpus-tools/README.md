@@ -34,58 +34,24 @@ least six hours:
 
 ```bash
 bun run content-context:soak -- \
-  --factory-module=/private/progressive-soak-factories.mjs \
-  --corpus-manifest=/private/corpus/manifest.json \
+  --corpus-root=/private/corpus \
   --out=/private/external/soak.json \
   --commit=<full-git-sha>
 ```
 
-The private module exports the versioned production boundary below. It declares
-exactly one unique, non-fixture adapter for each of `file`, `document`,
-`memory`, `email`, `attachment`, and `tool-output`. Each factory returns the
-normal core conformance `{ adapter, object }` pair realized from the one corpus.
-The aggregate sampler records real process and backing-store resources; no
-field may be omitted or defaulted to a healthy-looking zero by the runner.
+The runner verifies the complete corpus and loads the same fixed repository
+factories as deterministic evidence. It selects the largest supported object
+for each family, realizes it through the native store, and samples process RSS,
+heap, external/array-buffer memory, file descriptors, temporary artifacts,
+database rows, and WAL bytes from the bound targets. Caller-selected factory
+modules are rejected.
 
-```js
-export default {
-  schemaVersion: "elizaos.content-context.soak-factories.v1",
-  production: true,
-  targets: [
-    {
-      family: "file",
-      adapterId: "coding-tools-native-file",
-      authoritativeStore: "filesystem",
-      productionMethod: "coding-tools-read-range",
-      binaryPolicy: "native-bytes",
-      create: async () => ({ adapter: await createFileAdapter(), object: fileObject }),
-    },
-    // document, memory, email, attachment, tool-output
-  ],
-  measureResources: async () => ({
-    rssBytes,
-    heapUsedBytes,
-    externalBytes,
-    arrayBuffersBytes,
-    fileDescriptors,
-    temporaryArtifacts,
-    databaseRows,
-    walBytes,
-  }),
-};
-```
-
-The mappings are fixed: file and tool output use `filesystem` with
-`native-bytes`; attachment uses `content-addressed-media` with `native-bytes`;
-document, email, and memory use `document-store`, `message-store`, and
-`memory-store` respectively with `typed-rejection`. This keeps binary and
-invalid UTF-8 corpus cases out of text-only SQL segmenters while requiring the
-official typed rejection at that boundary.
-
-Missing modules, partial or duplicate families, fixture-shaped adapter IDs,
-realization mismatches, shortened clocks, and failed resource/leak checks stop
-without publishing `soak.json`. Fast tests exercise only the explicitly
-ineligible contract seam; they cannot create production evidence.
+The mappings are fixed: file, document, memory, and email use typed binary and
+invalid-UTF-8 rejection; attachment and tool output retain native bytes. A
+shortened clock, partial family set, failed cleanup, resource drift, or missed
+positive leak control stops without publishing `soak.json`. Fast tests exercise
+only the explicitly ineligible contract seam and cannot create production
+evidence.
 
 ## X archive collector
 
