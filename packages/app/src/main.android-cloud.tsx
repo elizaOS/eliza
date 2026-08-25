@@ -241,6 +241,22 @@ function isAndroidCloudAuthCallback(rawUrl: string): boolean {
   }
 }
 
+const activeDeepLinkAcknowledgements = new Map<
+  string,
+  Array<() => Promise<void> | void>
+>();
+const completedDeepLinkFingerprints = new Set<string>();
+
+async function deepLinkFingerprint(url: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(url),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 async function deliverBufferedAndroidCloudDeepLink(
   fallbackUrl?: string,
 ): Promise<void> {
@@ -261,9 +277,34 @@ async function deliverBufferedAndroidCloudDeepLink(
         }
       }
     : undefined;
-  const delivered = dispatchAndroidCloudDeepLink(url, acknowledge);
-  if (delivered && acknowledge && !isAndroidCloudAuthCallback(url)) {
-    await acknowledge();
+  const fingerprint = await deepLinkFingerprint(url);
+  if (completedDeepLinkFingerprints.has(fingerprint)) {
+    await acknowledge?.();
+    return;
+  }
+  const existingAcknowledgements =
+    activeDeepLinkAcknowledgements.get(fingerprint);
+  if (existingAcknowledgements) {
+    if (acknowledge) existingAcknowledgements.push(acknowledge);
+    return;
+  }
+  const acknowledgements = acknowledge ? [acknowledge] : [];
+  activeDeepLinkAcknowledgements.set(fingerprint, acknowledgements);
+  const acknowledgeDelivery = async () => {
+    const pending = activeDeepLinkAcknowledgements.get(fingerprint) ?? [];
+    activeDeepLinkAcknowledgements.delete(fingerprint);
+    completedDeepLinkFingerprints.add(fingerprint);
+    for (const acknowledgePending of pending) {
+      await acknowledgePending();
+    }
+  };
+  const delivered = dispatchAndroidCloudDeepLink(url, acknowledgeDelivery);
+  if (!delivered) {
+    activeDeepLinkAcknowledgements.delete(fingerprint);
+    return;
+  }
+  if (!isAndroidCloudAuthCallback(url)) {
+    await acknowledgeDelivery();
   }
 }
 
