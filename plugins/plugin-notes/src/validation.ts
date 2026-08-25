@@ -14,6 +14,7 @@ import {
   type CreateNoteInput,
   NOTES_SCHEMA_VERSION,
   type NotesDocument,
+  STICKY_COLORS,
   type StickyColor,
   type StickyNote,
   type UpdateNoteInput,
@@ -139,12 +140,7 @@ export function parseEntityId(value: unknown, field = "id"): string {
 export function parseStickyColor(value: unknown, field = "color"): StickyColor {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
-    if (
-      normalized === "yellow" ||
-      normalized === "green" ||
-      normalized === "rose" ||
-      normalized === "slate"
-    ) {
+    if ((STICKY_COLORS as readonly string[]).includes(normalized)) {
       return normalized as StickyColor;
     }
   }
