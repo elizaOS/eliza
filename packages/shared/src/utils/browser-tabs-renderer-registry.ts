@@ -1292,13 +1292,26 @@ declare global {
   }
 }
 
+function getGlobalRegistryTarget(): Window | undefined {
+  if (typeof window !== "undefined") return window;
+  if (typeof globalThis !== "undefined") return globalThis as unknown as Window;
+  return undefined;
+}
+
 export function setBrowserTabsRendererImpl(
   impl: BrowserTabsRendererImpl | null,
 ): void {
-  if (typeof window === "undefined") return;
+  const target = getGlobalRegistryTarget();
+  if (!target) return;
   if (impl) {
-    window[REGISTRY_KEY] = impl;
+    target[REGISTRY_KEY] = impl;
   } else {
-    delete window[REGISTRY_KEY];
+    delete target[REGISTRY_KEY];
   }
+}
+
+export function getBrowserTabsRendererImpl(): BrowserTabsRendererImpl | null {
+  const target = getGlobalRegistryTarget();
+  if (!target) return null;
+  return target[REGISTRY_KEY] ?? null;
 }
