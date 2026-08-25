@@ -59,6 +59,11 @@ async function bootMembershipHarness(options?: {
    * real database outage would.
    */
   faults: { failApplyMembership: boolean };
+  /**
+   * Fault injector for durable-overlay hydration failures: while true, the
+   * runtime cache read throws, so authorize must fail closed.
+   */
+  cacheFaults: { failGetCache: boolean };
 }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
@@ -74,6 +79,16 @@ async function bootMembershipHarness(options?: {
   }
 
   const faults = { failApplyMembership: false };
+  // Fault injector #2: while true, runtime.getCache throws, exercising the
+  // durable-overlay hydration failure path (must fail admission closed).
+  const cacheFaults = { failGetCache: false };
+  const originalGetCache = harness.runtime.getCache.bind(harness.runtime);
+  harness.runtime.getCache = (async (key: string) => {
+    if (cacheFaults.failGetCache) {
+      throw new Error("injected cache outage (test fault)");
+    }
+    return originalGetCache(key);
+  }) as never;
   // Fault injector: override applyMembership ON THE REAL INSTANCE (instance
   // property shadows the prototype) and delegate to the bound original when
   // not faulted. The authority sees a genuine authority outage, not a mock
@@ -135,6 +150,7 @@ async function bootMembershipHarness(options?: {
     getChatMember,
     membershipService,
     faults,
+    cacheFaults,
   };
 }
 
@@ -1023,5 +1039,75 @@ describe("telegram membership authority vertical (real PGlite)", () => {
       "an authorization queued behind a failed revocation write must not overtake the fail-closed degrade",
     ).toBe("denied");
     expect(decision.reason).toBe("membership_revoked");
+  }, 120_000);
+
+  it("fails admission closed when the durable pending-revocation overlay cannot be read (cache outage)", async () => {
+    const { authority, harness, cacheFaults } = await bootMembershipHarness();
+    const entityId = await import("@elizaos/plugin-telegram").then((m) =>
+      m.resolveTelegramRuntimeEntityId(
+        harness.runtime,
+        "default",
+        String(MEMBER_TG_ID),
+      ),
+    );
+    await ensurePrincipal(harness, entityId);
+    const runtimeMap = { worldId: null, roomId: null, entityId };
+
+    // Principal admitted through committed evidence, scope current.
+    await authority.recordEvent({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+      state: "active",
+      reason: "joined",
+      messageId: 1,
+      telegramUserId: String(MEMBER_TG_ID),
+      runtime: runtimeMap,
+      observedAt: new Date().toISOString(),
+    });
+    const admitted = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(admitted.decision).toBe("allowed");
+
+    // Cache outage on the hydration read: the durable overlay state is
+    // UNKNOWN. Authorize must fail closed (deny) rather than consult the
+    // possibly-stale active evidence. The hydrated mark is NOT set, so the
+    // denial applies on every authorize while the outage lasts, and a later
+    // healthy read resumes normal decisions.
+    cacheFaults.failGetCache = true;
+    const duringOutage = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      duringOutage.decision,
+      "an unreadable durable overlay must deny rather than trust active evidence",
+    ).toBe("denied");
+    expect(duringOutage.reason).toBe("membership_revoked");
+    // The fail-closed state is not sticky: a second authorize during the
+    // same outage still denies.
+    const duringOutage2 = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(duringOutage2.decision).toBe("denied");
+
+    // Cache recovers: hydration succeeds and the (empty) durable overlay no
+    // longer denies — the committed active evidence authorizes again.
+    cacheFaults.failGetCache = false;
+    const recovered = await authority.authorize({
+      chatId: String(CHAT_ID),
+      chatRoomKey: String(CHAT_ID),
+      canonicalPrincipalId: entityId,
+    });
+    expect(
+      recovered.decision,
+      "a healthy hydration read must restore normal authoritative decisions",
+    ).toBe("allowed");
   }, 120_000);
 });
