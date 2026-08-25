@@ -18,6 +18,15 @@ export {
   type TransitionRegistrationAuthorityV1,
 } from "./activation-routing";
 export {
+  type AgentServerRoutingIdentity,
+  type AgentServerRoutingMode,
+  type AgentServerRoutingReader,
+  type AgentServerRoutingResult,
+  type AgentServerRoutingUnavailableReason,
+  type ManagedAgentNotReadyReason,
+  resolveAgentServerRouting,
+} from "./agent-server-routing";
+export {
   GATEWAY_TOKEN_MAX_LIFETIME_SECONDS,
   GATEWAY_TOKEN_REQUEST_TIMEOUT_MS,
   type GatewayTokenResponse,

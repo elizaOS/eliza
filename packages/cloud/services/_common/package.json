@@ -8,6 +8,7 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./agent-server-routing": "./src/agent-server-routing.ts",
     "./activation-routing": "./src/activation-routing.ts",
     "./logger": "./src/logger.ts",
     "./k8s-service-account": "./src/k8s-service-account.ts",
