@@ -352,7 +352,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             // blip, but sustained inability to verify revocation severs the
             // session within a bounded number of poll windows (SEC-6).
             if (this.revocationPollFailures >= MAX_REVOCATION_POLL_FAILURES) {
-              this.teardown("revoked");
+              logger.error("[voice-session] revocation store unavailable", {
+                sessionId: this.sessionId,
+                traceId: this.currentTraceId,
+                consecutiveFailures: this.revocationPollFailures,
+              });
+              this.teardown("error");
             }
           } finally {
             this.revocationPollInFlight = false;
@@ -558,10 +563,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // Release the buffered frames now that we are admitted.
         const buffered = this.preAdmissionFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
-      } catch {
+      } catch (error) {
         // error-policy:J4 fail-closed degrade — a metering-store failure must
         // not admit unpaid audio: surface metering_unavailable and sever.
         if (this.closed) return;
+        logger.error("[voice-session] initial metering admission failed", {
+          sessionId: this.sessionId,
+          traceId: this.currentTraceId,
+          errorClass: error instanceof Error ? error.name : typeof error,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
         this.meteredExhausted = true;
         this.send({
           t: "error",
@@ -628,12 +639,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "connected": {
         // Provider readiness is transport metadata; the client-facing session
         // has already emitted its own authenticated `ready` frame.
+        const reconnectAttempts = this.sttReconnectAttempts;
         this.sttReconnectAttempts = 0;
         this.sttReady = true;
         this.sttBufferOverflowReported = false;
         this.clearSttConnectTimeout();
         const buffered = this.providerPendingFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
+        logger.info("[voice-session] Ink transport connected", {
+          sessionId: this.sessionId,
+          traceId: this.currentTraceId,
+          generation,
+          reconnectAttempts,
+          releasedPendingFrames: buffered.length,
+        });
         break;
       }
       case "start-of-turn": {
@@ -727,6 +746,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // turn; malformed input must not be reinterpreted as speech.
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
+        logger.warn("[voice-session] Ink transport error", {
+          sessionId: this.sessionId,
+          traceId: this.currentTraceId,
+          generation,
+          code: event.code,
+          errorClass:
+            event.cause instanceof Error
+              ? event.cause.name
+              : typeof event.cause,
+          messageLength: event.message.length,
+        });
         if (event.code === "transport_error") {
           this.send({ t: "error", code: event.code, retryable: true });
           this.recoverSttTransport("transport_error", generation);
@@ -736,6 +766,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "close": {
+        logger.warn("[voice-session] Ink transport closed", {
+          sessionId: this.sessionId,
+          traceId: this.currentTraceId,
+          generation,
+          code: event.code,
+          wasClean: event.wasClean,
+          reasonLength: event.reason.length,
+        });
         this.send({ t: "error", code: "stt_reconnecting", retryable: true });
         this.recoverSttTransport(`close:${event.code}`, generation);
         break;
@@ -784,6 +822,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const delay = scheduledDelay ?? Math.max(delays.at(-1) ?? 5_000, 1_000);
     const retryingAtCap = scheduledDelay === undefined;
     this.sttReconnectAttempts += 1;
+    logger.info("[voice-session] Ink reconnect scheduled", {
+      sessionId: this.sessionId,
+      traceId: this.currentTraceId,
+      reason,
+      attempt: this.sttReconnectAttempts,
+      delayMs: delay,
+    });
     if (retryingAtCap) {
       logger.warn(
         "[voice-session] Ink reconnect continuing at capped backoff",
@@ -1471,10 +1516,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.send({ t: "error", code: "quota_exhausted", retryable: false });
         this.teardown("quota_exhausted");
       }
-    } catch {
+    } catch (error) {
       this.meterWindowsInFlight = Math.max(0, this.meterWindowsInFlight - 1);
       // error-policy:J4 fail-closed degrade — if we cannot record the cost, we
       // do not keep streaming uncapped paid audio to Cartesia; sever.
+      logger.error("[voice-session] ongoing metering window failed", {
+        sessionId: this.sessionId,
+        traceId: this.currentTraceId,
+        meterWindowsInFlight: this.meterWindowsInFlight,
+        errorClass: error instanceof Error ? error.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
       this.meteredExhausted = true;
       this.send({ t: "error", code: "metering_unavailable", retryable: false });
       this.teardown("error");
@@ -1489,6 +1541,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.state = "closed";
     logger.info("[voice-session] session closed", {
       sessionId: this.sessionId,
+      traceId: this.currentTraceId,
       reason,
       durationMs:
         this.startedAtMs === null
@@ -1514,6 +1567,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // lifecycle marker is idempotent and may be recovered by provider retry.
         logger.warn("[voice-session] lifecycle teardown persistence failed", {
           sessionId: this.sessionId,
+          traceId: this.currentTraceId,
           reason,
           error: error instanceof Error ? error.message : String(error),
         });
