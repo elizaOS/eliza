@@ -96,11 +96,14 @@ export class StewardBackend implements WalletBackend {
       );
     }
 
-    const chains = await steward.fetchStewardVaultChainAddresses(
-      cfg.apiUrl,
-      cfg.agentToken,
-      cfg.agentId,
-    );
+    const chains = await steward
+      .fetchStewardVaultChainAddresses(cfg.apiUrl, cfg.agentToken, cfg.agentId)
+      .catch((err: unknown) => {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new StewardUnavailableError(
+          `Cannot fetch Steward vault chain addresses: ${detail}`,
+        );
+      });
 
     let solanaPubkey: PublicKey | null = null;
     if (chains.solana) {
