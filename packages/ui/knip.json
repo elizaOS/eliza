@@ -71,6 +71,10 @@
     "*.config.{ts,mts,mjs}",
     "scripts/**/*.{ts,mts,mjs}"
   ],
-  "ignoreDependencies": ["@metamask/connect-evm", "pixelmatch"],
+  "ignoreDependencies": [
+    "@metamask/connect-evm",
+    "@simplewebauthn/browser",
+    "pixelmatch"
+  ],
   "vitest": false
 }
