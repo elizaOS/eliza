@@ -258,3 +258,44 @@ describe("DocumentsView — open affordance", () => {
     expect(sendChatMessage).toHaveBeenCalledTimes(1);
   });
 });
+describe("DocumentsView — search hit snippet surrogate safety", () => {
+  it("renders search hit snippets without broken surrogate pairs", async () => {
+    const emojis = "📄".repeat(80); // 160 code units > 100
+    const fetchSearch = vi.fn(async (query: string) => ({
+      query,
+      threshold: 0.3,
+      results: [
+        {
+          id: "frag-1",
+          text: emojis,
+          similarity: 0.9,
+          documentId: "doc-1",
+          documentTitle: "Doc With Emojis",
+          position: 0,
+        },
+      ],
+      count: 1,
+    }));
+    render(
+      React.createElement(DocumentsView, {
+        fetchers: makeFetchers({ fetchSearch }),
+      }),
+    );
+    await screen.findByText("Quarterly Plan.md");
+
+    const input = agent("documents-search") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "emojis" } });
+
+    await screen.findByText("Results (1)");
+    const hitEl = screen.getByText(/…$/);
+    const snippetText = hitEl.textContent ?? "";
+    expect(snippetText.endsWith("…")).toBe(true);
+    for (const char of snippetText) {
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          char,
+        ),
+      ).toBe(false);
+    }
+  });
+});

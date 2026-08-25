@@ -197,9 +197,16 @@ const SNIPPET_MAX = 100;
 
 function toHit(result: DocumentSearchResultWire): DocumentSearchHit {
   const trimmed = result.text.trim();
+  let end = SNIPPET_MAX - 1;
+  if (end > 0 && end < trimmed.length) {
+    const code = trimmed.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
   const snippet =
     trimmed.length > SNIPPET_MAX
-      ? `${trimmed.slice(0, SNIPPET_MAX - 1)}…`
+      ? `${trimmed.slice(0, end)}…`
       : trimmed;
   return {
     id: result.id,
