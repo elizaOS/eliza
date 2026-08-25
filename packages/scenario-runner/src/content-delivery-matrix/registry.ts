@@ -6,7 +6,12 @@
  * lane. Adding a connector pair here without adding covering rows makes the
  * completeness gate fail — extend rows and capabilities together.
  */
-import { compileContentDeliveryMatrix } from "./compiler";
+
+import type { CompiledContentDeliveryMatrix } from "./compiler";
+import {
+  assertDeliveryCoverage,
+  compileContentDeliveryMatrix,
+} from "./compiler";
 import type {
   ContentDeliveryMatrixRow,
   DeclaredDeliveryCapability,
@@ -49,7 +54,17 @@ export const FIRST_LANE_DECLARED_CAPABILITIES: readonly DeclaredDeliveryCapabili
     },
   ];
 
-/** The compiled first-lane matrix. */
-export const firstLaneDeliveryMatrix = compileContentDeliveryMatrix(
-  FIRST_LANE_DELIVERY_ROWS,
-);
+/**
+ * The compiled first-lane matrix. Construction is fail-closed: the declared
+ * capabilities are asserted against the rows at module-load time, so adding a
+ * capability without a covering row fails the first import, not only a test
+ * that remembers to call the gate.
+ */
+export const firstLaneDeliveryMatrix: CompiledContentDeliveryMatrix =
+  compileFirstLaneDeliveryMatrix();
+
+function compileFirstLaneDeliveryMatrix(): CompiledContentDeliveryMatrix {
+  const matrix = compileContentDeliveryMatrix(FIRST_LANE_DELIVERY_ROWS);
+  assertDeliveryCoverage(FIRST_LANE_DECLARED_CAPABILITIES, matrix);
+  return matrix;
+}

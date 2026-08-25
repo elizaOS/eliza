@@ -1922,34 +1922,76 @@ function createTelegramMockState(): TelegramMockState {
 }
 
 /**
- * Parse a multipart/form-data body into its parts (headers + raw bytes) so
- * the Telegram upload mocks can hash and store file bytes. Best-effort,
- * bounded parsing: malformed multipart returns an empty list and the caller
- * answers 400 — never a fabricated upload receipt.
+ * URL-media fetch policy for the Telegram mock: the server-side fetch may
+ * only target loopback origins this very mock fleet process has bound (the
+ * registry every fixture server joins at boot). Other localhost services —
+ * and anything off-machine — are out of policy and answered with a 400.
  */
+function telegramMediaFetchError(reason: string): DynamicFixtureResponse {
+  return jsonFixture(
+    {
+      ok: false,
+      error_code: 400,
+      description: `Bad Request: ${reason}`,
+    },
+    400,
+  );
+}
+
+/**
+ * Parse a multipart/form-data body into its parts (headers + raw bytes) so
+ * the Telegram upload mocks can hash and store file bytes. Strict, bounded
+ * parsing: parts are delimited only by full delimiter LINES (`--<boundary>`
+ * immediately followed by CRLF or the final `--` terminator), so file bytes
+ * that merely contain the boundary string mid-line cannot truncate a part.
+ * Malformed bodies return an empty list and the caller answers 400 — never
+ * a fabricated upload receipt.
+ */
+const MOCK_MAX_MULTIPART_PARTS = 32;
+const MOCK_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 function parseMultipartParts(
   raw: Buffer,
   contentTypeHeader: string,
 ): Array<{ name: string; filename?: string; data: Buffer }> {
   const boundaryMatch = /boundary=("?)([^";]+)\1/.exec(contentTypeHeader);
   if (!boundaryMatch?.[2]) return [];
-  const boundary = Buffer.from(`--${boundaryMatch[2]}`);
+  const boundaryLine = Buffer.from(`--${boundaryMatch[2]}`);
   const parts: Array<{ name: string; filename?: string; data: Buffer }> = [];
-  let cursor = raw.indexOf(boundary);
-  while (cursor !== -1) {
-    const next = raw.indexOf(boundary, cursor + boundary.length);
-    if (next === -1) break;
-    // Part payload sits between the boundary line's CRLF and the CRLF that
-    // precedes the next boundary.
-    const start = cursor + boundary.length;
-    const segment = raw.subarray(start, next);
-    const headerEnd = segment.indexOf("\r\n\r\n");
-    if (headerEnd !== -1) {
-      const headers = segment.subarray(0, headerEnd).toString("utf8");
+  // A delimiter is the boundary at a line start: preceded by CRLF (or body
+  // start) and followed by CRLF (next part) or `--` (closing delimiter).
+  let cursor = raw.indexOf(boundaryLine);
+  let atBodyStart = true;
+  while (cursor !== -1 && parts.length < MOCK_MAX_MULTIPART_PARTS) {
+    const afterBoundary = cursor + boundaryLine.length;
+    // Closing delimiter terminates parsing.
+    if (raw[afterBoundary] === 0x2d && raw[afterBoundary + 1] === 0x2d) break;
+    // A delimiter line must end with CRLF.
+    if (raw[afterBoundary] !== 0x0d || raw[afterBoundary + 1] !== 0x0a) {
+      atBodyStart = false;
+      cursor = raw.indexOf(boundaryLine, cursor + 1);
+      continue;
+    }
+    // A mid-body delimiter must be preceded by CRLF (or sit at body start).
+    if (
+      !atBodyStart &&
+      !(cursor >= 2 && raw[cursor - 2] === 0x0d && raw[cursor - 1] === 0x0a)
+    ) {
+      cursor = raw.indexOf(boundaryLine, cursor + 1);
+      continue;
+    }
+    const dataStart = afterBoundary + 2;
+    // Part payload ends at the CRLF preceding the NEXT delimiter line.
+    const nextDelimiter = findNextDelimiterLine(raw, boundaryLine, dataStart);
+    if (nextDelimiter === -1) break;
+    const headerEnd = raw.indexOf(Buffer.from("\r\n\r\n"), dataStart);
+    if (headerEnd !== -1 && headerEnd < nextDelimiter) {
+      const headers = raw.subarray(dataStart, headerEnd).toString("utf8");
       const nameMatch = /name="([^"]*)"/.exec(headers);
       const fileMatch = /filename="([^"]*)"/.exec(headers);
-      const data = segment.subarray(headerEnd + 4, segment.length - 2);
-      if (nameMatch?.[1]) {
+      // Part data excludes the CRLF that belongs to the next delimiter line.
+      const data = raw.subarray(headerEnd + 4, nextDelimiter);
+      if (nameMatch?.[1] && data.length <= MOCK_MAX_UPLOAD_BYTES) {
         parts.push({
           name: nameMatch[1],
           ...(fileMatch?.[1] ? { filename: fileMatch[1] } : {}),
@@ -1957,9 +1999,31 @@ function parseMultipartParts(
         });
       }
     }
-    cursor = next;
+    atBodyStart = false;
+    cursor = nextDelimiter;
   }
   return parts;
+}
+
+/** Next index where the boundary appears as a full delimiter LINE (CRLF before, CRLF or `--` after), or -1. */
+function findNextDelimiterLine(
+  raw: Buffer,
+  boundaryLine: Buffer,
+  from: number,
+): number {
+  let candidate = raw.indexOf(boundaryLine, from);
+  while (candidate !== -1) {
+    const after = candidate + boundaryLine.length;
+    const closes = raw[after] === 0x2d && raw[after + 1] === 0x2d;
+    const endsLine = raw[after] === 0x0d && raw[after + 1] === 0x0a;
+    const precededByCrlf =
+      candidate >= 2 &&
+      raw[candidate - 2] === 0x0d &&
+      raw[candidate - 1] === 0x0a;
+    if ((closes || endsLine) && precededByCrlf) return candidate;
+    candidate = raw.indexOf(boundaryLine, candidate + 1);
+  }
+  return -1;
 }
 
 async function telegramDynamicFixture(
@@ -2071,18 +2135,51 @@ async function telegramDynamicFixture(
           ? requestBody.document
           : null;
     if (mediaUrl && /^https?:\/\//.test(mediaUrl)) {
-      const mediaResponse = await fetch(mediaUrl);
-      if (!mediaResponse.ok) {
-        return jsonFixture(
-          {
-            ok: false,
-            error_code: 400,
-            description: `Bad Request: failed to fetch media URL (${mediaResponse.status})`,
-          },
-          400,
+      // Test-only URL-media emulation: the mock fetches the URL server-side
+      // (mirroring the real Bot API) but ONLY from loopback origins this mock
+      // fleet process itself has bound, with a timeout, no redirects, and a
+      // byte cap. A provider-URL field is untrusted input even in a test.
+      let parsedMediaUrl: URL;
+      try {
+        parsedMediaUrl = new URL(mediaUrl);
+      } catch {
+        return telegramMediaFetchError("invalid media URL");
+      }
+      if (!fleetOrigins.has(parsedMediaUrl.origin)) {
+        return telegramMediaFetchError(
+          "media URL is not served by this mock fleet",
         );
       }
+      let mediaResponse: Response;
+      try {
+        mediaResponse = await fetch(parsedMediaUrl, {
+          signal: AbortSignal.timeout(5_000),
+          redirect: "error",
+        });
+        if (!mediaResponse.ok) {
+          return telegramMediaFetchError(
+            `media fetch returned ${mediaResponse.status}`,
+          );
+        }
+      } catch (error) {
+        // error-policy:J1 boundary translation: the provider boundary turns
+        // any fetch failure (timeout, refused, redirect) into a Telegram-style
+        // 400, never a 500 or a fabricated success.
+        return telegramMediaFetchError(
+          `media fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const contentLength = Number(mediaResponse.headers.get("content-length"));
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > MOCK_MAX_UPLOAD_BYTES
+      ) {
+        return telegramMediaFetchError("media too large");
+      }
       const bytes = Buffer.from(await mediaResponse.arrayBuffer());
+      if (bytes.length > MOCK_MAX_UPLOAD_BYTES) {
+        return telegramMediaFetchError("media too large");
+      }
       const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
       const fileId = `mock-upload-${sha256.slice(0, 12)}`;
       state.uploadedFiles.set(fileId, {
@@ -2140,7 +2237,11 @@ async function telegramDynamicFixture(
     const contentTypeHeader = String(rawRequest.headers["content-type"] ?? "");
     const parts = parseMultipartParts(rawRequest.rawBody, contentTypeHeader);
     const filePart = parts.find(
-      (part) => part.name === "photo" || part.name === "document",
+      (part) =>
+        (part.name === "photo" || part.name === "document") &&
+        // Only parts carrying a filename are file uploads; a bare value part
+        // is form text and must not fabricate an upload.
+        typeof part.filename === "string",
     );
     const captionPart = parts.find((part) => part.name === "caption");
     const chatIdPart = parts.find((part) => part.name === "chat_id");
@@ -4014,6 +4115,9 @@ let nextFallbackMockPort =
   Number.parseInt(process.env.ELIZA_MOCK_PORT_BASE ?? "", 10) ||
   FALLBACK_MOCK_PORT_BASE + (process.pid % 1_000);
 
+/** Loopback origins of every server this mock fleet process has bound. */
+const fleetOrigins = new Set<string>();
+
 function listenErrorCode(err: unknown): string | undefined {
   return typeof err === "object" && err !== null && "code" in err
     ? String((err as { code?: unknown }).code)
@@ -4421,9 +4525,13 @@ async function startFixtureServer(
   }
 
   const port = (address as AddressInfo).port;
+  const fleetOrigin = `http://127.0.0.1:${port}`;
+  // Every bound server registers its loopback origin; the Telegram mock's
+  // URL-media fetch policy allows only these fleet origins.
+  fleetOrigins.add(fleetOrigin);
   return {
     port,
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: fleetOrigin,
     requests,
     clearRequests: () => {
       requests.splice(0, requests.length);

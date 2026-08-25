@@ -31,6 +31,7 @@ import {
   assertBytePreservingDelivery,
   assertDeliveryCoverage,
   assertVerbatimTextDelivery,
+  type ContentDeliveryProofKind,
   compileContentDeliveryMatrix,
   type DeliveryProviderReceipt,
   deliveryPayloadSha256,
@@ -39,6 +40,25 @@ import {
   verifyDeliveryReceipt,
 } from "../../../src/content-delivery-matrix";
 import { type StartedMocks, startMocks } from "../scripts/start-mocks.ts";
+
+/**
+ * Certification records: each executed delivery test appends the row id it
+ * certified and the proof kinds its assertions actually discharged. The
+ * binding test compares these against every registry row's requiredProofs —
+ * deleting a delivery test, a receipt check, or a readback leaves the row
+ * uncertified and fails the suite.
+ */
+const certifiedRows: Array<{
+  rowId: string;
+  proofs: readonly ContentDeliveryProofKind[];
+}> = [];
+
+function certifyRow(
+  rowId: string,
+  proofs: readonly ContentDeliveryProofKind[],
+): void {
+  certifiedRows.push({ rowId, proofs: [...proofs] });
+}
 
 let mocks: StartedMocks | null = null;
 const savedEnv: Record<string, string | undefined> = {};
@@ -153,25 +173,6 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
     ).not.toThrow();
   });
 
-  /**
-   * Row binding: the wire suite must discharge every registry row. Removing
-   * a row (or its covering test below) fails this check — the matrix
-   * inventory and the executed proofs cannot drift apart.
-   */
-  it("binds: the executed proofs below cover every first-lane row", () => {
-    const certifiedRowIds = new Set([
-      "discord-to-telegram.text",
-      "discord-to-telegram.file",
-    ]);
-    const registryRowIds = FIRST_LANE_DELIVERY_ROWS.map((row) => row.id);
-    for (const id of registryRowIds) {
-      expect(certifiedRowIds).toContain(id);
-    }
-    // Every certified id must still exist in the registry: deleting a row
-    // while leaving its proof (or vice versa) is a drift failure.
-    expect(new Set(registryRowIds)).toEqual(certifiedRowIds);
-  });
-
   it("delivers Discord-sourced text verbatim to the Telegram wire with a typed provider receipt", async () => {
     const { manager, ctx } = telegramManager();
     mocks?.clearRequestLedger();
@@ -207,6 +208,14 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
       sourceConnector: "discord",
       targetConnector: "telegram",
     });
+    // Row certified: provider-receipt (verified typed receipt), byte-hash
+    // (hash embedded in the verified receipt), readback (providerEcho text
+    // equals the delivered wire text).
+    certifyRow("discord-to-telegram.text", [
+      "provider-receipt",
+      "byte-hash",
+      "readback",
+    ]);
   });
 
   it("delivers a Discord-sourced file byte-complete through the real core fetch + real Telegram upload + readback", async () => {
@@ -290,5 +299,47 @@ describe("content-delivery matrix — first lane (Discord→Telegram)", () => {
       sourceConnector: "discord",
       targetConnector: "telegram",
     });
+    // Row certified: provider-receipt (verified typed receipt), byte-hash
+    // (assertBytePreservingDelivery on both legs), readback (bytes pulled
+    // back through the provider readback route and proven equal).
+    certifyRow("discord-to-telegram.file", [
+      "provider-receipt",
+      "byte-hash",
+      "readback",
+    ]);
+  });
+  /**
+   * Row binding: the certification records the delivery tests above actually
+   * produced must cover every registry row AND discharge every proof kind the
+   * row requires. Deleting a delivery test, a receipt verification, or a
+   * readback assertion leaves a proof undischarged and fails this check — the
+   * matrix inventory and the executed proofs cannot drift apart.
+   */
+  it("binds: executed proofs cover every first-lane row's required proofs", () => {
+    // Module-load fail-closed: importing the registry asserts coverage of the
+    // declared capabilities (this would have thrown at import time otherwise).
+    const matrix = compileContentDeliveryMatrix(FIRST_LANE_DELIVERY_ROWS);
+    assertDeliveryCoverage(FIRST_LANE_DECLARED_CAPABILITIES, matrix);
+
+    const certified = new Map(certifiedRows.map((r) => [r.rowId, r.proofs]));
+    for (const row of FIRST_LANE_DELIVERY_ROWS) {
+      const proofs = certified.get(row.id);
+      expect(
+        proofs,
+        `row ${row.id} has no executed certification record — a covering delivery test is missing or was deleted`,
+      ).toBeDefined();
+      for (const required of row.requiredProofs) {
+        expect(
+          proofs,
+          `row ${row.id} did not discharge its required ${required} proof`,
+        ).toContain(required);
+      }
+    }
+    // No certification may name a row that no longer exists.
+    for (const record of certifiedRows) {
+      expect(FIRST_LANE_DELIVERY_ROWS.map((row) => row.id)).toContain(
+        record.rowId,
+      );
+    }
   });
 });
