@@ -265,6 +265,10 @@ describe("Android Cloud renderer behavior", () => {
         url: callback,
       }),
     );
+
+    playEntry.appListeners.get("appUrlOpen")?.({ url: callback });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(delivery).toHaveBeenCalledOnce();
     document.removeEventListener("eliza:android-cloud-deep-link", delivery);
   });
 });
