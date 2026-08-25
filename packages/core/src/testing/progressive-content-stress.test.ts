@@ -1,6 +1,8 @@
 /** Exercises real concurrent adapter calls, resource deltas, soak thresholds, and leak controls. */
 
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import type { ProgressiveContentConformanceAdapter } from "./progressive-content-conformance";
 import {
 	progressiveConformanceAdapter,
 	progressiveConformanceFixture,
@@ -11,6 +13,7 @@ import {
 	runProgressiveContentSoak,
 	runProgressiveContentStress,
 } from "./progressive-content-stress";
+import type { ProgressiveContentTarget } from "./progressive-content-target";
 
 const stableResource = {
 	rssBytes: 100 * 1024 * 1024,
@@ -28,12 +31,68 @@ const leakingControl = () => [
 	{ ...stableResource, rssBytes: stableResource.rssBytes + 32 * 1024 * 1024 },
 ];
 
+function targetFixture(
+	adapter: ProgressiveContentConformanceAdapter = progressiveConformanceAdapter(),
+): ProgressiveContentTarget {
+	const fixture = progressiveConformanceFixture();
+	let present = true;
+	let generation = 1;
+	return {
+		family: "file",
+		object: fixture.object,
+		realization: {
+			reference: {
+				kind: "file",
+				ref: "file:stress-target",
+				revision: fixture.object.revision,
+				resumability: "restart-safe",
+			},
+			sourceRevision: fixture.object.revision,
+			authorizationMode: "principal",
+			restartScope: "process",
+			authorizationScopeDigest: createHash("sha256")
+				.update(fixture.object.authorizationScope)
+				.digest("hex"),
+			cleanupIdentity: "file:stress-target",
+			resolverBindingSha256: fixture.object.revision,
+		},
+		async read({ access, offset, limit, expectedRevision }) {
+			if (access !== "authorized") throw new Error("CONTENT_ACCESS_DENIED");
+			if (!present) throw new Error("CONTENT_NOT_FOUND");
+			return adapter.read({
+				objectId: fixture.object.id,
+				authorizationScope: fixture.object.authorizationScope,
+				offset,
+				limit,
+				expectedRevision,
+			});
+		},
+		async restart() {
+			generation += 1;
+		},
+		async inspect() {
+			return {
+				resolverGeneration: `generation:${generation}`,
+				present,
+				ownedBytes: present ? fixture.object.byteLength : 0,
+				databaseRows: 0,
+				temporaryArtifacts: 0,
+				walBytes: 0,
+			};
+		},
+		async cleanup() {
+			await adapter.cleanup(fixture.object.id);
+			present = false;
+		},
+	};
+}
+
 describe("progressive content stress", () => {
 	it("measures every required concurrency without source-sized work", async () => {
 		let sample = 0;
 		const report = await runProgressiveContentStress({
-			adapter: progressiveConformanceAdapter(),
-			object: progressiveConformanceFixture().object,
+			adapterId: "production-stress-target",
+			target: targetFixture(),
 			operationsPerWorker: 2,
 			measureResources: () => ({
 				rssBytes: 1_000 + sample,
@@ -55,8 +114,8 @@ describe("progressive content stress", () => {
 
 	it("requires the positive leak control for a passing soak", async () => {
 		const passing = await runProgressiveContentSoak({
-			adapter: progressiveConformanceAdapter(),
-			object: progressiveConformanceFixture().object,
+			adapterId: "production-soak-target",
+			target: targetFixture(),
 			requiredDurationMs: 1,
 			requiredOperations: 2,
 			batchOperationsPerWorker: 1,
@@ -77,8 +136,8 @@ describe("progressive content stress", () => {
 		expect(passing.positiveLeakControlDrift.status).toBe("failed");
 
 		const failed = await runProgressiveContentSoak({
-			adapter: progressiveConformanceAdapter(),
-			object: progressiveConformanceFixture().object,
+			adapterId: "production-soak-target",
+			target: targetFixture(),
 			requiredDurationMs: 1,
 			requiredOperations: 1,
 			batchOperationsPerWorker: 1,
@@ -130,8 +189,8 @@ describe("progressive content stress", () => {
 			return originalRead(request);
 		};
 		const report = await runProgressiveContentSoak({
-			adapter,
-			object: progressiveConformanceFixture().object,
+			adapterId: "production-failing-target",
+			target: targetFixture(adapter),
 			requiredDurationMs: 5,
 			requiredOperations: 4,
 			batchOperationsPerWorker: 1,
