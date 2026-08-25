@@ -9053,31 +9053,10 @@ export function auditAndroidCloudArtifact(
   }
   let evidence;
   try {
-    assertAndroidArtifactRetainsBackgroundRunnerJniBridge(
-      inspectedArtifact,
-      entries,
-      javaHome,
-      {
-        label: debug ? "android-cloud debug" : "android-cloud release AAB",
-      },
-      {
-        readEntryBuffers: (
-          selectedArtifact,
-          selectedEntries,
-          selectedJavaHome,
-          options,
-        ) =>
-          readAndroidArtifactEntryBuffers(
-            selectedArtifact,
-            selectedEntries,
-            selectedJavaHome,
-            {
-              ...options,
-              artifactBytes: initialSnapshot.bytes,
-            },
-          ),
-      },
-    );
+    // The Play client deliberately strips Background Runner and every
+    // background execution surface. Its artifact must therefore stay native
+    // library free; JNI bridge retention is enforced only by the sideload,
+    // host-E2E, and system artifact audits that compile the plugin.
     if (artifactKind === "apk") {
       // APK inspection deliberately retains the existing AAPT badging/xmltree
       // behavior. bundletool is only valid for the release App Bundle path.
