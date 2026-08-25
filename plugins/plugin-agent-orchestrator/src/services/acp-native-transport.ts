@@ -290,8 +290,10 @@ export class NativeAcpClient {
     );
     const sessionId = stringValue(result?.sessionId);
     if (!sessionId) throw new Error("ACP agent did not return a sessionId");
-    const availableModes = Array.isArray(result?.modes?.availableModes)
-      ? result.modes.availableModes
+    const modes = asRecord(result?.modes);
+    const advertisedModes = modes?.availableModes;
+    const availableModes = Array.isArray(advertisedModes)
+      ? advertisedModes
           .map((mode) =>
             mode && typeof mode === "object"
               ? stringValue((mode as Record<string, unknown>).id)
