@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return text.slice(0, end);
+}
+
 /**
  * iMessage service implementation for elizaOS.
  */
@@ -1490,7 +1502,7 @@ export class IMessageService extends Service implements IIMessageService {
       }
 
       logger.debug(
-        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${row.text.slice(0, 40)}"`
+        `[imessage][dispatch] ROWID=${row.rowId} handle=${row.handle} text="${truncateUtf16Safe(row.text, 40)}"`
       );
       try {
         await this.dispatchInboundMessage(row);
