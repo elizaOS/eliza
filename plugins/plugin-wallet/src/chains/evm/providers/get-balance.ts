@@ -46,8 +46,10 @@ export const tokenBalanceProvider: Provider = {
       normalizedText.includes("balance") ||
       normalizedText.includes("token") ||
       normalizedText.includes("erc20") ||
-      normalizedText.includes("wallet");
-    const regexMatch = /\b(?:balance|token|erc20|wallet|chain)\b/i.test(inputText);
+      normalizedText.includes("wallet") ||
+      normalizedText.includes("chain");
+    const regexMatch =
+      /\b(?:balance|token|erc20|wallet|chain)s?\b/i.test(inputText);
     if (!keywordMatch || !regexMatch) {
       return { text: "", data: {}, values: {} };
     }
