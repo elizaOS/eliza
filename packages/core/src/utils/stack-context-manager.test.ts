@@ -116,4 +116,29 @@ describe("StackContextManager", () => {
 		expect(manager.active()).toBeUndefined();
 		return expect(settled).resolves.toBeUndefined();
 	});
+
+	describe("runAsync", () => {
+		it("preserves active context across await until promise settles", async () => {
+			const manager = new StackContextManager<string>();
+			const result = await manager.runAsync("async-ctx", async () => {
+				expect(manager.active()).toBe("async-ctx");
+				await Promise.resolve();
+				expect(manager.active()).toBe("async-ctx");
+				return "done";
+			});
+			expect(result).toBe("done");
+			expect(manager.active()).toBeUndefined();
+		});
+
+		it("pops context when async callback rejects", async () => {
+			const manager = new StackContextManager<string>();
+			await expect(
+				manager.runAsync("async-doomed", async () => {
+					await Promise.resolve();
+					throw new Error("async failure");
+				}),
+			).rejects.toThrow("async failure");
+			expect(manager.active()).toBeUndefined();
+		});
+	});
 });

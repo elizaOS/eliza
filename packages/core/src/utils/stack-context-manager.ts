@@ -16,6 +16,15 @@ export class StackContextManager<TContext> {
 		}
 	}
 
+	async runAsync<T>(context: TContext, fn: () => Promise<T>): Promise<T> {
+		this.stack.push(context);
+		try {
+			return await fn();
+		} finally {
+			this.stack.pop();
+		}
+	}
+
 	active(): TContext | undefined {
 		return this.stack.length > 0
 			? this.stack[this.stack.length - 1]
