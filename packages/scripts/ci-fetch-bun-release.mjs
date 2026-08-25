@@ -31,6 +31,26 @@ import { crc32 } from "node:zlib";
 const BUN_VERSION = "1.3.14";
 const ZIP_NAME = "bun.zip";
 const DEFAULT_ATTEMPTS = 6;
+export const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * Validates that an injected timeout is a safe, positive integer within Node's
+ * 32-bit signed timer limit (2^31 - 1 ms).
+ *
+ * @param {unknown} timeoutMs
+ */
+export function validateTimeoutMs(timeoutMs) {
+  if (
+    typeof timeoutMs !== "number" ||
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > 2_147_483_647
+  ) {
+    throw new Error(
+      `ci-fetch-bun-release: timeoutMs must be a positive safe integer <= 2147483647; got ${timeoutMs}`,
+    );
+  }
+}
 
 /**
  * @typedef {{
@@ -147,12 +167,27 @@ function tgzLooksValid(bytes) {
 
 async function downloadBytes(
   url,
-  { fetchImpl, attempts, retryDelayMs = 1500 },
+  {
+    fetchImpl,
+    attempts,
+    retryDelayMs = 1500,
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+  },
 ) {
+  validateTimeoutMs(timeoutMs);
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort(
+        new Error(`fetch attempt timed out after ${timeoutMs}ms`),
+      );
+    }, timeoutMs);
     try {
-      const response = await fetchImpl(url, { redirect: "follow" });
+      const response = await fetchImpl(url, {
+        redirect: "follow",
+        signal: controller.signal,
+      });
       if (!response.ok) {
         throw new Error(`${url} -> HTTP ${response.status}`);
       }
@@ -168,6 +203,8 @@ async function downloadBytes(
       await new Promise((resolve) =>
         setTimeout(resolve, attempt * retryDelayMs),
       );
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
@@ -267,7 +304,9 @@ export async function ensureBunReleaseZip(options) {
     fetchImpl = globalThis.fetch,
     attempts = DEFAULT_ATTEMPTS,
     retryDelayMs = 1500,
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
   } = options;
+  validateTimeoutMs(timeoutMs);
   mkdirSync(outDir, { recursive: true });
   const zipPath = join(outDir, ZIP_NAME);
   if (existsSync(zipPath)) {
@@ -285,6 +324,7 @@ export async function ensureBunReleaseZip(options) {
         fetchImpl,
         attempts,
         retryDelayMs,
+        timeoutMs,
       });
       if (zipLooksValid(bytes)) {
         writeFileSync(zipPath, bytes);
