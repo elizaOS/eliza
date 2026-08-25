@@ -45,7 +45,7 @@ packages/prompts/
     registered-action-inventory.js  shared discovery inventory used by action codegen
     check-secrets.js                scans prompt .ts files for embedded secrets/PII
     file-utils.js                   readJson/readText/ensureDirectory helpers for the scripts
-  test/prompts.test.js  regression assertions on template wording (bun test)
+  test/prompts.test.js  regression tests for prompt boundaries (bun test)
 ```
 
 ## Key exports / surface
@@ -87,7 +87,7 @@ No required configuration. The generators resolve repo paths from `import.meta.u
 Add a prompt template:
 1. In `src/index.ts`, add `export const fooTemplate = \`...\`;` then `export const FOO_TEMPLATE = fooTemplate;` (always export both names).
 2. Use `{{camelCaseVar}}` placeholders, `{{#each}}` / `{{#if}}`, and end with the JSON-only output instruction other templates use.
-3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add/adjust a wording assertion in `test/prompts.test.js`.
+3. Re-export from `@elizaos/core` (`packages/core/src/prompts.ts`) if runtime code needs it, then add or adjust a regression test for an observable composition, injection, lossless-context, or code-generation boundary. Do not add tests whose material assertion only pins prompt prose.
 
 Regenerate the plugin action spec after adding or renaming a plugin `Action`:
 - Run `build:plugin-action-spec`. It scans `plugins/**/*.ts`; never hand-edit `specs/actions/plugins.generated.json`. Actions intentionally excluded from the public surface live in the `RETIRED_IMPLEMENTATION_ONLY_ACTIONS` set in `scripts/generate-plugin-action-spec.js`.
