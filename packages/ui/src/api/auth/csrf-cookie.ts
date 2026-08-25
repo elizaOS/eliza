@@ -79,10 +79,16 @@ export function readCsrfTokenFromCookie(): string | null {
   return null;
 }
 
-/** Read the same-origin cookie first, then the origin-scoped native mirror. */
+/** Read a same-origin cookie or the native mirror for the request origin. */
 export function readCsrfTokenForUrl(url: string): string | null {
-  const cookieToken = readCsrfTokenFromCookie();
-  if (cookieToken) return cookieToken;
   const origin = csrfOrigin(url);
-  return origin ? (readStoredCsrfTokens()[origin] ?? null) : null;
+  if (!origin) return null;
+
+  const pageOrigin = csrfOrigin(globalThis.location?.href ?? "");
+  if (origin === pageOrigin) {
+    const cookieToken = readCsrfTokenFromCookie();
+    if (cookieToken) return cookieToken;
+  }
+
+  return readStoredCsrfTokens()[origin] ?? null;
 }
