@@ -3,10 +3,11 @@
  * (#23102), in a dedicated `capabilities` Postgres schema — authorization
  * data kept out of the trust feature so enforcement boundaries never reach
  * sideways into trust tables. `ensureCapabilityGrantTables` materializes
- * both tables with idempotent raw DDL at first store use (the
- * TrajectoriesService pattern), because nothing in the runtime registers a
- * schema-bearing trust plugin and relying on plugin-schema migration would
- * leave these tables uncreated in real deployments.
+ * all three tables (grants, audit log, epoch singleton) with idempotent
+ * raw DDL at first store use (the TrajectoriesService pattern), because
+ * nothing in the runtime registers a schema-bearing trust plugin and
+ * relying on plugin-schema migration would leave these tables uncreated
+ * in real deployments.
  */
 
 import { sql } from "drizzle-orm";

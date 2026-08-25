@@ -44,6 +44,25 @@ const NIL_AGENT = "00000000-0000-0000-0000-000000000000" as UUID;
  */
 export type CapabilityAuditFailureReporter = (error: unknown) => void;
 
+/**
+ * Reports a diagnostic failure through the injected hook. The decision
+ * already stands when this runs, so a throwing reporter is swallowed —
+ * diagnostics must never abort authorization.
+ */
+function safeReport(
+	onAuditFailure: CapabilityAuditFailureReporter | undefined,
+	error: unknown,
+): void {
+	// error-policy:J7 — diagnostic failures (audit sink, store reads, role
+	// resolvers) are reported best-effort and can never change or block the
+	// decision, including when the reporter itself throws.
+	try {
+		onAuditFailure?.(error);
+	} catch {
+		// The reporter is itself broken; nothing further to do safely.
+	}
+}
+
 /** Best-effort audit write; reports failures through `onAuditFailure`. */
 async function writeAudit(
 	db: CapabilityStoreDb,
@@ -53,15 +72,7 @@ async function writeAudit(
 	try {
 		await appendCapabilityAudit(db, input);
 	} catch (error) {
-		// error-policy:J7 — audit-sink failure is reported to the injected
-		// hook (runtime.reportError at the boundary), never blocks the
-		// decision, and never converts a denial into an allow. A throwing
-		// reporter is swallowed here for the same reason.
-		try {
-			onAuditFailure?.(error);
-		} catch {
-			// The decision already stands; reporter failures must not abort it.
-		}
+		safeReport(onAuditFailure, error);
 	}
 }
 
@@ -240,7 +251,7 @@ export async function authorizeCapability(
 		// STORE_UNAVAILABLE denial (fail closed); the boundary logs it via
 		// runtime.reportError from the decision record, and the hook gets
 		// the raw driver error here (J7).
-		request.onAuditFailure?.(error);
+		safeReport(request.onAuditFailure, error);
 		return denyWithAudit(
 			db,
 			request,
@@ -372,7 +383,7 @@ export async function authorizeCapability(
 			// no-match denial; it must never widen access. The failure itself
 			// is reported through the injected hook (J7).
 			roles = null;
-			request.onAuditFailure?.(error);
+			safeReport(request.onAuditFailure, error);
 		}
 		if (roles && roles.length > 0) {
 			// Slice 1 models the NONE floor only: roles present means the

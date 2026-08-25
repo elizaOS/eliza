@@ -730,7 +730,7 @@ describe("selector + subject + capability canonicalization", () => {
 });
 
 describe("restart survival (real PGlite, disk data dir)", () => {
-	it("grants created in one process are authoritative after close + reopen", async () => {
+	it("grants created under one store handle are authoritative after close + reopen", async () => {
 		const restartDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "capgrants-restart-"),
 		);
@@ -1122,7 +1122,18 @@ describe("RP review round-3 coverage", () => {
 		expect(okScalars.ok).toBe(true);
 	});
 
-	it("a throwing onAuditFailure reporter cannot abort the decision", async () => {
+	it("a throwing onAuditFailure reporter cannot abort the decision (forced invocation)", async () => {
+		// Force the audit write itself to fail so the reporter IS invoked,
+		// and make the reporter throw — the decision must still return.
+		const brokenInsert: CapabilityStoreDb = {
+			execute: (query) => store.db.execute(query),
+			select: (...args) => store.db.select(...args),
+			insert: () => {
+				throw new Error("audit insert down");
+			},
+			update: (table) => store.db.update(table),
+			transaction: (cb) => store.db.transaction(cb),
+		};
 		const grant = await createCapabilityGrant(store.db, {
 			subject: "entity:00000000-0000-4000-8000-00000000e805",
 			agentId: AGENT,
@@ -1134,7 +1145,7 @@ describe("RP review round-3 coverage", () => {
 			provenance: "api",
 		});
 		expect(grant.id).toBeTruthy();
-		const result = await authorizeCapability(store.db, {
+		const result = await authorizeCapability(brokenInsert, {
 			subject: "entity:00000000-0000-4000-8000-00000000e805",
 			agentId: AGENT,
 			capability: "media.read",
@@ -1144,6 +1155,51 @@ describe("RP review round-3 coverage", () => {
 			},
 		});
 		expect(result.decision).toBe("allow");
+	});
+
+	it("store-unavailable reports through the hook and a throwing hook still returns the denial", async () => {
+		const seen: unknown[] = [];
+		const broken: CapabilityStoreDb = {
+			execute: () => {
+				throw new Error("ddl down");
+			},
+			select: () => {
+				throw new Error("read down");
+			},
+			insert: () => {
+				throw new Error("write down");
+			},
+			update: () => {
+				throw new Error("update down");
+			},
+			transaction: () => {
+				throw new Error("tx down");
+			},
+		};
+		const result = await authorizeCapability(broken, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/abc",
+			onAuditFailure: (error) => {
+				seen.push(error);
+			},
+		});
+		expect(result.decision).toBe("deny");
+		expect(result.reasonCode).toBe(CAPABILITY_REASON_CODES.STORE_UNAVAILABLE);
+		expect(seen.length).toBeGreaterThan(0);
+		// Now the hook itself throws — the denial must still come back.
+		const survived = await authorizeCapability(broken, {
+			subject: SUBJECT_ENTITY,
+			agentId: AGENT,
+			capability: "media.read",
+			resource: "media/abc",
+			onAuditFailure: () => {
+				throw new Error("reporter exploded");
+			},
+		});
+		expect(survived.decision).toBe("deny");
+		expect(survived.reasonCode).toBe(CAPABILITY_REASON_CODES.STORE_UNAVAILABLE);
 	});
 
 	it("invalid-request audit details carry categorical text, not raw values", async () => {
