@@ -35,7 +35,7 @@ const STRUCTURAL_INJECTION_PATTERNS: readonly RegExp[] = [
 	/\[\/INST\]/i,
 	/\[SYS\]/i,
 	/"role"\s*:\s*"system"/i,
-	/```system\n/i,
+	/```system\r?\n/i,
 	/END OF SYSTEM PROMPT/i,
 	/NEW SYSTEM PROMPT/i,
 	/ACTUAL INSTRUCTIONS:/i,
