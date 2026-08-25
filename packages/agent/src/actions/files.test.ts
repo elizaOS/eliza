@@ -91,6 +91,14 @@ describe("filesAction", () => {
     const data = res?.data as FilesData;
     expect(data.files).toHaveLength(1);
     expect(data.files?.[0].mimeType).toBe("application/pdf");
+
+    const resWithAlias = await run(makeRuntime(fakeStorage()), {
+      op: "list",
+      q: "pdf",
+    });
+    expect(resWithAlias?.success).toBe(true);
+    const aliasData = resWithAlias?.data as FilesData | undefined;
+    expect(aliasData?.files).toHaveLength(1);
   });
 
   it("returns every stored file even when a legacy caller supplies a limit", async () => {
@@ -120,6 +128,12 @@ describe("filesAction", () => {
     });
     expect(res?.success).toBe(true);
     expect(res?.text).toContain(`/api/media/${HASH_A}.png`);
+
+    const resWithAlias = await run(makeRuntime(fakeStorage()), {
+      op: "get",
+      filename: `${HASH_A}.png`,
+    });
+    expect(resWithAlias?.success).toBe(true);
   });
 
   it("reports not-found for an unknown file in get", async () => {

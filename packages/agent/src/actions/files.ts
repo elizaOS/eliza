@@ -22,7 +22,13 @@ interface FilesParams {
   op?: string;
   subaction?: string;
   fileName?: string;
+  filename?: string;
+  file_name?: string;
+  file?: string;
+  name?: string;
   query?: string;
+  q?: string;
+  search?: string;
   confirm?: boolean;
 }
 
@@ -73,9 +79,8 @@ async function doList(
     const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
     return bTime - aTime;
   });
-  const filtered = params.query
-    ? all.filter((file) => matchesQuery(file, params.query ?? ""))
-    : all;
+  const q = (params.query ?? params.q ?? params.search)?.trim();
+  const filtered = q ? all.filter((file) => matchesQuery(file, q)) : all;
   const text = filtered.length
     ? `Found all ${filtered.length} file(s).\n${filtered
         .map(
@@ -99,7 +104,13 @@ async function doGet(
   if (!storage) {
     return fail("File storage is not available.", "FILES_NO_SERVICE");
   }
-  const name = params.fileName?.trim();
+  const name = (
+    params.fileName ??
+    params.filename ??
+    params.file_name ??
+    params.file ??
+    params.name
+  )?.trim();
   if (!name) {
     return fail("fileName is required for op:get.", "FILES_INVALID");
   }
@@ -125,7 +136,13 @@ async function doDelete(
   if (!storage) {
     return fail("File storage is not available.", "FILES_NO_SERVICE");
   }
-  const name = params.fileName?.trim();
+  const name = (
+    params.fileName ??
+    params.filename ??
+    params.file_name ??
+    params.file ??
+    params.name
+  )?.trim();
   if (!name) {
     return fail("fileName is required for op:delete.", "FILES_INVALID");
   }
