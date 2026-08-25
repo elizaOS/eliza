@@ -710,3 +710,98 @@ describe("GatewayWeb", () => {
     expect(FakeWebSocket.instances).toHaveLength(2);
   });
 });
+
+describe("GatewayWeb input validation", () => {
+  let gateway: GatewayWeb;
+
+  beforeEach(() => {
+    FakeWebSocket.instances = [];
+    gateway = new GatewayWeb();
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+  });
+
+  afterEach(async () => {
+    try {
+      await gateway.disconnect();
+    } catch {}
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    FakeWebSocket.deferClose = false;
+    FakeWebSocket.constructorError = null;
+  });
+
+  it("rejects connect with empty, whitespace, non-string, or non-ws URLs", async () => {
+    await expect(
+      gateway.connect({ url: "" } as unknown as { url: string }),
+    ).rejects.toThrow("url must be a non-empty WebSocket URL");
+    await expect(
+      gateway.connect({ url: "   " } as unknown as { url: string }),
+    ).rejects.toThrow("url must be a non-empty WebSocket URL");
+    await expect(
+      gateway.connect({ url: 123 as unknown as string }),
+    ).rejects.toThrow("url must be a non-empty WebSocket URL");
+    await expect(
+      gateway.connect({ url: "https://example.com" }),
+    ).rejects.toThrow("url must use ws: or wss:");
+    await expect(
+      gateway.connect({ url: "http://example.com" }),
+    ).rejects.toThrow("url must use ws: or wss:");
+    await expect(gateway.connect({ url: "not a url" })).rejects.toThrow(
+      "url must be a valid WebSocket URL",
+    );
+  });
+
+  it("accepts wss and ws URLs and normalizes them", async () => {
+    const connected = gateway.connect({ url: "wss://example.com/socket" });
+    const socket = FakeWebSocket.instances[0];
+    expect(socket.url).toBe("wss://example.com/socket");
+    socket.open();
+    socket.message(
+      JSON.stringify({
+        type: "res",
+        id: JSON.parse(socket.sent[0] as string).id,
+        ok: true,
+        payload: {},
+      }),
+    );
+    await expect(connected).resolves.toBeDefined();
+  });
+
+  it("rejects send with empty, whitespace, or invalid method names", async () => {
+    await expect(
+      gateway.send({ method: "" } as unknown as { method: string }),
+    ).rejects.toThrow("method must be a non-empty string");
+    await expect(
+      gateway.send({ method: "   " } as unknown as { method: string }),
+    ).rejects.toThrow("method must be a non-empty string");
+    await expect(
+      gateway.send({ method: " bad" } as unknown as { method: string }),
+    ).rejects.toThrow("method must not contain leading or trailing whitespace");
+    await expect(
+      gateway.send({ method: "bad " } as unknown as { method: string }),
+    ).rejects.toThrow("method must not contain leading or trailing whitespace");
+    await expect(gateway.send({ method: "123invalid" })).rejects.toThrow(
+      "method contains invalid characters",
+    );
+    await expect(gateway.send({ method: "a".repeat(129) })).rejects.toThrow(
+      "method contains invalid characters",
+    );
+  });
+
+  it("accepts valid method names without throwing validation", async () => {
+    await expect(
+      gateway.send({ method: "valid.method-1", params: {} }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.objectContaining({ code: "NOT_CONNECTED" }),
+      }),
+    );
+    await expect(gateway.send({ method: "a", params: {} })).resolves.toEqual(
+      expect.objectContaining({ ok: false }),
+    );
+    await expect(
+      gateway.send({ method: "valid_method:1.2-3", params: {} }),
+    ).resolves.toEqual(expect.objectContaining({ ok: false }));
+  });
+});
