@@ -271,13 +271,12 @@ function normalizeGithubRepo(value: string | null | undefined): string | null {
   }
   input = input
     .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/^ssh:\/\/git@github\.com[:/]/, "")
+    .replace(/^ssh:\/\/git@github\.com(?::\d+)?[:\/]/, "")
     .replace(/^git:\/\/github\.com\//, "")
     .replace(/^git@github\.com:/, "")
-    .replace(/\.git$/, "")
-    .replace(/\/tree\/.*$/, "")
-    .replace(/\/blob\/.*$/, "")
-    .replace(/#.*$/, "");
+    .replace(/\/(?:tree|blob)\/.*$/, "")
+    .replace(/#.*$/, "")
+    .replace(/\.git$/, "");
   const [owner, repo] = input.split("/");
   return owner && repo ? `${owner}/${repo}` : null;
 }
