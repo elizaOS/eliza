@@ -248,25 +248,16 @@ async function runInstalledFirefoxSmoke() {
         `Firefox pairing state did not persist: ${JSON.stringify(persistedState)}`,
       );
     }
-    // The externally opened Firefox popup can retain its initial DOM while
-    // BiDi reports a stale about:blank navigation identity. Navigate that
-    // same page to its canonical extension URL so the production startup
-    // refresh reads persisted background state without launching a second
-    // external popup tab.
-    const popupUrl = await popupPage.evaluate(() => {
-      const runtime = globalThis.browser?.runtime ?? globalThis.chrome?.runtime;
-      if (!runtime?.getURL)
-        throw new Error("extension URL resolver unavailable");
-      return runtime.getURL("popup.html");
-    });
-    await popupPage.evaluate((url) => {
-      globalThis.location.assign(url);
-    }, popupUrl);
-    await popupPage.waitForFunction(
-      () => document.querySelector("#statusTitle") !== null,
-      undefined,
-      { timeout: 20_000 },
+    // Firefox BiDi exposes the externally opened extension tab through a
+    // stale about:blank navigation identity. Close and reopen the installed
+    // popup so its normal startup render reads persisted background state.
+    await popupPage.close();
+    await openInstalledFirefoxPopup(
+      executablePath,
+      profileDirectory,
+      extensionId,
     );
+    popupPage = await waitForInstalledPairingGuide(browser);
     await popupPage.waitForFunction(
       () =>
         document.querySelector("#statusTitle")?.textContent ===
