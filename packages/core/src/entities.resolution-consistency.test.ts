@@ -321,6 +321,52 @@ describe("relationship match evidence gate", () => {
 });
 
 describe("supplied evidence must be well-formed (RP r4 P1s)", () => {
+	it.each(["", "   "])(
+		"returns null when entityId is the blank string %j alongside a valid match",
+		async (entityId) => {
+			const found = await findEntityByName(
+				runtime([structuredClone(bob), structuredClone(alice)], {
+					type: "NAME_MATCH",
+					entityId,
+					matches: [{ name: "Alice" }],
+				}),
+				message("who should I ping"),
+				state,
+			);
+			expect(found).toBeNull();
+		},
+	);
+
+	it.each(["", "   "])(
+		"returns null when resolvedId is the blank string %j alongside a valid match",
+		async (resolvedId) => {
+			const found = await findEntityByName(
+				runtime([structuredClone(bob), structuredClone(alice)], {
+					type: "NAME_MATCH",
+					resolvedId,
+					matches: [{ name: "Alice" }],
+				}),
+				message("who should I ping"),
+				state,
+			);
+			expect(found).toBeNull();
+		},
+	);
+
+	it("returns null for a whitespace match even when a candidate normalizes to the same label", async () => {
+		const blankNamed = entity(OTHER, ["   "]);
+		const found = await findEntityByName(
+			runtime([structuredClone(bob), blankNamed], {
+				type: "NAME_MATCH",
+				entityId: null,
+				matches: [{ name: "   " }],
+			}),
+			message("who should I ping"),
+			state,
+		);
+		expect(found).toBeNull();
+	});
+
 	it("returns null when entityId is a number even though resolvedId names a valid entity", async () => {
 		const found = await findEntityByName(
 			runtime([structuredClone(bob), structuredClone(alice)], {

@@ -122,6 +122,16 @@ interface ParsedResolution {
 	conflictingEntityId?: boolean;
 }
 
+function isAbsentResolutionId(value: unknown): boolean {
+	return value === undefined || value === null || value === "null";
+}
+
+function isUsableResolutionId(value: unknown): value is string {
+	return (
+		typeof value === "string" && value !== "null" && value.trim().length > 0
+	);
+}
+
 /**
  * The decisive resolution types the model contract supports. A response
  * without one of these types (or with AMBIGUOUS/UNKNOWN) is not decisive
@@ -157,33 +167,24 @@ function parseEntityResolutionResponse(
 		const resolvedIdValue = readEntityResolutionField(parsedJson, "resolvedId");
 		const type = typeof typeValue === "string" ? typeValue : undefined;
 		// Supplied-but-malformed identification fields must not silently
-		// disappear at this boundary (#24765). JSON null (and the literal
-		// "null") is the contract's explicit "no id" encoding and stays
-		// absent; every other SUPPLIED field must be a usable string —
-		// validity is per field, so a malformed alias next to a valid one
-		// (entityId: 42 + resolvedId: ALICE) still invalidates. Two
-		// conflicting string ids are flagged separately for the gate.
-		const entityIdSupplied =
-			(entityIdValue !== undefined && entityIdValue !== null) ||
-			(resolvedIdValue !== undefined && resolvedIdValue !== null);
+		// disappear at this boundary (#24765). JSON null and the literal "null"
+		// are the contract's explicit "no id" encodings. Every other supplied
+		// alias must be a nonblank string; validity is per field, so a malformed
+		// alias next to valid evidence still invalidates the whole response.
 		const malformedEntityId =
-			entityIdSupplied &&
-			((entityIdValue !== undefined &&
-				entityIdValue !== null &&
-				typeof entityIdValue !== "string") ||
-				(resolvedIdValue !== undefined &&
-					resolvedIdValue !== null &&
-					typeof resolvedIdValue !== "string"));
+			(!isAbsentResolutionId(entityIdValue) &&
+				!isUsableResolutionId(entityIdValue)) ||
+			(!isAbsentResolutionId(resolvedIdValue) &&
+				!isUsableResolutionId(resolvedIdValue));
 		const conflictingEntityId =
-			typeof entityIdValue === "string" &&
-			typeof resolvedIdValue === "string" &&
+			isUsableResolutionId(entityIdValue) &&
+			isUsableResolutionId(resolvedIdValue) &&
 			entityIdValue !== resolvedIdValue;
-		const entityId =
-			typeof entityIdValue === "string"
-				? entityIdValue
-				: typeof resolvedIdValue === "string"
-					? resolvedIdValue
-					: undefined;
+		const entityId = isUsableResolutionId(entityIdValue)
+			? entityIdValue
+			: isUsableResolutionId(resolvedIdValue)
+				? resolvedIdValue
+				: undefined;
 		const rawMatches = readEntityResolutionField(parsedJson, "matches");
 		// Match evidence legality comes from the strict walk in
 		// entity-matches.ts — the single authority — instead of rules here
@@ -197,7 +198,7 @@ function parseEntityResolutionResponse(
 		if (type || entityId || matches.length > 0) {
 			return {
 				type,
-				entityId: entityId && entityId !== "null" ? entityId : undefined,
+				entityId,
 				matches: matches.length > 0 ? { match: matches } : undefined,
 				malformedMatches,
 				malformedEntityId,
@@ -304,25 +305,19 @@ function referentTextOf(message: Memory): string {
  * bind to the message sender and the agent before any ordinary identity
  * lookup. Without this precedence, an entity literally named "Me" or "You"
  * wins the unique referent-hit shortcut and captures the reference (#24765).
- * Only the exact normalized/stripped forms are contextual — "Meagan" or
- * "@me-suffix" names are ordinary identity lookups.
+ * Only exact unprefixed natural-language tokens are contextual. Explicit
+ * handles such as "@me" and ordinary names such as "Meagan" remain identity
+ * lookups.
  */
 const CONTEXTUAL_SELF_REFERENT = new Set(["me", "myself"]);
 const CONTEXTUAL_AGENT_REFERENT = new Set(["you", "yourself"]);
 
 function contextualReferentTarget(referent: string): "sender" | "agent" | null {
 	const normalized = normalizeEntityName(referent);
-	const stripped = stripAtPrefix(referent);
-	if (
-		CONTEXTUAL_SELF_REFERENT.has(normalized) ||
-		CONTEXTUAL_SELF_REFERENT.has(stripped)
-	) {
+	if (CONTEXTUAL_SELF_REFERENT.has(normalized)) {
 		return "sender";
 	}
-	if (
-		CONTEXTUAL_AGENT_REFERENT.has(normalized) ||
-		CONTEXTUAL_AGENT_REFERENT.has(stripped)
-	) {
+	if (CONTEXTUAL_AGENT_REFERENT.has(normalized)) {
 		return "agent";
 	}
 	return null;

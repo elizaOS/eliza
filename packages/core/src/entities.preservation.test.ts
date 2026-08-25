@@ -503,13 +503,26 @@ describe("adversarial: contextual binding containment", () => {
 		expect(found).toBeNull();
 	});
 
-	it("resolves @me to the sender (stripAtPrefix normalization)", async () => {
+	it("resolves @me as an explicit handle instead of a sender pronoun", async () => {
+		const handleEntityId = "00000000-0000-0000-0000-0000000000e1" as UUID;
+		const handleEntity = {
+			id: handleEntityId,
+			agentId: AGENT,
+			names: ["Handle Me"],
+			components: [
+				{
+					...component("d3", "me"),
+					entityId: handleEntityId,
+					sourceEntityId: handleEntityId,
+				},
+			],
+		} as Entity;
 		const found = await findEntityByName(
-			contextualRuntime([bob, alice], "not-json"),
+			contextualRuntime([bob, alice, handleEntity], "not-json"),
 			message("@me"),
 			state,
 		);
-		expect(found?.id).toBe(BOB);
+		expect(found?.id).toBe(handleEntityId);
 	});
 
 	it("does not treat '@you-something' as contextual", async () => {

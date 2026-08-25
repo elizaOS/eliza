@@ -9,7 +9,7 @@
  * authority on whether supplied match evidence was usable: the walk counts
  * every supplied slot it drops (scalars, null, name-less objects, array
  * holes and unusable entries, wrapper contents), so the parse boundary in
- * entities.ts never re-derivives legality with rules that can drift from
+ * entities.ts never re-derives legality with rules that can drift from
  * the walk (#24765).
  */
 
@@ -102,7 +102,7 @@ function normalizeEntityMatch(
 	}
 	const name = ownString(value, "name");
 	const reason = ownString(value, "reason");
-	if (!name) {
+	if (!name || name.trim().length === 0) {
 		ctx.dropped += 1;
 		return null;
 	}
