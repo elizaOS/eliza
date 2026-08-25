@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 /**
- * view-event-bus unit tests: same-window delivery via the CustomEvent transport,
- * typed subscription filtering, unsubscribe semantics, and the cross-tab
- * BroadcastChannel transport (echo suppression, postMessage shape, and the
- * graceful-absence paths when BroadcastChannel is unavailable or throws).
- * Deterministic; jsdom environment, injected fake clock, no network.
+ * Unit tests for the cross-view pub-sub bus in the ui views layer: same-window
+ * delivery via the CustomEvent transport, typed subscription filtering,
+ * unsubscribe semantics, and the cross-tab BroadcastChannel transport
+ * (constructor name, postMessage shape, echo suppression, inbound delivery,
+ * unsubscribe identity, and the graceful-absence paths when BroadcastChannel
+ * or window are unavailable or construction throws).
+ * Deterministic; jsdom environment, frozen clock for shape assertions, no network.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emitViewEvent, onAnyViewEvent, onViewEvent } from "./view-event-bus";
@@ -12,57 +14,33 @@ import { emitViewEvent, onAnyViewEvent, onViewEvent } from "./view-event-bus";
 const CHANNEL_NAME = "elizaos-views";
 const WINDOW_EVENT_NAME = "elizaos-view-event";
 
-/** Captures every handler invocation across both transports for assertions. */
-function recorder() {
-  const calls: { channel: boolean; window: boolean; event: unknown }[] = [];
-  return {
-    calls,
-    onChannel(data: unknown) {
-      calls.push({ channel: true, window: false, event: data });
-    },
-    onWindow(event: Event) {
-      calls.push({
-        channel: false,
-        window: true,
-        event: (event as CustomEvent).detail,
-      });
-    },
-  };
-}
-
 describe("emitViewEvent / onAnyViewEvent (same-window transport)", () => {
   it("delivers the event object with type, payload, sourceViewId, and timestamp", () => {
-    const rec = recorder();
-    const unsub = onAnyViewEvent((event) =>
-      rec.onWindow({ detail: event } as CustomEvent),
-    );
-    const before = Date.now();
-    emitViewEvent("wallet:balance:updated", { balance: 42 }, "view-1");
-    expect(rec.calls).toHaveLength(1);
-    const event = rec.calls[0].event as {
+    const seen: {
       type: string;
       payload: Record<string, unknown>;
       sourceViewId?: string;
       timestamp: number;
-    };
-    expect(event.type).toBe("wallet:balance:updated");
-    expect(event.payload).toEqual({ balance: 42 });
-    expect(event.sourceViewId).toBe("view-1");
-    expect(event.timestamp).toBeGreaterThanOrEqual(before);
+    }[] = [];
+    const unsub = onAnyViewEvent((event) => seen.push(event));
+    const before = Date.now();
+    emitViewEvent("wallet:balance:updated", { balance: 42 }, "view-1");
+    expect(seen).toHaveLength(1);
+    expect(seen[0].type).toBe("wallet:balance:updated");
+    expect(seen[0].payload).toEqual({ balance: 42 });
+    expect(seen[0].sourceViewId).toBe("view-1");
+    expect(seen[0].timestamp).toBeGreaterThanOrEqual(before);
     unsub();
   });
 
   it("defaults the payload to an empty object and sourceViewId to undefined", () => {
-    const seen: unknown[] = [];
+    const seen: { payload: Record<string, unknown>; sourceViewId?: string }[] =
+      [];
     const unsub = onAnyViewEvent((event) => seen.push(event));
     emitViewEvent("ping");
     expect(seen).toHaveLength(1);
-    const event = seen[0] as {
-      payload: Record<string, unknown>;
-      sourceViewId?: string;
-    };
-    expect(event.payload).toEqual({});
-    expect(event.sourceViewId).toBeUndefined();
+    expect(seen[0].payload).toEqual({});
+    expect(seen[0].sourceViewId).toBeUndefined();
     unsub();
   });
 
@@ -157,6 +135,7 @@ describe("cross-tab BroadcastChannel transport", () => {
   const originalBC = globalThis.BroadcastChannel;
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     if (originalBC) {
       (
@@ -168,17 +147,22 @@ describe("cross-tab BroadcastChannel transport", () => {
     }
   });
 
-  it("posts the event to the elizaos-views channel and does not echo to the same tab", async () => {
-    const posts: { channel: string; data: unknown }[] = [];
+  it("posts the complete ViewEvent to a channel constructed with the exact name, without same-tab echo", async () => {
+    const posts: { constructorName: string; data: unknown }[] = [];
     class FakeChannel {
-      name = CHANNEL_NAME;
+      name: string;
+      constructor(name: string) {
+        this.name = name;
+      }
       postMessage(data: unknown) {
-        posts.push({ channel: this.name, data });
+        posts.push({ constructorName: this.name, data });
       }
       addEventListener() {}
       removeEventListener() {}
     }
     vi.stubGlobal("BroadcastChannel", FakeChannel);
+    vi.useFakeTimers();
+    vi.setSystemTime(1_724_612_345_678);
     // Re-import a fresh module copy so the lazy channel singleton rebinds to the fake.
     vi.resetModules();
     const bus = await import("./view-event-bus");
@@ -186,25 +170,39 @@ describe("cross-tab BroadcastChannel transport", () => {
     const unsub = bus.onAnyViewEvent((e) => seen.push(e.type));
     bus.emitViewEvent("cross:tab", { n: 1 }, "v");
     expect(posts).toHaveLength(1);
-    expect(posts[0].channel).toBe(CHANNEL_NAME);
-    expect(posts[0].data).toMatchObject({
+    expect(posts[0].constructorName).toBe(CHANNEL_NAME);
+    // Full ViewEvent shape on the cross-tab wire, with the frozen timestamp.
+    expect(posts[0].data).toEqual({
       type: "cross:tab",
       payload: { n: 1 },
+      sourceViewId: "v",
+      timestamp: 1_724_612_345_678,
     });
     // Same-window listener fired once (the module's own channel never echoes).
     expect(seen).toEqual(["cross:tab"]);
     unsub();
   });
 
-  it("delivers BroadcastChannel messages from other tabs to subscribers", async () => {
+  it("registers exactly one BroadcastChannel listener for the message event and delivers inbound events from other tabs", async () => {
     let channelListener: ((msg: { data: unknown }) => void) | undefined;
+    const added: {
+      type: string;
+      listener: (msg: { data: unknown }) => void;
+    }[] = [];
     class FakeChannel {
       name = CHANNEL_NAME;
-      addEventListener(_type: string, l: (msg: { data: unknown }) => void) {
-        channelListener = l;
+      addEventListener(
+        type: string,
+        listener: (msg: { data: unknown }) => void,
+      ) {
+        added.push({ type, listener });
+        channelListener = listener;
       }
-      removeEventListener() {
-        channelListener = undefined;
+      removeEventListener(
+        _type: string,
+        listener: (msg: { data: unknown }) => void,
+      ) {
+        if (channelListener === listener) channelListener = undefined;
       }
       postMessage() {}
     }
@@ -213,12 +211,50 @@ describe("cross-tab BroadcastChannel transport", () => {
     const bus = await import("./view-event-bus");
     const seen: unknown[] = [];
     const unsub = bus.onAnyViewEvent((e) => seen.push(e));
+    expect(added).toHaveLength(1);
+    expect(added[0].type).toBe("message");
     channelListener?.({
       data: { type: "other:tab", payload: { z: 1 }, timestamp: 5 },
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ type: "other:tab", payload: { z: 1 } });
     unsub();
+  });
+
+  it("removes the same BroadcastChannel listener identity on unsubscribe, so later cross-tab messages stop delivering", async () => {
+    let channelListener: ((msg: { data: unknown }) => void) | undefined;
+    const added: ((msg: { data: unknown }) => void)[] = [];
+    const removed: ((msg: { data: unknown }) => void)[] = [];
+    class FakeChannel {
+      name = CHANNEL_NAME;
+      addEventListener(
+        _type: string,
+        listener: (msg: { data: unknown }) => void,
+      ) {
+        added.push(listener);
+        channelListener = listener;
+      }
+      removeEventListener(
+        _type: string,
+        listener: (msg: { data: unknown }) => void,
+      ) {
+        removed.push(listener);
+        if (channelListener === listener) channelListener = undefined;
+      }
+      postMessage() {}
+    }
+    vi.stubGlobal("BroadcastChannel", FakeChannel);
+    vi.resetModules();
+    const bus = await import("./view-event-bus");
+    const seen: string[] = [];
+    const unsub = bus.onAnyViewEvent((e) => seen.push(e.type));
+    channelListener?.({ data: { type: "before:unsub", payload: {} } });
+    unsub();
+    // The exact listener identity registered is the identity removed.
+    expect(removed).toHaveLength(1);
+    expect(removed[0]).toBe(added[0]);
+    channelListener?.({ data: { type: "after:unsub", payload: {} } });
+    expect(seen).toEqual(["before:unsub"]);
   });
 
   it("falls back to same-window-only delivery when BroadcastChannel is undefined (SSR-like)", async () => {
@@ -232,23 +268,7 @@ describe("cross-tab BroadcastChannel transport", () => {
     unsub();
   });
 
-  it("falls back to same-window-only delivery when BroadcastChannel construction throws", async () => {
-    class ThrowingChannel {
-      constructor() {
-        throw new Error("restricted worker");
-      }
-    }
-    vi.stubGlobal("BroadcastChannel", ThrowingChannel);
-    vi.resetModules();
-    const bus = await import("./view-event-bus");
-    const seen: string[] = [];
-    const unsub = bus.onAnyViewEvent((e) => seen.push(e.type));
-    expect(() => bus.emitViewEvent("throw:bc")).not.toThrow();
-    expect(seen).toEqual(["throw:bc"]);
-    unsub();
-  });
-
-  it("keeps both transports after a throwing construction: postMessage never called", async () => {
+  it("falls back to same-window-only delivery when BroadcastChannel construction throws, never posting", async () => {
     const posts: unknown[] = [];
     class ThrowingChannel {
       constructor() {
@@ -265,9 +285,24 @@ describe("cross-tab BroadcastChannel transport", () => {
     const bus = await import("./view-event-bus");
     const seen: string[] = [];
     const unsub = bus.onAnyViewEvent((e) => seen.push(e.type));
-    expect(() => bus.emitViewEvent("throw2:bc")).not.toThrow();
+    expect(() => bus.emitViewEvent("throw:bc")).not.toThrow();
     expect(posts).toHaveLength(0);
-    expect(seen).toEqual(["throw2:bc"]);
+    expect(seen).toEqual(["throw:bc"]);
+    unsub();
+  });
+
+  it("skips the window transport entirely when window is undefined", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    vi.stubGlobal("window", undefined);
+    vi.resetModules();
+    const bus = await import("./view-event-bus");
+    expect(() => bus.emitViewEvent("ssr:no-window", { x: 1 })).not.toThrow();
+    // Neither transport can exist; subscribing and emitting again must be a
+    // silent no-op, not a throw.
+    const unsub = bus.onAnyViewEvent(() => {
+      throw new Error("no transport can deliver here");
+    });
+    expect(() => bus.emitViewEvent("ssr:no-window-2")).not.toThrow();
     unsub();
   });
 });
