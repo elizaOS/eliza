@@ -209,7 +209,9 @@ export class DistributedLockService {
     const key = `agent:room:${roomId}:lock`;
 
     const lockId = await cache.get<string>(key);
-    return lockId !== null;
+    // Some cache drivers surface a miss as `undefined` rather than `null`;
+    // either must read as unlocked or the room deadlocks on a phantom lock.
+    return lockId !== null && lockId !== undefined;
   }
 
   /**
