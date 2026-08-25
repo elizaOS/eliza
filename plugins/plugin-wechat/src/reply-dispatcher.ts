@@ -69,6 +69,12 @@ export class ReplyDispatcher {
         // Hard break
         breakAt = this.chunkSize;
       }
+      if (breakAt > 0 && breakAt < remaining.length) {
+        const code = remaining.charCodeAt(breakAt - 1);
+        if (code >= 0xd800 && code <= 0xdbff) {
+          breakAt -= 1;
+        }
+      }
 
       chunks.push(remaining.slice(0, breakAt));
       remaining = remaining.slice(breakAt).trimStart();

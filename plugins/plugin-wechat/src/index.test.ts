@@ -358,4 +358,19 @@ describe("@elizaos/plugin-wechat", () => {
     expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "hello");
     expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "world");
   });
+
+  it("preserves UTF-16 surrogate pairs during message chunking", async () => {
+    const client = {
+      sendText: vi.fn(async () => undefined),
+    } as unknown as ProxyClient;
+    // Chunk size 4. "a🔥🔥" (1 char + 2 emojis = 5 code units).
+    // Raw break at index 4 lands on the high surrogate of the 2nd emoji.
+    // Surrogate safety backs off breakAt to 3, keeping emojis whole across chunks.
+    const dispatcher = new ReplyDispatcher({ client, chunkSize: 4 });
+
+    await dispatcher.sendText("wxid_alice", "a🔥🔥");
+
+    expect(client.sendText).toHaveBeenNthCalledWith(1, "wxid_alice", "a🔥");
+    expect(client.sendText).toHaveBeenNthCalledWith(2, "wxid_alice", "🔥");
+  });
 });
