@@ -974,3 +974,24 @@ describe("MessageManager typing-indicator resilience", () => {
     expect(sendMessage).toHaveBeenCalledTimes(1);
   });
 });
+describe("MessageManager splitMessage surrogate safety", () => {
+  it("splits messages without bisecting surrogate pairs", () => {
+    const manager = new MessageManager(
+      { telegram: {} } as never,
+      { agentId: "agent-1", getSetting: () => undefined } as never,
+    );
+    const splitMessage = (manager as any).splitMessage.bind(manager);
+    const emojis = "🎉".repeat(3000); // 6000 code units > 4096 MAX_MESSAGE_LENGTH
+    const chunks: string[] = splitMessage(emojis);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      for (const char of chunk) {
+        expect(
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+            char,
+          ),
+        ).toBe(false);
+      }
+    }
+  });
+});
