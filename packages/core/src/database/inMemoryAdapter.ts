@@ -91,6 +91,7 @@ import { ROLE_WRITE_AUDIT_LOG_TYPE } from "../types/database";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { createHash } from "../utils/crypto-compat";
+import { jsonValueEquals } from "../utils/json-value-equals";
 import { isPlainObject } from "../utils/type-guards";
 import {
 	cloneConnectorJsonObject,
@@ -124,38 +125,6 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
-}
-
-/**
- * Deep JSON-value equality for world-metadata compare-and-swap: the stored
- * `World.metadata` is a live object in this adapter, so snapshots must compare
- * by value. Key order is irrelevant (matching SQL jsonb equality); `undefined`
- * is treated as absent, matching how a JSON round-trip drops it.
- */
-function jsonValueEquals(left: unknown, right: unknown): boolean {
-	if (left === right) return true;
-	if (isPlainObject(left) && isPlainObject(right)) {
-		const leftKeys = Object.keys(left).filter(
-			(key) => (left as Record<string, unknown>)[key] !== undefined,
-		);
-		const rightKeys = Object.keys(right).filter(
-			(key) => (right as Record<string, unknown>)[key] !== undefined,
-		);
-		if (leftKeys.length !== rightKeys.length) return false;
-		return leftKeys.every((key) =>
-			jsonValueEquals(
-				(left as Record<string, unknown>)[key],
-				(right as Record<string, unknown>)[key],
-			),
-		);
-	}
-	if (Array.isArray(left) && Array.isArray(right)) {
-		return (
-			left.length === right.length &&
-			left.every((item, index) => jsonValueEquals(item, right[index]))
-		);
-	}
-	return false;
 }
 
 function memoryMatchesMetadata(

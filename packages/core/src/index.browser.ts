@@ -247,6 +247,9 @@ export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
+// Canonical deep JSON-value equality for world-metadata CAS snapshots —
+// shared with the Node barrel (pure logic, no Node deps).
+export * from "./utils/json-value-equals";
 export * from "./utils/project-memory-scope";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";

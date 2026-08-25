@@ -165,4 +165,51 @@ describe("compareAndSwapWorldMetadata (real SQL parity)", () => {
     });
     expect(result).toEqual({ status: "not_found" });
   });
+  it("FAILS CLOSED on an exotic (non-JSON) snapshot value: distinct Dates conflict", async () => {
+    // A Date cannot round-trip through jsonb, so a snapshot carrying one is
+    // unverifiable: the pre-hoist local predicate compared two distinct
+    // Dates as equal (zero own keys both sides) and would have proceeded;
+    // the shared core predicate must report a conflict instead. Create a
+    // dedicated world so the BASE_METADATA fixture stays untouched.
+    const exoticWorldId = v4() as UUID;
+    await adapter.createWorld({
+      id: exoticWorldId,
+      agentId,
+      name: "Exotic metadata world",
+      serverId: "world-metadata-cas-exotic",
+      metadata: { rotatedAt: new Date("2024-01-01T00:00:00.000Z") } as unknown as World["metadata"],
+    } as World);
+
+    // What the write path persisted: jsonb round-trips a Date as an ISO
+    // STRING, so the stored snapshot is a string, and a caller presenting a
+    // live Date object must NOT compare equal to it.
+    const rows = await adapter.getWorldsByIds([exoticWorldId]);
+    const stored = (rows[0]?.metadata ?? {}) as Record<string, unknown>;
+    expect(typeof stored.rotatedAt).toBe("string");
+
+    const result = await adapter.compareAndSwapWorldMetadata({
+      worldId: exoticWorldId,
+      expectedMetadata: { rotatedAt: new Date("2025-06-01T00:00:00.000Z") } as never,
+      replacementMetadata: { roles: {} } as never,
+    });
+    expect(result).toEqual({ status: "conflict" });
+
+    // A live Date never equals the stored string either — same fail-closed
+    // direction, not an accidental string coercion.
+    const storedDateAgain = await adapter.compareAndSwapWorldMetadata({
+      worldId: exoticWorldId,
+      expectedMetadata: { rotatedAt: new Date(String(stored.rotatedAt)) } as never,
+      replacementMetadata: { roles: {} } as never,
+    });
+    expect(storedDateAgain).toEqual({ status: "conflict" });
+
+    // The stored string snapshot itself still matches (plain JSON values
+    // keep working — the gate only tightens exotic shapes).
+    const stringMatch = await adapter.compareAndSwapWorldMetadata({
+      worldId: exoticWorldId,
+      expectedMetadata: { rotatedAt: stored.rotatedAt } as never,
+      replacementMetadata: { roles: {} } as never,
+    });
+    expect(stringMatch).toEqual({ status: "updated" });
+  });
 });

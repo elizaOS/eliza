@@ -52,6 +52,7 @@ import {
   type GetConnectorAccountParams,
   type IDatabaseAdapter,
   type JsonValue,
+  jsonValueEquals,
   type ListConnectorAccountCredentialRefsParams,
   type ListConnectorAccountsParams,
   type Log,
@@ -200,33 +201,13 @@ function asMetadata(value: unknown): Metadata | undefined {
 }
 
 /**
- * Deep JSON-value equality for the world-metadata compare-and-swap: a jsonb
- * column read back from Postgres compares by VALUE with key order
- * insignificant, so the snapshot comparison must do the same rather than
- * reference-comparing the objects the caller read. `undefined` is treated as
- * absent, matching a JSON round-trip.
+ * Deep JSON-value equality for the world-metadata compare-and-swap was hoisted
+ * to `@elizaos/core` (`jsonValueEquals`): a jsonb column read back from
+ * Postgres compares by VALUE with key order insignificant, and that snapshot
+ * comparison must be identical across every adapter so the same CAS cannot
+ * conflict on Postgres while succeeding in memory. See the core module for
+ * the fail-closed exotic-value semantics.
  */
-function jsonbValueEquals(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((item, index) => jsonbValueEquals(item, right[index]))
-    );
-  }
-  if (asRawMessage(left) && asRawMessage(right)) {
-    const leftRecord = left as Record<string, unknown>;
-    const rightRecord = right as Record<string, unknown>;
-    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
-    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
-    if (leftKeys.length !== rightKeys.length) return false;
-    return leftKeys.every(
-      (key) =>
-        Object.hasOwn(rightRecord, key) && jsonbValueEquals(leftRecord[key], rightRecord[key])
-    );
-  }
-  return false;
-}
 
 function normalizeAgentBio(value: unknown): string[] | undefined {
   if (Array.isArray(value)) {
@@ -5249,7 +5230,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         if (!row) return { status: "not_found" as const };
 
         const storedMetadata = (row.metadata ?? {}) as Record<string, unknown>;
-        if (!jsonbValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)) {
+        if (!jsonValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)) {
           return { status: "conflict" as const };
         }
 

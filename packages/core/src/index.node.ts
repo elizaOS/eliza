@@ -498,6 +498,9 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
+// Canonical deep JSON-value equality for world-metadata CAS snapshots —
+// single shared implementation (was duplicated per-adapter, #23100 review).
+export * from "./utils/json-value-equals";
 export {
 	assertModelOutputComplete,
 	isModelOutputLimitFinishReason,

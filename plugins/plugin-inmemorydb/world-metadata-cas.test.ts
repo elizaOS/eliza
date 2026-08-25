@@ -495,4 +495,146 @@ describe("InMemoryDatabaseAdapter.compareAndSwapWorldMetadata", () => {
     const after = await storedMetadata(adapter);
     expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("USER");
   });
+  it("writes the audit row pending-first and advances it to committed on success", async () => {
+    const adapter = await buildAdapter();
+    const before = await storedMetadata(adapter);
+    const replacement = structuredClone(before);
+    (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
+
+    // Capture every LOGS write in order: the audit row must first land as
+    // `pending` (before the world swap) and only advance to `committed`
+    // after the world write succeeds — a storage crash between the two
+    // leaves a stale `pending` row, never a false `committed`.
+    const storage = adapter["storage"] as unknown as {
+      set: (collection: string, id: string, value: unknown) => Promise<void>;
+    };
+    const originalSet = storage.set.bind(storage);
+    const outcomes: string[] = [];
+    storage.set = async (collection, id, value) => {
+      if (
+        collection === "logs" &&
+        (value as { type?: string }).type === ROLE_WRITE_AUDIT_LOG_TYPE
+      ) {
+        outcomes.push(
+          String((value as { body?: { metadata?: { outcome?: string } } }).body?.metadata?.outcome)
+        );
+      }
+      return originalSet(collection, id, value);
+    };
+
+    const result = await adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: before as never,
+      replacementMetadata: replacement as never,
+      audit: {
+        actorEntityId: ACTOR_ID,
+        targetEntityId: TARGET_ID,
+        previousRole: "USER",
+        newRole: "ADMIN",
+        source: "manual",
+        roomId: ROOM_ID,
+      },
+    });
+    storage.set = originalSet;
+
+    expect(result).toEqual({ status: "updated" });
+    expect(outcomes).toEqual(["pending", "committed"]);
+    const logs = await adapter.getLogs({ type: ROLE_WRITE_AUDIT_LOG_TYPE });
+    expect(logs).toHaveLength(1);
+    expect((logs[0].body as { metadata?: { outcome?: string } }).metadata?.outcome).toBe(
+      "committed"
+    );
+  });
+
+  it("leaves at most a stale PENDING row when the world write fails and compensation also fails", async () => {
+    const adapter = await buildAdapter();
+    const before = await storedMetadata(adapter);
+    const replacement = structuredClone(before);
+    (replacement as { roles: Record<string, string> }).roles[String(TARGET_ID)] = "ADMIN";
+
+    // Storage that rejects the WORLDS write AND the compensating LOGS
+    // delete: the pre-fix code left a FALSE `committed` authority record;
+    // two-phase leaves only an inert `pending` row (review note 2).
+    const storage = adapter["storage"] as unknown as {
+      set: (collection: string, id: string, value: unknown) => Promise<void>;
+      delete: (collection: string, id: string) => Promise<boolean>;
+    };
+    const originalSet = storage.set.bind(storage);
+    const originalDelete = storage.delete.bind(storage);
+    storage.set = async (collection, id, value) => {
+      if (collection === "worlds") {
+        throw new Error("world storage unavailable");
+      }
+      return originalSet(collection, id, value);
+    };
+    storage.delete = async (collection, id) => {
+      if (collection === "logs") {
+        throw new Error("compensation unavailable");
+      }
+      return originalDelete(collection, id);
+    };
+
+    await expect(
+      adapter.compareAndSwapWorldMetadata({
+        worldId: WORLD_ID,
+        expectedMetadata: before as never,
+        replacementMetadata: replacement as never,
+        audit: {
+          actorEntityId: ACTOR_ID,
+          targetEntityId: TARGET_ID,
+          previousRole: "USER",
+          newRole: "ADMIN",
+          source: "manual",
+          roomId: ROOM_ID,
+        },
+      })
+    ).rejects.toThrow("world storage unavailable");
+
+    storage.set = originalSet;
+    storage.delete = originalDelete;
+    const logs = await adapter.getLogs({ type: ROLE_WRITE_AUDIT_LOG_TYPE });
+    // Worst case: exactly one row survives and it says pending, not committed.
+    expect(logs.length).toBeLessThanOrEqual(1);
+    if (logs.length === 1) {
+      expect((logs[0].body as { metadata?: { outcome?: string } }).metadata?.outcome).toBe(
+        "pending"
+      );
+    }
+    const after = await storedMetadata(adapter);
+    expect((after as { roles: Record<string, string> }).roles[String(TARGET_ID)]).toBe("USER");
+  });
+
+  it("FAILS CLOSED on an exotic (non-JSON) stored value: two different Dates conflict", async () => {
+    // The pre-hoist plugin predicate treated any two objects with zero own
+    // enumerable keys as equal, so two DIFFERENT Dates compared equal and a
+    // role-write CAS silently proceeded on an unverifiable snapshot. The
+    // shared core predicate must report a conflict instead.
+    const storage = new MemoryStorage();
+    const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
+    await adapter.init();
+    await adapter.createWorlds([
+      {
+        id: WORLD_ID,
+        agentId: AGENT_ID,
+        name: "exotic-world",
+        metadata: {
+          rotatedAt: new Date("2024-01-01T00:00:00.000Z"),
+        } as unknown as World["metadata"],
+      },
+    ]);
+    const result = await adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: { rotatedAt: new Date("2025-06-01T00:00:00.000Z") } as never,
+      replacementMetadata: { roles: {} } as never,
+    });
+    expect(result).toEqual({ status: "conflict" });
+    // Same-reference exotic value still matches (reference equality holds).
+    const stored = await storedMetadata(adapter);
+    const sameRef = await adapter.compareAndSwapWorldMetadata({
+      worldId: WORLD_ID,
+      expectedMetadata: stored as never,
+      replacementMetadata: { roles: {} } as never,
+    });
+    expect(sameRef).toEqual({ status: "updated" });
+  });
 });

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { ChannelType, type UUID, Role } from "../../../types/index.ts";
+import { ChannelType, Role, type UUID } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
 import { updateRoleHandler } from "./roles.ts";
 
@@ -48,23 +48,28 @@ function buildFixtures(options: FixtureOptions = {}) {
 	// This stub applies the replacement to the fixture world in place when
 	// the expected snapshot still matches, preserving the suite's original
 	// observable-state semantics while exercising the real commit path.
-	const worldRecord = world as unknown as { metadata?: Record<string, unknown> };
+	const worldRecord = world as unknown as {
+		metadata?: Record<string, unknown>;
+	};
 	const casCommits = { count: 0 };
 	const adapter = {
-		compareAndSwapWorldMetadata: vi.fn(async (params: {
-			expectedMetadata?: Record<string, unknown>;
-			replacementMetadata: Record<string, unknown>;
-		}) => {
-			const current = (worldRecord.metadata ?? {}) as Record<string, unknown>;
-			if (
-				JSON.stringify(current ?? {}) !== JSON.stringify(params.expectedMetadata ?? {})
-			) {
-				return { status: "conflict" as const };
-			}
-			worldRecord.metadata = params.replacementMetadata;
-			casCommits.count += 1;
-			return { status: "updated" as const };
-		}),
+		compareAndSwapWorldMetadata: vi.fn(
+			async (params: {
+				expectedMetadata?: Record<string, unknown>;
+				replacementMetadata: Record<string, unknown>;
+			}) => {
+				const current = (worldRecord.metadata ?? {}) as Record<string, unknown>;
+				if (
+					JSON.stringify(current ?? {}) !==
+					JSON.stringify(params.expectedMetadata ?? {})
+				) {
+					return { status: "conflict" as const };
+				}
+				worldRecord.metadata = params.replacementMetadata;
+				casCommits.count += 1;
+				return { status: "updated" as const };
+			},
+		),
 	};
 
 	const runtime = {

@@ -42,6 +42,7 @@ import {
   type IDatabaseAdapter,
   isDocumentVisibleToRequester,
   type JsonValue,
+  jsonValueEquals,
   type Log,
   type LogBody,
   logger,
@@ -409,42 +410,6 @@ function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): num
   const aId = typeof a.id === "string" ? a.id : "";
   const bId = typeof b.id === "string" ? b.id : "";
   return compareMemoryIds(bId, aId);
-}
-
-/**
- * Deep JSON-value equality for world-metadata compare-and-swap. The stored
- * `World.metadata` is a live object in this adapter, so snapshots must compare
- * by value; key order is irrelevant (matching SQL jsonb equality) and
- * `undefined` is treated as absent, matching how a JSON round-trip drops it.
- */
-function worldMetadataValueEquals(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((item, index) => worldMetadataValueEquals(item, right[index]))
-    );
-  }
-  if (
-    typeof left === "object" &&
-    left !== null &&
-    typeof right === "object" &&
-    right !== null &&
-    !Array.isArray(left) &&
-    !Array.isArray(right)
-  ) {
-    const leftRecord = left as Record<string, unknown>;
-    const rightRecord = right as Record<string, unknown>;
-    const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined);
-    const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined);
-    if (leftKeys.length !== rightKeys.length) return false;
-    return leftKeys.every(
-      (key) =>
-        Object.hasOwn(rightRecord, key) &&
-        worldMetadataValueEquals(leftRecord[key], rightRecord[key])
-    );
-  }
-  return false;
 }
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
@@ -1676,10 +1641,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
    * prior snapshot (#23100 role-write atomicity). The whole operation —
    * read, compare, audit insert, world replacement — runs on the
    * world-metadata mutation tail so concurrent CAS calls serialize and
-   * exactly one wins per snapshot. If the world write fails after the audit
-   * row was inserted, the audit row is deleted back (best-effort
-   * compensation — the storage has no transactions) so a failed attempt
-   * does not leave a false committed audit record behind.
+   * exactly one wins per snapshot. The audit row is written `pending`
+   * FIRST and advanced to `committed` only after the world write succeeds
+   * (two-phase): if the world write fails the pending row is deleted
+   * (best-effort compensation — the storage has no transactions), and if
+   * that compensation fails too, the worst case is a stale `pending` row —
+   * inert to auditors — rather than a false `committed` authority record.
    */
   async compareAndSwapWorldMetadata(
     params: WorldMetadataCompareAndSwapParams
@@ -1699,9 +1666,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const stored = await this.storage.get<World>(COLLECTIONS.WORLDS, params.worldId);
     if (!stored) return { status: "not_found" };
     const storedMetadata = (stored.metadata ?? {}) as Record<string, unknown>;
-    if (
-      !worldMetadataValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)
-    ) {
+    if (!jsonValueEquals(storedMetadata, params.expectedMetadata as Record<string, unknown>)) {
       return { status: "conflict" };
     }
     const audit = params.audit;
@@ -1714,34 +1679,40 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       metadata: structuredClone(params.replacementMetadata) as World["metadata"],
     };
     if (audit) {
+      // Two-phase audit write: the row lands as `pending` BEFORE the world
+      // swap and advances to `committed` only after the swap succeeds. A
+      // crash or storage failure in between leaves a stale `pending` row —
+      // inert to auditors — never a false `committed` authority record.
       const id = randomUUID() as UUID;
+      const auditBody = () => ({
+        source: "role-write-cas",
+        metadata: {
+          worldId: params.worldId,
+          actorEntityId: audit.actorEntityId,
+          targetEntityId: audit.targetEntityId,
+          previousRole: audit.previousRole,
+          newRole: audit.newRole,
+          grantSource: audit.source,
+          outcome: "pending" as const,
+        },
+      });
       await this.storage.set(COLLECTIONS.LOGS, id, {
         id,
         entityId: audit.actorEntityId,
         roomId: audit.roomId,
         type: ROLE_WRITE_AUDIT_LOG_TYPE,
-        body: {
-          source: "role-write-cas",
-          metadata: {
-            worldId: params.worldId,
-            actorEntityId: audit.actorEntityId,
-            targetEntityId: audit.targetEntityId,
-            previousRole: audit.previousRole,
-            newRole: audit.newRole,
-            grantSource: audit.source,
-            outcome: "committed",
-          },
-        },
+        body: auditBody(),
         createdAt: new Date(),
       } as Log);
       try {
         await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
       } catch (error) {
         // error-policy:J6 best-effort teardown: the world write failed after
-        // the audit insert; compensate by deleting the audit row so the
-        // failed attempt leaves no false committed record, then surface the
+        // the audit insert; compensate by deleting the still-`pending` audit
+        // row so the failed attempt leaves no audit record, then surface the
         // original storage failure. Compensation failure is warned (and
-        // reported below) — never silently swallowed.
+        // reported below) — never silently swallowed. Worst case is a stale
+        // `pending` row, which no auditor reads as an authority change.
         try {
           await this.storage.delete(COLLECTIONS.LOGS, id);
         } catch (compensationError) {
@@ -1752,11 +1723,19 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
               auditLogId: id,
               err: compensationError,
             },
-            "Failed to roll back the role_audit row after a failed world-metadata write; a stale committed audit row may remain"
+            "Failed to roll back the pending role_audit row after a failed world-metadata write; a stale pending audit row may remain"
           );
         }
         throw error;
       }
+      await this.storage.set(COLLECTIONS.LOGS, id, {
+        id,
+        entityId: audit.actorEntityId,
+        roomId: audit.roomId,
+        type: ROLE_WRITE_AUDIT_LOG_TYPE,
+        body: { ...auditBody(), metadata: { ...auditBody().metadata, outcome: "committed" } },
+        createdAt: new Date(),
+      } as Log);
       return { status: "updated" };
     }
     await this.storage.set(COLLECTIONS.WORLDS, params.worldId, replacementWorld);
