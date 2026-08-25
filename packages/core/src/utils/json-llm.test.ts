@@ -35,6 +35,20 @@ describe("extractAndParseJSONObjectFromText", () => {
 		).toEqual({ ok: true });
 	});
 
+	it("extracts JSON from unfenced conversational prose", () => {
+		expect(
+			extractAndParseJSONObjectFromText(
+				'Sure thing! Here is the JSON: {"status":"success","count":5} Let me know if you need more.',
+			),
+		).toEqual({ status: "success", count: 5 });
+
+		expect(
+			extractAndParseJSONObjectFromText(
+				"The list of items is [1, 2, 3] as requested.",
+			),
+		).toEqual([1, 2, 3]);
+	});
+
 	it("accepts JSON5 leniency (unquoted keys, single quotes, trailing comma)", () => {
 		expect(extractAndParseJSONObjectFromText("{ a: 1, b: 'two', }")).toEqual({
 			a: 1,

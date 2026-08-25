@@ -37,6 +37,30 @@ export function extractAndParseJSONObjectFromText(
 		}
 		return parsed as Record<string, unknown> | unknown[];
 	} catch (error) {
+		// If direct parse failed, attempt to find first balanced { ... } or [ ... ]
+		const startBrace = textToParse.indexOf("{");
+		const startBracket = textToParse.indexOf("[");
+		const firstIdx =
+			startBrace !== -1 && startBracket !== -1
+				? Math.min(startBrace, startBracket)
+				: Math.max(startBrace, startBracket);
+		if (firstIdx !== -1) {
+			const isObject = textToParse[firstIdx] === "{";
+			const lastIdx = isObject
+				? textToParse.lastIndexOf("}")
+				: textToParse.lastIndexOf("]");
+			if (lastIdx > firstIdx) {
+				const substring = textToParse.slice(firstIdx, lastIdx + 1);
+				try {
+					const fallbackParsed = JSON5.parse(substring);
+					if (fallbackParsed !== null && typeof fallbackParsed === "object") {
+						return fallbackParsed as Record<string, unknown> | unknown[];
+					}
+				} catch {
+					// Fall through to throw standard error below
+				}
+			}
+		}
 		// error-policy:J2 Give callers a stable parse error while retaining the
 		// native JSON parser's location and syntax detail as the cause.
 		throw new Error("Failed to parse invalid JSON", { cause: error });
