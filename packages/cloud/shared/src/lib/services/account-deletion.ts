@@ -25,6 +25,7 @@ import {
 import { purgePersonalOrganizationResources } from "./account-deletion-resource-purge";
 import {
   type AccountDeletionProviderAdapters,
+  type AccountDeletionProviderPhase,
   processIrreversibleAccountDeletionSaga,
   reconcileRecoveryStewardDeactivations,
 } from "./account-deletion-saga";
@@ -84,6 +85,7 @@ export type AccountDeletionConflictCode =
   | "ACCOUNT_UNAVAILABLE"
   | "ADMISSION_CREDENTIAL_REQUIRED"
   | "ANONYMOUS_ACCOUNT"
+  | "PROVIDER_WORK_IN_FLIGHT"
   | "REQUEST_REPLAYED"
   | "TRANSFER_REQUIRED"
   | "LIFECYCLE_RESERVATION_REQUIRED";
@@ -414,6 +416,12 @@ export async function activateAccountDeletion(
   }
   if (activation.outcome === "account_unavailable") {
     throw new AccountDeletionConflictError("Account is no longer available", "ACCOUNT_UNAVAILABLE");
+  }
+  if (activation.outcome === "provider_work_in_flight") {
+    throw new AccountDeletionConflictError(
+      "Provider work is reconciling; retry deletion activation",
+      "PROVIDER_WORK_IN_FLIGHT",
+    );
   }
   if (activation.outcome === "transfer_required") {
     throw new AccountDeletionConflictError(
@@ -795,6 +803,14 @@ export async function processDueAccountDeletions(
     limit,
     blob: resources.blob,
     adapters,
+    allowedPhases:
+      resources.backupAuthority && resources.spoolAuthority
+        ? undefined
+        : new Set(
+            Object.keys(adapters).filter(
+              (phase) => phase !== "secondary_backups" && phase !== "spools",
+            ) as AccountDeletionProviderPhase[],
+          ),
     now,
   });
 

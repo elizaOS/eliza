@@ -280,6 +280,13 @@ function service(
     active: true,
     deletionRequestId: null,
   }),
+  admission: {
+    acquire: NonNullable<ServiceDependencies["acquireProviderAdmission"]>;
+    release: NonNullable<ServiceDependencies["releaseProviderAdmission"]>;
+  } = {
+    acquire: mock(async () => true),
+    release: mock(async () => undefined),
+  },
 ): InstanceType<typeof AutoTopUpService> {
   let index = 0;
   return new AutoTopUpService({
@@ -289,6 +296,8 @@ function service(
     randomUUID: () => ids[index++] ?? `generated-${index}`,
     rolloutEnabled,
     lifecycleAuthority,
+    acquireProviderAdmission: admission.acquire,
+    releaseProviderAdmission: admission.release,
   });
 }
 
@@ -838,24 +847,67 @@ describe("AutoTopUpService durable provider recovery", () => {
   });
 
   test("retrieves a known PaymentIntent even after the unknown-response deadline", async () => {
+    const events: string[] = [];
     const durable = attempt({
       stripePaymentIntentId: "pi_known",
       recoveryDeadlineAt: new Date(NOW.getTime() - 1),
     });
-    const durableRepository = processingRepository(durable);
+    const durableRepository = processingRepository(durable, events);
     const stripe = stripeHarness();
-    stripe.retrieve.mockResolvedValue(paymentIntent(durable, "processing", { id: "pi_known" }));
+    stripe.retrieve.mockImplementation(async () => {
+      events.push("provider-call");
+      return paymentIntent(durable, "processing", { id: "pi_known" });
+    });
+    const acquire = mock(async () => {
+      events.push("provider-admitted");
+      return true;
+    });
+    const release = mock(async () => {
+      events.push("provider-released");
+    });
 
-    const result = await service(durableRepository, stripe).executeAutoTopUpForOrganization(
-      ORG_ID,
-      { source: "recovery" },
-    );
+    const result = await service(durableRepository, stripe, undefined, undefined, undefined, {
+      acquire,
+      release,
+    }).executeAutoTopUpForOrganization(ORG_ID, { source: "recovery" });
 
     expect(result.status).toBe("payment_pending");
     expect(result.recovered).toBe(true);
     expect(stripe.retrieve).toHaveBeenCalledWith("pi_known");
     expect(stripe.create).not.toHaveBeenCalled();
     expect(durableRepository.markManualReview).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      "lease-due",
+      "provider-admitted",
+      "provider-call",
+      "record-payment-intent",
+      "provider-released",
+      "schedule-retry",
+    ]);
+  });
+
+  test("does not enter Stripe when deletion wins the durable admission race", async () => {
+    const durable = attempt({ stripePaymentIntentId: "pi_known" });
+    const durableRepository = processingRepository(durable);
+    const stripe = stripeHarness();
+    const acquire = mock(async () => false);
+    const release = mock(async () => undefined);
+
+    await service(durableRepository, stripe, undefined, undefined, undefined, {
+      acquire,
+      release,
+    }).executeAutoTopUpForOrganization(ORG_ID, { source: "recovery" });
+
+    expect(acquire).toHaveBeenCalledWith(
+      {
+        organizationId: ORG_ID,
+        operationKind: "auto_top_up",
+        operationId: ATTEMPT_ID,
+      },
+      NOW,
+    );
+    expect(stripe.provide).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
   });
 
   test("retries a concurrent in-flight Stripe idempotency request without disabling", async () => {

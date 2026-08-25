@@ -6,6 +6,7 @@
  */
 
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import {
   createKmsClient,
   KmsAeadOperationKeyBundleProvider,
@@ -13,7 +14,10 @@ import {
 } from "@elizaos/core/security/kms";
 import { AGENT_BACKUP_CAPTURE_V2_LIMITS } from "@elizaos/shared";
 import { recordCapturedAgentBackupManifest } from "../../db/repositories/agent-backup-catalog";
+import type { RuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { createAccountDeletionBackupAuthority } from "./account-deletion-backup-authority";
+import { createAccountDeletionProviderAdapters } from "./account-deletion-provider-adapters";
+import { processIrreversibleAccountDeletionSaga } from "./account-deletion-saga";
 import { createAccountDeletionSpoolAuthority } from "./account-deletion-spool-authority";
 import {
   type AgentBackupCaptureV3LegacyWriterDrainReceipt,
@@ -39,6 +43,17 @@ const PLUGIN_ID_PATTERN = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,127}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const OPERATION_LEASE_SETTLEMENT_MARGIN_MS = 30_000;
+
+function applicationObjectAuthorityUnavailable(operation: string): ElizaError {
+  return new ElizaError(
+    `Backup authority worker cannot ${operation} the application object bucket`,
+    {
+      code: "ACCOUNT_DELETION_APPLICATION_OBJECT_AUTHORITY_UNAVAILABLE",
+      context: { operation },
+      severity: "fatal",
+    },
+  );
+}
 
 export interface AgentBackupCatalogWorkerEnabledConfig {
   runtime: Extract<AgentBackupCatalogRuntimeConfig, { enabled: true }>;
@@ -74,7 +89,36 @@ export interface AgentBackupCatalogWorkerEnabledCompositionDependencies {
   createJanitor: typeof createAgentBackupCaptureV3SpoolCleanupJanitor;
   createAccountDeletionBackup: typeof createAccountDeletionBackupAuthority;
   createAccountDeletionSpool: typeof createAccountDeletionSpoolAuthority;
+  processAccountDeletionAuthorities: typeof processAccountDeletionAuthorities;
   runCycle: typeof runAgentBackupCatalogRuntimeCycle;
+}
+
+const AUTHORITY_ONLY_BLOB: RuntimeR2Bucket = Object.freeze({
+  async get() {
+    throw applicationObjectAuthorityUnavailable("read");
+  },
+  async put() {
+    throw applicationObjectAuthorityUnavailable("write");
+  },
+  async delete() {
+    throw applicationObjectAuthorityUnavailable("delete from");
+  },
+});
+
+async function processAccountDeletionAuthorities(input: {
+  backup: ReturnType<typeof createAccountDeletionBackupAuthority>;
+  spool: ReturnType<typeof createAccountDeletionSpoolAuthority>;
+}): Promise<void> {
+  const adapters = createAccountDeletionProviderAdapters({
+    backupAuthority: input.backup,
+    spoolAuthority: input.spool,
+  });
+  await processIrreversibleAccountDeletionSaga({
+    limit: 10,
+    blob: AUTHORITY_ONLY_BLOB,
+    adapters,
+    allowedPhases: new Set(["secondary_backups", "spools"]),
+  });
 }
 
 function requiredText(env: NodeJS.ProcessEnv, name: string, maxBytes = 512): string {
@@ -356,6 +400,7 @@ const DEFAULT_DEPENDENCIES: AgentBackupCatalogWorkerEnabledCompositionDependenci
   createJanitor: createAgentBackupCaptureV3SpoolCleanupJanitor,
   createAccountDeletionBackup: createAccountDeletionBackupAuthority,
   createAccountDeletionSpool: createAccountDeletionSpoolAuthority,
+  processAccountDeletionAuthorities,
   runCycle: runAgentBackupCatalogRuntimeCycle,
 };
 
@@ -402,14 +447,17 @@ export async function createAgentBackupCatalogWorkerEnabledComposition(input: {
   return Object.freeze({
     enabled: true,
     accountDeletionAuthorities,
-    runCycle: (signal?: AbortSignal) =>
-      dependencies.runCycle({
+    async runCycle(signal?: AbortSignal) {
+      const summary = await dependencies.runCycle({
         config: config.runtime,
         registry,
         captureExecutor,
         publicationExecutor,
         spoolCleanupJanitor,
         signal,
-      }),
+      });
+      await dependencies.processAccountDeletionAuthorities(accountDeletionAuthorities);
+      return summary;
+    },
   });
 }

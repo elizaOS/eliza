@@ -32,6 +32,7 @@ import {
 import { agentSandboxReplacementAttempts } from "../schemas/agent-sandbox-replacement-attempts";
 import { apiKeys } from "../schemas/api-keys";
 import { organizations } from "../schemas/organizations";
+import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
 
@@ -72,6 +73,7 @@ export type ActivateReservedAccountDeletionResult =
   | { outcome: "already_activated"; request: AccountDeletionRequest }
   | { outcome: "invalid_credential" }
   | { outcome: "account_unavailable" }
+  | { outcome: "provider_work_in_flight" }
   | { outcome: "transfer_required"; activeOwnerCount: number };
 
 export interface AccountDeletionPhaseLease {
@@ -91,7 +93,8 @@ export type ActivateExpiredAccountDeletionResult =
   | { outcome: "account_unavailable" }
   | { outcome: "transfer_required"; activeOwnerCount: number }
   | { outcome: "export_required" }
-  | { outcome: "identity_deactivation_required" };
+  | { outcome: "identity_deactivation_required" }
+  | { outcome: "provider_work_in_flight" };
 
 export type FinalizePersonalAccountDeletionResult =
   | { outcome: "completed"; request: AccountDeletionRequest }
@@ -353,6 +356,17 @@ export class AccountDeletionRequestsRepository {
       if (!organization || !current || !current.is_active || current.deleted_at) {
         return { outcome: "account_unavailable" };
       }
+      const [providerAdmission] = await tx
+        .select({ id: providerAdmissions.id })
+        .from(providerAdmissions)
+        .where(
+          and(
+            eq(providerAdmissions.organization_id, organization.id),
+            isNull(providerAdmissions.released_at),
+          ),
+        )
+        .limit(1);
+      if (providerAdmission) return { outcome: "provider_work_in_flight" };
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
       if (activeMembers.length !== 1) {
@@ -561,6 +575,18 @@ export class AccountDeletionRequestsRepository {
         .for("update");
       const current = members.find((member) => member.id === request.user_id);
       if (!organization || !current) return { outcome: "account_unavailable" };
+
+      const [providerAdmission] = await tx
+        .select({ id: providerAdmissions.id })
+        .from(providerAdmissions)
+        .where(
+          and(
+            eq(providerAdmissions.organization_id, organization.id),
+            isNull(providerAdmissions.released_at),
+          ),
+        )
+        .limit(1);
+      if (providerAdmission) return { outcome: "provider_work_in_flight" };
 
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",

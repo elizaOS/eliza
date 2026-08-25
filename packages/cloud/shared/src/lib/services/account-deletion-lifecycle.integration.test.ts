@@ -14,6 +14,7 @@ import { accountDeletionPhaseReceipts } from "../../db/schemas/account-deletion-
 import { accountDeletionRequests } from "../../db/schemas/account-deletion-requests";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
+import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { userSessions } from "../../db/schemas/user-sessions";
 import { users } from "../../db/schemas/users";
 import {
@@ -44,6 +45,7 @@ beforeAll(async () => {
         apiKeys,
         organizationBalanceRevisionSequence,
         organizations,
+        providerAdmissions,
         userSessions,
         users,
       } as never,

@@ -70,7 +70,44 @@ interface ExportTable {
   table: string;
   rowCount: number;
   rows: unknown[];
+  policy?: "portable_subject_data" | "retained_security_audit";
 }
+
+type ExplicitExportPath = Readonly<{
+  table: string;
+  policy: "portable_subject_data" | "retained_security_audit";
+  where(input: { userId: string; organizationId: string }): ReturnType<typeof sql>;
+}>;
+
+/**
+ * Ownership paths that are not direct user/organization foreign keys. Audit
+ * rows are exported with security material redacted but remain subject to the
+ * separately disclosed retention schedule after account erasure.
+ */
+const EXPLICIT_EXPORT_PATHS: readonly ExplicitExportPath[] = Object.freeze([
+  {
+    table: "conversation_messages",
+    policy: "portable_subject_data",
+    where: ({ userId, organizationId }) => sql`EXISTS (
+      SELECT 1 FROM conversations AS parent
+      WHERE parent.id = subject.conversation_id
+        AND (parent.user_id = ${userId} OR parent.organization_id = ${organizationId})
+    )`,
+  },
+  {
+    table: "app_analytics",
+    policy: "portable_subject_data",
+    where: ({ organizationId }) => sql`EXISTS (
+      SELECT 1 FROM apps AS parent
+      WHERE parent.id = subject.app_id AND parent.organization_id = ${organizationId}
+    )`,
+  },
+  {
+    table: "secret_audit_log",
+    policy: "retained_security_audit",
+    where: ({ organizationId }) => sql`subject.organization_id = ${organizationId}`,
+  },
+]);
 
 export interface AccountDeletionExportDependencies {
   collect(input: {
@@ -202,13 +239,21 @@ async function querySubjectRows(input: {
     ({ column, value }) => sql`${sql.raw(quoteIdentifier(column))} = ${value}`,
   );
   const where = sql.join(predicates, sql` OR `);
+  return querySubjectRowsWhere({ executor: input.executor, table: input.table, where });
+}
+
+async function querySubjectRowsWhere(input: {
+  executor: Pick<typeof dbWrite, "execute">;
+  table: string;
+  where: ReturnType<typeof sql>;
+}): Promise<{ rows: Array<Record<string, unknown>>; sourceBytes: bigint }> {
   const [bounds] = (
     await input.executor.execute(
       sql`SELECT
             count(*)::text AS row_count,
             COALESCE(sum(pg_column_size(subject)), 0)::text AS byte_count
           FROM ${sql.raw(quoteIdentifier(input.table))} AS subject
-          WHERE ${where}`,
+          WHERE ${input.where}`,
     )
   ).rows as Array<{ row_count?: unknown; byte_count?: unknown }>;
   let rowCount: bigint;
@@ -233,7 +278,7 @@ async function querySubjectRows(input: {
   }
   const result = await input.executor.execute(
     sql`SELECT * FROM ${sql.raw(quoteIdentifier(input.table))}
-        WHERE ${where}
+        WHERE ${input.where}
         LIMIT ${MAX_ROWS_PER_TABLE + 1}`,
   );
   if (BigInt(result.rows.length) !== rowCount) {
@@ -294,6 +339,27 @@ export async function collectPortableAccountDeletionExport(input: {
         }
         if (rows.length === 0) continue;
         snapshotTables.push({ table, rowCount: rows.length, rows: stableRows(rows) });
+      }
+      for (const path of EXPLICIT_EXPORT_PATHS) {
+        const { rows, sourceBytes } = await querySubjectRowsWhere({
+          executor: tx,
+          table: path.table,
+          where: path.where(input),
+        });
+        cumulativeSourceBytes += sourceBytes;
+        if (cumulativeSourceBytes > BigInt(MAX_EXPORT_BYTES)) {
+          throw new AccountDeletionExportError(
+            "Account export requires a streamed support export",
+            "EXPORT_TOO_LARGE",
+          );
+        }
+        if (rows.length === 0) continue;
+        snapshotTables.push({
+          table: path.table,
+          rowCount: rows.length,
+          rows: stableRows(rows),
+          policy: path.policy,
+        });
       }
       return snapshotTables;
     },

@@ -264,6 +264,7 @@ describe("backup catalogue enabled provider graph", () => {
     const accountDeletionSpool = Object.freeze({});
     const createAccountDeletionBackup = mock(() => accountDeletionBackup);
     const createAccountDeletionSpool = mock(() => accountDeletionSpool);
+    const processAccountDeletionAuthorities = mock(async () => undefined);
     const runCycle = mock(async () => runtimeSummary());
     const composition = await createAgentBackupCatalogWorkerEnabledComposition({
       env: enabledEnv(),
@@ -278,6 +279,7 @@ describe("backup catalogue enabled provider graph", () => {
         createJanitor: createJanitor as never,
         createAccountDeletionBackup: createAccountDeletionBackup as never,
         createAccountDeletionSpool: createAccountDeletionSpool as never,
+        processAccountDeletionAuthorities,
         runCycle: runCycle as never,
       },
     });
@@ -297,6 +299,10 @@ describe("backup catalogue enabled provider graph", () => {
       expect.objectContaining({ stateDirectory: "/var/lib/eliza-backup-catalog/spool" }),
     );
     expect(composition.accountDeletionAuthorities).toEqual({
+      backup: accountDeletionBackup,
+      spool: accountDeletionSpool,
+    });
+    expect(processAccountDeletionAuthorities).toHaveBeenCalledWith({
       backup: accountDeletionBackup,
       spool: accountDeletionSpool,
     });

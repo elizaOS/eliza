@@ -1,9 +1,15 @@
 /** Rechecks account authority around provisioning preparation before provider execution. */
 
 import {
+  AccountLifecycleFencedError,
   type OrganizationLifecycleAuthority,
   requireActiveOrganizationLifecycle,
 } from "./account-lifecycle-authority";
+import {
+  acquireProviderAdmission,
+  type ProviderAdmissionAuthority,
+  releaseProviderAdmission,
+} from "./provider-admission";
 
 type AuthorityReader = (
   organizationId: string,
@@ -22,4 +28,27 @@ export async function prepareProvisioningWithAccountLifecycleFence(
   const authority = await readAuthority(organizationId);
   await prepare();
   await readAuthority(organizationId, authority.revision);
+}
+
+/**
+ * Holds a durable admission from the final lifecycle check until the provider
+ * outcome has been recorded by the caller. Deletion activation locks the same
+ * organization row and cannot fence the account while this admission is live.
+ */
+export async function executeProvisioningWithAccountLifecycleAdmission<T>(input: {
+  authority: ProviderAdmissionAuthority;
+  execute: () => Promise<T>;
+  acquire?: typeof acquireProviderAdmission;
+  release?: typeof releaseProviderAdmission;
+}): Promise<T> {
+  const acquire = input.acquire ?? acquireProviderAdmission;
+  const release = input.release ?? releaseProviderAdmission;
+  if (!(await acquire(input.authority))) {
+    throw new AccountLifecycleFencedError();
+  }
+  try {
+    return await input.execute();
+  } finally {
+    await release(input.authority);
+  }
 }

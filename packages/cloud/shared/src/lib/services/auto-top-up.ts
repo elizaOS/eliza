@@ -34,6 +34,7 @@ import {
 } from "./account-lifecycle-authority";
 import { emailService } from "./email";
 import { invalidateOrgTierCache } from "./org-rate-limits";
+import { acquireProviderAdmission, releaseProviderAdmission } from "./provider-admission";
 import {
   type StripeCustomerAuthorityService,
   stripeCustomerAuthorityService,
@@ -119,6 +120,8 @@ interface AutoTopUpServiceDependencies {
   rolloutEnabled: () => boolean;
   customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
   lifecycleAuthority: typeof readOrganizationLifecycleAuthority;
+  acquireProviderAdmission: typeof acquireProviderAdmission;
+  releaseProviderAdmission: typeof releaseProviderAdmission;
 }
 
 interface DurableRequestSnapshot {
@@ -409,6 +412,8 @@ export class AutoTopUpService {
   private readonly rolloutEnabled: () => boolean;
   private readonly customerAuthority: Pick<StripeCustomerAuthorityService, "ensure">;
   private readonly lifecycleAuthority: typeof readOrganizationLifecycleAuthority;
+  private readonly acquireProviderAdmission: typeof acquireProviderAdmission;
+  private readonly releaseProviderAdmission: typeof releaseProviderAdmission;
 
   constructor(dependencies: Partial<AutoTopUpServiceDependencies> = {}) {
     this.repository = dependencies.repository ?? autoTopUpAttemptsRepository;
@@ -420,6 +425,10 @@ export class AutoTopUpService {
       (() => getCloudAwareEnv().AUTO_TOP_UP_DURABLE_ENABLED === "true");
     this.customerAuthority = dependencies.customerAuthority ?? stripeCustomerAuthorityService;
     this.lifecycleAuthority = dependencies.lifecycleAuthority ?? readOrganizationLifecycleAuthority;
+    this.acquireProviderAdmission =
+      dependencies.acquireProviderAdmission ?? acquireProviderAdmission;
+    this.releaseProviderAdmission =
+      dependencies.releaseProviderAdmission ?? releaseProviderAdmission;
   }
 
   validateSettings(amount: number, threshold: number): void {
@@ -988,6 +997,20 @@ export class AutoTopUpService {
       );
     }
 
+    const providerAdmission = {
+      organizationId: attempt.organizationId,
+      operationKind: "auto_top_up" as const,
+      operationId: attempt.id,
+    };
+    if (!(await this.acquireProviderAdmission(providerAdmission, this.now()))) {
+      return this.cancelAttempt(
+        attempt,
+        leaseToken,
+        recovered,
+        "Account lifecycle fenced auto top-up provider admission",
+      );
+    }
+
     try {
       const finalLifecycle = await this.lifecycleAuthority(attempt.organizationId);
       if (
@@ -1074,6 +1097,8 @@ export class AutoTopUpService {
         return this.resultAfterFenceMiss(attempt, recovered, "Provider request will be retried");
       }
       return resultFromAttempt(failed, recovered, "Provider request will be retried");
+    } finally {
+      await this.releaseProviderAdmission(providerAdmission, this.now());
     }
   }
 

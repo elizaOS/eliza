@@ -107,6 +107,7 @@ export * from "./pii-scrub-markers";
 export * from "./platform-credentials";
 export * from "./pooled-credentials";
 export * from "./press-releases";
+export * from "./provider-admissions";
 export * from "./provider-health";
 export * from "./redeemable-earnings";
 export * from "./referrals";

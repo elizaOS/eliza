@@ -205,9 +205,16 @@ describe("account deletion export", () => {
     let call = 0;
     execute.mockImplementation(async () => {
       call += 1;
-      return call % 2 === 1
-        ? { rows: [{ row_count: "1", byte_count: "100" }] }
-        : { rows: [{ id: `row-${call}` }] };
+      if (call % 2 === 1) return { rows: [{ row_count: "1", byte_count: "100" }] };
+      const rowsByCall = new Map<number, Record<string, unknown>>([
+        [2, { id: ORGANIZATION_ID, name: "Fixture organization" }],
+        [4, { id: "profile-1", user_id: USER_ID }],
+        [6, { id: USER_ID, email: "fixture@example.test" }],
+        [8, { id: "message-1", conversation_id: "conversation-1", content: "portable message" }],
+        [10, { id: "analytics-1", app_id: "app-1", total_requests: 7 }],
+        [12, { id: "audit-1", organization_id: ORGANIZATION_ID, action: "read" }],
+      ]);
+      return { rows: [rowsByCall.get(call)] };
     });
 
     const bytes = await collectPortableAccountDeletionExport({
@@ -217,12 +224,33 @@ describe("account deletion export", () => {
       generatedAt: NOW,
     });
 
-    expect(JSON.parse(new TextDecoder().decode(bytes)).tables).toHaveLength(3);
+    const artifact = JSON.parse(new TextDecoder().decode(bytes));
+    expect(artifact.tables).toHaveLength(6);
+    expect(artifact.tables.map((table: { table: string }) => table.table)).toEqual([
+      "app_analytics",
+      "conversation_messages",
+      "organizations",
+      "profiles",
+      "secret_audit_log",
+      "users",
+    ]);
+    expect(
+      artifact.tables.find((table: { table: string }) => table.table === "conversation_messages"),
+    ).toMatchObject({
+      policy: "portable_subject_data",
+      rows: [{ content: "portable message" }],
+    });
+    expect(
+      artifact.tables.find((table: { table: string }) => table.table === "app_analytics"),
+    ).toMatchObject({ policy: "portable_subject_data", rows: [{ total_requests: 7 }] });
+    expect(
+      artifact.tables.find((table: { table: string }) => table.table === "secret_audit_log"),
+    ).toMatchObject({ policy: "retained_security_audit", rows: [{ action: "read" }] });
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: "repeatable read",
       accessMode: "read only",
     });
-    expect(execute).toHaveBeenCalledTimes(6);
+    expect(execute).toHaveBeenCalledTimes(12);
 
     execute.mockReset();
     execute.mockResolvedValueOnce({

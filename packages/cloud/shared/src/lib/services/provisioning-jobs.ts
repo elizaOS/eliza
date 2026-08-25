@@ -106,7 +106,10 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
-import { prepareProvisioningWithAccountLifecycleFence } from "./provisioning-account-lifecycle-fence";
+import {
+  executeProvisioningWithAccountLifecycleAdmission,
+  prepareProvisioningWithAccountLifecycleFence,
+} from "./provisioning-account-lifecycle-fence";
 import {
   AGENT_JOB_TYPES,
   COLD_BOOT_JOB_TYPES,
@@ -6019,7 +6022,31 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+    let provResult: Awaited<ReturnType<typeof elizaSandboxService.provision>>;
+    try {
+      provResult = await executeProvisioningWithAccountLifecycleAdmission({
+        authority: {
+          organizationId: data.organizationId,
+          operationKind: "agent_provision",
+          operationId: job.id,
+        },
+        execute: () => elizaSandboxService.provision(data.agentId, data.organizationId),
+      });
+    } catch (error) {
+      if (!(error instanceof AccountLifecycleFencedError)) throw error;
+      throw new RejectedAgentExecutionError(
+        `Account lifecycle fenced provisioning provider admission ${job.id}`,
+        {
+          jobId: job.id,
+          jobType: job.type,
+          columnAgentId: job.agent_id,
+          columnOrganizationId: job.organization_id,
+          payloadAgentId: data.agentId,
+          payloadOrganizationId: data.organizationId,
+          cause: "account_lifecycle_fenced_or_stale",
+        },
+      );
+    }
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 

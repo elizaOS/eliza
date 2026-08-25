@@ -292,59 +292,157 @@ async function vaultRowsRemain(organizationId: string): Promise<boolean> {
   return authority !== undefined;
 }
 
+type LocalGrantInventoryEntry = Readonly<{
+  table: string;
+  column: string;
+  subject: "organization" | "user";
+  action: "delete" | "null";
+}>;
+
+/** One inventory drives both inspection and mutation of non-provider restrictive grants. */
+export const ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY: readonly LocalGrantInventoryEntry[] =
+  Object.freeze([
+    {
+      table: "affiliate_payout_outbox",
+      column: "affiliate_user_id",
+      subject: "user",
+      action: "delete",
+    },
+    {
+      table: "app_reservation_settlement_quarantines",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "app_reservation_settlements",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "container_billing_legacy_ledger_bindings",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "container_billing_records",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "compute_billing_rate_segments",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "agent_billing_records",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "payment_request_receipts",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "stripe_checkout_legacy_quarantine",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "stripe_checkout_legacy_quarantine",
+      column: "initiated_by_user_id",
+      subject: "user",
+      action: "delete",
+    },
+    {
+      table: "stripe_checkout_orders",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "stripe_checkout_orders",
+      column: "initiated_by_user_id",
+      subject: "user",
+      action: "delete",
+    },
+    {
+      table: "stripe_customer_attempts",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    {
+      table: "stripe_customer_legacy_quarantines",
+      column: "organization_id",
+      subject: "organization",
+      action: "delete",
+    },
+    { table: "admin_users", column: "granted_by", subject: "user", action: "null" },
+    {
+      table: "app_secret_requirements",
+      column: "approved_by",
+      subject: "user",
+      action: "null",
+    },
+    { table: "jobs", column: "user_id", subject: "user", action: "null" },
+    { table: "moderation_violations", column: "reviewed_by", subject: "user", action: "null" },
+    { table: "secret_bindings", column: "created_by", subject: "user", action: "null" },
+    { table: "token_redemptions", column: "reviewed_by", subject: "user", action: "null" },
+    { table: "user_mcps", column: "verified_by", subject: "user", action: "null" },
+    { table: "user_moderation_status", column: "banned_by", subject: "user", action: "null" },
+  ] satisfies LocalGrantInventoryEntry[]);
+
+function localGrantSubject(
+  entry: LocalGrantInventoryEntry,
+  context: AccountDeletionProviderContext,
+): string {
+  return entry.subject === "user" ? context.userId : context.organizationId;
+}
+
+async function countLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<number> {
+  let count = 0;
+  for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
+    const result = await dbWrite.execute(
+      sql`SELECT count(*)::int AS count FROM ${sql.raw(entry.table)}
+          WHERE ${sql.raw(entry.column)} = ${localGrantSubject(entry, context)}`,
+    );
+    const observed = result.rows[0]?.count;
+    if (typeof observed !== "number" || !Number.isSafeInteger(observed) || observed < 0) {
+      throw new ElizaError("Account deletion grant inventory returned an invalid count", {
+        code: "ACCOUNT_DELETION_GRANT_INVENTORY_INVALID",
+        context: { table: entry.table, column: entry.column },
+        severity: "fatal",
+      });
+    }
+    count += observed;
+  }
+  return count;
+}
+
 async function deleteLocalRestrictiveRows(context: AccountDeletionProviderContext): Promise<void> {
   await dbWrite.transaction(async (tx) => {
-    await tx.execute(
-      sql`DELETE FROM affiliate_payout_outbox WHERE affiliate_user_id = ${context.userId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM app_reservation_settlement_quarantines WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM app_reservation_settlements WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM container_billing_legacy_ledger_bindings WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM container_billing_records WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM compute_billing_rate_segments WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM agent_billing_records WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM payment_request_receipts WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM stripe_checkout_legacy_quarantine WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM stripe_checkout_orders WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM stripe_customer_attempts WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`DELETE FROM stripe_customer_legacy_quarantines WHERE organization_id = ${context.organizationId}`,
-    );
-    await tx.execute(
-      sql`UPDATE admin_users SET granted_by = NULL WHERE granted_by = ${context.userId}`,
-    );
-    await tx.execute(
-      sql`UPDATE moderation_violations SET reviewed_by = NULL WHERE reviewed_by = ${context.userId}`,
-    );
-    await tx.execute(
-      sql`UPDATE token_redemptions SET reviewed_by = NULL WHERE reviewed_by = ${context.userId}`,
-    );
-    await tx.execute(
-      sql`UPDATE user_mcps SET verified_by = NULL WHERE verified_by = ${context.userId}`,
-    );
-    await tx.execute(
-      sql`UPDATE user_moderation_status SET banned_by = NULL WHERE banned_by = ${context.userId}`,
-    );
+    for (const entry of ACCOUNT_DELETION_LOCAL_GRANT_INVENTORY) {
+      const subject = localGrantSubject(entry, context);
+      if (entry.action === "delete") {
+        await tx.execute(
+          sql`DELETE FROM ${sql.raw(entry.table)} WHERE ${sql.raw(entry.column)} = ${subject}`,
+        );
+      } else {
+        await tx.execute(
+          sql`UPDATE ${sql.raw(entry.table)} SET ${sql.raw(entry.column)} = NULL
+              WHERE ${sql.raw(entry.column)} = ${subject}`,
+        );
+      }
+    }
   });
 }
 
@@ -641,15 +739,7 @@ export function createAccountDeletionProviderAdapters(
     },
     other_grants: {
       async inspect(context) {
-        const rows = await dbWrite.execute(sql<{ count: number }>`
-          SELECT (
-            (SELECT count(*) FROM affiliate_payout_outbox WHERE affiliate_user_id = ${context.userId}) +
-            (SELECT count(*) FROM agent_billing_records WHERE organization_id = ${context.organizationId}) +
-            (SELECT count(*) FROM container_billing_records WHERE organization_id = ${context.organizationId}) +
-            (SELECT count(*) FROM stripe_checkout_orders WHERE organization_id = ${context.organizationId})
-          )::int AS count
-        `);
-        const count = Number(rows.rows[0]?.count ?? 0);
+        const count = await countLocalRestrictiveRows(context);
         return count === 0 ? complete(context, "other_grants") : { state: "needs_execution" };
       },
       async execute(context) {

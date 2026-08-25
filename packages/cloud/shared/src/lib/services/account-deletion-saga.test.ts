@@ -171,4 +171,24 @@ describe("account deletion provider saga", () => {
     expect(result).toMatchObject({ processed: 1, progressed: 0, reconciling: 0 });
     expect(stripe.execute).not.toHaveBeenCalled();
   });
+
+  test("leaves disallowed provider phases untouched for the worker that owns their authority", async () => {
+    const stripe = {
+      inspect: mock(async () => ({ state: "needs_execution" as const })),
+      execute: mock(async () => undefined),
+    };
+
+    const result = await processIrreversibleAccountDeletionSaga({
+      limit: 1,
+      blob,
+      adapters: adapters(stripe),
+      allowedPhases: new Set(["secondary_backups", "spools"]),
+      now: new Date("2026-08-22T12:00:00Z"),
+    });
+
+    expect(result).toMatchObject({ processed: 1, progressed: 0, reconciling: 0 });
+    expect(repo.leasePhase).not.toHaveBeenCalled();
+    expect(stripe.inspect).not.toHaveBeenCalled();
+    expect(stripe.execute).not.toHaveBeenCalled();
+  });
 });

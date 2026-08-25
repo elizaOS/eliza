@@ -7,12 +7,17 @@ process.env.NODE_ENV = "test";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
+import {
+  acquireProviderAdmission,
+  releaseProviderAdmission,
+} from "../../lib/services/provider-admission";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
 import { accountDeletionExports } from "../schemas/account-deletion-exports";
 import { accountDeletionPhaseReceipts } from "../schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../schemas/account-deletion-requests";
 import { apiKeys } from "../schemas/api-keys";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
+import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
 import { accountDeletionRequestsRepository } from "./account-deletion-requests";
@@ -67,6 +72,7 @@ beforeAll(async () => {
       apiKeys,
       organizationBalanceRevisionSequence,
       organizations,
+      providerAdmissions,
       userSessions,
       users,
     } as never,
@@ -130,12 +136,36 @@ async function activateReservation(tokenSuffix: string, activatedAt = now) {
 beforeEach(async () => {
   await dbWrite.execute("DELETE FROM account_deletion_restrictive_fixture");
   await dbWrite.execute("DELETE FROM agent_sandbox_replacement_attempts");
+  await dbWrite.delete(providerAdmissions);
   await dbWrite.delete(accountDeletionRequests);
   await dbWrite.delete(organizations);
   await seedPersonalAccount();
 });
 
 describe("personal account deletion reservation", () => {
+  test("waits for provider admission release before committing the deletion fence", async () => {
+    await accountDeletionRequestsRepository.reservePersonalAccountDeletion(
+      reservationInput("50000000-0000-4000-8000-000000000090", "provider-race"),
+    );
+    const providerAuthority = {
+      organizationId,
+      operationKind: "auto_top_up" as const,
+      operationId: "60000000-0000-4000-8000-000000000090",
+    };
+    await expect(acquireProviderAdmission(providerAuthority, now)).resolves.toBe(true);
+    await expect(activateReservation("provider-race")).resolves.toEqual({
+      outcome: "provider_work_in_flight",
+    });
+    expect((await dbWrite.select().from(organizations))[0]?.account_lifecycle_state).toBe("active");
+    await releaseProviderAdmission(providerAuthority, now);
+    await expect(activateReservation("provider-race")).resolves.toMatchObject({
+      outcome: "activated",
+    });
+    expect((await dbWrite.select().from(organizations))[0]?.account_lifecycle_state).toBe(
+      "deletion_recovery",
+    );
+  });
+
   test("never returns an open receipt from a different organization", async () => {
     const otherOrganizationId = "10000000-0000-4000-8000-000000000002";
     await dbWrite.insert(organizations).values({

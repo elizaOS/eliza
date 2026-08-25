@@ -2,7 +2,10 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import { AccountLifecycleFencedError } from "./account-lifecycle-authority";
-import { prepareProvisioningWithAccountLifecycleFence } from "./provisioning-account-lifecycle-fence";
+import {
+  executeProvisioningWithAccountLifecycleAdmission,
+  prepareProvisioningWithAccountLifecycleFence,
+} from "./provisioning-account-lifecycle-fence";
 
 const activeAuthority = {
   state: "active" as const,
@@ -57,5 +60,48 @@ describe("provisioning account lifecycle fence", () => {
       ),
     ).rejects.toBeInstanceOf(AccountLifecycleFencedError);
     expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not enter the provider when deletion wins admission", async () => {
+    const execute = mock(async () => "created");
+    const release = mock(async () => undefined);
+    await expect(
+      executeProvisioningWithAccountLifecycleAdmission({
+        authority: {
+          organizationId: "10000000-0000-4000-8000-000000000001",
+          operationKind: "agent_provision",
+          operationId: "20000000-0000-4000-8000-000000000001",
+        },
+        execute,
+        acquire: mock(async () => false),
+        release,
+      }),
+    ).rejects.toBeInstanceOf(AccountLifecycleFencedError);
+    expect(execute).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  test("holds admission through the provider call and releases exactly once", async () => {
+    const order: string[] = [];
+    const result = await executeProvisioningWithAccountLifecycleAdmission({
+      authority: {
+        organizationId: "10000000-0000-4000-8000-000000000001",
+        operationKind: "agent_provision",
+        operationId: "20000000-0000-4000-8000-000000000001",
+      },
+      execute: async () => {
+        order.push("provider");
+        return "created";
+      },
+      acquire: mock(async () => {
+        order.push("admitted");
+        return true;
+      }),
+      release: mock(async () => {
+        order.push("released");
+      }),
+    });
+    expect(result).toBe("created");
+    expect(order).toEqual(["admitted", "provider", "released"]);
   });
 });

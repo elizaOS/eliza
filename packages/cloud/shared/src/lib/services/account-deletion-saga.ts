@@ -423,6 +423,7 @@ export async function processIrreversibleAccountDeletionSaga(input: {
   limit: number;
   blob: RuntimeR2Bucket;
   adapters: AccountDeletionProviderAdapters;
+  allowedPhases?: ReadonlySet<AccountDeletionProviderPhase>;
   now?: Date;
 }): Promise<ProcessAccountDeletionSagaResult> {
   const now = input.now ?? new Date();
@@ -492,6 +493,7 @@ export async function processIrreversibleAccountDeletionSaga(input: {
       // incomplete receipt remains the ordered head and blocks provider purge.
       continue;
     }
+    if (input.allowedPhases && !input.allowedPhases.has(next.phase)) continue;
     const outcome = await processProviderPhase({
       request,
       phase: next.phase,
