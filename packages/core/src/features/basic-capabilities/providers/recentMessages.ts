@@ -76,6 +76,7 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"transient_failure",
 	"handler_error",
 	"persistence_error",
+	"coding_verification_failed",
 ]);
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {

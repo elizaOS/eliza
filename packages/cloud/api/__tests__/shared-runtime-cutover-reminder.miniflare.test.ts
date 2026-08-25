@@ -67,6 +67,12 @@ const RUNTIME_STUBS = {
       AUTONOMOUS: "AUTONOMOUS",
       API: "API",
     };
+    export function isBlockedHostname() { return false; }
+    export function isPrivateIpAddress() { return false; }
+    export function stringToUuid(value) {
+      const suffix = String(value).length.toString(16).padStart(12, "0").slice(-12);
+      return "00000000-0000-5000-8000-" + suffix;
+    }
   `,
   databaseClient: `
     export async function runWithDbCacheAsync(operation) {
@@ -98,7 +104,37 @@ const RUNTIME_STUBS = {
         });
         throw new Error("Committed cutover reached Shared inference");
       },
-      async stream() {
+      async stream(agent, rpc, options) {
+        if (rpc.id === "barge-eviction") {
+          const roomId = rpc.params.roomId;
+          const interrupted = [
+            {
+              id: "workerd-interrupted-user",
+              role: "user",
+              content: rpc.params.text,
+              createdAt: 1787184001000,
+            },
+            {
+              id: "workerd-interrupted-assistant",
+              role: "assistant",
+              content: "partial answer",
+              createdAt: 1787184001001,
+              interrupted: true,
+            },
+          ];
+          return new Response(new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("event: chunk\\ndata: {}\\n\\n"));
+            },
+            async cancel() {
+              options.historyStore.stagePending(agent.id, roomId, interrupted);
+              options.executionCtx.waitUntil((async () => {
+                await fetch("https://finalization-gate.test/wait");
+                throw new Error("simulated off-queue finalization failure");
+              })());
+            },
+          }), { headers: { "content-type": "text/event-stream" } });
+        }
         await fetch("https://model-probe.test/v1/chat/completions", {
           method: "POST",
           body: "unexpected-shared-reminder-inference",
@@ -118,6 +154,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
   let buildDirectory: string;
   let miniflare: Miniflare;
   const modelRequests: string[] = [];
+  let releaseFinalizationGate = () => {};
+  const finalizationGate = new Promise<void>((resolve) => {
+    releaseFinalizationGate = resolve;
+  });
 
   beforeAll(async () => {
     const apiDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -148,6 +188,20 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
               await this.testState.storage.put("conversation", body.conversation);
               return Response.json({ success: true });
             }
+            if (new URL(request.url).pathname === "/__test/barge") {
+              const response = await super.fetch(new Request(
+                "https://runtime.test/stream",
+                {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: await request.text(),
+                },
+              ));
+              const reader = response.body.getReader();
+              await reader.read();
+              await reader.cancel("barge-in");
+              return Response.json({ success: true });
+            }
             return await super.fetch(request);
           }
         }
@@ -157,7 +211,8 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
             const name = request.headers.get("x-test-room");
             if (!name) return new Response("missing room", { status: 400 });
             const id = env.SHARED_RUNTIME_CONVERSATIONS.idFromName(name);
-            return await env.SHARED_RUNTIME_CONVERSATIONS.get(id).fetch(request);
+            const stub = env.SHARED_RUNTIME_CONVERSATIONS.get(id);
+            return await stub.fetch(request);
           },
         };
       `,
@@ -275,6 +330,10 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
       modules: true,
       script: await readFile(outputPath, "utf8"),
       outboundService: async (request: Request) => {
+        if (new URL(request.url).hostname === "finalization-gate.test") {
+          await finalizationGate;
+          return new Response("released");
+        }
         modelRequests.push(request.url);
         return Response.json(
           { error: "unexpected inference" },
@@ -291,6 +350,7 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
   }, 120_000);
 
   afterAll(async () => {
+    releaseFinalizationGate();
     await miniflare?.dispose();
     if (buildDirectory) await rm(buildDirectory, { recursive: true });
   });
@@ -395,5 +455,89 @@ describe("Personal Shared cutover reminder containment in Workerd", () => {
     expect(after.status, afterBody).toBe(200);
     expect(JSON.parse(afterBody)).toEqual({ history });
     expect(modelRequests).toEqual([]);
+  }, 120_000);
+
+  test("an evicted object reloads a checkpointed interrupted turn before admission", async () => {
+    const within = async <T>(
+      label: string,
+      operation: Promise<T>,
+    ): Promise<T> =>
+      await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          setTimeout(() => reject(new Error(`${label} timed out`)), 5_000);
+        }),
+      ]);
+    const agent = {
+      id: "agent-barge-eviction-miniflare",
+      organization_id: "organization-barge-eviction",
+      user_id: "user-barge-eviction",
+      character_id: null,
+      agent_name: "Eliza",
+      agent_config: { character: { name: "Eliza" } },
+      execution_tier: "shared",
+    };
+    const room = "room-barge-eviction-miniflare";
+    const seeded = await post(room, "/__test/seed", {
+      conversation: {
+        agentId: agent.id,
+        channelId: room,
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    });
+    expect(seeded.status, await seeded.text()).toBe(200);
+
+    const barged = await post(room, "/__test/barge", {
+      operation: "stream",
+      agent,
+      rpc: {
+        jsonrpc: "2.0",
+        id: "barge-eviction",
+        method: "message.send",
+        params: { text: "interrupted request", roomId: room },
+      },
+    });
+    expect(barged.status, await barged.text()).toBe(200);
+    releaseFinalizationGate();
+
+    const admitted = await within(
+      "post-failure history",
+      post(room, "/history", {
+        operation: "history",
+        agentId: agent.id,
+        roomId: room,
+      }),
+    );
+    const admittedBody = (await admitted.json()) as {
+      history: Array<{ id?: string }>;
+    };
+    expect(admitted.status).toBe(200);
+    expect(admittedBody.history.map((message) => message.id)).toEqual([
+      "workerd-interrupted-user",
+      "workerd-interrupted-assistant",
+    ]);
+
+    await within(
+      "Durable Object eviction",
+      miniflare.unsafeEvictDurableObject("", "TestSharedRuntimeConversation", {
+        name: room,
+        webSockets: "close",
+      }),
+    );
+    const recovered = await post(room, "/history", {
+      operation: "history",
+      agentId: agent.id,
+      roomId: room,
+    });
+    const recoveredBody = (await recovered.json()) as {
+      history: Array<{ id?: string; interrupted?: boolean }>;
+    };
+    expect(recoveredBody.history).toMatchObject([
+      { id: "workerd-interrupted-user" },
+      { id: "workerd-interrupted-assistant", interrupted: true },
+    ]);
+    releaseFinalizationGate();
   }, 120_000);
 });

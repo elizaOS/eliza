@@ -700,8 +700,18 @@ function createEphemeralReplyMessageService(
 }
 
 function createCallbackTerminalFailureMessageService(
-  failureKind: "coding_mutation_unverified" | "coding_tool_failure",
+  failureKind:
+    | "coding_mutation_unverified"
+    | "coding_verification_failed"
+    | "coding_tool_failure",
 ): NonNullable<AgentRuntime["messageService"]> {
+  const verificationFailed = failureKind === "coding_verification_failed";
+  const message = verificationFailed
+    ? "Typecheck still fails after repair."
+    : "Shell execution failed.";
+  const code = verificationFailed
+    ? "CODING_VERIFICATION_REPAIR_EXHAUSTED"
+    : "SHELL_UNAVAILABLE";
   return {
     async handleMessage(_runtime, _message, callback) {
       await callback?.({ text: "Done." });
@@ -711,9 +721,9 @@ function createCallbackTerminalFailureMessageService(
         responseMessages: [],
         terminalFailure: {
           kind: failureKind,
-          transient: true,
-          message: "Shell execution failed.",
-          code: "SHELL_UNAVAILABLE",
+          transient: !verificationFailed,
+          message,
+          code,
         },
         mode: "actions" as const,
       };
@@ -2562,7 +2572,11 @@ describe("conversation stream SSE contract (#10712)", () => {
     },
   );
 
-  it.each(["coding_mutation_unverified", "coding_tool_failure"] as const)(
+  it.each([
+    "coding_mutation_unverified",
+    "coding_verification_failed",
+    "coding_tool_failure",
+  ] as const)(
     "makes typed %s authoritative when callback prose disagrees",
     async (failureKind) => {
       const { ctx, record, state } = createCtx(
@@ -2577,15 +2591,22 @@ describe("conversation stream SSE contract (#10712)", () => {
       const done = parseSsePayloads(record.writes).find(
         (payload) => payload.type === "done",
       );
+      const verificationFailed = failureKind === "coding_verification_failed";
+      const message = verificationFailed
+        ? "Typecheck still fails after repair."
+        : "Shell execution failed.";
+      const code = verificationFailed
+        ? "CODING_VERIFICATION_REPAIR_EXHAUSTED"
+        : "SHELL_UNAVAILABLE";
       expect(done).toMatchObject({
         type: "done",
-        fullText: "Shell execution failed.",
+        fullText: message,
         failureKind,
         terminalFailure: {
           kind: failureKind,
-          message: "Shell execution failed.",
-          transient: true,
-          code: "SHELL_UNAVAILABLE",
+          message,
+          transient: !verificationFailed,
+          code,
         },
       });
       const messageSentCall = emitEvent.mock.calls.find(
@@ -2594,13 +2615,13 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect(messageSentCall?.[1]).toMatchObject({
         message: {
           content: {
-            text: "Shell execution failed.",
+            text: message,
             failureKind,
             terminalFailure: {
               kind: failureKind,
-              message: "Shell execution failed.",
-              transient: true,
-              code: "SHELL_UNAVAILABLE",
+              message,
+              transient: !verificationFailed,
+              code,
             },
           },
         },

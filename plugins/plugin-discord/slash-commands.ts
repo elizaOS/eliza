@@ -12,6 +12,7 @@ import {
 	hasRoleAccess,
 	type IAgentRuntime,
 	type Memory,
+	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
 import type {
@@ -50,6 +51,7 @@ export interface SlashCommand {
 	execute: (
 		interaction: ChatInputCommandInteraction,
 		runtime: IAgentRuntime,
+		context?: SlashCommandContext,
 	) => Promise<void>;
 	autocomplete?: (interaction: AutocompleteInteraction) => Promise<void>;
 }
@@ -58,6 +60,7 @@ export interface SlashCommand {
 export interface SlashCommandContext {
 	entityId: string;
 	roomId: string;
+	accountId?: string;
 }
 
 async function replyEphemeral(
@@ -699,7 +702,7 @@ const askCommand: SlashCommand = {
 			required: true,
 		},
 	],
-	async execute(interaction, runtime) {
+	async execute(interaction, runtime, context) {
 		const text = interaction.options.getString("message", true).trim();
 		if (!text) {
 			await interaction.reply({
@@ -757,6 +760,8 @@ const askCommand: SlashCommand = {
 			name: interaction.user.displayName ?? interaction.user.username,
 			source: "discord",
 			channelId,
+			serverId: interaction.guildId ?? channelId,
+			messageServerId: stringToUuid(interaction.guildId ?? channelId),
 			type: channelType,
 			worldId: createUniqueUuid(runtime, interaction.guildId ?? channelId),
 			worldName: interaction.guild?.name,
@@ -764,6 +769,11 @@ const askCommand: SlashCommand = {
 			// allowlist checks (see the "Discord ID Handling" note in service.ts and
 			// the matching cast in messages.ts's ensureConnection call).
 			userId: interaction.user.id as UUID,
+			...(context?.accountId
+				? {
+						metadata: { accountId: context.accountId },
+					}
+				: {}),
 		});
 
 		const message: Memory = {
@@ -1005,7 +1015,7 @@ export async function handleSlashCommand(
 	}
 
 	try {
-		await command.execute(interaction, runtime);
+		await command.execute(interaction, runtime, context);
 	} catch (error) {
 		const content = `An error occurred while running \`/${command.name}\`: ${error instanceof Error ? error.message : String(error)}`;
 		runtime.logger.error(

@@ -151,6 +151,7 @@ import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
 	FAILED_TOOL_FALLBACK_MESSAGE,
+	HANDLED_STEP_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
 	type PlannerLoopResult,
@@ -2401,6 +2402,14 @@ function createV5ReplyStrategyResult(args: {
 		...(args.terminalFailure
 			? {
 					failureKind: args.terminalFailure.kind,
+					terminalFailure: {
+						kind: args.terminalFailure.kind,
+						message: args.terminalFailure.message,
+						transient: args.terminalFailure.transient,
+						...(args.terminalFailure.code
+							? { code: args.terminalFailure.code }
+							: {}),
+					},
 					elizaSyntheticFailure: true,
 					transient: args.terminalFailure.transient,
 				}
@@ -3954,14 +3963,20 @@ async function createV5MessageContextObject(args: {
 
 	// Ambient-turn policy (live incident tj-f637475edcb7bd): on an unaddressed
 	// group turn the planner ran, produced no tool activity, and still shipped
-	// the filler completion "I handled the available step." as the reply. The
-	// planner prompt never told the model the turn was ambient, so it treated
-	// "end the turn" as "compose a status". Rendered only when the caller's
-	// structural classifier flagged the turn ambient — addressed turns (and
-	// callers that do not pass the flag) render byte-identical context, and
-	// the IGNORE terminal invoked here already flows to deliberate,
-	// recorded non-delivery (see the planner deliberate-silence terminal in
-	// runV5MessageRuntimeStage1).
+	// a filler completion as the reply. Nothing in the planner prompt told the
+	// model the turn was ambient, so "end the turn" read as "compose a status".
+	// Rendered only when the caller's structural classifier flagged the turn
+	// ambient — addressed turns (and callers that do not pass the flag) render
+	// byte-identical context, and the IGNORE terminal invoked here already
+	// flows to deliberate, recorded non-delivery (see the ambient
+	// deliberate-silence terminal in runV5MessageRuntimeStage1).
+	//
+	// The instruction names the SHAPE of a process description and quotes no
+	// sentence. It used to quote HANDLED_STEP_FALLBACK_MESSAGE as its negative
+	// example, which bought nothing: that string is runtime-emitted, so no
+	// instruction could suppress it, while an emittable forbidden sentence
+	// sitting in context is a live hazard on weak models. The guarantee is
+	// structural now, in the terminal named above.
 	if (args.ambientTurn) {
 		events.push({
 			id: "ambient-turn-policy",
@@ -3969,7 +3984,7 @@ async function createV5MessageContextObject(args: {
 			source: "message-service",
 			stable: false,
 			content: args.includeTools
-				? 'ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn\'s work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process (for example "I handled the available step") as the reply: on an unaddressed message, an empty outcome means silence.'
+				? "ambient_turn_policy: The final message:user below was not addressed to you — it is other participants talking to each other, and no reply is expected from you. Contribute only if this turn's work produced something concrete and useful to those participants (a tool result, a substantive answer to what they are discussing). If your work yields nothing concrete to contribute, end the turn by calling the IGNORE tool — deliberate silence — instead of composing a reply. Never send a status update, a progress note, or a description of your own process as the reply — any sentence whose subject is what you did, tried, handled, or checked rather than what they are discussing: on an unaddressed message, an empty outcome means silence."
 				: // Stage-1 wording: the decision here is the shouldRespond field, not
 					// a terminal tool. Live group-chat evaluation (five ambient-mode
 					// rooms, gemma-4-31b) replied to nearly every unaddressed message —
@@ -10120,13 +10135,38 @@ export async function runV5MessageRuntimeStage1(args: {
 				: plannerState;
 		const plannedTextRaw = String(plannerResult.finalMessage ?? "").trim();
 		const deliveredMediaUrls = collectMediaDeliveryUrls(actionResults);
-		const plannedText = sanitizeReplyTextAfterMediaDelivery(
-			plannedTextRaw,
-			deliveredMediaUrls,
-		);
-		// Planner deliberate silence on an ambient turn: the ambient-turn policy
-		// instruction tells the planner to end an empty unaddressed turn with
-		// IGNORE, so honor that choice the same way a Stage-1 IGNORE is honored —
+		// HANDLED_STEP_FALLBACK_MESSAGE is the planner's marker for "this turn
+		// produced no usable user-facing text": `userSafeFinalMessage` emits it
+		// when every model candidate failed the egress safety chain and no tool
+		// exposed user-facing text. The tool-turn reply guarantee normally
+		// replaces it, but only for turns that ran a successful non-terminal
+		// tool — a turn with no tool work keeps the placeholder and ships it.
+		// On an unaddressed turn that is a description of the agent's own
+		// process posted into a room full of other people, the exact filler the
+		// ambient-turn policy forbids, and the policy's own semantics for an
+		// empty outcome are silence. Structural, not prompt-dependent: the
+		// placeholder is runtime-produced, so no instruction to the model can
+		// prevent it. On a turn that owes a response, blanking this internal marker
+		// routes through `resolveZeroDeliveryRecovery`, whose toolless fallback is
+		// a truthful no-answer rather than a fabricated claim of completed work.
+		const unusablePlannerReply =
+			plannedTextRaw === HANDLED_STEP_FALLBACK_MESSAGE;
+		const ambientPlaceholderOnlyReply = ambientTurn && unusablePlannerReply;
+		const plannedText = unusablePlannerReply
+			? ""
+			: sanitizeReplyTextAfterMediaDelivery(plannedTextRaw, deliveredMediaUrls);
+		// Single source of truth for "this ambient turn ends in silence",
+		// covering both the planner's own IGNORE/STOP terminal and the
+		// placeholder outcome above. Both resolve through the same terminal and
+		// the same reply suppression below, so there is one silence path.
+		const ambientDeliberateSilence =
+			ambientTurn &&
+			(plannerResult.endedWithDeliberateSilence === true ||
+				ambientPlaceholderOnlyReply);
+		// Deliberate silence on an ambient turn — the planner's own IGNORE/STOP
+		// terminal, or the placeholder outcome that means the same thing. The
+		// ambient-turn policy instruction tells the planner to end an empty
+		// unaddressed turn with IGNORE, so honor that the way a Stage-1 IGNORE is —
 		// a terminal decision handleMessage records observably (an
 		// actions:["IGNORE"] terminal memory + MESSAGE_SENT), not a bare
 		// mode-"none" result indistinguishable from a dropped turn. Scoped to
@@ -10138,8 +10178,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// exists to suppress. Addressed turns never take this branch, so the
 		// turn-delivery floor (an addressed turn always delivers) is untouched.
 		if (
-			ambientTurn &&
-			plannerResult.endedWithDeliberateSilence === true &&
+			ambientDeliberateSilence &&
 			!earlyReplySent &&
 			actionResults.length === 0 &&
 			!plannedText
@@ -10169,8 +10208,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				(result) =>
 					(result.data as { suppressPlannerReply?: unknown } | undefined)
 						?.suppressPlannerReply === true,
-			) ||
-			(ambientTurn && plannerResult.endedWithDeliberateSilence === true);
+			) || ambientDeliberateSilence;
 		const ranNonSilentAction =
 			actionResults.length > 0 && !suppressesPlannerReply;
 		const rawStageOneAck =

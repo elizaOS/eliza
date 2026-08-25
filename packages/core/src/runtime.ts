@@ -1139,6 +1139,8 @@ function normalizeMessageConnector(
 		connector.createThreadHandler = metadata.createThreadHandler;
 	if (metadata.postToThreadHandler)
 		connector.postToThreadHandler = metadata.postToThreadHandler;
+	if (metadata.manageServerHandler)
+		connector.manageServerHandler = metadata.manageServerHandler;
 	if (metadata.contentShaping)
 		connector.contentShaping = {
 			...metadata.contentShaping,
@@ -4763,6 +4765,7 @@ export class AgentRuntime implements IAgentRuntime {
 		source?: string;
 		type?: ChannelType | string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;

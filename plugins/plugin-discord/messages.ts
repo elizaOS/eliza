@@ -1728,6 +1728,7 @@ export class MessageManager {
 				...(aliasedAuthor ? {} : { userName, name }),
 				source: "discord",
 				channelId: message.channel.id,
+				serverId: messageServerId,
 				// Convert Discord snowflake to UUID (see service.ts header for why stringToUuid not asUUID)
 				messageServerId: messageServerId
 					? stringToUuid(messageServerId)

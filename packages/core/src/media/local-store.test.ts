@@ -20,8 +20,6 @@ vi.mock("./fetch.ts", () => ({
 }));
 
 type LocalStoreModule = {
-	VISION_IMAGE_FETCH_TIMEOUT_MS: number;
-	VISION_IMAGE_MAX_BYTES: number;
 	trustedLocalMediaUrl: (rawUrl: string) => URL | null;
 };
 
@@ -121,11 +119,5 @@ describe("trustedLocalMediaUrl", () => {
 		const mod = await loadLocalStore();
 		// An invalid URL is not local — callers route it to the remote fetcher.
 		expect(mod.trustedLocalMediaUrl("http://[::1")).toBeNull();
-	});
-
-	it("exposes the shared byte cap and timeout constants", async () => {
-		const mod = await loadLocalStore();
-		expect(mod.VISION_IMAGE_MAX_BYTES).toBe(20 * 1024 * 1024);
-		expect(mod.VISION_IMAGE_FETCH_TIMEOUT_MS).toBe(15_000);
 	});
 });
