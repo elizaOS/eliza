@@ -41,6 +41,32 @@ describe("createDeterministicModelPlugin", () => {
 		expect(plugin.getFixtureDiagnostics().fixtures[0]?.consumed).toBe(1);
 	});
 
+	it("matches the real user turn ahead of an internal synthesis instruction", async () => {
+		const plugin = createDeterministicModelPlugin({
+			fixtures: [
+				{
+					name: "real-user-turn",
+					match: {
+						modelType: ModelType.ACTION_PLANNER,
+						input: (value) => value.includes("message:user:\nBuy apples"),
+					},
+					response: "matched",
+				},
+			],
+		});
+
+		await expect(
+			textHandler(plugin, ModelType.ACTION_PLANNER)(runtime, {
+				messages: [
+					{ role: "user", content: "message:user:\nBuy apples" },
+					{ role: "assistant", content: "called a tool" },
+					{ role: "tool", content: "bought apples" },
+					{ role: "user", content: "Synthesize the completed tool result." },
+				],
+			} as GenerateTextParams),
+		).resolves.toBe("matched");
+	});
+
 	it("fails unmatched and ambiguous calls instead of inventing a response", async () => {
 		const unmatched = createDeterministicModelPlugin();
 		await expect(

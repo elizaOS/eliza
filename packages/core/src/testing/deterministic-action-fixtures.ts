@@ -82,18 +82,62 @@ export function finalMessageUserText(value: string): string {
 	const envelopeStart = messageText.lastIndexOf(EXTERNAL_CONTENT_START);
 	const envelopeEnd = messageText.lastIndexOf(EXTERNAL_CONTENT_END);
 	if (envelopeStart === -1 || envelopeEnd <= envelopeStart) {
-		return messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "";
+		return messageTextFromWireValue(
+			messageText.split(MESSAGE_USER_SUFFIX_BOUNDARY, 1)[0]?.trim() ?? "",
+		);
 	}
 	const envelopeText = messageText.slice(
 		envelopeStart + EXTERNAL_CONTENT_START.length,
 		envelopeEnd,
 	);
 	const separatorIndex = envelopeText.indexOf(EXTERNAL_CONTENT_SEPARATOR);
-	return (
+	return messageTextFromWireValue(
 		separatorIndex === -1
 			? envelopeText
-			: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length)
-	).trim();
+			: envelopeText.slice(separatorIndex + EXTERNAL_CONTENT_SEPARATOR.length),
+	);
+}
+
+function messageTextFromWireValue(value: string): string {
+	const normalized = value.trim();
+	if (!normalized.startsWith("{"))
+		return unwrapScenarioSourceEnvelope(normalized);
+	try {
+		const parsed = JSON.parse(normalized) as {
+			currentMessageText?: unknown;
+			text?: unknown;
+		};
+		const messageText =
+			typeof parsed.currentMessageText === "string"
+				? parsed.currentMessageText
+				: typeof parsed.text === "string"
+					? parsed.text
+					: normalized;
+		return unwrapScenarioSourceEnvelope(messageText);
+	} catch {
+		// error-policy:J3 A malformed prompt envelope stays literal and cannot
+		// accidentally match a fixture for a different user message.
+		return normalized;
+	}
+}
+
+function unwrapScenarioSourceEnvelope(value: string): string {
+	let normalized = value.trim();
+	if (normalized.startsWith("\\nSource: ")) {
+		try {
+			normalized = JSON.parse(`"${normalized}"`) as string;
+		} catch {
+			// error-policy:J3 An invalid escaped source envelope stays literal so
+			// it cannot match a different deterministic scenario input.
+			return normalized;
+		}
+	}
+	const separator = "\n---\n";
+	if (!normalized.trimStart().startsWith("Source: ")) return normalized;
+	const separatorIndex = normalized.indexOf(separator);
+	return separatorIndex === -1
+		? normalized.trim()
+		: normalized.slice(separatorIndex + separator.length).trim();
 }
 
 /** A text matcher that compares the normalized latest user text exactly. */

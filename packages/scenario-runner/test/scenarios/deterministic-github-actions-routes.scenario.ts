@@ -5,8 +5,14 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
 import {
+  type DeterministicModelCall,
+  type IAgentRuntime,
+  ModelType,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  matchesScenarioInput,
   type RuntimeWithScenarioModelFixtures,
   registerStrictActionRouteFixtures,
 } from "@elizaos/core/testing";
@@ -399,28 +405,19 @@ const strictGithubRoutes = [
   },
 ];
 
-function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
-  return (
-    value.includes(
-      "message:user:\ncreate deterministic GitHub issue preview",
-    ) &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
-    )
-  );
-}
-
 function registerGithubStrictFixtures(
   runtime: RuntimeWithGithubScenario,
 ): void {
   registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
+  const matchesPreviewInput = matchesScenarioInput(
+    "create deterministic GitHub issue preview",
+  );
   runtime.scenarioModelFixtures?.register({
     name: "route-github-issue-create-preview-evaluator",
-    match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesGithubIssueCreatePreviewEvaluation,
-    },
+    match: (call: DeterministicModelCall) =>
+      call.modelType === ModelType.RESPONSE_HANDLER &&
+      call.toolNames.length === 0 &&
+      matchesPreviewInput(call.latestUserText),
     response: {
       success: false,
       decision: "FINISH",

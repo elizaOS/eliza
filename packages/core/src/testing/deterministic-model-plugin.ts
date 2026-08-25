@@ -555,10 +555,15 @@ function fingerprint(value: string): string {
 function latestUserText(params: GenerateTextParams): string {
 	const messages = params.messages;
 	if (Array.isArray(messages)) {
+		let fallback = "";
 		for (let index = messages.length - 1; index >= 0; index -= 1) {
 			const message = messages[index];
-			if (message?.role === "user") return contentToText(message.content);
+			if (message?.role !== "user") continue;
+			const content = contentToText(message.content);
+			if (!fallback) fallback = content;
+			if (content.includes("message:user:\n")) return content;
 		}
+		if (fallback) return fallback;
 	}
 	return extractPromptUserMessage(params.prompt ?? "");
 }

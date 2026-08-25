@@ -38,6 +38,24 @@ describe("finalMessageUserText", () => {
 		const value = "message:user:\nBuy 10 apples\n\nevent: user_message";
 		expect(finalMessageUserText(value)).toBe("Buy 10 apples");
 	});
+
+	it("extracts text from the structured current-message wire value", () => {
+		expect(
+			finalMessageUserText(
+				'message:user:\n{"text":"Buy apples","source":"client_chat"}',
+			),
+		).toBe("Buy apples");
+		expect(
+			finalMessageUserText(
+				'message:user:\n{"text":"Test User: Buy apples","currentMessageText":"Buy apples","source":"telegram"}',
+			),
+		).toBe("Buy apples");
+		expect(
+			finalMessageUserText(
+				'message:user:\n{"text":"\\\\nSource: API\\\\n---\\\\nBuy apples\\\\n","source":"telegram"}',
+			),
+		).toBe("Buy apples");
+	});
 });
 
 describe("matchesScenarioInput", () => {
