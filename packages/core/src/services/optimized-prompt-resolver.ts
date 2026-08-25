@@ -72,7 +72,19 @@ export function resolveOptimizedPrompt(
  * tool catalog (often ~30K chars); for ICL we only need the user's
  * current-turn request.
  */
-function trimDemonstrationInput(rawInput: string): string {
+function truncateText(text: string, maxChars: number): string {
+	if (text.length <= maxChars) return text;
+	let end = maxChars;
+	if (end > 0 && end < text.length) {
+		const code = text.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			end -= 1;
+		}
+	}
+	return text.slice(0, end);
+}
+
+export function trimDemonstrationInput(rawInput: string): string {
 	const userMatch =
 		rawInput.match(
 			/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
@@ -83,10 +95,17 @@ function trimDemonstrationInput(rawInput: string): string {
 		return candidate;
 	}
 	if (candidate && candidate.length > 0) {
-		return `${candidate.slice(0, 600).trimEnd()} …`;
+		return `${truncateText(candidate, 600).trimEnd()} …`;
 	}
 	if (rawInput.length <= 600) return rawInput;
-	return `${rawInput.slice(0, 400).trimEnd()}\n…\n${rawInput.slice(-200).trimStart()}`;
+	let startTail = rawInput.length - 200;
+	if (startTail > 0 && startTail < rawInput.length) {
+		const code = rawInput.charCodeAt(startTail);
+		if (code >= 0xdc00 && code <= 0xdfff) {
+			startTail += 1;
+		}
+	}
+	return `${truncateText(rawInput, 400).trimEnd()}\n…\n${rawInput.slice(startTail).trimStart()}`;
 }
 
 function injectDemonstrations(

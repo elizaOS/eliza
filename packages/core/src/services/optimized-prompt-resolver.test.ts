@@ -23,6 +23,7 @@ import {
 import {
 	resolveOptimizedPrompt,
 	resolveOptimizedPromptForRuntime,
+	trimDemonstrationInput,
 } from "./optimized-prompt-resolver";
 
 const BASELINE = "BASELINE_PROMPT_FOR_TEST";
@@ -269,3 +270,33 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		expect(out).toBe(BASELINE);
 	});
 });
+
+describe("trimDemonstrationInput surrogate safety", () => {
+	test("preserves surrogate pairs when trimming candidate and raw input", () => {
+		// "🔥" (2 chars * 350 = 700 chars) -> 700 chars > 600 chars
+		// At boundary 600, index 599 is high surrogate of 300th emoji, which bisects without backoff
+		const longEmojiCandidate = "user: " + "🔥".repeat(350);
+		const trimmed = trimDemonstrationInput(longEmojiCandidate);
+		expect(trimmed.endsWith("…")).toBe(true);
+		for (const char of trimmed) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+
+		// Raw input without user prefix
+		const rawEmojiInput = "🔥".repeat(350);
+		const trimmedRaw = trimDemonstrationInput(rawEmojiInput);
+		expect(trimmedRaw.includes("…")).toBe(true);
+		for (const char of trimmedRaw) {
+			expect(
+				/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+					char,
+				),
+			).toBe(false);
+		}
+	});
+});
+
