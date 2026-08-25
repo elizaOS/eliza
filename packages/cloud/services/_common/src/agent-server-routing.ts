@@ -3,13 +3,14 @@
 import {
   type ActivationRoutingAuthorityUnavailableReason,
   type ActivationRoutingConflictReason,
+  type ActivationRoutingReadResult,
   type ActivationRoutingSnapshotReader,
   readActivationRoutingState,
 } from "./activation-routing";
 
 const UUID_SHAPE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const LEGACY_SERVER_NAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const LEGACY_SERVER_NAME = /^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$/;
 const MAX_SERVER_URL_BYTES = 4096;
 
 export type AgentServerRoutingMode = "managed" | "legacy";
@@ -41,7 +42,9 @@ export type AgentServerRoutingUnavailableReason =
   | "legacy_pointer_unavailable"
   | "invalid_legacy_pointer"
   | "heartbeat_unavailable"
-  | "invalid_server_url";
+  | "invalid_server_url"
+  | "managed_endpoint_mismatch"
+  | "routing_state_changed";
 
 type ManagedAgentNotReadyResult =
   | Readonly<
@@ -106,9 +109,18 @@ export type AgentServerRoutingResult =
   | Readonly<
       AgentServerRoutingIdentity & {
         kind: "routing_unavailable";
-        reason: "heartbeat_unavailable" | "invalid_server_url";
+        reason:
+          | "heartbeat_unavailable"
+          | "invalid_server_url"
+          | "managed_endpoint_mismatch";
         mode: AgentServerRoutingMode;
         serverName: string;
+      }
+    >
+  | Readonly<
+      AgentServerRoutingIdentity & {
+        kind: "routing_unavailable";
+        reason: "routing_state_changed";
       }
     >;
 
@@ -167,6 +179,7 @@ async function resolveHeartbeat(
   identity: Readonly<AgentServerRoutingIdentity>,
   mode: AgentServerRoutingMode,
   serverName: string,
+  expectedServerUrl?: string,
 ): Promise<AgentServerRoutingResult> {
   let serverUrl: unknown;
   try {
@@ -202,6 +215,15 @@ async function resolveHeartbeat(
       serverName,
     });
   }
+  if (expectedServerUrl !== undefined && serverUrl !== expectedServerUrl) {
+    return Object.freeze({
+      ...identity,
+      kind: "routing_unavailable",
+      reason: "managed_endpoint_mismatch",
+      mode,
+      serverName,
+    });
+  }
 
   return Object.freeze({
     ...identity,
@@ -210,6 +232,117 @@ async function resolveHeartbeat(
     serverName,
     serverUrl,
   });
+}
+
+type ManagedReadyState = Extract<
+  ActivationRoutingReadResult,
+  { status: "ready" }
+>;
+
+function managedReadyStatesEqual(
+  left: ManagedReadyState,
+  right: ManagedReadyState,
+): boolean {
+  return (
+    left.authority.generation === right.authority.generation &&
+    left.authority.publicationId === right.authority.publicationId &&
+    left.authority.endpointSha256 === right.authority.endpointSha256 &&
+    left.route.generation === right.route.generation &&
+    left.route.publicationId === right.route.publicationId &&
+    left.route.endpointSha256 === right.route.endpointSha256 &&
+    left.route.endpoint.generation === right.route.endpoint.generation &&
+    left.route.endpoint.serverName === right.route.endpoint.serverName &&
+    left.route.endpoint.registryUrl === right.route.endpoint.registryUrl &&
+    left.route.endpoint.bridgeUrl === right.route.endpoint.bridgeUrl &&
+    left.route.endpoint.healthUrl === right.route.endpoint.healthUrl
+  );
+}
+
+function routingStateChanged(
+  identity: Readonly<AgentServerRoutingIdentity>,
+): AgentServerRoutingResult {
+  return Object.freeze({
+    ...identity,
+    kind: "routing_unavailable",
+    reason: "routing_state_changed",
+  });
+}
+
+function managedAuthorityUnavailable(
+  identity: Readonly<AgentServerRoutingIdentity>,
+  authorityReason: ActivationRoutingAuthorityUnavailableReason,
+): AgentServerRoutingResult {
+  return Object.freeze({
+    ...identity,
+    kind: "routing_unavailable",
+    reason: "managed_authority_unavailable",
+    authorityReason,
+  });
+}
+
+async function confirmManagedCandidate(
+  reader: AgentServerRoutingReader,
+  identity: Readonly<AgentServerRoutingIdentity>,
+  initial: ManagedReadyState,
+  candidate: AgentServerRoutingResult,
+): Promise<AgentServerRoutingResult> {
+  const confirmed = await readActivationRoutingState(
+    reader,
+    identity.managedAgentId,
+  );
+  if (confirmed.status === "authority_unavailable") {
+    return managedAuthorityUnavailable(identity, confirmed.reason);
+  }
+  if (
+    confirmed.status !== "ready" ||
+    !managedReadyStatesEqual(initial, confirmed)
+  ) {
+    return routingStateChanged(identity);
+  }
+  return candidate;
+}
+
+async function confirmLegacyCandidate(
+  reader: AgentServerRoutingReader,
+  identity: Readonly<AgentServerRoutingIdentity>,
+  candidate: AgentServerRoutingResult,
+  pointerKey: string,
+  expectedPointer?: string | null,
+): Promise<AgentServerRoutingResult> {
+  let pointerStable = true;
+  let pointerAvailable = true;
+  if (expectedPointer !== undefined) {
+    try {
+      pointerStable =
+        (await reader.readAgentServerRoutingValue(pointerKey)) ===
+        expectedPointer;
+    } catch {
+      pointerAvailable = false;
+    }
+  }
+
+  // This second managed snapshot is the linearization point. A legacy result
+  // is usable only if the durable cutover fence is still wholly absent after
+  // all pointer and heartbeat reads.
+  const confirmed = await readActivationRoutingState(
+    reader,
+    identity.managedAgentId,
+  );
+  if (confirmed.status === "authority_unavailable") {
+    return managedAuthorityUnavailable(identity, confirmed.reason);
+  }
+  if (confirmed.status !== "unmanaged" || !pointerStable) {
+    return routingStateChanged(identity);
+  }
+  if (!pointerAvailable) {
+    return Object.freeze({
+      ...identity,
+      kind: "routing_unavailable",
+      reason: "legacy_pointer_unavailable",
+      mode: "legacy",
+    });
+  }
+  return candidate;
 }
 
 /**
@@ -244,13 +377,18 @@ export async function resolveAgentServerRouting(
   const managed = await readActivationRoutingState(reader, managedAgentId);
 
   switch (managed.status) {
-    case "ready":
-      return resolveHeartbeat(
+    case "ready": {
+      const candidate = await resolveHeartbeat(
         reader,
         identity,
         "managed",
-        managed.route.serverName,
+        managed.route.endpoint.serverName,
+        managed.route.endpoint.registryUrl,
       );
+      // Re-read the exact managed snapshot after the non-atomic heartbeat GET.
+      // A revoke or republish between the two reads must never yield a route.
+      return confirmManagedCandidate(reader, identity, managed, candidate);
+    }
     case "starting":
       return Object.freeze({
         ...identity,
@@ -274,47 +412,70 @@ export async function resolveAgentServerRouting(
         conflictReason: managed.reason,
       });
     case "authority_unavailable":
-      return Object.freeze({
-        ...identity,
-        kind: "routing_unavailable",
-        reason: "managed_authority_unavailable",
-        authorityReason: managed.reason,
-      });
+      return managedAuthorityUnavailable(identity, managed.reason);
     case "unmanaged":
       break;
   }
 
+  const legacyPointerKey = `agent:${runtimeAgentId}:server`;
   let legacyServerName: unknown;
   try {
-    legacyServerName = await reader.readAgentServerRoutingValue(
-      `agent:${runtimeAgentId}:server`,
-    );
+    legacyServerName =
+      await reader.readAgentServerRoutingValue(legacyPointerKey);
   } catch {
     // error-policy:J4 Redis failure is an explicit non-routable result.
-    return Object.freeze({
-      ...identity,
-      kind: "routing_unavailable",
-      reason: "legacy_pointer_unavailable",
-      mode: "legacy",
-    });
+    return confirmLegacyCandidate(
+      reader,
+      identity,
+      Object.freeze({
+        ...identity,
+        kind: "routing_unavailable",
+        reason: "legacy_pointer_unavailable",
+        mode: "legacy",
+      }),
+      legacyPointerKey,
+    );
   }
 
   if (legacyServerName === null) {
-    return Object.freeze({
-      ...identity,
-      kind: "unregistered",
-      mode: "legacy",
-      reason: "legacy_pointer_missing",
-    });
+    return confirmLegacyCandidate(
+      reader,
+      identity,
+      Object.freeze({
+        ...identity,
+        kind: "unregistered",
+        mode: "legacy",
+        reason: "legacy_pointer_missing",
+      }),
+      legacyPointerKey,
+      null,
+    );
   }
   if (!isLegacyServerName(legacyServerName)) {
-    return Object.freeze({
-      ...identity,
-      kind: "routing_unavailable",
-      reason: "invalid_legacy_pointer",
-      mode: "legacy",
-    });
+    return confirmLegacyCandidate(
+      reader,
+      identity,
+      Object.freeze({
+        ...identity,
+        kind: "routing_unavailable",
+        reason: "invalid_legacy_pointer",
+        mode: "legacy",
+      }),
+      legacyPointerKey,
+    );
   }
 
-  return resolveHeartbeat(reader, identity, "legacy", legacyServerName);
+  const candidate = await resolveHeartbeat(
+    reader,
+    identity,
+    "legacy",
+    legacyServerName,
+  );
+  return confirmLegacyCandidate(
+    reader,
+    identity,
+    candidate,
+    legacyPointerKey,
+    legacyServerName,
+  );
 }

@@ -11,12 +11,19 @@ const MANAGED_AGENT_ID = "00000000-0000-4000-8000-0000000000a1";
 const RUNTIME_AGENT_ID = "00000000-0000-4000-8000-0000000000b2";
 const GENERATION = "00000000-0000-4000-8000-0000000000c3";
 const PUBLICATION_ID = "00000000-0000-4000-8000-0000000000d4";
-const ENDPOINT_SHA256 = "a".repeat(64);
+const ENDPOINT_SHA256 =
+  "dc4ff1862679247432e0473d125e3425661f9c207708cf238ab127464aa1f994";
 const MANAGED_SERVER_NAME = `sandbox-${GENERATION}`;
+const MANAGED_REGISTRY_URL = "https://sandbox.internal:3000/";
 const LEGACY_SERVER_NAME = "shared-eliza";
 const MANAGED_HEARTBEAT_KEY = `server:${MANAGED_SERVER_NAME}:url`;
 const LEGACY_POINTER_KEY = `agent:${RUNTIME_AGENT_ID}:server`;
 const LEGACY_HEARTBEAT_KEY = `server:${LEGACY_SERVER_NAME}:url`;
+const ACTIVATION_KEYS: ActivationRoutingSnapshotKeys = [
+  `agent:${MANAGED_AGENT_ID}:routing-managed`,
+  `agent:${MANAGED_AGENT_ID}:registration-authority`,
+  `agent:${MANAGED_AGENT_ID}:activation-route`,
+];
 const SNAPSHOT_MISSING_SENTINEL = "activation-routing-missing:v1";
 const SNAPSHOT_SENTINEL = "activation-routing-snapshot:v1";
 const SNAPSHOT_VALUE_PREFIX = "activation-routing:v1:";
@@ -43,13 +50,22 @@ const REVOKED_AUTHORITY = JSON.stringify({
   publicationId: null,
   endpointSha256: null,
 });
+const MANAGED_ENDPOINT = Object.freeze({
+  version: 1,
+  generation: GENERATION,
+  kind: "dedicated-sandbox",
+  serverName: MANAGED_SERVER_NAME,
+  registryUrl: MANAGED_REGISTRY_URL,
+  bridgeUrl: "http://100.64.0.3:3000",
+  healthUrl: "http://100.64.0.3:3000/health",
+});
 const MANAGED_ROUTE = JSON.stringify({
   version: 1,
   kind: "dedicated-sandbox",
   generation: GENERATION,
   publicationId: PUBLICATION_ID,
   endpointSha256: ENDPOINT_SHA256,
-  serverName: MANAGED_SERVER_NAME,
+  endpoint: MANAGED_ENDPOINT,
 });
 
 type Snapshot = readonly [string | null, string | null, string | null];
@@ -58,6 +74,8 @@ class RoutingReaderProbe implements AgentServerRoutingReader {
   readonly snapshotCalls: ActivationRoutingSnapshotKeys[] = [];
   readonly valueCalls: string[] = [];
   readonly values = new Map<string, unknown>();
+  readonly nextSnapshots: Snapshot[] = [];
+  readonly nextValues = new Map<string, unknown[]>();
   readonly throwingValueKeys = new Set<string>();
 
   constructor(
@@ -70,9 +88,13 @@ class RoutingReaderProbe implements AgentServerRoutingReader {
   ): Promise<unknown> {
     this.snapshotCalls.push([...keys] as ActivationRoutingSnapshotKeys);
     if (this.snapshotError) throw this.snapshotError;
+    const snapshot =
+      this.snapshotCalls.length === 1
+        ? this.snapshot
+        : (this.nextSnapshots.shift() ?? this.snapshot);
     return [
       SNAPSHOT_SENTINEL,
-      ...this.snapshot.map((value) =>
+      ...snapshot.map((value) =>
         value === null
           ? SNAPSHOT_MISSING_SENTINEL
           : `${SNAPSHOT_VALUE_PREFIX}${value}`,
@@ -83,6 +105,8 @@ class RoutingReaderProbe implements AgentServerRoutingReader {
   async readAgentServerRoutingValue(key: string): Promise<unknown> {
     this.valueCalls.push(key);
     if (this.throwingValueKeys.has(key)) throw new Error("redis unavailable");
+    const queued = this.nextValues.get(key);
+    if (queued && queued.length > 0) return queued.shift();
     return this.values.has(key) ? this.values.get(key) : null;
   }
 }
@@ -171,16 +195,11 @@ describe("agent-server routing authority", () => {
       serverName: LEGACY_SERVER_NAME,
       serverUrl: "http://shared-eliza.internal:3000",
     });
-    expect(probe.snapshotCalls).toEqual([
-      [
-        `agent:${MANAGED_AGENT_ID}:routing-managed`,
-        `agent:${MANAGED_AGENT_ID}:registration-authority`,
-        `agent:${MANAGED_AGENT_ID}:activation-route`,
-      ],
-    ]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
     expect(probe.valueCalls).toEqual([
       LEGACY_POINTER_KEY,
       LEGACY_HEARTBEAT_KEY,
+      LEGACY_POINTER_KEY,
     ]);
     expect(probe.valueCalls).not.toContain(`agent:${MANAGED_AGENT_ID}:server`);
   });
@@ -194,7 +213,8 @@ describe("agent-server routing authority", () => {
       managedAgentId: MANAGED_AGENT_ID,
       runtimeAgentId: RUNTIME_AGENT_ID,
     });
-    expect(probe.valueCalls).toEqual([LEGACY_POINTER_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+    expect(probe.valueCalls).toEqual([LEGACY_POINTER_KEY, LEGACY_POINTER_KEY]);
   });
 
   test("returns legacy unreachable only for a truly absent heartbeat", async () => {
@@ -211,7 +231,9 @@ describe("agent-server routing authority", () => {
     expect(probe.valueCalls).toEqual([
       LEGACY_POINTER_KEY,
       LEGACY_HEARTBEAT_KEY,
+      LEGACY_POINTER_KEY,
     ]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 
   test.each([
@@ -220,7 +242,7 @@ describe("agent-server routing authority", () => {
     "Shared-Eliza",
     "shared/eliza",
     "shared:eliza",
-    "a".repeat(64),
+    "a".repeat(129),
     42,
     false,
     { serverName: LEGACY_SERVER_NAME },
@@ -235,6 +257,30 @@ describe("agent-server routing authority", () => {
       runtimeAgentId: RUNTIME_AGENT_ID,
     });
     expect(probe.valueCalls).toEqual([LEGACY_POINTER_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("accepts the existing Docker sandbox registry server-name shape", async () => {
+    const dockerServerName = `sandbox-${RUNTIME_AGENT_ID}-${GENERATION}`;
+    expect(dockerServerName).toHaveLength(81);
+    const probe = reader([null, null, null]);
+    probe.values.set(LEGACY_POINTER_KEY, dockerServerName);
+    probe.values.set(
+      `server:${dockerServerName}:url`,
+      "http://docker-sandbox.internal:3000/api",
+    );
+
+    await expect(resolve(probe)).resolves.toMatchObject({
+      kind: "ready",
+      mode: "legacy",
+      serverName: dockerServerName,
+      serverUrl: "http://docker-sandbox.internal:3000/api",
+    });
+    expect(probe.valueCalls).toEqual([
+      LEGACY_POINTER_KEY,
+      `server:${dockerServerName}:url`,
+      LEGACY_POINTER_KEY,
+    ]);
   });
 
   test("fails closed when the legacy pointer read throws", async () => {
@@ -248,11 +294,12 @@ describe("agent-server routing authority", () => {
       runtimeAgentId: RUNTIME_AGENT_ID,
     });
     expect(probe.valueCalls).toEqual([LEGACY_POINTER_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 
   test("managed ready reads only the exact managed heartbeat", async () => {
     const probe = reader([MARKER, ACTIVE_AUTHORITY, MANAGED_ROUTE]);
-    probe.values.set(MANAGED_HEARTBEAT_KEY, "https://sandbox.internal:3000/");
+    probe.values.set(MANAGED_HEARTBEAT_KEY, MANAGED_REGISTRY_URL);
     probe.values.set(LEGACY_POINTER_KEY, "attacker-selected-server");
 
     await expect(resolve(probe)).resolves.toEqual({
@@ -261,9 +308,10 @@ describe("agent-server routing authority", () => {
       managedAgentId: MANAGED_AGENT_ID,
       runtimeAgentId: RUNTIME_AGENT_ID,
       serverName: MANAGED_SERVER_NAME,
-      serverUrl: "https://sandbox.internal:3000/",
+      serverUrl: MANAGED_REGISTRY_URL,
     });
     expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 
   test("managed ready without a heartbeat is unreachable and never falls back", async () => {
@@ -280,6 +328,91 @@ describe("agent-server routing authority", () => {
       serverName: MANAGED_SERVER_NAME,
     });
     expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects a valid managed heartbeat that diverges from the hashed endpoint", async () => {
+    const probe = reader([MARKER, ACTIVE_AUTHORITY, MANAGED_ROUTE]);
+    probe.values.set(
+      MANAGED_HEARTBEAT_KEY,
+      "https://attacker-selected.invalid/",
+    );
+    probe.values.set(LEGACY_POINTER_KEY, LEGACY_SERVER_NAME);
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      mode: "managed",
+      reason: "managed_endpoint_mismatch",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+      serverName: MANAGED_SERVER_NAME,
+    });
+    expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects a managed route revoked between snapshot and heartbeat", async () => {
+    const probe = reader([MARKER, ACTIVE_AUTHORITY, MANAGED_ROUTE]);
+    probe.nextSnapshots.push([MARKER, REVOKED_AUTHORITY, MANAGED_ROUTE]);
+    probe.values.set(MANAGED_HEARTBEAT_KEY, MANAGED_REGISTRY_URL);
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      reason: "routing_state_changed",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+    });
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects a legacy route when managed cutover appears during its reads", async () => {
+    const probe = reader([null, null, null]);
+    probe.nextSnapshots.push([MARKER, ACTIVE_AUTHORITY, MANAGED_ROUTE]);
+    probe.values.set(LEGACY_POINTER_KEY, LEGACY_SERVER_NAME);
+    probe.values.set(LEGACY_HEARTBEAT_KEY, "http://shared-eliza.internal:3000");
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      reason: "routing_state_changed",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+    });
+    expect(probe.valueCalls).toEqual([
+      LEGACY_POINTER_KEY,
+      LEGACY_HEARTBEAT_KEY,
+      LEGACY_POINTER_KEY,
+    ]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects a legacy route whose pointer changes during resolution", async () => {
+    const probe = reader([null, null, null]);
+    probe.nextValues.set(LEGACY_POINTER_KEY, [
+      LEGACY_SERVER_NAME,
+      "other-shared-eliza",
+    ]);
+    probe.values.set(LEGACY_HEARTBEAT_KEY, "http://shared-eliza.internal:3000");
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      reason: "routing_state_changed",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+    });
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
+  });
+
+  test("rejects unregistered when a legacy pointer appears during resolution", async () => {
+    const probe = reader([null, null, null]);
+    probe.nextValues.set(LEGACY_POINTER_KEY, [null, LEGACY_SERVER_NAME]);
+
+    await expect(resolve(probe)).resolves.toEqual({
+      kind: "routing_unavailable",
+      reason: "routing_state_changed",
+      managedAgentId: MANAGED_AGENT_ID,
+      runtimeAgentId: RUNTIME_AGENT_ID,
+    });
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 
   test.each([
@@ -369,6 +502,7 @@ describe("agent-server routing authority", () => {
       serverName: MANAGED_SERVER_NAME,
     });
     expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 
   test("fails closed when a managed heartbeat read throws", async () => {
@@ -385,5 +519,6 @@ describe("agent-server routing authority", () => {
       serverName: MANAGED_SERVER_NAME,
     });
     expect(probe.valueCalls).toEqual([MANAGED_HEARTBEAT_KEY]);
+    expect(probe.snapshotCalls).toEqual([ACTIVATION_KEYS, ACTIVATION_KEYS]);
   });
 });
