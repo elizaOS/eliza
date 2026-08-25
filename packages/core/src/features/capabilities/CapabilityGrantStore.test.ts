@@ -9,9 +9,9 @@
  * audit sanitization of malformed inputs, per-decision audit rows,
  * optimistic-version conflicts, revocation-epoch bumps, typed constraint
  * intersection, quarantined legacy vocabulary rows, world-aware active-policy
- * uniqueness, and restart survival — the store is opened, closed, and
- * reopened on the SAME disk data dir with grants created in the first
- * process authoritative in the second.
+ * uniqueness, and restart survival — the store handle is closed and a fresh
+ * handle opened on the SAME disk data dir, with grants created under the
+ * first handle authoritative for the second.
  */
 
 import fs from "node:fs";
