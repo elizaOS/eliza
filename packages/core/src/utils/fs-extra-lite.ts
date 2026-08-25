@@ -30,7 +30,7 @@ export async function pathExists(target: string): Promise<boolean> {
 // biome-ignore lint/suspicious/noExplicitAny: fs-extra contract compatibility
 export async function readJson<T = any>(file: string): Promise<T> {
 	const contents = await fsp.readFile(file, "utf8");
-	return JSON.parse(contents.replace(/^\uFEFF/, "")) as T;
+	return JSON.parse(contents.replace(/^\uFEFF+/, "")) as T;
 }
 
 export async function writeJson(

@@ -50,6 +50,24 @@ describe("fs-extra-lite JSON helpers", () => {
 		);
 	});
 
+	it("strips multiple leading BOMs from concatenated files", async () => {
+		const directory = await createTemporaryDirectory();
+		const input = path.join(directory, "double-bom.json");
+		await writeFile(input, '\uFEFF\uFEFF{"enabled":true}', "utf8");
+
+		await expect(readJson<{ enabled: boolean }>(input)).resolves.toEqual({
+			enabled: true,
+		});
+	});
+
+	it("strips triple BOM and parses array JSON", async () => {
+		const directory = await createTemporaryDirectory();
+		const input = path.join(directory, "triple-bom.json");
+		await writeFile(input, "\uFEFF\uFEFF\uFEFF[1,2,3]", "utf8");
+
+		await expect(readJson<number[]>(input)).resolves.toEqual([1, 2, 3]);
+	});
+
 	it("rejects values JSON.stringify cannot serialize", async () => {
 		const directory = await createTemporaryDirectory();
 		const output = path.join(directory, "output.json");
