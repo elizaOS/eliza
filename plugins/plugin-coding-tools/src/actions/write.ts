@@ -105,13 +105,10 @@ export async function writeFileHandler(
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
   > | null;
-  const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
-    typeof FileStateService
-  > | null;
-  if (!sandbox || !fileState) {
+  if (!sandbox) {
     return failureToActionResult({
       reason: "internal",
-      message: "coding-tools services unavailable",
+      message: "coding-tools sandbox service unavailable",
     });
   }
 
@@ -123,15 +120,27 @@ export async function writeFileHandler(
   }
 
   const resolved = validated.resolved;
+  const failAtPath = (
+    failure: Parameters<typeof failureToActionResult>[0],
+  ): ActionResult => failureToActionResult(failure, { path: resolved });
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
+    typeof FileStateService
+  > | null;
+  if (!fileState) {
+    return failAtPath({
+      reason: "internal",
+      message: "coding-tools file-state service unavailable",
+    });
+  }
 
   const gate = await fileState.assertWritable(conversationId, resolved);
   if (gate.ok === false) {
     const reason =
       gate.reason === "stale_read" ? "stale_read" : "invalid_param";
-    return failureToActionResult({ reason, message: gate.message });
+    return failAtPath({ reason, message: gate.message });
   }
   if (gate.exists && readBoolParam(options, "overwrite") !== true) {
-    return failureToActionResult({
+    return failAtPath({
       reason: "invalid_param",
       message:
         "WRITE would replace the entire existing file. Use EDIT for a localized change, or set overwrite=true only after reading the complete file and intentionally supplying its complete replacement.",
@@ -141,7 +150,7 @@ export async function writeFileHandler(
   const secrets = detectSecrets(content);
   if (secrets.length > 0) {
     const names = secrets.map((s) => s.name).join(", ");
-    return failureToActionResult({
+    return failAtPath({
       reason: "invalid_param",
       message: `refusing to write content containing detected secret patterns: ${names}`,
     });
@@ -153,7 +162,7 @@ export async function writeFileHandler(
     content,
   });
   if (routed.ok === false && routed.reason === "failed") {
-    return failureToActionResult({
+    return failAtPath({
       reason: "io_error",
       message: `write failed: ${routed.message}`,
     });
@@ -167,7 +176,7 @@ export async function writeFileHandler(
       // error-policy:J1 action boundary; the direct-write failure becomes a
       // success:false ActionResult carrying the real message for the model.
       const msg = err instanceof Error ? err.message : String(err);
-      return failureToActionResult({
+      return failAtPath({
         reason: "io_error",
         message: `write failed: ${msg}`,
       });

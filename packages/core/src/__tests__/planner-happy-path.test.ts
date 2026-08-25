@@ -16,6 +16,7 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
+import { PI_CODING_ACTION_PROFILE } from "../types/coding";
 import type {
 	Action,
 	ActionResult,
@@ -377,6 +378,107 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(firstPlannerMessages?.[0]?.content).not.toContain(
 			"Owner life-management side effects",
 		);
+	});
+
+	it("applies the Pi coding profile while retaining planner protocol terminals", async () => {
+		const actions = [
+			"FILE",
+			"READ",
+			"WRITE",
+			"EDIT",
+			"SHELL",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		].map((name) =>
+			makeMockAction({
+				name,
+				contexts: ["code", "files", "terminal"],
+				handler: async () => ({ success: true, text: `${name} complete` }),
+			}),
+		);
+		const runtime = makeRuntime({
+			actions,
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						completed: true,
+						toolCalls: [{ id: "read-1", name: "READ", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{ id: "reply-1", name: "REPLY", args: { text: "Done." } },
+						],
+					},
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("read the repository"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			codingActionProfile: PI_CODING_ACTION_PROFILE,
+		});
+
+		const plannerTools = new Set(
+			getCalls(runtime).flatMap((call) =>
+				(
+					(call.params as { tools?: Array<{ name?: string }> }).tools ?? []
+				).flatMap((tool) => (tool.name ? [tool.name] : [])),
+			),
+		);
+		for (const name of ["READ", "SHELL", "EDIT", "WRITE"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of ["REPLY", "IGNORE", "STOP"]) {
+			expect(plannerTools).toContain(name);
+		}
+		for (const name of [
+			"FILE",
+			"WORKTREE",
+			"ATTACHMENT",
+			"GENERATE_MEDIA",
+			"WEB_FETCH",
+			"WEB_SEARCH",
+		]) {
+			expect(plannerTools).not.toContain(name);
+		}
+		const nonterminalTools = [...plannerTools]
+			.filter((name) => !["REPLY", "IGNORE", "STOP"].includes(name))
+			.sort();
+		expect(nonterminalTools).toEqual(["EDIT", "READ", "SHELL", "WRITE"]);
+		expect(runtime.actions).toHaveLength(actions.length);
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				actionSurface: expect.objectContaining({
+					tierAParents: ["EDIT", "READ", "SHELL", "WRITE"],
+					codingActionProfile: {
+						kind: "pi",
+						includeWorktree: false,
+					},
+				}),
+			}),
+			"Built v5 planner action surface",
+		);
+		const recordedTrajectory = readRecordedTrajectories(String(AGENT_ID))[0] as
+			| { codingActionProfile?: { kind: string; includeWorktree: boolean } }
+			| undefined;
+		expect(recordedTrajectory?.codingActionProfile).toEqual({
+			kind: "pi",
+			includeWorktree: false,
+		});
 	});
 
 	it("does not leak coding mode into the next ordinary turn", async () => {
