@@ -130,7 +130,7 @@ interface CalendarApprovalQueue {
   ): Promise<ApprovalEnqueueResult>;
 }
 
-function approvalSafeLabel(value: string): string {
+export function approvalSafeLabel(value: string): string {
   const sanitized = value
     .replace(/[\r\n\t]+/g, " ")
     .replace(/[\[\]]/g, "")
