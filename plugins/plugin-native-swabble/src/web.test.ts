@@ -41,6 +41,7 @@ class FakeAudioContext {
   static instances: FakeAudioContext[] = [];
   sampleRate = 48000;
   close = vi.fn(async () => undefined);
+  destination = {};
   constructor() {
     FakeAudioContext.instances.push(this);
   }
@@ -49,6 +50,33 @@ class FakeAudioContext {
   }
   createMediaStreamSource(): { connect: (target: unknown) => void } {
     return { connect: vi.fn() };
+  }
+  createScriptProcessor(): {
+    connect: (target: unknown) => void;
+    disconnect: () => void;
+    onaudioprocess: unknown;
+  } {
+    return { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null };
+  }
+  createGain(): { gain: { value: number }; connect: (t: unknown) => void } {
+    return { gain: { value: 1 }, connect: vi.fn() };
+  }
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+// Drains queued microtasks so a suspended start() advances through its await
+// chain to the pending getUserMedia call. Uses only microtasks so it is safe
+// under fake timers.
+async function flushMicrotasks(ticks = 8): Promise<void> {
+  for (let i = 0; i < ticks; i++) {
+    await Promise.resolve();
   }
 }
 
@@ -603,6 +631,102 @@ describe("SwabbleWeb fallback", () => {
       // A redundant stop() after teardown must be a safe no-op.
       await expect(plugin.stop()).resolves.toBeUndefined();
       expect(stop).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tears down a native capture that resolves its mic prompt after stop()", async () => {
+    // The Electrobun native path awaits getUserMedia (a multi-second permission
+    // prompt in practice). If the consumer calls stop() while the prompt is
+    // open, stopNativeAudioCapture() is a no-op because captureStream is still
+    // null. The suspended start must therefore re-check session ownership when
+    // getUserMedia finally resolves and tear its own capture down; otherwise a
+    // live mic track, an open AudioContext, and a chunk-streaming
+    // ScriptProcessor outlive the idle state (TOCTOU teardown race).
+    FakeAudioContext.instances = [];
+    const { stream, stop } = makeMicStream();
+    const micPrompt = deferred<MediaStream>();
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const swabbleStop = vi.fn(async () => undefined);
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          swabbleStart: vi.fn(async () => ({ started: true })),
+          swabbleStop,
+          swabbleAudioChunk: vi.fn(async () => undefined),
+        },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      },
+    });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(() => micPrompt.promise),
+      } as unknown as MediaDevices,
+    });
+
+    const plugin = new SwabbleWeb();
+    const startPromise = plugin.start({ config: { triggers: ["eliza"] } });
+    // Let start() reach the awaited getUserMedia before the consumer stops.
+    await flushMicrotasks();
+    await plugin.stop();
+    expect(swabbleStop).toHaveBeenCalled();
+    await expect(plugin.isListening()).resolves.toEqual({ listening: false });
+
+    // The permission prompt now resolves, after stop() already ran.
+    micPrompt.resolve(stream);
+    await startPromise;
+    await Promise.resolve();
+
+    // The raced mic track is released and the graph is never wired: because the
+    // ownership re-check runs before the graph is built, no AudioContext or
+    // ScriptProcessor is ever created after stop(), so nothing keeps the mic
+    // open or streams chunks to the already-stopped bridge.
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(FakeAudioContext.instances).toHaveLength(0);
+    await expect(plugin.isListening()).resolves.toEqual({ listening: false });
+  });
+
+  it("tears down a level-meter mic that resolves its prompt after stop()", async () => {
+    // The Web Speech level meter has the same await-then-assign shape: stop()
+    // can retire the recognizer while startAudioLevelMonitoring() is still
+    // awaiting getUserMedia. When the prompt resolves the raced stream must be
+    // released rather than assigned, leaving no mediaStream or 100 ms interval
+    // behind after the session went idle.
+    vi.useFakeTimers();
+    try {
+      FakeAudioContext.instances = [];
+      const { stream, stop } = makeMicStream();
+      const micPrompt = deferred<MediaStream>();
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+      setWindow({ SpeechRecognition: FakeRecognition });
+      setNavigator({
+        mediaDevices: {
+          getUserMedia: vi.fn(() => micPrompt.promise),
+        } as unknown as MediaDevices,
+      });
+
+      const plugin = new SwabbleWeb();
+      const audioLevels = vi.fn();
+      await plugin.addListener("audioLevel", audioLevels);
+      const startPromise = plugin.start({ config: { triggers: ["eliza"] } });
+      // start() is suspended awaiting the mic prompt; stop() wins the race.
+      await flushMicrotasks();
+      await plugin.stop();
+
+      // The prompt resolves after stop() already tore the session down.
+      micPrompt.resolve(stream);
+      await startPromise;
+      await Promise.resolve();
+
+      // The raced level-meter track is released and no interval was armed, so
+      // no audioLevel events fire after idle.
+      expect(stop).toHaveBeenCalledTimes(1);
+      audioLevels.mockClear();
+      vi.advanceTimersByTime(500);
+      expect(audioLevels).not.toHaveBeenCalled();
+      await expect(plugin.isListening()).resolves.toEqual({ listening: false });
     } finally {
       vi.useRealTimers();
     }

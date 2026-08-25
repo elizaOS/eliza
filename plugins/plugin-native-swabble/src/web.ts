@@ -292,6 +292,20 @@ export class SwabbleWeb extends WebPlugin {
       return;
     }
     if (!stream) return;
+    // TOCTOU guard: the getUserMedia permission prompt is a multi-second window
+    // during which stop() can retire this session (usingNativeIpc -> false) while
+    // captureStream is still null, so stopNativeAudioCapture() is a no-op and the
+    // stop path can never reach a graph that does not yet exist. Re-check
+    // ownership before wiring the graph; otherwise a raced start leaks a live
+    // mic track, an open AudioContext, and a ScriptProcessor streaming chunks to
+    // a bridge that was already told to stop. Mirrors the recognition-token
+    // re-check on the Web Speech path.
+    if (!this.usingNativeIpc) {
+      stream.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return;
+    }
     this.captureStream = stream;
     this.captureContext = new AudioContext();
     const source = this.captureContext.createMediaStreamSource(stream);
@@ -461,7 +475,7 @@ export class SwabbleWeb extends WebPlugin {
     };
 
     this.recognition = recognition;
-    await this.startAudioLevelMonitoring();
+    await this.startAudioLevelMonitoring(recognition);
     recognition.start();
     return { started: true };
   }
@@ -536,7 +550,9 @@ export class SwabbleWeb extends WebPlugin {
     }
   }
 
-  private async startAudioLevelMonitoring(): Promise<void> {
+  private async startAudioLevelMonitoring(
+    recognition: SpeechRecognitionInstance,
+  ): Promise<void> {
     // error-policy:J5 the level meter is a non-essential visual augmentation to
     // the Web Speech path; a denied mic is already surfaced through
     // recognition.onerror ("not-allowed"), so a failure here degrades the meter
@@ -545,6 +561,17 @@ export class SwabbleWeb extends WebPlugin {
       .getUserMedia({ audio: true })
       .catch(() => null);
     if (!stream) return;
+    // TOCTOU guard: stop() (or a replacement start()) can retire this session
+    // while the mic prompt is open, setting this.recognition away from the
+    // owner captured at call time. Without this re-check the resolved stream is
+    // assigned to this.mediaStream after stopAudioLevelMonitoring() already ran,
+    // leaking a live level-meter mic and its 100 ms interval past idle.
+    if (this.recognition !== recognition) {
+      stream.getTracks().forEach((t) => {
+        t.stop();
+      });
+      return;
+    }
 
     this.mediaStream = stream;
     this.audioContext = new AudioContext();
