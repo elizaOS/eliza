@@ -13,9 +13,9 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Canonical actions:** 24
 - **Core actions:** 14
 - **Plugin overlay actions:** 10
-- **Canonical providers:** 23
-- **Core providers:** 23
-- **Registered runtime actions:** 174
+- **Canonical providers:** 22
+- **Core providers:** 22
+- **Registered runtime actions:** 180
 
 ## Actions
 
@@ -175,9 +175,13 @@ Generates media based on a prompt and media type. Use GENERATE_MEDIA when the ag
 | `mediaType` | yes | string | The kind of media to generate. |
 | `prompt` | yes | string | Detailed generation prompt describing the desired media. |
 | `audioKind` | no | string | For audio generation, choose music, sfx, or tts. |
-| `duration` | no | number | Optional target duration in seconds for video or audio. |
-| `aspectRatio` | no | string | Optional video aspect ratio such as 16:9, 9:16, or 1:1. |
+| `duration` | no | number | Optional target duration in seconds for video or audio. Seedance 2.5 video accepts whole seconds from 4 through 30; omit it for a short inferred default. |
+| `aspectRatio` | no | string | Optional video aspect ratio. Seedance 2.5 supports auto, 21:9, 16:9, 4:3, 1:1, 3:4, and 9:16; omit it to infer framing. |
+| `resolution` | no | string | Optional video resolution. Seedance 2.5 supports 480p and 720p; omit it for 720p. |
+| `audio` | no | boolean | Whether video generation should include synchronized audio. Omit it to include audio. |
+| `seed` | no | number | Optional non-negative integer seed for reproducible media generation. |
 | `size` | no | string | Optional image size or image provider size preset. |
+| `imageUrl` | no | string | Optional source image URL for image editing or image-to-video generation. Use the exact trusted attachment URL supplied in the turn context. |
 
 ### PAYMENT
 
@@ -388,6 +392,7 @@ list. Regenerate this document after changing the registered action surface.
 - `DOORDASH` — `plugins/plugin-doordash/src/action.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
+- `EDIT` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
@@ -404,6 +409,7 @@ list. Regenerate this document after changing the registered action surface.
 - `GET_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/get-app-earnings.ts`
 - `GET_COMPANION_STATUS` — `plugins/plugin-companion/src/actions.ts`
 - `GET_MEETING_TRANSCRIPT` — `plugins/plugin-meetings/src/actions/get-meeting-transcript.ts`
+- `GET_OMARCHY_STATUS` — `plugins/plugin-omarchy/src/actions/desktop.ts`
 - `GITHUB` — `plugins/plugin-github/src/actions/github.ts`
 - `HOUSEHOLD_COORDINATION` — `plugins/plugin-personal-assistant/src/actions/household-coordination.ts`
 - `HOUSEHOLD_FOOD` — `plugins/plugin-personal-assistant/src/lifeops/food/action.ts`
@@ -458,6 +464,7 @@ list. Regenerate this document after changing the registered action surface.
 - `PRIORITIZE` — `plugins/plugin-personal-assistant/src/actions/prioritize.ts`
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
+- `READ` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 - `REDACT_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
 - `REMINDERS` — `plugins/plugin-scheduling/src/shared-reminders.ts`
@@ -484,6 +491,8 @@ list. Regenerate this document after changing the registered action surface.
 - `SETTINGS` — `packages/agent/src/actions/settings-actions.ts`, `plugins/plugin-app-control/src/actions/settings.ts`
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
+- `SHOW_ELIZA_OMARCHY_PILL` — `plugins/plugin-omarchy/src/actions/desktop.ts`
+- `SHOW_OMARCHY_NOTIFICATION` — `plugins/plugin-omarchy/src/actions/desktop.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
 - `SPOTIFY` — `plugins/plugin-spotify/src/actions.ts`
 - `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
@@ -512,6 +521,7 @@ list. Regenerate this document after changing the registered action surface.
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
 - `WORK_THREAD` — `plugins/plugin-personal-assistant/src/actions/work-thread.ts`
 - `WORKTREE` — `plugins/plugin-coding-tools/src/actions/worktree.ts`
+- `WRITE` — `plugins/plugin-coding-tools/src/actions/direct-file-actions.ts`
 
 ## Providers
 
@@ -653,13 +663,6 @@ Provides information about the current world context including settings and memb
 Persistent facts and preferences about the user learned and remembered across conversations
 
 - **Position:** 50
-- **Dynamic:** no
-
-### SUMMARIZED_CONTEXT
-
-Provides summarized context from previous conversations for optimized context usage
-
-- **Position:** 96
 - **Dynamic:** no
 
 ### AGENT_SETTINGS

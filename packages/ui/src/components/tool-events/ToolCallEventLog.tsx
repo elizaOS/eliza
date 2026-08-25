@@ -61,7 +61,7 @@ function StatePill({ state }: { state: ToolCallEventDisplayState }) {
   };
   return (
     <span
-      className={`inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.12em] ${styles[state]}`}
+      className={`inline-flex items-center text-xs-tight font-semibold uppercase tracking-[0.12em] ${styles[state]}`}
     >
       {labels[state]}
     </span>
@@ -69,15 +69,15 @@ function StatePill({ state }: { state: ToolCallEventDisplayState }) {
 }
 
 function StateIcon({ state }: { state: ToolCallEventDisplayState }) {
-  if (state === "success") return <CheckCircle className="h-4 w-4" />;
-  if (state === "failure") return <XCircle className="h-4 w-4" />;
-  return <Clock3 className="h-4 w-4" />;
+  if (state === "success") return <CheckCircle className="size-4" />;
+  if (state === "failure") return <XCircle className="size-4" />;
+  return <Clock3 className="size-4" />;
 }
 
 function PreviewRow({ label, value }: { label: ReactNode; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+      <div className="text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted">
         {label}
       </div>
       <div className="mt-1 truncate font-mono text-xs-tight text-txt">
@@ -133,11 +133,11 @@ export function ToolCallEventLog({
 
       <details className="group mt-3">
         <summary className="flex cursor-pointer select-none items-center gap-1 text-xs-tight font-semibold text-muted hover:text-txt">
-          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
           JSON details
         </summary>
         {/* Keeps the code-block fill (it is code), border dropped. */}
-        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
+        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 p-3 text-xs leading-6 text-txt">
           {formatJson(event)}
         </pre>
       </details>

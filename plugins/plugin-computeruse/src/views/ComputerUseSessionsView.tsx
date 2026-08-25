@@ -87,7 +87,8 @@ function pointerProvenanceLabel(value: {
 }): string {
   if (value.physicalPointerInput) return "physical pointer input approved";
   if (value.physicalPointerMoved) return "pointer moved outside this action";
-  if (value.pointerObservation === "unchanged") return "system pointer unchanged";
+  if (value.pointerObservation === "unchanged")
+    return "system pointer unchanged";
   return "pointer observation unavailable";
 }
 
@@ -284,7 +285,7 @@ function CursorOverlay({
   return (
     <span
       aria-label={`Virtual cursor at ${session.cursor.x}, ${session.cursor.y}`}
-      className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_0_2px_white,0_0_0_4px_rgba(0,0,0,0.45)]"
+      className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-orange-500 shadow-[0_0_0_2px_white,0_0_0_4px_rgba(16,10,5,0.45)]"
       role="img"
       style={{ left: `${left}%`, top: `${top}%` }}
     />
@@ -323,8 +324,7 @@ function AgentTargetOverlay({
       }}
     >
       <span className="absolute -top-5 left-0 rounded bg-orange-500 px-1.5 py-0.5 text-[9px] font-medium text-white">
-        Agent target ·{" "}
-        {pointerProvenanceLabel(target)}
+        Agent target · {pointerProvenanceLabel(target)}
       </span>
     </span>
   );
@@ -571,8 +571,9 @@ export function ComputerUseSessionsView({
           {!shortLandscape ? (
             <p className="text-xs text-muted-foreground">
               macOS has one true system pointer. Orange target boxes are an
-              agent-only overlay and do not move it; guarded coordinate actions
-              may use the physical pointer only after policy approval.
+              agent-only overlay; independent targets use virtual cursors and
+              live frames. Guarded coordinate actions may use the physical
+              pointer only after policy approval.
             </p>
           ) : null}
         </div>

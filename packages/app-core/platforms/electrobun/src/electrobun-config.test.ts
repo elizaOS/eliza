@@ -4,8 +4,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createElectrobunConfig,
-  resolveExperimentalExactWindowCopyMap,
   resolveElectrobunCopyMap,
+  resolveExperimentalExactWindowCopyMap,
   resolveLinuxRenderer,
   shouldEmbedRuntimeBundle,
 } from "../electrobun.config";
@@ -95,6 +95,9 @@ describe("Electrobun Store packaging", () => {
     ).toBe(true);
     expect(Object.values(copy)).toContain("eliza-dist/package.json");
     expect(Object.values(copy)).not.toContain("remotes");
+    expect(copy["scripts/browser-bridge-unregister.ps1"]).toBe(
+      "browser-bridge-unregister.ps1",
+    );
   });
 
   it("includes the experimental helper only in an explicitly enabled direct macOS copy map", () => {

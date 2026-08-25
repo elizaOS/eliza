@@ -1,13 +1,12 @@
 /**
  * Lossless JSON normalization shared by every trajectory persistence owner.
  * Strings and collection members are preserved completely; only unsupported
- * JavaScript values, cycles, and pathological nesting are normalized.
+ * JavaScript values and cycles are normalized.
  */
 
 import type { JsonValue } from "../types/primitives";
 import { toWellFormedUnicode } from "../utils/well-formed";
 
-const TRAJECTORY_JSON_MAX_DEPTH = 20;
 const utf8Encoder = new TextEncoder();
 
 /** @internal Exposed only through the opaque {@link TrajectoryJsonBudget}. */
@@ -65,9 +64,6 @@ function sanitizeTrajectoryJsonValueInternal(
 ): JsonValue | undefined {
 	const exhausted = enterNode(state);
 	if (exhausted !== undefined) return exhausted;
-	if (depth > TRAJECTORY_JSON_MAX_DEPTH) {
-		return normalizedScalar("[MaxDepth]", state);
-	}
 	if (value === null) return normalizedScalar(null, state);
 	if (typeof value === "string") return normalizedScalar(value, state);
 	if (typeof value === "number") {

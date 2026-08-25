@@ -149,7 +149,7 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
 
 function AppWindowError({ message }: { message: string }): JSX.Element {
   return (
-    <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
+    <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
       <div className="text-base font-semibold">Could not open app</div>
       <p className="max-w-md text-sm text-muted">{message}</p>
     </div>
@@ -159,8 +159,8 @@ function AppWindowError({ message }: { message: string }): JSX.Element {
 function AppWindowSpinner({ label }: { label: string }): JSX.Element {
   const { t } = useApp();
   return (
-    <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-2 bg-bg text-txt">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+    <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-2 bg-bg text-txt">
+      <div className="size-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       <div className="text-sm text-muted">
         {t("appwindow.Launching", {
           defaultValue: "Launching {{label}}…",
@@ -173,7 +173,7 @@ function AppWindowSpinner({ label }: { label: string }): JSX.Element {
 
 function AppWindowFrame({ children }: { children: JSX.Element }): JSX.Element {
   return (
-    <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden bg-bg text-txt">
+    <div className="flex h-dvh min-h-0 w-full flex-col overflow-hidden bg-bg text-txt">
       {children}
     </div>
   );
@@ -414,7 +414,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
 
   if (runState.status === "error") {
     return (
-      <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
+      <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
         <div className="text-base font-semibold">
           Could not launch {displayName}
         </div>
@@ -434,7 +434,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
 
   if (runState.status === "external") {
     return (
-      <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
+      <div className="flex h-dvh min-h-0 w-full flex-col items-center justify-center gap-3 bg-bg px-6 text-center text-txt">
         <div className="text-base font-semibold">
           {displayName} opened in your browser
         </div>
@@ -454,7 +454,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
       ref={iframeRef}
       src={resolvedViewerUrl}
       {...(sandbox ? { sandbox } : {})}
-      className="h-screen w-screen border-none"
+      className="h-dvh w-full border-none"
       title={displayName}
       data-testid="app-window-viewer-iframe"
     />

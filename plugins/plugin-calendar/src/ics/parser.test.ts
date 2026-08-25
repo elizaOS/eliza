@@ -214,6 +214,25 @@ describe("parseIcsCalendar", () => {
     });
   });
 
+  it("UTC DTSTART year 10 stays year 10, not 1910", () => {
+    const parsed = parseIcsCalendar(
+      calendar(
+        "BEGIN:VEVENT",
+        "UID:year-ten@example.test",
+        "DTSTAMP:20260301T120000Z",
+        "DTSTART:00100201T120000Z",
+        "DTEND:00100201T130000Z",
+        "SUMMARY:Year ten",
+        "END:VEVENT",
+      ),
+    );
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.events).toHaveLength(1);
+    expect(new Date(parsed.events[0].startAt).getUTCFullYear()).toBe(10);
+    expect(new Date(parsed.events[0].startAt).getUTCMonth()).toBe(1);
+    expect(new Date(parsed.events[0].startAt).getUTCDate()).toBe(1);
+  });
+
   it("fails structural corruption rather than returning an empty calendar", () => {
     expect(() =>
       parseIcsCalendar(

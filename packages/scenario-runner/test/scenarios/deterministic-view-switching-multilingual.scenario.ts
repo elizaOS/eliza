@@ -84,11 +84,18 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: CoveredView,
 ): string | undefined {
+  // VIEWS marks its navigation receipt `transcriptVisibility: "internal"`, so
+  // the runtime never delivers it and `responseText` is not where it lives.
+  // Read it from the action result the runner reports verbatim.
+  const result = toRecord(execution.responseBody);
+  if (result.transcriptVisibility !== "internal") {
+    return `expected an internal-visibility VIEWS result, saw transcriptVisibility=${JSON.stringify(result.transcriptVisibility)}`;
+  }
   let effect: Record<string, unknown>;
   try {
-    effect = toRecord(JSON.parse(execution.responseText));
+    effect = toRecord(JSON.parse(String(result.text ?? "")));
   } catch {
-    return `expected a JSON view-navigation effect, saw ${JSON.stringify(execution.responseText)}`;
+    return `expected a JSON view-navigation effect, saw ${JSON.stringify(result.text)}`;
   }
   const expectedEffect = {
     effect: "view_navigation",
@@ -200,7 +207,6 @@ export default scenario({
       text: entry.phrase,
       actionName: "VIEWS",
       options: { action: "show", viewType: "gui" },
-      responseIncludesAny: ['"effect":"view_navigation"'],
       assertTurn: (execution: ScenarioTurnExecution) =>
         expectShowTurn(execution, view),
     };

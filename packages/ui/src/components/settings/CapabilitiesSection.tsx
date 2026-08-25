@@ -445,7 +445,7 @@ export function CapabilitiesSection() {
                   value: "endpoint",
                   label: (
                     <span className="inline-flex items-center gap-1.5">
-                      <PlugZap className="h-4 w-4" aria-hidden />
+                      <PlugZap className="size-4" aria-hidden />
                       {t("capabilities.mode.endpoint", {
                         defaultValue: "Endpoint",
                       })}
@@ -456,7 +456,7 @@ export function CapabilitiesSection() {
                   value: "cloud",
                   label: (
                     <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="h-4 w-4" aria-hidden />
+                      <Cloud className="size-4" aria-hidden />
                       {t("capabilities.mode.cloud", {
                         defaultValue: "Cloud",
                       })}
@@ -660,9 +660,9 @@ export function CapabilitiesSection() {
                 className="h-11 w-full gap-2 rounded-md text-sm"
               >
                 {capabilityConnectLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
                 ) : (
-                  <PlugZap className="h-4 w-4" aria-hidden />
+                  <PlugZap className="size-4" aria-hidden />
                 )}
                 {t("settings.sections.capabilities.capabilityRouterConnect", {
                   defaultValue: "Connect",
@@ -803,9 +803,9 @@ function DeviceLocationGroup() {
               data-testid="settings-location-enable"
             >
               {requesting ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Loader2 className="size-4 animate-spin" aria-hidden />
               ) : (
-                <MapPin className="h-4 w-4" aria-hidden />
+                <MapPin className="size-4" aria-hidden />
               )}
               {t("settings.sections.capabilities.locationEnable", {
                 defaultValue: "Enable",

@@ -251,7 +251,24 @@ describe("shared-rest-adapter — messages", () => {
     const before = Date.now();
     coordinateSharedHistory.mockResolvedValue([
       { id: "user-message-1", role: "user", content: "hi", createdAt: 1_783_382_400_000 },
-      { id: "assistant-message-1", role: "assistant", content: "Hello!", interrupted: true },
+      {
+        id: "assistant-message-1",
+        role: "assistant",
+        content: "Hello!",
+        interrupted: true,
+        grounding: {
+          kind: "web_search",
+          query: "current greeting",
+          provider: "parallel",
+          observedAt: 1_783_382_400_000,
+          sourceUrls: ["https://source.example/result"],
+          sources: [
+            { url: "https://source.example/result", text: "PRIVATE_SOURCE_EXCERPT_MARKER" },
+          ],
+          text: "PRIVATE_PROVIDER_BODY_MARKER",
+          truncated: false,
+        },
+      },
     ]);
     const { messages } = await sharedRestMessagesGet(AGENT, AGENT, NAMESPACE);
     expect(messages[0]).toEqual({
@@ -268,6 +285,9 @@ describe("shared-rest-adapter — messages", () => {
     });
     expect(typeof messages[1]?.timestamp).toBe("number");
     expect(messages[1]?.timestamp).toBeLessThan(before - 60_000);
+    expect(JSON.stringify(messages)).not.toContain("PRIVATE_PROVIDER_BODY_MARKER");
+    expect(JSON.stringify(messages)).not.toContain("PRIVATE_SOURCE_EXCERPT_MARKER");
+    expect(JSON.stringify(messages)).not.toContain("grounding");
     expect(coordinateSharedHistory).toHaveBeenCalledWith(AGENT, AGENT, {
       namespace: NAMESPACE,
     });
@@ -317,6 +337,36 @@ describe("shared-rest-adapter — messages", () => {
       namespace: NAMESPACE,
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
     });
+  });
+
+  test("POST preserves generated media URLs as structured connector output", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "media",
+      result: {
+        text: "here's your video.\nhttps://media.example.com/dog.mp4",
+        actionResults: [
+          {
+            success: true,
+            data: {
+              actionName: "GENERATE_MEDIA",
+              mediaUrl: "https://media.example.com/dog.mp4",
+            },
+          },
+        ],
+      },
+    });
+
+    const out = await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "animate this dog",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+    );
+
+    expect(out.mediaUrls).toEqual(["https://media.example.com/dog.mp4"]);
   });
 
   test("POST preserves a consistent provider receipt and formats Server-Timing", async () => {

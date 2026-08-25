@@ -106,7 +106,7 @@ function WeatherTile(): React.JSX.Element {
           className="flex flex-col items-end text-right transition-opacity hover:opacity-80"
         >
           <Cloud
-            className={cn("h-7 w-7", WALLPAPER_TEXT.secondary)}
+            className={cn("size-7", WALLPAPER_TEXT.secondary)}
             aria-hidden
           />
           <div className="mt-1.5 text-sm font-medium text-white/80">
@@ -136,7 +136,7 @@ function WeatherTile(): React.JSX.Element {
           >
             <Icon
               data-home-weather-icon=""
-              className={cn("h-8 w-8 shrink-0", WALLPAPER_TEXT.primary)}
+              className={cn("size-8 shrink-0", WALLPAPER_TEXT.primary)}
               aria-hidden
             />
             <div

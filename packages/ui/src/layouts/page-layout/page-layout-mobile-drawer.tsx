@@ -66,7 +66,7 @@ export function PageLayoutMobileDrawer({
             data-testid="page-layout-mobile-sidebar-trigger"
             onClick={() => onMobileSidebarOpenChange(true)}
           >
-            <PanelLeftOpen className="h-4 w-4 shrink-0" />
+            <PanelLeftOpen className="size-4 shrink-0" />
             <span className="truncate">{drawerLabel}</span>
           </Button>
         </div>

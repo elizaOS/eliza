@@ -48,12 +48,12 @@ function TaskRow({
   return (
     <Button
       variant="ghost"
-      className="h-auto w-full min-w-0 justify-start rounded-sm px-2 py-2 text-left hover:bg-bg-hover"
+      className="h-auto w-full min-w-0 justify-start rounded-sm p-2 text-left hover:bg-bg-hover"
       onClick={() => onOpen(task.taskId)}
       aria-label={`${task.label}. ${status.label}. ${task.progressSummary}. Open in workbench.`}
     >
       <span
-        className={`mt-1 h-2 w-2 shrink-0 rounded-full ${status.className}`}
+        className={`mt-1 size-2 shrink-0 rounded-full ${status.className}`}
         aria-hidden="true"
       />
       <span className="min-w-0 flex-1">
@@ -135,16 +135,16 @@ export function OrchestratorTaskWidgetView({
           className="my-2 flex items-start gap-2 rounded-sm bg-danger/10 p-2 text-3xs text-danger"
           role="alert"
         >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{error}</span>
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 w-6 shrink-0 p-0 text-danger hover:bg-danger/15"
+            className="size-6 shrink-0 p-0 text-danger hover:bg-danger/15"
             onClick={onRetry}
             aria-label="Retry task progress"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className="size-3.5" />
           </Button>
         </div>
       ) : snapshot?.tasks.length ? (
@@ -155,7 +155,7 @@ export function OrchestratorTaskWidgetView({
         </div>
       ) : (
         <EmptyWidgetState
-          icon={<Workflow className="h-5 w-5" />}
+          icon={<Workflow className="size-5" />}
           title={t("agentorchestrator.noTasks", {
             defaultValue: "No orchestration tasks yet",
           })}

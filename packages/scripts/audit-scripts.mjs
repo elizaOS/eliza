@@ -125,6 +125,8 @@ const ALLOWED_EXACT = new Set([
   "evidence:open",
   "evidence:review:no-open",
   "evidence:certify",
+  // Destructive operator-only reset used before validating a clean desktop install.
+  "desktop:clean-install-state",
   "seed:messages",
 ]);
 
@@ -140,7 +142,7 @@ const ALLOWED_EXACT = new Set([
 const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
   [
     "run-scenario-benchmark.mjs",
-    "scenario-runner weekly report harness invoked by packages/training/scripts/collect_trajectories.py; its CI workflow moved to https://github.com/elizaOS/benchmarks",
+    "scenario benchmark wrapper invoked by packages/training/scripts/collect_trajectories.py",
   ],
   [
     "audit-bin-export-subpaths.mjs",

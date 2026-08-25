@@ -12,12 +12,12 @@ interface ApiKeyEmptyStateProps {
 export function ApiKeyEmptyState({ onCreateKey }: ApiKeyEmptyStateProps) {
   return (
     <EmptyState
-      icon={<KeyRound className="h-7 w-7 text-muted" />}
+      icon={<KeyRound className="size-7 text-muted" />}
       title="No API keys yet"
       description="Create your first API key to start authenticating requests and tracking usage across the platform."
       action={
         <BrandButton variant="primary" onClick={onCreateKey}>
-          <Plus className="mr-2 h-4 w-4" />
+          <Plus className="mr-2  size-4" />
           Create API Key
         </BrandButton>
       }

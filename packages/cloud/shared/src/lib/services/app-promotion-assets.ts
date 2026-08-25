@@ -1,4 +1,5 @@
 // Coordinates cloud service app promotion assets behavior behind route handlers.
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import { z } from "zod";
 import type { App } from "../../db/repositories";
@@ -477,14 +478,19 @@ Return ONLY valid JSON. No markdown, no explanation.`;
     // Note: When ANTHROPIC_COT_BUDGET is set, @ai-sdk/anthropic silently strips temperature,
     // topP, and topK when extended thinking is active. We explicitly disable extended thinking
     // (pass budget=0) to preserve temperature control for creative promotional content quality.
-    const { text } = await generateText({
+    const result = await generateText({
       model: getLanguageModel(copyModel),
       ...mergeAnthropicCotProviderOptions(copyModel, process.env, 0),
       temperature: 0.8,
       prompt,
     });
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "anthropic",
+      model: copyModel,
+    });
 
-    const parsed = parseAiJson(text, AdCopyVariantsSchema, "ad copy variants");
+    const parsed = parseAiJson(result.text, AdCopyVariantsSchema, "ad copy variants");
 
     await contentSafetyService.assertSafeForPublicUse({
       surface: "promotion_copy",

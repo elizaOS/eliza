@@ -460,7 +460,7 @@ export function HomePill({
             <span
               key={dot.id}
               data-testid="shell-home-pill-process-dot"
-              className="home-pill-process-dot h-[5px] w-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
+              className="home-pill-process-dot size-[5px] rounded-full bg-white/90 motion-reduce:animate-none"
               style={{ animationDelay: `${dot.delayMs}ms` }}
             />
           ))}

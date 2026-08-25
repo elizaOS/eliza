@@ -5,8 +5,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubOctokitClient } from "../types.js";
 import {
+  compareTriagedNotifications,
   fetchAllUnreadNotifications,
   formatTriageSummary,
+  type TriagedNotification,
 } from "./notification-triage.js";
 
 describe("fetchAllUnreadNotifications", () => {
@@ -127,5 +129,107 @@ describe("formatTriageSummary", () => {
     expect(formatTriageSummary(25, 1000, true)).toBe(
       "Triaged 25 of at least 1000 unread notification(s)",
     );
+  });
+
+  it("handles NaN scores safely when sorting triaged notifications", () => {
+    const triaged = [
+      {
+        id: "n-1",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: NaN,
+      },
+      {
+        id: "n-2",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 100,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("n-2");
+    expect(triaged[1]?.id).toBe("n-1");
+  });
+
+  it("tie-breaks equal scores by id deterministically", () => {
+    const triaged = [
+      {
+        id: "z-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t1",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+      {
+        id: "a-id",
+        reason: "mention",
+        repo: "a/b",
+        title: "t2",
+        subjectType: "Issue",
+        url: null,
+        updatedAt: new Date().toISOString(),
+        score: 10,
+      },
+    ];
+
+    triaged.sort(compareTriagedNotifications);
+
+    expect(triaged[0]?.id).toBe("a-id");
+    expect(triaged[1]?.id).toBe("z-id");
+  });
+});
+
+describe("compareTriagedNotifications", () => {
+  const base: Omit<TriagedNotification, "id" | "score"> = {
+    reason: "mention",
+    repo: "elizaOS/eliza",
+    title: "(untitled)",
+    subjectType: "Issue",
+    url: null,
+    updatedAt: "2026-08-16T00:00:00Z",
+  };
+  const at = (id: string, score: number): TriagedNotification => ({
+    ...base,
+    id,
+    score,
+  });
+
+  it("orders the highest score first", () => {
+    const triaged = [at("n-low", 10), at("n-high", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-high", "n-low"]);
+  });
+
+  it("keeps a total order when a score is not finite", () => {
+    const triaged = [at("n-nan", Number.NaN), at("n-scored", 100)];
+    triaged.sort(compareTriagedNotifications);
+    expect(triaged.map((t) => t.id)).toEqual(["n-scored", "n-nan"]);
+
+    expect(
+      compareTriagedNotifications(at("n-nan", Number.NaN), at("n-scored", 100)),
+    ).toBeGreaterThan(0);
+    expect(
+      compareTriagedNotifications(at("n-scored", 100), at("n-nan", Number.NaN)),
+    ).toBeLessThan(0);
+  });
+
+  it("tie-breaks equal scores on notification id", () => {
+    expect(compareTriagedNotifications(at("b", 5), at("a", 5))).toBeGreaterThan(
+      0,
+    );
+    expect(compareTriagedNotifications(at("a", 5), at("b", 5))).toBeLessThan(0);
   });
 });

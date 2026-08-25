@@ -104,7 +104,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
     <div className="rounded-md border border-border bg-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-5 w-5 text-accent" />
+          <ShieldCheck className="size-5 text-accent" />
           <div>
             <p className="text-sm font-medium text-txt">
               {request.challengeKind} approval
@@ -140,9 +140,9 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
               className="w-full"
             >
               {signing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Wallet className="h-4 w-4" />
+                <Wallet className="size-4" />
               )}
               Sign with wallet & approve
             </Button>
@@ -182,9 +182,9 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
               disabled={busy || signature.trim().length === 0}
             >
               {approve.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <CheckCircle2 className="h-4 w-4" />
+                <CheckCircle2 className="size-4" />
               )}
               Approve
             </Button>
@@ -195,7 +195,7 @@ function ApprovalCard({ request }: { request: ApprovalRequest }) {
               disabled={busy || signature.trim().length === 0}
             >
               {deny.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : null}
               Deny
             </Button>
@@ -212,7 +212,7 @@ export function ApprovalsTab() {
   if (query.isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted" />
+        <Loader2 className="size-5 animate-spin text-muted" />
       </div>
     );
   }

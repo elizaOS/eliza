@@ -364,7 +364,38 @@ export default scenario({
             pattern:
               "Add a todo to cover natural language routing(?![\\s\\S]*message:user:\\n)",
           },
+          // `toolNames` is set equality against the planner's ACTUAL tool
+          // surface, and retrieval ranks the catalog without ever narrowing it
+          // ("Retrieval ranks every parent; it never limits availability" —
+          // core/src/runtime/action-retrieval.ts). On this lane the runner
+          // registers the whole personal-assistant + goals roster, so the
+          // planner is offered every OWNER_* family, not just the todos one.
+          // Listing a subset matches nothing and the turn dies as an unmatched
+          // model call. Keep this list in sync with the plugins
+          // scenario-runner/src/runtime-factory.ts registers for the simulated
+          // profile.
           toolNames: [
+            "OWNER_REMINDERS",
+            "OWNER_REMINDERS_CREATE",
+            "OWNER_REMINDERS_UPDATE",
+            "OWNER_REMINDERS_DELETE",
+            "OWNER_REMINDERS_COMPLETE",
+            "OWNER_REMINDERS_SKIP",
+            "OWNER_REMINDERS_SNOOZE",
+            "OWNER_REMINDERS_REVIEW",
+            "OWNER_ALARMS",
+            "OWNER_ALARMS_CREATE",
+            "OWNER_ALARMS_UPDATE",
+            "OWNER_ALARMS_DELETE",
+            "OWNER_ALARMS_COMPLETE",
+            "OWNER_ALARMS_SKIP",
+            "OWNER_ALARMS_SNOOZE",
+            "OWNER_ALARMS_REVIEW",
+            "OWNER_GOALS",
+            "OWNER_GOALS_CREATE",
+            "OWNER_GOALS_UPDATE",
+            "OWNER_GOALS_DELETE",
+            "OWNER_GOALS_REVIEW",
             "OWNER_TODOS",
             "OWNER_TODOS_CREATE",
             "OWNER_TODOS_UPDATE",
@@ -373,6 +404,16 @@ export default scenario({
             "OWNER_TODOS_SKIP",
             "OWNER_TODOS_SNOOZE",
             "OWNER_TODOS_REVIEW",
+            "OWNER_ROUTINES",
+            "OWNER_ROUTINES_CREATE",
+            "OWNER_ROUTINES_UPDATE",
+            "OWNER_ROUTINES_DELETE",
+            "OWNER_ROUTINES_COMPLETE",
+            "OWNER_ROUTINES_SKIP",
+            "OWNER_ROUTINES_SNOOZE",
+            "OWNER_ROUTINES_REVIEW",
+            "OWNER_ROUTINES_SCHEDULE_SUMMARY",
+            "OWNER_ROUTINES_SCHEDULE_INSPECT",
             "TODO",
             "REPLY",
             "IGNORE",

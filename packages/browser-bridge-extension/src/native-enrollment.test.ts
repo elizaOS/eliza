@@ -12,6 +12,8 @@ import {
   type NativeEnrollmentRequest,
   type NativeEnrollmentResponse,
   type NativeEnrollmentState,
+  type NativeRevokeRequest,
+  revokeNativeCompanion,
   shouldProbeRevokedEnrollment,
 } from "./native-enrollment";
 
@@ -69,6 +71,43 @@ afterEach(() => {
 });
 
 describe("native enrollment", () => {
+  it("revokes through a strictly bound native owner channel", async () => {
+    let observed: NativeRevokeRequest | null = null;
+    await expect(
+      revokeNativeCompanion({
+        config: {
+          apiBaseUrl: "http://127.0.0.1:31337",
+          companionId: "companion-123",
+          pairingToken: "secret-token-value",
+          pairingTokenExpiresAt: new Date(NOW + 60 * 60 * 1_000).toISOString(),
+          browser: "chrome",
+          profileId: PROFILE_ID,
+          profileLabel: "Work",
+          label: "Chrome Work",
+        },
+        extensionId: "abcdefghijklmnopabcdefghijklmnop",
+        extensionVersion: "2.0.3",
+        randomUUID: () => PROFILE_ID,
+        randomBytes: () => new Uint8Array(32).fill(7),
+        send: async (request) => {
+          observed = request;
+          return {
+            v: 1,
+            type: "browser_bridge.revoke_result",
+            requestId: request.requestId,
+            nonce: request.nonce,
+            revoked: true,
+          };
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(observed).toMatchObject({
+      type: "browser_bridge.revoke",
+      companionId: "companion-123",
+      profileId: PROFILE_ID,
+    });
+  });
+
   it("probes an owner reset only on the bounded recovery alarm", () => {
     expect(shouldProbeRevokedEnrollment("alarm", "recovery_required")).toBe(
       true,
@@ -257,6 +296,39 @@ describe("native enrollment", () => {
     await expect(Promise.all([first, second])).resolves.toHaveLength(2);
   });
 
+  it("fences an in-flight enrollment without clearing disconnect suppression", async () => {
+    let resolveResponse: ((value: unknown) => void) | null = null;
+    let request: NativeEnrollmentRequest | null = null;
+    const test = harness(
+      async (nextRequest) =>
+        await new Promise((resolve) => {
+          request = nextRequest;
+          resolveResponse = resolve;
+        }),
+    );
+    const enrollment = test.coordinator.enroll({
+      browser: "chrome",
+      profileId: PROFILE_ID,
+    });
+    await vi.waitFor(() => expect(request).not.toBeNull());
+
+    const cancellation = test.coordinator.cancel();
+    resolveResponse?.(resultFor(request as NativeEnrollmentRequest));
+
+    await expect(enrollment).rejects.toMatchObject({
+      code: "native_enrollment_cancelled",
+      retryable: false,
+    });
+    await expect(cancellation).resolves.toEqual([
+      expect.objectContaining({
+        companionId: "companion-123",
+        browser: "chrome",
+        profileId: PROFILE_ID,
+      }),
+    ]);
+    expect(test.state()).toEqual(EMPTY_NATIVE_ENROLLMENT_STATE);
+  });
+
   it("times out, persists bounded backoff, and blocks an early retry", async () => {
     vi.useFakeTimers();
     const test = harness(async () => await new Promise(() => undefined), 100);
@@ -278,6 +350,42 @@ describe("native enrollment", () => {
     await expect(
       test.coordinator.enroll({ browser: "chrome", profileId: PROFILE_ID }),
     ).rejects.toMatchObject({ code: "native_enrollment_backoff" });
+  });
+
+  it("keeps a timed-out native request in the cancellation barrier and returns its late companion", async () => {
+    vi.useFakeTimers();
+    let request: NativeEnrollmentRequest | null = null;
+    let resolveResponse: ((value: unknown) => void) | null = null;
+    const test = harness(
+      async (nextRequest) =>
+        await new Promise((resolve) => {
+          request = nextRequest;
+          resolveResponse = resolve;
+        }),
+      100,
+    );
+    const enrollment = test.coordinator.enroll({
+      browser: "chrome",
+      profileId: PROFILE_ID,
+    });
+    await vi.waitFor(() => expect(request).not.toBeNull());
+    const rejection = expect(enrollment).rejects.toMatchObject({
+      code: "native_enrollment_timeout",
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    await rejection;
+
+    let cancellationSettled = false;
+    const cancellation = test.coordinator.cancel().then((configs) => {
+      cancellationSettled = true;
+      return configs;
+    });
+    await Promise.resolve();
+    expect(cancellationSettled).toBe(false);
+    resolveResponse?.(resultFor(request as NativeEnrollmentRequest));
+    await expect(cancellation).resolves.toEqual([
+      expect.objectContaining({ companionId: "companion-123" }),
+    ]);
   });
 
   it("lets one explicit retry bypass backoff without bypassing validation", async () => {

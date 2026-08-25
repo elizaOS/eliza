@@ -87,6 +87,9 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		getRoom: vi.fn(async () => null),
+		// Stage 1 reads the response-bypass channel/source settings before it can
+		// classify a turn as ambient; the fixture configures none of them.
+		getSetting: vi.fn(() => undefined),
 		reportError: vi.fn(),
 		responseHandlerFieldRegistry,
 		responseHandlerFieldEvaluators: [

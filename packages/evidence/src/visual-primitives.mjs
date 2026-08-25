@@ -120,7 +120,13 @@ export function quantizePalette(data, opts = {}) {
     if (bin) bin.count += 1;
     else bins.set(key, { r, g, b, count: 1 });
   }
-  const sorted = [...bins.values()].sort((x, y) => y.count - x.count);
+  const sorted = [...bins.values()].sort((x, y) => {
+    const yCount =
+      typeof y.count === "number" && Number.isFinite(y.count) ? y.count : 0;
+    const xCount =
+      typeof x.count === "number" && Number.isFinite(x.count) ? x.count : 0;
+    return yCount - xCount || x.r - y.r || x.g - y.g || x.b - y.b;
+  });
   const denom = totalOpaque || 1;
   const swatches = sorted.slice(0, topK).map((bin) => ({
     rgb: [bin.r, bin.g, bin.b],

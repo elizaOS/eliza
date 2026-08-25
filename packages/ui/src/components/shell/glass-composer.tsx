@@ -86,7 +86,7 @@ export function GlassIconButton({
         disabled && "opacity-40",
       )}
     >
-      <Icon className="h-[26px] w-[26px]" aria-hidden={true} />
+      <Icon className="size-[26px]" aria-hidden={true} />
     </Button>
   );
 }

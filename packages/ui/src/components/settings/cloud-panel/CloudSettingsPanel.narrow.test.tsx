@@ -10,9 +10,19 @@ vi.mock("../../../hooks/useMediaQuery", () => ({
   useMediaQuery: () => false,
 }));
 
+vi.mock("../../../state", () => ({
+  useAppSelector: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({ elizaCloudConnected: false }),
+}));
+
+vi.mock("./cloud-management-auth", () => ({
+  useHasCloudManagementCredential: () => false,
+}));
+
 vi.mock("./cloud-panel-routing", () => ({
   navigateCloudPanel: vi.fn(),
   readCloudPanelHash: () => "general",
+  replaceCloudPanel: vi.fn(),
   subscribeCloudPanelHash: () => () => {},
 }));
 

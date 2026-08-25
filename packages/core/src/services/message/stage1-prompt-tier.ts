@@ -10,6 +10,7 @@ import type { Memory } from "../../types/memory";
 import {
 	MESSAGE_SOURCE_CLIENT_CHAT,
 	MESSAGE_SOURCE_SUB_AGENT,
+	MESSAGE_SOURCE_TRIGGER_PROMPT,
 } from "../../types/message-source";
 import { ChannelType } from "../../types/primitives";
 /**
@@ -31,7 +32,10 @@ export const TEXT_GROUP_CHANNEL_TYPES: ReadonlySet<string> = new Set([
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 
 /** Sources that bypass should-respond entirely — always respond-likely. */
-const ALWAYS_RESPOND_SOURCES: readonly string[] = [MESSAGE_SOURCE_CLIENT_CHAT];
+const ALWAYS_RESPOND_SOURCES: readonly string[] = [
+	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_TRIGGER_PROMPT,
+];
 
 function metadataRecord(value: unknown): Record<string, unknown> | undefined {
 	return typeof value === "object" && value !== null && !Array.isArray(value)

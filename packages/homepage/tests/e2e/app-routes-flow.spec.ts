@@ -460,6 +460,7 @@ test("landing keeps content reachable on a small viewport", async ({
 
   const contactSheet = page.getByRole("dialog");
   await expect(contactSheet).toBeVisible();
+  await expect(contactSheet).toHaveAccessibleName("Eliza");
   const textAction = contactSheet.getByRole("button", {
     name: "Text Eliza on iMessage",
   });

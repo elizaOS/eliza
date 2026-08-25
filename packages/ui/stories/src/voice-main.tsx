@@ -778,19 +778,7 @@ function ComparisonStage() {
           height: "100%",
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: 16,
-          transform: "translateX(-50%)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-          alignItems: "center",
-          maxWidth: "94vw",
-        }}
-      >
+      <div style={selectorStackStyle}>
         {SELECTOR_ROWS.map((row) => (
           <div key={row.label} style={pillRowStyle}>
             <span style={rowLabelStyle}>{row.label}</span>
@@ -833,6 +821,18 @@ function ComparisonStage() {
     </div>
   );
 }
+
+const selectorStackStyle: CSSProperties = {
+  position: "absolute",
+  left: "50%",
+  top: 16,
+  transform: "translateX(-50%)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  alignItems: "center",
+  maxWidth: "94vw",
+};
 
 const pillRowStyle: CSSProperties = {
   display: "flex",

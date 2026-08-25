@@ -2602,9 +2602,9 @@ export function NotificationsHomeCenter({
           <button
             type="button"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-3 text-xs font-semibold text-black transition-colors hover:bg-orange-600"
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-accent px-3 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover"
           >
-            <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+            <RefreshCw aria-hidden className="size-3.5" />
             Retry
           </button>
         </div>
@@ -2791,7 +2791,7 @@ export function NotificationsHomeCenter({
               ),
               transition: isPulling ? "none" : undefined,
             }}
-            className="eliza-notif-pull-reveal eliza-notif-shade-transition flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45"
+            className="eliza-notif-pull-reveal eliza-notif-shade-transition flex min-h-14 items-center justify-center p-3 text-2xs font-medium text-white/45"
           >
             No Notifications
           </li>

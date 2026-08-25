@@ -47,6 +47,14 @@ const BOOT_RECOVERY_TURN_ID = "boot:recovery";
  */
 export const BOOT_STALL_AFTER_MS = 90_000;
 
+/**
+ * How long a fresh trouble kind must persist before its card auto-opens the
+ * chat. Connection-state flaps (failed ↔ retrying) mint and clear trouble in
+ * under a second; opening on the leading edge popped a window whose card the
+ * same flap had already removed — an empty sheet. Exported for tests.
+ */
+export const BOOT_RECOVERY_OPEN_DEBOUNCE_MS = 1_500;
+
 const RELOGIN_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}relogin=Re-log in`;
 const RETRY_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry=Try again`;
 const RETRY_HANDOFF_CHOICE = `${BOOT_RECOVERY_ACTION_PREFIX}retry-handoff=Retry setup`;
@@ -247,10 +255,26 @@ export function useBootRecoveryConductor(
 
   const troubleKind = trouble === null ? null : trouble.kind;
   // The resting overlay shows no transcript, so a card seeded while the sheet
-  // is collapsed would be silent. On the FIRST seed of a trouble episode (null
-  // → non-null), open the chat so the agent's ask is actually seen; updates
-  // within the same episode never re-open (the user may have collapsed it).
-  const spokeRef = React.useRef(false);
+  // is collapsed would be silent. On the first seed of a trouble KIND, open
+  // the chat so the agent's ask is actually seen. The spoken set survives
+  // episode resets on purpose: a flapping signal (connection failed ↔
+  // retrying, a stalled boot clearing and re-stalling) mints a fresh episode
+  // every cycle, and per-episode opens turned one interruption into a
+  // popup-every-two-minutes loop of empty sheets (the card was often removed
+  // by the same flap before the user saw it). A given kind therefore
+  // interrupts at most once per app session; the card itself still reseeds so
+  // an expanded transcript always shows the current ask.
+  const spokenKindsRef = React.useRef<Set<string>>(new Set());
+  const openDebounceRef = React.useRef<number | null>(null);
+  React.useEffect(
+    () => () => {
+      if (openDebounceRef.current !== null) {
+        window.clearTimeout(openDebounceRef.current);
+        openDebounceRef.current = null;
+      }
+    },
+    [],
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: `cardVersion` is a re-render nonce — releaseOverride bumps it so the live card reseeds after an action settles on an unchanged trouble kind.
   React.useEffect(() => {
     if (troubleKind === null) {
@@ -258,8 +282,14 @@ export function useBootRecoveryConductor(
         window.clearTimeout(retryHandoffReleaseTimerRef.current);
         retryHandoffReleaseTimerRef.current = null;
       }
+      if (openDebounceRef.current !== null) {
+        // The trouble cleared before the debounce fired: the card this open
+        // was announcing is being removed right now, so an open would reveal
+        // an empty sheet. Drop it.
+        window.clearTimeout(openDebounceRef.current);
+        openDebounceRef.current = null;
+      }
       overrideRef.current = null;
-      spokeRef.current = false;
       removeTurn();
       return;
     }
@@ -267,9 +297,18 @@ export function useBootRecoveryConductor(
     const current = troubleRef.current;
     if (current) {
       upsertTurn(cardToTurn(liveCard(current)));
-      if (!spokeRef.current) {
-        spokeRef.current = true;
-        dispatchChatOpen();
+      if (
+        !spokenKindsRef.current.has(current.kind) &&
+        openDebounceRef.current === null
+      ) {
+        spokenKindsRef.current.add(current.kind);
+        // Hold the open briefly so a trouble blip that clears immediately
+        // (observed as connection-state flaps in the wild) cancels it instead
+        // of popping a window whose card has already been deleted.
+        openDebounceRef.current = window.setTimeout(() => {
+          openDebounceRef.current = null;
+          dispatchChatOpen();
+        }, BOOT_RECOVERY_OPEN_DEBOUNCE_MS);
       }
     }
   }, [troubleKind, cardVersion, upsertTurn, removeTurn]);

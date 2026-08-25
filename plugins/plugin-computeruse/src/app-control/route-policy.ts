@@ -14,10 +14,7 @@ export type AppControlRouteStatus =
   | "disabled_by_default"
   | "policy_blocked";
 
-export type AppControlPointerEffect =
-  | "none"
-  | "software_only"
-  | "physical";
+export type AppControlPointerEffect = "none" | "software_only" | "physical";
 
 export interface AppControlRouteCapability {
   id: AppControlRouteId;

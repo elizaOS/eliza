@@ -3,7 +3,8 @@
  * plugin-app-control action against seeded scenario views. Runs on the
  * pr-deterministic lane under the model provider (fixtures pin the routing).
  */
-import { promises as fs } from "node:fs";
+import { promises as fs, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ModelType } from "@elizaos/core";
 import { matchesScenarioInput } from "@elizaos/core/testing";
@@ -201,8 +202,21 @@ const views = [
   },
 ];
 
-const appLoadDirectory = "/tmp/eliza-app-control-nl-routing/apps";
-const repoRoot = "/tmp/eliza-app-control-nl-routing/repo";
+/**
+ * Fixture tree for this scenario. The seed and cleanup steps `rm -rf` this
+ * root, so it must never be a path a second runner process could also own:
+ * a shared constant under /tmp let two concurrent runs on one host delete
+ * each other's seeded apps and plugin sources mid-run, which surfaced as
+ * "Not a directory" / "Could not locate the source directory" failures on
+ * whichever run lost the race. Keying the root on the process id keeps
+ * concurrent runs isolated without adding module-load filesystem work.
+ */
+const fixtureRoot = path.join(
+  realpathSync(os.tmpdir()),
+  `eliza-app-control-nl-routing-${process.pid}`,
+);
+const appLoadDirectory = path.join(fixtureRoot, "apps");
+const repoRoot = path.join(fixtureRoot, "repo");
 const feedPluginDir = path.join(repoRoot, "plugins", "plugin-feed");
 const loadAppsInput = `Load apps from ${appLoadDirectory} directory`;
 const editFeedBoardInput = "Edit view feed-board plugin";
@@ -315,7 +329,7 @@ export default scenario({
         previousEvaluators = runtime.evaluators;
         runtime.evaluators = [];
 
-        await fs.rm(path.dirname(appLoadDirectory), {
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });
@@ -716,7 +730,7 @@ export default scenario({
           previousEvaluators = null;
         }
         scenarioRuntime = null;
-        await fs.rm(path.dirname(appLoadDirectory), {
+        await fs.rm(fixtureRoot, {
           force: true,
           recursive: true,
         });

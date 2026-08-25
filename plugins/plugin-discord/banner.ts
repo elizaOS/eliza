@@ -5,7 +5,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import {
+	lifeOpsPassiveConnectorsEnabled,
+	truncateWellFormed,
+} from "@elizaos/core";
 import { listEnabledDiscordAccounts } from "./accounts";
 import { getDiscordSettings } from "./environment";
 import {
@@ -275,7 +278,11 @@ function mask(v: string): string {
  * @param maxLen - Maximum allowed length of the returned string; longer values are truncated with an ellipsis.
  * @returns A display string: `'(not set)'` if `value` is `undefined`, `null`, or an empty string; a masked representation if `sensitive` is true; otherwise the stringified value truncated to at most `maxLen` characters (truncated strings end with `'...'`).
  */
-function fmtVal(value: unknown, sensitive: boolean, maxLen: number): string {
+export function fmtVal(
+	value: unknown,
+	sensitive: boolean,
+	maxLen: number,
+): string {
 	let s: string;
 	if (value === undefined || value === null || value === "") {
 		s = "(not set)";
@@ -285,7 +292,7 @@ function fmtVal(value: unknown, sensitive: boolean, maxLen: number): string {
 		s = String(value);
 	}
 	if (s.length > maxLen) {
-		s = `${s.slice(0, maxLen - 3)}...`;
+		s = `${truncateWellFormed(s, maxLen - 3)}...`;
 	}
 	return s;
 }

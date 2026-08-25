@@ -183,3 +183,40 @@ describe("globHandler — read-only query stays silent", () => {
     expect(callback).not.toHaveBeenCalled();
   });
 });
+
+describe("globHandler — result ordering", () => {
+  it("returns newest first and breaks equal-mtime ties by path", async () => {
+    const { runtime, message } = await buildRuntime();
+    const orderDir = path.join(tmpRoot, "order");
+    await fs.mkdir(orderDir, { recursive: true });
+
+    await fs.mkdir(path.join(orderDir, "sub"), { recursive: true });
+
+    // Two files share an mtime, so only the tie-break separates them; a third
+    // is newer and must lead regardless of its path. The tied pair is arranged
+    // so that candidate discovery order (this directory's entries before the
+    // subdirectory's) is the reverse of path order.
+    const tied = new Date(1_700_000_000_000);
+    const newer = new Date(1_800_000_000_000);
+    const relativePaths = ["m-newest.ts", "z-tied.ts", "sub/a-tied.ts"];
+    for (const relativePath of relativePaths) {
+      const filePath = path.join(orderDir, relativePath);
+      await fs.writeFile(filePath, "export const X = 1;\n");
+      const mtime = relativePath === "m-newest.ts" ? newer : tied;
+      await fs.utimes(filePath, mtime, mtime);
+    }
+
+    const result = await globHandler(runtime, message, state, {
+      parameters: { pattern: "order/**/*.ts" },
+    });
+
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, unknown> | undefined;
+    const files = (data?.files as string[] | undefined) ?? [];
+    expect(files.map((filePath) => path.relative(orderDir, filePath))).toEqual([
+      "m-newest.ts",
+      path.join("sub", "a-tied.ts"),
+      "z-tied.ts",
+    ]);
+  });
+});

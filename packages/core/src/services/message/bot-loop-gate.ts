@@ -10,16 +10,20 @@
  * identically on gemma-4 and on frontier models: the model never gets the
  * chance to loop.
  *
- * Trip condition (ALL must hold; anything unverifiable fails OPEN into the
- * normal pipeline):
+ * The first gate enforces address precedence: a trusted bot-authored group
+ * turn is silent unless it directly addresses this agent. The second, older
+ * loop-depth gate stops a directly unaddressed exchange after N agent turns.
+ * Both require all relevant signals to be verifiable; uncertain authorship or
+ * room type fails OPEN into the normal pipeline:
  *   - the inbound message is positively bot-authored (connector-stamped
  *     `fromBot` — the same ground truth the transcript formatter and the
  *     bot-noise triage read; never name-guessing),
  *   - the room is a multi-party text/voice-group channel (group chat only —
  *     DMs are never gated),
- *   - the agent has already produced >= N consecutive turns since the last
- *     human message in the room (default N=2, configurable), i.e. an actual
- *     agent↔bot exchange with no human advancing the conversation.
+ *   - direct address bypasses both suppressions so intentional agent-to-agent
+ *     orchestration remains available,
+ *   - the depth gate additionally requires >= N consecutive agent turns since
+ *     the last human message in the room (default N=2, configurable).
  *
  * When tripped the turn ends with a deterministic IGNORE: no composeState, no
  * Stage-1 call, no reply. A human speaking in the room resets the counter
@@ -28,11 +32,9 @@
  * silence, never toward speaking, and it strictly ADDS to existing gating
  * (personality reply-gate, mute, bot-noise triage all still run).
  *
- * Layering with PR #25405 (register-aware + restraint defaults): #25405 adds
- * IGNORE-biased multi-agent rules to the shouldRespond PROMPTS ("never reply
- * to another bot's reply", "one speaker per human message"). Those are the
- * soft layer for models that read; this gate is the hard floor for models
- * that don't. Same policy, two enforcement strengths.
+ * The shared prompt policy remains the soft layer for models that read; these
+ * gates are the model-independent floor. Both use connector metadata rather
+ * than names or user-written speaker labels.
  *
  * Cost: one room messages-scan bounded to the signal window, issued only for
  * bot-authored group turns — exactly the query shape the runtime's
@@ -62,10 +64,46 @@ export interface BotLoopGateResult {
 	/** Why the gate did not apply, for debug logging. */
 	reason?:
 		| "disabled"
+		| "directly_addressed"
 		| "not_bot_authored"
 		| "not_group_channel"
 		| "below_threshold"
 		| "window_unavailable";
+}
+
+export interface BotGroupAddressGateResult {
+	/** True when an unaddressed, trusted bot-authored group turn must be silent. */
+	ignored: boolean;
+	reason:
+		| "not_bot_authored"
+		| "not_group_channel"
+		| "directly_addressed"
+		| "unaddressed_bot";
+}
+
+/**
+ * Enforce the response-precedence contract before any model call. Connector
+ * metadata establishes bot authorship; human-authored text that merely says
+ * "(bot)" can never enter this gate. A direct address wins so intentional
+ * agent-to-agent orchestration remains reachable.
+ */
+export async function runBotGroupAddressGate(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	explicitlyAddressesAgent: boolean;
+}): Promise<BotGroupAddressGateResult> {
+	const { runtime, message, explicitlyAddressesAgent } = args;
+	if (!isBotAuthoredMessage(message)) {
+		return { ignored: false, reason: "not_bot_authored" };
+	}
+	const channelType = await resolveChannelType(runtime, message);
+	if (!isMultiPartyChannel(channelType)) {
+		return { ignored: false, reason: "not_group_channel" };
+	}
+	if (explicitlyAddressesAgent) {
+		return { ignored: false, reason: "directly_addressed" };
+	}
+	return { ignored: true, reason: "unaddressed_bot" };
 }
 
 /** The gate is ON by default; opt out with ELIZA_BOT_LOOP_GATE=0|false|off. */
@@ -78,9 +116,7 @@ export function isBotLoopGateEnabled(runtime: IAgentRuntime): boolean {
 
 /**
  * Consecutive agent turns allowed into a human-free bot exchange before the
- * hard stop. Clamped to >= 1 so the agent can always answer a bot once (a
- * single bot question deserves a single answer; the loop starts at the
- * reply-to-a-reply).
+ * depth stop. Clamped to >= 1; directly addressed bot requests bypass it.
  */
 export function botLoopMaxAgentTurns(runtime: IAgentRuntime): number {
 	const raw = runtime.getSetting("ELIZA_BOT_LOOP_MAX_AGENT_TURNS");
@@ -101,14 +137,15 @@ export function botLoopMaxAgentTurns(runtime: IAgentRuntime): number {
 export async function runBotLoopGate(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
+	explicitlyAddressesAgent?: boolean;
 }): Promise<BotLoopGateResult> {
-	const { runtime, message } = args;
+	const { runtime, message, explicitlyAddressesAgent = false } = args;
 	if (!isBotLoopGateEnabled(runtime)) {
 		return { ignored: false, reason: "disabled" };
 	}
 	// Positively bot-authored inbound only. Human and untagged senders never
 	// enter the gate — a connector that omits `fromBot` degrades to normal
-	// behavior, exactly like the transcript "(bot)" tag.
+	// behavior. Transcript text and speaker labels are never authentication.
 	if (!isBotAuthoredMessage(message)) {
 		return { ignored: false, reason: "not_bot_authored" };
 	}
@@ -116,6 +153,11 @@ export async function runBotLoopGate(args: {
 	const channelType = await resolveChannelType(runtime, message);
 	if (!isMultiPartyChannel(channelType)) {
 		return { ignored: false, reason: "not_group_channel" };
+	}
+	// Direct address has higher precedence than bot-loop suppression. A named
+	// agent-to-agent request is intentional orchestration, not ambient reverb.
+	if (explicitlyAddressesAgent) {
+		return { ignored: false, reason: "directly_addressed" };
 	}
 	if (!message.roomId) {
 		return { ignored: false, reason: "window_unavailable" };
@@ -130,8 +172,12 @@ export async function runBotLoopGate(args: {
 			limit: GROUP_SIGNAL_WINDOW,
 			unique: false,
 		});
-	} catch {
-		// error-policy: a read failure must never mute the agent — fail open.
+	} catch (error) {
+		// error-policy:J4 This optional suppression gate deliberately degrades to
+		// the ordinary response pipeline when its bounded room read is unavailable.
+		runtime.reportError("BotLoopGate.window", error, {
+			roomId: message.roomId,
+		});
 		return { ignored: false, reason: "window_unavailable" };
 	}
 	const dialogue = window
@@ -140,7 +186,12 @@ export async function runBotLoopGate(args: {
 				entry.content?.type !== "action_result" &&
 				!isInternalBridgeMessage(entry),
 		)
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.sort((a, b) => {
+			const aSafe = Number.isFinite(a.createdAt ?? 0) ? (a.createdAt ?? 0) : 0;
+			const bSafe = Number.isFinite(b.createdAt ?? 0) ? (b.createdAt ?? 0) : 0;
+			if (aSafe !== bSafe) return aSafe - bSafe;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		})
 		.slice(-GROUP_SIGNAL_WINDOW);
 	const metrics = computeGroupConversationMetrics(dialogue, runtime.agentId);
 	const maxAgentTurns = botLoopMaxAgentTurns(runtime);

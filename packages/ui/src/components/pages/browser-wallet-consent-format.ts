@@ -72,6 +72,8 @@ export function decodeBase64ForPreview(base64: string): string {
 
 export function truncateMessageForDisplay(message: string, max = 240): string {
   const wellFormed = toWellFormedUnicode(message);
+  if (max <= 0) return "";
   if (wellFormed.length <= max) return wellFormed;
+  if (max === 1) return "…";
   return `${truncateWellFormed(wellFormed, Math.max(0, max))}… (${wellFormed.length - max} more chars)`;
 }

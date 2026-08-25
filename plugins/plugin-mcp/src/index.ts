@@ -60,4 +60,8 @@ export {
   type McpRegistryServer,
   searchMcpMarketplace,
 } from "./mcp-marketplace.js";
-export { handleMcpRoutes, type McpRouteContext } from "./routes-mcp.js";
+export {
+  handleMcpRoutes,
+  type McpRouteConfig,
+  type McpRouteContext,
+} from "./routes-mcp.js";

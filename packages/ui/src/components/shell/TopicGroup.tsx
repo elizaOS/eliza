@@ -105,7 +105,7 @@ function TitledTopicGroup({
           )}
         >
           <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-white/60"
+            className="size-1.5 shrink-0 rounded-full bg-white/60"
             aria-hidden
           />
           <span className="truncate text-sm-tight font-medium">{label}</span>

@@ -87,11 +87,11 @@ export function ModelHubView({
         return (
           <section key={bucket} className="flex flex-col gap-2">
             <header className="flex h-6 items-center gap-2">
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              <h3 className="text-2xs font-semibold uppercase tracking-wider text-muted">
                 {bucketLabel(bucket)}
               </h3>
               {isRecommended && (
-                <span className="rounded-full border border-primary/45 bg-primary/10 px-1.5 py-0.5 text-[10px] leading-none text-primary">
+                <span className="rounded-full border border-primary/45 bg-primary/10 px-1.5 py-0.5 text-2xs leading-none text-primary">
                   {t("modelhub.recommended", { defaultValue: "Recommended" })}
                 </span>
               )}
@@ -168,27 +168,27 @@ function ModelListRow({
           <div className="flex min-w-0 items-center gap-2">
             {isActive ? (
               <span
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-accent"
+                className="inline-flex size-5 shrink-0 items-center justify-center text-accent"
                 title={t("modelhub.active", { defaultValue: "Active" })}
                 role="img"
                 aria-label={t("modelhub.activeModel", {
                   defaultValue: "Active model",
                 })}
               >
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                <CheckCircle2 className="size-3.5" aria-hidden />
               </span>
             ) : null}
             <div className="min-w-0 flex-1 truncate font-semibold text-sm text-txt">
               {displayModelName(model)}
             </div>
             <span
-              className="shrink-0 rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] leading-none text-muted"
+              className="shrink-0 rounded-full border border-border/60 px-1.5 py-0.5 text-2xs leading-none text-muted"
               title={runtimeClassDescription(runtimeClass)}
             >
               {runtimeClassBadge(runtimeClass)}
             </span>
             <span
-              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center ${FIT_STYLES[fit]}`}
+              className={`inline-flex size-5 shrink-0 items-center justify-center ${FIT_STYLES[fit]}`}
               title={fitLabel(fit)}
               role="img"
               aria-label={t("modelhub.fitAria", {
@@ -196,7 +196,7 @@ function ModelListRow({
                 defaultValue: "Fit: {{fit}}",
               })}
             >
-              <span className="h-2 w-2 rounded-full bg-current" />
+              <span className="size-2 rounded-full bg-current" />
             </span>
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-muted text-xs">

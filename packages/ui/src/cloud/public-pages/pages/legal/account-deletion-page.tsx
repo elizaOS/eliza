@@ -11,7 +11,10 @@ export default function AccountDeletionPage() {
   const session = useSessionAuth();
 
   return (
-    <div className="theme-cloud min-h-[100dvh] bg-bg px-6 py-16 font-sans text-txt sm:px-8">
+    <div
+      className="theme-cloud h-[100dvh] overflow-y-auto bg-bg px-6 py-16 font-sans text-txt sm:px-8"
+      data-scroll-cert-scroller
+    >
       <main className="mx-auto max-w-3xl space-y-8">
         <div className="space-y-3 border-b border-border pb-6">
           <p className="text-sm font-medium text-accent">
@@ -27,7 +30,7 @@ export default function AccountDeletionPage() {
         </div>
 
         <section className="space-y-5 rounded-lg border border-border bg-bg-elevated p-6">
-          <ShieldCheck className="h-7 w-7 text-accent" />
+          <ShieldCheck className="size-7 text-accent" />
           <h2 className="text-xl font-semibold">Submit a verified request</h2>
           <p className="text-muted-strong">
             Sign in to verify ownership and check whether the complete,

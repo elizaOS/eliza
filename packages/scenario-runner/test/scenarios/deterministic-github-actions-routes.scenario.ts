@@ -16,6 +16,8 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { buildPreview } from "../../../../plugins/plugin-github/src/actions/issue-op.ts";
+import { buildReviewPreview } from "../../../../plugins/plugin-github/src/actions/pr-op.ts";
 import githubPlugin, {
   GitHubService,
 } from "../../../../plugins/plugin-github/src/index.ts";
@@ -453,6 +455,54 @@ function expectGithubPreview(
   return undefined;
 }
 
+function expectGithubConfirmation({
+  actionName,
+  expectedLedgerLength,
+  expectedPreview,
+  expectedSuccess,
+}: {
+  actionName: string;
+  expectedLedgerLength: number;
+  expectedPreview: string;
+  expectedSuccess: boolean;
+}): (execution: ScenarioTurnExecution) => string | undefined {
+  return (execution) => {
+    if (
+      execution.validation?.actionName !== actionName ||
+      execution.validation.accepted !== true
+    ) {
+      return `expected accepted ${actionName} validation, saw ${stableStringify(execution.validation)}`;
+    }
+    const result = isRecord(execution.responseBody)
+      ? execution.responseBody
+      : null;
+    if (!result || result.success !== expectedSuccess) {
+      return `expected confirmation success=${expectedSuccess}, saw ${stableStringify(result)}`;
+    }
+    const data = isRecord(result.data) ? result.data : null;
+    if (data?.requiresConfirmation !== true) {
+      return `expected requiresConfirmation=true, saw ${stableStringify(result)}`;
+    }
+    if (data.awaitingUserInput !== true) {
+      return `expected awaitingUserInput=true, saw ${stableStringify(result)}`;
+    }
+    if (data.preview !== expectedPreview) {
+      return `expected preview ${JSON.stringify(expectedPreview)}, saw ${JSON.stringify(data.preview)}`;
+    }
+    const prompt = `${expectedPreview} Reply yes to confirm or no to cancel.`;
+    if (result.text !== prompt) {
+      return `expected confirmation prompt ${JSON.stringify(prompt)}, saw ${JSON.stringify(result.text)}`;
+    }
+    if (!execution.responseText?.includes(prompt)) {
+      return `expected user-facing confirmation prompt, saw ${JSON.stringify(execution.responseText)}`;
+    }
+    if (githubLedger.length !== expectedLedgerLength) {
+      return `confirmation preview must not call Octokit; expected ledger length ${expectedLedgerLength}, saw ${githubLedger.length}`;
+    }
+    return undefined;
+  };
+}
+
 function expectGithubCreate(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -863,6 +913,15 @@ export default scenario({
           assignees: ["hubot", "octocat"],
         }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_ISSUE_ASSIGN",
+        expectedLedgerLength: 1,
+        expectedPreview: buildPreview("assign", REPO, "agent", {
+          number: 17,
+          assignees: ["hubot", "octocat"],
+        }),
+        expectedSuccess: false,
+      }),
     },
     {
       kind: "message",
@@ -878,6 +937,12 @@ export default scenario({
       options: {
         parameters: githubActionParameters("issue_close", { number: 17 }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_ISSUE_CLOSE",
+        expectedLedgerLength: 2,
+        expectedPreview: buildPreview("close", REPO, "agent", { number: 17 }),
+        expectedSuccess: false,
+      }),
     },
     {
       kind: "message",
@@ -897,6 +962,14 @@ export default scenario({
       options: {
         parameters: githubActionParameters("issue_reopen", { number: 17 }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_ISSUE_REOPEN",
+        expectedLedgerLength: 3,
+        expectedPreview: buildPreview("reopen", REPO, "agent", {
+          number: 17,
+        }),
+        expectedSuccess: false,
+      }),
     },
     {
       kind: "message",
@@ -919,6 +992,15 @@ export default scenario({
           body: COMMENT_BODY,
         }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_ISSUE_COMMENT",
+        expectedLedgerLength: 4,
+        expectedPreview: buildPreview("comment", REPO, "agent", {
+          number: 17,
+          body: COMMENT_BODY,
+        }),
+        expectedSuccess: false,
+      }),
     },
     {
       kind: "message",
@@ -937,6 +1019,15 @@ export default scenario({
           labels: ["scenario", "reviewed"],
         }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_ISSUE_LABEL",
+        expectedLedgerLength: 5,
+        expectedPreview: buildPreview("label", REPO, "agent", {
+          number: 17,
+          labels: ["scenario", "reviewed"],
+        }),
+        expectedSuccess: false,
+      }),
     },
     {
       kind: "message",
@@ -969,6 +1060,18 @@ export default scenario({
           body: REVIEW_BODY,
         }),
       },
+      assertTurn: expectGithubConfirmation({
+        actionName: "GITHUB_PR_REVIEW",
+        expectedLedgerLength: 8,
+        expectedPreview: buildReviewPreview(
+          "approve",
+          REPO,
+          17,
+          REVIEW_BODY,
+          "user",
+        ),
+        expectedSuccess: true,
+      }),
     },
     {
       kind: "message",

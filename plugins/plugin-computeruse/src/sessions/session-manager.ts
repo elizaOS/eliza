@@ -169,9 +169,7 @@ function sanitizeViewerUrl(value: string | undefined): string | undefined {
   return parsed.toString();
 }
 
-function isPointerPosition(
-  value: unknown,
-): value is { x: number; y: number } {
+function isPointerPosition(value: unknown): value is { x: number; y: number } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const position = value as Record<string, unknown>;
   return typeof position.x === "number" && typeof position.y === "number";

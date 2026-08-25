@@ -109,7 +109,7 @@ interface SystemStatus {
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
   approved: "bg-white/10 text-white/80 border-white/20",
-  processing: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  processing: "bg-accent/20 text-accent border-accent/30",
   completed: "bg-green-500/20 text-green-400 border-green-500/30",
   failed: "bg-red-500/20 text-red-400 border-red-500/30",
   rejected: "bg-red-500/20 text-red-400 border-red-500/30",
@@ -395,7 +395,7 @@ export default function RedemptionsPage(): React.JSX.Element {
               </p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-purple-400">
+              <p className="text-2xl font-bold text-accent">
                 {stats?.processing || 0}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -486,7 +486,7 @@ export default function RedemptionsPage(): React.JSX.Element {
               refetchStatus();
             }}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </BrandCard>
@@ -501,7 +501,7 @@ export default function RedemptionsPage(): React.JSX.Element {
           </div>
         ) : redemptions.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
-            <Wallet className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <Wallet className="size-12 mx-auto mb-3 opacity-50" />
             <p>
               {t("cloud.redemptions.noRedemptions", {
                 defaultValue: "No redemptions found",
@@ -599,37 +599,37 @@ export default function RedemptionsPage(): React.JSX.Element {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="size-8"
                         onClick={() => {
                           setSelectedRedemption(r);
                           setShowDetailsDialog(true);
                         }}
                       >
-                        <Eye className="h-4 w-4" />
+                        <Eye className="size-4" />
                       </Button>
                       {r.status === "pending" && (
                         <>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-green-400 hover:text-green-300"
+                            className="size-8 text-green-400 hover:text-green-300"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowApproveDialog(true);
                             }}
                           >
-                            <Check className="h-4 w-4" />
+                            <Check className="size-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-red-400 hover:text-red-300"
+                            className="size-8 text-red-400 hover:text-red-300"
                             onClick={() => {
                               setSelectedRedemption(r);
                               setShowRejectDialog(true);
                             }}
                           >
-                            <Ban className="h-4 w-4" />
+                            <Ban className="size-4" />
                           </Button>
                         </>
                       )}
@@ -638,9 +638,9 @@ export default function RedemptionsPage(): React.JSX.Element {
                           href={getExplorerUrl(r.network, r.tx_hash)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="h-8 w-8 flex items-center justify-center text-muted-foreground hover:text-txt-strong transition-colors"
+                          className="size-8 flex items-center justify-center text-muted-foreground hover:text-txt-strong transition-colors"
                         >
-                          <ExternalLink className="h-4 w-4" />
+                          <ExternalLink className="size-4" />
                         </a>
                       )}
                     </div>
@@ -776,7 +776,7 @@ export default function RedemptionsPage(): React.JSX.Element {
                     className="text-sm text-accent font-mono break-all hover:underline flex items-center gap-1"
                   >
                     {selectedRedemption.tx_hash}
-                    <ExternalLink className="h-3 w-3 shrink-0" />
+                    <ExternalLink className="size-3 shrink-0" />
                   </a>
                 </div>
               )}
@@ -860,10 +860,10 @@ export default function RedemptionsPage(): React.JSX.Element {
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleApprove} disabled={actionLoading}>
               {actionLoading ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
+                <RefreshCw className="size-4 animate-spin" />
               ) : (
                 <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
+                  <CheckCircle className="mr-2 size-4" />
                   {t("cloud.redemptions.approve", { defaultValue: "Approve" })}
                 </>
               )}
@@ -908,10 +908,10 @@ export default function RedemptionsPage(): React.JSX.Element {
               disabled={actionLoading || !rejectionReason.trim()}
             >
               {actionLoading ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
+                <RefreshCw className="size-4 animate-spin" />
               ) : (
                 <>
-                  <XCircle className="mr-2 h-4 w-4" />
+                  <XCircle className="mr-2 size-4" />
                   {t("cloud.redemptions.rejectAndRefund", {
                     defaultValue: "Reject & Refund",
                   })}

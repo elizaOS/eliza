@@ -54,8 +54,8 @@ const buttonVariants = cva(
         lg: "h-11 rounded-sm px-8 py-2.5",
         icon: "h-10 w-10 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
         "icon-sm":
-          "h-8 w-8 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
-        "icon-lg": "h-11 w-11",
+          "size-8 pointer-coarse:min-h-touch pointer-coarse:min-w-touch",
+        "icon-lg": "size-11",
       },
     },
     defaultVariants: {

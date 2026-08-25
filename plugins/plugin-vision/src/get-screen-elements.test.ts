@@ -151,4 +151,16 @@ describe("mergeScreenElements (#9105 GET_SCREEN element merge)", () => {
     });
     expect(out).toHaveLength(2);
   });
+
+  it("sorts screen elements safely when bbox coordinates contain NaN", () => {
+    const out = mergeScreenElements({
+      ocr: [
+        ocr("o-nan", "text nan", [NaN, NaN, 10, 10] as never, 0),
+        ocr("o-valid", "text valid", [10, 20, 10, 10], 0),
+      ],
+    });
+    expect(out).toHaveLength(2);
+    expect(out[0]?.id).toBe("o-nan");
+    expect(out[1]?.id).toBe("o-valid");
+  });
 });

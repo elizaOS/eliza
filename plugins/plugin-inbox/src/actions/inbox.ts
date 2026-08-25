@@ -335,7 +335,23 @@ function dedupeKey(item: InboxItem): string {
   return `id:${item.platform}::${item.id}`;
 }
 
-function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
+export function compareInboxItemsByReceivedAt(
+  a: InboxItem,
+  b: InboxItem,
+): number {
+  const aTime = Date.parse(a.receivedAt);
+  const bTime = Date.parse(b.receivedAt);
+  if (Number.isNaN(aTime) && Number.isNaN(bTime)) {
+    return a.id.localeCompare(b.id);
+  }
+  if (Number.isNaN(aTime)) return 1;
+  if (Number.isNaN(bTime)) return -1;
+  return bTime - aTime || a.id.localeCompare(b.id);
+}
+
+export function dedupeAndOrder(
+  items: readonly InboxItem[],
+): readonly InboxItem[] {
   const seen = new Map<string, InboxItem>();
   for (const item of items) {
     const key = dedupeKey(item);
@@ -351,14 +367,7 @@ function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
       seen.set(key, item);
     }
   }
-  return [...seen.values()].sort((a, b) => {
-    const aTime = Date.parse(a.receivedAt);
-    const bTime = Date.parse(b.receivedAt);
-    if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
-    if (Number.isNaN(aTime)) return 1;
-    if (Number.isNaN(bTime)) return -1;
-    return bTime - aTime;
-  });
+  return [...seen.values()].sort(compareInboxItemsByReceivedAt);
 }
 
 /**

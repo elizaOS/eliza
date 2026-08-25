@@ -10,7 +10,6 @@
  * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
-import { Button as NuphyButton } from "@extrastu/nuphy-ui";
 import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
 import { invokeDesktopBridgeRequest } from "../../../../bridge";
@@ -21,13 +20,14 @@ import {
   getPushToTalkAccelerator,
   setPushToTalkAccelerator,
 } from "../../../../state/push-to-talk-hotkey";
+import { Button } from "../../../ui/button";
 import {
-  NuphyRow,
-  NuphySelectRow,
-  NuphySwitchRow,
+  CloudRow,
+  CloudSelectRow,
+  CloudSwitchRow,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 /** Internal canonical combo form: lowercase modifier names + key, joined by `+`. */
 type Combo = string;
@@ -356,7 +356,7 @@ export function ShortcutsSection() {
           const isPending = pending?.id === shortcut.id;
           const conflictForThis = isPending ? conflict : undefined;
           return (
-            <NuphyRow
+            <CloudRow
               key={shortcut.id}
               label={shortcut.label}
               description={
@@ -367,15 +367,15 @@ export function ShortcutsSection() {
                 <div className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "min-w-[3.5rem] rounded-sm border border-hairline bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
+                      "min-w-[3.5rem] rounded-sm border border-border bg-surface px-2 py-1 text-center font-mono text-xs tabular-nums text-foreground",
                       isRecording && "border-accent/60 text-muted-foreground",
                     )}
                   >
                     {isRecording ? "…" : formatCombo(shortcut.combo)}
                   </span>
-                  <NuphyButton
+                  <Button
                     type="button"
-                    variant={isRecording ? "primary" : "secondary"}
+                    variant={isRecording ? "default" : "outline"}
                     size="sm"
                     aria-label={`Record ${shortcut.label} shortcut`}
                     disabled={shortcutMutationPending}
@@ -384,9 +384,9 @@ export function ShortcutsSection() {
                       setRecordingId(isRecording ? null : shortcut.id);
                     }}
                   >
-                    <Keyboard className="h-4 w-4" aria-hidden />
-                  </NuphyButton>
-                  <NuphyButton
+                    <Keyboard className="size-4" aria-hidden />
+                  </Button>
+                  <Button
                     type="button"
                     variant="ghost"
                     size="sm"
@@ -397,24 +397,21 @@ export function ShortcutsSection() {
                     }
                     onClick={() => resetCombo(shortcut.id)}
                   >
-                    <RotateCcw className="h-4 w-4" aria-hidden />
-                  </NuphyButton>
+                    <RotateCcw className="size-4" aria-hidden />
+                  </Button>
                 </div>
                 {isPending && conflictForThis ? (
                   <div
                     className="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
                     role="alert"
                   >
-                    <AlertTriangle
-                      className="h-3.5 w-3.5 shrink-0"
-                      aria-hidden
-                    />
+                    <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
                     <span className="flex-1">
                       This combo is used by “{conflictForThis.label}”. Override?
                     </span>
-                    <NuphyButton
+                    <Button
                       type="button"
-                      variant="primary"
+                      variant="default"
                       size="sm"
                       onClick={() =>
                         void overrideConflict(
@@ -426,19 +423,19 @@ export function ShortcutsSection() {
                       disabled={shortcutMutationPending}
                     >
                       Override
-                    </NuphyButton>
-                    <NuphyButton
+                    </Button>
+                    <Button
                       type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => setPending(null)}
                     >
                       Cancel
-                    </NuphyButton>
+                    </Button>
                   </div>
                 ) : null}
               </div>
-            </NuphyRow>
+            </CloudRow>
           );
         })}
       </SettingsGroup>
@@ -447,7 +444,7 @@ export function ShortcutsSection() {
         title="Mouse"
         footer="Use a mouse button as a recording trigger."
       >
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="shortcuts-mouse-enabled"
           group="shortcuts"
           icon={Mouse}
@@ -456,7 +453,7 @@ export function ShortcutsSection() {
           checked={mouseEnabled}
           onCheckedChange={setMouseEnabled}
         />
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="shortcuts-mouse-click-action"
           group="shortcuts"
           label="Click action"
@@ -466,7 +463,7 @@ export function ShortcutsSection() {
           options={CLICK_ACTION_OPTIONS}
           disabled={!mouseEnabled}
         />
-        <NuphySelectRow
+        <CloudSelectRow
           agentId="shortcuts-mouse-hold-action"
           group="shortcuts"
           label="Hold action"
@@ -482,7 +479,7 @@ export function ShortcutsSection() {
         title="Recording"
         footer="Protect against accidentally discarding long recordings."
       >
-        <NuphySwitchRow
+        <CloudSwitchRow
           agentId="shortcuts-confirm-cancel-long"
           group="shortcuts"
           label="Confirm cancel on long recordings"
@@ -491,7 +488,7 @@ export function ShortcutsSection() {
           onCheckedChange={setConfirmCancel}
         />
         {confirmCancel ? (
-          <NuphySelectRow
+          <CloudSelectRow
             agentId="shortcuts-cancel-threshold"
             group="shortcuts"
             label="Threshold"

@@ -81,6 +81,8 @@ export async function loadScenarioTestMocksForTests() {
 
 const DETERMINISTIC_MODEL_PROVIDER_NAME =
   "deterministic-model-provider" as const;
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
+  "ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 const SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX =
   "You are the owner's personal assistant. A scheduled task just fired and you must now write the message to send to the owner.";
 const SCHEDULED_DISPATCH_RENDER_INSTRUCTION_MARKER = "\nInstruction:\n";
@@ -89,6 +91,11 @@ const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
   "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
+// `EvaluatorService` (packages/core/src/services/evaluator.ts) runs every active
+// post-turn evaluator in one merged TEXT_SMALL call after EVERY turn. It is
+// runtime-wide background work, not scenario-specific: the prompt header below
+// is emitted verbatim by `renderSharedContext`.
+const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
   const [knowledgeGraphModule, approvalModule] = await Promise.all([
@@ -126,6 +133,13 @@ export interface RuntimeFactoryResult {
   pgliteDir: string;
   executionProfile: ScenarioExecutionProfile;
   registeredPluginPackages: readonly string[];
+  /**
+   * Action names this runtime carries *only* because some scenario declared the
+   * contributing package. Actions the runtime registers regardless are absent,
+   * so per-scenario scoping can hide a batch peer's plugin without ever hiding
+   * a baseline capability an undeclaring scenario legitimately uses.
+   */
+  scenarioDeclaredActionNames: readonly string[];
   providerName: LiveProviderName | typeof DETERMINISTIC_MODEL_PROVIDER_NAME;
   providerConfig:
     | LiveProviderConfig
@@ -148,6 +162,16 @@ function applyRuntimeSettings(
       /(API_KEY|TOKEN|SECRET|PASSWORD)/i.test(key),
     );
   }
+}
+
+export function disableScenarioEmbeddingCapability(
+  runtime: Pick<AgentRuntime, "setSetting">,
+): void {
+  // Core recall paths read this canonical host declaration before attempting
+  // TEXT_EMBEDDING. Omitting the provider alone is insufficient: a speculative
+  // recall call would be reported as a runtime error and quarantine the shared
+  // scenario process even though keyword-only recall is intentional here.
+  runtime.setSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING, false, false);
 }
 
 function isPlugin(value: unknown): value is Plugin {
@@ -192,6 +216,13 @@ async function runCleanupStep(
   }
 }
 
+export async function disposeScenarioProviderPlugin(
+  plugin: Pick<Plugin, "dispose"> | null,
+  runtime: AgentRuntime,
+): Promise<void> {
+  await plugin?.dispose?.(runtime);
+}
+
 function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
   const runtimeInternals = runtime as unknown as {
     startingServices?: Map<string, Promise<unknown>>;
@@ -212,6 +243,7 @@ function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
 }
 
 export interface CreateScenarioRuntimeOptions {
+  character?: Parameters<typeof createCharacter>[0];
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
@@ -481,6 +513,21 @@ function deterministicModelProviderConfig(): RuntimeFactoryResult["providerConfi
   };
 }
 
+// The merged post-turn evaluator call fires after every turn on the SAME
+// runtime the scenario drives, so it reaches the strict registry in scenarios
+// that never declared a model manifest. Left unanswered it is recorded as an
+// unexpected call and fails the whole scenario at `assertConsumed()`, even
+// though nothing in the scenario asserts evaluator output. Matched on the
+// header `renderSharedContext` emits plus the `## Active Evaluators` section
+// `renderPrompt` appends, so ordinary conversation text quoting the header
+// alone is never answered by this branch.
+export function isPostTurnEvaluationPrompt(prompt: string): boolean {
+  return (
+    prompt.startsWith(POST_TURN_EVALUATION_PROMPT_PREFIX) &&
+    prompt.includes("\n## Active Evaluators\n")
+  );
+}
+
 export function isScheduledDispatchRenderPrompt(prompt: string): boolean {
   return (
     prompt.startsWith(SCHEDULED_DISPATCH_RENDER_PROMPT_PREFIX) &&
@@ -579,6 +626,9 @@ type ScenarioDeterministicModelCall = {
   params?: {
     prompt?: unknown;
     messages?: unknown;
+    responseFormat?: unknown;
+    responseSchema?: unknown;
+    temperature?: unknown;
   };
 };
 
@@ -619,6 +669,50 @@ function deterministicCallTextCandidates(
   return candidates;
 }
 
+function isPostTurnEvaluationCall(
+  call: ScenarioDeterministicModelCall,
+): boolean {
+  if (call.modelType !== ModelType.TEXT_SMALL) return false;
+  const params = call.params;
+  if (!params || params.prompt !== undefined || params.temperature !== 0) {
+    return false;
+  }
+  if (!Array.isArray(params.messages) || params.messages.length !== 1) {
+    return false;
+  }
+  const message = params.messages[0];
+  if (
+    !isRecordLike(message) ||
+    message.role !== "user" ||
+    typeof message.content !== "string" ||
+    !isPostTurnEvaluationPrompt(message.content)
+  ) {
+    return false;
+  }
+  const responseFormat = params.responseFormat;
+  if (!isRecordLike(responseFormat) || responseFormat.type !== "json_object") {
+    return false;
+  }
+  const schema = params.responseSchema;
+  if (
+    !isRecordLike(schema) ||
+    schema.type !== "object" ||
+    !isRecordLike(schema.properties) ||
+    schema.additionalProperties !== false ||
+    !Array.isArray(schema.required)
+  ) {
+    return false;
+  }
+  const propertyKeys = Object.keys(schema.properties);
+  return (
+    propertyKeys.length > 0 &&
+    schema.required.length === propertyKeys.length &&
+    schema.required.every(
+      (requiredKey, index) => requiredKey === propertyKeys[index],
+    )
+  );
+}
+
 export function resolveScenarioDeterministicModelCall(
   call: ScenarioDeterministicModelCall,
 ): string | null {
@@ -632,6 +726,19 @@ export function resolveScenarioDeterministicModelCall(
     return null;
   }
   const candidates = deterministicCallTextCandidates(call);
+  // Checked first: the evaluator prompt embeds the turn's provider context, so
+  // a dispatch prompt delivered during the turn can appear INSIDE it. The
+  // post-turn header plus the evaluator's schema-bearing call shape are the
+  // more specific signal. Prompt text alone is untrusted scenario input and
+  // must not turn an ordinary model call into a fabricated empty evaluation.
+  if (isPostTurnEvaluationCall(call)) {
+    // "Nothing to record" is the empty shape the evaluator prompt itself
+    // prescribes. Every section is absent, so `processPreparedEntries` skips
+    // each evaluator without an error. Scenarios that need real evaluator
+    // output declare `modelFixtures: { mode: "fixtures" }`, which bypasses this
+    // resolver entirely and stays fail-closed.
+    return "{}";
+  }
   const bodyPrompt = candidates.find(isScheduledDispatchRenderPrompt);
   if (bodyPrompt) {
     return deterministicScheduledDispatchRenderText(bodyPrompt);
@@ -736,6 +843,7 @@ export async function createScenarioRuntime(
       "[scenario-runner] provider-qualified execution requires a live model provider",
     );
   }
+  let selectedProviderPlugin: Plugin | null = null;
   const preparedEnvironment =
     await prepareScenarioExecutionEnvironment(executionProfile);
   const { testMocks, mockedEnvironment } = preparedEnvironment;
@@ -805,9 +913,9 @@ export async function createScenarioRuntime(
     process.env.SELFCONTROL_HOSTS_FILE_PATH = scenarioHostsFilePath;
   }
 
-  const character = createCharacter({
-    name: options?.characterName ?? "ScenarioAgent",
-  });
+  const character = createCharacter(
+    options?.character ?? { name: options?.characterName ?? "ScenarioAgent" },
+  );
   const scenarioRuntimeSettings =
     executionProfile === "simulated"
       ? {
@@ -873,6 +981,9 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
+  if (skipEmbeddingPlugin) {
+    disableScenarioEmbeddingCapability(runtime);
+  }
   if (providerConfig.name === DETERMINISTIC_MODEL_PROVIDER_NAME) {
     if (!testMocks) {
       throw new Error(
@@ -920,6 +1031,7 @@ export async function createScenarioRuntime(
         `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
       );
     }
+    selectedProviderPlugin = providerPlugin;
     await runtime.registerPlugin(providerPlugin);
 
     if (providerConfig.name === "cli") {
@@ -1016,11 +1128,20 @@ export async function createScenarioRuntime(
     }
   }
 
+  // Anything already on the runtime at this point is baseline capability that
+  // exists no matter which scenarios are batched; only the delta below belongs
+  // to a scenario's own `requires.plugins` declaration.
+  const baselineActionNames = new Set(
+    runtime.actions.map((action) => action.name),
+  );
   const requiredPluginPackages = await registerScenarioRequiredPlugins(
     runtime,
     options?.requiredPlugins ?? [],
     executionProfile,
   );
+  const scenarioDeclaredActionNames = runtime.actions
+    .map((action) => action.name)
+    .filter((name) => !baselineActionNames.has(name));
   for (const packageName of requiredPluginPackages) {
     registeredPluginPackages.add(packageName);
   }
@@ -1076,6 +1197,14 @@ export async function createScenarioRuntime(
       }
     });
     cancelScenarioOnlyLazyServiceStarts(runtime);
+    await runCleanupStep("provider plugin dispose", async () => {
+      try {
+        await disposeScenarioProviderPlugin(selectedProviderPlugin, runtime);
+      } catch (err) {
+        // error-policy:J6 provider teardown must not prevent remaining runtime cleanup.
+        logger.debug(`[scenario-runner] provider plugin dispose error: ${err}`);
+      }
+    });
     await runCleanupStep("runtime.stop()", async () => {
       try {
         await runtime.stop();
@@ -1173,6 +1302,9 @@ export async function createScenarioRuntime(
     pgliteDir,
     executionProfile,
     registeredPluginPackages: [...registeredPluginPackages].sort(),
+    scenarioDeclaredActionNames: [
+      ...new Set(scenarioDeclaredActionNames),
+    ].sort(),
     providerName: providerConfig.name,
     providerConfig,
     cleanup,

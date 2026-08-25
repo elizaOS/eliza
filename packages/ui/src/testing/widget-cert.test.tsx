@@ -157,8 +157,8 @@ const BUTTON_BOXES: Record<string, Box> = {
   "btn-lg": box(0, 0, 88, 44), // h-11 = 44 (passes)
   "btn-default": box(0, 0, 96, 40), // h-10 = 40 (FAILS)
   "btn-sm": box(0, 0, 72, 36), // h-9 = 36 (FAILS)
-  "btn-icon": box(0, 0, 40, 40), // h-10 w-10 = 40 (FAILS)
-  "btn-icon-sm": box(0, 0, 32, 32), // h-8 w-8 = 32 (FAILS)
+  "btn-icon": box(0, 0, 40, 40), // size-10 = 40 (FAILS)
+  "btn-icon-sm": box(0, 0, 32, 32), // size-8 = 32 (FAILS)
 };
 
 describe("certifyWidget — demo-buttons view (tap-target)", () => {

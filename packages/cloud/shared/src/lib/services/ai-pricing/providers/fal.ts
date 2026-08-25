@@ -325,6 +325,41 @@ export function parseFalPricingEntries(
       );
       break;
     }
+    case "seedance25": {
+      const match = paragraph.match(/\$([\d.]+)\s+per\s+1000\s+tokens/i);
+      if (!match) {
+        throw new Error(`Unable to parse Seedance 2.5 pricing paragraph: ${paragraph}`);
+      }
+
+      const pricePerThousandTokens = Number(match[1]);
+      const pricePerSecond = (width: number, height: number) =>
+        ((width * height * 24) / 1024 / 1000) * pricePerThousandTokens;
+      entries.push(
+        buildFalEntry(
+          model,
+          "second",
+          pricePerSecond(864, 496),
+          { resolution: "480p" },
+          {
+            pricePerThousandTokens,
+            assumedAspectRatio: "16:9",
+          },
+        ),
+      );
+      entries.push(
+        buildFalEntry(
+          model,
+          "second",
+          pricePerSecond(1280, 720),
+          { resolution: "720p" },
+          {
+            pricePerThousandTokens,
+            assumedAspectRatio: "16:9",
+          },
+        ),
+      );
+      break;
+    }
   }
 
   return entries;

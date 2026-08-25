@@ -858,6 +858,8 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(endOfTurnLog?.[1]).toMatchObject({
       transcriptChars: "hello agent".length,
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
       configuredEndTimeoutMs: 640,
       turnActiveMs: expect.any(Number),
       firstTranscriptOffsetMs: expect.any(Number),
@@ -1838,6 +1840,8 @@ describe("voice-session WS lifecycle", () => {
       ([message]) => message === "[voice-session] first-turn latency",
     );
     expect(latencyLog?.[1]).toMatchObject({
+      callerResponseTurnIndex: 1,
+      isFirstCallerResponse: true,
       upstreamAttemptCount: 3,
       prewarmStatus: "not_configured",
       ttsTransportReadyMs: expect.any(Number),

@@ -78,9 +78,15 @@ export function unregisterOcrProvider(name: string): void {
 
 export function listOcrProviders(): readonly OcrProvider[] {
   return [...REGISTRY.values()].sort((a, b) => {
-    const aPriority = Number.isFinite(a.priority) ? a.priority : 0;
-    const bPriority = Number.isFinite(b.priority) ? b.priority : 0;
-    return bPriority - aPriority;
+    const aPriority =
+      typeof a.priority === "number" && Number.isFinite(a.priority)
+        ? a.priority
+        : 0;
+    const bPriority =
+      typeof b.priority === "number" && Number.isFinite(b.priority)
+        ? b.priority
+        : 0;
+    return bPriority - aPriority || a.name.localeCompare(b.name);
   });
 }
 

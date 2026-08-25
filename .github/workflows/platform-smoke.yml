@@ -1,9 +1,23 @@
-# This reusable workflow preserves deterministic macOS and Windows runtime proof
-# inside the single Develop Full authority.
+# This read-only workflow preserves deterministic macOS and Windows runtime
+# proof. Develop Full remains the sole automatic authority; manual dispatches
+# use the trusted develop definition to test one exact candidate commit.
 name: Platform Smoke
+run-name: Platform Smoke (${{ inputs.source_sha || github.sha }})
 
 on:
   workflow_call:
+    inputs:
+      source_sha:
+        description: Optional exact commit SHA for a trusted caller
+        required: false
+        type: string
+        default: ""
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character commit SHA to validate
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,9 +32,41 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
+      - name: Validate manual source request
+        if: inputs.source_sha != ''
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+            echo "::error::Manual Platform Smoke must be dispatched with --ref develop"
+            exit 1
+          fi
+          if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source_sha must be an exact lowercase 40-character commit SHA"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
           submodules: false
+
+      - name: Verify exact source checkout
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [ "$actual_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::Checked out $actual_sha instead of requested $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "Validated source: \`$actual_sha\`" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:

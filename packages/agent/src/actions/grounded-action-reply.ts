@@ -1,19 +1,17 @@
 /**
  * Renders the agent's user-facing reply for an action (LifeOps/Gmail/calendar) by
- * prompting TEXT_SMALL with grounded context — recent conversation, a summary of
- * recent action results, the active trajectory, and optional character voice —
- * and falls back to a canonical reply when the model errors or emits a structured
- * (non-prose) response. Also exports the State-mining helpers (action results,
- * recent messages) used to assemble that context.
+ * prompting TEXT_SMALL with complete grounded conversation, action-result,
+ * trajectory, and optional character context. Model inputs and outputs cross
+ * this boundary unchanged; invalid context fails explicitly instead of producing
+ * a plausible reply from a partial prompt.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
+  ElizaError,
   getTrajectoryContext,
-  isProgressiveContentProjectionEnabled,
   ModelType,
   parseJSONObjectFromText,
   renderActionResultsForModel,
-  toWellFormedUnicode,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
@@ -34,46 +32,33 @@ type RenderGroundedActionReplyArgs = {
   preferCharacterVoice?: boolean;
 };
 
-type ActionHistoryItem = {
-  actionName: string;
-  text: string;
-  success: boolean;
-};
-
-function normalizePromptText(value: string): string {
-  return toWellFormedUnicode(value);
-}
-
-function normalizeReplyText(raw: string): string {
-  return raw
-    .trim()
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .trim();
-}
-
-function looksLikeStructuredReply(raw: string): boolean {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return true;
-  }
-  if (/^<[^>]+>/.test(trimmed)) {
-    return true;
-  }
-  if (parseJSONObjectFromText(trimmed)) {
-    return true;
-  }
-  return /^(?:subaction|shouldAct|response|operation|confidence|missing)\s*:/m.test(
-    trimmed,
-  );
-}
-
 function stringifyPromptValue(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
-    return normalizePromptText(serialized);
-  } catch {
-    return normalizePromptText(String(value));
+    if (serialized === undefined) {
+      throw new TypeError("Value is not JSON-serializable");
+    }
+    return serialized;
+  } catch (error) {
+    // error-policy:J2 Context must be complete; never replace an unserializable
+    // value with a partial string representation.
+    throw new ElizaError("Grounded reply context is not serializable", {
+      code: "GROUNDED_REPLY_CONTEXT_INVALID",
+      cause: error,
+    });
   }
+}
+
+function invalidReplyShape(raw: string): string | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return "empty";
+  if (/^<[^>]+>/.test(trimmed)) return "markup";
+  if (parseJSONObjectFromText(trimmed)) return "json-object";
+  return /^(?:subaction|shouldAct|response|operation|confidence|missing)\s*:/m.test(
+    trimmed,
+  )
+    ? "schema-fields"
+    : undefined;
 }
 
 function extractActionResultCandidates(state: State | undefined): unknown[][] {
@@ -136,70 +121,18 @@ export function extractActionResultsFromState(
   );
 }
 
-function summarizeActionResult(
-  result: ActionResult,
-  projectionEnabled = false,
-): ActionHistoryItem | null {
-  const data = asRecord(result.data);
-  const actionName =
-    (typeof data?.actionName === "string" && data.actionName.trim()) ||
-    "ACTION";
-  const resultText = projectionEnabled
-    ? renderActionResultsForModel([result], {
-        header: "",
-        omitRecoverableText: true,
-      }).text
-    : typeof result.text === "string" && result.text.trim().length > 0
-      ? result.text.trim()
-      : "";
-  const title =
-    (typeof asRecord(data?.definition)?.title === "string" &&
-      String(asRecord(data?.definition)?.title)) ||
-    (typeof asRecord(data?.goal)?.title === "string" &&
-      String(asRecord(data?.goal)?.title)) ||
-    (typeof asRecord(data?.event)?.title === "string" &&
-      String(asRecord(data?.event)?.title)) ||
-    (typeof data?.title === "string" && data.title) ||
-    (typeof data?.subject === "string" && data.subject) ||
-    (typeof data?.query === "string" && data.query) ||
-    "";
-  const snippet = resultText || title;
-  if (!snippet) {
-    return null;
-  }
-  return {
-    actionName,
-    text: normalizePromptText(snippet.replace(/\s+/g, " ")),
-    success: result.success !== false,
-  };
-}
-
+/**
+ * Returns every action result in the complete model-facing wire format.
+ * Legacy limit/projection parameters remain source-compatible but never omit data.
+ */
 export function summarizeRecentActionHistory(
   state: State | undefined,
-  limit = 4,
-  projectionEnabled = false,
+  _limit?: number,
+  _projectionEnabled?: boolean,
 ): string[] {
-  const summarized = extractActionResultsFromState(state)
-    .map((result) => summarizeActionResult(result, projectionEnabled))
-    .filter((item): item is ActionHistoryItem => item !== null);
-  const deduped: string[] = [];
-  const seen = new Set<string>();
-
-  for (const item of summarized.reverse()) {
-    const key = `${item.actionName}:${item.text}`.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    deduped.push(
-      `${item.actionName} ${item.success ? "ok" : "failed"}: ${item.text}`,
-    );
-    if (deduped.length >= limit) {
-      break;
-    }
-  }
-
-  return deduped;
+  return extractActionResultsFromState(state).map(
+    (result) => renderActionResultsForModel([result], { header: "" }).text,
+  );
 }
 
 function buildCharacterVoiceContext(runtime: IAgentRuntime): string {
@@ -208,40 +141,11 @@ function buildCharacterVoiceContext(runtime: IAgentRuntime): string {
     return "";
   }
 
-  const sections: string[] = [];
-
-  if (
-    typeof character.system === "string" &&
-    character.system.trim().length > 0
-  ) {
-    sections.push(`System:\n${character.system.trim()}`);
-  }
-
-  const rawBio = character.bio as string[] | string | undefined;
-  const bio = Array.isArray(rawBio)
-    ? rawBio.filter(
-        (entry): entry is string =>
-          typeof entry === "string" && entry.trim().length > 0,
-      )
-    : typeof rawBio === "string" && rawBio.trim().length > 0
-      ? [rawBio.trim()]
-      : [];
-  if (bio.length > 0) {
-    sections.push(`Bio:\n${bio.map((entry) => `- ${entry}`).join("\n")}`);
-  }
-
-  const style = [
-    ...(Array.isArray(character.style?.all) ? character.style.all : []),
-    ...(Array.isArray(character.style?.chat) ? character.style.chat : []),
-  ].filter(
-    (entry): entry is string =>
-      typeof entry === "string" && entry.trim().length > 0,
-  );
-  if (style.length > 0) {
-    sections.push(`Style:\n${style.map((entry) => `- ${entry}`).join("\n")}`);
-  }
-
-  return sections.join("\n\n");
+  return stringifyPromptValue({
+    system: character.system,
+    bio: character.bio,
+    style: character.style,
+  });
 }
 
 export async function summarizeActiveTrajectory(
@@ -255,37 +159,20 @@ export async function summarizeActiveTrajectory(
   try {
     const trajectory = await loadTrajectoryByStepId(runtime, trajectoryStepId);
     if (!trajectory) {
-      return `active trajectory step ${trajectoryStepId}`;
+      throw new ElizaError("Grounded reply trajectory is unavailable", {
+        code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE",
+        context: { trajectoryStepId },
+      });
     }
 
-    const latestStep =
-      trajectory.steps.length > 0
-        ? trajectory.steps[trajectory.steps.length - 1]
-        : null;
-    const latestCall =
-      latestStep && latestStep.llmCalls.length > 0
-        ? latestStep.llmCalls[latestStep.llmCalls.length - 1]
-        : null;
-    const recentProviders =
-      latestStep?.providerAccesses
-        .map((access) => access.providerName)
-        .filter((name) => typeof name === "string" && name.trim().length > 0)
-        .join(", ") ?? "";
-
-    const parts = [
-      `trajectory ${trajectory.id}`,
-      `${trajectory.steps.length} step${trajectory.steps.length === 1 ? "" : "s"}`,
-    ];
-    if (latestCall?.purpose) {
-      parts.push(`latest llm purpose: ${latestCall.purpose}`);
-    }
-    if (recentProviders) {
-      parts.push(`recent providers: ${recentProviders}`);
-    }
-
-    return parts.join("; ");
-  } catch {
-    return `active trajectory step ${trajectoryStepId}`;
+    return stringifyPromptValue(trajectory);
+  } catch (error) {
+    // error-policy:J2 A grounded reply cannot silently omit trajectory context.
+    throw new ElizaError("Failed to load complete grounded reply trajectory", {
+      code: "GROUNDED_REPLY_TRAJECTORY_UNAVAILABLE",
+      cause: error,
+      context: { trajectoryStepId },
+    });
   }
 }
 
@@ -312,11 +199,7 @@ export async function renderGroundedActionReply(
     message: args.message,
     state: args.state,
   });
-  const recentActionHistory = summarizeRecentActionHistory(
-    args.state,
-    4,
-    isProgressiveContentProjectionEnabled(args.runtime),
-  );
+  const recentActionHistory = summarizeRecentActionHistory(args.state);
   const trajectorySummary = await summarizeActiveTrajectory(args.runtime);
   const characterVoice = args.preferCharacterVoice
     ? buildCharacterVoiceContext(args.runtime)
@@ -346,25 +229,32 @@ export async function renderGroundedActionReply(
         : "",
     )}`,
     `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation.join("\n"))}`,
-    `Recent action history: ${JSON.stringify(recentActionHistory)}`,
+    `Complete conversation: ${JSON.stringify(recentConversation)}`,
+    `Complete action history: ${JSON.stringify(recentActionHistory)}`,
     `Active trajectory summary: ${JSON.stringify(trajectorySummary ?? "")}`,
     `Character voice: ${JSON.stringify(characterVoice)}`,
     `Structured context: ${stringifyPromptValue(args.context ?? {})}`,
     `Canonical fallback: ${JSON.stringify(args.fallback)}`,
   ].join("\n");
 
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
+  const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+  });
+  if (typeof result !== "string") {
+    throw new ElizaError("Grounded reply model returned a non-text response", {
+      code: "GROUNDED_REPLY_OUTPUT_INVALID",
+      context: { outputType: typeof result },
     });
-    const raw = typeof result === "string" ? result : "";
-    if (looksLikeStructuredReply(raw)) {
-      return args.fallback;
-    }
-    const text = normalizeReplyText(raw);
-    return text || args.fallback;
-  } catch {
-    return args.fallback;
   }
+  const invalidShape = invalidReplyShape(result);
+  if (invalidShape) {
+    throw new ElizaError(
+      "Grounded reply model output is not user-facing text",
+      {
+        code: "GROUNDED_REPLY_OUTPUT_INVALID",
+        context: { invalidShape },
+      },
+    );
+  }
+  return result;
 }

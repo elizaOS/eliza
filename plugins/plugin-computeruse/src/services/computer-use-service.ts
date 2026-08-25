@@ -31,10 +31,10 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppState,
-  ExperimentalExactWindowApprovalRequest,
   ExperimentalExactWindowApprovalReceipt,
-  PhysicalFallbackApprovalRequest,
+  ExperimentalExactWindowApprovalRequest,
   PhysicalFallbackApprovalReceipt,
+  PhysicalFallbackApprovalRequest,
 } from "../app-control/types.js";
 import {
   ComputerUseApprovalManager,
@@ -2554,9 +2554,7 @@ export class ComputerUseService extends Service {
     request: PhysicalFallbackApprovalRequest,
     signal?: AbortSignal,
   ): Promise<PhysicalFallbackApprovalReceipt> {
-    if (
-      process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1"
-    ) {
+    if (process.env.OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS !== "1") {
       throw new AppControlError(
         "PHYSICAL_FALLBACK_DENIED",
         "Global physical pointer fallback is disabled; a supervisor must opt in with OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS=1 before requesting approval",
@@ -2599,9 +2597,7 @@ export class ComputerUseService extends Service {
     request: ExperimentalExactWindowApprovalRequest,
     signal?: AbortSignal,
   ): Promise<ExperimentalExactWindowApprovalReceipt> {
-    if (
-      process.env.ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW !== "1"
-    ) {
+    if (process.env.ELIZA_COMPUTERUSE_EXPERIMENTAL_EXACT_WINDOW !== "1") {
       throw new AppControlError(
         "EXPERIMENTAL_EXACT_WINDOW_DENIED",
         "Experimental exact-window dispatch is disabled; direct-distribution runtime opt-in is required",

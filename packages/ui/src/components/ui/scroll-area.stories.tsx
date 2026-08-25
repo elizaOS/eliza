@@ -36,7 +36,7 @@ export const Horizontal: Story = {
         {TAGS.slice(0, 12).map((tag) => (
           <div
             key={tag}
-            className="flex h-24 w-24 shrink-0 items-center justify-center rounded-md border text-sm"
+            className="flex size-24 shrink-0 items-center justify-center rounded-md border text-sm"
           >
             {tag}
           </div>

@@ -373,7 +373,7 @@ export function LocalInferencePanel() {
               <span className="inline-flex items-center gap-1.5">
                 {label}
                 {id === "downloads" && hub.downloads.length > 0 ? (
-                  <span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-[10px] leading-none text-muted">
+                  <span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-2xs leading-none text-muted">
                     {hub.downloads.length}
                   </span>
                 ) : null}

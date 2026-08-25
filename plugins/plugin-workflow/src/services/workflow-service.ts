@@ -118,6 +118,18 @@ Source contract:
 Return JSON only.`;
 }
 
+/**
+ * Orders search candidates by descending keyword score. Equal scores previously
+ * kept whatever order the store returned, which is not stable across backends,
+ * so ties break on workflow id to make search results deterministic.
+ */
+export function compareWorkflowSearchCandidates(
+  a: { workflow: WorkflowDefinitionResponse; score: number },
+  b: { workflow: WorkflowDefinitionResponse; score: number }
+): number {
+  return b.score - a.score || a.workflow.id.localeCompare(b.workflow.id);
+}
+
 export class WorkflowService extends Service {
   static override readonly serviceType = WORKFLOW_SERVICE_TYPE;
   override capabilityDescription =
@@ -261,7 +273,7 @@ export class WorkflowService extends Service {
         };
       })
       .filter(({ score }) => score > 0)
-      .sort((a, b) => b.score - a.score)
+      .sort(compareWorkflowSearchCandidates)
       .map(({ workflow }) => workflow);
   }
 

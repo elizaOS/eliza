@@ -100,7 +100,7 @@ function facetLabel(
 }
 
 function KindIcon({ kind }: { kind: FileKind }) {
-  const className = "h-6 w-6 text-muted";
+  const className = "size-6 text-muted";
   switch (kind) {
     case "image":
       return <ImageIcon className={className} aria-hidden />;
@@ -192,7 +192,7 @@ function FileShareButton({
       })}
       onClick={() => onShare(file)}
     >
-      <Share2 className="mr-1.5 h-4 w-4" aria-hidden />
+      <Share2 className="mr-1.5 size-4" aria-hidden />
       {t("filesview.share", { defaultValue: "Share" })}
     </Button>
   );
@@ -254,11 +254,13 @@ const FileCard = memo(function FileCard({
       data-file-kind={kind}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface/60">
+        <div className="flex  size-14 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-surface/60">
           {kind === "image" ? (
             <img
               src={previewUrl}
               alt=""
+              width={56}
+              height={56}
               className="h-full w-full object-cover"
               loading="lazy"
             />
@@ -299,7 +301,7 @@ const FileCard = memo(function FileCard({
           })}
           onClick={() => onDownload(file)}
         >
-          <Download className="mr-1.5 h-4 w-4" aria-hidden />
+          <Download className="mr-1.5 size-4" aria-hidden />
           {t("filesview.download", { defaultValue: "Download" })}
         </Button>
         {shareSupported ? (
@@ -330,9 +332,9 @@ const FileCard = memo(function FileCard({
             onClick={() => onDelete(file)}
           >
             {deleting ? (
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+              <Loader2 className="mr-1.5 size-4 animate-spin" aria-hidden />
             ) : (
-              <Trash2 className="mr-1.5 h-4 w-4" aria-hidden />
+              <Trash2 className="mr-1.5 size-4" aria-hidden />
             )}
             {t("filesview.delete", { defaultValue: "Delete" })}
           </Button>
@@ -554,7 +556,7 @@ function FilesViewBody() {
             role="alert"
             className="flex flex-wrap items-center gap-3 text-sm text-danger"
           >
-            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+            <AlertTriangle className="size-4 shrink-0" aria-hidden />
             <span>{error}</span>
             <Button
               ref={retryControl.ref}
@@ -574,14 +576,14 @@ function FilesViewBody() {
             className="flex flex-1 items-center justify-center gap-2 text-sm italic text-muted"
             data-testid="files-loading"
           >
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <Loader2 className="size-4 animate-spin" aria-hidden />
             {t("filesview.loading", { defaultValue: "Loading files…" })}
           </div>
         ) : restricted ? (
           <div className="flex flex-1 flex-col" data-testid="files-restricted">
             <PagePanel.Empty
               className="flex-1"
-              icon={<Lock className="h-6 w-6" aria-hidden />}
+              icon={<Lock className="size-6" aria-hidden />}
               title={t("filesview.restrictedTitle", {
                 defaultValue: "Files are restricted",
               })}
@@ -595,7 +597,7 @@ function FilesViewBody() {
           <div className="flex flex-1 flex-col" data-testid="files-empty">
             <PagePanel.Empty
               className="flex-1"
-              icon={<FolderOpen className="h-6 w-6" aria-hidden />}
+              icon={<FolderOpen className="size-6" aria-hidden />}
               title={t("filesview.emptyTitle", {
                 defaultValue: "No files yet",
               })}

@@ -27,6 +27,8 @@ import {
   type ChatRouteContext,
   type ChatRouteState,
   classifyChatFailure,
+  compareAssistantTurnRecencyDescending,
+  compareCreatedAtAscending,
   createChatTokenStreamWriter,
   DELTA_STREAM_PROTOCOL,
   detectLocalInferenceCommandIntent,
@@ -573,6 +575,69 @@ describe("admitChatMessageId / releaseChatMessageId", () => {
     } finally {
       nowSpy.mockRestore();
     }
+  });
+});
+
+describe("chat memory ordering comparators", () => {
+  it("orders finite creation times ascending and descending", () => {
+    const turns = [
+      { id: "middle", createdAt: 20 },
+      { id: "newest", createdAt: 30 },
+      { id: "oldest", createdAt: 10 },
+    ];
+
+    expect(
+      [...turns].sort(compareCreatedAtAscending).map(({ id }) => id),
+    ).toEqual(["oldest", "middle", "newest"]);
+    expect(
+      [...turns]
+        .sort(compareAssistantTurnRecencyDescending)
+        .map(({ id }) => id),
+    ).toEqual(["newest", "middle", "oldest"]);
+  });
+
+  it("breaks equal-timestamp ties by ascending id", () => {
+    const turns = [
+      { id: "turn-c", createdAt: 10 },
+      { id: "turn-a", createdAt: 10 },
+      { id: "turn-b", createdAt: 10 },
+    ];
+
+    expect(
+      [...turns].sort(compareCreatedAtAscending).map(({ id }) => id),
+    ).toEqual(["turn-a", "turn-b", "turn-c"]);
+    expect(
+      [...turns]
+        .sort(compareAssistantTurnRecencyDescending)
+        .map(({ id }) => id),
+    ).toEqual(["turn-a", "turn-b", "turn-c"]);
+  });
+
+  it("treats missing and non-finite timestamps as the oldest values", () => {
+    const turns = [
+      { id: "infinite", createdAt: Number.POSITIVE_INFINITY },
+      { id: "dated", createdAt: 1 },
+      { id: "missing" },
+      { id: "nan", createdAt: Number.NaN },
+    ];
+
+    expect(
+      [...turns].sort(compareCreatedAtAscending).map(({ id }) => id),
+    ).toEqual(["infinite", "missing", "nan", "dated"]);
+    expect(
+      [...turns]
+        .sort(compareAssistantTurnRecencyDescending)
+        .map(({ id }) => id),
+    ).toEqual(["dated", "infinite", "missing", "nan"]);
+  });
+
+  it("leaves empty and single-element collections unchanged", () => {
+    expect([].sort(compareCreatedAtAscending)).toEqual([]);
+    expect(
+      [{ id: "only", createdAt: 1 }].sort(
+        compareAssistantTurnRecencyDescending,
+      ),
+    ).toEqual([{ id: "only", createdAt: 1 }]);
   });
 });
 

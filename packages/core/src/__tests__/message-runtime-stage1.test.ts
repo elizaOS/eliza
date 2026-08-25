@@ -15,12 +15,14 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { CandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
 import { ContextRegistry } from "../runtime/context-registry";
 import { registerDirectActionRoutingRule } from "../runtime/direct-action-routing";
+import { HANDLED_STEP_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
+	hardenIncomingUserMessage,
 	PseudonymSession,
 } from "../security/index.js";
 import {
@@ -189,6 +191,25 @@ function stage1Response(fields: {
 	};
 }
 
+// A toolless planner turn whose terminal REPLY carries tool-call narration.
+// isUnsafeUserVisibleText rejects that shape, no tool exposed user-facing text,
+// so userSafeFinalMessage degrades the turn to HANDLED_STEP_FALLBACK_MESSAGE —
+// and with no successful non-terminal tool step the tool-turn reply guarantee
+// cannot synthesize a replacement. The placeholder is therefore RUNTIME-emitted
+// here, never model text, which is what the ambient-silence tests need to pin.
+function plannerReplyRejectedByEgress() {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "reply-1",
+				name: "REPLY",
+				arguments: { text: "We need to call SEARCH for that." },
+			},
+		],
+	};
+}
+
 function makeRuntime(
 	responses: unknown[],
 	settings?: Record<string, string>,
@@ -352,7 +373,10 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
-		expect(params.maxTokens).toBe(2048);
+		expect(params.maxTokens).toBeUndefined();
+		expect(
+			(params as typeof params & { omitMaxTokens?: boolean }).omitMaxTokens,
+		).toBe(true);
 		expect(params.signal).toBeInstanceOf(AbortSignal);
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -1099,7 +1123,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect.objectContaining({
 				src: "service:message",
 				finishReason: "length",
-				maxTokens: 2048,
+				maxTokens: undefined,
 			}),
 			"[message] Stage 1 hit the completion-token limit",
 		);
@@ -3159,6 +3183,55 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps external-content armor out of deterministic action inference", async () => {
+		const directAnswer =
+			"Dinner is at 6:30 PM for four people at Saffron House.";
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: directAnswer,
+			}),
+		]);
+		const calendarHandler = vi.fn(async () => ({
+			success: true,
+			text: "Unexpected calendar lookup.",
+		}));
+		runtime.actions = [
+			{
+				name: "CALENDAR",
+				similes: [],
+				tags: ["domain:calendar", "capability:read"],
+				description: "Read or update calendar events.",
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: calendarHandler,
+			},
+		] as never;
+		const message = makeMessage({
+			text: "What time is dinner, for how many people, and where?",
+			source: "api",
+			mentionContext: { isMention: true },
+		});
+		hardenIncomingUserMessage(message);
+		expect(message.content.text).toContain("Delete data");
+		expect(message.content.text).toContain("dinner");
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(calendarHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(directAnswer);
+		}
+	});
+
 	it("stamps an exact internal VIEWS diagnostic before simple delivery", async () => {
 		const inventory = ["available_views:", "  type: gui", "  count: 0"].join(
 			"\n",
@@ -3608,7 +3681,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				eliza?: {
 					modelInputBudget?: {
 						reserveTokens?: number;
-						shouldCompact?: boolean;
+						shouldReject?: boolean;
 					};
 				};
 			};
@@ -3639,6 +3712,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(userContent).toContain("ORCHID-742 is in locker 19");
 		expect(userContent).toContain("Dinner at 6:30 PM");
 		expect(userContent).not.toContain("https://private.example/receipt.png");
+		expect(userContent).toContain(
+			"A verified_cross_room_message block is authorized visible context",
+		);
+		expect(userContent).toContain("answer directly from that block");
+		expect(userContent).toContain(
+			"does not require ATTACHMENT, CALENDAR, or another tool",
+		);
+		expect(userContent).toContain(
+			"never infer details absent from the block or expose a private attachment URL",
+		);
 		expect(userContent).toContain("current_turn_boundary:");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
@@ -3669,7 +3752,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(params.providerOptions?.eliza?.modelInputBudget).toMatchObject({
 			reserveTokens: 10_000,
-			shouldCompact: false,
+			shouldReject: false,
 		});
 	});
 
@@ -3756,7 +3839,14 @@ describe("runV5MessageRuntimeStage1", () => {
 		).messages?.[1]?.content;
 		expect(userContent).toContain(priorAttack);
 		expect(userContent).toContain(providerMarker);
-		expect(userContent?.endsWith(currentMessage)).toBe(true);
+		expect(
+			userContent?.endsWith(
+				JSON.stringify({
+					text: currentMessage,
+					source: "test",
+				}),
+			),
+		).toBe(true);
 	});
 
 	it("renders CURRENT_TIME in Stage 1 for every turn, regardless of phrasing", async () => {
@@ -4048,13 +4138,33 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).toContain(
 			"Never send a status update, a progress note, or a description of your own process",
 		);
+		// The instruction names the forbidden SHAPE and quotes no sentence. It
+		// used to quote HANDLED_STEP_FALLBACK_MESSAGE as its example; putting an
+		// emittable forbidden sentence in context is a known way to get a weak
+		// model to emit it, and the guarantee is structural now (the ambient
+		// placeholder resolves to the silent terminal) rather than instructional.
+		expect(plannerContent).not.toContain(HANDLED_STEP_FALLBACK_MESSAGE);
+		expect(plannerContent).toContain(
+			"any sentence whose subject is what you did, tried, handled, or checked",
+		);
 		// Stage 1 carries the same policy in shouldRespond terms (the planner
 		// wording names the IGNORE tool, which Stage 1 cannot call): an
 		// ambient-mode group forwards every message, and without this the
 		// shouldRespond field guidance alone read as RESPOND on nearly all of
 		// them (live five-room evaluation: 7-10 unsolicited replies per room).
 		expect(stage1Content).toContain("ambient_turn_policy:");
+		expect(stage1Content).toContain(
+			"a direct mention, reply, or clear continuation addressed to Test Agent -> RESPOND",
+		);
+		expect(stage1Content).not.toContain("addressed to  ->");
 		expect(stage1Content).toContain("Default shouldRespond=IGNORE");
+		expect(stage1Content).toContain(
+			"challenges or asks to clarify your immediately preceding prior_message:agent reply",
+		);
+		expect(stage1Content).toContain("explicit standing responsibility");
+		expect(stage1Content).not.toContain("someone asks the group");
+		expect(stage1Content).not.toContain("active in the conversation");
+		expect(stage1Content).not.toContain("able to usefully add");
 		expect(stage1Content).not.toContain(
 			"end the turn by calling the IGNORE tool",
 		);
@@ -4112,6 +4222,174 @@ describe("runV5MessageRuntimeStage1", () => {
 			);
 			// Effect honesty: nothing ran this turn, so no failure narrative.
 			expect(text).not.toMatch(/ran the steps|failed/i);
+		}
+	});
+
+	it("resolves an ambient turn whose only planner text is the handled-step placeholder to a recorded IGNORE", async () => {
+		// Live five-room group evaluation (real Cerebras, two runs, same script
+		// position in two rooms): Eliza posted "I handled the available step."
+		// unsolicited into a group. The string is NOT the model echoing the
+		// forbidden example from its prompt — it is HANDLED_STEP_FALLBACK_MESSAGE,
+		// which userSafeFinalMessage emits when every model candidate fails the
+		// egress safety chain and no tool exposed user-facing text. The tool-turn
+		// reply guarantee only replaces it after a successful non-terminal tool
+		// step, so a turn with no tool work ships it verbatim. The fixture
+		// reproduces exactly that: a terminal REPLY carrying tool-call narration
+		// ("we need to call SEARCH"), which the egress chain rejects, with no tool
+		// executed. On an unaddressed turn the placeholder is a description of the
+		// agent's own process posted to other people — the empty outcome the
+		// ambient policy says means silence — so it must reach the same recorded
+		// IGNORE terminal a planner IGNORE does, not a delivered message.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Ambient chatter, but check whether tools have anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			plannerReplyRejectedByEgress(),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f001" as UUID,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+	});
+
+	it("still delivers real planner content on an ambient turn", async () => {
+		// Over-reach guard: ambient silence is scoped to the placeholder outcome,
+		// never to a turn that actually produced something for the participants.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "They are asking the group something I know.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-2",
+						name: "REPLY",
+						arguments: { text: "The cafe on 5th closes at 6." },
+					},
+				],
+			},
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "anyone know when it closes?",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f002" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The cafe on 5th closes at 6.",
+			);
+		}
+	});
+
+	it("turns rejected planner output into a truthful no-answer on an ADDRESSED turn", async () => {
+		// Someone asked Eliza directly, so the addressed delivery floor (#23223)
+		// must answer rather than silently discard the turn. Byte-identical fixture
+		// to the ambient case except for the platform mention: the unsafe model text
+		// is still rejected, but the internal handled-step marker must become the
+		// neutral toolless recovery contract instead of claiming work succeeded.
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Addressed follow-up; see if the planner has anything.",
+				contexts: ["general"],
+				replyText: "",
+			}),
+			plannerReplyRejectedByEgress(),
+		]);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "what was it for?",
+				channelType: ChannelType.GROUP,
+				mentionContext: { isMention: true, isReply: false, isThread: false },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-00000000f003" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			expect(result.result.responseContent?.text).not.toBe(
+				HANDLED_STEP_FALLBACK_MESSAGE,
+			);
+		}
+	});
+
+	it("keeps truthful no-answer delivery on reply_gate 'always' and trigger-prompt bypass turns", async () => {
+		// #25279 regressed exactly these two classes and #25341 repaired them by
+		// restoring reply_gate "always" and the configured/canonical bypasses.
+		// Both turns are unaddressed group traffic, so only the bypass keeps them
+		// off the ambient path. They still owe a response, but rejected planner text
+		// must resolve through the neutral toolless recovery contract.
+		const cases = [
+			{
+				label: "reply_gate always",
+				withGate: (runtime: IAgentRuntime) =>
+					withReplyGateSlots(runtime, "always", "addressed_or_ambient"),
+				content: { channelType: ChannelType.GROUP } as Partial<
+					Memory["content"]
+				>,
+			},
+			{
+				label: "trigger-prompt automation",
+				withGate: (runtime: IAgentRuntime) => runtime,
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				} as Partial<Memory["content"]>,
+			},
+		];
+
+		for (const testCase of cases) {
+			const runtime = testCase.withGate(
+				makeRuntime([
+					stage1Response({
+						thought: "Bypassed turn; the planner still runs.",
+						contexts: ["general"],
+						replyText: "",
+					}),
+					plannerReplyRejectedByEgress(),
+				]),
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage({
+					text: "what was it for?",
+					...testCase.content,
+				}),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-00000000f004" as UUID,
+			});
+
+			expect(result.kind, testCase.label).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text, testCase.label).toBe(
+					"I don't have a useful answer to that right now — ask again and I will retry.",
+				);
+			}
 		}
 	});
 
@@ -4517,7 +4795,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			"prior_message:user:\n1gig: i was asking about shedick",
 		);
 		expect(userContent).toContain(
-			"message:user:\nwhats the compatibility between her and botdick",
+			'message:user:\n{"text":"whats the compatibility between her and botdick","source":"test"}',
 		);
 	});
 
@@ -6079,6 +6357,34 @@ describe("runV5MessageRuntimeStage1", () => {
 		},
 	);
 
+	it("observes a RESPOND decision without entering reply generation or planning", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				replyText: "Let me answer that.",
+			}),
+		]);
+		const observations: Array<{ decision: string; prefixHash: string }> = [];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			stage1DecisionOnly: true,
+			onStage1Decision: ({ decision, prefixHash }) => {
+				observations.push({ decision, prefixHash });
+			},
+		});
+
+		expect(result).toMatchObject({ kind: "decision", action: "RESPOND" });
+		expect(observations).toHaveLength(1);
+		expect(observations[0]?.decision).toBe("RESPOND");
+		expect(observations[0]?.prefixHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
 	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -7312,6 +7618,24 @@ function withReplyGateMode(
 	return runtime;
 }
 
+function withReplyGateSlots(
+	runtime: IAgentRuntime,
+	userMode: string,
+	globalMode: string,
+): IAgentRuntime {
+	(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+		(type: string) =>
+			type === "PERSONALITY_STORE"
+				? {
+						getSlot: (id: UUID | "global") => ({
+							reply_gate: id === "global" ? globalMode : userMode,
+						}),
+					}
+				: null,
+	);
+	return runtime;
+}
+
 describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	// Live incident: in a busy multi-user group channel the agent replied to
 	// turns its own Stage-1 output tagged as addressed to another participant
@@ -7572,7 +7896,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 	});
 
 	it("bypasses the gate when the effective personality reply_gate is an explicit 'always'", async () => {
-		const runtime = withReplyGateMode(
+		const runtime = withReplyGateSlots(
 			withRoomEntities(
 				makeRuntime([
 					stage1Response({
@@ -7584,6 +7908,7 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 				]),
 			),
 			"always",
+			"addressed_or_ambient",
 		);
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
@@ -7598,6 +7923,118 @@ describe("runV5MessageRuntimeStage1 — engagement addressing gate", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Jumping in anyway!");
 		}
+		const stage1Params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const stage1Content = (stage1Params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+		expect(stage1Content).not.toContain("ambient_turn_policy:");
+	});
+
+	it("does not inject ambient policy for canonical or configured response bypasses", async () => {
+		const cases = [
+			{
+				label: "scheduled trigger",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trigger-prompt",
+				},
+				settings: undefined,
+			},
+			{
+				label: "configured source",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "trusted_dispatch",
+				},
+				settings: { ALWAYS_RESPOND_SOURCES: "trusted_dispatch" },
+			},
+			{
+				label: "configured channel",
+				content: {
+					channelType: ChannelType.GROUP,
+					source: "test",
+				},
+				settings: { ALWAYS_RESPOND_CHANNELS: "group" },
+			},
+		] satisfies Array<{
+			label: string;
+			content: Partial<Memory["content"]>;
+			settings: Record<string, string> | undefined;
+		}>;
+
+		for (const testCase of cases) {
+			const runtime = makeRuntime(
+				[
+					stage1Response({
+						thought: "Bypass response.",
+						contexts: ["simple"],
+						replyText: "Delivered.",
+					}),
+				],
+				testCase.settings,
+			);
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(testCase.content),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-0000000000bd" as UUID,
+			});
+			const params = useModelCalls(runtime)[0]?.[1] as {
+				messages?: Array<{ content?: string | null }>;
+			};
+			const prompt = (params.messages ?? [])
+				.map((entry) => entry.content ?? "")
+				.join("\n");
+
+			expect(result.kind, testCase.label).toBe("direct_reply");
+			expect(prompt, testCase.label).not.toContain("ambient_turn_policy:");
+		}
+	});
+
+	it("fails open without ambient silence when personality lookup throws", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Personality state is unavailable.",
+				contexts: ["simple"],
+				replyText: "Still delivered.",
+			}),
+		]);
+		(runtime as unknown as Record<string, unknown>).getService = vi.fn(
+			(type: string) =>
+				type === "PERSONALITY_STORE"
+					? {
+							getSlot: () => {
+								throw new Error("personality store unavailable");
+							},
+						}
+					: null,
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "ambient group message",
+				channelType: ChannelType.GROUP,
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-0000000000be" as UUID,
+		});
+		const params = useModelCalls(runtime)[0]?.[1] as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const prompt = (params.messages ?? [])
+			.map((entry) => entry.content ?? "")
+			.join("\n");
+
+		expect(result.kind).toBe("direct_reply");
+		expect(prompt).not.toContain("ambient_turn_policy:");
+		expect(reportErrorCalls(runtime)).toContainEqual([
+			"MessageService.resolveAmbientReplyGate",
+			expect.any(Error),
+			expect.objectContaining({ roomId: expect.any(String) }),
+		]);
 	});
 
 	it("keeps the gate armed under reply_gate 'addressed_or_ambient' (only 'always' bypasses)", async () => {

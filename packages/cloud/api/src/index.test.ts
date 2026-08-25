@@ -17,18 +17,8 @@ import cloudApiWorker, {
   isThinStewardPublicPath,
   isUnsupportedLegacyWildcardHostname,
   redirectFrontendHost,
-  SharedRuntimeConversation,
-  TwitterOAuthRefreshCoordinator,
 } from "./index";
 import { resetProvidersResponseCacheForTests } from "./steward/embedded";
-
-test("exports the shared-runtime conversation Durable Object", () => {
-  expect(typeof SharedRuntimeConversation).toBe("function");
-});
-
-test("exports the X OAuth refresh Durable Object", () => {
-  expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
-});
 
 test("preserves Workerd WebSocket upgrade responses without rewrapping", () => {
   const upgrade = {
@@ -1119,6 +1109,36 @@ describe("cloud-api worker entrypoint", () => {
       personalSharedTelegramEdge: { enabled: false },
       schemaCompatibility: { usageQuotasTombstone: true },
     });
+  });
+
+  test("exposes an E2E run receipt only inside the explicit local test gate", async () => {
+    const request = new Request("http://127.0.0.1:8787/api/health", {
+      headers: { host: "127.0.0.1:8787" },
+    });
+    const testResponse = await cloudApiWorker.fetch(
+      request,
+      {
+        NODE_ENV: "test",
+        CLOUD_E2E: "1",
+        CLOUD_E2E_RUN_RECEIPT: "run-receipt-1",
+      } as never,
+      {} as never,
+    );
+    expect(await testResponse.json()).toMatchObject({
+      status: "ok",
+      e2eRunReceipt: "run-receipt-1",
+    });
+
+    const productionResponse = await cloudApiWorker.fetch(
+      request,
+      {
+        NODE_ENV: "production",
+        CLOUD_E2E: "1",
+        CLOUD_E2E_RUN_RECEIPT: "must-not-leak",
+      } as never,
+      {} as never,
+    );
+    expect(await productionResponse.text()).not.toContain("must-not-leak");
   });
 
   test("reports only the served Personal Shared Telegram edge gate state", async () => {

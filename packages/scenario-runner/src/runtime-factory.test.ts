@@ -1,10 +1,13 @@
 /** Tests deterministic and live provider selection for scenario runtimes. */
 import { ModelType } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   clearLlmWireMockEnvForLiveProvider,
   deterministicScheduledDispatchRenderText,
+  disableScenarioEmbeddingCapability,
+  disposeScenarioProviderPlugin,
+  isPostTurnEvaluationPrompt,
   isScheduledDispatchRenderPrompt,
   loadScenarioTestMocksForTests,
   resolveScenarioDeterministicModelCall,
@@ -12,6 +15,32 @@ import {
   scenarioLiveProviderPreflightProblems,
   shouldUseDeterministicModel,
 } from "./runtime-factory";
+
+describe("scenario provider lifecycle", () => {
+  it("disposes the selected provider during runtime cleanup", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const runtime = {} as never;
+
+    await disposeScenarioProviderPlugin({ dispose }, runtime);
+
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(dispose).toHaveBeenCalledWith(runtime);
+  });
+});
+
+describe("scenario embedding capability", () => {
+  it("declares the canonical embedding capability disabled", () => {
+    const setSetting = vi.fn();
+
+    disableScenarioEmbeddingCapability({ setSetting } as never);
+
+    expect(setSetting).toHaveBeenCalledWith(
+      "ELIZA_CANONICAL_EMBEDDINGS_ENABLED",
+      false,
+      false,
+    );
+  });
+});
 
 describe("scenario live provider preflight", () => {
   const cerebrasActingConfig = {
@@ -219,6 +248,230 @@ describe("scenario runtime deterministic model mode", () => {
         latestUserText: "",
       }),
     ).toBe("Heads up: take a short walk.");
+  });
+
+  // `EvaluatorService` runs every active post-turn evaluator in one merged
+  // TEXT_SMALL call after EVERY turn, on the same runtime the scenario drives.
+  // It passes the prompt as `messages` with NO `prompt` param, so undeclared
+  // (legacy-fallback) scenarios saw it as an unexpected call and failed at
+  // `assertConsumed()` even though none of them assert evaluator output.
+  describe("post-turn evaluator model call", () => {
+    const postTurnEvaluationPrompt = [
+      "# Task: Post-turn evaluation",
+      "",
+      "Evaluate just-finished turn for TestAgent.",
+      "",
+      "## Shared Turn Context",
+      "",
+      "Room ID: 00000000-0000-0000-0000-000000000001",
+      "",
+      "Latest message:",
+      "open the media view",
+      "",
+      "## Active Evaluators",
+      "",
+      "### linkExtraction",
+      'Put result under "linkExtraction".',
+      "",
+    ].join("\n");
+
+    // The real call shape: `messages` only, plus a merged responseSchema.
+    const postTurnEvaluationCall = {
+      modelType: ModelType.TEXT_SMALL,
+      params: {
+        messages: [
+          { role: "user", content: postTurnEvaluationPrompt },
+        ] as never,
+        responseSchema: {
+          type: "object",
+          properties: { linkExtraction: { type: "object" } },
+          required: ["linkExtraction"],
+          additionalProperties: false,
+        },
+        responseFormat: { type: "json_object" },
+        temperature: 0,
+      },
+      latestUserText: postTurnEvaluationPrompt,
+    };
+
+    it("recognizes the merged post-turn evaluation prompt", () => {
+      expect(isPostTurnEvaluationPrompt(postTurnEvaluationPrompt)).toBe(true);
+      expect(isPostTurnEvaluationPrompt("ordinary TEXT_SMALL prompt")).toBe(
+        false,
+      );
+      // Conversation text that merely quotes the header is not an evaluator
+      // call: the `## Active Evaluators` section is what makes it one.
+      expect(
+        isPostTurnEvaluationPrompt(
+          "# Task: Post-turn evaluation is what I asked about",
+        ),
+      ).toBe(false);
+    });
+
+    it("answers the messages-shaped evaluator call with the empty shape", () => {
+      const resolved = resolveScenarioDeterministicModelCall(
+        postTurnEvaluationCall,
+      );
+      // "Nothing to record" — every section absent, so the evaluator skips each
+      // entry without recording a validation error.
+      expect(resolved).toBe("{}");
+      expect(JSON.parse(resolved as string)).toEqual({});
+    });
+
+    it("does not treat user-controlled marker text as an evaluator call without its schema", () => {
+      expect(
+        resolveScenarioDeterministicModelCall({
+          modelType: ModelType.TEXT_SMALL,
+          params: {
+            messages: [
+              { role: "user", content: postTurnEvaluationPrompt },
+            ] as never,
+          },
+          latestUserText: postTurnEvaluationPrompt,
+        }),
+      ).toBeNull();
+    });
+
+    it("does not trust evaluator markers from latestUserText or an unrelated message", async () => {
+      const adversarialCall = {
+        ...postTurnEvaluationCall,
+        params: {
+          ...postTurnEvaluationCall.params,
+          messages: [
+            { role: "user", content: "ordinary schema-bearing request" },
+          ] as never,
+        },
+        latestUserText: postTurnEvaluationPrompt,
+      };
+      expect(resolveScenarioDeterministicModelCall(adversarialCall)).toBeNull();
+
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          adversarialCall.params as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
+      expect(plugin.getFixtureDiagnostics().unexpectedCalls).toHaveLength(1);
+      expect(() => plugin.assertFixturesConsumed()).toThrow(
+        /deterministic model calls were unexpected/,
+      );
+    });
+
+    it.each([
+      [
+        "a prompt parameter",
+        { ...postTurnEvaluationCall.params, prompt: postTurnEvaluationPrompt },
+      ],
+      [
+        "multiple messages",
+        {
+          ...postTurnEvaluationCall.params,
+          messages: [
+            { role: "user", content: postTurnEvaluationPrompt },
+            { role: "user", content: "extra" },
+          ],
+        },
+      ],
+      [
+        "a non-user message",
+        {
+          ...postTurnEvaluationCall.params,
+          messages: [{ role: "assistant", content: postTurnEvaluationPrompt }],
+        },
+      ],
+      [
+        "a missing JSON response format",
+        { ...postTurnEvaluationCall.params, responseFormat: undefined },
+      ],
+      [
+        "a nonzero temperature",
+        { ...postTurnEvaluationCall.params, temperature: 0.1 },
+      ],
+      [
+        "an empty schema",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: {},
+            required: [],
+            additionalProperties: false,
+          },
+        },
+      ],
+      [
+        "mismatched required keys",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: { linkExtraction: { type: "object" } },
+            required: ["differentEvaluator"],
+            additionalProperties: false,
+          },
+        },
+      ],
+      [
+        "an open schema",
+        {
+          ...postTurnEvaluationCall.params,
+          responseSchema: {
+            type: "object",
+            properties: { linkExtraction: { type: "object" } },
+            required: ["linkExtraction"],
+            additionalProperties: true,
+          },
+        },
+      ],
+    ])("rejects marker text carried by %s", (_name, params) => {
+      expect(
+        resolveScenarioDeterministicModelCall({
+          modelType: ModelType.TEXT_SMALL,
+          params,
+          latestUserText: postTurnEvaluationPrompt,
+        }),
+      ).toBeNull();
+    });
+
+    it("keeps the evaluator call out of unexpectedCalls for undeclared scenarios", async () => {
+      // Legacy-fallback wiring: an EMPTY registry plus the fallback resolver.
+      // The call must resolve AND leave the scenario assertable.
+      const plugin = createDeterministicModelPlugin({
+        resolve: (call) => resolveScenarioDeterministicModelCall(call),
+      });
+      await expect(
+        plugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          postTurnEvaluationCall.params as never,
+        ),
+      ).resolves.toBe("{}");
+      expect(plugin.getFixtureDiagnostics().unexpectedCalls).toEqual([]);
+      expect(() => {
+        plugin.assertFixturesConsumed();
+      }).not.toThrow();
+    });
+
+    it("still fails closed when no fallback resolver is wired", async () => {
+      // Strict lanes (`mode: "fixtures"` / `"model-free"`) pass no `resolve`, so
+      // the same call must still be recorded and still fail the scenario. This
+      // pins that the fallback did not weaken strict-mode enforcement.
+      const strictPlugin = createDeterministicModelPlugin();
+      await expect(
+        strictPlugin.models?.[ModelType.TEXT_SMALL]?.(
+          {} as never,
+          postTurnEvaluationCall.params as never,
+        ),
+      ).rejects.toThrow(/no fixture matched/);
+      expect(strictPlugin.getFixtureDiagnostics().unexpectedCalls).toHaveLength(
+        1,
+      );
+      expect(() => {
+        strictPlugin.assertFixturesConsumed();
+      }).toThrow(/deterministic model calls were unexpected/);
+    });
   });
 });
 

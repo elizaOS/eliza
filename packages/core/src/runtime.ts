@@ -91,6 +91,11 @@ import {
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
 import { stringifyForModel } from "./runtime/json-output";
+import {
+	buildModelInputBudget,
+	DEFAULT_INPUT_RESERVE_TOKENS,
+	withModelInputBudgetProviderOptions,
+} from "./runtime/model-input-budget";
 import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
@@ -341,6 +346,7 @@ import { createHash } from "./utils/crypto-compat";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
+	assertModelOutputComplete,
 	getErrorMessage,
 	isTransientModelError,
 	modelProviderErrorDetail,
@@ -348,6 +354,7 @@ import {
 import { captureModelLookupCaller } from "./utils/model-lookup-caller";
 import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import { resolvePromptBatcherSettings } from "./utils/prompt-batcher/config";
+import { resolveSetting } from "./utils/resolve-setting";
 import { getOptimizationRootDir } from "./utils/state-dir";
 import {
 	ResponseSkeletonStreamExtractor,
@@ -852,6 +859,21 @@ function isTextStreamResult(
 	);
 }
 
+async function assertRuntimeModelOutputComplete(args: {
+	result: unknown;
+	provider: string;
+	model: string;
+}): Promise<void> {
+	if (typeof args.result !== "object" || args.result === null) return;
+	const record = args.result as { finishReason?: unknown };
+	if (!("finishReason" in record)) return;
+	assertModelOutputComplete({
+		finishReason: await Promise.resolve(record.finishReason),
+		provider: args.provider,
+		model: args.model,
+	});
+}
+
 /**
  * Read the hidden reasoning-token count from a model response so it can be
  * surfaced on the successful model span (#16394). Native results (tool-call
@@ -1117,6 +1139,8 @@ function normalizeMessageConnector(
 		connector.createThreadHandler = metadata.createThreadHandler;
 	if (metadata.postToThreadHandler)
 		connector.postToThreadHandler = metadata.postToThreadHandler;
+	if (metadata.manageServerHandler)
+		connector.manageServerHandler = metadata.manageServerHandler;
 	if (metadata.contentShaping)
 		connector.contentShaping = {
 			...metadata.contentShaping,
@@ -1225,6 +1249,7 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly supportsModelAttemptPreparation = true;
 	#conversationLength = 100;
 	readonly agentId: UUID;
+	readonly runtimeInstanceId: UUID;
 	readonly character: Character;
 	public adapter!: IDatabaseAdapter;
 	static #anonymousAgentCounter = 0;
@@ -1434,6 +1459,8 @@ export class AgentRuntime implements IAgentRuntime {
 	constructor(opts: {
 		conversationLength?: number;
 		agentId?: UUID;
+		/** Host-persisted installation identity. Omitted only by ephemeral/test runtimes. */
+		runtimeInstanceId?: UUID;
 		/** Optional character configuration. If not provided, an anonymous character is created. */
 		character?: Character;
 		plugins?: Plugin[];
@@ -1550,6 +1577,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// Falls back to random UUID only if no character name is provided
 		this.agentId =
 			character.id ?? opts.agentId ?? stringToUuid(character.name ?? uuidv4());
+		this.runtimeInstanceId = opts.runtimeInstanceId ?? (uuidv4() as UUID);
 		this.character = character;
 
 		this.initPromise = new Promise((resolve) => {
@@ -3042,7 +3070,7 @@ export class AgentRuntime implements IAgentRuntime {
 					{ src: "agent", agentId: this.agentId },
 					"Database adapter not initialized; using in-memory adapter (ALLOW_NO_DATABASE)",
 				);
-				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
+				this.registerDatabaseAdapter(new InMemoryDatabaseAdapter(this.agentId));
 			} else {
 				this.logger.error(
 					{ src: "agent", agentId: this.agentId },
@@ -4737,6 +4765,7 @@ export class AgentRuntime implements IAgentRuntime {
 		source?: string;
 		type?: ChannelType | string;
 		channelId?: string;
+		serverId?: string;
 		messageServerId?: UUID;
 		userId?: UUID;
 		metadata?: Record<string, JsonValue>;
@@ -6530,6 +6559,150 @@ export class AgentRuntime implements IAgentRuntime {
 		return systemPrompt;
 	}
 
+	/** Resolve the concrete provider model id used for final-wire budgeting. */
+	private resolveRegistrationModelName(
+		metadata: ModelRegistrationMetadata | undefined,
+	): string | undefined {
+		if (!metadata) return undefined;
+		if (
+			typeof metadata.displayModel === "string" &&
+			metadata.displayModel.trim()
+		) {
+			return metadata.displayModel.trim();
+		}
+		for (const setting of [
+			...(metadata.displayModelSettings ?? []),
+			metadata.displayModelSetting,
+		]) {
+			if (!setting) continue;
+			const value = resolveSetting(
+				{ getSetting: (key: string) => this.getSetting(key) },
+				setting,
+			);
+			if (value?.trim()) return value.trim();
+		}
+		if (
+			typeof metadata.displayModelDefault === "string" &&
+			metadata.displayModelDefault.trim()
+		) {
+			return metadata.displayModelDefault.trim();
+		}
+		return undefined;
+	}
+
+	/**
+	 * Budget the exact text-generation request after runtime transforms and
+	 * pre-model hooks. UTF-8 bytes are a conservative token upper bound, so the
+	 * runtime can reject before a provider handler without silently rewriting
+	 * any model-facing field.
+	 */
+	private buildFinalModelInputBudget(
+		params: unknown,
+		metadata: ModelRegistrationMetadata | undefined,
+	) {
+		const record = isPlainObject(params)
+			? (params as Record<string, unknown>)
+			: {};
+		const contextWindowTokens =
+			typeof metadata?.contextWindowTokens === "number" &&
+			Number.isFinite(metadata.contextWindowTokens)
+				? Math.max(1, Math.floor(metadata.contextWindowTokens))
+				: undefined;
+		const requestedOutputTokens =
+			typeof record.maxTokens === "number" &&
+			Number.isFinite(record.maxTokens) &&
+			record.maxTokens > 0
+				? Math.floor(record.maxTokens)
+				: 0;
+		const requestedModelName =
+			typeof record.model === "string" && record.model.trim()
+				? record.model.trim()
+				: undefined;
+		return buildModelInputBudget({
+			completeRequest: params,
+			messages: Array.isArray(record.messages)
+				? (record.messages as GenerateTextParams["messages"])
+				: undefined,
+			promptSegments: Array.isArray(record.promptSegments)
+				? (record.promptSegments as GenerateTextParams["promptSegments"])
+				: undefined,
+			tools: Array.isArray(record.tools)
+				? (record.tools as GenerateTextParams["tools"])
+				: undefined,
+			system: record.system,
+			prompt: record.prompt,
+			input: record.input,
+			responseSchema: record.responseSchema,
+			responseFormat: record.responseFormat,
+			grammar: record.grammar,
+			responseSkeleton: record.responseSkeleton,
+			prefill: record.prefill,
+			modelName:
+				requestedModelName ??
+				(contextWindowTokens === undefined
+					? this.resolveRegistrationModelName(metadata)
+					: undefined),
+			...(contextWindowTokens ? { contextWindowTokens } : {}),
+			reserveTokens: Math.max(
+				DEFAULT_INPUT_RESERVE_TOKENS,
+				requestedOutputTokens,
+			),
+			estimationMode: "utf8-upper-bound",
+		});
+	}
+
+	/** Clone caller-owned request data before runtime transforms. Arrays and
+	 * plain records become handler-owned; opaque transport collaborators retain
+	 * identity because cloning them would change platform semantics. */
+	private cloneModelRequestGraph<T>(value: T): T {
+		const seen = new WeakMap<object, unknown>();
+		const clone = (candidate: unknown): unknown => {
+			if (candidate === null || typeof candidate !== "object") return candidate;
+			const existing = seen.get(candidate);
+			if (existing !== undefined) return existing;
+			if (Array.isArray(candidate)) {
+				const result: unknown[] = [];
+				seen.set(candidate, result);
+				for (const item of candidate) result.push(clone(item));
+				return result;
+			}
+			if (!isPlainObject(candidate)) return candidate;
+			const result: Record<string, unknown> = {};
+			seen.set(candidate, result);
+			for (const [key, nested] of Object.entries(candidate)) {
+				result[key] = clone(nested);
+			}
+			return result;
+		};
+		return clone(value) as T;
+	}
+
+	/** Freeze the complete admitted handler payload so provider code cannot add,
+	 * remove, or rewrite model-bound data after the final measurement. Only
+	 * arrays and plain records belong to the request graph; platform objects
+	 * such as AbortSignal remain opaque transport collaborators. */
+	private freezeAdmittedModelRequest(value: unknown): void {
+		const seen = new WeakSet<object>();
+		const visit = (candidate: unknown): void => {
+			if (
+				candidate === null ||
+				(typeof candidate !== "object" && typeof candidate !== "function") ||
+				seen.has(candidate as object)
+			) {
+				return;
+			}
+			if (!Array.isArray(candidate) && !isPlainObject(candidate)) return;
+			seen.add(candidate as object);
+			for (const nested of Object.values(
+				candidate as Record<string, unknown>,
+			)) {
+				visit(nested);
+			}
+			Object.freeze(candidate);
+		};
+		visit(value);
+	}
+
 	private getFirstUserPromptFromMessages(
 		messages: unknown,
 	): string | undefined {
@@ -6886,7 +7059,7 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				let modelParams: ModelParamsMap[T];
 				const paramsClone = isPlainObject(params)
-					? { ...(params as Record<string, JsonValue | object>) }
+					? this.cloneModelRequestGraph(params)
 					: params;
 				if (
 					params === null ||
@@ -7324,10 +7497,55 @@ export class AgentRuntime implements IAgentRuntime {
 						: null) ||
 					(typeof modelParams === "string" ? modelParams : null);
 
-				// Capture the post-hook params + prompt into the outer scope so the
-				// catch block's failed-attempt trajectory record can see them.
+				// Capture the exact post-hook request before the final budget check so a
+				// typed zero-dispatch rejection records the same complete request.
 				modelParamsRef = modelParams;
 				promptContentRef = promptContent;
+
+				if (TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))) {
+					let finalBudget = this.buildFinalModelInputBudget(
+						modelParams,
+						resolvedModel.metadata,
+					);
+					if (isPlainObject(modelParams)) {
+						const paramsRecord = modelParams as Record<string, unknown>;
+						const providerOptions = isPlainObject(paramsRecord.providerOptions)
+							? (paramsRecord.providerOptions as Record<string, unknown>)
+							: {};
+						const seenBudgetSignatures = new Set<string>();
+						while (true) {
+							const signature = JSON.stringify(finalBudget);
+							if (seenBudgetSignatures.has(signature)) {
+								throw new ElizaError(
+									"Final model-input budget metadata did not stabilize",
+									{ code: "MODEL_INPUT_BUDGET_UNSTABLE" },
+								);
+							}
+							seenBudgetSignatures.add(signature);
+							Object.assign(
+								providerOptions,
+								withModelInputBudgetProviderOptions(
+									providerOptions,
+									finalBudget,
+								),
+							);
+							paramsRecord.providerOptions = providerOptions;
+							const measuredWithMetadata = this.buildFinalModelInputBudget(
+								modelParams,
+								resolvedModel.metadata,
+							);
+							if (
+								measuredWithMetadata.estimatedInputTokens ===
+								finalBudget.estimatedInputTokens
+							) {
+								finalBudget = measuredWithMetadata;
+								break;
+							}
+							finalBudget = measuredWithMetadata;
+						}
+					}
+					this.freezeAdmittedModelRequest(modelParams);
+				}
 
 				if (!binaryModels.includes(resolvedModelKey)) {
 					this.logger.trace(
@@ -7501,15 +7719,20 @@ export class AgentRuntime implements IAgentRuntime {
 					const resolvedToolCalls = hasToolCallsField
 						? await Promise.resolve(streamRaw.toolCalls)
 						: [];
+					const resolvedFinishReason =
+						"finishReason" in streamRaw
+							? await Promise.resolve(streamRaw.finishReason)
+							: undefined;
+					assertModelOutputComplete({
+						finishReason: resolvedFinishReason,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
 					// The presence of `toolCalls` marks a native-result contract, even
 					// when the provider returns an empty list. Collapsing that result to a
 					// string discards usage, finish reason, and concrete model metadata,
 					// which makes successful hosted calls unpriceable.
 					if (hasToolCallsField) {
-						const resolvedFinishReason =
-							"finishReason" in streamRaw
-								? await Promise.resolve(streamRaw.finishReason)
-								: undefined;
 						const resolvedUsage =
 							"usage" in streamRaw
 								? await Promise.resolve(streamRaw.usage)
@@ -7631,6 +7854,14 @@ export class AgentRuntime implements IAgentRuntime {
 					if (ctxEnd) ctxEnd();
 				}
 
+				if (!isTextStreamResult(resultRef.current as JsonValue | object)) {
+					await assertRuntimeModelOutputComplete({
+						result: resultRef.current,
+						provider: resolvedModel.provider,
+						model: resolvedModelKey,
+					});
+				}
+
 				const elapsedTime =
 					(typeof performance !== "undefined" &&
 					typeof performance.now === "function"
@@ -7725,6 +7956,16 @@ export class AgentRuntime implements IAgentRuntime {
 					isTextStreamResult(resultRef.current as object)
 				) {
 					const streamResult = resultRef.current as TextStreamResult;
+					const checkedFinishReason = Promise.resolve(
+						streamResult.finishReason,
+					).then((finishReason) => {
+						assertModelOutputComplete({
+							finishReason,
+							provider: resolvedModel.provider,
+							model: resolvedModelKey,
+						});
+						return finishReason;
+					});
 					const trajArgs = {
 						modelType: String(modelType),
 						resolvedModelKey: String(resolvedModelKey),
@@ -7752,8 +7993,8 @@ export class AgentRuntime implements IAgentRuntime {
 					// backstop so at least one trajectory entry fires regardless
 					// of how the consumer treats the stream result (#17532 review,
 					// Finding 2).
-					streamResult.text.then(
-						(resolvedText) => {
+					Promise.all([streamResult.text, checkedFinishReason]).then(
+						([resolvedText]) => {
 							if (accumulatedChunks.length === 0 && resolvedText) {
 								accumulatedChunks.push(resolvedText);
 							}
@@ -7763,6 +8004,7 @@ export class AgentRuntime implements IAgentRuntime {
 					);
 					resultRef.current = {
 						...streamResult,
+						finishReason: checkedFinishReason,
 						textStream: (async function* () {
 							// Each .next() call re-enters the recording scope so
 							// the provider generator body (and its finally block
@@ -7775,7 +8017,10 @@ export class AgentRuntime implements IAgentRuntime {
 										recordingState,
 										() => innerIter.next(),
 									);
-									if (done) break;
+									if (done) {
+										await checkedFinishReason;
+										break;
+									}
 									accumulatedChunks.push(value);
 									yield value;
 								}
@@ -7806,6 +8051,7 @@ export class AgentRuntime implements IAgentRuntime {
 							return Promise.resolve(
 								runInModelCallRecordingScope(recordingState, async () => {
 									const t = await streamResult.text;
+									await checkedFinishReason;
 									accumulatedChunks.length = 0;
 									accumulatedChunks.push(t);
 									await recordOnce();
@@ -11385,20 +11631,34 @@ ${section_end}`;
 		) {
 			return null;
 		}
-		const requested = params.limit ?? params.count;
+		const requestedLimit = params.limit ?? params.count;
+		// A caller that pins no limit asks for the room's complete retained
+		// window — the shape the prompt-integrity providers (RECENT_MESSAGES,
+		// FACTS, ATTACHMENTS) now use after they stopped capping model-facing
+		// history. Treat it as an infinite request so it still coalesces: the
+		// superset fetch drops the limit, `meta` records an unbounded window,
+		// and no bounded cache entry can ever serve it (Infinity fails the
+		// superset check), so coalescing can never shorten a complete read.
+		const unbounded = requestedLimit === undefined;
 		if (
-			typeof requested !== "number" ||
-			!Number.isFinite(requested) ||
-			requested <= 0
+			!unbounded &&
+			(typeof requestedLimit !== "number" ||
+				!Number.isFinite(requestedLimit) ||
+				requestedLimit <= 0)
 		) {
 			return null;
 		}
+		const requested = unbounded
+			? Number.POSITIVE_INFINITY
+			: (requestedLimit as number);
 		const roomId = params.roomId;
-		const supersetLimit = Math.max(
-			requested,
-			this.getConversationLength(),
-			AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
-		);
+		const supersetLimit = unbounded
+			? Number.POSITIVE_INFINITY
+			: Math.max(
+					requested,
+					this.getConversationLength(),
+					AgentRuntime.ROOM_MESSAGES_MEMO_MIN_WINDOW,
+				);
 		const cached = this.roomMessagesMemo.peek(roomId);
 		const window =
 			cached && cached.meta >= requested
@@ -11409,7 +11669,7 @@ ${section_end}`;
 						this.adapter.getMemories({
 							tableName: "messages",
 							roomId,
-							limit: supersetLimit,
+							...(unbounded ? {} : { limit: supersetLimit }),
 							unique: false,
 						}),
 					);

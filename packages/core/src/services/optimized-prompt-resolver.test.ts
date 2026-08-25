@@ -283,16 +283,19 @@ describe("trimDemonstrationInput surrogate handling", () => {
 		return true;
 	}
 
-	test("keeps surrogate pairs intact at the 600 candidate boundary", () => {
+	// Prompt integrity (root CLAUDE.md, "never discard model context"): the
+	// 600-char candidate cap and its " …" marker were removed in #24134, so a
+	// long user section must reach the demonstration complete and well-formed.
+	test("keeps a long candidate complete past the removed 600-char cap", () => {
 		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
 		const candidate = `${"a".repeat(599)}${emoji}${"b".repeat(50)}`;
 		const rawInput = `user: ${candidate}`;
 		const out = trimDemonstrationInput(rawInput);
-		expect(out.length).toBeLessThanOrEqual(602);
+		expect(out).toBe(candidate);
+		expect(out).toContain(emoji);
+		expect(out.endsWith("b")).toBe(true);
 		expect(out.isWellFormed()).toBe(true);
 		expect(isWellFormed(out)).toBe(true);
-		expect(out).not.toContain(emoji);
-		expect(out.endsWith(" …")).toBe(true);
 	});
 
 	test("preserves a fitting emoji at exactly 600", () => {
@@ -318,19 +321,18 @@ describe("trimDemonstrationInput surrogate handling", () => {
 		expect(isWellFormed(out2)).toBe(true);
 	});
 
-	test("keeps surrogate pairs intact in rawInput head/tail fallback", () => {
+	// The untagged fallback used to become a 400-char head + "\n…\n" + 200-char
+	// tail. #24134 removed that elision; the complete recorded input is kept.
+	test("keeps the untagged rawInput fallback complete, with no elision marker", () => {
 		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
 		const head = `${"a".repeat(399)}${emoji}${"b".repeat(10)}`;
 		const tail = `${"c".repeat(199)}${emoji}`;
 		const rawInput = `${head}${"x".repeat(100)}${tail}`;
 		expect(rawInput.length).toBeGreaterThan(600);
 		const out = trimDemonstrationInput(rawInput);
+		expect(out).toBe(rawInput);
+		expect(out).not.toContain("\n…\n");
 		expect(out.isWellFormed()).toBe(true);
 		expect(isWellFormed(out)).toBe(true);
-		expect(out).toContain("\n…\n");
-		const parts = out.split("\n…\n");
-		expect(parts[0].length).toBeLessThanOrEqual(400);
-		expect(parts[1].length).toBeLessThanOrEqual(200);
-		expect(parts[1].isWellFormed()).toBe(true);
 	});
 });

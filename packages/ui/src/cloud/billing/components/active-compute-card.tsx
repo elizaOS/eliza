@@ -2,7 +2,7 @@
 
 "use client";
 
-import type { Observed } from "@elizaos/cloud-shared/types/account-billing-snapshot";
+import type { Observed } from "@elizaos/cloud-sdk/account-billing-snapshot";
 import { BrandCard, Button } from "@elizaos/ui/cloud-ui";
 import {
   AlertCircle,
@@ -121,7 +121,7 @@ function ResourceCard({
     <li className="min-w-0 border border-brand-surface bg-surface p-4">
       <div className="flex min-w-0 items-start gap-3">
         <div className="mt-0.5 shrink-0 border border-border bg-bg-accent p-2 text-muted-strong">
-          <ResourceIcon className="h-4 w-4" aria-hidden="true" />
+          <ResourceIcon className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="break-words font-mono text-sm font-semibold text-txt-strong [overflow-wrap:anywhere]">
@@ -260,7 +260,7 @@ function RetryButton({
       className="min-h-11 min-w-11 gap-2 font-mono"
     >
       <RefreshCw
-        className={`h-4 w-4 motion-reduce:animate-none ${retrying ? "animate-spin" : ""}`}
+        className={`size-4 motion-reduce:animate-none ${retrying ? "animate-spin" : ""}`}
         aria-hidden="true"
       />
       {retrying
@@ -314,7 +314,7 @@ export function ActiveComputeCardView({
         <div className="relative z-10 flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
           <div role="alert" className="flex min-w-0 items-start gap-3">
             <AlertCircle
-              className="mt-0.5 h-5 w-5 shrink-0 text-warn"
+              className="mt-0.5  size-5 shrink-0 text-warn"
               aria-hidden="true"
             />
             <div className="min-w-0">
@@ -411,7 +411,7 @@ export function ActiveComputeCardView({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <Calculator
-                className="h-4 w-4 shrink-0 text-muted-strong"
+                className="size-4 shrink-0 text-muted-strong"
                 aria-hidden="true"
               />
               <h3 className="font-mono text-base uppercase text-txt-strong">
@@ -463,7 +463,7 @@ export function ActiveComputeCardView({
           >
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <Clock3
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <span>
@@ -531,7 +531,7 @@ export function ActiveComputeCardView({
           <div className="flex flex-col items-start gap-4 border border-brand-surface bg-surface p-4 sm:flex-row sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <AlertCircle
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <div className="min-w-0">
@@ -560,7 +560,7 @@ export function ActiveComputeCardView({
           <div className="flex flex-col items-start gap-3 border border-warn/40 bg-warn/10 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-2 text-sm text-txt">
               <AlertCircle
-                className="mt-0.5 h-4 w-4 shrink-0 text-warn"
+                className="mt-0.5 size-4 shrink-0 text-warn"
                 aria-hidden="true"
               />
               <span>

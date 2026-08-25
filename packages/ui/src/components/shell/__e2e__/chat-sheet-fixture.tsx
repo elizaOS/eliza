@@ -230,8 +230,13 @@ function Harness(): React.JSX.Element {
   // `window.__setFirstRun(false)` flips it, exercising the pinned-half to
   // authenticated-full transition that a static prop can't reach (#12364).
   const [firstRunOpen, setFirstRunOpen] = React.useState(firstRun);
+  const [releaseFirstRunToFull, setReleaseFirstRunToFull] =
+    React.useState(false);
   React.useEffect(() => {
-    window.__setFirstRun = setFirstRunOpen;
+    window.__setFirstRun = (value) => {
+      setReleaseFirstRunToFull(!value);
+      setFirstRunOpen(value);
+    };
   }, []);
 
   // Deterministic transcript mutation hooks for the browser e2e. These drive the
@@ -534,7 +539,7 @@ function Harness(): React.JSX.Element {
         <h1 style={{ fontSize: 30, fontWeight: 600, margin: 0 }}>Workspace</h1>
         <p style={{ opacity: 0.7, marginTop: 12, lineHeight: 1.6 }}>
           This is the live view behind the floating chat. Clicking here must NOT
-          close the chat — the sheet only closes on a pull-down or Escape.
+          close the chat. The sheet only closes on a pull-down or Escape.
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           {["Files", "Tasks", "Notes", "Settings"].map((t) => (
@@ -558,6 +563,8 @@ function Harness(): React.JSX.Element {
       <ChatOverlay
         controller={controller}
         firstRunOpen={firstRunOpen}
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={() => setReleaseFirstRunToFull(false)}
       />
     </div>
   );

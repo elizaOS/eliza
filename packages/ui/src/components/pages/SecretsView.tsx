@@ -281,7 +281,7 @@ export function SecretsView({
             <Button
               variant="default"
               size="sm"
-              className="h-9 flex-shrink-0 px-3 text-sm"
+              className="h-9 shrink-0 px-3 text-sm"
               onClick={() => {
                 setPickerOpen(true);
                 setPickerSearch("");
@@ -321,7 +321,7 @@ export function SecretsView({
                 aria-expanded={!collapsed.has(category)}
               >
                 <ChevronDown
-                  className="h-3 w-3 select-none text-muted transition-transform"
+                  className="size-3 select-none text-muted transition-transform"
                   style={{
                     transform: collapsed.has(category)
                       ? "rotate(-90deg)"
@@ -431,7 +431,7 @@ function SecretPicker({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-sm text-base text-muted hover:text-txt"
+            className="size-8 rounded-sm text-base text-muted hover:text-txt"
             onClick={onClose}
             aria-label={t("common.close")}
           >
@@ -492,7 +492,7 @@ function SecretPicker({
                       <Button
                         variant="default"
                         size="sm"
-                        className="px-2.5 py-1 h-7 text-xs flex-shrink-0"
+                        className="px-2.5 py-1 h-7 text-xs shrink-0"
                         onClick={() => onAdd(s.key)}
                       >
                         {t("common.add")}
@@ -547,7 +547,7 @@ const SecretCard = memo(function SecretCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span
-              className="h-2 w-2 flex-shrink-0 rounded-full"
+              className="size-2 shrink-0 rounded-full"
               style={{
                 backgroundColor: secret.isSet ? "var(--ok)" : "var(--muted)",
               }}
@@ -557,7 +557,7 @@ const SecretCard = memo(function SecretCard({
             </span>
           </div>
         </div>
-        <div className="flex flex-shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {showRequired && (
             <span className="text-2xs font-medium text-danger">
               {t("secretsview.Required")}

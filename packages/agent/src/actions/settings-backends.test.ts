@@ -48,7 +48,7 @@ describe("owner gate on SETTINGS (show_backends / set_backend)", () => {
 
 describe("normalizeCodingBackend", () => {
   it("accepts known coding backends", () => {
-    for (const b of ["elizaos", "pi-agent", "claude", "codex", "opencode"]) {
+    for (const b of ["elizaos", "pi-agent", "claude", "codex"]) {
       expect(normalizeCodingBackend(b)).toBe(b);
     }
   });
@@ -57,12 +57,14 @@ describe("normalizeCodingBackend", () => {
     expect(normalizeCodingBackend("openai")).toBe("codex");
     expect(normalizeCodingBackend("claude-code")).toBe("claude");
     expect(normalizeCodingBackend("eliza")).toBe("elizaos");
-    expect(normalizeCodingBackend("open_code")).toBe("opencode");
     expect(normalizeCodingBackend("PI")).toBe("pi-agent");
   });
 
   it("rejects unknown / empty / non-string", () => {
     expect(normalizeCodingBackend("gpt-9000")).toBeUndefined();
+    // OpenCode was removed as a coding backend in 75916820b8.
+    expect(normalizeCodingBackend("opencode")).toBeUndefined();
+    expect(normalizeCodingBackend("open_code")).toBeUndefined();
     expect(normalizeCodingBackend("")).toBeUndefined();
     expect(normalizeCodingBackend(undefined)).toBeUndefined();
     expect(normalizeCodingBackend(42)).toBeUndefined();
@@ -159,7 +161,7 @@ describe("set_backend allow-list enforcement", () => {
       runtime as never,
       { entityId: "owner" } as never,
       undefined,
-      { parameters: { action: "set_backend", backend: "opencode" } } as never,
+      { parameters: { action: "set_backend", backend: "codex" } } as never,
     );
 
     expect(result?.success).toBe(false);

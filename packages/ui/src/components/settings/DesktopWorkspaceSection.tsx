@@ -506,7 +506,7 @@ export function DesktopWorkspaceSection({
               })}
               stacked
             >
-              <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
+              <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg p-3 text-xs-tight leading-5 text-txt">
                 {devStackText}
               </pre>
             </SettingsRow>

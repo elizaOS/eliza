@@ -5,8 +5,8 @@
 
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import {
+  AGENT_PRICING,
   estimateHoursRemaining,
   formatDuration,
   formatHourlyRate,
@@ -14,7 +14,7 @@ import {
   formatUSD,
   MONTHLY_IDLE_COST,
   MONTHLY_RUNNING_COST,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { Badge, BrandCard, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { useT } from "../lib/i18n";
@@ -57,8 +57,8 @@ export function ElizaAgentPricingBanner({
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-7 h-7 bg-white/5 border border-white/10">
-              <DollarSign className="h-3.5 w-3.5 text-white/70" />
+            <div className="flex items-center justify-center size-7 bg-white/5 border border-white/10">
+              <DollarSign className="size-3.5 text-white/70" />
             </div>
             <p className="text-sm font-medium text-white">
               {t("cloud.containers.pricingBanner.usageRates", {
@@ -69,7 +69,7 @@ export function ElizaAgentPricingBanner({
           {isLowBalance && hasAgents && (
             <Badge
               variant="outline"
-              className="bg-red-500/10 border-red-500/30 text-red-400 text-[10px] px-2"
+              className="bg-red-500/10 border-red-500/30 text-red-400 text-2xs px-2"
             >
               {t("cloud.containers.pricingBanner.lowBalance", {
                 defaultValue: "Low balance",
@@ -83,8 +83,8 @@ export function ElizaAgentPricingBanner({
           {/* Running rate */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <Zap className="h-3 w-3 text-green-400" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
+              <Zap className="size-3 text-green-400" />
+              <p className="text-2xs uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.running", {
                   defaultValue: "Running",
                 })}
@@ -93,7 +93,7 @@ export function ElizaAgentPricingBanner({
             <p className="text-base font-mono font-semibold text-white tabular-nums">
               {formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
             </p>
-            <p className="text-[10px] text-white/30 font-mono">
+            <p className="text-2xs text-white/30 font-mono">
               {formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)}
             </p>
           </div>
@@ -101,8 +101,8 @@ export function ElizaAgentPricingBanner({
           {/* Idle rate */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <TrendingDown className="h-3 w-3 text-white/60" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
+              <TrendingDown className="size-3 text-white/60" />
+              <p className="text-2xs uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.idle", {
                   defaultValue: "Idle",
                 })}
@@ -111,7 +111,7 @@ export function ElizaAgentPricingBanner({
             <p className="text-base font-mono font-semibold text-white tabular-nums">
               {formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)}
             </p>
-            <p className="text-[10px] text-white/30 font-mono">
+            <p className="text-2xs text-white/30 font-mono">
               {formatMonthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE)}
             </p>
           </div>
@@ -119,8 +119,8 @@ export function ElizaAgentPricingBanner({
           {/* Current burn */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <DollarSign className="h-3 w-3 text-white/70" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
+              <DollarSign className="size-3 text-white/70" />
+              <p className="text-2xs uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.yourCost", {
                   defaultValue: "Your Cost",
                 })}
@@ -129,7 +129,7 @@ export function ElizaAgentPricingBanner({
             <p className="text-base font-mono font-semibold text-white tabular-nums">
               {hasAgents ? `${formatUSD(totalMonthlyCost)}/mo` : "—"}
             </p>
-            <p className="text-[10px] text-white/30 font-mono">
+            <p className="text-2xs text-white/30 font-mono">
               {hasBillableAgents
                 ? t("cloud.containers.pricingBanner.runningIdleSummary", {
                     defaultValue: "{{run}} running · {{idle}} idle",
@@ -149,8 +149,8 @@ export function ElizaAgentPricingBanner({
           {/* Time remaining */}
           <div className="bg-black/60 p-3.5 space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <Clock className="h-3 w-3 text-white/50" />
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/60">
+              <Clock className="size-3 text-white/50" />
+              <p className="text-2xs uppercase tracking-[0.2em] text-white/60">
                 {t("cloud.containers.pricingBanner.remaining", {
                   defaultValue: "Remaining",
                 })}
@@ -163,7 +163,7 @@ export function ElizaAgentPricingBanner({
             >
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}
             </p>
-            <p className="text-[10px] text-white/30 font-mono">
+            <p className="text-2xs text-white/30 font-mono">
               {t("cloud.containers.pricingBanner.balance", {
                 defaultValue: "Balance",
               })}

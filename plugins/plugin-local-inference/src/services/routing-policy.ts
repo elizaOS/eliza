@@ -292,10 +292,17 @@ class PolicyEngine {
 		const eligible = args.candidates
 			.filter((c) => c.provider !== args.selfProvider)
 			.slice()
-			// Defensive sort — real callers already sort, but test fixtures and
-			// non-registry callers might not, and a silent "pick-wrong" would be
-			// worse than the extra O(n log n).
-			.sort((a, b) => b.priority - a.priority);
+			.sort((a, b) => {
+				const bPriority =
+					typeof b.priority === "number" && Number.isFinite(b.priority)
+						? b.priority
+						: 0;
+				const aPriority =
+					typeof a.priority === "number" && Number.isFinite(a.priority)
+						? a.priority
+						: 0;
+				return bPriority - aPriority || a.provider.localeCompare(b.provider);
+			});
 		if (eligible.length === 0) return null;
 
 		switch (args.policy) {

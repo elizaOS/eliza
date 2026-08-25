@@ -99,6 +99,22 @@ export interface OcAgentSource {
 
 const DAILY_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
 
+/**
+ * UTC midnight for calendar parts, keeping years 0-99 literal. `Date.UTC`
+ * remaps them into 1900-1999, and the daily-log filename pattern is `\d{4}`,
+ * so `0099-03-04.md` would land on 1999-03-04 while the record's own `date`
+ * field still reads "0099-03-04" — a self-contradicting row that then tiers
+ * the migrated memory by a timestamp 1900 years off. `OcDailyLog.epochMs` is
+ * documented as "epoch ms of the date at UTC midnight", so it has to agree
+ * with `date`.
+ */
+function utcMidnightMs(year: number, monthIndex: number, day: number): number {
+  const at = new Date(0);
+  at.setUTCFullYear(year, monthIndex, day);
+  at.setUTCHours(0, 0, 0, 0);
+  return at.getTime();
+}
+
 /** Canonical + legacy root-memory filenames (mirrors OC root-memory-files.ts). */
 const ROOT_MEMORY_CANDIDATES = ["MEMORY.md", "memory.md"] as const;
 
@@ -323,7 +339,7 @@ function readSqliteMemory(store: OcSqliteStore): {
     const m = DAILY_RE.exec(base);
     if (m) {
       const [, y, mo, d] = m;
-      const epochMs = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+      const epochMs = utcMidnightMs(Number(y), Number(mo) - 1, Number(d));
       dailyLogs.push({
         date: `${y}-${mo}-${d}`,
         epochMs: Number.isNaN(epochMs) ? 0 : epochMs,
@@ -381,7 +397,7 @@ export function readOcAgentHome(home: string, agentId: string): OcAgentSource {
     const m = DAILY_RE.exec(filename);
     if (m) {
       const [, y, mo, d] = m;
-      const epochMs = Date.UTC(Number(y), Number(mo) - 1, Number(d));
+      const epochMs = utcMidnightMs(Number(y), Number(mo) - 1, Number(d));
       dailyLogs.push({
         date: `${y}-${mo}-${d}`,
         epochMs: Number.isNaN(epochMs) ? 0 : epochMs,

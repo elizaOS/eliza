@@ -1817,7 +1817,21 @@ async function loadLatestRoomMemory(
     const candidates = memories
       .filter((memory) => !extractDiscordReactionEvent(memory))
       .filter((memory) => extractText(memory).trim().length > 0)
-      .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+      .sort((left, right) => {
+        const rightCreated =
+          typeof right.createdAt === "number" &&
+          Number.isFinite(right.createdAt)
+            ? right.createdAt
+            : 0;
+        const leftCreated =
+          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+            ? left.createdAt
+            : 0;
+        return (
+          rightCreated - leftCreated ||
+          (left.id ?? "").localeCompare(right.id ?? "")
+        );
+      });
     return candidates[0] ?? null;
   } catch {
     return null;
@@ -1977,7 +1991,17 @@ async function loadInboxMessages(
 
   // Newest first. The core API doesn't guarantee order across rooms, so
   // we do the merge sort client-side.
-  deduped.sort((a, b) => b.timestamp - a.timestamp);
+  deduped.sort((a, b) => {
+    const bTime =
+      typeof b.timestamp === "number" && Number.isFinite(b.timestamp)
+        ? b.timestamp
+        : 0;
+    const aTime =
+      typeof a.timestamp === "number" && Number.isFinite(a.timestamp)
+        ? a.timestamp
+        : 0;
+    return bTime - aTime || a.id.localeCompare(b.id);
+  });
   const ordered = deduped.slice(0, limit);
 
   await Promise.all(
@@ -2563,7 +2587,17 @@ async function loadInboxChats(
     });
   }
 
-  chats.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  chats.sort((a, b) => {
+    const bLast =
+      typeof b.lastMessageAt === "number" && Number.isFinite(b.lastMessageAt)
+        ? b.lastMessageAt
+        : 0;
+    const aLast =
+      typeof a.lastMessageAt === "number" && Number.isFinite(a.lastMessageAt)
+        ? a.lastMessageAt
+        : 0;
+    return bLast - aLast || a.id.localeCompare(b.id);
+  });
   return chats;
 }
 

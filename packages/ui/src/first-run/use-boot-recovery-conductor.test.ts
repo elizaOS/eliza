@@ -76,6 +76,7 @@ import {
 } from "../state/ConversationMessagesContext.hooks";
 import { tryHandleBootRecoveryAction } from "./boot-recovery-channel";
 import {
+  BOOT_RECOVERY_OPEN_DEBOUNCE_MS,
   BOOT_STALL_AFTER_MS,
   useBootRecoveryConductor,
 } from "./use-boot-recovery-conductor";
@@ -118,6 +119,13 @@ const BOOTING: ConductorInputs = {
 function stall() {
   act(() => {
     vi.advanceTimersByTime(BOOT_STALL_AFTER_MS + 1);
+  });
+}
+
+/** Let a pending chat-open debounce fire (or prove it was cancelled). */
+function settleOpenDebounce() {
+  act(() => {
+    vi.advanceTimersByTime(BOOT_RECOVERY_OPEN_DEBOUNCE_MS + 1);
   });
 }
 
@@ -215,14 +223,70 @@ describe("useBootRecoveryConductor", () => {
     expect(card()?.text).toContain("dedicated agent");
     expect(card()?.text).toContain("__boot_recovery__:retry-handoff=");
     // The resting overlay shows no transcript — the first seed opens the chat
-    // so the ask is seen; a same-episode update must not re-open it.
+    // (after the flap debounce) so the ask is seen; a same-episode update
+    // must not re-open it.
+    expect(opens.length).toBe(0);
+    settleOpenDebounce();
     expect(opens.length).toBe(1);
     rerender({
       booting: false,
       noProviderConfigured: false,
       handoff: { phase: "timed-out", agentId: "agent-1" },
     });
+    settleOpenDebounce();
     expect(opens.length).toBe(1);
+    window.removeEventListener("eliza:chat:open", onOpen);
+    unmount();
+  });
+
+  it("opens at most once per trouble kind across flapping episodes", () => {
+    const opens: number[] = [];
+    const onOpen = () => opens.push(1);
+    window.addEventListener("eliza:chat:open", onOpen);
+    const failedHandoff: ConductorInputs = {
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "failed", agentId: "agent-1" },
+    };
+    const healthy: ConductorInputs = {
+      booting: false,
+      noProviderConfigured: false,
+      handoff: null,
+    };
+    const { card, rerender, unmount } = renderConductor(failedHandoff);
+    settleOpenDebounce();
+    expect(opens.length).toBe(1);
+    // The signal flaps: trouble clears (card removed) and re-forms. A fresh
+    // episode of the SAME kind must not interrupt again — this exact cycle
+    // popped an empty sheet every ~2 minutes in the wild.
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      rerender(healthy);
+      expect(card()).toBeUndefined();
+      rerender(failedHandoff);
+      settleOpenDebounce();
+      expect(card()).toBeTruthy();
+    }
+    expect(opens.length).toBe(1);
+    window.removeEventListener("eliza:chat:open", onOpen);
+    unmount();
+  });
+
+  it("a trouble blip that clears within the debounce never opens the chat", () => {
+    const opens: number[] = [];
+    const onOpen = () => opens.push(1);
+    window.addEventListener("eliza:chat:open", onOpen);
+    const { card, rerender, unmount } = renderConductor({
+      booting: false,
+      noProviderConfigured: false,
+      handoff: { phase: "failed", agentId: "agent-1" },
+    });
+    expect(card()).toBeTruthy();
+    // The flap removes the card before the debounce fires — opening now would
+    // reveal an empty transcript, so the pending open must be dropped.
+    rerender({ booting: false, noProviderConfigured: false, handoff: null });
+    expect(card()).toBeUndefined();
+    settleOpenDebounce();
+    expect(opens.length).toBe(0);
     window.removeEventListener("eliza:chat:open", onOpen);
     unmount();
   });

@@ -2,6 +2,8 @@
 
 import type { Meta, StoryObj } from "@storybook/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MockAppProvider } from "../../storybook/mock-providers";
+import { CloudI18nProvider } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
 import { McpEditorDialog } from "./McpEditorDialog";
 
@@ -28,6 +30,17 @@ const meta = {
   title: "Cloud/MCPs/EditorDialog",
   component: McpEditorDialog,
   parameters: { layout: "fullscreen" },
+  decorators: [
+    // MockAppProvider seeds the useAppSelector store; CloudI18nProvider backs
+    // the dialog's useCloudT() (the cloud routes have their own i18n context).
+    (Story) => (
+      <MockAppProvider>
+        <CloudI18nProvider initialLang="en">
+          <Story />
+        </CloudI18nProvider>
+      </MockAppProvider>
+    ),
+  ],
 } satisfies Meta<typeof McpEditorDialog>;
 
 export default meta;

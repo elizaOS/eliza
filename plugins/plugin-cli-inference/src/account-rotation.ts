@@ -30,8 +30,9 @@
  *     pooled account is present. Ambient stays the FALLBACK: an empty pool
  *     (select → null) or a failed selection preserves the pre-pool behavior
  *     (attempt with no env).
- *  2. **Rotation on a subscription-limit-classed throw.** We mark the limited
- *     account, select the next healthy one, build its subprocess-only env,
+ *  2. **Rotation on an account-scoped failure.** We mark a limited account or
+ *     flag an authentication failure for reauthentication, select the next
+ *     healthy one, build its subprocess-only env,
  *     dispose the warm session so it re-auths as the new account on its next
  *     start, and retry the turn transparently. Only when the pool returns null
  *     (all accounts limited / no pool / single account) do we rethrow so the
@@ -54,9 +55,9 @@
  *  - **Rotation is opt-out-able**, gated like the rest of the plugin's env
  *    conventions: `ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION` (default ON when a pool
  *    is present; set `0`/`false`/`off` to disable and go straight to failover).
- *  - **Only rate-limit-class errors rotate.** A non-limit failure (timeout parsed
- *    as retryable is still a limit-shaped signal; a 400/empty-completion/auth
- *    error is NOT) rethrows immediately so we never burn the pool on a bug.
+ *  - **Only rate-limit and selected-account auth errors rotate.** A 401/403 can
+ *    identify a bad pooled credential only when this module selected it. An
+ *    ambient auth failure, 400, timeout, or empty completion rethrows.
  *
  * @module plugin-cli-inference/account-rotation
  */
@@ -155,6 +156,13 @@ export function isSubscriptionLimitError(err: unknown): boolean {
     t.includes("insufficient_quota") ||
     t.includes("too many requests")
   );
+}
+
+/** True only for an upstream authentication status, never message prose. */
+export function isProviderAuthenticationError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const statusCode = "statusCode" in err ? err.statusCode : undefined;
+  return statusCode === 401 || statusCode === 403;
 }
 
 /** Resolve whether rotation is enabled (default ON; opt-out via env/setting). */
@@ -335,25 +343,37 @@ export async function withAccountRotation(
       return result;
     } catch (err) {
       lastError = err;
-      if (!isSubscriptionLimitError(err)) {
-        // Not a limit — a genuine failure. Do NOT rotate (would burn a healthy
-        // account); rethrow so the caller's provider-failover chain runs.
+      const subscriptionLimit = isSubscriptionLimitError(err);
+      const selectedAccountAuthFailure = state !== null && isProviderAuthenticationError(err);
+      if (!subscriptionLimit && !selectedAccountAuthFailure) {
+        // An ambient auth error cannot identify a stored account. Other genuine
+        // failures also bypass rotation so the provider-failover chain owns them.
         throw err;
       }
-      // The active account just limited. Mark it (with its reset window) so
-      // quota-aware selection routes around it, then pick the next healthy one.
-      // Only for an account WE selected (the ambient credential is untracked).
+
+      // Only an account selected by this module can be marked. Authentication
+      // failures require reauthentication; subscription limits get a cooldown.
       if (state) {
-        void bridge
-          // error-policy:J7 marking the limit is best-effort bookkeeping; failure
-          // to persist it must not stop the rotation-to-next-account below.
-          .markRateLimited(
-            state.selection.providerId,
-            state.selection.accountId,
-            Date.now() + ROTATION_RATE_LIMIT_COOLOFF_MS,
-            "cli-inference subscription limit"
-          )
-          .catch(() => undefined);
+        if (selectedAccountAuthFailure) {
+          void bridge
+            // error-policy:J7 pool health bookkeeping must not mask failover.
+            .markNeedsReauth(
+              state.selection.providerId,
+              state.selection.accountId,
+              "cli-inference authentication rejected"
+            )
+            .catch(() => undefined);
+        } else {
+          void bridge
+            // error-policy:J7 pool health bookkeeping must not mask failover.
+            .markRateLimited(
+              state.selection.providerId,
+              state.selection.accountId,
+              Date.now() + ROTATION_RATE_LIMIT_COOLOFF_MS,
+              "cli-inference subscription limit"
+            )
+            .catch(() => undefined);
+        }
         rotationStateBySession.delete(stateKey);
         state = null;
       }
@@ -393,7 +413,7 @@ export async function withAccountRotation(
             tried: tried.length,
             reason: "pool-exhausted",
           },
-          `[cli-inference] all pooled ${agentType} accounts rate-limited (${tried.length} tried) — failing over to next provider tier`
+          `[cli-inference] no eligible pooled ${agentType} account remains (${tried.length} tried) — failing over to next provider tier`
         );
         throw err;
       }
@@ -418,7 +438,7 @@ export async function withAccountRotation(
           strategy: selection.strategy,
           attempt: rotations + 1,
         },
-        `[cli-inference] rotated to next ${agentType} account after subscription limit`
+        `[cli-inference] rotated to next ${agentType} account after ${selectedAccountAuthFailure ? "authentication failure" : "subscription limit"}`
       );
       // loop retries the turn on the new account
     }

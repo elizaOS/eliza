@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { normalizeOutput } from "./terminal.js";
+import { normalizeOutput, typeTerminal } from "./terminal.js";
 
 function isWellFormed(v: string): boolean {
   if (!v) return true;
@@ -53,5 +53,12 @@ describe("computeruse terminal output well-formed", () => {
     const out = normalizeOutput(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe("term \uFFFD ok");
+  });
+
+  it("safely truncates queued text in typeTerminal at surrogate boundary", () => {
+    const fox = String.fromCharCode(0xd83e, 0xdd8a);
+    const input = `${"a".repeat(49)}${fox}more`;
+    const res = typeTerminal(input);
+    expect(res.message).toBe(`queued terminal text: ${"a".repeat(49)}`);
   });
 });

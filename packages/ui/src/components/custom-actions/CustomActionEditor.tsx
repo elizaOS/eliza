@@ -478,7 +478,7 @@ export function CustomActionEditor({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-sm text-xl leading-none text-muted hover:bg-transparent hover:text-txt"
+            className="size-8 rounded-sm text-xl leading-none text-muted hover:bg-transparent hover:text-txt"
             onClick={onClose}
             aria-label={t("common.close")}
           >
@@ -523,7 +523,7 @@ export function CustomActionEditor({
                   onClick={handleGenerate}
                   disabled={generating || !aiPrompt.trim()}
                 >
-                  {generating ? "Generating..." : "Generate"}
+                  {generating ? "Generating…" : "Generate"}
                 </Button>
               </div>
               <span className="text-xs text-muted">
@@ -821,9 +821,9 @@ export function CustomActionEditor({
               <span>{t("customactioneditor.TestAction")}</span>
               <span>
                 {testExpanded ? (
-                  <ChevronDown className="w-3 h-3" />
+                  <ChevronDown className="size-3" />
                 ) : (
-                  <ChevronRight className="w-3 h-3" />
+                  <ChevronRight className="size-3" />
                 )}
               </span>
             </Button>

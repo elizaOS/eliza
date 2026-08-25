@@ -75,6 +75,15 @@ const BYTES_PER_GB = 1024 * 1024 * 1024;
 function kvBytesPerTokenForTier(tier: CatalogModel): number | null {
   const { minRamGb, sizeGb, contextLength } = tier;
   if (minRamGb == null || sizeGb == null || contextLength == null) return null;
+  // Non-finite sizing is a mis-shaped catalog row, not a computable rate —
+  // fail closed here as well so no other caller can derive a NaN window (#25906).
+  if (
+    !Number.isFinite(minRamGb) ||
+    !Number.isFinite(sizeGb) ||
+    !Number.isFinite(contextLength)
+  ) {
+    return null;
+  }
   const kvReserveGb = minRamGb - sizeGb - RUNTIME_OVERHEAD_GB;
   if (kvReserveGb <= 0 || contextLength <= 0) return null;
   return (kvReserveGb * BYTES_PER_GB) / contextLength;
@@ -133,17 +142,43 @@ function maxFittingContextForTier(
  * Returns `null` when nothing acceptable fits locally → the caller routes this
  * modality to Cloud (AUTO). Never returns a tier smaller than 2B (0.8B is gone).
  */
-export function selectBestEliza1Fit(freeRamGb: number): Eliza1Fit | null {
+export function selectBestEliza1Fit(
+  freeRamGb: number,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
+): Eliza1Fit | null {
   if (!Number.isFinite(freeRamGb) || freeRamGb <= 0) return null;
 
   // Release tiers, largest RAM-floor first. The floor already bakes in a native
   // (128k) q8_0 window, so the first one whose floor fits is the biggest model
-  // that still gets its full window.
-  const tiers = [...MODEL_CATALOG]
+  // that still gets its full window. Rows whose required numeric capacity
+  // fields are non-finite are rejected outright (#25906): `typeof NaN ===
+  // "number"` would otherwise let them survive the filter, and `freeRamGb <
+  // NaN` is false, so a NaN floor skips the fit guard and can surface as a
+  // NaN-bearing Eliza1Fit instead of routing to Cloud. A present-but-NaN
+  // contextLength corrupts the native-window clamp the same way, so it rejects
+  // the row too (null contextLength stays allowed — the target substitutes).
+  const tiers = [...catalog]
     .filter(
-      (m) => typeof m.minRamGb === "number" && typeof m.sizeGb === "number",
+      (m) =>
+        typeof m.minRamGb === "number" &&
+        Number.isFinite(m.minRamGb) &&
+        typeof m.sizeGb === "number" &&
+        Number.isFinite(m.sizeGb) &&
+        (m.contextLength == null ||
+          (typeof m.contextLength === "number" &&
+            Number.isFinite(m.contextLength))),
     )
-    .sort((a, b) => b.minRamGb - a.minRamGb);
+    .sort((a, b) => {
+      const bRam =
+        typeof b.minRamGb === "number" && Number.isFinite(b.minRamGb)
+          ? b.minRamGb
+          : -Infinity;
+      const aRam =
+        typeof a.minRamGb === "number" && Number.isFinite(a.minRamGb)
+          ? a.minRamGb
+          : -Infinity;
+      return bRam - aRam || a.id.localeCompare(b.id);
+    });
 
   for (const tier of tiers) {
     if (tier.minRamGb == null || freeRamGb < tier.minRamGb) continue;

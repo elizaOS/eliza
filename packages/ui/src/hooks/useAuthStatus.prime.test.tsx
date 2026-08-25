@@ -103,7 +103,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       branding: {},
       apiBase: "https://api.eliza.app/api/v1/eliza/agents/shared-agent",
     });
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
 
     const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
 
@@ -127,7 +127,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       apiBase,
       accessToken: "shared-agent-token",
     });
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     setStewardAuthedCookie(true);
     fetchMock.mockResolvedValue(jsonResponse(200, { token: refreshedToken }));
 
@@ -163,7 +163,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       apiBase,
       accessToken: "stale-token-mirror",
     });
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     setStewardAuthedCookie(true);
     fetchMock.mockResolvedValue(jsonResponse(401, {}));
 
@@ -190,7 +190,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       apiBase,
       accessToken: "shared-agent-token",
     });
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     setStewardAuthedCookie(true);
     fetchMock.mockResolvedValue(jsonResponse(503, {}));
 
@@ -224,7 +224,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
         apiBase,
         accessToken: "shared-agent-token",
       });
-      clearStoredStewardToken();
+      await clearStoredStewardToken();
       setStewardAuthedCookie(true);
       fetchMock.mockResolvedValue(jsonResponse(status, {}));
 
@@ -252,7 +252,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       apiBase,
       accessToken: "shared-agent-token",
     });
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     setStewardAuthedCookie(true);
     fetchMock.mockResolvedValue(jsonResponse(200, {}));
 
@@ -272,6 +272,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
 
   it("preserves a native owner API-key session without a Steward JWT", async () => {
     const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    await clearStoredStewardToken();
     (
       window as Window & { __electrobunWindowId?: number }
     ).__electrobunWindowId = 1;
@@ -287,8 +288,6 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       apiBase,
       accessToken: "eliza_native_owner_key",
     });
-    clearStoredStewardToken();
-
     const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
 
     await waitFor(() =>

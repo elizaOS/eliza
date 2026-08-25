@@ -953,6 +953,20 @@ describe("planner-loop failed-operation correlation", () => {
 							},
 						],
 					})
+					// A successful FILE write is a coding mutation, so the loop
+					// refuses to accept a completion claim until a real SHELL
+					// verification has run (#24654). The verification round is part
+					// of the scenario, not an extra allowance for the model.
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-verify",
+								name: "SHELL",
+								arguments: { command: "bun test", cwd: "/workspace" },
+							},
+						],
+					})
 					.mockResolvedValueOnce({
 						text: "Done! The page is live.",
 					}),
@@ -975,6 +989,11 @@ describe("planner-loop failed-operation correlation", () => {
 						success: true,
 						text: "Wrote index.html (74 lines).",
 						userFacingText: "Wrote index.html (74 lines).",
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "2 tests passed.",
+						userFacingText: "2 tests passed.",
 					}),
 				evaluate,
 			});

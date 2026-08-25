@@ -95,7 +95,7 @@ export function ProviderCard({
         )}
       >
         <Icon
-          className={cn("mt-0.5 h-5 w-5 shrink-0", iconChrome)}
+          className={cn("mt-0.5 size-5 shrink-0", iconChrome)}
           aria-hidden
         />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -105,14 +105,14 @@ export function ProviderCard({
             </span>
             {current ? (
               <span className="flex shrink-0 items-center gap-1 text-xs text-accent">
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                <CheckCircle2 className="size-3.5" aria-hidden />
                 Active
               </span>
             ) : (
               <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
                 <span
                   className={cn(
-                    "h-1.5 w-1.5 rounded-full",
+                    "size-1.5 rounded-full",
                     STATUS_DOT_CLASSES[status.tone],
                   )}
                   aria-hidden
@@ -150,17 +150,14 @@ export function ProviderCard({
             : "border-border bg-card text-txt hover:bg-surface",
       )}
     >
-      <Icon className={cn("h-4 w-4 shrink-0", iconChrome)} aria-hidden />
+      <Icon className={cn("size-4 shrink-0", iconChrome)} aria-hidden />
       <span className="truncate font-medium">{label}</span>
       {current ? (
-        <CheckCircle2
-          className="h-3.5 w-3.5 shrink-0 text-accent"
-          aria-hidden
-        />
+        <CheckCircle2 className="size-3.5 shrink-0 text-accent" aria-hidden />
       ) : (
         <span
           className={cn(
-            "h-1.5 w-1.5 shrink-0 rounded-full",
+            "size-1.5 shrink-0 rounded-full",
             STATUS_DOT_CLASSES[status.tone],
           )}
           aria-hidden

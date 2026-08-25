@@ -384,7 +384,7 @@ export function DatabaseView({
   const sidebarSummary = (
     <div className="mt-4 flex items-center gap-2 px-1 text-sm font-medium text-txt">
       <span
-        className={`h-2.5 w-2.5 rounded-full ${
+        className={`size-2.5 rounded-full ${
           dbStatus?.connected ? "bg-ok" : "bg-danger"
         }`}
       />
@@ -409,7 +409,7 @@ export function DatabaseView({
   const disconnectedState = (
     <PagePanel.Empty
       className="flex-1"
-      icon={<ServerOff className="h-6 w-6" aria-hidden />}
+      icon={<ServerOff className="size-6" aria-hidden />}
       title={
         statusLoadError ||
         t("databaseview.StartAgentToUseDatabase", {
@@ -422,7 +422,7 @@ export function DatabaseView({
   const noTableSelectedState = (
     <PagePanel.Empty
       className="flex-1"
-      icon={<Table2 className="h-6 w-6" aria-hidden />}
+      icon={<Table2 className="size-6" aria-hidden />}
       title={t("databaseview.SelectATable")}
     />
   );
@@ -430,7 +430,7 @@ export function DatabaseView({
   const emptyTableState = (
     <PagePanel.Empty
       className="flex-1"
-      icon={<DatabaseIcon className="h-6 w-6" aria-hidden />}
+      icon={<DatabaseIcon className="size-6" aria-hidden />}
       title={t("databaseview.NoDataInsertViaSql", {
         defaultValue: "No data yet. Insert rows via the SQL editor.",
       })}
@@ -570,7 +570,7 @@ export function DatabaseView({
                   <PagePanel
                     variant="surface"
                     as="section"
-                    className="px-5 py-5 sm:px-6"
+                    className="p-5 sm:px-6"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
@@ -647,7 +647,7 @@ export function DatabaseView({
             {dbStatus ? (
               <>
                 <span
-                  className={`h-2 w-2 rounded-full ${dbStatus.connected ? "bg-ok" : "bg-danger"}`}
+                  className={`size-2 rounded-full ${dbStatus.connected ? "bg-ok" : "bg-danger"}`}
                 />
                 <span className="tracking-wide">{dbStatus.provider}</span>
               </>
@@ -670,7 +670,7 @@ export function DatabaseView({
           <Button
             variant="ghost"
             size="icon"
-            className="w-6 h-6 rounded-full text-danger hover:bg-danger/20 hover:text-danger-foreground transition-colors"
+            className="size-6 rounded-full text-danger hover:bg-danger/20 hover:text-danger-foreground transition-colors"
             onClick={() => setErrorMessage("")}
           >
             ×
@@ -756,7 +756,7 @@ export function DatabaseView({
             <Button
               variant="ghost"
               size="icon"
-              className="my-auto flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/50 text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
+              className="my-auto flex size-11 shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/50 text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title={
                 sidebarCollapsed
@@ -769,9 +769,9 @@ export function DatabaseView({
               }
             >
               {sidebarCollapsed ? (
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="size-3.5" />
               ) : (
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className="size-3.5" />
               )}
             </Button>
           )}
@@ -792,7 +792,7 @@ export function DatabaseView({
                 <PagePanel
                   variant="surface"
                   as="section"
-                  className="px-5 py-5 sm:px-6"
+                  className="p-5 sm:px-6"
                 >
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
@@ -881,11 +881,7 @@ export function DatabaseView({
           )}
 
           <div className="min-w-0 flex-1 overflow-y-auto flex min-h-0 flex-col gap-4 bg-transparent">
-            <PagePanel
-              variant="surface"
-              as="section"
-              className="px-5 py-5 sm:px-6"
-            >
+            <PagePanel variant="surface" as="section" className="p-5 sm:px-6">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="text-2xl font-semibold text-txt-strong">

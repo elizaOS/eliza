@@ -20,14 +20,14 @@
  * prompt-integrity rule.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, isModelOutputLimitFinishReason } from "@elizaos/core";
 import { generateText } from "ai";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { getLanguageModel, ProviderConfigurationError } from "../../providers/language-model";
 import { safeFetch } from "../../security/safe-fetch";
 import { isAllowedBlooioMediaUrl } from "./blooio-media-allowlist";
 
-export const INBOUND_MEDIA_VISION_MODEL = "openai/gpt-5.4-mini";
+export const INBOUND_MEDIA_VISION_MODEL = "gemma-4-31b";
 export const MAX_INBOUND_MEDIA_IMAGES = 4;
 // Mirrors the Telegram voice ceiling: keeps the fetched copies bounded in a
 // 128 MiB Worker isolate while covering ordinary conversational photos.
@@ -320,7 +320,7 @@ export async function describeInboundImageMedia(
   }
   // Prompt integrity: a description clipped at the output ceiling must be
   // rejected, never delivered as if it were the complete image content.
-  if (completion.finishReason === "length") {
+  if (isModelOutputLimitFinishReason(completion.finishReason)) {
     throw new InboundMediaDescriptionError(
       "Vision provider truncated the description at the output ceiling",
       "incomplete_description",

@@ -9,10 +9,7 @@
  */
 import { isSafeExecutableValue } from "@elizaos/shared";
 import * as zod from "zod";
-import {
-  DEFAULT_MODEL_CONTEXT_WINDOW,
-  DEFAULT_MODEL_MAX_TOKENS,
-} from "./model-metadata.ts";
+import { DEFAULT_MODEL_CONTEXT_WINDOW } from "./model-metadata.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
 
@@ -59,7 +56,7 @@ export const ModelDefinitionSchema = z
       .int()
       .positive()
       .default(DEFAULT_MODEL_CONTEXT_WINDOW),
-    maxTokens: z.number().int().positive().default(DEFAULT_MODEL_MAX_TOKENS),
+    maxTokens: z.number().int().positive().optional(),
     headers: z.record(z.string(), z.string()).optional(),
     compat: ModelCompatSchema,
   })

@@ -49,22 +49,6 @@ const TASKS = [
       "Offline model dataset schema, redaction, and budget validation",
   },
   {
-    id: "app-core-focused",
-    tier: 0,
-    command: "bunx",
-    args: [
-      "vitest",
-      "run",
-      "--config",
-      "packages/app-core/vitest.config.ts",
-      "packages/app-core/scripts/startup-integration-script-drift.test.ts",
-    ],
-    requiredFiles: [
-      "packages/app-core/scripts/startup-integration-script-drift.test.ts",
-    ],
-    description: "Focused app-core startup script drift tests",
-  },
-  {
     id: "agent-focused",
     tier: 0,
     command: "bunx",

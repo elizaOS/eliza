@@ -19,7 +19,7 @@ export function DeviceBridgeStatusBar({
   if (!status) return null;
 
   const dotClass = status.connected
-    ? "bg-emerald-500"
+    ? "bg-status-success"
     : status.pendingRequests > 0
       ? "bg-amber-500"
       : "bg-muted-foreground/40";
@@ -45,7 +45,7 @@ export function DeviceBridgeStatusBar({
       title={label}
     >
       <span
-        className={`inline-flex h-2 w-2 rounded-full ${dotClass}`}
+        className={`inline-flex size-2 rounded-full ${dotClass}`}
         aria-hidden
       />
       <span className="flex-1 truncate">{label}</span>

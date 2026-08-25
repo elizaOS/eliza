@@ -206,6 +206,27 @@ function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
 	}
 }
 
+/**
+ * UTC timestamp from calendar parts — uses setUTCFullYear so years 0-99 keep
+ * their literal meaning (0000, 0005 … 0099) instead of Date.UTC's 1900-1999
+ * remapping. Exported for behavioral regression coverage; internal callers
+ * should prefer this over raw Date.UTC(y,m,d) when the year is dynamic.
+ */
+export function utcDateMs(
+	year: number,
+	monthIndex: number,
+	day: number,
+	hour = 0,
+	minute = 0,
+	second = 0,
+	ms = 0,
+): number {
+	const d = new Date(0);
+	d.setUTCFullYear(year, monthIndex, day);
+	d.setUTCHours(hour, minute, second, ms);
+	return d.getTime();
+}
+
 function offsetMsFromFormatter(
 	formatter: Intl.DateTimeFormat,
 	atMs: number,
@@ -215,7 +236,7 @@ function offsetMsFromFormatter(
 		const part = parts.find((p) => p.type === type);
 		return part ? Number(part.value) : 0;
 	};
-	const tzDate = Date.UTC(
+	const tzDate = utcDateMs(
 		get("year"),
 		get("month") - 1,
 		get("day"),

@@ -85,7 +85,22 @@ export function collectCuratedAppDefinitions(
 ): CuratedAppDefinition[] {
   return entries
     .filter((e) => Boolean(e.curatedApp))
-    .sort((a, b) => (a.curatedApp?.order ?? 0) - (b.curatedApp?.order ?? 0))
+    .sort((a, b) => {
+      const aOrder =
+        typeof a.curatedApp?.order === "number" &&
+        Number.isFinite(a.curatedApp.order)
+          ? a.curatedApp.order
+          : 0;
+      const bOrder =
+        typeof b.curatedApp?.order === "number" &&
+        Number.isFinite(b.curatedApp.order)
+          ? b.curatedApp.order
+          : 0;
+      return (
+        aOrder - bOrder ||
+        (a.curatedApp?.slug ?? "").localeCompare(b.curatedApp?.slug ?? "")
+      );
+    })
     .map((e) => ({
       slug: e.curatedApp?.slug ?? "",
       // canonicalName is the entry's npm package; every curated entry declares one.

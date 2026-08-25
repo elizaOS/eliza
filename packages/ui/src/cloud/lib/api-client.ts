@@ -25,6 +25,7 @@
  */
 
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
@@ -387,7 +388,7 @@ function errorDetails(
     const trimmed = payload.trim();
     const message = trimmed.startsWith("<")
       ? `Request failed with status ${status}; API returned a non-JSON response`
-      : trimmed.slice(0, 500);
+      : truncateWellFormed(toWellFormedUnicode(trimmed), 500);
     return { code: `HTTP_${status}`, message };
   }
 

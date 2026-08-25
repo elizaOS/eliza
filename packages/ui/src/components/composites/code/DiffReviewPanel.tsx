@@ -108,7 +108,7 @@ function DiffLineRow({ line }: { line: DiffLine }) {
   return (
     <div
       className={cn(
-        "whitespace-pre-wrap break-all font-mono text-[12px] leading-relaxed",
+        "whitespace-pre-wrap break-all font-mono text-xs leading-relaxed",
         LINE_TONE[line.kind],
       )}
     >
@@ -127,7 +127,7 @@ function FileSection({ file }: { file: FileDiff }) {
       <Button
         variant="ghost"
         onClick={() => setOpen((value) => !value)}
-        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-[13px] font-medium text-foreground hover:bg-muted/30"
+        className="h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-sm-tight font-medium text-foreground hover:bg-muted/30"
         aria-expanded={open}
       >
         <span className="text-muted-foreground">{open ? "▾" : "▸"}</span>
@@ -141,7 +141,7 @@ function FileSection({ file }: { file: FileDiff }) {
               <DiffLineRow key={`${file.path}:${index}`} line={line} />
             ))
           ) : (
-            <div className="text-[12px] text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
               No inline diff captured for this file.
             </div>
           )}
@@ -162,7 +162,7 @@ export function DiffReviewPanel({
 
   if (!changeSet || changeSet.changedFiles.length === 0) {
     return (
-      <div className={cn("text-[13px] text-muted-foreground", className)}>
+      <div className={cn("text-sm-tight text-muted-foreground", className)}>
         No file changes captured for this task.
       </div>
     );
@@ -171,17 +171,19 @@ export function DiffReviewPanel({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[13px] font-medium text-foreground">Changes</span>
+        <span className="text-sm-tight font-medium text-foreground">
+          Changes
+        </span>
         {changeSet.diffStat ? (
-          <span className="font-mono text-[12px] text-muted-foreground">
+          <span className="font-mono text-xs text-muted-foreground">
             {changeSet.diffStat}
           </span>
         ) : null}
       </div>
 
       {changeSet.truncated ? (
-        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12px] text-warning">
-          This diff is truncated — some changes are not shown. Review the full
+        <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+          This diff is truncated. Some changes are not shown. Review the full
           change set in the workspace.
         </div>
       ) : null}

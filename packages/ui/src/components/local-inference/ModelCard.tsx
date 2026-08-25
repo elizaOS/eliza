@@ -47,7 +47,7 @@ interface ModelCardProps {
 }
 
 const FIT_STYLES: Record<FitLevel, string> = {
-  fits: "text-emerald-500 border-emerald-500/40 bg-emerald-500/10",
+  fits: "text-status-success border-status-success/40 bg-status-success-bg",
   tight: "text-amber-500 border-amber-500/40 bg-amber-500/10",
   wontfit: "text-rose-500 border-rose-500/40 bg-rose-500/10",
 };
@@ -89,7 +89,7 @@ export function ModelCard({
             {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
           </div>
           <div
-            className="mt-1 inline-flex w-fit rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+            className="mt-1 inline-flex w-fit rounded-full border border-border/60 px-1.5 py-0.5 text-2xs leading-none text-muted-foreground"
             title={runtimeClassDescription(catalogRuntimeClass(model))}
           >
             {runtimeClassDescription(catalogRuntimeClass(model))}

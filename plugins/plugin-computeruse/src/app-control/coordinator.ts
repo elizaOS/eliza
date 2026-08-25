@@ -2,19 +2,19 @@
 
 import { randomUUID } from "node:crypto";
 import {
-  getAppControlRouteMatrix,
   type AppControlRouteCapability,
+  getAppControlRouteMatrix,
 } from "./route-policy.js";
 import type {
   AppActionOutcome,
   AppActionRequest,
   AppControlAdapter,
-  AppElementBounds,
-  AppExactWindowPointerDispatcher,
   AppControlGrounder,
   AppControlPermissionState,
   AppDescriptor,
   AppElement,
+  AppElementBounds,
+  AppExactWindowPointerDispatcher,
   AppPointerObserver,
   AppPointerPosition,
   AppState,

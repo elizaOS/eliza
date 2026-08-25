@@ -23,8 +23,8 @@ function NonImageTile({
   const Icon =
     item.kind === "audio" ? Music : item.kind === "video" ? Film : FileText;
   return (
-    <div className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
-      <Icon className="h-5 w-5 text-muted" />
+    <div className="flex size-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
+      <Icon className="size-5 text-muted" />
       <span className="w-full truncate text-2xs text-muted" title={item.name}>
         {item.name}
       </span>
@@ -51,12 +51,12 @@ export function ChatAttachmentStrip({
       style={{ zIndex: 1 }}
     >
       {items.map((item, index) => (
-        <div key={item.id} className="relative h-16 w-16 shrink-0 group">
+        <div key={item.id} className="relative size-16 shrink-0 group">
           {!item.kind || item.kind === "image" ? (
             <img
               src={item.src}
               alt={item.alt}
-              className="h-16 w-16 rounded-sm border border-border object-cover"
+              className="size-16 rounded-sm border border-border object-cover"
             />
           ) : (
             <NonImageTile item={item} />
@@ -69,7 +69,7 @@ export function ChatAttachmentStrip({
             title={removeLabel(item)}
             aria-label={removeLabel(item)}
             onClick={() => onRemove(item.id, index)}
-            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-sm text-2xs opacity-100 transition-opacity  sm:opacity-0 sm:group-hover:opacity-100"
+            className="absolute -right-1.5 -top-1.5 flex size-4 items-center justify-center rounded-sm text-2xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
           >
             ×
           </Button>

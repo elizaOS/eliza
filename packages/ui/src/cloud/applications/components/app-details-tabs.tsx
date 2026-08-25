@@ -131,7 +131,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
                   : "text-muted hover:bg-bg-hover hover:text-txt",
               )}
             >
-              <Icon className="h-4 w-4 hidden sm:block" />
+              <Icon className="size-4 hidden sm:block" />
               <span className="truncate">{tab.label}</span>
             </Button>
           );

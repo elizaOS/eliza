@@ -12,6 +12,7 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
 import { cn } from "../../lib/utils";
+import { CapabilityHandoffBlock } from "../chat/CapabilityHandoffBlock";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import {
@@ -71,7 +72,8 @@ function OverlayAssistantTurnBody({
   const pending =
     !message.text.trim() &&
     !message.attachments?.length &&
-    !message.secretRequest;
+    !message.secretRequest &&
+    !message.capabilityHandoff;
   const phase = pending ? "status" : "reply";
   return (
     <div
@@ -91,6 +93,11 @@ function OverlayAssistantTurnBody({
           {message.secretRequest ? (
             <div className="pointer-events-auto">
               <SensitiveRequestBlock request={message.secretRequest} />
+            </div>
+          ) : null}
+          {message.capabilityHandoff ? (
+            <div className="pointer-events-auto">
+              <CapabilityHandoffBlock request={message.capabilityHandoff} />
             </div>
           ) : null}
         </div>
@@ -210,6 +217,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.terminalFailure ? { terminalFailure: m.terminalFailure } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
+    ...(m.capabilityHandoff ? { capabilityHandoff: m.capabilityHandoff } : {}),
   };
   shellMessageDataCache.set(m, data);
   return data;
@@ -260,6 +268,20 @@ export function selectFirstRunDisplayMessages(
   const latest = firstRunMessages.at(-1);
   if (!latest) return [];
   const previous = firstRunMessages.at(-2);
+
+  // A free-text answer is additive context, not a replacement for the live
+  // setup control. Keep the most recent choice-bearing turn immediately above
+  // the concise conductor reply so "choose/sign in above" remains actionable.
+  // Earlier choices stay hidden after the conductor advances because each
+  // step seeds a newer choice-bearing turn.
+  if (latest.id.startsWith("first-run:reply:choice:")) {
+    const activeChoice = firstRunMessages
+      .slice()
+      .reverse()
+      .find((message) => message.content.includes("[CHOICE:"));
+    if (activeChoice && activeChoice !== latest) return [activeChoice, latest];
+  }
+
   if (
     (previous?.id === "first-run:greeting" &&
       latest.id === "first-run:cloud-oauth") ||

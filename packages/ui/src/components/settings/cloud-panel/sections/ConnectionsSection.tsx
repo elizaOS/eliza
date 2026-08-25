@@ -3,7 +3,7 @@
  *
  * Consolidated view of the cloud-hosted connectors (grouped by category) plus
  * configured MCP servers. Each connector's Connect/Disconnect flow is handled
- * inline through NuPhy-styled modals — token-credential connectors show a form,
+ * inline through the shared settings modals — token-credential connectors show a form,
  * OAuth-redirect connectors initiate the redirect, and destructive actions
  * confirm before executing. MCP servers are created/removed through a modal
  * form that posts to the real `/api/v1/mcps` CRUD routes.
@@ -13,13 +13,14 @@
  * to reconcile.
  */
 
-import { Button as NuphyButton, SelectPill } from "@extrastu/nuphy-ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, apiFetch } from "../../../../cloud/lib/api-client";
 import { useCloudConnectorConnections } from "../../../../hooks/useCloudConnectorConnections";
 import { useAppSelector } from "../../../../state";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
+import { Button } from "../../../ui/button";
+import { FormSelect, FormSelectItem } from "../../../ui/form-select";
 import {
   buildMcpCreatePayload,
   CLOUD_CONNECTORS,
@@ -29,14 +30,14 @@ import {
 } from "../cloud-connector-contracts";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
+  CloudFormField,
+  CloudModal,
+  CloudRow,
+  CloudTextInput,
   DestructiveSecondaryButton,
-  NuphyFormField,
-  NuphyModal,
-  NuphyRow,
-  NuphyTextInput,
   SettingsGroup,
   SettingsStack,
-} from "../nuphy-settings-primitives";
+} from "../cloud-settings-primitives";
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -124,14 +125,14 @@ function ConnectorRow({
   });
 
   return (
-    <NuphyRow
+    <CloudRow
       label={connector.name}
       description={
         state.loading ? "Checking status…" : (state.error ?? state.statusText)
       }
       control={
         state.loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
         ) : state.connected ? (
           <DestructiveSecondaryButton
             size="sm"
@@ -140,17 +141,17 @@ function ConnectorRow({
             Disconnect
           </DestructiveSecondaryButton>
         ) : state.error ? (
-          <NuphyButton variant="secondary" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled>
             Unavailable
-          </NuphyButton>
+          </Button>
         ) : (
-          <NuphyButton
-            variant="secondary"
+          <Button
+            variant="outline"
             size="sm"
             onClick={() => onConnect(connector)}
           >
             Connect
-          </NuphyButton>
+          </Button>
         )
       }
     />
@@ -284,7 +285,7 @@ function ConnectModal({
   };
 
   return (
-    <NuphyModal
+    <CloudModal
       open={connector !== null}
       title={`Connect ${connector.name}`}
       description={
@@ -296,23 +297,23 @@ function ConnectModal({
       footer={
         <div className="flex items-center justify-between">
           {error ? (
-            <p className="text-[13px] text-destructive">{error}</p>
+            <p className="text-sm-tight text-destructive">{error}</p>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
-              variant="primary"
+            </Button>
+            <Button
+              variant="default"
               size="sm"
               disabled={busy}
               onClick={() => void handleConnect()}
             >
               {busy ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="mr-1.5  size-3.5 animate-spin" />
                   Connecting…
                 </>
               ) : connector.authMode === "oauth" ? (
@@ -320,7 +321,7 @@ function ConnectModal({
               ) : (
                 "Connect"
               )}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
@@ -328,13 +329,13 @@ function ConnectModal({
       {connector.authMode === "token" && connector.fields ? (
         <div className="space-y-4">
           {connector.fields.map((field) => (
-            <NuphyFormField
+            <CloudFormField
               key={field.key}
               label={field.label}
               description={field.description}
               htmlFor={`field-${field.key}`}
             >
-              <NuphyTextInput
+              <CloudTextInput
                 id={`field-${field.key}`}
                 type={field.type ?? "text"}
                 value={fieldValues[field.key] ?? ""}
@@ -345,45 +346,44 @@ function ConnectModal({
                 disabled={busy}
                 autoComplete="off"
               />
-            </NuphyFormField>
+            </CloudFormField>
           ))}
           {connector.id === "discord" && (
-            <NuphyFormField
+            <CloudFormField
               label="Agent"
               description="The agent this Discord bot responds as."
               htmlFor="connect-agent"
             >
-              <SelectPill
-                label="Agent"
-                options={[
-                  {
-                    value: "",
-                    label:
-                      agentChoices === null
-                        ? "Loading agents…"
-                        : agentChoices.length === 0
-                          ? "No agents available"
-                          : "Choose an agent",
-                  },
-                  ...(agentChoices ?? []).map((choice) => ({
-                    value: choice.id,
-                    label: choice.name,
-                  })),
-                ]}
+              <FormSelect
+                aria-label="Agent"
+                placeholder={
+                  agentChoices === null
+                    ? "Loading agents…"
+                    : agentChoices.length === 0
+                      ? "No agents available"
+                      : "Choose an agent"
+                }
                 value={selectedAgentId}
                 onValueChange={setSelectedAgentId}
                 disabled={busy || agentChoices === null}
-              />
-            </NuphyFormField>
+                triggerClassName="h-9 rounded-sm px-3 text-sm"
+              >
+                {(agentChoices ?? []).map((choice) => (
+                  <FormSelectItem key={choice.id} value={choice.id}>
+                    {choice.name}
+                  </FormSelectItem>
+                ))}
+              </FormSelect>
+            </CloudFormField>
           )}
         </div>
       ) : (
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        <p className="text-sm leading-5 text-muted-foreground">
           Click <strong>Authorize</strong> to open {connector.name}'s login
           page. After authorizing, you'll return here automatically.
         </p>
       )}
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -476,7 +476,7 @@ function DisconnectDialog({
 
   if (!connector) return null;
   return (
-    <NuphyModal
+    <CloudModal
       open={connector !== null}
       title={`Disconnect ${connector.name}?`}
       onClose={onClose}
@@ -484,22 +484,17 @@ function DisconnectDialog({
       footer={
         <div className="flex items-center justify-between gap-3">
           {error ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm-tight text-destructive">
               {error}
             </p>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={onClose}
-            >
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               disabled={
@@ -529,49 +524,46 @@ function DisconnectDialog({
             >
               {" "}
               {busy ? "Disconnecting…" : "Disconnect"}{" "}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-3">
-        <p className="text-[14px] leading-5 text-muted-foreground">
+        <p className="text-sm leading-5 text-muted-foreground">
           This will remove the {connector.name} connection from your agent. You
           can reconnect later.
         </p>
         {needsChoice && (
-          <NuphyFormField
+          <CloudFormField
             label="Connection"
             description="Exactly this connection will be disconnected."
             htmlFor="disconnect-connection"
           >
-            <SelectPill
-              label="Connection"
-              options={[
-                {
-                  value: "",
-                  label:
-                    choices === null
-                      ? "Loading connections…"
-                      : choices.length === 0
-                        ? "No connections found"
-                        : "Choose a connection",
-                },
-                ...(choices ?? []).map((choice) => ({
-                  value: choice.id,
-                  label: choice.active
-                    ? choice.label
-                    : `${choice.label} (inactive)`,
-                })),
-              ]}
+            <FormSelect
+              aria-label="Connection"
+              placeholder={
+                choices === null
+                  ? "Loading connections…"
+                  : choices.length === 0
+                    ? "No connections found"
+                    : "Choose a connection"
+              }
               value={selectedId}
               onValueChange={setSelectedId}
               disabled={busy || choices === null}
-            />
-          </NuphyFormField>
+              triggerClassName="h-9 rounded-sm px-3 text-sm"
+            >
+              {(choices ?? []).map((choice) => (
+                <FormSelectItem key={choice.id} value={choice.id}>
+                  {choice.active ? choice.label : `${choice.label} (inactive)`}
+                </FormSelectItem>
+              ))}
+            </FormSelect>
+          </CloudFormField>
         )}
       </div>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -633,7 +625,7 @@ function McpAddModal({
   };
 
   return (
-    <NuphyModal
+    <CloudModal
       open={open}
       title="Add MCP Server"
       description="Configure a new Model Context Protocol server for this agent."
@@ -641,84 +633,84 @@ function McpAddModal({
       footer={
         <div className="flex items-center justify-between">
           {error ? (
-            <p className="text-[13px] text-destructive">{error}</p>
+            <p className="text-sm-tight text-destructive">{error}</p>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+            <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
-              variant="primary"
+            </Button>
+            <Button
+              variant="default"
               size="sm"
               disabled={busy}
               onClick={() => void handleAdd()}
             >
               {busy ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                   Adding…
                 </>
               ) : (
                 "Add server"
               )}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4">
-        <NuphyFormField label="Name" htmlFor="mcp-name">
-          <NuphyTextInput
+        <CloudFormField label="Name" htmlFor="mcp-name">
+          <CloudTextInput
             id="mcp-name"
             value={name}
             onChange={setName}
             placeholder="My MCP Server"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Slug"
           description="URL-safe identifier. Auto-generated from name if left blank."
           htmlFor="mcp-slug"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-slug"
             value={slug}
             onChange={setSlug}
             placeholder="my-mcp-server"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Endpoint URL"
           description="The MCP server's HTTP/SSE endpoint."
           htmlFor="mcp-url"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-url"
             value={endpointUrl}
             onChange={setEndpointUrl}
             placeholder="https://my-mcp-server.example.com/sse"
             disabled={busy}
           />
-        </NuphyFormField>
-        <NuphyFormField
+        </CloudFormField>
+        <CloudFormField
           label="Description"
           description="Required. Shown wherever this MCP server is listed."
           htmlFor="mcp-desc"
         >
-          <NuphyTextInput
+          <CloudTextInput
             id="mcp-desc"
             value={description}
             onChange={setDescription}
             placeholder="What does this MCP server provide?"
             disabled={busy}
           />
-        </NuphyFormField>
+        </CloudFormField>
       </div>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -737,7 +729,7 @@ function McpRemoveDialog({
   const [error, setError] = useState<string | null>(null);
   if (!mcp) return null;
   return (
-    <NuphyModal
+    <CloudModal
       open={mcp !== null}
       title={`Remove ${mcp.name}?`}
       onClose={onClose}
@@ -745,22 +737,17 @@ function McpRemoveDialog({
       footer={
         <div className="flex items-center justify-between gap-3">
           {error ? (
-            <p role="alert" className="text-[13px] text-destructive">
+            <p role="alert" className="text-sm-tight text-destructive">
               {error}
             </p>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <NuphyButton
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={onClose}
-            >
+            <Button variant="ghost" size="sm" disabled={busy} onClick={onClose}>
               Cancel
-            </NuphyButton>
-            <NuphyButton
+            </Button>
+            <Button
               variant="destructive"
               size="sm"
               disabled={busy}
@@ -785,16 +772,16 @@ function McpRemoveDialog({
             >
               {" "}
               {busy ? "Removing…" : "Remove"}{" "}
-            </NuphyButton>
+            </Button>
           </div>
         </div>
       }
     >
-      <p className="text-[14px] leading-5 text-muted-foreground">
+      <p className="text-sm leading-5 text-muted-foreground">
         This will remove the MCP server from your agent. You can add it again
         later.
       </p>
-    </NuphyModal>
+    </CloudModal>
   );
 }
 
@@ -848,7 +835,7 @@ function McpRow({
   onRemove: (mcp: McpEntry) => void;
 }) {
   return (
-    <NuphyRow
+    <CloudRow
       label={mcp.name}
       description={mcp.statusText}
       control={
@@ -900,7 +887,7 @@ function CloudDisconnectedEmpty() {
       title="Connections"
       footer="Connect to Eliza Cloud to manage channels."
     >
-      <NuphyRow label="No cloud connection" />
+      <CloudRow label="No cloud connection" />
     </SettingsGroup>
   );
 }
@@ -1017,27 +1004,27 @@ export function ConnectionsSection() {
         title="MCP Servers"
         footer="Model Context Protocol servers extend the agent with tools and data sources."
       >
-        <NuphyRow
+        <CloudRow
           label="Add MCP Server"
           description="Configure a new MCP server for this agent."
           control={
-            <NuphyButton
-              variant="secondary"
+            <Button
+              variant="outline"
               size="sm"
               onClick={() => setMcpAddOpen(true)}
             >
               <Plus aria-hidden />
               Add
-            </NuphyButton>
+            </Button>
           }
         />
         {mcpError ? (
-          <NuphyRow
+          <CloudRow
             label="MCP servers unavailable"
             description={mcpError}
             control={
-              <NuphyButton
-                variant="secondary"
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => {
                   void refetchMcps().catch(() => {
@@ -1046,13 +1033,13 @@ export function ConnectionsSection() {
                 }}
               >
                 Retry
-              </NuphyButton>
+              </Button>
             }
           />
         ) : mcpLoading ? (
-          <NuphyRow label="Loading MCP servers…" />
+          <CloudRow label="Loading MCP servers…" />
         ) : mcpServers.length === 0 ? (
-          <NuphyRow
+          <CloudRow
             label="No MCP servers"
             description="Add an MCP server to extend your agent with tools."
           />

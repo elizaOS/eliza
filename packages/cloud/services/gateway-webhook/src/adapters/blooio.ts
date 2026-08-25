@@ -221,6 +221,7 @@ async function sendBlooioMessage(
   config: WebhookConfig,
   event: ChatEvent,
   text: string,
+  mediaUrls: readonly string[] = [],
 ): Promise<string[]> {
   if (!config.apiKey) {
     throw new PlatformDeliveryError(
@@ -257,10 +258,12 @@ async function sendBlooioMessage(
   const from = event.channelId ?? config.fromNumber;
   const body: {
     text: string;
+    attachments?: readonly string[];
     to?: string;
     from?: string;
     from_number?: string;
   } = { text };
+  if (mediaUrls.length > 0) body.attachments = mediaUrls;
   if (isLegacyV2Group) {
     // Blooio v2 selects an explicit account sender through the JSON field;
     // X-From-Number is used by read receipts but is not a send-message header.
@@ -495,8 +498,13 @@ export const blooioAdapter: PlatformAdapter = {
     await sendBlooioMessage(config, event, text);
   },
 
-  async sendReplyWithReceipt(config, event, text) {
-    const providerMessageIds = await sendBlooioMessage(config, event, text);
+  async sendReplyWithReceipt(config, event, text, _deliveryHooks, mediaUrls) {
+    const providerMessageIds = await sendBlooioMessage(
+      config,
+      event,
+      text,
+      mediaUrls,
+    );
     if (providerMessageIds.length === 0) {
       throw new Error("Blooio accepted delivery without a message receipt");
     }

@@ -13,6 +13,8 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  assertModelOutputComplete,
+  assertSchemaAnnotationsSerializable,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
   cloneSchemaForBoundedTransport,
@@ -25,6 +27,8 @@ import {
   JSON_SCHEMA_SINGLE_KEYWORDS,
   logActiveTrajectoryLlmCall,
   logger,
+  MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+  MAX_WELL_FORMED_DEPTH,
   ModelType,
   normalizeSchemaForCerebras,
   recordLlmCall,
@@ -32,6 +36,7 @@ import {
   sanitizeFunctionNameForCerebras,
   toWellFormedUnicode,
   truncateWellFormed,
+  wellFormedUnicodeSchemaStructure,
 } from "@elizaos/core";
 import {
   generateText,
@@ -382,9 +387,12 @@ function resolveThinkingOffReasoningEffort(
 }
 
 /**
- * Per-model Cerebras reasoning default. Gemma does not reason unless this
- * field is sent, so its non-surprising default is explicit `"none"`; callers
- * that deliberately configure a different effort remain authoritative.
+ * Per-model Cerebras reasoning default, restricted to models whose provider
+ * documentation declares the field. `gemma-4-31b` has no documented reasoning
+ * contract, so no default is emitted at all — an undocumented
+ * `reasoning_effort` value reaches the wire and can be rejected by the
+ * endpoint; callers that deliberately configure a different effort remain
+ * authoritative.
  */
 function resolveCerebrasDefaultReasoningEffort(
   modelName: string | undefined
@@ -392,7 +400,6 @@ function resolveCerebrasDefaultReasoningEffort(
   if (!modelName) return undefined;
   const id = normalizeCerebrasModelId(modelName);
   if (id === "gpt-oss-120b" || id === "zai-glm-4.7") return "low";
-  if (id === "gemma-4-31b") return "none";
   return undefined;
 }
 
@@ -712,9 +719,10 @@ function normalizeNativeToolsForCall(
   options: { cerebrasMode?: boolean; sanitizeUnicode?: boolean } = {}
 ): NormalizedNativeToolsResult {
   const recordArgTransformsByTool: Record<string, RecordArgTransform[]> = {};
+  const toolNameMap = new Map<string, string>();
 
   if (!tools) {
-    return { recordArgTransformsByTool };
+    return { recordArgTransformsByTool, toolNameMap };
   }
 
   // Existing AI SDK callers already pass a ToolSet keyed by tool name. Keep it
@@ -732,7 +740,6 @@ function normalizeNativeToolsForCall(
     const descriptors = Object.getOwnPropertyDescriptors(toolSet);
     let changed = false;
     const sanitized = Object.create(Object.getPrototypeOf(toolSet)) as ToolSet;
-    const toolNameMap = new Map<string, string>();
     const originalNameByRegisteredName = new Map<string, string>();
     for (const key of Reflect.ownKeys(descriptors)) {
       const descriptor = descriptors[key as keyof typeof descriptors];
@@ -787,7 +794,6 @@ function normalizeNativeToolsForCall(
   }
 
   const toolSet: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
-  const toolNameMap = new Map<string, string>();
   const originalNameByRegisteredName = new Map<string, string>();
 
   // Cerebras's grammar compiler treats strictness as request-wide, not
@@ -844,10 +850,20 @@ function normalizeNativeToolsForCall(
     // are applied by the normalizeSchemaForCerebras call after sanitization.
     let rawSchema: unknown = declaredSchema;
     if (options.cerebrasMode) {
+      // The bounded transport clone is the SCHEMA depth authority: after it
+      // passes, the Unicode pass must not re-fail the same graph on a smaller,
+      // container-counting budget. The structure walker uses one depth unit per
+      // schema node (same accounting as normalizeSchemaForCerebras) and carries
+      // annotation subtrees by reference so hostile annotation getters are
+      // never observed here — admissibility is enforced at the wire boundary.
       rawSchema = cloneSchemaForBoundedTransport(rawSchema);
     }
     if (options.sanitizeUnicode) {
-      rawSchema = deepToWellFormedUnicode(rawSchema);
+      rawSchema = options.cerebrasMode
+        ? wellFormedUnicodeSchemaStructure(rawSchema, {
+            maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+          })
+        : deepToWellFormedUnicode(rawSchema);
     }
     let inputSchema: JSONSchema7;
     if (strict === false) {
@@ -907,7 +923,13 @@ function normalizeNativeToolsForCall(
       // so the assembled ToolSet must never be deep-walked afterwards (every
       // child RESPONSE_HANDLER call died on it, live 2026-08-21).
       ...(description ? { description: deepToWellFormedUnicode(description) } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      inputSchema: jsonSchema(
+        (options.cerebrasMode
+          ? wellFormedUnicodeSchemaStructure(inputSchema, {
+              maxDepth: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
+            })
+          : deepToWellFormedUnicode(inputSchema)) as JSONSchema7
+      ),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -1882,11 +1904,14 @@ function createLlmCallDetails(
     maxTokens:
       typeof nativeParams?.maxOutputTokens === "number"
         ? nativeParams.maxOutputTokens
-        : params.omitMaxTokens
+        : params.omitMaxTokens || params.maxTokens === undefined
           ? 0
-          : (params.maxTokens ?? 8192),
+          : params.maxTokens,
     maxTokensOmitted:
-      params.omitMaxTokens && typeof nativeParams?.maxOutputTokens !== "number" ? true : undefined,
+      (params.omitMaxTokens || params.maxTokens === undefined) &&
+      typeof nativeParams?.maxOutputTokens !== "number"
+        ? true
+        : undefined,
     purpose: "external_llm",
     actionType,
   };
@@ -2390,6 +2415,16 @@ async function generateTextByModelType(
     // accessor. Existing ToolSets use the descriptor-only branch above.
     sanitizeUnicode: true,
   });
+  // Wire boundary for annotation data: the pre-passes carry annotations by
+  // reference (getters never observed), so admissibility is checked HERE,
+  // descriptor-only, before any provider dispatch. Accessors are detected via
+  // Object.getOwnPropertyDescriptor and rejected without invocation; cycles
+  // and over-depth fail closed with the typed WELL_FORMED_* contract.
+  if (normalizedToolResult.tools) {
+    assertSchemaAnnotationsSerializable(paramsWithAttachments.tools, {
+      maxDepth: MAX_WELL_FORMED_DEPTH,
+    });
+  }
   const normalizedTools = normalizedToolResult.tools;
   const normalizedToolChoice = normalizeToolChoice(paramsWithAttachments.toolChoice, {
     toolNameMap: normalizedToolResult.toolNameMap,
@@ -2475,10 +2510,10 @@ async function generateTextByModelType(
     system: systemPrompt === undefined ? undefined : deepToWellFormedUnicode(systemPrompt),
     allowSystemInMessages: true,
     ...(params.signal ? { abortSignal: params.signal } : {}),
-    // Omit the cap when the caller opted out (direct-channel Stage-1) so the
-    // model's own max applies — a hardcoded value 400s when it exceeds the
-    // model's limit. Other callers keep the 8192 default.
-    ...(params.omitMaxTokens ? {} : { maxOutputTokens: params.maxTokens ?? 8192 }),
+    // An omitted caller cap delegates the output boundary to the provider/model.
+    ...(params.omitMaxTokens || params.maxTokens === undefined
+      ? {}
+      : { maxOutputTokens: params.maxTokens }),
     experimental_telemetry: telemetryConfig,
     ...(sanitizedTools ? { tools: sanitizedTools } : {}),
     ...(sanitizedToolChoice ? { toolChoice: sanitizedToolChoice } : {}),
@@ -2533,6 +2568,11 @@ async function generateTextByModelType(
         details.finishReason = result.finishReason;
         if (result.usage) applyUsageToDetails(details, result.usage);
         return { ...result, text, toolCalls };
+      });
+      assertModelOutputComplete({
+        finishReason: buffered.finishReason,
+        provider: usageProvider,
+        model: modelName,
       });
       if (buffered.usage) {
         emitModelUsageEvent(
@@ -2685,7 +2725,7 @@ async function generateTextByModelType(
       resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
     const sdkTextPromise = streamCompanions.text;
-    const textPromise =
+    const rawTextPromise =
       params.streamStructured === true
         ? handledStructuredTextPromise
         : handledMappedPromise(sdkTextPromise, restoreResponseText);
@@ -2696,9 +2736,18 @@ async function generateTextByModelType(
       restoreRecordArgToolCalls(toolCalls, normalizedToolResult.recordArgTransformsByTool)
     );
     const usagePromise = handledMappedPromise(rawUsagePromise, convertUsage);
-    const finishReasonPromise = handledMappedPromise(
-      rawFinishReasonPromise,
-      (r) => r as string | undefined
+    const finishReasonPromise = handledMappedPromise(rawFinishReasonPromise, (r) => {
+      const finishReason = r as string | undefined;
+      assertModelOutputComplete({
+        finishReason,
+        provider: usageProvider,
+        model: modelName,
+      });
+      return finishReason;
+    });
+    const textPromise = handledMappedPromise(
+      Promise.all([rawTextPromise, finishReasonPromise]),
+      ([text]) => text
     );
     const finalizeStreamingTelemetry = async () => {
       if (telemetryFinalized) {
@@ -2727,6 +2776,15 @@ async function generateTextByModelType(
       }
       if (finishReasonResult.status === "fulfilled") {
         details.finishReason = finishReasonResult.value as string | undefined;
+        try {
+          assertModelOutputComplete({
+            finishReason: finishReasonResult.value,
+            provider: usageProvider,
+            model: modelName,
+          });
+        } catch (error) {
+          companionStreamError ??= error;
+        }
       } else {
         companionStreamError ??= finishReasonResult.reason;
       }
@@ -2845,6 +2903,12 @@ async function generateTextByModelType(
       usage: result.usage,
       providerMetadata: result.providerMetadata,
     };
+  });
+
+  assertModelOutputComplete({
+    finishReason: result.finishReason,
+    provider: usageProvider,
+    model: modelName,
   });
 
   if (result.usage) {

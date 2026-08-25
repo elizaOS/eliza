@@ -77,6 +77,18 @@ export function isDefaultEndpoint(url: string, defaultUrl: string): boolean {
   return normaliseEndpointUrl(url) === normaliseEndpointUrl(defaultUrl);
 }
 
+/** Format a configured endpoint for diagnostics without exposing URL userinfo. */
+export function redactEndpointUrlForDiagnostic(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.username = "";
+    parsed.password = "";
+    return parsed.toString();
+  } catch {
+    return "<invalid endpoint URL>";
+  }
+}
+
 export function parseRegistryEndpointUrl(rawUrl: string): URL {
   let parsed: URL;
   try {
@@ -87,6 +99,10 @@ export function parseRegistryEndpointUrl(rawUrl: string): URL {
 
   if (parsed.protocol !== "https:") {
     throw new Error("Endpoint URL must use https://");
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error("Endpoint URL must not include credentials");
   }
 
   const hostname = normalizeHostLike(parsed.hostname);
@@ -181,11 +197,12 @@ async function fetchSingleEndpoint(
   url: string,
   label: string,
 ): Promise<Map<string, RegistryPluginInfo> | null> {
+  const diagnosticUrl = redactEndpointUrlForDiagnostic(url);
   const { rejection, endpoint } =
     await resolveRegistryEndpointUrlRejection(url);
   if (rejection || !endpoint) {
     logger.warn(
-      `[registry-client] Endpoint "${label}" (${url}) blocked: ${rejection ?? "validation failed"}`,
+      `[registry-client] Endpoint "${label}" (${diagnosticUrl}) blocked: ${rejection ?? "validation failed"}`,
     );
     return null;
   }
@@ -205,7 +222,7 @@ async function fetchSingleEndpoint(
     try {
       if (!resp.ok) {
         logger.warn(
-          `[registry-client] Endpoint "${label}" (${url}): ${resp.status} ${resp.statusText}`,
+          `[registry-client] Endpoint "${label}" (${diagnosticUrl}): ${resp.status} ${resp.statusText}`,
         );
         return null;
       }
@@ -217,7 +234,7 @@ async function fetchSingleEndpoint(
     }
     if (!data.registry || typeof data.registry !== "object") {
       logger.warn(
-        `[registry-client] Endpoint "${label}" (${url}): missing registry field`,
+        `[registry-client] Endpoint "${label}" (${diagnosticUrl}): missing registry field`,
       );
       return null;
     }
@@ -264,7 +281,7 @@ async function fetchSingleEndpoint(
     // error-policy:J1 a failing custom endpoint degrades to a warning and is
     // skipped — the built-in registry map remains the source of truth.
     logger.warn(
-      `[registry-client] Endpoint "${label}" (${url}) failed: ${String(err)}`,
+      `[registry-client] Endpoint "${label}" (${diagnosticUrl}) failed: ${String(err)}`,
     );
     return null;
   }

@@ -1,4 +1,4 @@
-/** Pins staging-only REST selection while production retains its existing automatic policy. */
+/** Pins REST selection for direct Redis consumers in both Worker environments. */
 
 import { describe, expect, test } from "bun:test";
 
@@ -16,13 +16,13 @@ function environmentVars(name: "staging" | "production"): string {
 }
 
 describe("Worker direct Redis transport config", () => {
-  test("staging selects direct REST without changing either environment's cache policy", () => {
+  test("both environments select direct REST without changing the general cache policy", () => {
     const staging = environmentVars("staging");
     const production = environmentVars("production");
 
     expect(staging).toContain('CACHE_BACKEND = "auto"');
     expect(staging).toContain('DIRECT_REDIS_BACKEND = "redis-rest"');
     expect(production).toContain('CACHE_BACKEND = "auto"');
-    expect(production).not.toContain("DIRECT_REDIS_BACKEND");
+    expect(production).toContain('DIRECT_REDIS_BACKEND = "redis-rest"');
   });
 });

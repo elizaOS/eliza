@@ -272,7 +272,17 @@ function collectCandidates(text: string): DelayCandidate[] {
       });
     }
   }
-  const ordered = candidates.sort((left, right) => left.index - right.index);
+  const ordered = candidates.sort((left, right) => {
+    const leftIndex =
+      typeof left.index === "number" && Number.isFinite(left.index)
+        ? left.index
+        : 0;
+    const rightIndex =
+      typeof right.index === "number" && Number.isFinite(right.index)
+        ? right.index
+        : 0;
+    return leftIndex - rightIndex || left.end - right.end;
+  });
   for (const candidate of ordered) extendDuration(text, candidate);
   if (ordered.length === 1) applyImmediateRevisions(text, ordered[0]);
   return ordered;

@@ -112,7 +112,7 @@ export const LeftSide: Story = {
           <DrawerTitle>Navigation</DrawerTitle>
           <DrawerDescription>Jump to a workspace section.</DrawerDescription>
         </DrawerHeader>
-        <nav className="flex flex-col gap-1 px-2 py-2 text-sm text-white/85">
+        <nav className="flex flex-col gap-1 p-2 text-sm text-white/85">
           {["Overview", "Agents", "Deployments", "Billing", "Settings"].map(
             (item) => (
               <button

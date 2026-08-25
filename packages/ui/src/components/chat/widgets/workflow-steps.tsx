@@ -32,12 +32,11 @@ const STEP_TONE: Record<WorkflowStepStatus, string> = {
 };
 
 function StepIcon({ status }: { status: WorkflowStepStatus }) {
-  if (status === "done") return <CircleCheck className="h-3.5 w-3.5 text-ok" />;
-  if (status === "failed")
-    return <CircleX className="h-3.5 w-3.5 text-danger" />;
+  if (status === "done") return <CircleCheck className="size-3.5 text-ok" />;
+  if (status === "failed") return <CircleX className="size-3.5 text-danger" />;
   if (status === "running")
-    return <Loader2 className="h-3.5 w-3.5 animate-spin text-ok" />;
-  return <Circle className="h-3.5 w-3.5 text-muted" />;
+    return <Loader2 className="size-3.5 animate-spin text-ok" />;
+  return <Circle className="size-3.5 text-muted" />;
 }
 
 // Memoized on the workflow spec by value (see `workflowPropsEqual`): a
@@ -183,7 +182,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
                 }
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
               >
-                <ExternalLink className="h-3.5 w-3.5" /> Open workflow
+                <ExternalLink className="size-3.5" /> Open workflow
               </button>
             ) : null}
             {workflow.runId && !complete ? (
@@ -196,7 +195,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
                 }
                 className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
               >
-                <Square className="h-3.5 w-3.5" /> Cancel run
+                <Square className="size-3.5" /> Cancel run
               </button>
             ) : null}
           </div>

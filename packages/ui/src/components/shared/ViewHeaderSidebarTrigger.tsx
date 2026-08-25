@@ -46,7 +46,7 @@ export function ViewHeaderSidebarTrigger({
         className,
       )}
     >
-      <PanelLeftOpen className="h-4 w-4 shrink-0" aria-hidden />
+      <PanelLeftOpen className="size-4 shrink-0" aria-hidden />
       <span className="truncate">{triggerLabel}</span>
     </button>
   );

@@ -72,7 +72,7 @@ const GripIconSvg = ({ className }: { className?: string }) => (
 );
 
 const compactIconBtn =
-  "inline-flex h-7 w-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
+  "inline-flex size-7 items-center justify-center rounded-sm text-muted transition-colors hover:bg-bg-muted/70 hover:text-txt disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
 
 /* ── Style section constants ─────────────────────────────────────── */
 const STYLE_SECTION_KEYS = ["all"] as const;
@@ -345,7 +345,7 @@ function StyleRuleRow({
         type="button"
         variant="ghost"
         size="icon"
-        className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 "
+        className="size-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 "
         onClick={onRemove}
         title={t("common.remove")}
         aria-label={`${t("common.remove")} ${ruleLabel}`}
@@ -767,7 +767,7 @@ function PostExampleRow({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
+          className="size-7 shrink-0 rounded-sm p-0 text-muted transition-colors hover:bg-danger/10 hover:text-danger"
           onClick={onRemove}
           aria-label={`${t("common.remove")} post ${pi + 1}`}
           title={t("charactereditor.RemovePost", {

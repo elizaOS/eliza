@@ -135,9 +135,14 @@ const EMPTY_STATE = { values: {}, data: {}, text: "" } as unknown as State;
 
 describe("relevantConversationsProvider — shared recall embed fail-open", () => {
   beforeEach(() => {
+    // A resolved role is required: `filterByAccessContext` folds an absent
+    // `role` into the `UNRESOLVED` actor, which every scope denies, so a
+    // roleless context would read as "recall is broken" rather than "a
+    // non-owner reader". These cases model an ordinary authenticated USER.
     buildAccessContext.mockResolvedValue({
       requesterEntityId: "00000000-0000-0000-0000-0000000000e0",
       isOwner: false,
+      role: "USER",
     });
   });
 
@@ -195,6 +200,9 @@ describe("relevantConversationsProvider — shared recall embed fail-open", () =
         }),
       }),
     );
+    expect(
+      searchCanonicalConversationMemories.mock.calls[0]?.[0],
+    ).not.toHaveProperty("count");
     expect(searchMemories).toHaveBeenCalledWith(
       expect.objectContaining({ embedding: [0.1, 0.2, 0.3] }),
     );

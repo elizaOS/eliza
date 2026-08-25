@@ -494,7 +494,17 @@ describe("MESSAGE umbrella planner tools footprint (real surface)", () => {
 			expect(tool.description).not.toContain(
 				parent.descriptionCompressed ?? "<none>",
 			);
-			expect(tool.description.length).toBeLessThan(300);
+			// No length cap: a planner tool description is model-facing context and
+			// renders completely (packages/core/CLAUDE.md — "Tool, provider, and
+			// parameter descriptions plus examples render completely"). The real
+			// contract is that a virtual adds only its own subaction blurb on top of
+			// the parent's complete description — it never re-stuffs the routing
+			// hint or the keyword-stuffed retrieval blurb.
+			expect(tool.description).toBe(
+				`${parent.description} — subaction = ${tool.name
+					.slice("MESSAGE_".length)
+					.toLowerCase()}`,
+			);
 		}
 	});
 });

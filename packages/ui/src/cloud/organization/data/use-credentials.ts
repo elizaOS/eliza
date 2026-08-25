@@ -12,6 +12,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
+import {
+  authenticatedQueryKey,
+  useAuthenticatedQueryGate,
+} from "../../lib/auth-query";
 import type { PooledCredentialDto } from "./cloud-org-types";
 
 interface Envelope<T> {
@@ -28,8 +32,10 @@ export const credentialsQueryKey = [
 
 /** Pooled credentials, masked. Member-readable — no RBAC gate on the read. */
 export function useOrganizationCredentials() {
+  const gate = useAuthenticatedQueryGate();
   return useQuery<PooledCredentialDto[]>({
-    queryKey: credentialsQueryKey,
+    queryKey: authenticatedQueryKey(credentialsQueryKey, gate),
+    enabled: gate.enabled,
     queryFn: async () => {
       const res = await api<Envelope<PooledCredentialDto[]>>(
         "/api/organizations/credentials",

@@ -135,7 +135,7 @@ function CalmEmptyState({
         className,
       )}
     >
-      <Icon className="h-5 w-5 text-muted" aria-hidden />
+      <Icon className="size-5 text-muted" aria-hidden />
       <p className="text-sm text-muted">{label}</p>
     </div>
   );
@@ -454,7 +454,7 @@ function TokenPerformance({
           tone,
         )}
       >
-        <TrendIcon className="h-3 w-3" />
+        <TrendIcon className="size-3" />
         {pnl > 0 ? "+" : ""}
         {formatBnb(breakdown.realizedPnlBnb)}
       </span>
@@ -605,7 +605,7 @@ function AssetAllocationStrip({
             >
               <span
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "size-1.5 rounded-full",
                   allocationToneClass(index),
                 )}
               />
@@ -689,9 +689,9 @@ function PortfolioMoverColumn({
     <div className="min-w-0 space-y-2">
       <div className="flex items-center gap-2 text-sm font-semibold text-txt">
         {tone === "gain" ? (
-          <TrendingUp className="h-3.5 w-3.5 text-muted" />
+          <TrendingUp className="size-3.5 text-muted" />
         ) : (
-          <TrendingDown className="h-3.5 w-3.5 text-danger" />
+          <TrendingDown className="size-3.5 text-danger" />
         )}
         {title}
       </div>
@@ -820,14 +820,14 @@ function MarketAvatar({
       <img
         src={imageUrl}
         alt={label}
-        className="h-11 w-11 shrink-0 object-cover"
+        className="size-11 shrink-0 object-cover"
         loading="lazy"
       />
     );
   }
 
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center text-sm font-semibold text-txt">
+    <div className="flex size-11 shrink-0 items-center justify-center text-sm font-semibold text-txt">
       {label.slice(0, 1).toUpperCase()}
     </div>
   );
@@ -922,7 +922,7 @@ function WalletMotif() {
       viewBox="0 0 120 120"
       role="img"
       aria-label="Empty wallet"
-      className="h-24 w-24"
+      className="size-24"
     >
       <defs>
         <linearGradient id="walletMotifFill" x1="0" y1="0" x2="1" y2="1">
@@ -1125,7 +1125,7 @@ function SummaryChip({
       )}
       title={title}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0" />
+      <Icon className="size-3.5 shrink-0" />
       <span>{value}</span>
     </div>
   );
@@ -1180,7 +1180,7 @@ function WalletRailAddress({
       ref={ref}
       type="button"
       className={cn(
-        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
+        "group inline-flex min-h-10 min-w-0 items-center gap-2 rounded-sm p-2 text-left transition-colors pointer-coarse:min-h-touch [@media(orientation:landscape)_and_(max-height:520px)]:min-h-8 [@media(orientation:landscape)_and_(max-height:520px)]:py-1",
         address ? "text-txt hover:text-accent" : "text-muted",
       )}
       onClick={handleCopy}
@@ -1216,12 +1216,12 @@ function WalletRailAddress({
       </span>
       {address ? (
         copied ? (
-          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <CheckCircle2 className="size-3.5 shrink-0 text-accent" />
         ) : (
-          <Copy className="h-3.5 w-3.5 shrink-0 text-muted transition-colors group-hover:text-txt" />
+          <Copy className="size-3.5 shrink-0 text-muted transition-colors group-hover:text-txt" />
         )
       ) : (
-        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warn" />
+        <AlertTriangle className="size-3.5 shrink-0 text-warn" />
       )}
     </Button>
   );
@@ -1241,7 +1241,7 @@ function WalletConnectionChip({
     >
       <span
         className={cn(
-          "h-1.5 w-1.5 rounded-full",
+          "size-1.5 rounded-full",
           ready ? "bg-muted/60" : "bg-warn",
         )}
       />
@@ -1304,7 +1304,7 @@ function WalletProviderDots({
   return (
     <span
       className={cn(
-        "h-2 w-2 rounded-full",
+        "size-2 rounded-full",
         allReady ? "bg-muted/60" : "bg-warn",
       )}
     />
@@ -1368,8 +1368,8 @@ function WalletRailAccount({
   return (
     <div className="space-y-3 [@media(orientation:landscape)_and_(max-height:520px)]:space-y-2">
       <div className="flex flex-wrap items-start gap-3">
-        <div className="relative flex h-14 w-14 items-center justify-center [@media(orientation:landscape)_and_(max-height:520px)]:h-10 [@media(orientation:landscape)_and_(max-height:520px)]:w-10">
-          <Wallet className="h-6 w-6 text-accent [@media(orientation:landscape)_and_(max-height:520px)]:h-5 [@media(orientation:landscape)_and_(max-height:520px)]:w-5" />
+        <div className="relative flex size-14 items-center justify-center [@media(orientation:landscape)_and_(max-height:520px)]:h-10 [@media(orientation:landscape)_and_(max-height:520px)]:w-10">
+          <Wallet className="size-6 text-accent [@media(orientation:landscape)_and_(max-height:520px)]:h-5 [@media(orientation:landscape)_and_(max-height:520px)]:w-5" />
         </div>
         <div className="min-w-0 flex-1 basis-64">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1428,7 +1428,7 @@ function WalletRailTabButton({
       data-testid={`wallet-tab-${tab.id}`}
       {...agentProps}
     >
-      <tab.icon className="h-3.5 w-3.5 shrink-0" />
+      <tab.icon className="size-3.5 shrink-0" />
       <span className="truncate">{tab.label}</span>
     </Button>
   );
@@ -1456,7 +1456,7 @@ function TokenRailRowImpl({
     });
   return (
     <div
-      className="group flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
+      className="group flex min-w-0 items-center gap-3 p-2 transition-colors hover:bg-bg-muted/20"
       data-testid={`wallet-token-row-${slug}`}
     >
       <TokenIdentityIcon row={row} size={46} />
@@ -1480,14 +1480,14 @@ function TokenRailRowImpl({
             unstyled
             ref={hideRef}
             type="button"
-            className="flex h-11 w-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-danger"
+            className="flex size-11 items-center justify-center rounded-sm text-muted transition-colors hover:text-danger"
             onClick={() => onHideToken(row)}
             aria-label={`Hide ${row.symbol}`}
             title={`Hide ${row.symbol}`}
             data-testid={`wallet-token-hide-${slug}`}
             {...hideAgentProps}
           >
-            <EyeOff className="h-3.5 w-3.5" />
+            <EyeOff className="size-3.5" />
           </Button>
         </div>
       </div>
@@ -1532,18 +1532,18 @@ function RailNftList({ nfts }: { nfts: NftItem[] }) {
       {nfts.slice(0, 20).map((nft) => (
         <div
           key={`${nft.chain}:${nft.collectionName}:${nft.name}:${nft.imageUrl}`}
-          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
+          className="flex min-w-0 items-center gap-3 p-2 transition-colors hover:bg-bg-muted/20"
         >
           {nft.imageUrl ? (
             <img
               src={nft.imageUrl}
               alt={nft.name}
-              className="h-11 w-11 shrink-0 object-cover"
+              className="size-11 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center">
-              <ImageIcon className="h-4 w-4 text-muted" />
+            <div className="flex size-11 shrink-0 items-center justify-center">
+              <ImageIcon className="size-4 text-muted" />
             </div>
           )}
           <div className="min-w-0">
@@ -1580,18 +1580,18 @@ function RailPositionList({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
+          className="flex min-w-0 items-center gap-3 p-2 transition-colors hover:bg-bg-muted/20"
         >
           {position.imageUrl ? (
             <img
               src={position.imageUrl}
               alt={position.label}
-              className="h-11 w-11 shrink-0 object-cover"
+              className="size-11 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center">
-              <Layers3 className="h-4 w-4 text-muted" />
+            <div className="flex size-11 shrink-0 items-center justify-center">
+              <Layers3 className="size-4 text-muted" />
             </div>
           )}
           <div className="min-w-0 flex-1">
@@ -1826,14 +1826,14 @@ function ActivityLog({
                 ? "bg-danger/10 text-danger"
                 : "bg-bg/55 text-muted";
         const body = (
-          <div className="flex min-w-0 items-center gap-3 px-2 py-2 text-sm transition-colors hover:bg-bg-muted/20">
+          <div className="flex min-w-0 items-center gap-3 p-2 text-sm transition-colors hover:bg-bg-muted/20">
             <span
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center",
+                "flex size-8 shrink-0 items-center justify-center",
                 toneClass,
               )}
             >
-              <entry.icon className="h-4 w-4" />
+              <entry.icon className="size-4" />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate font-medium text-txt">
@@ -1899,7 +1899,7 @@ function NftPreview({ nfts }: { nfts: NftItem[] }) {
             />
           ) : (
             <div className="flex aspect-square items-center justify-center">
-              <ImageIcon className="h-5 w-5 text-muted" />
+              <ImageIcon className="size-5 text-muted" />
             </div>
           )}
           <div className="min-w-0 p-2">
@@ -1936,21 +1936,21 @@ function LpPositionsPanel({
       {positions.map((position) => (
         <div
           key={position.id}
-          className="flex min-w-0 items-center gap-3 px-2 py-2 transition-colors hover:bg-bg-muted/20"
+          className="flex min-w-0 items-center gap-3 p-2 transition-colors hover:bg-bg-muted/20"
         >
           {position.imageUrl ? (
             <img
               src={position.imageUrl}
               alt={position.label}
-              className="h-10 w-10 shrink-0 object-cover"
+              className="size-10 shrink-0 object-cover"
               loading="lazy"
             />
           ) : (
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+            <div className="flex size-10 shrink-0 items-center justify-center">
               {position.kind === "nft" ? (
-                <ImageIcon className="h-4 w-4 text-muted" />
+                <ImageIcon className="size-4 text-muted" />
               ) : (
-                <Layers3 className="h-4 w-4 text-muted" />
+                <Layers3 className="size-4 text-muted" />
               )}
             </div>
           )}

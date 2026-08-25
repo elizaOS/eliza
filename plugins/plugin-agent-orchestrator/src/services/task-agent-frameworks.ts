@@ -325,9 +325,13 @@ export function compareScoredFrameworkCandidates(
   right: { score: number; framework: { id: string } },
 ): number {
   const rightScore =
-    typeof right.score === "number" && Number.isFinite(right.score) ? right.score : 0;
+    typeof right.score === "number" && Number.isFinite(right.score)
+      ? right.score
+      : 0;
   const leftScore =
-    typeof left.score === "number" && Number.isFinite(left.score) ? left.score : 0;
+    typeof left.score === "number" && Number.isFinite(left.score)
+      ? left.score
+      : 0;
   if (rightScore !== leftScore) return rightScore - leftScore;
   return left.framework.id.localeCompare(right.framework.id);
 }
@@ -920,7 +924,8 @@ async function computeTaskAgentFrameworkState(
     frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
-    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ?? fallback;
+    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ??
+    fallback;
   const preferredSignals =
     scoredCandidates.find(
       (entry) => entry.framework.id === preferredCandidate.id,
@@ -1131,7 +1136,8 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
-    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ?? fallback;
+    scoredCandidates.sort(compareScoredFrameworkCandidates)[0]?.framework ??
+    fallback;
   const preferredSignals =
     scoredCandidates.find(
       (entry) => entry.framework.id === preferredCandidate.id,

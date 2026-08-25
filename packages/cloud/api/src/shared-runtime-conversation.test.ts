@@ -35,6 +35,10 @@ const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
 let streamMergeGate: Promise<void> | null = null;
 let resolveStreamMergeGate = () => {};
+let runtimePrewarmGate: Promise<void> | null = null;
+let resolveRuntimePrewarmGate = () => {};
+let runtimePrewarmEntered: Promise<void> | null = null;
+let markRuntimePrewarmEntered = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
@@ -210,6 +214,11 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         trustedMessageRole?: "system";
         trustedHistoryCutoffAt?: number;
         historyStore: {
+          stagePending?(
+            agentId: string,
+            channelId: string,
+            messages: unknown[],
+          ): void;
           merge(
             agentId: string,
             channelId: string,
@@ -229,8 +238,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         },
         cancel: async () => {
           canceled = true;
-          if (streamMergeGate) await streamMergeGate;
-          await options.historyStore.merge(agent.id, channelId, [
+          const interrupted = [
             {
               id: `user-${rpc.id}`,
               role: "user",
@@ -244,13 +252,22 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
               createdAt: 11,
               interrupted: true,
             },
-          ]);
+          ];
+          options.historyStore.stagePending?.(agent.id, channelId, interrupted);
+          if (streamMergeGate) await streamMergeGate;
+          await options.historyStore.merge(agent.id, channelId, interrupted);
         },
       });
       return new Response(body, {
         headers: { "x-canceled": String(canceled) },
       });
     },
+  },
+}));
+mock.module("@/lib/services/shared-runtime/shared-eliza-runtime", () => ({
+  prewarmSharedElizaStreamingContext: async () => {
+    markRuntimePrewarmEntered();
+    if (runtimePrewarmGate) await runtimePrewarmGate;
   },
 }));
 mock.module("@/lib/mobile-push/apns-provider", () => ({
@@ -290,6 +307,10 @@ beforeEach(() => {
   repositoryDeletes = 0;
   streamMergeGate = null;
   resolveStreamMergeGate = () => {};
+  runtimePrewarmGate = null;
+  resolveRuntimePrewarmGate = () => {};
+  runtimePrewarmEntered = null;
+  markRuntimePrewarmEntered = () => {};
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
@@ -874,6 +895,130 @@ test("prewarm joins cold hydration without writing a conversation turn", async (
   const result = await makeInvoke(object)("first-real-turn");
   expect(result).toMatchObject({ result: { historyLength: 2 } });
   expect(repositoryReads).toBe(1);
+});
+
+test("slow prewarm returns headers and releases the room queue before completion", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [{ role: "assistant", content: "migrated" }];
+  runtimePrewarmGate = new Promise<void>((resolve) => {
+    resolveRuntimePrewarmGate = resolve;
+  });
+  runtimePrewarmEntered = new Promise<void>((resolve) => {
+    markRuntimePrewarmEntered = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const prewarmResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await runtimePrewarmEntered;
+  const prewarmReader = prewarmResponse.body?.getReader();
+  const firstPrewarmByte = await Promise.race([
+    prewarmReader?.read(),
+    new Promise<"body-blocked">((resolve) =>
+      setTimeout(() => resolve("body-blocked"), 100),
+    ),
+  ]);
+  expect(firstPrewarmByte).not.toBe("body-blocked");
+  expect(
+    new TextDecoder().decode(
+      firstPrewarmByte === "body-blocked" ? undefined : firstPrewarmByte?.value,
+    ),
+  ).toBe('{"success":');
+
+  const historyResult = await Promise.race([
+    object
+      .fetch(
+        new Request("https://shared-runtime.internal/history", {
+          method: "POST",
+          body: JSON.stringify({
+            operation: "history",
+            agentId: AGENT_FIXTURE.id,
+            roomId: "room-1",
+          }),
+        }),
+      )
+      .then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    new Promise<"queue-blocked">((resolve) =>
+      setTimeout(() => resolve("queue-blocked"), 100),
+    ),
+  ]);
+
+  expect(historyResult).not.toBe("queue-blocked");
+  expect(historyResult).toMatchObject({
+    status: 200,
+    body: { history: repositoryRow },
+  });
+  expect(prewarmResponse.headers.has("X-Eliza-Release-Coordinator-Queue")).toBe(
+    false,
+  );
+
+  resolveRuntimePrewarmGate();
+  const completedPrewarm = await prewarmReader?.read();
+  expect(new TextDecoder().decode(completedPrewarm?.value)).toBe("true}");
+  await expect(prewarmReader?.read()).resolves.toMatchObject({ done: true });
+  await Promise.all(background.splice(0));
+  expect(repositoryReads).toBe(1);
+  expect(repositoryWrites).toBe(0);
+});
+
+test("canceling the prewarm response does not cancel background readiness", async () => {
+  runtimePrewarmGate = new Promise<void>((resolve) => {
+    resolveRuntimePrewarmGate = resolve;
+  });
+  runtimePrewarmEntered = new Promise<void>((resolve) => {
+    markRuntimePrewarmEntered = resolve;
+  });
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await runtimePrewarmEntered;
+  await response.body?.cancel();
+
+  resolveRuntimePrewarmGate();
+  await Promise.all(background.splice(0));
+
+  const warmResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  await expect(warmResponse.json()).resolves.toEqual({ success: true });
 });
 
 test("fresh-room prewarm skips a legacy history query", async () => {
@@ -1849,7 +1994,7 @@ test("forwards the server-authenticated history cutoff across the Durable Object
   });
 });
 
-test("stream body cancellation persists before the room queue releases", async () => {
+test("stream cancellation releases after a durable interrupted-context checkpoint", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   repositoryRow = [];
@@ -1901,12 +2046,19 @@ test("stream body cancellation persists before the room queue releases", async (
     return result;
   });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(secondCompleted).toBe(false);
+  expect(secondCompleted).toBe(true);
 
-  resolveStreamMergeGate();
   await cancel;
   const secondResult = await second;
-  expect(secondResult).toMatchObject({ result: { historyLength: 3 } });
+  expect(secondResult).toMatchObject({
+    result: {
+      historyLength: 3,
+      historyIds: ["user-cancelled", "assistant-cancelled"],
+    },
+  });
+
+  resolveStreamMergeGate();
+  await Promise.all(background.splice(0));
 
   const stored = (
     data.get("conversation") as {
@@ -1919,10 +2071,9 @@ test("stream body cancellation persists before the room queue releases", async (
     "turn-after-cancel",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
-  await Promise.all(background.splice(0));
 });
 
-test("failed durable cancellation write is retryable on a later finalize", async () => {
+test("a restarted object recovers interrupted context after finalization fails", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
   const data = new Map<string, unknown>([
@@ -1938,20 +2089,20 @@ test("failed durable cancellation write is retryable on a later finalize", async
     ],
   ]);
   const background: Promise<unknown>[] = [];
-  let failNextPut = true;
+  let failNextConversationPut = true;
   const state = makeState(data, background);
   const originalPut = state.storage.put;
   state.storage.put = async (key: string, value: unknown) => {
-    if (failNextPut) {
-      failNextPut = false;
-      throw new Error("storage unavailable");
+    if (key === "conversation" && failNextConversationPut) {
+      failNextConversationPut = false;
+      throw new Error("final conversation write unavailable");
     }
     await originalPut(key, value);
   };
   const object = new SharedRuntimeConversation(state as never, {} as never);
 
-  const fetchStream = async () => {
-    const response = await object.fetch(
+  const fetchStream = async (target: SharedRuntimeConversationInstance) => {
+    const response = await target.fetch(
       new Request("https://shared-runtime.internal/stream", {
         method: "POST",
         body: JSON.stringify({
@@ -1971,12 +2122,41 @@ test("failed durable cancellation write is retryable on a later finalize", async
     return reader.cancel("client disconnected");
   };
 
-  await expect(fetchStream()).rejects.toThrow("storage unavailable");
+  await expect(fetchStream(object)).resolves.toBeUndefined();
+  await Promise.all(background.splice(0));
   expect(
     (data.get("conversation") as { history: unknown[] }).history,
   ).toHaveLength(0);
 
-  await fetchStream();
+  // Workerd resets an object after a failed storage output gate. Construct a
+  // new instance over the surviving durable state to model that eviction
+  // boundary; no same-instance Map is available to satisfy this read.
+  const restartedBackground: Promise<unknown>[] = [];
+  const restarted = new SharedRuntimeConversation(
+    makeState(data, restartedBackground) as never,
+    {} as never,
+  );
+  const pendingResponse = await restarted.fetch(
+    new Request("https://shared-runtime.internal/history", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "history",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  const pending = (await pendingResponse.json()) as {
+    history: Array<{ id?: string; interrupted?: boolean }>;
+  };
+  expect(pending.history).toMatchObject([
+    { id: "user-retryable" },
+    { id: "assistant-retryable", interrupted: true },
+  ]);
+
+  const recoveredTurn = await makeInvoke(restarted)("after-restart");
+  expect(recoveredTurn).toMatchObject({ result: { historyLength: 3 } });
+  await Promise.all(restartedBackground.splice(0));
   const stored = (
     data.get("conversation") as {
       history: Array<{ content: string; interrupted?: boolean }>;
@@ -1985,6 +2165,7 @@ test("failed durable cancellation write is retryable on a later finalize", async
   expect(stored.map((message) => message.content)).toEqual([
     "stream-user-retryable",
     "partial",
+    "turn-after-restart",
   ]);
   expect(stored[1]?.interrupted).toBe(true);
 });

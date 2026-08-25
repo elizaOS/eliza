@@ -106,7 +106,7 @@ export function SidebarNotice({
     <div
       data-sidebar-notice
       className={cn(
-        "flex items-center gap-2 rounded-sm border px-3 py-3 text-sm",
+        "flex items-center gap-2 rounded-sm border p-3 text-sm",
         tone === "danger"
           ? "border-danger/30 bg-danger/10 text-danger"
           : "border-border/40 bg-bg/35 text-muted",
@@ -225,7 +225,7 @@ export function SidebarItemIcon({
     <span
       data-sidebar-item-icon
       className={cn(
-        "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm p-2",
+        "mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-sm p-2",
         active ? "bg-accent/18 text-txt-strong" : "bg-bg-accent/80 text-muted",
         className,
       )}
@@ -345,7 +345,7 @@ export const SidebarRailItem = React.forwardRef<
       size="icon-lg"
       data-sidebar-rail-item
       className={cn(
-        "relative h-11 w-11 shrink-0 rounded-sm border border-border/24 p-0 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
+        "relative size-11 shrink-0 rounded-sm border border-border/24 p-0 text-xs font-semibold tracking-[0.02em] transition-[border-color,background-color,color,box-shadow,transform] duration-150 active:scale-[0.98]",
         active
           ? navActiveClassVertical
           : "bg-card text-muted-strong hover:border-border/38 hover:text-txt ",
@@ -359,7 +359,7 @@ export const SidebarRailItem = React.forwardRef<
       {indicatorTone ? (
         <span
           className={cn(
-            "absolute right-1.5 top-1.5 h-2 w-2 rounded-full",
+            "absolute right-1.5 top-1.5 size-2 rounded-full",
             indicatorTone === "accent" ? "bg-accent" : "bg-muted/70",
           )}
         />

@@ -1,7 +1,7 @@
 /**
  * Storybook stories for ProviderAccountRow — the unified Accounts row across
  * connected/disconnected, healthy/attention, and rotation-selection states.
- * Renders under a stub AppContext supplying `t`.
+ * Renders under the shared MockAppProvider.
  */
 
 import type { Meta, StoryObj } from "@storybook/react";
@@ -9,8 +9,7 @@ import type {
   AccountsListProvider,
   AccountWithCredentialFlag,
 } from "../../api/client-agent";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   type AccountProviderOption,
   getAccountProviderOption,
@@ -24,22 +23,6 @@ function option(
   if (!found) throw new Error(`missing provider option: ${id}`);
   return found;
 }
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    if (prop === "navigation") {
-      return {
-        scheduleAfterTabCommit: (fn: () => void) => queueMicrotask(fn),
-      };
-    }
-    return () => {};
-  },
-});
 
 function acct(
   over: Partial<AccountWithCredentialFlag> &
@@ -98,11 +81,11 @@ const meta = {
   component: ProviderAccountRow,
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <div className="max-w-3xl bg-bg p-6">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   args: {

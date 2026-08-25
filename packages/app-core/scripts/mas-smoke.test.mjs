@@ -26,8 +26,8 @@ import {
 } from "./codesign-mas.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
-  findMachOFiles,
   findForbiddenPrivateComponents,
+  findMachOFiles,
   isMachO,
   mayOmitChildEntitlements,
   parseEntitlementsPlist,
@@ -195,13 +195,7 @@ test("Store artifact scan rejects the direct-only helper and private ABI markers
 test("Store artifact scan accepts an ordinary synthetic bundle", () => {
   const root = mkdtempSync(path.join(tmpdir(), "mas-smoke-public-"));
   try {
-    const asset = path.join(
-      root,
-      "Contents",
-      "Resources",
-      "app",
-      "asset.txt",
-    );
+    const asset = path.join(root, "Contents", "Resources", "app", "asset.txt");
     mkdirSync(path.dirname(asset), { recursive: true });
     writeFileSync(asset, "ordinary renderer asset");
     assert.deepEqual(findForbiddenPrivateComponents(root), []);

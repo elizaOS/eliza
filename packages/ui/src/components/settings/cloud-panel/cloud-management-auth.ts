@@ -1,6 +1,10 @@
 /** Resolves the credential forms accepted by native Cloud management routes. */
 import { getElizaApiToken } from "@elizaos/shared";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  readStoredStewardToken,
+  STEWARD_SESSION_CHANGE_EVENT,
+} from "@elizaos/shared/steward-session-client";
+import { useSyncExternalStore } from "react";
 import { normalizeCloudApiKeyToken } from "../../../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../../../config/boot-config";
 
@@ -36,4 +40,38 @@ export function currentCloudManagementToken(): string {
 
 export function hasCloudManagementCredential(): boolean {
   return currentCloudManagementToken().length > 0;
+}
+
+function subscribeToCloudManagementCredential(
+  onStoreChange: () => void,
+): () => void {
+  if (typeof window === "undefined") return () => undefined;
+
+  const handleCredentialChange = () => onStoreChange();
+  window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, handleCredentialChange);
+  window.addEventListener("steward-token-sync", handleCredentialChange);
+  // Cross-document storage events cover Steward removal and persisted runtime
+  // token changes without coupling this boundary to every storage key name.
+  window.addEventListener("storage", handleCredentialChange);
+  return () => {
+    window.removeEventListener(
+      STEWARD_SESSION_CHANGE_EVENT,
+      handleCredentialChange,
+    );
+    window.removeEventListener("steward-token-sync", handleCredentialChange);
+    window.removeEventListener("storage", handleCredentialChange);
+  };
+}
+
+function noCloudManagementCredential(): boolean {
+  return false;
+}
+
+/** Reactively track every credential form accepted by Cloud management. */
+export function useHasCloudManagementCredential(): boolean {
+  return useSyncExternalStore(
+    subscribeToCloudManagementCredential,
+    hasCloudManagementCredential,
+    noCloudManagementCredential,
+  );
 }

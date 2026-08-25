@@ -59,12 +59,12 @@ export function CloudAccountMenu({
         aria-label={email ? `Account menu for ${email}` : "Account menu"}
         className="keyboard-focus-surface flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-txt transition-colors hover:bg-bg-hover"
       >
-        <UserRound className="h-4 w-4 shrink-0" aria-hidden />
+        <UserRound className="size-4 shrink-0" aria-hidden />
         <span className="hidden max-w-40 truncate md:inline">
           {email || accountLabel}
         </span>
         <ChevronDown
-          className="hidden h-3.5 w-3.5 shrink-0 md:block"
+          className="hidden  size-3.5 shrink-0 md:block"
           aria-hidden
         />
       </DropdownMenuTrigger>
@@ -80,7 +80,7 @@ export function CloudAccountMenu({
           className="text-red-400"
           onSelect={() => void signOut()}
         >
-          <LogOut className="mr-2 h-3.5 w-3.5" aria-hidden />
+          <LogOut className="mr-2 size-3.5" aria-hidden />
           {t("cloud.userMenu.signOut", { defaultValue: "Sign out" })}
         </DropdownMenuItem>
       </DropdownMenuContent>

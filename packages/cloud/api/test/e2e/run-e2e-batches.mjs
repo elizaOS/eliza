@@ -1,9 +1,11 @@
 // Exercises cloud API test e2e run e2e batches behavior with deterministic Worker route fixtures.
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { createConnection } from "node:net";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitForWorkerHealth } from "./_helpers/worker-health.ts";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(testDir, "..", "..");
@@ -30,10 +32,13 @@ const runSeed =
     Number(process.env.GITHUB_RUN_ATTEMPT || 1) || process.pid;
 const portOffset = Math.abs(runSeed) % 4000;
 const apiPort = process.env.API_DEV_PORT || String(41000 + portOffset);
-const baseUrl =
-  process.env.TEST_API_BASE_URL ||
-  process.env.TEST_BASE_URL ||
-  `http://localhost:${apiPort}`;
+const configuredBaseUrl =
+  process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL || "";
+const baseUrl = configuredBaseUrl || `http://localhost:${apiPort}`;
+const ownsLocalServer =
+  process.env.REQUIRE_E2E_SERVER !== "0" && !configuredBaseUrl;
+const e2eRunReceipt =
+  process.env.CLOUD_E2E_RUN_RECEIPT || (ownsLocalServer ? randomUUID() : "");
 const configuredDatabaseUrl =
   process.env.TEST_DATABASE_URL || process.env.DATABASE_URL || "";
 const pglitePort = process.env.TEST_PGLITE_PORT || String(46000 + portOffset);
@@ -71,6 +76,7 @@ const e2eEnv = {
   // the wrapper still gets a working KMS.
   NODE_ENV: process.env.NODE_ENV || "test",
   CLOUD_E2E: process.env.CLOUD_E2E || "1",
+  ...(e2eRunReceipt ? { CLOUD_E2E_RUN_RECEIPT: e2eRunReceipt } : {}),
   ELIZA_KMS_BACKEND: process.env.ELIZA_KMS_BACKEND || "memory",
   // Keep the real voice upgrade route reachable in the pinned-Workerd lane.
   // Binary-first coverage closes before token verification, so these inert
@@ -87,12 +93,17 @@ const e2eEnv = {
     process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION || "Bearer e2e-inert",
 };
 
-async function isHealthy() {
+async function isHealthy(serverPid) {
   try {
-    const response = await fetch(`${baseUrl}/api/health`, {
-      signal: AbortSignal.timeout(1_000),
+    await waitForWorkerHealth({
+      baseUrl,
+      expectedReceipt: e2eRunReceipt || undefined,
+      serverPid,
+      timeoutMs: 1_000,
+      attemptTimeoutMs: 750,
+      retryIntervalMs: 100,
     });
-    return response.ok;
+    return true;
   } catch {
     return false;
   }
@@ -106,7 +117,7 @@ async function waitForHealth(processRef) {
         `[api-e2e] dev server exited before becoming healthy (code ${processRef.exitCode})`,
       );
     }
-    if (await isHealthy()) return;
+    if (await isHealthy(processRef.pid)) return;
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
   throw new Error(`[api-e2e] timed out waiting for ${baseUrl}/api/health`);
@@ -159,12 +170,12 @@ function listenerPidsOnPort(port) {
     encoding: "utf8",
   });
   if (lsof.status === 0 && lsof.stdout.trim()) {
-    return lsof.stdout.trim().split(/\s+/);
+    return lsof.stdout.match(/\b\d+\b/g) ?? [];
   }
   const fuser = spawnSync("fuser", [`${port}/tcp`], { encoding: "utf8" });
+  if (fuser.status !== 0) return [];
   const fuserOut = `${fuser.stdout ?? ""} ${fuser.stderr ?? ""}`.trim();
-  if (fuserOut) return fuserOut.split(/\s+/);
-  return [];
+  return fuserOut.match(/\b\d+\b/g) ?? [];
 }
 
 // Reclaim a port held by an orphaned listener. Self-hosted CI runners are
@@ -262,9 +273,16 @@ async function ensurePGliteBridge() {
 
 async function ensureServer() {
   if (process.env.REQUIRE_E2E_SERVER === "0") return null;
-  if (await isHealthy()) return null;
-  if (process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL) {
+  if (configuredBaseUrl) {
+    if (await isHealthy()) return null;
     throw new Error(`[api-e2e] configured server is not healthy: ${baseUrl}`);
+  }
+
+  const existingListeners = listenerPidsOnPort(apiPort);
+  if (existingListeners.length > 0) {
+    throw new Error(
+      `[api-e2e] refusing pre-existing listener(s) on owned API port ${apiPort}: ${existingListeners.join(",")}`,
+    );
   }
 
   console.log(`[api-e2e] START dev server at ${baseUrl}`);
@@ -312,6 +330,13 @@ const testFiles = readdirSync(testDir)
 const pgliteServer = await ensurePGliteBridge();
 ensureDatabase();
 const server = await ensureServer();
+if (server?.pid) {
+  e2eEnv.CLOUD_E2E_SERVER_PID = String(server.pid);
+  const listenerPids = listenerPidsOnPort(apiPort);
+  console.log(
+    `[api-e2e] OWNED Worker wrapper pid=${server.pid} listener pid=${listenerPids.join(",") || "unknown"} port=${apiPort} receipt=${e2eRunReceipt}`,
+  );
+}
 try {
   for (const testFile of testFiles) {
     console.log(`[api-e2e] START ${testFile}`);

@@ -99,7 +99,7 @@ export function TrajectoryLlmCallCard({
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1.5">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
               {callLabel}
             </div>
             <div className="text-lg font-semibold text-txt">{model}</div>
@@ -108,7 +108,7 @@ export function TrajectoryLlmCallCard({
                 {tags.map((tag) => (
                   <span
                     key={tag}
-                    className="rounded-sm border border-border/50 bg-bg/60 px-2.5 py-1 text-[11px] font-medium text-muted"
+                    className="rounded-sm border border-border/50 bg-bg/60 px-2.5 py-1 text-xs-tight font-medium text-muted"
                   >
                     {tag}
                   </span>
@@ -126,9 +126,9 @@ export function TrajectoryLlmCallCard({
               className="shrink-0 gap-2 self-start"
             >
               {showSystem ? (
-                <ChevronDown className="h-3.5 w-3.5" />
+                <ChevronDown className="size-3.5" />
               ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
+                <ChevronRight className="size-3.5" />
               )}
               {showSystem ? systemCollapseLabel : systemPromptButtonLabel}
             </Button>

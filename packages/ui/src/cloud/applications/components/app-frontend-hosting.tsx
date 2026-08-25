@@ -216,7 +216,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-accent" />
+        <Loader2 className="size-8 animate-spin text-accent" />
       </div>
     );
   }
@@ -226,7 +226,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
       <div className="flex flex-col items-center gap-3 border border-dashed border-border p-8 text-center">
         <p className="text-sm text-muted">{loadError}</p>
         <Button variant="outline" size="sm" onClick={fetchDeployments}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <RefreshCw className="mr-2  size-4" />
           {t("cloud.appHosting.retry", { defaultValue: "Retry" })}
         </Button>
       </div>
@@ -275,7 +275,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
             disabled={isPublishing}
             onClick={() => folderInputRef.current?.click()}
           >
-            <Upload className="mr-2 h-4 w-4" />
+            <Upload className="mr-2 size-4" />
             {t("cloud.appHosting.selectFolder", {
               defaultValue: "Select folder",
             })}
@@ -322,9 +322,9 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
               data-testid="hosting-publish"
             >
               {isPublishing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="mr-2 size-4 animate-spin" />
               ) : (
-                <Rocket className="mr-2 h-4 w-4" />
+                <Rocket className="mr-2 size-4" />
               )}
               {t("cloud.appHosting.publish", { defaultValue: "Publish" })}
             </Button>
@@ -346,14 +346,14 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
               defaultValue: "Refresh",
             })}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="size-4" />
           </Button>
         </div>
 
         {deployments.length === 0 ? (
           <EmptyState
             variant="dashed"
-            icon={<Rocket className="h-6 w-6" />}
+            icon={<Rocket className="size-6" />}
             title={t("cloud.appHosting.emptyTitle", {
               defaultValue: "No deployments yet",
             })}
@@ -427,7 +427,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
                             defaultValue: "Preview",
                           })}
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <ExternalLink className="size-3.5" />
                           {t("cloud.appHosting.preview", {
                             defaultValue: "Preview",
                           })}
@@ -442,7 +442,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
                         data-testid={`hosting-activate-${deployment.version}`}
                       >
                         {isBusy && (
-                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          <Loader2 className="mr-2 size-3.5 animate-spin" />
                         )}
                         {isRollback
                           ? t("cloud.appHosting.rollback", {
@@ -464,7 +464,7 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
                         })}
                         data-testid={`hosting-delete-${deployment.version}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="size-4" />
                       </Button>
                     )}
                   </span>

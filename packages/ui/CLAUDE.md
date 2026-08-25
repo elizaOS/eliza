@@ -179,6 +179,26 @@ component should ship at least a `*.stories.tsx` (states) **and** a `*.test.tsx`
 (behaviour). The live full-app visual audit lives in `packages/app`
 (`audit:app` and `audit:cloud` in `packages/app`).
 
+### Design validation
+
+Design contracts are validated on rendered Storybook and application surfaces.
+Do not add source-text tests for CSS classes, color literals, component names,
+or other implementation tokens; those checks do not prove the resulting pixels
+or interaction behavior. The external `react-doctor design` diagnostics remain
+available behind a repo-root ratchet for redundant
+utility axes, arbitrary px font sizes, dvh/vh, deprecated Tailwind classes,
+hover-only reveals, and similar problems:
+
+```bash
+bun run audit:design                  # react-doctor design vs committed baseline; fails on any rule growing
+bun run audit:design:update-baseline  # ratchet the baseline down after a cleanup PR
+```
+
+The baseline lives in `packages/scripts/design-doctor-baseline.json`; like the
+brand-token ratchet, counts may only decrease. The runner executes npx from a
+temp cwd because the repo root `overrides` conflict with react-doctor's own
+dependency tree.
+
 ### Scroll + tap-target certification (`src/testing/scroll-cert.ts`, #14380)
 
 A UI-library-wide certification harness holds every scrollable / interactive

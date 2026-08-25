@@ -1,28 +1,9 @@
-/** Storybook stories for AccountCard across provider/health/usage states, under a stub AppContext supplying `t`. */
+/** Storybook stories for AccountCard across provider/health/usage states, under the shared MockAppProvider. */
 
 import type { Meta, StoryObj } from "@storybook/react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { AccountCard } from "./AccountCard";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    if (prop === "navigation") {
-      return {
-        scheduleAfterTabCommit: (fn: () => void) => {
-          queueMicrotask(fn);
-        },
-      };
-    }
-    return () => {};
-  },
-});
 
 const baseAccount: AccountWithCredentialFlag = {
   id: "acct_anthropic_primary",
@@ -49,11 +30,11 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <div className="max-w-3xl p-6">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   argTypes: {

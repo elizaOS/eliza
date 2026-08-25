@@ -75,7 +75,7 @@ function BackupOptionList({
               id={inputId}
               type="radio"
               name="agent-backup-file"
-              className="h-4 w-4 shrink-0 border-border p-0 accent-current"
+              className="size-4 shrink-0 border-border p-0 accent-current"
               checked={selectedFileName === backup.fileName}
               onChange={() => onSelect(backup.fileName)}
             />

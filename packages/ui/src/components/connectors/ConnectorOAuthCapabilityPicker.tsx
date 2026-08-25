@@ -35,7 +35,7 @@ export function ConnectorOAuthCapabilityPicker({
               <Label htmlFor={inputId} className="text-xs font-medium">
                 {capability.label}
               </Label>
-              <p className="text-[11px] text-muted">
+              <p className="text-xs text-muted">
                 {capability.group}: {capability.description}
               </p>
             </div>

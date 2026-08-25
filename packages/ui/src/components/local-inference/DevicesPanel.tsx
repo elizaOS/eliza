@@ -44,8 +44,10 @@ export function DevicesPanel({
             }`}
           >
             <span
-              className={`inline-flex h-2 w-2 rounded-full ${
-                device.isPrimary ? "bg-emerald-500" : "bg-muted-foreground/60"
+              className={`inline-flex size-2 rounded-full ${
+                device.isPrimary
+                  ? "bg-status-success"
+                  : "bg-muted-foreground/60"
               }`}
               aria-hidden
             />
@@ -53,7 +55,7 @@ export function DevicesPanel({
               <div className="font-medium truncate">
                 {device.capabilities.deviceModel}
                 {device.isPrimary && (
-                  <span className="ml-2 text-[10px] uppercase tracking-wide text-primary">
+                  <span className="ml-2 text-2xs uppercase tracking-wide text-primary">
                     {t("devicespanel.primary", { defaultValue: "primary" })}
                   </span>
                 )}

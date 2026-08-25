@@ -225,7 +225,7 @@ function ActivityItemsContent({
   if (events.length === 0) {
     return (
       <EmptyWidgetState
-        icon={<Activity className="h-8 w-8" />}
+        icon={<Activity className="size-8" />}
         title={t("agentorchestrator.noRecentActivity", {
           defaultValue: "No recent activity",
         })}
@@ -260,11 +260,11 @@ function ActivityItemsContent({
               {relativeDuration(event.timestamp)}
             </span>
             <span
-              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${eventTypeMeta.toneClass}`}
+              className={`inline-flex size-4 shrink-0 items-center justify-center rounded-sm ${eventTypeMeta.toneClass}`}
               role="img"
               title={eventLabel}
             >
-              <EventIcon className="h-2.5 w-2.5" />
+              <EventIcon className="size-2.5" />
               <span className="sr-only">{eventLabel}</span>
             </span>
             <span className="min-w-0 flex-1 break-words pt-0.5 text-2xs leading-4 text-txt">
@@ -328,12 +328,12 @@ function AppRunCard({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-3xs text-muted">
             <span
-              className={`inline-block h-1.5 w-1.5 rounded-full ${healthDot}`}
+              className={`inline-block size-1.5 rounded-full ${healthDot}`}
               role="img"
               aria-label={run.health.state}
               title={run.health.state}
             />
-            <ViewerIcon className="h-3 w-3" aria-label={run.viewerAttachment} />
+            <ViewerIcon className="size-3" aria-label={run.viewerAttachment} />
             <span>
               {formatIsoTime(run.lastHeartbeatAt ?? run.updatedAt, t)}
             </span>
@@ -348,7 +348,7 @@ function AppRunCard({
           {attentionReasons.length > 0 ? (
             <div className="mt-1.5 flex items-center gap-1.5 text-3xs text-warn">
               <AlertTriangle
-                className="h-3 w-3 shrink-0"
+                className="size-3 shrink-0"
                 aria-label={t("agentorchestrator.needsAttention", {
                   defaultValue: "Needs attention",
                 })}
@@ -533,7 +533,7 @@ function AppRunsWidget({
   const section = (
     <WidgetSection
       title={t("appsview.Running", { defaultValue: "Apps" })}
-      icon={<Activity className="h-4 w-4" />}
+      icon={<Activity className="size-4" />}
       action={
         <div className="flex items-center gap-1">
           {currentRun ? (
@@ -541,7 +541,7 @@ function AppRunsWidget({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0"
+              className="size-6 p-0"
               aria-label={t("agentorchestrator.resumeViewer", {
                 defaultValue: "Resume viewer",
               })}
@@ -552,14 +552,14 @@ function AppRunsWidget({
                 setState("appsSubTab", "games");
               }}
             >
-              <Play className="h-3.5 w-3.5" />
+              <Play className="size-3.5" />
             </Button>
           ) : null}
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 w-6 p-0"
+            className="size-6 p-0"
             aria-label={t("agentorchestrator.openApps", {
               defaultValue: "Open apps",
             })}
@@ -569,7 +569,7 @@ function AppRunsWidget({
               setState("appsSubTab", "running");
             }}
           >
-            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+            <SquareArrowOutUpRight className="size-3.5" />
           </Button>
         </div>
       }
@@ -589,7 +589,7 @@ function AppRunsWidget({
           </div>
         ) : (
           <EmptyWidgetState
-            icon={<Activity className="h-8 w-8" />}
+            icon={<Activity className="size-8" />}
             title={t("agentorchestrator.noGamesRunning", {
               defaultValue: "No games are running",
             })}
@@ -604,7 +604,7 @@ function AppRunsWidget({
                 defaultValue: "Currently playing",
               })}
             >
-              <Eye className="h-3 w-3" />
+              <Eye className="size-3" />
               {attachedCount}
             </span>
             <span
@@ -613,7 +613,7 @@ function AppRunsWidget({
                 defaultValue: "Background",
               })}
             >
-              <EyeOff className="h-3 w-3" />
+              <EyeOff className="size-3" />
               {backgroundCount}
             </span>
             <span
@@ -624,14 +624,14 @@ function AppRunsWidget({
                 defaultValue: "Needs attention",
               })}
             >
-              <AlertTriangle className="h-3 w-3" />
+              <AlertTriangle className="size-3" />
               {needsAttentionCount}
             </span>
           </div>
           {attentionRuns.length > 0 ? (
             <div className="p-2 text-warn">
               <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-warn">
-                <AlertTriangle className="h-3 w-3" />
+                <AlertTriangle className="size-3" />
                 {t("agentorchestrator.recovery", { defaultValue: "Recovery" })}
               </div>
               <div className="flex flex-col gap-2">
@@ -736,7 +736,7 @@ function OrchestratorActivityWidget({
   return (
     <WidgetSection
       title={t("taskseventspanel.Activity", { defaultValue: "Activity" })}
-      icon={<Activity className="h-4 w-4" />}
+      icon={<Activity className="size-4" />}
       action={
         <Button
           variant="ghost"
@@ -745,9 +745,9 @@ function OrchestratorActivityWidget({
           aria-label={t("agentorchestrator.clearActivity", {
             defaultValue: "Clear activity",
           })}
-          className="h-6 w-6 p-0 text-muted"
+          className="size-6 p-0 text-muted"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="size-3.5" />
         </Button>
       }
       testId="chat-widget-events"

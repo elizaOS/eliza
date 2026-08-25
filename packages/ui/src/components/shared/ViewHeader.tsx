@@ -72,13 +72,13 @@ export function ViewBackButton({
       onClick={handleBack}
       aria-label={label}
       className={cn(
-        "keyboard-focus-surface group -m-1 inline-flex h-11 w-11 items-center justify-center bg-transparent text-txt",
+        "keyboard-focus-surface group -m-1 inline-flex size-11 items-center justify-center bg-transparent text-txt",
         className,
       )}
       {...agentProps}
     >
-      <span className="inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors group-hover:bg-bg-hover">
-        <ArrowLeft className="h-5 w-5" aria-hidden />
+      <span className="inline-flex size-9 items-center justify-center rounded-md transition-colors group-hover:bg-bg-hover">
+        <ArrowLeft className="size-5" aria-hidden />
       </span>
     </button>
   );

@@ -30,7 +30,7 @@ const NewActionButton = React.forwardRef<
       )}
       {...props}
     >
-      <Plus className="h-4 w-4" />
+      <Plus className="size-4" />
       {normalizeNewActionLabel(children)}
     </Button>
   );

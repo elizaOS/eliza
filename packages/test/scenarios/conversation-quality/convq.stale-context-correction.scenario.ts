@@ -14,6 +14,10 @@
  *   - Mechanical (load-bearing): turn 1 must contain the current facts
  *     (minneapolis + analyst/corvid) and must NOT assert the stale present
  *     ("you're still a barista / at Saguaro / in Tucson") nor narrate retrieval.
+ *     Both fresh-fact keywords live only in the seeded memory rows, never in
+ *     any user turn, so they are checked in assertResponse (not
+ *     responseIncludesAny) — a reply can only carry them by reading the
+ *     fresh-chapter memories over the stale ones.
  *   - Qualitative: judgeRubric confirms current state wins and past is framed
  *     as past.
  *
@@ -113,9 +117,13 @@ export default scenario({
       name: "current-state-sanity-check",
       room: "main",
       text: "quick sanity check, where am i living and what am i doing for work right now?",
-      responseIncludesAny: ["minneapolis"],
       responseExcludes: [STALE_PRESENT, RETRIEVAL_NARRATION],
       assertResponse: (text: string) => {
+        if (!/minneapolis/i.test(text)) {
+          return `expected the current city (Minneapolis), got ${JSON.stringify(
+            text,
+          )}`;
+        }
         if (!/corvid|analyst/i.test(text)) {
           return `expected the current job (analyst / Corvid Metrics), got ${JSON.stringify(
             text,

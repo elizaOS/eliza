@@ -1,5 +1,9 @@
 /**
- * Regression for message `cleanPriorDialogueSpeakerName` surrogate-safe truncation (80/77).
+ * Regression for message `cleanPriorDialogueSpeakerName` surrogate-safe
+ * normalization. The speaker name is prefixed onto prior-dialogue lines that go
+ * into the prompt, so CLAUDE.md's prompt-integrity rule forbids capping it: the
+ * helper only trims, collapses whitespace, and repairs lone surrogates. These
+ * cases pin that a long or emoji-bearing name survives complete and well-formed.
  */
 
 import { describe, expect, it } from "vitest";
@@ -25,19 +29,17 @@ function isWellFormed(value: string): boolean {
 }
 
 describe("cleanPriorDialogueSpeakerName well-formed", () => {
-	it("keeps surrogate pairs intact at 80 boundary (77+...)", () => {
+	it("keeps a long emoji-bearing name complete and well-formed", () => {
 		const emoji = String.fromCharCode(0xd83d, 0xde00);
 		const input = `${"a".repeat(76)}${emoji}${"b".repeat(20)}`;
 		const out = cleanPriorDialogueSpeakerName(input) ?? "";
 		expect(isWellFormed(out)).toBe(true);
-		expect(out.length).toBeLessThanOrEqual(80);
-		// Should back off, not split emoji
-		expect(out.endsWith("...")).toBe(true);
-		expect(out.slice(0, -3).length).toBeLessThanOrEqual(77);
-		expect(out.slice(0, -3).length).toBeGreaterThanOrEqual(76);
+		// No cap and no ellipsis: the name reaches the prompt intact.
+		expect(out).toBe(input);
+		expect(out.endsWith("...")).toBe(false);
 	});
 
-	it("preserves fitting emoji under 80", () => {
+	it("preserves a well-formed emoji name of exactly 80 units", () => {
 		const emoji = String.fromCharCode(0xd83d, 0xde00);
 		const input = `${"a".repeat(78)}${emoji}`;
 		const out = cleanPriorDialogueSpeakerName(input) ?? "";
@@ -59,13 +61,13 @@ describe("cleanPriorDialogueSpeakerName well-formed", () => {
 		expect(isWellFormed(out)).toBe(true);
 	});
 
-	it("sweep around 80 all well-formed", () => {
+	it("sweep around 80 stays complete and well-formed", () => {
 		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
 		for (let n = 75; n <= 85; n++) {
 			const input = `${"x".repeat(n)}${emoji}${"y".repeat(20)}`;
 			const out = cleanPriorDialogueSpeakerName(input) ?? "";
 			expect(isWellFormed(out)).toBe(true);
-			expect(out.length).toBeLessThanOrEqual(80);
+			expect(out).toBe(input);
 		}
 	});
 

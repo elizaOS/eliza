@@ -72,7 +72,7 @@ export const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
         role="alert"
         {...props}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <Icon className="size-4 shrink-0" />
         <span className="flex-1">{children}</span>
         {action}
         {dismissible && (
@@ -80,10 +80,10 @@ export const Banner = React.forwardRef<HTMLDivElement, BannerProps>(
             variant="ghost"
             size="icon"
             onClick={onDismiss}
-            className="h-6 w-6 rounded-sm opacity-70 hover:opacity-100 transition-opacity"
+            className="size-6 rounded-sm opacity-70 hover:opacity-100 transition-opacity"
             aria-label={dismissLabel}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="size-3.5" />
           </Button>
         )}
       </div>

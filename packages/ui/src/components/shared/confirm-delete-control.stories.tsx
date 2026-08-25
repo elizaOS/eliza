@@ -1,28 +1,16 @@
-/** Storybook stories for ConfirmDeleteControl: default, custom labels, ghost/outline variants, disabled, and busy state, under a stub AppContext supplying `t`. */
+/** Storybook stories for ConfirmDeleteControl: default, custom labels, ghost/outline variants, disabled, and busy state, under the shared MockAppProvider. */
 
 import type { Meta, StoryObj } from "@storybook/react";
 import type { ReactNode } from "react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { ConfirmDeleteControl } from "./confirm-delete-control";
 
-const stubAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? String(_key);
-    }
-    if (prop === "uiLanguage") return "en";
-    return () => {};
-  },
-});
-
 const withAppContext = (Story: () => ReactNode) => (
-  <AppContext.Provider value={stubAppContext}>
+  <MockAppProvider>
     <div className="p-4 flex items-center gap-2 bg-background">
       <Story />
     </div>
-  </AppContext.Provider>
+  </MockAppProvider>
 );
 
 const meta = {

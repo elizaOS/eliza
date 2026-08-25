@@ -121,16 +121,19 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
-  it("defaults to 'none' for gemma-4-31b", () => {
+  it("omits the undocumented reasoning field for gemma-4-31b", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(
       { prompt: "hi" } as never,
       runtime,
       "gemma-4-31b"
     );
+    // gemma-4-31b has no documented reasoning contract (#25503): an
+    // undocumented reasoning_effort value reaches the wire and can be
+    // rejected by the endpoint, so no default is emitted at all.
     expect(
       (opts as { openai?: { reasoningEffort?: string } } | undefined)?.openai?.reasoningEffort
-    ).toBe("none");
+    ).toBeUndefined();
   });
 
   it("preserves an explicit reasoning effort for gemma-4-31b", () => {

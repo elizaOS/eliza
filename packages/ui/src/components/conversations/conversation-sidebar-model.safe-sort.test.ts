@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { Conversation } from "../../api/client-types-chat.js";
 import {
   ALL_CONNECTORS_SOURCE_SCOPE,
   ALL_WORLDS_SCOPE,
@@ -10,7 +11,6 @@ import {
   ELIZA_SOURCE_SCOPE,
   type InboxChatSidebarRow,
 } from "./conversation-sidebar-model.js";
-import type { Conversation } from "../../api/client-types-chat.js";
 
 const t = (key: string, opts?: { defaultValue?: string }) =>
   opts?.defaultValue ?? key;

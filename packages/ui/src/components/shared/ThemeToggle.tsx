@@ -40,8 +40,8 @@ export function ThemeToggle({
     _variant === "titlebar"
       ? `inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] items-center justify-center rounded-sm border border-transparent !bg-transparent text-muted shadow-none  transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent ${className ?? ""}`
       : _variant === "cloud"
-        ? `relative inline-flex h-10 w-10 items-center justify-center rounded-sm border-0 bg-transparent text-txt shadow-none transition-colors hover:bg-bg-hover ${className ?? ""}`
-        : `inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-sm border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt    transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt text-sm leading-none ${className ?? ""}`;
+        ? `relative inline-flex size-10 items-center justify-center rounded-sm border-0 bg-transparent text-txt shadow-none transition-colors hover:bg-bg-hover ${className ?? ""}`
+        : `inline-flex size-11 min-h-touch min-w-touch items-center justify-center rounded-sm border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt    transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt text-sm leading-none ${className ?? ""}`;
 
   return (
     <Button
@@ -62,13 +62,13 @@ export function ThemeToggle({
     >
       {_variant === "cloud" ? (
         <>
-          <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="size-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute  size-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
         </>
       ) : isDark ? (
-        <Sun className="w-5 h-5" aria-hidden />
+        <Sun className="size-5" aria-hidden />
       ) : (
-        <Moon className="w-5 h-5" aria-hidden />
+        <Moon className="size-5" aria-hidden />
       )}
     </Button>
   );

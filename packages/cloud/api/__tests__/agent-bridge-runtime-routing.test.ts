@@ -286,6 +286,45 @@ describe("agent bridge runtime routing", () => {
     expect(getByName).toHaveBeenCalledWith("agent-1:default");
   });
 
+  test("resolved Worker bridge forwards only authenticated message text as capability input", async () => {
+    let coordinatorEnvelope: Record<string, unknown> | undefined;
+    const fetch = mock(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        coordinatorEnvelope = JSON.parse(String(init?.body)) as Record<
+          string,
+          unknown
+        >;
+        return Response.json({
+          jsonrpc: "2.0",
+          id: "rpc-grounding",
+          result: { text: "grounded" },
+        });
+      },
+    );
+    const rpcRequest = {
+      jsonrpc: "2.0",
+      id: "rpc-grounding",
+      method: "message.send",
+      params: { text: "what is the latest BTC price?" },
+    };
+
+    const response = await bridgeRoute.__agentBridgeTestHooks.handlePost(
+      makeJsonRequest("/api/v1/eliza/agents/agent-1/bridge", rpcRequest),
+      { params: Promise.resolve({ agentId: "agent-1" }) },
+      {
+        agent: sharedAgent,
+        namespace: { getByName: () => ({ fetch }) } as never,
+        executionCtx,
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(coordinatorEnvelope).toMatchObject({
+      rpc: rpcRequest,
+      trustedUserUtterance: "what is the latest BTC price?",
+    });
+  });
+
   test("resolved Worker bridge preserves cache warming as a retryable 503", async () => {
     const fetch = mock(async () =>
       Response.json(

@@ -69,9 +69,17 @@ export default scenario({
       name: "direct-question",
       room: "porch",
       text: "[Dee] @agent what date is the 10k again? and where does it start",
-      responseIncludesAny: [/oct(ober)? 18/i, "october 18"],
       responseExcludes: [/training plan/i, /you should (both|all)/i],
+      // Both facts (date + location) live only in the seeded group memory,
+      // never in this turn's own text, so a reply can only carry them by
+      // reading the seed. Checked in assertResponse rather than
+      // responseIncludesAny so the pair is graded together.
       assertResponse: (text: string) => {
+        if (!/oct(ober)? 18/i.test(text)) {
+          return `expected the seeded date (October 18), got ${JSON.stringify(
+            text,
+          )}`;
+        }
         if (!/riverfront/i.test(text)) {
           return `expected the start location (riverfront park), got ${JSON.stringify(
             text,

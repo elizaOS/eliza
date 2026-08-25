@@ -70,6 +70,35 @@ interface AutonomyCompactionCacheEntry {
  * When enableAutonomy is true, a recurring section is registered;
  * the batcher's background tick and minCycleMs drive when it drains.
  */
+function createdAtSortKey(memory: { createdAt?: number }): number {
+	const value = memory.createdAt;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function compareMemoryByCreatedAtAsc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (aSafe !== bSafe) return aSafe - bSafe;
+	return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+}
+
+function compareMemoryByCreatedAtDesc(
+	a: { createdAt?: number; id?: string },
+	b: { createdAt?: number; id?: string },
+): number {
+	const aSafe = createdAtSortKey(a);
+	const bSafe = createdAtSortKey(b);
+	if (bSafe !== aSafe) return bSafe - aSafe;
+	return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+}
+
+export const __testCompareMemoryByCreatedAtAsc = compareMemoryByCreatedAtAsc;
+export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
+export const __testCreatedAtSortKey = createdAtSortKey;
+
 export class AutonomyService extends Service {
 	static serviceType = AUTONOMY_SERVICE_TYPE;
 	static serviceName = "Autonomy";
@@ -239,9 +268,7 @@ export class AutonomyService extends Service {
 		const entityNames = await this.buildEntityNameLookup(entityIds);
 
 		const messagesByRoom = new Map<UUID, Memory[]>();
-		const sortedMessages = [...messages].sort(
-			(a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
-		);
+		const sortedMessages = [...messages].sort(compareMemoryByCreatedAtDesc);
 		for (const memory of sortedMessages) {
 			if (memory.entityId === this.runtime.agentId) {
 				continue;
@@ -279,7 +306,7 @@ export class AutonomyService extends Service {
 	): Promise<string> {
 		const autonomyThoughtMemories = autonomyMemories
 			.filter((memory) => this.isAutonomousResponseMemory(memory))
-			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+			.sort(compareMemoryByCreatedAtAsc);
 
 		if (autonomyThoughtMemories.length === 0) {
 			return "Autonomous thoughts: (none)";

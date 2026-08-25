@@ -76,14 +76,25 @@ function inferRole(memory: Memory, agentId: UUID): "user" | "assistant" {
   return memory.entityId === agentId ? "assistant" : "user";
 }
 
-function pruneMainChatTail(
+/**
+ * Non-finite timestamps (NaN/Infinity reaching us from a malformed stored row)
+ * make a plain subtraction comparator return NaN, which leaves the tail in an
+ * arbitrary order. Coerce them to 0 so such rows sort as oldest and the
+ * remaining rows keep a deterministic ascending order.
+ */
+function safeCreatedAt(memory: Memory): number {
+  const raw = memory.createdAt ?? 0;
+  return Number.isFinite(raw) ? raw : 0;
+}
+
+export function pruneMainChatTail(
   memories: Memory[],
   agentId: UUID,
   now: number,
 ): Memory[] {
   const ordered = [...memories]
     .filter((entry) => (entry.content.text ?? "").trim().length > 0)
-    .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0));
+    .sort((left, right) => safeCreatedAt(left) - safeCreatedAt(right));
 
   // Trim trailing assistant-only run (an assistant message that the user never replied to).
   while (ordered.length > 0) {

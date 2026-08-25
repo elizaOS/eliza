@@ -29,10 +29,10 @@ function SurfaceCard({ surface }: { surface: ConsoleSurface }) {
   return (
     <Link
       to={surface.href}
-      className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 transition-colors hover:border-accent/40 hover:bg-surface"
+      className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-accent/40 hover:bg-surface"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
-        <Icon className="h-[18px] w-[18px]" aria-hidden />
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent">
+        <Icon className="size-[18px]" aria-hidden />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-sm font-medium leading-5 text-txt-strong">
@@ -58,7 +58,7 @@ function BalanceCard() {
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card px-5 py-5">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-xs uppercase tracking-wide text-muted">
           {t("cloud.home.creditsAvailable", {

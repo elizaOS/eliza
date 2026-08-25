@@ -5,7 +5,7 @@
  * usage-event emitter; the small-model default comes from `getSmallModel`.
  */
 import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { assertModelOutputComplete, logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
 import { getSmallModel } from "../utils/config";
@@ -70,6 +70,11 @@ export async function handleImageDescription(
         maxOutputTokens: 1_024,
       })
     );
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+    });
 
     if (response.usage) {
       emitModelUsageEvent(

@@ -8,6 +8,7 @@ import { AgentRuntime, ChannelType } from "@elizaos/core/edge";
 import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
+import { GROUP_TURN_NAMING_RULE } from "./group-participant-labels";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
 import {
   sharedRuntimeConversationRoomId,
@@ -16,6 +17,12 @@ import {
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
+function testPublicGroundingEvidence(url: string, text: string) {
+  return {
+    sourceUrls: [url],
+    sources: [{ url, text }],
+  };
+}
 type StoredTodo = Awaited<ReturnType<TodoStore["create"]>>;
 const storedTodos: StoredTodo[] = [];
 const storedTodoMutations: TodoMutationRecord[] = [];
@@ -256,6 +263,17 @@ afterEach(() => {
 });
 
 describe("Shared Eliza Workerd runtime", () => {
+  test("streaming-context prewarm does not construct a disposable runtime", async () => {
+    const { prewarmSharedElizaStreamingContext } = await import("./shared-eliza-runtime");
+    const initializeSpy = spyOn(AgentRuntime.prototype, "initialize");
+    try {
+      await prewarmSharedElizaStreamingContext();
+      expect(initializeSpy).not.toHaveBeenCalled();
+    } finally {
+      initializeSpy.mockRestore();
+    }
+  });
+
   test("prewarms once, releases the runtime, and never dispatches inference", async () => {
     const { prewarmSharedElizaRuntime } = await import("./shared-eliza-runtime");
     const stopSpy = spyOn(AgentRuntime.prototype, "stop");
@@ -455,7 +473,7 @@ describe("Shared Eliza Workerd runtime", () => {
         model: "gemma-4-31b",
       },
       history: [],
-      message: "What is one small way to reset my focus?",
+      message: "What is one small way to reset focus?",
       messageIds: {
         user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
         assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
@@ -503,9 +521,10 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({ stream: true });
-    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset my focus?");
+    expect(JSON.stringify(requests[0])).toContain("What is one small way to reset focus?");
     expect(JSON.stringify(requests[0])).not.toContain("Opening Focus for you");
     expect(JSON.stringify(requests[0])).not.toContain('"name":"VIEWS"');
+    expect(JSON.stringify(requests[0])).not.toContain('"name":"WEB_SEARCH"');
     expect(reportSpy).toHaveBeenCalledWith("SharedElizaRuntime.timingObserver", expect.any(Error), {
       traceId: "trace-observer-nonfatal",
     });
@@ -787,6 +806,50 @@ describe("Shared Eliza Workerd runtime", () => {
     });
   });
 
+  test("gives only a group turn the participant naming rule", async () => {
+    const requestBodies: string[] = [];
+    globalThis.fetch = (async (_input: unknown, init?: { body?: unknown }) => {
+      requestBodies.push(String(init?.body ?? ""));
+      return successfulRuntimeResponse("noted");
+    }) as unknown as typeof fetch;
+
+    const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+    const turn = (channel: { type: ChannelType; source: string }, message: string) =>
+      runSharedAgentTurn({
+        character: { name: "Shared Eliza", system: "You are Eliza.", model: "gemma-4-31b" },
+        history: [],
+        message,
+        traceId: `trace-naming-${channel.type}`,
+        execution: {
+          channel,
+          agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        },
+      });
+
+    await turn(
+      { type: ChannelType.GROUP, source: "blooio" },
+      "Participant 2: where are we eating?",
+    );
+    expect(requestBodies).not.toBeEmpty();
+    // The rule reaches the model, and it reaches it alongside the character's
+    // own system prompt rather than replacing it.
+    for (const body of requestBodies) {
+      expect(body).toContain(GROUP_TURN_NAMING_RULE);
+      expect(body).toContain("You are Eliza.");
+    }
+
+    requestBodies.length = 0;
+    await turn({ type: ChannelType.DM, source: "blooio" }, "where are we eating?");
+    expect(requestBodies).not.toBeEmpty();
+    // A direct turn has no participants to name, so its prompt is untouched.
+    for (const body of requestBodies) {
+      expect(body).not.toContain(GROUP_TURN_NAMING_RULE);
+      expect(body).not.toContain("Several people are talking");
+      expect(body).toContain("You are Eliza.");
+    }
+  });
+
   test("awaits notification hydration before inference and dispatches through the genuine runtime", async () => {
     const hydrationEntered = Promise.withResolvers<void>();
     const releaseHydration = Promise.withResolvers<void>();
@@ -1003,7 +1066,15 @@ describe("Shared Eliza Workerd runtime", () => {
             content: [
               {
                 type: "text",
-                text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+                text: JSON.stringify({
+                  results: [
+                    {
+                      url: "https://elizaos.ai/news",
+                      title: "ElizaOS public release",
+                      text: "A new ElizaOS public release was announced today.",
+                    },
+                  ],
+                }),
               },
             ],
           },
@@ -1095,13 +1166,13 @@ describe("Shared Eliza Workerd runtime", () => {
               role: "assistant",
               content:
                 call === 5
-                  ? "A new ElizaOS public release was announced today, according to the project news page."
+                  ? "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]"
                   : JSON.stringify({
                       success: true,
                       decision: "FINISH",
                       thought: "Answer from the public result.",
                       messageToUser:
-                        "A new ElizaOS public release was announced today, according to the project news page.",
+                        "A new ElizaOS public release was announced today. [[SOURCE_URL:https://elizaos.ai/news]]",
                     }),
             },
             finish_reason: "stop",
@@ -1120,6 +1191,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       history: [],
       message: "What is the latest ElizaOS news?",
+      capabilityText: "What is the latest ElizaOS news?",
       messageIds: {
         user: "6328e4cb-4a1f-4d9c-a2fd-769e5fd33aa1",
         assistant: "059e33bc-8215-49f4-841f-7642e7505bc7",
@@ -1136,24 +1208,53 @@ describe("Shared Eliza Workerd runtime", () => {
       method: "tools/call",
       params: {
         name: "web_search",
-        arguments: { objective: "latest ElizaOS news" },
+        arguments: { objective: "What is the latest ElizaOS news?" },
       },
     });
-    expect(result.reply).toBe(
-      "A new ElizaOS public release was announced today, according to the project news page.",
+    expect(result.reply).toStartWith("A new ElizaOS public release was announced today.");
+    expect(result.reply).toContain("Source: elizaos.ai — https://elizaos.ai/news");
+    expect(result.reply).toContain("parallel, checked ");
+    const searchResults = result.actionResults?.filter(
+      (action) => action.data?.actionName === "WEB_SEARCH",
     );
-    expect(modelRequests).toHaveLength(3);
+    expect(searchResults).toHaveLength(1);
+    expect(searchResults?.[0]).toMatchObject({
+      success: true,
+      data: { query: "What is the latest ElizaOS news?" },
+    });
+    expect(JSON.stringify(searchResults)).not.toContain('"sources"');
+    expect(JSON.stringify(searchResults)).not.toContain("search_id");
+    expect(modelRequests).toHaveLength(5);
     expect(result.usage).toMatchObject({
-      promptTokens: 120,
-      completionTokens: 36,
-      totalTokens: 156,
+      promptTokens: 220,
+      completionTokens: 64,
+      totalTokens: 284,
     });
     expect(result.history.at(-1)?.grounding).toEqual({
       kind: "web_search",
-      query: "latest ElizaOS news",
+      query: "What is the latest ElizaOS news?",
       provider: "parallel",
-      text: "ElizaOS launched a new public release today. Source: https://elizaos.ai/news",
+      text: JSON.stringify({
+        results: [
+          {
+            url: "https://elizaos.ai/news",
+            title: "ElizaOS public release",
+            text: "A new ElizaOS public release was announced today.",
+          },
+        ],
+      }),
       observedAt: expect.any(Number),
+      sourceUrls: ["https://elizaos.ai/news"],
+      sources: [
+        {
+          url: "https://elizaos.ai/news",
+          text: JSON.stringify({
+            url: "https://elizaos.ai/news",
+            title: "ElizaOS public release",
+            text: "A new ElizaOS public release was announced today.",
+          }),
+        },
+      ],
       truncated: false,
     });
   });
@@ -1224,6 +1325,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1238,6 +1343,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: adversarialResult,
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              adversarialResult,
+            ),
             truncated: false,
           },
         },
@@ -1472,6 +1581,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "exa",
             text: "OBSOLETE: Tessera is a generic scraper.",
             observedAt: observedAt - 2,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-obsolete",
+              "OBSOLETE: Tessera is a generic scraper.",
+            ),
             truncated: false,
           },
         },
@@ -1486,6 +1599,10 @@ describe("Shared Eliza Workerd runtime", () => {
             provider: "parallel",
             text: "Tessera validates ARC resources through an origin guard and credential relay.",
             observedAt: observedAt - 1,
+            ...testPublicGroundingEvidence(
+              "https://example.com/tessera-current",
+              "Tessera validates ARC resources through an origin guard and credential relay.",
+            ),
             truncated: false,
           },
         },
@@ -2277,6 +2394,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
     });
     expect(modelRequests).toHaveLength(2);
+    expect(JSON.stringify(modelRequests)).not.toContain('"name":"WEB_SEARCH"');
     expect(result.actionResults?.[0]).toMatchObject({
       verifiedUserFacing: true,
       effectReceipts: [
@@ -2729,18 +2847,18 @@ describe("Shared Eliza Workerd runtime", () => {
     const parts = [];
     for await (const part of result.parts) parts.push(part);
     expect(parts.filter((part) => part.type === "text-delta").map((part) => part.text)).toEqual([
-      "Created: [ ] Buy milk",
+      'Added "Buy milk" to your list.',
     ]);
     const finish = parts.at(-1);
     if (!finish || finish.type !== "finish") {
       throw new Error("Genuine Todo stream emitted no terminal result");
     }
-    expect(finish.text).toBe("Created: [ ] Buy milk");
+    expect(finish.text).toBe('Added "Buy milk" to your list.');
     expect(finish.actionResults).toHaveLength(1);
     expect(finish.actionResults?.[0]).toMatchObject({
       success: true,
-      text: "Created: [ ] Buy milk",
-      userFacingText: "Created: [ ] Buy milk",
+      text: 'Added "Buy milk" to your list.',
+      userFacingText: 'Added "Buy milk" to your list.',
       verifiedUserFacing: true,
       turnComplete: true,
       data: {

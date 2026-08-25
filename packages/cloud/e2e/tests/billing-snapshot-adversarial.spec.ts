@@ -317,4 +317,243 @@ test.describe("billing snapshot — backend failure recovery", () => {
     expect(first503).toBeGreaterThanOrEqual(0);
     expect(first200AfterFailure).toBeGreaterThan(first503);
   });
+
+  test("keeps a cached snapshot visible through a failed background refresh and retry", async ({
+    authenticatedPage,
+    stack,
+    seededUser,
+  }) => {
+    const backendFaults = stack.mocks.backendFaults;
+    expect(
+      backendFaults,
+      "stackOptions.backendFaults must expose the server-side fault controller",
+    ).toBeDefined();
+    if (!backendFaults) throw new Error("backend fault controller unavailable");
+
+    const { organizationsRepository } = await import(
+      "@elizaos/cloud-shared/db/repositories/organizations"
+    );
+    const original = await organizationsRepository.findBalanceSnapshotForWrite(
+      seededUser.organizationId,
+    );
+    expect(original, "expected the seeded billing authority").toBeDefined();
+    if (!original) throw new Error("seeded billing authority was not found");
+
+    const originalRevision = Number(original.balance_revision);
+    expect(Number.isSafeInteger(originalRevision)).toBe(true);
+    expect(originalRevision).toBeGreaterThanOrEqual(0);
+    expect(
+      typeof original.credit_balance === "string" ||
+        typeof original.credit_balance === "number",
+    ).toBe(true);
+
+    const originalBalance = String(original.credit_balance);
+    const updatedBalance = "1234.560000";
+    let updatedRevision = originalRevision;
+    const snapshotStatuses: number[] = [];
+    authenticatedPage.on("response", (response) => {
+      if (new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH) {
+        snapshotStatuses.push(response.status());
+      }
+    });
+
+    try {
+      const initialResponsePromise = authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
+          response.status() === 200,
+      );
+      await authenticatedPage.goto(
+        `${stack.urls.frontend}${LEGACY_BILLING_PAGE_PATH}`,
+        { timeout: 60_000 },
+      );
+      const initialResponse = await initialResponsePromise;
+      await expect(authenticatedPage).toHaveURL(
+        new RegExp(`${CANONICAL_BILLING_PAGE_PATH}$`),
+      );
+      await expect(
+        authenticatedPage.getByText("$1,000.00", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText("No active billable compute", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      expect(await initialResponse.json()).toMatchObject({
+        success: true,
+        data: {
+          v2: {
+            balance: {
+              status: "available",
+              value: { revision: String(originalRevision) },
+            },
+          },
+        },
+      });
+
+      // Leave Billing through the real SPA navigation so the shared QueryClient
+      // keeps the last good tenant-scoped snapshot while Billing unmounts.
+      await authenticatedPage
+        .getByRole("button", { name: "Back to Cloud overview" })
+        .click();
+      await expect(authenticatedPage).toHaveURL(/\/cloud$/);
+
+      await organizationsRepository.update(seededUser.organizationId, {
+        credit_balance: updatedBalance,
+      });
+      const updated = await organizationsRepository.findBalanceSnapshotForWrite(
+        seededUser.organizationId,
+      );
+      expect(updated, "expected the updated billing authority").toBeDefined();
+      if (!updated) throw new Error("updated billing authority was not found");
+      updatedRevision = Number(updated.balance_revision);
+      expect(Number.isSafeInteger(updatedRevision)).toBe(true);
+      expect(updatedRevision).toBeGreaterThan(originalRevision);
+      expect(String(updated.credit_balance)).toBe(updatedBalance);
+
+      backendFaults.setFault({
+        path: BILLING_SNAPSHOT_PATH,
+        method: "GET",
+        status: 503,
+        body: {
+          success: false,
+          error: "Billing snapshot temporarily unavailable",
+          code: "billing_snapshot_unavailable",
+          retryable: true,
+        },
+        headers: { "Retry-After": "1" },
+        delayMs: 10_000,
+        times: 2,
+      });
+
+      const failedRefreshPromise = authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
+          response.status() === 503,
+      );
+      const refreshRequestPromise = authenticatedPage.waitForRequest(
+        (request) =>
+          new URL(request.url()).pathname === BILLING_SNAPSHOT_PATH &&
+          request.method() === "GET",
+      );
+      await authenticatedPage
+        .getByRole("link", { name: "Add funds", exact: true })
+        .first()
+        .click();
+      await refreshRequestPromise;
+      await expect(authenticatedPage).toHaveURL(
+        new RegExp(`${CANONICAL_BILLING_PAGE_PATH}$`),
+      );
+
+      // The delayed proxy response leaves enough time to observe the genuine
+      // React Query background-refresh state while cached data remains painted.
+      await expect(
+        authenticatedPage.getByText("$1,000.00", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText("No active billable compute", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText("Refreshing", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText(
+          /Refreshing balance\. Showing the value observed at /,
+        ),
+      ).toBeVisible();
+      expect(backendFaults.faultHits).toBeGreaterThanOrEqual(1);
+      expect(backendFaults.faultHits).toBeLessThanOrEqual(2);
+
+      await failedRefreshPromise;
+      backendFaults.clearFault();
+      await expect(
+        authenticatedPage.getByText("$1,000.00", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText("No active billable compute", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText(
+          /Could not refresh balance\. Showing the value observed at /,
+        ),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText(
+          /Could not refresh\. Showing the snapshot completed at /,
+        ),
+      ).toBeVisible();
+      const retry = authenticatedPage.getByRole("button", {
+        name: "Retry",
+        exact: true,
+      });
+      await expect(retry).toBeVisible();
+      expect(snapshotStatuses).toContain(200);
+      expect(snapshotStatuses.filter((status) => status === 503)).toHaveLength(
+        1,
+      );
+      expect(backendFaults.faultHits).toBeGreaterThanOrEqual(1);
+      expect(backendFaults.faultHits).toBeLessThanOrEqual(2);
+
+      const recoveredResponsePromise = authenticatedPage.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === BILLING_SNAPSHOT_PATH &&
+          response.status() === 200,
+      );
+      await retry.click();
+      const recoveredResponse = await recoveredResponsePromise;
+      expect(await recoveredResponse.json()).toMatchObject({
+        success: true,
+        data: {
+          v2: {
+            balance: {
+              status: "available",
+              value: {
+                balance: { value: updatedBalance },
+                revision: String(updatedRevision),
+              },
+            },
+          },
+        },
+      });
+
+      await expect(
+        authenticatedPage.getByText("$1,234.56", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText("$1,000.00", { exact: true }),
+      ).toBeHidden();
+      await expect(
+        authenticatedPage.getByText("No active billable compute", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        authenticatedPage.getByText(
+          /Could not refresh balance\. Showing the value observed at /,
+        ),
+      ).toBeHidden();
+      await expect(
+        authenticatedPage.getByText(
+          /Could not refresh\. Showing the snapshot completed at /,
+        ),
+      ).toBeHidden();
+      await expect(
+        authenticatedPage.getByText("Refreshing", { exact: true }),
+      ).toBeHidden();
+      expect(backendFaults.faultHits).toBeGreaterThanOrEqual(1);
+      expect(backendFaults.faultHits).toBeLessThanOrEqual(2);
+    } finally {
+      backendFaults.clearFault();
+      await organizationsRepository.update(seededUser.organizationId, {
+        credit_balance: originalBalance,
+      });
+      await organizationsRepository.update(seededUser.organizationId, {
+        balance_revision: originalRevision,
+      });
+    }
+  });
 });

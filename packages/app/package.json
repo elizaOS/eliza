@@ -141,7 +141,7 @@
     "cap:sync:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor sync android",
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
-    "prebuild:web": "bun run prebuild",
+    "prebuild:web": "bun run --cwd ../cloud/sdk build && bun run prebuild",
     "build:web": "ELIZA_WEB_ABSOLUTE_BASE=1 node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build && node scripts/verify-chunk-safety.mjs && node scripts/verify-viewport-meta.mjs",
     "verify:chunks": "node scripts/verify-chunk-safety.mjs",
     "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos && node ../app-core/scripts/write-homepage-release-data.mjs && node scripts/sync-homepage-assets.mjs",

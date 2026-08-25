@@ -30,6 +30,10 @@ function makeRuntime(): IAgentRuntime {
 		},
 		actions: [],
 		providers: [],
+		// Stage-1 triage reads the reply-bypass channel settings before it can
+		// decide which providers an ambient turn excludes, so a runtime without
+		// `getSetting` cannot render the prefix at all.
+		getSetting: vi.fn(() => undefined),
 		composeState: vi.fn(async () => makeState()),
 		logger: {
 			debug: vi.fn(),

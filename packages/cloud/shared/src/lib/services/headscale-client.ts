@@ -166,6 +166,14 @@ export interface HeadscaleUser {
 // Client
 // ---------------------------------------------------------------------------
 
+export function compareHeadscaleIds(a: { id: string }, b: { id: string }): number {
+  const bNum = Number((b as any).id);
+  const aNum = Number((a as any).id);
+  const bVal = Number.isFinite(bNum) ? bNum : 0;
+  const aVal = Number.isFinite(aNum) ? aNum : 0;
+  return bVal - aVal || String(b.id).localeCompare(String(a.id));
+}
+
 export class HeadscaleClient {
   private baseUrl: string;
   private apiKey: string;
@@ -272,7 +280,7 @@ export class HeadscaleClient {
     if (candidates.length === 0) return null;
     // Headscale ids are numeric strings; lexicographic order would rank "9"
     // above "10", so compare numerically to get the newest registration.
-    candidates.sort((a, b) => Number(b.id) - Number(a.id));
+    candidates.sort(compareHeadscaleIds);
     return candidates[0];
   }
 

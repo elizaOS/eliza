@@ -121,7 +121,7 @@ export function ActiveSessionsPanel() {
                   <span className="flex min-w-0 flex-wrap items-center gap-2">
                     <span>{device}</span>
                     {session.current ? (
-                      <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                      <span className="rounded-full border border-border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-muted">
                         {t("cloud.activeSessions.current", {
                           defaultValue: "current",
                         })}

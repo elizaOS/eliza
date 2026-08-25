@@ -6,12 +6,15 @@
  */
 
 import {
+  type ActionResult,
   type AgentEventPayload,
   AgentEventService,
   type AgentNotification,
   AgentRuntime,
+  assertModelOutputComplete,
   basicProviders,
   basicServices,
+  ChannelType,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
   ElizaError,
@@ -38,7 +41,11 @@ import {
 } from "@elizaos/core/edge";
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
-import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
+import {
+  createWebSearchEdgePlugin,
+  webSearchEdgeAction,
+  webSearchEdgePlugin,
+} from "@elizaos/plugin-web-search/edge";
 import type { AgentCapabilityTransport } from "@elizaos/shared";
 import {
   generateText,
@@ -48,9 +55,11 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import type { MobilePushMessage } from "../../mobile-push/types";
 import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
 import { logger } from "../../utils/logger";
+import { withGroupTurnNamingRule } from "./group-participant-labels";
 import type {
   RunSharedAgentTurnInput,
   RunSharedAgentTurnResult,
@@ -63,6 +72,10 @@ import type {
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import {
+  createMatchingRealtimeSearchRunner,
+  resolveSharedRealtimeRequirement,
+} from "./shared-realtime-grounding";
+import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
@@ -70,6 +83,7 @@ import {
 import {
   insertSharedRuntimeGroundingMessages,
   sharedPublicWebGrounding,
+  sharedRuntimeFreshGroundingProjectionMessages,
   sharedRuntimeGroundingProjectionMessages,
 } from "./shared-runtime-history-policy";
 import {
@@ -95,6 +109,10 @@ type SharedElizaRuntimeTurnInput = Omit<RunSharedAgentTurnInput, "execution"> & 
   execution: NonNullable<RunSharedAgentTurnInput["execution"]>;
   agentKey: string;
   model: string;
+  /** Server-executed current-turn public read, never transport supplied. */
+  realtimeGrounding?: SharedRuntimePublicGrounding;
+  /** Traceable action receipt for the server-executed public read. */
+  preflightActionResults?: ActionResult[];
 };
 
 interface SharedNotificationEventBus {
@@ -238,9 +256,11 @@ function createRuntime(options: {
   agentKey: string;
   agentId?: UUID;
   actionsEnabled: boolean;
+  webSearchEnabled: boolean;
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  webSearchPlugin?: Plugin;
   transport?: AgentCapabilityTransport;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
@@ -248,7 +268,7 @@ function createRuntime(options: {
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
-    webSearch: options.actionsEnabled,
+    webSearch: options.webSearchEnabled,
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
@@ -270,6 +290,7 @@ function createRuntime(options: {
       settings: {
         ELIZA_CANONICAL_LLM_TEXT_ENABLED: true,
         ELIZA_CANONICAL_EMBEDDINGS_ENABLED: false,
+        ...(options.mediaPlugin ? { ELIZA_VIDEO_GENERATION_ENABLED: true } : {}),
       },
     },
     adapter: options.adapter,
@@ -277,7 +298,7 @@ function createRuntime(options: {
       options.modelPlugin,
       ...(!options.actionsEnabled ? [sharedSystemLifecyclePlugin] : []),
       ...(options.actionsEnabled ? [capabilityPlugin] : []),
-      ...(options.actionsEnabled ? [webSearchEdgePlugin] : []),
+      ...(options.webSearchEnabled ? [options.webSearchPlugin ?? webSearchEdgePlugin] : []),
       ...(options.actionsEnabled && options.mediaPlugin ? [options.mediaPlugin] : []),
       ...(options.actionsEnabled && options.reminderPlugin ? [options.reminderPlugin] : []),
       ...(options.actionsEnabled && options.todoPlugin ? [options.todoPlugin] : []),
@@ -293,6 +314,11 @@ function createRuntime(options: {
   });
 }
 
+/** Loads only the streaming context without constructing an AgentRuntime. */
+export async function prewarmSharedElizaStreamingContext(): Promise<void> {
+  await ensureEdgeStreamingContext();
+}
+
 /** Pays one-time Workerd runtime initialization before the first live user turn. */
 export async function prewarmSharedElizaRuntime(): Promise<void> {
   await ensureEdgeStreamingContext();
@@ -300,6 +326,7 @@ export async function prewarmSharedElizaRuntime(): Promise<void> {
     const runtime = createRuntime({
       agentKey: "shared-runtime-kernel-prewarm",
       actionsEnabled: true,
+      webSearchEnabled: true,
       adapter: new InMemoryDatabaseAdapter(),
       character: {
         name: "Shared Eliza",
@@ -508,6 +535,7 @@ async function executeSharedElizaRuntimeTurn(
   let runtimeReporter: IAgentRuntime | undefined;
   const emitTiming = (outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt => {
     const receipt = timing.receipt(outcome);
+    logger.info("[shared-eliza-runtime] turn latency", receipt);
     try {
       input.onRuntimeTiming?.(receipt);
     } catch (error) {
@@ -576,10 +604,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   // The native tool-call projection may only reference a tool the current
   // request actually declares; otherwise the evidence is carried as data-only
   // transcript content so a strict provider cannot reject the whole request.
-  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] =>
-    sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
+  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] => [
+    ...sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
       nativeToolProjection: declaresWebSearch,
-    });
+    }),
+    ...sharedRuntimeFreshGroundingProjectionMessages(input.realtimeGrounding),
+  ];
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
@@ -625,9 +655,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         modelCall.finish();
         throw error;
       }
-      const text = Promise.resolve(result.text);
+      const rawText = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
-      const finishReason = Promise.resolve(result.finishReason);
+      const finishReason = Promise.resolve(result.finishReason).then((reason) => {
+        assertModelOutputComplete({
+          finishReason: reason,
+          provider: "cerebras",
+          model: input.model,
+        });
+        return reason;
+      });
+      const text = Promise.all([rawText, finishReason]).then(([completeText]) => completeText);
       const totalUsage = Promise.resolve(result.totalUsage);
       // error-policy:J5 aborting the provider stream rejects every pending AI
       // SDK result promise. AgentRuntime observes the textStream rejection as
@@ -653,12 +691,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               yield chunk;
             }
           }
+          await finishReason;
           return;
         }
         for await (const chunk of result.textStream) {
           if (chunk) timing.markProviderFirstText();
           yield chunk;
         }
+        await finishReason;
       })();
       const streamUsage = totalUsage
         .then((value) => {
@@ -694,6 +734,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     } finally {
       modelCall.finish();
     }
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "cerebras",
+      model: input.model,
+    });
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -714,6 +759,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
 
   const modelPlugin = sharedModelPlugin(modelHandler);
   const actionsEnabled = input.messageRole !== "system";
+  const webSearchEnabled =
+    actionsEnabled &&
+    Boolean(
+      input.capabilityText && resolveSharedRealtimeRequirement(input.capabilityText, input.history),
+    );
   const reminderPlugin =
     actionsEnabled && input.execution?.reminders
       ? createSharedRemindersEdgePlugin({
@@ -735,14 +785,35 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
+  const preflightWebSearchResult = input.preflightActionResults?.find(
+    (result) => result.data?.actionName === "WEB_SEARCH",
+  );
+  // A group turn labels each speaker `Participant <n>` (see
+  // `group-participant-labels.ts`). That is a slot, not a name, so the model
+  // needs one line telling it where real names come from; scoping it to the
+  // channel type keeps every direct turn's prompt byte-identical.
+  const isGroupTurn = input.execution.channel.type === ChannelType.GROUP;
   const runtime = createRuntime({
     agentKey: input.agentKey,
     agentId,
     actionsEnabled,
+    webSearchEnabled,
     adapter,
-    character: input.character,
+    character: isGroupTurn
+      ? { ...input.character, system: withGroupTurnNamingRule(input.character.system) }
+      : input.character,
     modelPlugin,
-    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
+    ...(preflightWebSearchResult
+      ? {
+          webSearchPlugin: createWebSearchEdgePlugin(
+            createMatchingRealtimeSearchRunner(preflightWebSearchResult),
+          ),
+        }
+      : {}),
+    transport: sharedCapabilityTransportForSource(
+      input.execution.channel.source,
+      input.execution.channel.type,
+    ),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
@@ -782,8 +853,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         );
       }
     } else {
-      if (!runtime.actions.some((action) => action.name === webSearchEdgeAction.name)) {
+      if (
+        webSearchEnabled &&
+        !runtime.actions.some((action) => action.name === webSearchEdgeAction.name)
+      ) {
         throw new Error("Eliza Shared runtime initialized without its WEB_SEARCH action");
+      }
+      if (
+        !webSearchEnabled &&
+        runtime.actions.some((action) => action.name === webSearchEdgeAction.name)
+      ) {
+        throw new Error("Eliza Shared runtime exposed WEB_SEARCH to a private-state turn");
       }
       if (!runtime.actions.some((action) => action.name === REQUEST_DEDICATED_UPGRADE_ACTION)) {
         throw new Error("Eliza Shared runtime initialized without its Dedicated review action");
@@ -947,6 +1027,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     // response. The callback receipt is still an actual user-visible delivery.
     if (!result?.didRespond && delivered.length === 0) {
       logSharedProviderSpans(input, inferenceTelemetry.summary, false);
+      const preflightActionResults = input.preflightActionResults ?? [];
       return {
         reply: "",
         responded: false,
@@ -959,12 +1040,18 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         model: input.model,
         degraded: false,
         usage,
+        ...(preflightActionResults.length ? { actionResults: preflightActionResults } : {}),
       };
     }
     if (!reply) {
       throw new Error("Eliza Shared runtime completed without a user-visible reply");
     }
     logSharedProviderSpans(input, inferenceTelemetry.summary, true);
+    const actionResults = [
+      ...(input.preflightActionResults ?? []),
+      ...(result.actionResults ?? []),
+    ];
+    const grounding = input.realtimeGrounding ?? sharedPublicWebGrounding(actionResults);
     return {
       reply,
       responded: true,
@@ -974,12 +1061,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
-        sharedPublicWebGrounding(result.actionResults),
+        grounding,
       ),
       model: input.model,
       degraded: false,
       usage,
-      ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
+      ...(actionResults.length ? { actionResults } : {}),
     };
   } finally {
     for (const [operation, cleanup] of [

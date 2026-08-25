@@ -147,3 +147,57 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
     expect(result.text).toContain(longBody);
   });
 });
+
+describe("dynamic skill ranking determinism", () => {
+  // Two skills whose indexed text scores identically under BM25, so only the
+  // comparator tie-break decides their order. They are loaded highest-slug
+  // first, which is the order a comparator returning 0 for a tie preserves.
+  const sharedDescription = "Use when converting spreadsheets into charts.";
+  const tiedSkills = [
+    {
+      slug: "zeta-runner",
+      name: "Zeta Runner",
+      description: sharedDescription,
+    },
+    {
+      slug: "alpha-runner",
+      name: "Alpha Runner",
+      description: sharedDescription,
+    },
+  ];
+
+  function tiedRuntime() {
+    return {
+      getService: () => ({
+        getLoadedSkills: () => tiedSkills,
+        getSkillInstructions: (slug: string) => ({
+          slug,
+          body: `Instructions for ${slug}`,
+          estimatedTokens: 4,
+        }),
+      }),
+    };
+  }
+
+  it("orders equally scored skills by slug rather than load order", async () => {
+    const provider = createDynamicSkillProvider();
+    const result = await provider.get(
+      tiedRuntime() as never,
+      {
+        content: { text: "help me converting spreadsheets into charts today" },
+      } as never,
+      {} as never,
+    );
+
+    const matched = result.data?.matchedSkills as
+      | Array<{ slug: string; score: number }>
+      | undefined;
+    expect(matched).toBeDefined();
+    expect(matched?.map((skill) => skill.slug)).toEqual([
+      "alpha-runner",
+      "zeta-runner",
+    ]);
+    // Guards the premise: the ordering above is a tie-break, not a score gap.
+    expect(matched?.[0]?.score).toBe(matched?.[1]?.score);
+  });
+});

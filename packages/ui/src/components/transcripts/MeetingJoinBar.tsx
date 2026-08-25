@@ -115,7 +115,7 @@ export function MeetingJoinBar({
               data-testid="meeting-platform-hint"
               className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 text-xs text-accent-fg"
             >
-              <Video className="h-3.5 w-3.5" aria-hidden />
+              <Video className="size-3.5" aria-hidden />
               {MEETING_PLATFORM_LABELS[parsed.platform]}
             </span>
           ) : null}
@@ -164,7 +164,7 @@ export function MeetingJoinBar({
               <span
                 aria-hidden
                 className={cn(
-                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  "size-1.5 shrink-0 rounded-full",
                   m.status === "active" ? "bg-accent" : "bg-muted",
                 )}
               />

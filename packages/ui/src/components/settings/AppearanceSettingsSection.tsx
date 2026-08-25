@@ -54,7 +54,7 @@ function LanguageTileButton({
         <span className="text-xs font-medium text-txt">{label}</span>
       </div>
       {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
+        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
       ) : null}
     </Button>
   );
@@ -91,12 +91,12 @@ function AccentTileButton({
     >
       <span
         aria-hidden
-        className="h-5 w-5 rounded-full border border-border/40"
+        className="size-5 rounded-full border border-border/40"
         style={{ backgroundColor: swatchColor }}
       />
       <span className="text-xs font-medium text-txt">{preset.label}</span>
       {isActive ? (
-        <Check className="absolute right-1.5 top-1.5 h-3 w-3 text-accent" />
+        <Check className="absolute right-1.5 top-1.5 size-3 text-accent" />
       ) : null}
     </Button>
   );

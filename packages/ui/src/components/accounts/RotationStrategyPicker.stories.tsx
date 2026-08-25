@@ -1,27 +1,8 @@
-/** Storybook stories for RotationStrategyPicker across the account rotation strategies, under a stub AppContext supplying `t`. */
+/** Storybook stories for RotationStrategyPicker across the account rotation strategies, under the shared MockAppProvider. */
 
 import type { Meta, StoryObj } from "@storybook/react";
-import type { AppContextValue } from "../../state/types";
-import { AppContext } from "../../state/useApp";
+import { MockAppProvider } from "../../storybook/mock-providers";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
-
-const mockAppContext = new Proxy({} as AppContextValue, {
-  get(_, prop) {
-    if (prop === "t") {
-      return (_key: string, opts?: { defaultValue?: string }) =>
-        opts?.defaultValue ?? "";
-    }
-    if (prop === "uiLanguage") return "en";
-    if (prop === "navigation") {
-      return {
-        scheduleAfterTabCommit: (fn: () => void) => {
-          queueMicrotask(fn);
-        },
-      };
-    }
-    return () => {};
-  },
-});
 
 const meta = {
   title: "Accounts/RotationStrategyPicker",
@@ -29,11 +10,11 @@ const meta = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <AppContext.Provider value={mockAppContext}>
+      <MockAppProvider>
         <div className="p-6">
           <Story />
         </div>
-      </AppContext.Provider>
+      </MockAppProvider>
     ),
   ],
   argTypes: {

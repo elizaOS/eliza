@@ -200,10 +200,7 @@ function findAsciiMarkers(filePath, markers) {
           remaining.delete(marker);
         }
       }
-      const carryLength = Math.min(
-        maximumMarkerLength - 1,
-        candidate.length,
-      );
+      const carryLength = Math.min(maximumMarkerLength - 1, candidate.length);
       carry = candidate.subarray(candidate.length - carryLength);
     }
   } finally {
@@ -215,7 +212,10 @@ function findAsciiMarkers(filePath, markers) {
 function findForbiddenPrivateComponents(appPath) {
   const findings = [];
   for (const filePath of walkBundleFiles(appPath)) {
-    const relativePath = path.relative(appPath, filePath).split(path.sep).join("/");
+    const relativePath = path
+      .relative(appPath, filePath)
+      .split(path.sep)
+      .join("/");
     const contentMarkers = new Set(
       findAsciiMarkers(filePath, STORE_FORBIDDEN_PRIVATE_COMPONENT_MARKERS),
     );
@@ -531,8 +531,8 @@ function isParentMainExecutable(machoPath, appPath) {
 export {
   BUN_HELPER_FORBIDDEN_KEYS,
   CHILD_FORBIDDEN_KEYS,
-  findMachOFiles,
   findForbiddenPrivateComponents,
+  findMachOFiles,
   isMachO,
   isParentMainExecutable,
   mayOmitChildEntitlements,

@@ -1250,7 +1250,7 @@ export function MapsView({
                       <MapPin aria-hidden="true" className="size-5" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold tracking-wide text-[#c54500] uppercase">
+                      <p className="text-xs font-semibold text-[#c54500]">
                         Place details
                       </p>
                       <h2 className="mt-1 text-lg font-semibold leading-tight">

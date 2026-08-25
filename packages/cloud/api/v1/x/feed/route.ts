@@ -4,7 +4,7 @@
  * maxResults, connectionRole.
  */
 
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getXFeed } from "@/lib/services/x";
@@ -17,21 +17,19 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const hasMaxResults = Boolean(rawMaxResults?.trim());
-    const maxResults = hasMaxResults
-      ? parsePositiveInteger(rawMaxResults)
-      : undefined;
-    if (hasMaxResults && maxResults === undefined) {
+    const parsedMaxResults = parseCanonicalInteger(rawMaxResults, { min: 1 });
+    if (parsedMaxResults === "invalid") {
       return c.json(
         { success: false, error: "maxResults must be a positive integer" },
         400,
       );
     }
+    const maxResults = parsedMaxResults;
     // Role identity leftover after x/status (#20945). The prior ternary
     // mapped every non-"agent" token — including AGENT, owner-typos, and
     // 1e2 — onto the personal owner X feed. Missing/empty still defaults
     // to owner (this route's documented default). Garbage 400s before
-    // getXFeed. maxResults parser stays untouched.
+    // getXFeed. maxResults parser stays strict via parseCanonicalInteger.
     const requestedRoleValues = c.req.queries("connectionRole") ?? [];
     const requestedRole = requestedRoleValues[0];
     if (

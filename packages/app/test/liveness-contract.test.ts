@@ -13,6 +13,7 @@ import {
   assertLiveChallengeReply,
   assertLiveReply,
   buildLivenessChallenge,
+  describeAnchoredLiveTurnState,
   extractLivenessChallengeToken,
   findAnchoredLiveTurn,
   isLiveReply,
@@ -299,5 +300,71 @@ describe("structural user-turn anchoring", () => {
         { anchorToken: "" },
       ),
     ).toBeNull();
+  });
+
+  it("reduces anchored row states without retaining transcript content", () => {
+    const transcript = [
+      { role: "assistant", text: "private old reply", phase: "reply" },
+      { role: "user", text: `private prompt ${anchorToken}` },
+      {
+        role: "assistant",
+        text: "private failed reply",
+        failureKind: "private_failure_code",
+        hasRetry: true,
+        interrupted: true,
+        hasMessageText: false,
+        phase: "status",
+      },
+    ];
+    const diagnostic = describeAnchoredLiveTurnState(transcript, {
+      anchorToken,
+    });
+
+    expect(diagnostic).toEqual({
+      anchorUserPresent: true,
+      assistantRowPresent: true,
+      assistantFailurePresent: true,
+      assistantRetryPresent: true,
+      assistantInterrupted: true,
+      assistantHasMessageText: false,
+      assistantPhase: "status",
+      assistantHasText: true,
+    });
+    expect(JSON.stringify(diagnostic)).not.toMatch(
+      /private|failure_code|9f8e7d/,
+    );
+  });
+
+  it("distinguishes missing anchors and assistant rows without crossing user turns", () => {
+    expect(
+      describeAnchoredLiveTurnState(
+        [{ role: "assistant", text: `reply ${anchorToken}` }],
+        { anchorToken },
+      ),
+    ).toEqual({
+      anchorUserPresent: false,
+      assistantRowPresent: false,
+      assistantFailurePresent: false,
+      assistantRetryPresent: false,
+      assistantInterrupted: false,
+      assistantHasMessageText: null,
+      assistantPhase: null,
+      assistantHasText: false,
+    });
+    expect(
+      describeAnchoredLiveTurnState(
+        [
+          { role: "user", text: anchorToken },
+          { role: "user", text: "later private turn" },
+          { role: "assistant", text: "later private reply", phase: "reply" },
+        ],
+        { anchorToken },
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        anchorUserPresent: true,
+        assistantRowPresent: false,
+      }),
+    );
   });
 });

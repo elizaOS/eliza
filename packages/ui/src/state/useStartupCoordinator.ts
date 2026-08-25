@@ -62,6 +62,7 @@ import {
   runStartingRuntime,
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
+import { createStartupRecoveryLoop } from "./startup-recovery-loop";
 import { markStartup } from "./startup-telemetry";
 import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 
@@ -383,51 +384,41 @@ export function useStartupCoordinator(
     if (!currentDeps) return;
     const cancelled = { current: false };
 
-    // Schedule probes with exponential backoff (2.5s → cap 30s) and stop after
-    // a fixed number of attempts. Depending on `[state, ...]` here would
-    // re-arm this loop on every dispatch (each mints a new state object),
-    // turning a degraded backend into a perpetual probe storm that re-renders
-    // every useApp() consumer. Gate on the specific primitives the effect uses;
-    // other state fields are read through depsRef when a probe fires.
-    let timer = 0;
-    let attempt = 0;
-    const scheduleNext = () => {
-      if (
-        cancelled.current ||
-        attempt >= STARTUP_TIMING_POLICY.recoveryMaxAttempts
-      )
-        return;
-      const delay = Math.min(
-        STARTUP_TIMING_POLICY.recoveryBaseDelayMs * 2 ** attempt,
-        STARTUP_TIMING_POLICY.recoveryMaxDelayMs,
-      );
-      attempt += 1;
-      timer = window.setTimeout(() => {
-        void recoverTerminalStartupError(currentDeps, dispatch, cancelled)
-          .then((recovered) => {
-            // On success the dispatched event transitions out of "error", which
-            // tears down this effect. Otherwise keep probing under backoff until
-            // the attempt cap is reached, leaving the user-actionable Retry path.
-            if (!recovered) scheduleNext();
-          })
-          .catch((err: unknown) => {
+    // Probe under exponential backoff (2.5s → pinned 30s). The loop never
+    // stops on its own: a capped-attempt stop wedged the coordinator in
+    // `phase=error` forever when the backend became healthy after the budget
+    // (e.g. Cloud sign-in completed minutes later), feeding false trouble to
+    // downstream consumers such as the boot-recovery conductor. Depending on
+    // `[state, ...]` here would re-arm this loop on every dispatch (each mints
+    // a new state object) and turn a degraded backend into a probe storm, so
+    // gate on the specific primitives; other state is read through depsRef.
+    const loop = createStartupRecoveryLoop({
+      probe: () =>
+        recoverTerminalStartupError(currentDeps, dispatch, cancelled).catch(
+          (err: unknown) => {
             // error-policy:J4 the terminal startup error remains visible while
             // automatic recovery retries; log the failed recovery operation so
-            // the attempt cap cannot exhaust without diagnostics.
+            // slow-cadence probes cannot fail without diagnostics.
             logger.warn(
-              { err, attempt },
+              { err },
               "[useStartupCoordinator] automatic startup recovery failed",
             );
-            scheduleNext();
-          });
-      }, delay);
-    };
-
-    scheduleNext();
+            return false;
+          },
+        ),
+      policy: STARTUP_TIMING_POLICY,
+    });
+    // A completed Cloud sign-in is the strongest recovery signal — reset the
+    // backoff so the next probe runs at the fast delay instead of waiting out
+    // a pinned 30s window with the user watching a stale error.
+    const onSignIn = () => loop.notifySignIn();
+    window.addEventListener("steward-token-sync", onSignIn);
+    loop.start();
 
     return () => {
       cancelled.current = true;
-      if (timer) window.clearTimeout(timer);
+      window.removeEventListener("steward-token-sync", onSignIn);
+      loop.stop();
     };
   }, [state.phase, errorReason, depsReady]);
 

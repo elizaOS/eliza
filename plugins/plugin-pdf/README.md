@@ -83,6 +83,8 @@ extracts pages 2–3.
 
 Returns full document information: page count, per-page dimensions + text, and metadata (title, author, subject, keywords, creator, producer, creation/modification dates).
 
+`creationDate`/`modificationDate` are parsed from the PDF-spec date string that `unpdf` returns (`D:YYYYMMDDHHmmSSOHH'mm'`, ISO 32000-1 §7.9.4). When the string carries a UT relation (`Z`, `+`, or `-`) the declared offset is applied and the field is an absolute UTC `Date`. When the UT relation is omitted the document time zone is unknown and, per PDF Reference 3.8.3, the remaining fields are local time; that case is interpreted as local wall-clock time (a `Date` built with the local constructor) rather than being falsely claimed as UTC. A value that is missing or not a valid spec date is omitted (left `undefined`) rather than surfaced as an Invalid Date.
+
 ## Exported Types
 
 ```typescript

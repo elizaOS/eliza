@@ -320,9 +320,9 @@ export function ConnectorAccountList({
             className="h-8 gap-1 px-2.5 text-xs"
           >
             {addBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <Plus className="h-3.5 w-3.5" aria-hidden />
+              <Plus className="size-3.5" aria-hidden />
             )}
             Add account
           </Button>
@@ -339,8 +339,8 @@ export function ConnectorAccountList({
 
       {connectorAccounts.loading && !connectorAccounts.data ? (
         <div className="flex items-center gap-2 text-xs text-muted">
-          <Spinner className="h-3 w-3" />
-          Loading connector accounts...
+          <Spinner className="size-3" />
+          Loading connector accounts…
         </div>
       ) : null}
 

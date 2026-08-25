@@ -124,7 +124,7 @@ function ScopeButton({
       }`}
       {...agentProps}
     >
-      <Icon className="h-3 w-3" aria-hidden />
+      <Icon className="size-3" aria-hidden />
       {t(labelKey, { defaultValue: defaultLabel })}
     </Button>
   );
@@ -331,7 +331,7 @@ export function UploadZone({
       />
       {/* Flat at rest — the border/fill appears only as the drag-over drop-zone affordance. */}
       <div
-        className={`rounded-sm border px-3 py-3 transition-colors ${
+        className={`rounded-sm border p-3 transition-colors ${
           dragOver ? "border-accent/40 bg-accent/8" : "border-transparent"
         } ${uploading ? "opacity-60" : ""}`}
       >
@@ -341,7 +341,7 @@ export function UploadZone({
               ref={chooseFilesButton.ref}
               variant="outline"
               size="icon"
-              className="h-9 w-9"
+              className="size-9"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
               aria-label={t("documentsview.ChooseFiles", {
@@ -352,13 +352,13 @@ export function UploadZone({
               })}
               {...chooseFilesButton.agentProps}
             >
-              <FileUp className="h-4 w-4" />
+              <FileUp className="size-4" />
             </Button>
             <Button
               ref={addUrlButton.ref}
               variant="outline"
               size="icon"
-              className={`h-9 w-9 ${
+              className={`size-9 ${
                 showUrlInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowUrlInput((current) => !current)}
@@ -371,13 +371,13 @@ export function UploadZone({
               })}
               {...addUrlButton.agentProps}
             >
-              <Link2 className="h-4 w-4" />
+              <Link2 className="size-4" />
             </Button>
             <Button
               ref={newTextButton.ref}
               variant="outline"
               size="icon"
-              className={`h-9 w-9 ${
+              className={`size-9 ${
                 showTextInput ? "border-accent/45 bg-accent/12 text-txt" : ""
               }`}
               onClick={() => setShowTextInput((current) => !current)}
@@ -390,7 +390,7 @@ export function UploadZone({
               })}
               {...newTextButton.agentProps}
             >
-              <NotebookPen className="h-4 w-4" />
+              <NotebookPen className="size-4" />
             </Button>
           </div>
           <div className="min-w-0 flex-1 truncate text-xs-tight text-muted-strong">

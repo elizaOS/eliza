@@ -2,7 +2,7 @@
  * API Explorer — the auth-gated developer console.
  *
  * Three tabs: a searchable, category-filtered endpoint catalog (static, from
- * `@elizaos/cloud-shared` swagger/endpoint-discovery, with live pricing overlaid
+ * `@elizaos/cloud-sdk/api-explorer`, with live pricing overlaid
  * from `GET /api/v1/pricing/summary`); an Auth manager (auto-mints the explorer
  * key via `GET /api/v1/api-keys/explorer`); and an OpenAPI 3.0 spec viewer with
  * JSON/YAML copy. The tester runs REAL, BILLED calls — the "API calls are
@@ -14,13 +14,11 @@ import {
   API_ENDPOINTS,
   type ApiEndpoint,
   type EndpointPricing,
-  getAvailableCategories,
-} from "@elizaos/cloud-shared/lib/swagger/endpoint-discovery";
-import {
   generateOpenAPISpec,
   generateOpenAPIYAML,
+  getAvailableCategories,
   type OpenAPISpec,
-} from "@elizaos/cloud-shared/lib/swagger/openapi-generator";
+} from "@elizaos/cloud-sdk/api-explorer";
 import {
   ActivityIcon,
   AudioLinesIcon,
@@ -70,22 +68,22 @@ type TabValue = "endpoints" | "auth" | "openapi";
 function getCategoryIcon(category: string) {
   switch (category.toLowerCase()) {
     case "authentication":
-      return <ShieldIcon className="h-4 w-4" />;
+      return <ShieldIcon className="size-4" />;
     case "api keys":
-      return <KeyIcon className="h-4 w-4" />;
+      return <KeyIcon className="size-4" />;
     case "ai generation":
     case "ai completions":
     case "image generation":
     case "video generation":
-      return <ActivityIcon className="h-4 w-4" />;
+      return <ActivityIcon className="size-4" />;
     case "voice generation":
-      return <MicIcon className="h-4 w-4" />;
+      return <MicIcon className="size-4" />;
     case "voice cloning":
-      return <AudioLinesIcon className="h-4 w-4" />;
+      return <AudioLinesIcon className="size-4" />;
     case "models":
-      return <DatabaseIcon className="h-4 w-4" />;
+      return <DatabaseIcon className="size-4" />;
     default:
-      return <BookIcon className="h-4 w-4" />;
+      return <BookIcon className="size-4" />;
   }
 }
 
@@ -117,9 +115,9 @@ function formatPrice(pricing: ApiEndpoint["pricing"]) {
 
 function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return null;
-  if (pricing.isFree) return <Sparkles className="h-4 w-4 text-green-400" />;
-  if (pricing.isVariable) return <TrendingUp className="h-4 w-4 text-muted" />;
-  return <Coins className="h-4 w-4 text-muted" />;
+  if (pricing.isFree) return <Sparkles className="size-4 text-green-400" />;
+  if (pricing.isVariable) return <TrendingUp className="size-4 text-muted" />;
+  return <Coins className="size-4 text-muted" />;
 }
 
 function getPricingStyle(pricing: ApiEndpoint["pricing"]) {
@@ -272,7 +270,7 @@ export function ApiExplorerSurface() {
                 onClick={() => setSelectedEndpoint(null)}
                 className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="size-4" />
                 Back to endpoints
               </Button>
               <div className="flex items-center gap-2 flex-wrap">
@@ -330,13 +328,13 @@ export function ApiExplorerSurface() {
           <div className="min-w-0 space-y-3 sm:space-y-6">
             <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:gap-2 sm:overflow-visible sm:pb-0">
               <div className="relative min-w-[13rem] flex-1 sm:min-w-0 sm:flex-none">
-                <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 h-3.5 sm:h-4 w-3.5 sm:w-4 text-neutral-500" />
+                <Search className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 size-3.5 sm:h-4 sm:w-4 text-neutral-500" />
                 <Input
                   type="text"
-                  placeholder="Search..."
+                  placeholder="Search…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500     sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
+                  className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-base text-white placeholder:text-neutral-500     sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                 />
                 {searchQuery && (
                   <Button
@@ -345,7 +343,7 @@ export function ApiExplorerSurface() {
                     onClick={() => setSearchQuery("")}
                     className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
                   >
-                    <X className="h-3.5 sm:h-4 w-3.5 sm:w-4" />
+                    <X className="size-3.5 sm:h-4 sm:w-4" />
                   </Button>
                 )}
               </div>
@@ -367,7 +365,7 @@ export function ApiExplorerSurface() {
                       setSearchQuery("");
                     }}
                     className={cn(
-                      "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
+                      "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-xs-tight font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
                       selectedCategory === category
                         ? "bg-muted text-txt-strong border-border"
                         : "bg-neutral-900/50 text-neutral-400 border-white/5 hover:text-white hover:border-white/10",
@@ -376,7 +374,7 @@ export function ApiExplorerSurface() {
                     <span>{category}</span>
                     <span
                       className={cn(
-                        "text-[11px] sm:text-xs font-semibold",
+                        "text-xs-tight sm:text-xs font-semibold",
                         selectedCategory === category
                           ? "text-txt-strong"
                           : "text-neutral-500",
@@ -418,7 +416,7 @@ export function ApiExplorerSurface() {
 
             {filteredEndpoints.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[300px] bg-neutral-900 rounded-sm">
-                <Search className="h-12 w-12 text-neutral-600 mb-4" />
+                <Search className="size-12 text-neutral-600 mb-4" />
                 <h3 className="text-lg font-medium text-white mb-1">
                   No endpoints found
                 </h3>
@@ -476,9 +474,9 @@ export function ApiExplorerSurface() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-txt text-bg rounded-sm hover:bg-txt/90 transition-colors"
               >
                 {copied === "json" ? (
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="size-3.5" />
                 ) : (
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="size-3.5" />
                 )}
                 JSON
               </Button>
@@ -489,9 +487,9 @@ export function ApiExplorerSurface() {
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-sm hover:bg-white/20 transition-colors"
               >
                 {copied === "yaml" ? (
-                  <Check className="h-3.5 w-3.5" />
+                  <Check className="size-3.5" />
                 ) : (
-                  <Copy className="h-3.5 w-3.5" />
+                  <Copy className="size-3.5" />
                 )}
                 YAML
               </Button>
@@ -507,7 +505,7 @@ export function ApiExplorerSurface() {
             </Suspense>
           ) : (
             <div className="flex items-center justify-center flex-1 min-h-0 bg-black/40 rounded-sm border border-white/10">
-              <p className="text-neutral-500">Loading specification...</p>
+              <p className="text-neutral-500">Loading specification…</p>
             </div>
           )}
         </div>

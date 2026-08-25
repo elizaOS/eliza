@@ -54,13 +54,15 @@ const repoRoot = path.resolve(here, "../../../..");
 
 /**
  * Map each audited view id → the plugin directory that owns its view source.
- * Only views whose `.tsx` actually live in a `plugins/<dir>/src` tree AND are
- * declared as a dashboard `views:` entry by their plugin are listed — host/
- * built-in views (`lifeops`, `training`, `settings`) have no plugin source to
- * scan and are exercised through `validateViewCoverage` below instead.
- * Every key here must declare relatedActions in its plugin entry (asserted in
- * the suite) so this stays a meaningful subset of the registered surface, not a
- * parallel list.
+ * Only views whose `.tsx` actually live in a `plugins/<dir>/src` tree are
+ * listed — host/built-in views with no plugin source at all (`lifeops`,
+ * `training`, `settings`) have nothing to scan and are exercised through
+ * `validateViewCoverage` below instead.
+ * Every key here must declare relatedActions (asserted in the suite) so this
+ * stays a meaningful subset of the registered surface, not a parallel list.
+ * The declaration normally lives on the owning plugin entry; a view whose
+ * `.tsx` lives in a plugin while the host owns the `ViewDeclaration` is listed
+ * in `HOST_VIEW_DECLARATIONS` below.
  */
 const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   calendar: "plugin-calendar",
@@ -74,6 +76,20 @@ const VIEW_SOURCE_DIRS: Readonly<Record<string, string>> = {
   relationships: "plugin-relationships",
   documents: "plugin-documents",
   orchestrator: "plugin-task-coordinator",
+};
+
+/**
+ * Audited views whose `ViewDeclaration` is owned by the HOST registry rather
+ * than by the plugin that ships the view `.tsx`. `documents` is the standing
+ * case: `plugins/plugin-documents` deliberately registers no view of its own
+ * (a second `documents` declaration collided with the shell's built-in
+ * Knowledge view and presented a smaller duplicate surface at `/documents`),
+ * so its relatedActions live on the built-in entry while its spatial source —
+ * and therefore its instrumentation density — still lives under the plugin.
+ * Values are repo-relative paths to the file holding the declaration.
+ */
+const HOST_VIEW_DECLARATIONS: Readonly<Record<string, string>> = {
+  documents: "packages/agent/src/api/builtin-views.ts",
 };
 
 /**
@@ -146,6 +162,27 @@ function readPluginEntry(pluginDir: string): string {
   return firstExisting;
 }
 
+/**
+ * The single `ViewDeclaration` object literal for `viewId` inside a host
+ * registry file that declares many of them. Slicing to the one entry keeps
+ * `relatedActionCount` from reading a neighbouring view's declaration.
+ */
+function extractHostDeclaration(source: string, viewId: string): string {
+  const start = source.indexOf(`id: "${viewId}",`);
+  if (start === -1) return "";
+  const end = source.indexOf("\n  {", start);
+  return end === -1 ? source.slice(start) : source.slice(start, end);
+}
+
+/** Declaration source for a view: its host entry when the host owns it. */
+function readViewDeclaration(viewId: string, pluginDir: string): string {
+  const hostFile = HOST_VIEW_DECLARATIONS[viewId];
+  if (!hostFile) return readPluginEntry(pluginDir);
+  const full = path.join(repoRoot, hostFile);
+  if (!existsSync(full)) return "";
+  return extractHostDeclaration(readFileSync(full, "utf8"), viewId);
+}
+
 // Interactive-control surface, both dialects — a conservative lower-bound proxy:
 //   DOM handler / native control: onClick= / onSubmit= / onInput= / onChange= / <button
 //   spatial interactive primitives: <Button / <Field (their onPress/onChange
@@ -211,7 +248,7 @@ const coverage: ViewCoverage[] = Object.entries(VIEW_SOURCE_DIRS).map(
     const viewSrc = path.join(repoRoot, "plugins", pluginDir, "src");
     const files = collectViewTsx(viewSrc);
     const joined = files.map((f) => readFileSync(f, "utf8")).join("\n");
-    const entry = readPluginEntry(pluginDir);
+    const entry = readViewDeclaration(viewId, pluginDir);
     const measure = measureSource(joined);
     return {
       viewId,
@@ -258,7 +295,9 @@ describe("static view-capability audit (#8798)", () => {
     for (const c of coverage) {
       expect(
         c.relatedActions,
-        `audited view "${c.viewId}" must declare relatedActions in plugins/${c.pluginDir}/src`,
+        `audited view "${c.viewId}" must declare relatedActions in ${
+          HOST_VIEW_DECLARATIONS[c.viewId] ?? `plugins/${c.pluginDir}/src`
+        }`,
       ).toBeGreaterThan(0);
     }
   });

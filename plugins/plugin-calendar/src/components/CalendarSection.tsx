@@ -268,7 +268,7 @@ function CalendarStatusIcon({
       {loading ? (
         <Spinner size={16} />
       ) : (
-        <CalendarClock className="h-5 w-5 opacity-70" aria-hidden />
+        <CalendarClock className="size-5 opacity-70" aria-hidden />
       )}
       <span className="sr-only">{label}</span>
     </div>
@@ -446,7 +446,7 @@ function AllDayBandCell({
 }) {
   return (
     <fieldset
-      className={`m-0 min-w-0 space-y-0.5 border-0 px-1 py-1 ${isFirst ? "" : "border-l border-border/12"}`}
+      className={`m-0 min-w-0 space-y-0.5 border-0 p-1 ${isFirst ? "" : "border-l border-border/12"}`}
       aria-label={`All-day events for ${day.toISOString()}`}
     >
       {events.map((event) => {
@@ -542,7 +542,7 @@ function DayColumnGrid({
         >
           <div className="flex items-center">
             <span
-              className="h-2 w-2 rounded-full"
+              className="size-2 rounded-full"
               style={{
                 background: "var(--accent, #ff8a24)",
                 boxShadow:
@@ -594,7 +594,7 @@ function DayColumnGrid({
               <span>{formatTimeOfDay(event.startAt)}</span>
               {event.location ? (
                 <>
-                  <span className="mx-1 inline-block h-1 w-1 rounded-full bg-current opacity-60" />
+                  <span className="mx-1 inline-block size-1 rounded-full bg-current opacity-60" />
                   <span>{event.location}</span>
                 </>
               ) : null}
@@ -823,7 +823,7 @@ function MonthGrid({
                     >
                       {!event.isAllDay ? (
                         <span
-                          className="h-1.5 w-1.5 shrink-0 rounded-full"
+                          className="size-1.5 shrink-0 rounded-full"
                           style={{ background: color.dot }}
                           aria-hidden
                         />
@@ -866,7 +866,7 @@ function MonthGrid({
                             >
                               <span
                                 aria-hidden
-                                className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                                className="mt-1 size-2 shrink-0 rounded-full"
                                 style={{ background: overflowColor.dot }}
                               />
                               <span className="min-w-0 flex-1">
@@ -931,7 +931,7 @@ function AgendaEventButton({
     >
       <span
         aria-hidden
-        className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+        className="mt-1 size-2.5 shrink-0 rounded-full"
         style={{ background: color.dot }}
       />
       <span className="min-w-0 flex-1">
@@ -1173,14 +1173,14 @@ export function CalendarSection({
                 unstyled
                 ref={prevNav.ref}
                 type="button"
-                className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
+                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.previous", {
                   defaultValue: "Previous",
                 })}
                 onClick={calendar.goPrevious}
                 {...prevNav.agentProps}
               >
-                <ChevronLeft className="h-4 w-4" aria-hidden />
+                <ChevronLeft className="size-4" aria-hidden />
               </Button>
               <Button
                 unstyled
@@ -1196,14 +1196,14 @@ export function CalendarSection({
                 unstyled
                 ref={nextNav.ref}
                 type="button"
-                className="flex h-8 w-8 items-center justify-center text-muted hover:text-txt"
+                className="flex size-8 items-center justify-center text-muted hover:text-txt"
                 aria-label={t("lifeopsCalendar.next", {
                   defaultValue: "Next",
                 })}
                 onClick={calendar.goNext}
                 {...nextNav.agentProps}
               >
-                <ChevronRight className="h-4 w-4" aria-hidden />
+                <ChevronRight className="size-4" aria-hidden />
               </Button>
             </div>
             <h2 className="min-w-0 text-sm font-semibold text-txt sm:text-base">
@@ -1234,7 +1234,7 @@ export function CalendarSection({
               data-testid="lifeops-calendar-new-event"
               {...newEvent.agentProps}
             >
-              <Plus className="h-3.5 w-3.5" aria-hidden />
+              <Plus className="size-3.5" aria-hidden />
               {t("lifeopsCalendar.newEvent", { defaultValue: "New" })}
             </Button>
           </div>
@@ -1263,7 +1263,7 @@ export function CalendarSection({
 
         {calendar.error ? (
           <div
-            className="px-1 py-1 text-xs"
+            className="p-1 text-xs"
             style={{
               color: "color-mix(in srgb, var(--danger, #e5484d) 70%, white)",
             }}

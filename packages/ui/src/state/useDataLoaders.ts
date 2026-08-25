@@ -44,6 +44,7 @@ import {
   type WorkbenchOverview,
 } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
+import { restoreCapabilityHandoffs } from "../capability-handoff";
 import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
 import { normalizeOwnerName } from "../utils/owner-name";
@@ -510,7 +511,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       const cached = conversationMessageCacheRef.current.get(convId);
       if (cached) {
         const mergedCached = mergeLocalPendingConversationMessages(
-          cached,
+          restoreCapabilityHandoffs(cached),
           conversationMessagesRef.current,
           loadedConversationIdRef.current,
           convId,
@@ -549,7 +550,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
         // Superseded by a newer load while in flight — let the newer one own the
         // thread instead of committing this stale result.
         if (signal.aborted) return { ok: true };
-        const serverMessages = filterRenderableConversationMessages(messages);
+        const serverMessages = restoreCapabilityHandoffs(
+          filterRenderableConversationMessages(messages),
+        );
         const nextMessages = mergeLocalPendingConversationMessages(
           serverMessages,
           conversationMessagesRef.current,

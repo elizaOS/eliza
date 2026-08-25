@@ -5,8 +5,8 @@ import { AppControlCoordinator, type AppControlError } from "./coordinator.js";
 import type {
   AppActionRequest,
   AppControlAdapter,
-  AppExactWindowPointerDispatcher,
   AppControlGrounder,
+  AppExactWindowPointerDispatcher,
   AppPointerObserver,
   ExperimentalExactWindowAuthorizer,
   NativeAppSnapshot,
@@ -55,9 +55,7 @@ function fixture(
     authorizePhysicalFallback?: PhysicalFallbackAuthorizer;
     exactWindowPointer?: AppExactWindowPointerDispatcher;
     authorizeExperimentalExactWindow?: ExperimentalExactWindowAuthorizer;
-    nativeExecutionMode?:
-      | "semantic_ax"
-      | "process_pid_keyboard_cgevent";
+    nativeExecutionMode?: "semantic_ax" | "process_pid_keyboard_cgevent";
   } = {},
 ) {
   const snapshots = options.snapshots ?? [nativeSnapshot(), nativeSnapshot()];
@@ -109,8 +107,7 @@ function fixture(
     pointer: options.pointer,
     pointerObserver: options.pointer,
     exactWindowPointer: options.exactWindowPointer,
-    authorizeExperimentalExactWindow:
-      options.authorizeExperimentalExactWindow,
+    authorizeExperimentalExactWindow: options.authorizeExperimentalExactWindow,
     authorizePhysicalFallback: options.authorizePhysicalFallback,
     now: () => Date.parse("2026-08-23T00:00:01.000Z"),
     idFactory: () => `id-${++id}`,
@@ -772,12 +769,12 @@ describe("AppControlCoordinator", () => {
       snapshots: [nativeSnapshot("Save"), sibling],
     });
     const before = await coordinator.getAppState(app.id);
-    await expect(coordinator.act(action(before.stateId))).resolves.toMatchObject(
-      {
-        success: false,
-        error: expect.stringContaining("sibling-window state"),
-      },
-    );
+    await expect(
+      coordinator.act(action(before.stateId)),
+    ).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining("sibling-window state"),
+    });
   });
 
   it("records clipboard restoration and rejects unexposed secondary actions", async () => {

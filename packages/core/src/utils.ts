@@ -44,15 +44,6 @@ import {
 	truncateWellFormed,
 } from "./utils/well-formed.js";
 
-// Token / embedding budget constants
-export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
-/** Max tokens for embedding input text (default fallback) */
-export const DEFAULT_MAX_EMBEDDING_TOKENS = 8_000;
-/** Max character equivalent for embedding text (tokens * ~4 chars/token) */
-export const DEFAULT_MAX_EMBEDDING_CHARS = DEFAULT_MAX_EMBEDDING_TOKENS * 4;
-/** Default max tokens for the assembled prompt sent to the model */
-export const DEFAULT_MAX_PROMPT_TOKENS = 1_000_000;
-
 // Text Utils
 
 /**

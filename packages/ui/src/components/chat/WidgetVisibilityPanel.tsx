@@ -45,7 +45,7 @@ export function WidgetVisibilityEditor({
       </div>
 
       <div
-        className="flex-1 overflow-y-auto px-2 py-2"
+        className="flex-1 overflow-y-auto p-2"
         data-testid="widget-visibility-list"
       >
         {candidates.length === 0 ? (
@@ -61,11 +61,11 @@ export function WidgetVisibilityEditor({
                 <li
                   key={rowKey}
                   data-testid={`widget-visibility-row-${rowKey}`}
-                  className="flex items-center justify-between gap-3 rounded-sm px-2 py-2 hover:bg-bg-hover/40"
+                  className="flex items-center justify-between gap-3 rounded-sm p-2 hover:bg-bg-hover/40"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     {candidate.icon ? (
-                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted">
+                      <span className="inline-flex size-4 shrink-0 items-center justify-center text-muted">
                         {candidate.icon}
                       </span>
                     ) : null}
@@ -103,7 +103,7 @@ export function WidgetVisibilityEditor({
           Reset
         </Button>
         <Button type="button" size="sm" onClick={onClose}>
-          Done
+          Close
         </Button>
       </div>
     </div>

@@ -152,6 +152,45 @@ const PASTEL_FALLBACK: CSSProperties = {
 
 const SOLANA_GRADIENT = "linear-gradient(135deg, #9945ff 0%, #14f195 100%)";
 
+/** Provisioning-chat static styles hoisted so renders reuse one object. */
+const CHAT_SCROLLER_STYLE: CSSProperties = {
+  height: "min(360px, 55vh)",
+  overflowY: "auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  padding: 12,
+  background: "rgba(255,255,255,0.38)",
+  backdropFilter: "blur(8px)",
+  border: "1px solid rgba(255,255,255,0.6)",
+  borderRadius: 20,
+  marginBottom: 10,
+};
+
+const CHAT_INPUT_STYLE: CSSProperties = {
+  flex: 1,
+  height: 44,
+  padding: "0 18px",
+  borderRadius: 22,
+  border: "1px solid rgba(255,255,255,0.6)",
+  background: "rgba(255,255,255,0.5)",
+  backdropFilter: "blur(8px)",
+  fontSize: 16,
+  fontFamily: SANS,
+};
+
+const CHAT_SEND_BUTTON_STYLE: CSSProperties = {
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  border: "none",
+  color: "#fff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  transition: "background 0.15s",
+};
+
 /** Landing-page glass tile language: white hairline + frosted fill. */
 const GLASS_TILE = "border border-white/60 bg-white/35 backdrop-blur-md";
 
@@ -279,10 +318,10 @@ function ContinuationLinkStep({
       identity.platform === "telegram" ? TelegramIcon : DiscordIcon;
     return (
       <div
-        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8"
         data-testid="continuation-confirm"
       >
-        <div className="w-16 h-16 rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
+        <div className="size-16 rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
           <PlatformIcon className="size-8 text-orange-800" />
         </div>
         <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
@@ -327,10 +366,10 @@ function ContinuationLinkStep({
         : "https://discord.com/channels/@me";
     return (
       <div
-        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8"
         data-testid="continuation-done"
       >
-        <div className="w-16 h-16 rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
+        <div className="size-16  rounded-xs bg-orange-500/15 flex items-center justify-center mb-6">
           <Check className="size-8 text-orange-800" />
         </div>
         <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
@@ -368,7 +407,7 @@ function ContinuationLinkStep({
   if (phase === "error") {
     return (
       <div
-        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+        className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8"
         data-testid="continuation-error"
       >
         <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
@@ -392,7 +431,7 @@ function ContinuationLinkStep({
 
   return (
     <div
-      className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl"
+      className="w-full flex flex-col items-center rounded-xs border border-white/80 bg-white/85 backdrop-blur-xl p-8"
       role="status"
       aria-busy="true"
       data-testid="continuation-checking"
@@ -509,21 +548,7 @@ function ProvisioningChatStep({
         @keyframes gs-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
       `}</style>
 
-      <div
-        style={{
-          height: "min(360px, 55vh)",
-          overflowY: "auto",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-          padding: 12,
-          background: "rgba(255,255,255,0.38)",
-          backdropFilter: "blur(8px)",
-          border: "1px solid rgba(255,255,255,0.6)",
-          borderRadius: 20,
-          marginBottom: 10,
-        }}
-      >
+      <div style={CHAT_SCROLLER_STYLE}>
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -562,7 +587,6 @@ function ProvisioningChatStep({
                 background: "rgba(255,255,255,0.72)",
                 fontSize: 12,
                 color: "#999",
-                letterSpacing: "0.1em",
               }}
             >
               ...
@@ -598,18 +622,7 @@ function ProvisioningChatStep({
             }
           }}
           disabled={!hasObservedStatus || isLoading || isDedicatedOff}
-          style={{
-            flex: 1,
-            height: 44,
-            padding: "0 18px",
-            borderRadius: 22,
-            border: "1px solid rgba(255,255,255,0.6)",
-            background: "rgba(255,255,255,0.5)",
-            backdropFilter: "blur(8px)",
-            fontSize: 14,
-            fontFamily: SANS,
-            outline: "none",
-          }}
+          style={CHAT_INPUT_STYLE}
         />
         <button
           type="button"
@@ -618,23 +631,15 @@ function ProvisioningChatStep({
             !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
           }
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            border: "none",
+            ...CHAT_SEND_BUTTON_STYLE,
             background:
               !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
                 ? "rgba(0,0,0,0.15)"
                 : "#1a1a1a",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
             cursor:
               !hasObservedStatus || isLoading || isDedicatedOff || !input.trim()
                 ? "not-allowed"
                 : "pointer",
-            transition: "background 0.15s",
           }}
         >
           <Send size={16} />
@@ -1343,7 +1348,7 @@ export default function GetStartedPage() {
   if (authLoading) {
     return (
       <main
-        className="min-h-screen flex flex-col items-center justify-center px-4"
+        className="min-h-dvh flex flex-col items-center justify-center px-4"
         style={PASTEL_FALLBACK}
       >
         <div className="text-neutral-600 animate-pulse font-medium">
@@ -1364,7 +1369,7 @@ export default function GetStartedPage() {
   ) {
     return (
       <main
-        className="min-h-screen flex flex-col items-center justify-center px-4"
+        className="min-h-dvh flex flex-col items-center justify-center px-4"
         style={PASTEL_FALLBACK}
       >
         <div className="text-neutral-600 animate-pulse font-medium">
@@ -1379,7 +1384,7 @@ export default function GetStartedPage() {
   if (isRedirectingToOAuth) {
     return (
       <main
-        className="min-h-screen flex flex-col items-center justify-center px-4"
+        className="min-h-dvh flex flex-col items-center justify-center px-4"
         style={PASTEL_FALLBACK}
       >
         <div className="text-neutral-600 animate-pulse font-medium">
@@ -1393,7 +1398,7 @@ export default function GetStartedPage() {
 
   return (
     <main
-      className="min-h-screen flex flex-col relative"
+      className="min-h-dvh flex flex-col relative"
       style={{ fontFamily: SANS }}
     >
       <Suspense fallback={null}>
@@ -1470,7 +1475,7 @@ export default function GetStartedPage() {
                   className="w-full min-h-11 h-[72px] bg-orange-600 hover:bg-orange-700 text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(0)}
                 >
-                  <div className="w-12 h-12 rounded-xs bg-white/15 flex items-center justify-center shrink-0">
+                  <div className="size-12 rounded-xs bg-white/15 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-white" />
                   </div>
                   <div className="flex-1 text-left">
@@ -1494,7 +1499,7 @@ export default function GetStartedPage() {
                   style={cardStyle(1)}
                 >
                   <div
-                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
+                    className="size-12 rounded-xs flex items-center justify-center shrink-0"
                     style={{ background: SOLANA_GRADIENT }}
                   >
                     <SolanaIcon className="size-6 text-white" />
@@ -1667,7 +1672,7 @@ export default function GetStartedPage() {
           {step === "TELEGRAM_DIRECT" && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
@@ -1706,7 +1711,7 @@ export default function GetStartedPage() {
           {step === "TELEGRAM_OAUTH" && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <TelegramIcon className="size-8 text-[#2AABEE]" />
               </div>
@@ -1753,7 +1758,7 @@ export default function GetStartedPage() {
           {step === "PHONE_INPUT" && (
             <>
               <div
-                className={`w-12 h-12 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-12 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <TelegramIcon className="size-6 text-[#2AABEE]" />
               </div>
@@ -1812,7 +1817,7 @@ export default function GetStartedPage() {
           {step === "IMESSAGE_DIRECT" && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <IMessageIcon className="size-8 text-[#34C759]" />
               </div>
@@ -1897,7 +1902,7 @@ export default function GetStartedPage() {
           {step === "WHATSAPP_DIRECT" && whatsappNumber && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <WhatsAppIcon className="size-8 text-[#25D366]" />
               </div>
@@ -1963,7 +1968,7 @@ export default function GetStartedPage() {
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${discordError ? "border border-red-200 bg-red-100/70 backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
+                className={`size-16 rounded-full ${discordError ? "border border-red-200 bg-red-100/70 backdrop-blur-md" : GLASS_TILE} flex items-center justify-center mb-6`}
               >
                 <DiscordIcon
                   className={`size-8 ${discordError ? "text-red-500" : "text-[#5865F2]"}`}
@@ -2107,7 +2112,7 @@ export default function GetStartedPage() {
               {guideParam ? (
                 <>
                   <div
-                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                    className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
                   >
                     <Info className="size-8 text-[#5865F2]" />
                   </div>
@@ -2120,7 +2125,7 @@ export default function GetStartedPage() {
               ) : (
                 <>
                   <div
-                    className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
+                    className={`size-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
                   >
                     <Check className="size-8 text-[#5865F2]" />
                   </div>
@@ -2134,7 +2139,7 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-4">
                 <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="size-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-semibold text-neutral-700">
                         1
                       </span>
@@ -2173,7 +2178,7 @@ export default function GetStartedPage() {
 
                 <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="size-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-semibold text-neutral-700">
                         2
                       </span>
@@ -2207,7 +2212,7 @@ export default function GetStartedPage() {
 
                 <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl`}>
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="size-7 rounded-full bg-white/60 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-semibold text-neutral-700">
                         3
                       </span>
@@ -2244,7 +2249,7 @@ export default function GetStartedPage() {
       </div>
 
       <footer className="relative z-10 p-4 text-center">
-        <p className="text-[11px] font-medium tracking-wide text-neutral-600">
+        <p className="text-xs font-medium tracking-wide text-neutral-600">
           {t("homepage_eliza.common.year", {
             defaultValue: "ElizaCloud Inc. {{year}}",
             year: new Date().getFullYear(),

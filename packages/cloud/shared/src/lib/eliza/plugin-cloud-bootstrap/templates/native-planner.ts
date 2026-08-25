@@ -3,8 +3,12 @@
  * toolCalls for actions, messageToUser for terminal replies.
  */
 
+import { groupResponsePrecedencePolicy, registerResponsePolicy } from "@elizaos/core";
+
 export const nativePlannerTemplate = `# Role
 Select and execute actions to fulfill the user's request.
+
+${registerResponsePolicy}
 
 **Current date/time: {{currentDateTime}}**
 
@@ -192,10 +196,11 @@ Decide whether {{agentName}} should respond, ignore, or stop.
 
 # Instructions
 RULES:
-- direct mention of {{agentName}} -> RESPOND
+${groupResponsePrecedencePolicy}
+
+CONVERSATION RULES:
 - different assistant name -> IGNORE
 - continuing an active thread with {{agentName}} -> RESPOND
-- request to stop or be quiet -> STOP
 - talking to someone else -> IGNORE
 - if unsure, prefer IGNORE over hallucinating relevance
 
@@ -207,6 +212,7 @@ CONTEXT ROUTING:
 DECISION NOTE:
 - talking TO {{agentName}} means name mention, reply chain, or direct continuation
 - talking ABOUT {{agentName}} is not enough
+- multiple assistants in a room means one speaker per human message: when assistant replies are stacking on each other, IGNORE and wait for a human to advance the conversation
 
 # Output
 Respond using JSON only. No markdown, no prose, no XML.

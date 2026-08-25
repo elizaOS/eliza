@@ -79,5 +79,6 @@ test("forwards the rowless personal envelope to the coordinator", async () => {
   expect(coordinateSharedStream).toHaveBeenCalledTimes(1);
   expect(coordinateSharedStream.mock.calls[0]?.[2]).toMatchObject({
     agentKind: "personal",
+    trustedUserUtterance: "hello",
   });
 });

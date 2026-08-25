@@ -69,8 +69,8 @@ export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {
   return (
     <div className="rounded-sm border border-border/60 bg-bg/50 p-4 text-txt ">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-bg/80 text-muted">
-          <Server className="h-4 w-4" aria-hidden />
+        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-bg/80 text-muted">
+          <Server className="size-4" aria-hidden />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-txt-strong">
@@ -151,7 +151,7 @@ function CommandLine({
           className="h-8 shrink-0 gap-1.5 rounded-sm px-2.5 text-xs font-semibold"
           onClick={() => void onCopy(command)}
         >
-          <Copy className="h-3.5 w-3.5" aria-hidden />
+          <Copy className="size-3.5" aria-hidden />
           {copyLabel}
         </Button>
       </div>

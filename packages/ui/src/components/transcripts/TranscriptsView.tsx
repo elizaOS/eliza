@@ -292,7 +292,7 @@ function LiveIndicator({ testId }: { testId: string }): React.JSX.Element {
       data-testid={testId}
       className="inline-flex items-center gap-1 text-xs font-medium text-accent"
     >
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />
+      <span aria-hidden className="size-1.5 rounded-full bg-accent" />
       LIVE
     </span>
   );
@@ -565,7 +565,7 @@ export function TranscriptsView({
           <div data-testid="transcripts-empty" className="flex flex-1">
             <PagePanel.Empty
               className="flex-1"
-              icon={<AudioLines className="h-6 w-6" aria-hidden />}
+              icon={<AudioLines className="size-6" aria-hidden />}
               title="No transcripts yet."
             />
           </div>

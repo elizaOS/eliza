@@ -29,7 +29,6 @@ import {
 import {
   buildRealtimeVoiceTwiML,
   buildTerminalVoiceTwiML,
-  ELIZA_AI_CALL_DISCLOSURE,
 } from "../lib/twilio-voice-twiml";
 import {
   claimInboundCallOpeningContext,
@@ -210,7 +209,10 @@ app.post("/", async (c) => {
     );
     const priorConversationPromise = Promise.resolve(
       dbRead
-        .select({ messages: sharedRuntimeHistory.messages })
+        // Continuity needs only evidence and recency, never the potentially
+        // large JSON history payload. The media turn hydrates complete history
+        // separately through the canonical conversation Durable Object.
+        .select({ updatedAt: sharedRuntimeHistory.updated_at })
         .from(sharedRuntimeHistory)
         .where(
           and(
@@ -233,7 +235,9 @@ app.post("/", async (c) => {
       ...(priorCall?.receivedAt
         ? { priorCallAt: priorCall.receivedAt.getTime() }
         : {}),
-      historyMessages: priorConversation ? priorConversation.messages : [],
+      historyMessages: priorConversation
+        ? [{ createdAt: priorConversation.updatedAt.getTime() }]
+        : [],
     });
     callOpening = await claimInboundCallOpeningContext(
       {
@@ -393,7 +397,6 @@ app.post("/", async (c) => {
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
       token: minted.token,
-      disclosure: ELIZA_AI_CALL_DISCLOSURE,
     }),
     {
       headers: { "Content-Type": "text/xml" },

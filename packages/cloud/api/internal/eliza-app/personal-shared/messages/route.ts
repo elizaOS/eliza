@@ -8,6 +8,10 @@ import {
   PersonalDeliveryAccountResolutionError,
   resolvePersonalDeliveryProjection,
 } from "@/api-app/personal-delivery-projection";
+import {
+  type GroupParticipantIdentity,
+  personalSharedGroupParticipantsRepository,
+} from "@/db/repositories/personal-shared-group-participants";
 import { personalSharedGroupsRepository } from "@/db/repositories/personal-shared-groups";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
@@ -22,6 +26,11 @@ import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
+import {
+  GROUP_OWNER_FALLBACK_LABEL,
+  groupParticipantLabel,
+  redactGroupParticipantHandles,
+} from "@/lib/services/shared-runtime/group-participant-labels";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { prewarmPersonalSharedAgentTurnCaches } from "@/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -47,6 +56,7 @@ const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
 const GROUP_CLAIM_TTL_MS = 10 * 60_000;
 const GROUP_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 const GROUP_SOURCE_MESSAGE_ID_MAX_LENGTH = 240;
+const GENERATED_MEDIA_ONLY_MESSAGE = /^\[media: https?:\/\/[^\r\n]+\]$/u;
 
 type DeliveryStage =
   | "authentication"
@@ -128,6 +138,11 @@ const groupFields = {
   invocation: z.enum(["mention", "command", "reply", "ambient"]),
   replyToMessageId: z.string().trim().min(1).max(160).optional(),
 };
+const blooioGroupMediaUrls = z
+  .array(z.string().url().refine(isAllowedBlooioMediaUrl))
+  .min(1)
+  .max(MAX_INBOUND_MEDIA_IMAGES)
+  .optional();
 
 const sharedMessageSchema = z.union([
   z.object({
@@ -249,6 +264,7 @@ const sharedMessageSchema = z.union([
     platform: z.literal("blooio"),
     chatType: z.literal("group"),
     ...groupFields,
+    mediaUrls: blooioGroupMediaUrls,
   }),
 ]);
 
@@ -282,6 +298,20 @@ function groupBindingDelivery(binding: {
       version: binding.authority_version,
     },
   };
+}
+
+/**
+ * Last stop before a group reply leaves for the provider. The model is never
+ * shown a participant's raw connector handle, so this normally returns the
+ * text unchanged; it exists because the one thing worse than a group turn
+ * mis-attributing a person is one broadcasting their phone number. Direct
+ * turns keep no roster and are passed through.
+ */
+function guardGroupReply(
+  text: string,
+  roster: readonly GroupParticipantIdentity[] | undefined,
+): string {
+  return roster ? redactGroupParticipantHandles(text, roster) : text;
 }
 
 function isGroupMessage(message: SharedMessage): message is GroupMessage {
@@ -537,6 +567,7 @@ app.post("/", async (c) => {
     let accountResolution = "phone-query";
     let groupConversationId: string | undefined;
     let groupActorLabel: string | undefined;
+    let groupParticipantRoster: GroupParticipantIdentity[] | undefined;
     let groupPersonalAgentId: string | undefined;
     let groupDeliveryAuthority: GroupDeliveryAuthority | undefined;
     let groupTrustedDelivery: SharedGroupReminderDelivery | undefined;
@@ -743,16 +774,26 @@ app.post("/", async (c) => {
           project: parsed.data.project,
           connectorAccountId: parsed.data.connectorAccountId,
           chatId: parsed.data.chatId,
-          ownerLabel: parsed.data.actor.displayName ?? "the group owner",
+          ownerLabel:
+            parsed.data.actor.displayName ?? GROUP_OWNER_FALLBACK_LABEL,
           authority: groupDeliveryAuthority,
         };
       }
-      const actorDigest = (
-        await sha256Hex(
-          `${parsed.data.platform}\n${parsed.data.actor.platformUserId}`,
-        )
-      ).slice(0, 8);
-      groupActorLabel = `${parsed.data.actor.displayName ?? "Participant"} [participant ${actorDigest}]`;
+      // The speaker's identity is registry-resolved, never taken from the
+      // payload as-is. A connector that sends a name (Telegram, Discord) gets
+      // that name once the registry has checked it cannot forge a label, an
+      // owner destination, a handle, or another member's identity; a connector
+      // that sends none (Blooio sends none at all) gets its stable ordinal.
+      // Either way the label is enumerable, which is what lets
+      // `guardGroupReply` redact a handle back to it.
+      const participants =
+        await personalSharedGroupParticipantsRepository.recordTurn({
+          bindingId: binding.id,
+          platformUserId: parsed.data.actor.platformUserId,
+          displayName: parsed.data.actor.displayName,
+        });
+      groupParticipantRoster = participants.roster;
+      groupActorLabel = groupParticipantLabel(participants.actor);
     } else if (parsed.data.platform === "telegram") {
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
@@ -886,6 +927,15 @@ app.post("/", async (c) => {
           return timing;
         })();
     let deliveryMessage = parsed.data.message;
+    // Public-data capability checks may inspect only authenticated user content,
+    // never the actor labels, media descriptions, or other server context that
+    // this route appends to the model-facing delivery message below.
+    let capabilityText =
+      (parsed.data.platform === "blooio" ||
+        parsed.data.platform === "twilio") &&
+      GENERATED_MEDIA_ONLY_MESSAGE.test(parsed.data.message)
+        ? undefined
+        : parsed.data.message;
     if (
       parsed.data.platform === "telegram" &&
       !isGroupMessage(parsed.data) &&
@@ -904,6 +954,9 @@ app.post("/", async (c) => {
       deliveryMessage = parsed.data.message
         ? `${parsed.data.message}\n\n[Voice note transcript]\n${transcript}`
         : transcript;
+      capabilityText = parsed.data.message
+        ? `${parsed.data.message}\n${transcript}`
+        : transcript;
       logger.info(
         "[personal-shared-messaging] Telegram voice note transcribed",
         {
@@ -918,7 +971,6 @@ app.post("/", async (c) => {
     // shared runtime (text-only) will answer.
     if (
       parsed.data.platform === "blooio" &&
-      !isGroupMessage(parsed.data) &&
       parsed.data.mediaUrls &&
       !dedicated
     ) {
@@ -941,7 +993,7 @@ app.post("/", async (c) => {
         mediaUrls: parsed.data.mediaUrls,
       });
       if (enrichment.kind === "described") {
-        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}`;
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${enrichment.description}\n\n[Attached image URL]\n${parsed.data.mediaUrls.join("\n")}`;
       }
     }
     if (deliveryMessage && groupActorLabel) {
@@ -1176,7 +1228,7 @@ app.post("/", async (c) => {
             userId: account.userId,
             organizationId: account.organizationId,
           },
-          reply: result.text,
+          reply: guardGroupReply(result.text, groupParticipantRoster),
           ...(groupDeliveryAuthority
             ? {
                 groupDelivery: {
@@ -1225,7 +1277,7 @@ app.post("/", async (c) => {
           parsed.data.messageId,
           "platform",
           groupTrustedDelivery,
-          undefined,
+          capabilityText,
           { type: ChannelType.GROUP, source: parsed.data.platform },
         )
       : await sharedRestMessageSend(
@@ -1238,6 +1290,7 @@ app.post("/", async (c) => {
           parsed.data.messageId,
           "platform",
           trustedDelivery,
+          capabilityText,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -1262,7 +1315,8 @@ app.post("/", async (c) => {
           userId: account.userId,
           organizationId: account.organizationId,
         },
-        reply: result.text,
+        reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(result.mediaUrls ? { mediaUrls: result.mediaUrls } : {}),
         ...(groupDeliveryAuthority
           ? {
               groupDelivery: {

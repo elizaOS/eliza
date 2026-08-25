@@ -196,11 +196,16 @@ for (const testCase of routeCases) {
       expect(forwardedMaxResults(testCase)).toBe(testCase.fallback);
     });
 
-    test("trims an otherwise valid value", async () => {
+    test("rejects whitespace-padded value via canonical integer", async () => {
       const response = await testCase.app.request(pathFor(testCase, " 20 "));
 
-      expect(response.status).toBe(200);
-      expect(forwardedMaxResults(testCase)).toBe(20);
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as {
+        success?: false;
+        error: string;
+      };
+      expect(body).toEqual(testCase.errorShape);
+      expect(testCase.call).not.toHaveBeenCalled();
     });
   });
 }

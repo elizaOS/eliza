@@ -203,9 +203,17 @@ export function unregisterAgentLoop(name: string): void {
 }
 
 export function listAgentLoops(): readonly AgentLoopRegistration[] {
-  return [...REGISTRY.values()].sort(
-    (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
-  );
+  return [...REGISTRY.values()].sort((a, b) => {
+    const bPriority =
+      typeof b.priority === "number" && !Number.isNaN(b.priority)
+        ? b.priority
+        : 0;
+    const aPriority =
+      typeof a.priority === "number" && !Number.isNaN(a.priority)
+        ? a.priority
+        : 0;
+    return bPriority - aPriority || a.name.localeCompare(b.name);
+  });
 }
 
 /**

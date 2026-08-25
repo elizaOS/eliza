@@ -219,7 +219,6 @@ jobs:
     needs: plan
     if: needs.plan.outputs.run_platform_smoke == 'true'
     uses: ./.github/workflows/platform-smoke.yml
-    secrets: inherit
 
   scenarios:
     needs: plan

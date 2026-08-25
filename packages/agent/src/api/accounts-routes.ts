@@ -917,9 +917,17 @@ async function handleListAllAccounts(
   const broker = brokerSnapshot();
   const providers = await Promise.all(
     SUPPORTED_PROVIDER_IDS.map(async (providerId) => {
-      const linkedConfigs = pool
-        .list(providerId)
-        .sort((a, b) => a.priority - b.priority);
+      const linkedConfigs = pool.list(providerId).sort((a, b) => {
+        const aPriority =
+          typeof a.priority === "number" && Number.isFinite(a.priority)
+            ? a.priority
+            : 0;
+        const bPriority =
+          typeof b.priority === "number" && Number.isFinite(b.priority)
+            ? b.priority
+            : 0;
+        return aPriority - bPriority || a.id.localeCompare(b.id);
+      });
       const accountProvider = asAccountCredentialProvider(providerId);
       const onDiskAccounts = accountProvider
         ? (await listAccounts(accountProvider)).map((r) => r.id)

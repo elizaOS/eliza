@@ -25,10 +25,7 @@ const sourcePaths = [
   path.join(sourceDir, "main.swift"),
 ];
 
-export function resolveExperimentalHelperBuildPlan({
-  buildVariant,
-  platform,
-}) {
+export function resolveExperimentalHelperBuildPlan({ buildVariant, platform }) {
   if (buildVariant !== "direct") {
     throw new Error(
       "Experimental exact-window helper may only be built for the direct distribution variant",
@@ -59,9 +56,9 @@ export function resolveExperimentalHelperBuildPlan({
 
 function parseArg(name) {
   const prefix = `--${name}=`;
-  return process.argv.find((value) => value.startsWith(prefix))?.slice(
-    prefix.length,
-  );
+  return process.argv
+    .find((value) => value.startsWith(prefix))
+    ?.slice(prefix.length);
 }
 
 function sha256(filePath) {

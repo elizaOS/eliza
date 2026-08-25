@@ -584,6 +584,9 @@ export default function StewardLoginSection() {
   const [phone, setPhone] = useState("");
   const [smsCode, setSmsCode] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  const [passkeyEmailGrant, setPasskeyEmailGrant] = useState<string | null>(
+    null,
+  );
   const [emailCode, setEmailCode] = useState("");
   const [emailChallenge, setEmailChallenge] =
     useState<StewardEmailLoginChallenge | null>(null);
@@ -599,6 +602,8 @@ export default function StewardLoginSection() {
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
+  const [showPasskeyEnrollmentRecovery, setShowPasskeyEnrollmentRecovery] =
+    useState(false);
   const [telegramIntent, setTelegramIntent] = useState(false);
   const telegramIntentButtonRef = useRef<HTMLButtonElement>(null);
   const telegramRegionRef = useRef<HTMLFieldSetElement>(null);
@@ -1122,6 +1127,8 @@ export default function StewardLoginSection() {
     refreshToken?: string | null,
     options?: { verifiedPhone: string },
   ) {
+    setPasskeyEmailGrant(null);
+    setShowPasskeyEnrollmentRecovery(false);
     if (options) {
       await syncStewardSessionCookie(token, refreshToken, options);
     } else {
@@ -1205,6 +1212,28 @@ export default function StewardLoginSection() {
     );
   }
 
+  function isPasskeyAlreadyRegistered(e: unknown): boolean {
+    const msg = getErrorMessage(e, "").toLowerCase();
+    if (e instanceof StewardApiError && e.status === 409) {
+      const data = e.data;
+      if (
+        typeof data === "object" &&
+        data !== null &&
+        "code" in data &&
+        data.code === "passkey_already_registered"
+      ) {
+        return true;
+      }
+    }
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
+    return (
+      msg.includes("previously registered") ||
+      msg.includes("already registered") ||
+      msg.includes("invalidstateerror") ||
+      msg.includes("error_authenticator_previously_registered")
+    );
+  }
+
   // UV errors surface when the Steward server or browser WebAuthn layer requires
   // user verification (PIN/biometric) but the assertion didn't satisfy it. They
   // must NOT silently fall through to startPasskeySignup() — the user already
@@ -1241,6 +1270,7 @@ export default function StewardLoginSection() {
     setLoading("passkey");
     setError(null);
     setShowPasskeyRecovery(false);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
       const result = requireCompletedAuth(
         await auth.signInWithPasskey(email.trim(), {
@@ -1295,6 +1325,8 @@ export default function StewardLoginSection() {
     setError(null);
     try {
       await auth.sendEmailOtp(email.trim());
+      setPasskeyEmailGrant(null);
+      setShowPasskeyEnrollmentRecovery(false);
       setOtpCode("");
       setShowPasskeyRecovery(false);
       setStep("otp-entry");
@@ -1313,21 +1345,47 @@ export default function StewardLoginSection() {
     }
     setLoading("passkey");
     setError(null);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
-      const { emailGrant } = await auth.verifyEmailOtp(email.trim(), code);
+      let emailGrant = passkeyEmailGrant;
+      if (!emailGrant) {
+        ({ emailGrant } = await auth.verifyEmailOtp(email.trim(), code));
+        setPasskeyEmailGrant(emailGrant);
+      }
       const result = requireCompletedAuth(
         await auth.addPasskey(email.trim(), { emailGrant }),
       );
       await rememberPasskeyDeviceHint(email);
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
+      // error-policy:J4 an OTP-proven account with a persisted credential
+      // recovers through authentication; ambiguous browser cancellation keeps
+      // registration retry plus explicit alternate sign-in choices visible.
+      if (isPasskeyAlreadyRegistered(e)) {
+        await rememberPasskeyDeviceHint(email);
+        setPasskeyEmailGrant(null);
+        setOtpCode("");
+        setShowPasskeyEnrollmentRecovery(false);
+        setStep("idle");
+        await runScopedPasskeyLogin();
+        return;
+      }
       if (isUserCancelled(e)) {
         setError("Passkey setup was cancelled. Tap Create passkey to retry.");
+        setShowPasskeyEnrollmentRecovery(true);
       } else {
         setError(getErrorMessage(e, "That code didn't work. Try again."));
       }
       setLoading(null);
     }
+  }
+
+  async function handleEnrollmentExistingPasskey() {
+    setPasskeyEmailGrant(null);
+    setOtpCode("");
+    setShowPasskeyEnrollmentRecovery(false);
+    setStep("idle");
+    await runScopedPasskeyLogin();
   }
 
   async function handleEmail() {
@@ -1337,6 +1395,8 @@ export default function StewardLoginSection() {
     }
     setLoading("email");
     setError(null);
+    setPasskeyEmailGrant(null);
+    setShowPasskeyEnrollmentRecovery(false);
     try {
       // The magic link can open in a new same-origin tab. Persist the pending
       // destination before asking Steward to send it so the callback can
@@ -1579,7 +1639,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.completingSignIn", {
               defaultValue: "Completing sign-in…",
@@ -1594,7 +1654,7 @@ export default function StewardLoginSection() {
     return (
       <ReservedLoginFrame>
         <div className="flex flex-col items-center gap-4" role="status">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
+          <div className="size-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.redirecting", {
               defaultValue: "Redirecting to Eliza...",
@@ -1985,6 +2045,48 @@ export default function StewardLoginSection() {
           })}
         </Button>
 
+        {showPasskeyEnrollmentRecovery && (
+          <section
+            aria-label={t("cloud.login.otp.recoveryLabel", {
+              defaultValue: "Other passkey options",
+            })}
+            className="space-y-2 rounded-md border border-border-strong bg-bg-elevated p-3"
+          >
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.otp.recoveryMessage", {
+                defaultValue:
+                  "Already saved this passkey? Sign in with it, or use a Magic Link.",
+              })}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={handleEnrollmentExistingPasskey}
+                disabled={loading !== null}
+                className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+              >
+                {t("cloud.login.button.existingPasskey", {
+                  defaultValue: "Use existing passkey",
+                })}
+              </Button>
+              {providers.email !== false && (
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={handleEmail}
+                  disabled={loading !== null}
+                  className="min-h-touch rounded-md border border-border-strong px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+                >
+                  {t("cloud.login.passkeyRecovery.magicLink", {
+                    defaultValue: "Use Magic Link",
+                  })}
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
+
         <div className="flex items-center justify-between text-sm">
           <Button
             variant="ghost"
@@ -1993,6 +2095,8 @@ export default function StewardLoginSection() {
             onClick={() => {
               setStep("idle");
               setOtpCode("");
+              setPasskeyEmailGrant(null);
+              setShowPasskeyEnrollmentRecovery(false);
               setError(null);
               setLoading(null);
             }}
@@ -2078,7 +2182,7 @@ export default function StewardLoginSection() {
             >
               {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
             </label>
-            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong focus-within:border-border-strong">
+            <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong">
               <Select
                 name="phone-country"
                 value={phoneCountry}
@@ -2173,7 +2277,11 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setPasskeyEmailGrant(null);
+            setShowPasskeyEnrollmentRecovery(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {
@@ -2335,7 +2443,7 @@ export default function StewardLoginSection() {
               {loading === "telegram" ? (
                 <Spinner />
               ) : (
-                <TelegramIcon className="h-4 w-4" />
+                <TelegramIcon className="size-4" />
               )}{" "}
               {t("cloud.login.button.telegram", {
                 defaultValue: "Telegram",
@@ -2503,7 +2611,7 @@ export default function StewardLoginSection() {
 
 function Spinner() {
   return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+    <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
   );
 }
 
@@ -2527,9 +2635,9 @@ function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
     case "google":
       return <GoogleIcon />;
     case "discord":
-      return <DiscordIcon className="h-4 w-4" />;
+      return <DiscordIcon className="size-4" />;
     case "github":
-      return <Github className="h-4 w-4" />;
+      return <Github className="size-4" />;
     case "twitter":
       return <XIcon />;
     case "apple":
@@ -2540,7 +2648,7 @@ function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
 function AppleIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
@@ -2553,7 +2661,7 @@ function AppleIcon() {
 function XIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       viewBox="0 0 24 24"
       fill="currentColor"
       aria-hidden="true"
@@ -2565,7 +2673,7 @@ function XIcon() {
 
 function GoogleIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+    <svg className="size-4" viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -2589,7 +2697,7 @@ function GoogleIcon() {
 function PasskeyIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"
@@ -2607,7 +2715,7 @@ function PasskeyIcon() {
 function EmailIcon() {
   return (
     <svg
-      className="h-4 w-4"
+      className="size-4"
       aria-hidden="true"
       viewBox="0 0 24 24"
       fill="none"

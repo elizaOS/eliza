@@ -106,7 +106,11 @@ function replaceAccount(
         accounts: (existing
           ? p.accounts.map((a) => (a.id === next.id ? merged : a))
           : [...p.accounts, merged]
-        ).sort((a, b) => a.priority - b.priority),
+        ).sort(
+          (a, b) =>
+            (Number.isFinite(a.priority) ? a.priority : 0) -
+            (Number.isFinite(b.priority) ? b.priority : 0),
+        ),
       };
     }),
   };
@@ -208,7 +212,11 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
               const accounts = [
                 ...p.accounts,
                 { ...created, hasCredential: true },
-              ].sort((a, b) => a.priority - b.priority);
+              ].sort(
+                (a, b) =>
+                  (Number.isFinite(a.priority) ? a.priority : 0) -
+                  (Number.isFinite(b.priority) ? b.priority : 0),
+              );
               return { ...p, accounts };
             }),
           };
@@ -240,7 +248,11 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
               ...p,
               accounts: p.accounts
                 .map((a) => (a.id === accountId ? { ...a, ...body } : a))
-                .sort((x, y) => x.priority - y.priority),
+                .sort(
+                  (x, y) =>
+                    (Number.isFinite(x.priority) ? x.priority : 0) -
+                    (Number.isFinite(y.priority) ? y.priority : 0),
+                ),
             };
           }),
         };

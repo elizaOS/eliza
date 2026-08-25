@@ -122,7 +122,7 @@ export function LoadingScreen({
               className="h-full w-full origin-left bg-accent relative"
               style={{
                 transform: `scaleX(${Math.min(100, Math.max(0, progress)) / 100})`,
-                transition: "transform 1.5s ease-out",
+                transition: "transform 0.8s ease-out",
               }}
             />
           </div>

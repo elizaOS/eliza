@@ -500,7 +500,17 @@ export class MeetingService extends Service {
   listSessions(options?: { active?: boolean }): MeetingSession[] {
     const live = [...this.sessions.values()].map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];
-    return all.sort((a, b) => b.requestedAt - a.requestedAt);
+    return all.sort((a, b) => {
+      const bReq =
+        typeof b.requestedAt === "number" && Number.isFinite(b.requestedAt)
+          ? b.requestedAt
+          : 0;
+      const aReq =
+        typeof a.requestedAt === "number" && Number.isFinite(a.requestedAt)
+          ? a.requestedAt
+          : 0;
+      return bReq - aReq || a.id.localeCompare(b.id);
+    });
   }
 
   /** Await the complete production lifecycle, including persistence, billing, events, and eviction. */

@@ -96,14 +96,14 @@ function CockpitDetailsButton({
       aria-pressed={open}
       data-testid="cockpit-session-details-toggle"
       title={label}
-      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors ${
+      className={`inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
         open
           ? "bg-accent/15 text-accent"
           : "text-muted hover:bg-bg-hover/40 hover:text-txt"
       }`}
       {...agentProps}
     >
-      <PanelRight className="h-4 w-4" aria-hidden />
+      <PanelRight className="size-4" aria-hidden />
     </Button>
   );
 }
@@ -336,14 +336,14 @@ export function CockpitSessionPane({
           unstyled
           type="button"
           onClick={onBack}
-          className="-ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+          className="-ml-1 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
           aria-label={t("cockpit.session.back", {
             defaultValue: "Back to all rooms",
           })}
           data-testid="cockpit-session-back"
           {...backAgentProps}
         >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
+          <ArrowLeft className="size-4" aria-hidden />
         </Button>
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
           {detail?.title ??
@@ -374,13 +374,13 @@ export function CockpitSessionPane({
             title={t("cockpit.session.transcript", {
               defaultValue: "Transcript",
             })}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
               view === "transcript"
                 ? "bg-accent/15 text-accent"
                 : "text-muted hover:bg-bg-hover/40 hover:text-txt"
             }`}
           >
-            <ScrollText className="h-4 w-4" aria-hidden />
+            <ScrollText className="size-4" aria-hidden />
           </Button>
           <Button
             ref={terminalRef}
@@ -393,13 +393,13 @@ export function CockpitSessionPane({
             title={t("cockpit.session.watch", {
               defaultValue: "Watch (terminal output)",
             })}
-            className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+            className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
               view === "terminal"
                 ? "bg-accent/15 text-accent"
                 : "text-muted hover:bg-bg-hover/40 hover:text-txt"
             }`}
           >
-            <SquareTerminal className="h-4 w-4" aria-hidden />
+            <SquareTerminal className="size-4" aria-hidden />
           </Button>
         </fieldset>
         {isMobile && detail ? (
@@ -448,7 +448,7 @@ export function CockpitSessionPane({
           </div>
         ) : (
           <div
-            className="min-w-0 flex-1 space-y-3 overflow-y-auto px-3 py-3"
+            className="min-w-0 flex-1 space-y-3 overflow-y-auto p-3"
             data-testid="cockpit-session-transcript"
           >
             {conversation.length === 0 ? (

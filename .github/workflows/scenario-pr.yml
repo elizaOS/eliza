@@ -460,7 +460,7 @@ jobs:
   # on the PR path by default; the only way to exclude one is to record it in the
   # deny-list with a category and a reason. The spec set is emitted by
   # packages/app/scripts/ui-smoke-pr-specs.mjs and the wiring is enforced by
-  # packages/app/test/ui-smoke-coverage.test.ts.
+  # packages/app/scripts/ui-smoke-pr-specs.mjs.
   app-browser-auto-discovered:
     name: Zero-Key app browser auto-discovered specs
     needs: changes

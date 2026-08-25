@@ -310,7 +310,9 @@ function canonicalJson(value: unknown): string {
   }
   if (value !== null && typeof value === "object") {
     return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+      // the admission recovery contract must not serialize differently per host.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
       .join(",")}}`;
   }

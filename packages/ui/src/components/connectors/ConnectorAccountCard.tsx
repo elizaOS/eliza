@@ -212,17 +212,19 @@ export function ConnectorAccountCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 px-3 py-3 transition-opacity",
+        "flex flex-col gap-3 rounded-sm border border-border/45 bg-card/35 p-3 transition-opacity",
         !enabled && "bg-bg-muted/40",
         selected && "border-accent/70 bg-accent/5",
       )}
     >
       <div className="flex flex-wrap items-start gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
+        <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/50 bg-bg-accent text-xs font-semibold text-muted">
           {account.avatarUrl ? (
             <img
               src={account.avatarUrl}
               alt=""
+              width={36}
+              height={36}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -246,12 +248,12 @@ export function ConnectorAccountCard({
               })}
             />
             {isDefault ? (
-              <Badge variant="outline" className="shrink-0 text-[10px]">
+              <Badge variant="outline" className="shrink-0 text-2xs">
                 {t("connectoraccount.default", { defaultValue: "Default" })}
               </Badge>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted">
             {displayHandle ? (
               <span className="max-w-[220px] truncate">{displayHandle}</span>
             ) : null}
@@ -292,9 +294,9 @@ export function ConnectorAccountCard({
               className="h-7 gap-1 px-2 text-xs"
             >
               {reconnectBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
-                <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                <KeyRound className="size-3.5" aria-hidden />
               )}
               {t("connectoraccount.reconnectLabel", {
                 defaultValue: "Reconnect",
@@ -313,12 +315,12 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.makeDefault", {
               defaultValue: "Make default account",
             })}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
           >
             {defaultBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <Star className="h-3.5 w-3.5" aria-hidden />
+              <Star className="size-3.5" aria-hidden />
             )}
           </Button>
           <Button
@@ -333,7 +335,7 @@ export function ConnectorAccountCard({
             className="h-7 px-2 text-xs"
           >
             {testBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
               t("connectoraccount.test", { defaultValue: "Test" })
             )}
@@ -350,12 +352,12 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.refresh", {
               defaultValue: "Refresh connector account",
             })}
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
           >
             {refreshBusy ? (
-              <Spinner className="h-3 w-3" />
+              <Spinner className="size-3" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              <RefreshCw className="size-3.5" aria-hidden />
             )}
           </Button>
           <Button
@@ -370,9 +372,9 @@ export function ConnectorAccountCard({
             title={t("connectoraccount.delete", {
               defaultValue: "Delete connector account",
             })}
-            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
+            className="size-7 p-0 text-destructive hover:bg-destructive/10"
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            <Trash2 className="size-3.5" aria-hidden />
           </Button>
         </div>
       </div>
@@ -457,7 +459,7 @@ export function ConnectorAccountCard({
               onClick={handleDelete}
             >
               {deleteBusy ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : (
                 t("connectoraccount.removeDialog.confirm", {
                   defaultValue: "Remove account",

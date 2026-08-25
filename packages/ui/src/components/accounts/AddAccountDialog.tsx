@@ -855,7 +855,7 @@ export function AddAccountDialog({
 
         {step === "oauth-starting" ? (
           <div className="flex items-center gap-3 py-6 text-sm text-muted">
-            <Spinner className="h-4 w-4" />
+            <Spinner className="size-4" />
             {t("accounts.add.oauth.starting", {
               defaultValue: "Starting login flow…",
             })}
@@ -903,14 +903,14 @@ export function AddAccountDialog({
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
-                  <Spinner className="h-3.5 w-3.5" />
+                  <Spinner className="size-3.5" />
                   <span>Waiting for approval in your browser…</span>
                 </div>
               </div>
             ) : (
               // Localhost callback flow: a real browser window was opened.
               <div className="flex items-center gap-3">
-                <Spinner className="h-4 w-4" />
+                <Spinner className="size-4" />
                 <span>
                   {t("accounts.add.oauth.waiting", {
                     defaultValue:
@@ -1012,7 +1012,7 @@ export function AddAccountDialog({
               className="h-9"
             >
               {step === "apikey-submitting" ? (
-                <Spinner className="h-3 w-3" />
+                <Spinner className="size-3" />
               ) : credentialRepairAccount ? (
                 t("accounts.replaceCredential.save", {
                   defaultValue: "Save replacement",

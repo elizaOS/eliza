@@ -4,7 +4,7 @@
 
 "use client";
 
-import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-shared/types";
+import type { EnhancedAnalyticsDataDto } from "@elizaos/cloud-sdk";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import {
@@ -173,14 +173,14 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
               >
                 {expanded ? (
                   <>
-                    <ChevronUp className="h-4 w-4" />
+                    <ChevronUp className="size-4" />
                     {t("cloud.analytics.modelBreakdown.showLess", {
                       defaultValue: "Show less",
                     })}
                   </>
                 ) : (
                   <>
-                    <ChevronDown className="h-4 w-4" />
+                    <ChevronDown className="size-4" />
                     {t("cloud.analytics.modelBreakdown.showMore", {
                       defaultValue: "Show {{n}} more",
                       n: models.length - displayLimit,

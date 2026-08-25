@@ -1,9 +1,13 @@
-/** Durable owner claims and provider-chat bindings for one canonical Personal Shared agent. */
+/**
+ * Durable owner claims, provider-chat bindings, and the per-binding participant
+ * identity registry for one canonical Personal Shared agent.
+ */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   bigint,
   check,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -16,6 +20,7 @@ import { users } from "./users";
 export type PersonalSharedGroupPlatform = "telegram" | "blooio";
 export type PersonalSharedGroupBindingState = "active" | "suspended" | "revoked";
 export type PersonalSharedGroupResponsePolicy = "mention_only" | "ambient";
+export type PersonalSharedGroupDeliveryAttemptState = "committed" | "uncertain" | "reconciled";
 
 export const personalSharedGroupClaims = pgTable(
   "personal_shared_group_claims",
@@ -147,10 +152,111 @@ export const personalSharedGroupDeliveryReceipts = pgTable(
   }),
 );
 
+/**
+ * Model-facing identity for the speakers of one bound provider group.
+ *
+ * The label the model reads is `display_name ?? ordinal`, where `display_name`
+ * is a connector-supplied name that survived the resolution rules; the raw
+ * connector handle in `platform_user_id` is server-side only and must never be
+ * rendered into a prompt or a reply. See 0311 for the full rationale.
+ */
+export const personalSharedGroupParticipants = pgTable(
+  "personal_shared_group_participants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    binding_id: uuid("binding_id")
+      .notNull()
+      .references(() => personalSharedGroupBindings.id, { onDelete: "cascade" }),
+    /** Raw connector handle (Blooio phone, Telegram numeric id). Never model-facing. */
+    platform_user_id: text("platform_user_id").notNull(),
+    /** 1-based, assigned in first-seen order within the binding, then stable. */
+    ordinal: integer("ordinal").notNull(),
+    /** Connector-supplied name that passed the resolution rules, else null. */
+    display_name: text("display_name"),
+    first_seen_at: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    last_seen_at: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    ordinal_check: check(
+      "personal_shared_group_participants_ordinal_check",
+      sql`${table.ordinal} > 0`,
+    ),
+    display_name_check: check(
+      "personal_shared_group_participants_display_name_check",
+      sql`${table.display_name} IS NULL OR (length(${table.display_name}) > 0 AND length(${table.display_name}) <= 128)`,
+    ),
+    actor_unique: uniqueIndex("personal_shared_group_participants_actor_uidx").on(
+      table.binding_id,
+      table.platform_user_id,
+    ),
+    // Two participants speaking at once must not both take ordinal N.
+    ordinal_unique: uniqueIndex("personal_shared_group_participants_ordinal_uidx").on(
+      table.binding_id,
+      table.ordinal,
+    ),
+  }),
+);
+
+export const personalSharedGroupDeliveryAttempts = pgTable(
+  "personal_shared_group_delivery_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    binding_id: uuid("binding_id")
+      .notNull()
+      .references(() => personalSharedGroupBindings.id, { onDelete: "cascade" }),
+    platform: text("platform").$type<PersonalSharedGroupPlatform>().notNull(),
+    project: text("project").notNull(),
+    connector_account_id: text("connector_account_id").notNull(),
+    provider_chat_id: text("provider_chat_id").notNull(),
+    source_message_id: text("source_message_id").notNull(),
+    lease_token: uuid("lease_token").notNull(),
+    state: text("state").$type<PersonalSharedGroupDeliveryAttemptState>().notNull(),
+    committed_at: timestamp("committed_at", { withTimezone: true }).notNull(),
+    uncertain_at: timestamp("uncertain_at", { withTimezone: true }),
+    reconciled_at: timestamp("reconciled_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    platform_check: check(
+      "personal_shared_group_delivery_attempts_platform_check",
+      sql`${table.platform} IN ('telegram', 'blooio')`,
+    ),
+    state_check: check(
+      "personal_shared_group_delivery_attempts_state_check",
+      sql`${table.state} IN ('committed', 'uncertain', 'reconciled')`,
+    ),
+    state_timestamps_check: check(
+      "personal_shared_group_delivery_attempts_state_timestamps_check",
+      sql`(${table.state} = 'committed' AND ${table.uncertain_at} IS NULL AND ${table.reconciled_at} IS NULL)
+        OR (${table.state} = 'uncertain' AND ${table.uncertain_at} IS NOT NULL AND ${table.reconciled_at} IS NULL)
+        OR (${table.state} = 'reconciled' AND ${table.reconciled_at} IS NOT NULL)`,
+    ),
+    binding_source_unique: uniqueIndex(
+      "personal_shared_group_delivery_attempts_binding_source_uidx",
+    ).on(table.binding_id, table.source_message_id),
+    binding_token_unique: uniqueIndex(
+      "personal_shared_group_delivery_attempts_binding_token_uidx",
+    ).on(table.binding_id, table.lease_token),
+    state_committed_idx: index("personal_shared_group_delivery_attempts_state_committed_idx").on(
+      table.state,
+      table.committed_at,
+    ),
+  }),
+);
+
 export type PersonalSharedGroupClaim = InferSelectModel<typeof personalSharedGroupClaims>;
 export type NewPersonalSharedGroupClaim = InferInsertModel<typeof personalSharedGroupClaims>;
 export type PersonalSharedGroupBinding = InferSelectModel<typeof personalSharedGroupBindings>;
 export type NewPersonalSharedGroupBinding = InferInsertModel<typeof personalSharedGroupBindings>;
 export type PersonalSharedGroupDeliveryReceipt = InferSelectModel<
   typeof personalSharedGroupDeliveryReceipts
+>;
+export type PersonalSharedGroupParticipant = InferSelectModel<
+  typeof personalSharedGroupParticipants
+>;
+export type NewPersonalSharedGroupParticipant = InferInsertModel<
+  typeof personalSharedGroupParticipants
+>;
+export type PersonalSharedGroupDeliveryAttempt = InferSelectModel<
+  typeof personalSharedGroupDeliveryAttempts
 >;

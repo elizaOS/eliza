@@ -158,9 +158,23 @@ export default scenario({
 
   turns: [
     {
+      // Readiness is a state barrier, not a duration. `registerPlugin` in the
+      // seed returns BEFORE the plugin's services are live: core registers
+      // services lazily and starts them fire-and-forget
+      // (packages/core/src/runtime.ts). Both actions below validate on nothing
+      // but "is the COMPANION service live?", so a host slow enough to lose
+      // that race fails the turn as a validation rejection. Poll the service
+      // itself: registered AND past the welcome→register handshake.
       kind: "wait",
-      name: "device handshake settles",
-      durationMs: 250,
+      name: "companion service is live and the device handshake completed",
+      timeoutMs: 15_000,
+      until: (ctx) => {
+        const runtime = ctx.runtime as AgentRuntime;
+        const service = runtime.getService<CompanionService>(
+          CompanionService.serviceType,
+        );
+        return service?.isReady() === true;
+      },
     },
     {
       kind: "action",

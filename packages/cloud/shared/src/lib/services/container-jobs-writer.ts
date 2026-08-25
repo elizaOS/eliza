@@ -31,7 +31,9 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
+      // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+      // the job readback equality check must not depend on the host locale.
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
       .map(([key, next]) => `${JSON.stringify(key)}:${canonicalJson(next)}`);
     return `{${entries.join(",")}}`;
   }

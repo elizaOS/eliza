@@ -32,7 +32,7 @@ describe("canBindLoopback", () => {
 	});
 
 	it("resolves false on server error", async () => {
-		const { canBindLoopback } = await import("./loopback.ts");
+		const { canBindLoopback } = await import("../loopback.ts");
 		const s = fakeServer();
 		mocks.createServer.mockReturnValue(s);
 		const p = canBindLoopback();
@@ -41,7 +41,7 @@ describe("canBindLoopback", () => {
 	});
 
 	it("resolves true when binding succeeds", async () => {
-		const { canBindLoopback } = await import("./loopback.ts");
+		const { canBindLoopback } = await import("../loopback.ts");
 		const s = fakeServer();
 		mocks.createServer.mockReturnValue(s);
 		expect(await canBindLoopback()).toBe(true);

@@ -1,4 +1,4 @@
-import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 
 export type UserFacingAgentType = "Shared Agent" | "Dedicated Agent";
 

@@ -143,6 +143,13 @@ describe("isTriagableBotNoiseMessage — deterministic preconditions", () => {
 		const clientChat = relayEmbedMessage();
 		clientChat.content = { ...clientChat.content, source: "client_chat" };
 		expect(isTriagableBotNoiseMessage(clientChat, false)).toBe(false);
+
+		const scheduledTrigger = relayEmbedMessage();
+		scheduledTrigger.content = {
+			...scheduledTrigger.content,
+			source: "trigger-prompt",
+		};
+		expect(isTriagableBotNoiseMessage(scheduledTrigger, false)).toBe(false);
 	});
 });
 

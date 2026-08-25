@@ -53,7 +53,7 @@ export function RelationshipsSidebar({
                       {person.displayName}
                     </SidebarContent.ItemTitle>
                     {person.isOwner ? (
-                      <Crown className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      <Crown className="size-3.5 shrink-0 text-accent" />
                     ) : null}
                   </span>
                 </SidebarContent.Item>

@@ -56,6 +56,36 @@
       "import": "./dist/redemption-contract.js",
       "default": "./dist/redemption-contract.js"
     },
+    "./api-explorer": {
+      "types": "./dist/api-explorer/index.d.ts",
+      "eliza-source": {
+        "types": "./src/api-explorer/index.ts",
+        "import": "./src/api-explorer/index.ts",
+        "default": "./src/api-explorer/index.ts"
+      },
+      "import": "./dist/api-explorer/index.js",
+      "default": "./dist/api-explorer/index.js"
+    },
+    "./browser-contracts": {
+      "types": "./dist/browser-contracts/index.d.ts",
+      "eliza-source": {
+        "types": "./src/browser-contracts/index.ts",
+        "import": "./src/browser-contracts/index.ts",
+        "default": "./src/browser-contracts/index.ts"
+      },
+      "import": "./dist/browser-contracts/index.js",
+      "default": "./dist/browser-contracts/index.js"
+    },
+    "./account-billing-snapshot": {
+      "types": "./dist/account-billing-snapshot.d.ts",
+      "eliza-source": {
+        "types": "./src/account-billing-snapshot.ts",
+        "import": "./src/account-billing-snapshot.ts",
+        "default": "./src/account-billing-snapshot.ts"
+      },
+      "import": "./dist/account-billing-snapshot.js",
+      "default": "./dist/account-billing-snapshot.js"
+    },
     "./cloud-setup-session": {
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",
@@ -79,6 +109,9 @@
         "server"
       ]
     }
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2"

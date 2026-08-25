@@ -75,7 +75,7 @@ type VisibleGraph = {
 
 const EDGE_COLORS = {
   positive: "rgba(34, 197, 94, 0.64)",
-  neutral: "rgba(240, 185, 11, 0.48)",
+  neutral: "rgba(var(--accent-rgb), 0.48)",
   negative: "rgba(239, 68, 68, 0.62)",
 } as const;
 
@@ -611,7 +611,7 @@ function GraphIconButton({
           type="button"
           size="sm"
           variant="outline"
-          className="h-8 w-8 rounded-full p-0"
+          className="size-8 rounded-full p-0"
           aria-label={label}
           disabled={disabled}
           onClick={onClick}
@@ -650,22 +650,20 @@ function GraphTooltip({ state }: { state: TooltipState }) {
         className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5"
       >
         <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
-          {person.isOwner ? (
-            <Crown className="h-3.5 w-3.5 text-accent" />
-          ) : null}
+          {person.isOwner ? <Crown className="size-3.5 text-accent" /> : null}
           {person.displayName}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
           <span className="inline-flex items-center gap-1">
-            <Fingerprint className="h-3 w-3" />
+            <Fingerprint className="size-3" />
             {person.memberEntityIds.length}
           </span>
           <span className="inline-flex items-center gap-1">
-            <Link2 className="h-3 w-3" />
+            <Link2 className="size-3" />
             {person.relationshipCount}
           </span>
           <span className="inline-flex items-center gap-1">
-            <MessageCircle className="h-3 w-3" />
+            <MessageCircle className="size-3" />
             {person.factCount}
           </span>
         </div>
@@ -693,11 +691,11 @@ function GraphTooltip({ state }: { state: TooltipState }) {
           className="inline-flex items-center gap-1"
           style={{ color: EDGE_COLORS[edgeTone(edge.sentiment)] }}
         >
-          <SentimentIcon className="h-3 w-3" />
+          <SentimentIcon className="size-3" />
           {Math.round(edge.strength * 100)}%
         </span>
         <span className="inline-flex items-center gap-1">
-          <MessageCircle className="h-3 w-3" />
+          <MessageCircle className="size-3" />
           {edge.interactionCount}
         </span>
       </div>
@@ -1046,7 +1044,7 @@ export function RelationshipsGraphPanel({
               agentRef={zoomOutButton.ref}
               agentProps={zoomOutButton.agentProps}
             >
-              <Minus className="h-3.5 w-3.5" />
+              <Minus className="size-3.5" />
             </GraphIconButton>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1079,7 +1077,7 @@ export function RelationshipsGraphPanel({
               agentRef={zoomInButton.ref}
               agentProps={zoomInButton.agentProps}
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="size-3.5" />
             </GraphIconButton>
           </div>
         </div>
@@ -1122,7 +1120,7 @@ export function RelationshipsGraphPanel({
                 r="70%"
               >
                 <stop offset="0%" stopColor="rgba(255,240,199,0.96)" />
-                <stop offset="100%" stopColor="rgba(240,185,11,0.9)" />
+                <stop offset="100%" stopColor="rgba(var(--accent-rgb), 0.9)" />
               </radialGradient>
               <radialGradient
                 id="relationships-owner-fill"
@@ -1203,7 +1201,7 @@ export function RelationshipsGraphPanel({
                       fill="transparent"
                       stroke={
                         selected
-                          ? "rgba(240,185,11,0.52)"
+                          ? "rgba(var(--accent-rgb), 0.52)"
                           : directlyConnected
                             ? "rgba(34,197,94,0.38)"
                             : "transparent"

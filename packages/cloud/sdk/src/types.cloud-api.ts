@@ -161,6 +161,25 @@ export type AgentSandboxStatus =
   | "error";
 
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";
+export type AgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
+
+/** A server-owned lifecycle job that clients can resume polling after reload. */
+export interface AgentActiveJobDto {
+  id: string;
+  type: string;
+  status: "pending" | "in_progress";
+  attempts: number;
+  maxAttempts: number;
+  estimatedCompletionAt: IsoDateString | null;
+  scheduledFor: IsoDateString;
+  startedAt: IsoDateString | null;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
+}
 
 export interface AgentListItemDto {
   id: string;
@@ -179,6 +198,22 @@ export interface AgentListItemDto {
   dockerImage?: string | null;
   executionTier?: string;
   webUiUrl?: string | null;
+  activeJob?: AgentActiveJobDto | null;
+}
+
+/**
+ * Strict projection produced after validating the current agents-list payload.
+ * Keep {@link AgentListItemDto} permissive for existing SDK consumers.
+ */
+export interface NormalizedAgentListItemDto
+  extends Omit<
+    AgentListItemDto,
+    "dockerImage" | "executionTier" | "webUiUrl" | "activeJob"
+  > {
+  dockerImage: string | null;
+  executionTier: AgentExecutionTier;
+  webUiUrl: string | null;
+  activeJob: AgentActiveJobDto | null;
 }
 
 interface AgentAdminDetailsDto {
@@ -204,8 +239,303 @@ export interface AgentDetailDto extends AgentListItemDto {
   adminDetails: AgentAdminDetailsDto | null;
 }
 
+/** Strict current-response projection for validated agent detail payloads. */
+export interface NormalizedAgentDetailDto
+  extends Omit<
+    AgentDetailDto,
+    "dockerImage" | "executionTier" | "webUiUrl" | "activeJob"
+  > {
+  dockerImage: string | null;
+  executionTier: AgentExecutionTier;
+  webUiUrl: string | null;
+  activeJob: AgentActiveJobDto | null;
+}
+
 export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
+export type NormalizedAgentsResponse = ApiSuccessEnvelope<
+  NormalizedAgentListItemDto[]
+>;
+export type NormalizedAgentResponse =
+  ApiSuccessEnvelope<NormalizedAgentDetailDto>;
+
+export type AnalyticsTimeGranularity = "hour" | "day" | "week" | "month";
+export type AnalyticsTimeRange = "daily" | "weekly" | "monthly";
+
+export interface AnalyticsUsageStatsDto {
+  totalRequests: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCost: number;
+  successRate: number;
+}
+
+export interface AnalyticsTimeSeriesPointDto {
+  timestamp: DateLike;
+  totalRequests: number;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  successRate: number;
+  successRatePercent: number;
+}
+
+export interface AnalyticsUserBreakdownDto {
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  totalRequests: number;
+  totalCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  lastActive: DateLike | null;
+}
+
+export interface AnalyticsCostTrendingDto {
+  currentDailyBurn: number;
+  previousDailyBurn: number;
+  burnChangePercent: number;
+  projectedMonthlyBurn: number;
+  daysUntilBalanceZero: number | null;
+  monthlyBurnPercent: number;
+  monthlyBurnPercentClamped: number;
+  burnAlertThresholdExceeded: boolean;
+}
+
+export interface AnalyticsProviderBreakdownDto {
+  provider: string;
+  totalRequests: number;
+  totalCost: number;
+  totalTokens: number;
+  successRate: number;
+  percentage: number;
+}
+
+export interface AnalyticsModelBreakdownDto {
+  model: string;
+  provider: string;
+  totalRequests: number;
+  totalCost: number;
+  totalTokens: number;
+  avgCostPerToken: number;
+  successRate: number;
+}
+
+export interface AnalyticsTrendDto {
+  requestsChange: number;
+  costChange: number;
+  tokensChange: number;
+  successRateChange: number;
+  period: string;
+}
+
+export interface AnalyticsDataDto {
+  filters: {
+    startDate: DateLike;
+    endDate: DateLike;
+    granularity: AnalyticsTimeGranularity;
+    timeRange?: AnalyticsTimeRange;
+  };
+  overallStats: AnalyticsUsageStatsDto;
+  timeSeriesData: AnalyticsTimeSeriesPointDto[];
+  userBreakdown: AnalyticsUserBreakdownDto[];
+  costTrending: AnalyticsCostTrendingDto;
+  organization: { creditBalance: string | number };
+}
+
+export interface EnhancedAnalyticsDataDto extends AnalyticsDataDto {
+  filters: AnalyticsDataDto["filters"] & { timeRange: AnalyticsTimeRange };
+  providerBreakdown: AnalyticsProviderBreakdownDto[];
+  modelBreakdown: AnalyticsModelBreakdownDto[];
+  trends: AnalyticsTrendDto;
+}
+
+export interface AnalyticsProjectionPointDto
+  extends AnalyticsTimeSeriesPointDto {
+  isProjected: boolean;
+  confidence?: number;
+}
+
+export interface AnalyticsProjectionAlertDto {
+  type: "warning" | "danger" | "info";
+  title: string;
+  message: string;
+  projectedValue?: number;
+  projectedDate?: DateLike;
+  eventId?: string;
+  severity?: "warning" | "critical" | "info";
+  status?: string;
+}
+
+export interface AnalyticsAlertEventDto {
+  id: string;
+  organization_id: string;
+  policy_id: string;
+  severity: "warning" | "critical" | "info" | string;
+  status: string;
+  source: string;
+  title: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  dedupe_key: string;
+  evaluated_at: DateLike;
+  created_at: DateLike;
+}
+
+export interface ProjectionsDataDto {
+  historicalData: AnalyticsTimeSeriesPointDto[];
+  projections: AnalyticsProjectionPointDto[];
+  alerts: AnalyticsProjectionAlertDto[];
+  alertEvents?: AnalyticsAlertEventDto[];
+  creditBalance: number;
+}
+
+export type AdminRole = "super_admin" | "moderator" | "viewer";
+
+export const ADMIN_ROLE_RANK: Record<AdminRole, number> = {
+  viewer: 0,
+  moderator: 1,
+  super_admin: 2,
+};
+
+export function isAdminRole(value: unknown): value is AdminRole {
+  return value === "super_admin" || value === "moderator" || value === "viewer";
+}
+
+export function adminRoleRank(role: AdminRole | null | undefined): number {
+  return role && isAdminRole(role) ? ADMIN_ROLE_RANK[role] : -1;
+}
+
+export type AdminModerationStatusValue =
+  | "clean"
+  | "warned"
+  | "spammer"
+  | "scammer"
+  | "banned";
+export type AdminModerationAction =
+  | "refused"
+  | "warned"
+  | "flagged_for_ban"
+  | "banned";
+
+export interface AdminModerationViolationDto {
+  id: string;
+  userId: string;
+  roomId: string | null;
+  messageText: string;
+  categories: string[];
+  scores: Record<string, number>;
+  action: AdminModerationAction;
+  reviewedBy: string | null;
+  reviewedAt: IsoDateString | null;
+  reviewNotes: string | null;
+  createdAt: IsoDateString;
+}
+
+export interface AdminModerationUserStatusDto {
+  id: string;
+  userId: string;
+  status: AdminModerationStatusValue;
+  totalViolations: number;
+  warningCount: number;
+  riskScore: number;
+  bannedBy: string | null;
+  bannedAt: IsoDateString | null;
+  banReason: string | null;
+  lastViolationAt: IsoDateString | null;
+  lastWarningAt: IsoDateString | null;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
+}
+
+export interface AdminUserDto {
+  id: string;
+  userId: string | null;
+  walletAddress: string;
+  role: AdminRole;
+  isActive: boolean;
+  grantedBy: string | null;
+  grantedByWallet: string | null;
+  notes: string | null;
+  createdAt: IsoDateString;
+  updatedAt: IsoDateString;
+  revokedAt: IsoDateString | null;
+}
+
+export interface AdminModerationOverviewResponse {
+  recentViolations: AdminModerationViolationDto[];
+  totalViolations: number;
+  flaggedUsers: number;
+  bannedUsers: number;
+  adminCount: number;
+  currentAdmin: { wallet: string | null; role: AdminRole | null };
+}
+
+export interface AdminModerationViolationsResponse {
+  violations: AdminModerationViolationDto[];
+  total: number;
+}
+
+export interface AdminModerationUsersResponse {
+  flaggedUsers: AdminModerationUserStatusDto[];
+  bannedUsers: AdminModerationUserStatusDto[];
+  totalFlagged: number;
+  totalBanned: number;
+}
+
+export interface AdminModerationAdminsResponse {
+  admins: AdminUserDto[];
+  total: number;
+  canManageAdmins: boolean;
+}
+
+export interface AdminModerationUserSummaryDto {
+  id: string;
+  email: string | null;
+  wallet_address: string | null;
+  name: string | null;
+  created_at: IsoDateString;
+}
+
+export interface AdminModerationUserDetailResponse {
+  user: AdminModerationUserSummaryDto | null;
+  moderationStatus: AdminModerationUserStatusDto | null;
+  violations: AdminModerationViolationDto[];
+  generationsCount: number;
+}
+
+export interface AdminModerationStatusResponse {
+  isAdmin: boolean;
+  role: AdminRole | null;
+}
+
+export interface AdminModerationCombinedResponse {
+  overview?: AdminModerationOverviewResponse;
+  violations?: AdminModerationViolationsResponse;
+  users?: AdminModerationUsersResponse;
+  admins?: AdminModerationAdminsResponse;
+}
+
+export type AdminModerationActionName =
+  | "ban"
+  | "unban"
+  | "mark_spammer"
+  | "mark_scammer"
+  | "clear_status"
+  | "clear_flags"
+  | "add_admin"
+  | "revoke_admin";
+
+export interface AdminModerationActionRequest {
+  action: AdminModerationActionName;
+  userId?: string;
+  targetUserId?: string;
+  walletAddress?: string;
+  targetWalletAddress?: string;
+  role?: AdminRole;
+  reason?: string;
+  notes?: string;
+}
 
 /**
  * Shared connected-capability projection served by

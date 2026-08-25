@@ -24,9 +24,9 @@
  * after the live destination is revalidated as an owner-exclusive DM.
  */
 
+import { buildCrossWorldConversationAccessContext } from "../../../access-context.ts";
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
-import { getVerifiedRelatedEntityIds } from "../../../identity-clusters.ts";
 import { isInternalBridgeMessage } from "../../../messaging/automated-turns.ts";
 import {
 	markOwnerExclusiveDisclosureUsed,
@@ -76,6 +76,7 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"transient_failure",
 	"handler_error",
 	"persistence_error",
+	"coding_verification_failed",
 ]);
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
@@ -346,23 +347,14 @@ const getRecentInteractions = async (
 		}
 		return [];
 	}
-	const sourceEntityIds = await getVerifiedRelatedEntityIds(
+	if (targetEntityId !== runtime.agentId) return [];
+	const accessContext = await buildCrossWorldConversationAccessContext(
 		runtime,
-		message.entityId,
+		message,
 	);
-	// getRoomsForParticipants is a union query (rooms containing ANY supplied
-	// entity), so intersect the identity-cluster rooms with the target's rooms.
-	// Passing both sides to one call would leak unrelated participant rooms into
-	// recentInteractions.
-	const [sourceRooms, targetRooms] = await Promise.all([
-		runtime.getRoomsForParticipants(sourceEntityIds),
-		runtime.getRoomsForParticipant(targetEntityId),
-	]);
-	const targetRoomIds = new Set(targetRooms);
-	const rooms = Array.from(new Set(sourceRooms)).filter((roomId) =>
-		targetRoomIds.has(roomId),
+	const otherRooms = (accessContext.authorizedRoomIds ?? []).filter(
+		(room) => room !== excludeRoomId,
 	);
-	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
 	if (otherRooms.length === 0) {
 		return [];
 	}
@@ -371,6 +363,7 @@ const getRecentInteractions = async (
 	const interactions = await runtime.getMemoriesByRoomIds({
 		tableName: "messages",
 		roomIds: otherRooms,
+		accessContext,
 	});
 	if (interactions.length > 0) {
 		markOwnerExclusiveDisclosureUsed(message);
@@ -452,7 +445,19 @@ export const recentMessagesProvider: Provider = {
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)
-				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+				.sort((a, b) => {
+					// Chronological (oldest first) is the order the prompt renders. A
+					// non-finite `createdAt` from an adapter row made the raw subtraction
+					// return NaN, which the sort spec treats as "equal", leaving the row
+					// at an arbitrary position in model-facing history. Normalize it to 0
+					// (oldest) and break exact ties on id so the window is deterministic.
+					const aCreatedAt = a.createdAt ?? 0;
+					const bCreatedAt = b.createdAt ?? 0;
+					const aSafe = Number.isFinite(aCreatedAt) ? aCreatedAt : 0;
+					const bSafe = Number.isFinite(bCreatedAt) ? bCreatedAt : 0;
+					if (aSafe !== bSafe) return aSafe - bSafe;
+					return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+				});
 			const dialogueMessages = dedupeAssistantRunMessages(
 				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
 				runtime.agentId,

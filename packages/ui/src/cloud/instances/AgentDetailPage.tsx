@@ -2,11 +2,11 @@
  * Agent detail page (`/cloud/agents/:id`).
  */
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
 import {
+  AGENT_PRICING,
   formatHourlyRate,
   formatMonthlyEstimate,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import {
   Badge,
   DashboardErrorState,
@@ -123,8 +123,8 @@ export default function AgentDetailPage() {
           to="/cloud/agents"
           className="group flex min-h-touch items-center gap-2 text-sm text-muted-strong hover:text-txt-strong transition-colors"
         >
-          <div className="flex items-center justify-center w-7 h-7 bg-card group-hover:bg-bg-hover transition-colors">
-            <ArrowLeft className="h-3.5 w-3.5" />
+          <div className="flex items-center justify-center size-7 bg-card group-hover:bg-bg-hover transition-colors">
+            <ArrowLeft className="size-3.5" />
           </div>
           <span>
             {t("cloud.agents.detail.backToInstances", {
@@ -140,8 +140,8 @@ export default function AgentDetailPage() {
 
       <div className="space-y-4">
         <div className="flex items-start gap-4">
-          <div className="flex items-center justify-center w-12 h-12 border border-accent/25 bg-accent-subtle shrink-0">
-            <Cloud className="h-6 w-6 text-accent" />
+          <div className="flex items-center justify-center size-12 border border-accent/25 bg-accent-subtle shrink-0">
+            <Cloud className="size-6 text-accent" />
           </div>
           <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -205,7 +205,7 @@ export default function AgentDetailPage() {
       <div className="space-y-6">
         {agent.errorMessage && (
           <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
-            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" />
             <div className="min-w-0 space-y-0.5">
               <p className="text-sm font-medium text-destructive">
                 {t("cloud.agents.detail.agentNeedsAttention", {

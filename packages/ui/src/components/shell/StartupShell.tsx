@@ -136,7 +136,7 @@ function StartupLoading(props: { phase: string; status: string }) {
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <BrandMark className="h-12 w-12" />
+          <BrandMark className="size-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
             {brandName()}
           </span>

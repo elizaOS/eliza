@@ -235,7 +235,17 @@ export async function globHandler(
     (entry): entry is { filePath: string; mtimeMs: number } =>
       entry !== undefined,
   );
-  filtered.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  filtered.sort((a, b) => {
+    const bMtime =
+      typeof b.mtimeMs === "number" && Number.isFinite(b.mtimeMs)
+        ? b.mtimeMs
+        : 0;
+    const aMtime =
+      typeof a.mtimeMs === "number" && Number.isFinite(a.mtimeMs)
+        ? a.mtimeMs
+        : 0;
+    return bMtime - aMtime || a.filePath.localeCompare(b.filePath);
+  });
 
   const files = filtered.map((entry) => entry.filePath);
 

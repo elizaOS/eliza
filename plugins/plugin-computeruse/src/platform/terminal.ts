@@ -5,7 +5,7 @@
  */
 import { execFile } from "node:child_process";
 import os from "node:os";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { TerminalActionResult } from "../types.js";
 import { checkDangerousCommand, sanitizeChildEnv } from "./security.js";
 
@@ -203,7 +203,7 @@ export function typeTerminal(
     success: true,
     sessionId,
     session_id: sessionId,
-    message: `queued terminal text: ${text.slice(0, 50)}`,
+    message: `queued terminal text: ${truncateWellFormed(toWellFormedUnicode(text), 50)}`,
   };
 }
 

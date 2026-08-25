@@ -315,7 +315,7 @@ function WalletKeysSectionBody() {
             onClick={() => setShowAdd((v) => !v)}
             data-testid="wallet-keys-add-toggle"
           >
-            <Plus className="h-3.5 w-3.5" aria-hidden />
+            <Plus className="size-3.5" aria-hidden />
             {t("walletkeys.addKey", { defaultValue: "Add wallet key" })}
           </Button>
         }
@@ -384,7 +384,7 @@ function WalletKeysSectionBody() {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
                   {t("walletkeys.saving", { defaultValue: "Saving…" })}
                 </>
               ) : (
@@ -397,7 +397,7 @@ function WalletKeysSectionBody() {
 
       {entries === null ? (
         <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />{" "}
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />{" "}
           {t("walletkeys.loading", { defaultValue: "Loading…" })}
         </div>
       ) : entries.length === 0 ? (
@@ -494,7 +494,7 @@ function WalletKeyRow({
             {...revealAgentProps}
             variant="ghost"
             size="sm"
-            className="h-11 w-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-txt-strong"
+            className="size-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-txt-strong"
             aria-label={
               revealed
                 ? t("walletkeys.hide", {
@@ -511,11 +511,11 @@ function WalletKeyRow({
             data-testid={`wallet-keys-reveal-${entryKey}`}
           >
             {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <Loader2 className="size-4 animate-spin" aria-hidden />
             ) : revealed ? (
-              <EyeOff className="h-4 w-4" aria-hidden />
+              <EyeOff className="size-4" aria-hidden />
             ) : (
-              <Eye className="h-4 w-4" aria-hidden />
+              <Eye className="size-4" aria-hidden />
             )}
           </Button>
           <Button
@@ -523,7 +523,7 @@ function WalletKeyRow({
             {...deleteAgentProps}
             variant="ghost"
             size="sm"
-            className="h-11 w-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-danger"
+            className="size-11 shrink-0 rounded-md p-0 text-muted hover:bg-surface hover:text-danger"
             aria-label={t("walletkeys.delete", {
               key: entryKey,
               defaultValue: "Delete {{key}}",
@@ -531,7 +531,7 @@ function WalletKeyRow({
             onClick={onDelete}
             data-testid={`wallet-keys-delete-${entryKey}`}
           >
-            <Trash2 className="h-4 w-4" aria-hidden />
+            <Trash2 className="size-4" aria-hidden />
           </Button>
         </span>
       }

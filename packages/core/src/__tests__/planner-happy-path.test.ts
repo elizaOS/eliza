@@ -539,6 +539,127 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime)).toHaveLength(2);
 	});
 
+	it("carries an exhausted verification repair through production Content", async () => {
+		const writeAction = makeMockAction({
+			name: "WRITE",
+			contexts: ["code", "files"],
+			parameters: [
+				{
+					name: "file_path",
+					description: "File path",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "content",
+					description: "File content",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({ success: true, text: "wrote config.go" }),
+		});
+		const shellAction = makeMockAction({
+			name: "SHELL",
+			contexts: ["code", "terminal"],
+			parameters: [
+				{
+					name: "command",
+					description: "Command to execute",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler: async () => ({
+				success: false,
+				text: "command_failed: command exited with code 1",
+				data: {
+					command: "bun run typecheck",
+					exit_code: 1,
+					output: "src/config.ts:41:7 TS2322",
+					signal: null,
+				},
+			}),
+		});
+		const terminalReply = {
+			expectModelType: ModelType.ACTION_PLANNER,
+			body: {
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-unverified",
+						name: "REPLY",
+						args: { text: "Implemented the change." },
+					},
+				],
+			},
+		};
+		const runtime = makeRuntime({
+			actions: [writeAction, shellAction],
+			owner: true,
+			responses: [
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								args: { file_path: "config.go", content: "package config" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "typecheck-1",
+								name: "SHELL",
+								args: { command: "bun run typecheck" },
+							},
+						],
+					},
+				},
+				terminalReply,
+				terminalReply,
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change config.go"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			codingMode: true,
+			plannerLoopConfig: { maxTerminalOnlyContinuations: 1 },
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind !== "planned_reply") throw new Error("expected reply");
+		const terminalFailure = {
+			kind: "coding_verification_failed",
+			code: "CODING_VERIFICATION_REPAIR_EXHAUSTED",
+			transient: false,
+			message: expect.stringContaining("coding task is incomplete"),
+		};
+		expect(result.result.responseContent).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+			elizaSyntheticFailure: true,
+			transient: false,
+		});
+		expect(result.result.responseMessages.at(-1)?.content).toMatchObject({
+			failureKind: "coding_verification_failed",
+			terminalFailure,
+		});
+		expect(result.result.terminalFailure).toMatchObject(terminalFailure);
+		expect(getCalls(runtime)).toHaveLength(4);
+	});
+
 	it("preserves an unverified-mutation failure when callback delivery suppresses response content", async () => {
 		const failureMessage =
 			"I changed files but could not complete the required command verification. The coding task is incomplete.";

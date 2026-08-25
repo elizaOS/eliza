@@ -3,11 +3,12 @@
  *
  * Runs entirely on Cloudflare Workers via Cerebras (ultra-fast inference).
  * Converses with the user while observing an existing Dedicated container.
- * Conversation history is stored in Redis, keyed per user, capped at 20
- * messages (10 turns), TTL 7 days.
+ * Conversation history is stored in Redis, keyed per user, with a seven-day
+ * TTL. Every retained turn is passed to the model unchanged.
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
+import { assertModelOutputComplete } from "@elizaos/core";
 import { generateText } from "ai";
 import {
   type AgentSandboxStatus,
@@ -220,12 +221,17 @@ export async function provisioningAgentChat(
     const cerebras = getCerebrasClient();
     const generationInput = buildProvisioningChatGenerationInput(containerStatus, updatedHistory);
 
-    const { text } = await generateText({
+    const result = await generateText({
       model: cerebras.chat(CEREBRAS_MODEL),
       ...generationInput,
     });
+    assertModelOutputComplete({
+      finishReason: result.finishReason,
+      provider: "cerebras",
+      model: CEREBRAS_MODEL,
+    });
 
-    reply = text;
+    reply = result.text;
   } catch (err) {
     // error-policy:J4 the chat returns a visible retry response when inference is unavailable.
     logger.error("[ProvisioningAgentChat] generateText failed", {

@@ -1595,7 +1595,7 @@ function InboxChatPanel({
           </div>
         </div>
         {activeInboxChat.source ? (
-          <ChatSourceIcon source={activeInboxChat.source} className="h-4 w-4" />
+          <ChatSourceIcon source={activeInboxChat.source} className="size-4" />
         ) : activeInboxChat.avatarUrl ? (
           <img
             src={activeInboxChat.avatarUrl}
@@ -1603,7 +1603,7 @@ function InboxChatPanel({
               defaultValue: "{{title}} avatar",
               title: activeInboxChat.title,
             })}
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover "
+            className="size-8 shrink-0 rounded-full border border-border/35 object-cover"
           />
         ) : null}
       </div>

@@ -89,13 +89,13 @@ describe("ModelConfigSchema numeric settings", () => {
 
 		const defaults = ModelConfigSchema.parse(baseConfig);
 		expect(defaults).toMatchObject({
-			MAX_OUTPUT_TOKENS: 4096,
 			EMBEDDING_DIMENSION: 1536,
 			MAX_CONCURRENT_REQUESTS: 150,
 			REQUESTS_PER_MINUTE: 300,
 			TOKENS_PER_MINUTE: 750000,
 			BATCH_DELAY_MS: 100,
 		});
+		expect(defaults.MAX_OUTPUT_TOKENS).toBeUndefined();
 	});
 
 	it("allows only nonnegative safe integers for BATCH_DELAY_MS", () => {
@@ -251,14 +251,15 @@ describe("validateModelConfig numeric boundary", () => {
 	it("preserves the real configuration-boundary defaults", () => {
 		vi.stubEnv("EMBEDDING_PROVIDER", "local");
 
-		expect(validateModelConfig()).toMatchObject({
+		const config = validateModelConfig();
+		expect(config).toMatchObject({
 			MAX_INPUT_TOKENS: 4000,
-			MAX_OUTPUT_TOKENS: 4096,
 			EMBEDDING_DIMENSION: 384,
 			MAX_CONCURRENT_REQUESTS: 100,
 			REQUESTS_PER_MINUTE: 500,
 			TOKENS_PER_MINUTE: 1_000_000,
 			BATCH_DELAY_MS: 100,
 		});
+		expect(config.MAX_OUTPUT_TOKENS).toBeUndefined();
 	});
 });

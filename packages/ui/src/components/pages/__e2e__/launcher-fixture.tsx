@@ -91,8 +91,8 @@ function Harness(): React.JSX.Element {
       data-testid="launcher-fixture-root"
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100%",
+        height: "100dvh",
         overflow: "hidden",
         background: "#0a0d16",
       }}

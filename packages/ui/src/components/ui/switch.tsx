@@ -72,7 +72,7 @@ const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none block h-5 w-5 rounded-sm bg-card transition-transform data-[state=checked]:translate-x-5 data-[state=checked]:bg-card data-[state=unchecked]:translate-x-0 data-[state=unchecked]:bg-txt"
+          className="pointer-events-none block size-5 rounded-sm bg-card transition-transform data-[state=checked]:translate-x-5 data-[state=checked]:bg-card data-[state=unchecked]:translate-x-0 data-[state=unchecked]:bg-txt"
           data-state={state}
         />
         {children}

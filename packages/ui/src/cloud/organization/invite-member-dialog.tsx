@@ -119,17 +119,17 @@ export function InviteMemberDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-popover border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
+      <DialogContent className="bg-bg border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         {inviteLink ? (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <Link2 className="h-5 w-5 text-muted" />
+                <Link2 className="size-5 text-muted" />
                 Invitation Created
               </DialogTitle>
               <DialogDescription className="text-muted font-mono text-xs md:text-sm">
-                The email is on its way — or share this link directly. It
-                expires in 7 days and can be revoked from Pending Invitations.
+                The email is on its way, or share this link directly. It expires
+                in 7 days and can be revoked from Pending Invitations.
                 {connectIntent && (
                   <>
                     {" "}
@@ -149,13 +149,13 @@ export function InviteMemberDialog({
                 type="button"
                 onClick={handleCopyLink}
                 aria-label="Copy invite link"
-                className="p-2 hover:bg-surface transition-colors border border-border flex-shrink-0"
+                className="p-2 hover:bg-surface transition-colors border border-border shrink-0"
               >
-                <Copy className="h-4 w-4 text-muted" />
+                <Copy className="size-4 text-muted" />
               </Button>
             </div>
             <p className="text-xs font-mono text-muted">
-              The link contains no secrets — joining still requires signing in
+              The link contains no secrets. Joining still requires signing in
               with the invited email.
             </p>
 
@@ -174,7 +174,7 @@ export function InviteMemberDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt-strong font-mono">
-                <Mail className="h-5 w-5 text-muted" />
+                <Mail className="size-5 text-muted" />
                 Invite Team Member
               </DialogTitle>
               <DialogDescription className="text-muted font-mono text-xs md:text-sm">
@@ -191,7 +191,7 @@ export function InviteMemberDialog({
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="bg-danger/10 border border-danger/40 p-3 flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-danger flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="size-4 text-danger shrink-0 mt-0.5" />
                   <p className="text-xs md:text-sm font-mono text-danger">
                     {error}
                   </p>
@@ -226,7 +226,7 @@ export function InviteMemberDialog({
                   htmlFor="role"
                   className="flex items-center gap-2 text-txt-strong font-mono text-sm"
                 >
-                  <UserCog className="h-4 w-4 text-muted" />
+                  <UserCog className="size-4 text-muted" />
                   Role
                 </Label>
                 <Select
@@ -240,7 +240,7 @@ export function InviteMemberDialog({
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-popover border-border">
+                  <SelectContent className="bg-bg border-border">
                     <SelectItem value="member">
                       <div className="flex flex-col items-start">
                         <span className="font-mono font-medium text-txt-strong">
@@ -283,12 +283,12 @@ export function InviteMemberDialog({
                 >
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Sending...
+                      <Loader2 className="size-4 animate-spin" />
+                      Sending…
                     </>
                   ) : (
                     <>
-                      <Mail className="h-4 w-4" />
+                      <Mail className="size-4" />
                       Send Invitation
                     </>
                   )}

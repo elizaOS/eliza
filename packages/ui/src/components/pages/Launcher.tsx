@@ -126,7 +126,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
               // chat; the inner visual owns color/glyph. Flat — no border; a
               // subtle glass wash is the icon plate (neutral resting →
               // neutral-with-opacity hover).
-              "h-16 w-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
+              "size-16 overflow-hidden rounded-2xl transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:h-14 [@media(orientation:landscape)_and_(max-height:520px)]:w-14",
               WALLPAPER_GLASS.iconPlate,
               // Hovering the label highlights the same icon plate.
               "group-hover:bg-white/20",
@@ -144,7 +144,7 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
             <span
               data-testid={`launcher-kind-${entry.id}`}
               title={badge.title}
-              className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase leading-none text-neutral-900"
+              className="pointer-events-none absolute -left-1.5 -bottom-1 max-w-[3.75rem] truncate rounded-full bg-white/90 px-1.5 py-0.5 text-2xs font-semibold uppercase leading-none text-neutral-900"
             >
               {badge.label}
             </span>
@@ -228,7 +228,7 @@ export function Launcher({
                   >
                     <div
                       data-launcher-icon=""
-                      className="h-16 w-16 rounded-2xl bg-white/15"
+                      className="size-16 rounded-2xl bg-white/15"
                     />
                     <div className="h-2.5 w-12 rounded-full bg-white/25" />
                   </div>

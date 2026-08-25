@@ -590,12 +590,15 @@ export class InMemoryConnectorAccountStorage
 		return Array.from(this.accounts.values())
 			.filter((account) => !normalized || account.provider === normalized)
 			.map(cloneAccount)
-			.sort(
-				(a, b) =>
+			.sort((a, b) => {
+				const aTime = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+				const bTime = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+				return (
 					a.provider.localeCompare(b.provider) ||
-					a.createdAt - b.createdAt ||
-					a.id.localeCompare(b.id),
-			);
+					aTime - bTime ||
+					a.id.localeCompare(b.id)
+				);
+			});
 	}
 
 	async getAccount(

@@ -307,7 +307,7 @@ export default function SensitiveRequestPage() {
   if (loading) {
     return (
       <div className="theme-cloud flex min-h-[100dvh] items-center justify-center bg-bg p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-muted" />
+        <Loader2 className="size-8 animate-spin text-muted" />
       </div>
     );
   }
@@ -319,14 +319,14 @@ export default function SensitiveRequestPage() {
         className="w-full max-w-[520px] border border-border bg-card p-5"
       >
         <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border bg-bg-elevated">
+          <div className="flex  size-9 shrink-0 items-center justify-center border border-border bg-bg-elevated">
             {effectiveStatus === "success" ||
             effectiveStatus === "fulfilled" ? (
-              <CheckCircle2 className="h-4 w-4 text-status-success" />
+              <CheckCircle2 className="size-4 text-status-success" />
             ) : effectiveStatus === "pending" ? (
-              <LockKeyhole className="h-4 w-4 text-accent" />
+              <LockKeyhole className="size-4 text-accent" />
             ) : (
-              <AlertCircle className="h-4 w-4 text-destructive" />
+              <AlertCircle className="size-4 text-destructive" />
             )}
           </div>
           <div className="min-w-0">
@@ -483,7 +483,7 @@ export default function SensitiveRequestPage() {
               type="submit"
               disabled={submitting || !hasRequiredUploads}
             >
-              {submitting ? "Submitting..." : submitLabel}
+              {submitting ? "Submitting…" : submitLabel}
             </Button>
           </form>
         ) : null}

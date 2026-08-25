@@ -126,8 +126,19 @@ export default scenario({
     text: `Open settings ${subviewCase.expectedSubview}`,
     actionName: "VIEWS",
     options: { ...subviewCase.options, viewType: "gui" },
-    responseIncludesAny: ["Settings"],
     assertTurn: (execution: ScenarioTurnExecution): string | undefined => {
+      // The "Settings" label lives in the VIEWS navigation receipt, which is
+      // internal-visibility and so never reaches `responseText`.
+      const result = (execution.responseBody ?? {}) as {
+        text?: unknown;
+        transcriptVisibility?: unknown;
+      };
+      if (result.transcriptVisibility !== "internal") {
+        return `expected an internal-visibility VIEWS result, saw transcriptVisibility=${JSON.stringify(result.transcriptVisibility)}`;
+      }
+      if (!String(result.text ?? "").includes("Settings")) {
+        return `expected the navigation receipt to name Settings, saw ${JSON.stringify(result.text)}`;
+      }
       const action = execution.actionsCalled.find(
         (candidate) => candidate.actionName === "VIEWS",
       );

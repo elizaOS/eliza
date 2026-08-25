@@ -43,12 +43,9 @@ export function CodingAgentControlChip() {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="mb-2 flex items-center justify-between gap-2 px-1 py-1">
+    <div className="mb-2 flex items-center justify-between gap-2 p-1">
       <div className="flex min-w-0 items-center gap-1.5 text-xs-tight text-muted">
-        <Terminal
-          className="h-3.5 w-3.5 shrink-0 text-muted-strong"
-          aria-hidden
-        />
+        <Terminal className="size-3.5 shrink-0 text-muted-strong" aria-hidden />
         <span className="truncate">
           {t("codingagentcontrolchip.ActiveSessions", {
             defaultValue: "{{count}} active coding session(s)",
@@ -66,7 +63,7 @@ export function CodingAgentControlChip() {
           defaultValue: "Stop all coding agent sessions",
         })}
       >
-        <Square className="h-3 w-3 fill-current" aria-hidden />
+        <Square className="size-3 fill-current" aria-hidden />
         {t("codingagentcontrolchip.StopAll", { defaultValue: "Stop all" })}
       </Button>
     </div>

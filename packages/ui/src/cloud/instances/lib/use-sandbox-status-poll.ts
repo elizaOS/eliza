@@ -8,7 +8,7 @@
  *   (no page reload) and firing a "now running" callback on transitions.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../../lib/api-client";
 import { parseAgentsResponse } from "./data/eliza-agents";
@@ -218,7 +218,7 @@ export function useSandboxListPoll(
     intervalMs?: number;
     onTransitionToRunning?: (agentId: string, agentName: string | null) => void;
     /** Called on every successful poll with the full agent list from the API. */
-    onDataRefresh?: (agents: AgentListItemDto[]) => void;
+    onDataRefresh?: (agents: NormalizedAgentListItemDto[]) => void;
   } = {},
 ) {
   const { intervalMs = 10_000, onTransitionToRunning, onDataRefresh } = options;

@@ -89,7 +89,9 @@ export default scenario({
       kind: "message",
       name: "banter-toph",
       room: "porch",
-      text: "[Toph] as long as it's not horror again i'm in",
+      // Deliberately doesn't say "horror" — turn 3 must recall the genre from
+      // the seeded group memory, not parrot a word a human just used here.
+      text: "[Toph] as long as it's not scary again i'm in",
       assertResponse: (text: string) => {
         if (text && text.length > 80) {
           return `still human-to-human — should stay silent (<=80 chars), got ${text.length}`;
@@ -101,11 +103,17 @@ export default scenario({
       name: "addressed-question",
       room: "porch",
       text: "[Marcus] @agent you keep track of stuff, what did we watch last time? settle this",
-      // Now directly addressed — a concise answer is expected.
-      responseIncludesAny: ["horror"],
+      // Now directly addressed — a concise answer is expected. The "horror"
+      // check lives in assertResponse (not responseIncludesAny): the fact
+      // only exists in the seeded group memory, but keeping the substring
+      // check syntactically distinct from a plain keyword array documents
+      // that a real recall is required, not a rephrase of nearby chat text.
       assertResponse: (text: string) => {
         if (!text || text.trim().length === 0) {
           return "directly addressed — expected a concise answer, got empty response";
+        }
+        if (!/horror/i.test(text)) {
+          return `expected the recalled fact (last month was a horror movie night), got ${JSON.stringify(text)}`;
         }
         if (text.length > 300) {
           return `answer then step back — keep it concise (<=300 chars), got ${text.length}`;

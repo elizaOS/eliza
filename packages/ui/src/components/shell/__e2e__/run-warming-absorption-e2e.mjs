@@ -13,7 +13,8 @@
  *      `Retry-After: 1`), then the real streamed reply.
  *   2. Assert the optimistic bubble stays pending across both barriers with
  *      NO Retry chip and NO error notice, and the first non-warming response
- *      lands as the reply (pre-fix: the turn failed with a Retry chip).
+ *      lands as the reply even when the required history refresh temporarily
+ *      omits its receipt-backed rows (pre-fix: the completed turn vanished).
  *   3. Reload with `?scenario=credits`: assert the 402 renders the terminal
  *      out-of-credits turn with the server's message and no Retry chip.
  *
@@ -47,6 +48,7 @@ const assistantWithText = (p, text) =>
 
 const MESSAGE = "first message to a fresh shared agent";
 const REPLY = "caches warmed while your send stayed pending";
+const OLDER_REPLY = "Earlier shared-agent answer";
 const CREDITS_MESSAGE = "out of credits";
 
 await runBrowserFixtureE2E(
@@ -107,6 +109,10 @@ await runBrowserFixtureE2E(
     assert(
       (await assistantWithText(page, REPLY)) === 1,
       "first non-warming response is the turn's reply",
+    );
+    assert(
+      (await assistantWithText(page, OLDER_REPLY)) === 1,
+      "stale history rows are retained without replacing the completed turn",
     );
     assert(
       (await retryChips(page)) === 0,

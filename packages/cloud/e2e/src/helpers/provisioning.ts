@@ -30,6 +30,7 @@ export interface CreateCloudAgentOptions {
   statefulRuntime?: boolean;
   modelTooLargeForShared?: boolean;
   autoProvision?: boolean;
+  forceCreate?: boolean;
 }
 
 export async function createCloudAgent(
@@ -56,6 +57,9 @@ export async function createCloudAgent(
         : {}),
       ...(options.autoProvision !== undefined
         ? { autoProvision: options.autoProvision }
+        : {}),
+      ...(options.forceCreate !== undefined
+        ? { forceCreate: options.forceCreate }
         : {}),
     }),
   });

@@ -27,6 +27,22 @@ describe("parseYtDlpUploadDate", () => {
     expect(parseYtDlpUploadDate(undefined)).toBeUndefined();
     expect(parseYtDlpUploadDate("")).toBeUndefined();
   });
+
+  it("compact year 10 stays 10, not 1910", () => {
+    const parsed = parseYtDlpUploadDate("00100201");
+    expect(parsed?.getUTCFullYear()).toBe(10);
+    expect(parsed?.getUTCMonth()).toBe(1);
+    expect(parsed?.getUTCDate()).toBe(1);
+    expect(new Date(Date.UTC(10, 1, 1)).getUTCFullYear()).toBe(1910);
+  });
+
+  it("compact year 0 Feb 29 is a real leap day", () => {
+    const parsed = parseYtDlpUploadDate("00000229");
+    expect(parsed?.getUTCFullYear()).toBe(0);
+    expect(parsed?.getUTCMonth()).toBe(1);
+    expect(parsed?.getUTCDate()).toBe(29);
+    expect(parseYtDlpUploadDate("00000230")).toBeUndefined();
+  });
 });
 
 describe("normalizeCaptionNewlines", () => {

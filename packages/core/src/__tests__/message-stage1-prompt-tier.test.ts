@@ -15,6 +15,7 @@ import {
 import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
+	classifyMessageAddress,
 	runV5MessageRuntimeStage1,
 	textContainsAgentName,
 } from "../services/message";
@@ -324,6 +325,30 @@ describe("Stage-1 complete prompt rendering", () => {
 		).toBe(true);
 	});
 
+	it.each([
+		["Eliza, what time is it?", true],
+		["hey Eliza can you help", true],
+		["@Eliza why did that fail", true],
+		["Eliza tell me about the weather", true],
+		["Eliza help me with this", true],
+		["Eliza show me the logs", true],
+		["Eliza summarize that", true],
+		["Eliza run the build", true],
+		["ok Eliza", true],
+		["I think Eliza is great", false],
+		["Eliza was right about that", false],
+		["ask Eliza about it", false],
+	] as const)("classifies textual address %s -> %s", (text, expected) => {
+		const runtime = { character: { name: "Eliza" } } as IAgentRuntime;
+		const message = makeMessage({
+			channelType: String(ChannelType.GROUP),
+			text,
+		});
+		expect(classifyMessageAddress(runtime, message).textualAgentName).toBe(
+			expected,
+		);
+	});
+
 	it("renders the full rule block when channel type is missing (fail-open)", async () => {
 		const { systemContent } = await renderedSystemPrompt(makeMessage());
 		expect(systemContent).toContain(FULL_TEMPLATE_MARKER);
@@ -365,5 +390,67 @@ describe("Stage-1 complete prompt rendering", () => {
 		);
 
 		expect(unaddressed.systemContent).toBe(addressed.systemContent);
+	});
+});
+
+describe("isUnaddressedTextGroupTurn structural edges", () => {
+	it("rejects always-respond sources matched case-insensitively as substrings", () => {
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					source: "Trigger-Prompt",
+				}),
+				false,
+			),
+		).toBe(false);
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					source: "webhook-client_chat-bridge",
+				}),
+				false,
+			),
+		).toBe(false);
+	});
+
+	it("ignores non-true autonomous and sub-agent flags", () => {
+		expect(
+			isUnaddressedTextGroupTurn(
+				makeMessage({
+					channelType: String(ChannelType.GROUP),
+					contentMetadata: { isAutonomous: false, subAgent: false },
+				}),
+				false,
+			),
+		).toBe(true);
+	});
+
+	it("treats array and null content metadata as absent", () => {
+		const base = makeMessage({ channelType: String(ChannelType.GROUP) });
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: { ...base.content, metadata: [] } },
+				false,
+			),
+		).toBe(true);
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: { ...base.content, metadata: null } },
+				false,
+			),
+		).toBe(true);
+	});
+
+	it("classifies a group turn that carries no source field", () => {
+		const base = makeMessage({ channelType: String(ChannelType.GROUP) });
+		const { source: _discardedSource, ...contentWithoutSource } = base.content;
+		expect(
+			isUnaddressedTextGroupTurn(
+				{ ...base, content: contentWithoutSource },
+				false,
+			),
+		).toBe(true);
 	});
 });

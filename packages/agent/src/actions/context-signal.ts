@@ -202,20 +202,14 @@ export async function hasContextSignal(
   state: State | undefined,
   strongTerms: readonly string[],
   weakTerms: readonly string[] = [],
-  contextLimit = Number.MAX_SAFE_INTEGER,
+  /** @deprecated Complete recent context is always inspected. */
+  _contextLimit = Number.MAX_SAFE_INTEGER,
 ): Promise<boolean> {
-  const stateTexts = recentConversationTextsFromState(state);
-  let texts: string[];
-
-  if (stateTexts.length >= contextLimit) {
-    texts = stateTexts;
-  } else {
-    texts = await collectRecentConversationTexts({
-      runtime,
-      message,
-      state,
-    });
-  }
+  let texts = await collectRecentConversationTexts({
+    runtime,
+    message,
+    state,
+  });
 
   texts = [...texts, messageText(message).trim()].filter((t) => t.length > 0);
 

@@ -156,6 +156,7 @@ export async function handleCanonicalScopedAgentStream(
       executionCtx: request.executionCtx,
       agentKind: request.agentKind,
       trustedMessageRole: request.trustedMessageRole,
+      trustedUserUtterance: text,
       channel: request.channel ?? {
         type: ChannelType.DM,
         source: MESSAGE_SOURCE_CLIENT_CHAT,

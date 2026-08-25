@@ -1,5 +1,6 @@
 {
   "name": "@elizaos/gateway-webhook",
+  "private": true,
   "version": "1.0.0",
   "description": "Multi-platform webhook gateway for Eliza Cloud (Telegram, Blooio, Twilio, WhatsApp)",
   "type": "module",

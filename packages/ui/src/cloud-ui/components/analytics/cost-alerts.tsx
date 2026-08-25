@@ -51,7 +51,7 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
     return (
       <div className="rounded-sm border border-white/10 bg-white/[0.04] p-5 text-sm text-white">
         <div className="flex items-start gap-4">
-          <TrendingDown className="h-5 w-5 shrink-0" />
+          <TrendingDown className="size-5 shrink-0" />
           <div className="space-y-2">
             <p className="font-semibold">All good</p>
             <p className="text-sm text-white/70">
@@ -70,9 +70,9 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
   };
 
   const iconMap: Record<"warning" | "error" | "info", ReactNode> = {
-    warning: <AlertTriangle className="h-5 w-5 shrink-0" />,
-    error: <AlertTriangle className="h-5 w-5 shrink-0" />,
-    info: <Info className="h-5 w-5 shrink-0" />,
+    warning: <AlertTriangle className="size-5 shrink-0" />,
+    error: <AlertTriangle className="size-5 shrink-0" />,
+    info: <Info className="size-5 shrink-0" />,
   };
 
   return (

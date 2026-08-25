@@ -52,7 +52,7 @@ function SettingsDialogIcon({ plugin }: { plugin: PluginInfo }) {
       <img
         src={imageSrc}
         alt=""
-        className="w-6 h-6 rounded-sm object-contain"
+        className="size-6 rounded-sm object-contain"
         onError={(event) => {
           (event.currentTarget as HTMLImageElement).style.display = "none";
         }}
@@ -62,7 +62,7 @@ function SettingsDialogIcon({ plugin }: { plugin: PluginInfo }) {
     );
   }
   const IconComponent = icon;
-  return <IconComponent className="w-6 h-6 text-txt" />;
+  return <IconComponent className="size-6  text-txt" />;
 }
 
 export function PluginSettingsDialog({
@@ -321,7 +321,7 @@ export function PluginSettingsDialog({
                 savingLabel
               ) : saveSuccess ? (
                 <>
-                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <CheckCircle2 className="size-3.5" />
                   {t("pluginsview.Saved", {
                     defaultValue: "Saved",
                   })}

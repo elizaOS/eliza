@@ -82,8 +82,18 @@ vi.mock("../../runtime/navigation", () => ({
 }));
 
 vi.mock("../../runtime/image", () => ({
-  default: (props: { src: string; alt: string }) => (
-    <img src={props.src} alt={props.alt} />
+  default: (props: {
+    src: string;
+    alt: string;
+    width?: number;
+    height?: number;
+  }) => (
+    <img
+      src={props.src}
+      alt={props.alt}
+      width={props.width}
+      height={props.height}
+    />
   ),
 }));
 

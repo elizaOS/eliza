@@ -6,12 +6,23 @@
  * and the full-app audit.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { MockAppProvider } from "../../../storybook/mock-providers";
 import { ConnectorCardWidget } from "./connector-card";
 
 const meta = {
   title: "Chat/Widgets/ConnectorCard",
   component: ConnectorCardWidget,
   tags: ["autodocs"],
+  decorators: [
+    // MockAppProvider seeds the useAppSelector store the card reads
+    // `t` / `elizaCloudConnected` / `loadPlugins` from. `elizaCloudConnected`
+    // must be an explicit boolean — the mock Proxy's noop fallback is truthy.
+    (Story) => (
+      <MockAppProvider value={{ elizaCloudConnected: false }}>
+        <Story />
+      </MockAppProvider>
+    ),
+  ],
 } satisfies Meta<typeof ConnectorCardWidget>;
 
 export default meta;

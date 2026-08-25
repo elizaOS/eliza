@@ -6,14 +6,14 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { PdfService } from "../services/pdf";
 
-function buildPdfWithHostileMetadata(text: string): Buffer {
+function buildPdf(text: string, infoDict: string): Buffer {
 	const objects = [
 		"<< /Type /Catalog /Pages 2 0 R >>",
 		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
 		`<< /Length ${text.length + 25} >>\nstream\nBT /F1 12 Tf 72 720 Td (${text}) Tj ET\nendstream`,
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-		"<< /Title 123 /Author (Ada) /CreationDate 0 /ModDate false >>",
+		infoDict,
 	];
 
 	let body = "%PDF-1.4\n";
@@ -33,6 +33,9 @@ function buildPdfWithHostileMetadata(text: string): Buffer {
 	return Buffer.from(body);
 }
 
+const buildPdfWithHostileMetadata = (text: string): Buffer =>
+	buildPdf(text, "<< /Title 123 /Author (Ada) /CreationDate 0 /ModDate false >>");
+
 describe("PdfService real unpdf boundary", () => {
 	it("extracts text while omitting numeric and boolean metadata dates", async () => {
 		const service = new PdfService({} as IAgentRuntime);
@@ -45,5 +48,37 @@ describe("PdfService real unpdf boundary", () => {
 		expect(info.metadata.title).toBeUndefined();
 		expect(info.metadata.creationDate).toBeUndefined();
 		expect(info.metadata.modificationDate).toBeUndefined();
+	});
+
+	it("parses the PDF-spec `D:` creation date that unpdf actually returns", async () => {
+		const service = new PdfService({} as IAgentRuntime);
+		const info = await service.getDocumentInfo(
+			buildPdf("utc date", "<< /CreationDate (D:20240102030405Z) >>")
+		);
+
+		const creationDate = info.metadata.creationDate;
+		expect(creationDate).toBeInstanceOf(Date);
+		expect(creationDate?.getUTCFullYear()).toBe(2024);
+		expect(creationDate?.getUTCMonth()).toBe(0);
+		expect(creationDate?.getUTCDate()).toBe(2);
+		expect(creationDate?.getUTCHours()).toBe(3);
+		expect(creationDate?.getUTCMinutes()).toBe(4);
+		expect(creationDate?.getUTCSeconds()).toBe(5);
+		expect(creationDate?.toISOString()).toBe("2024-01-02T03:04:05.000Z");
+	});
+
+	it("applies the UT offset of an offset-form `D:` date to yield an absolute instant", async () => {
+		const service = new PdfService({} as IAgentRuntime);
+		const info = await service.getDocumentInfo(
+			buildPdf(
+				"offset date",
+				"<< /CreationDate (D:20200610093121-05'00') /ModDate (D:20200610093121+02'30') >>"
+			)
+		);
+
+		// Local 09:31:21 at UTC-05:00 is 14:31:21Z.
+		expect(info.metadata.creationDate?.toISOString()).toBe("2020-06-10T14:31:21.000Z");
+		// Local 09:31:21 at UTC+02:30 is 07:01:21Z.
+		expect(info.metadata.modificationDate?.toISOString()).toBe("2020-06-10T07:01:21.000Z");
 	});
 });

@@ -109,7 +109,7 @@ export function WithdrawDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-txt">
-                <Wallet className="h-5 w-5 text-muted" />
+                <Wallet className="size-5 text-muted" />
                 Withdraw Earnings
               </DialogTitle>
               <DialogDescription className="text-neutral-400">
@@ -170,7 +170,7 @@ export function WithdrawDialog({
               {/* Validation message */}
               {!isValidAmount && parsedAmount > 0 && (
                 <div className="flex items-center gap-2 text-xs text-red-400">
-                  <AlertCircle className="h-3 w-3" />
+                  <AlertCircle className="size-3" />
                   {parsedAmount < payoutThreshold
                     ? `Minimum withdrawal is $${payoutThreshold.toFixed(2)}`
                     : `Maximum withdrawal is $${withdrawableBalance.toFixed(2)}`}
@@ -191,7 +191,7 @@ export function WithdrawDialog({
                 disabled={!isValidAmount}
                 className="bg-txt hover:bg-txt/90 text-bg disabled:opacity-50"
               >
-                <ArrowRight className="h-4 w-4 mr-2" />
+                <ArrowRight className="size-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
               </Button>
             </DialogFooter>
@@ -200,22 +200,22 @@ export function WithdrawDialog({
 
         {state === "processing" && (
           <div className="py-12 text-center">
-            <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 text-muted animate-spin" />
+            <div className="mx-auto size-16 mb-4 flex items-center justify-center">
+              <Loader2 className="size-8 text-muted animate-spin" />
             </div>
             <h3 className="text-lg font-medium text-txt-strong mb-2">
               Processing Withdrawal
             </h3>
             <p className="text-sm text-neutral-400">
-              This may take a few moments...
+              This may take a few moments…
             </p>
           </div>
         )}
 
         {state === "success" && (
           <div className="py-8 text-center">
-            <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center bg-green-500/10 rounded-full border border-green-500/30">
-              <CheckCircle2 className="h-8 w-8 text-green-400" />
+            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-green-500/10 rounded-full border border-green-500/30">
+              <CheckCircle2 className="size-8 text-green-400" />
             </div>
             <h3 className="text-xl font-semibold text-txt-strong mb-2">
               Withdrawal Complete!
@@ -245,7 +245,7 @@ export function WithdrawDialog({
                 onClick={handleClose}
                 className="w-full bg-txt hover:bg-txt/90 text-bg"
               >
-                Done
+                Close
               </Button>
             </DialogFooter>
           </div>
@@ -253,8 +253,8 @@ export function WithdrawDialog({
 
         {state === "error" && (
           <div className="py-8 text-center">
-            <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center bg-red-500/10 rounded-full border border-red-500/30">
-              <AlertCircle className="h-8 w-8 text-red-400" />
+            <div className="mx-auto size-16 mb-4 flex items-center justify-center bg-red-500/10 rounded-full border border-red-500/30">
+              <AlertCircle className="size-8 text-red-400" />
             </div>
             <h3 className="text-lg font-medium text-txt-strong mb-2">
               Withdrawal Failed

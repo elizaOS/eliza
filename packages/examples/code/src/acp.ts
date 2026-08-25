@@ -44,6 +44,7 @@ import {
 } from "@elizaos/plugin-coding-tools";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import { terminalFailureFromAgentClientError } from "./acp-terminal-failure.js";
 import { AcpActivePromptRegistry } from "./acp-active-prompts.js";
 import {
   type AcpToolCallUpdate,
@@ -378,21 +379,40 @@ const _connection = new AgentSideConnection(
         publish: (update: Parameters<typeof conn.sessionUpdate>[0]) =>
           conn.sessionUpdate(update),
       };
-      const response = await activePrompts.run(promptContext, (abortSignal) =>
-        getAgentClient().sendMessage({
-          room,
-          text,
-          identity: sessionIdentity,
-          source: "acp",
-          codingMode: true,
-          abortSignal,
-        }),
-      );
-      await publishParsedReply(params.sessionId, response, (update) =>
-        conn.sessionUpdate(update),
-      );
-      log("prompt done", { response: response.length });
-      return { stopReason: "end_turn" };
+      try {
+        const response = await activePrompts.run(promptContext, (abortSignal) =>
+          getAgentClient().sendMessage({
+            room,
+            text,
+            identity: sessionIdentity,
+            source: "acp",
+            codingMode: true,
+            abortSignal,
+          }),
+        );
+        await publishParsedReply(params.sessionId, response, (update) =>
+          conn.sessionUpdate(update),
+        );
+        log("prompt done", { response: response.length });
+        return { stopReason: "end_turn" };
+      } catch (error) {
+        // error-policy:J1 The ACP request boundary converts only the runtime's
+        // authoritative failed-turn receipt. Transport and programming faults
+        // still reject the JSON-RPC request normally.
+        const terminalFailure = terminalFailureFromAgentClientError(error);
+        if (!terminalFailure) throw error;
+        log("prompt terminal failure", {
+          kind: terminalFailure.kind,
+          transient: terminalFailure.transient,
+        });
+        return {
+          // ACP's standard StopReason union has no `error` member. The typed
+          // receipt is authoritative and the orchestrator maps it to its
+          // internal error stop reason without emitting an invalid ACP value.
+          stopReason: "end_turn",
+          _meta: { terminalFailure },
+        };
+      }
     },
     async cancel(params: { sessionId?: string }) {
       const sessionId = params?.sessionId;

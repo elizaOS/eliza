@@ -3,7 +3,7 @@ import {
 	__resetLocalizedExamplesProviderForTests,
 	getLocalizedExamplesProvider,
 	registerLocalizedExamplesProvider,
-} from "./localized-examples-provider.ts";
+} from "../localized-examples-provider.ts";
 
 const provider = async () => null;
 

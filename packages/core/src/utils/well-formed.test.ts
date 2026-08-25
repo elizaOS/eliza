@@ -560,7 +560,7 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 		expect(() => deepToWellFormedUnicode(input)).toThrowError(
 			expect.objectContaining({
 				code: "WELL_FORMED_UNSAFE_VALUE",
-				context: { operation: "accessor" },
+				context: { operation: "accessor", propertyName: "hostile" },
 			}),
 		);
 		expect(getterCalls).toBe(0);

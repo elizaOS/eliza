@@ -456,6 +456,18 @@ export interface EntityEventData {
 }
 
 /**
+ * Sort key for comparators over numbers that may be corrupted upstream. `NaN`
+ * (an unparseable timestamp, a missing metric) collapses to 0 so a comparator
+ * never returns `NaN` and leaves the array in an arbitrary engine-defined
+ * order; `Infinity` is preserved because callers use it as a real "never
+ * contacted" extreme.
+ */
+export function safeSortNumber(value: unknown): number {
+	const numeric = typeof value === "number" ? value : Number(value);
+	return Number.isNaN(numeric) ? 0 : numeric;
+}
+
+/**
  * Calculate relationship strength based on interaction patterns
  */
 export function calculateRelationshipStrength({
@@ -1104,7 +1116,12 @@ export class RelationshipsService extends Service {
 					message.entityId === sourceEntityId ||
 					message.entityId === targetEntityId,
 			)
-			.sort((a, b) => Number(a.createdAt ?? 0) - Number(b.createdAt ?? 0));
+			.sort((a, b) => {
+				const aSafe = safeSortNumber(a.createdAt ?? 0);
+				const bSafe = safeSortNumber(b.createdAt ?? 0);
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			});
 
 		if (!relationship && interactions.length === 0) {
 			return null;
@@ -1282,17 +1299,24 @@ export class RelationshipsService extends Service {
 		}
 
 		// Sort by relevance
-		insights.strongestRelationships.sort(
-			(a, b) => b.analytics.strength - a.analytics.strength,
-		);
-		insights.needsAttention.sort(
-			(a, b) => b.daysSinceContact - a.daysSinceContact,
-		);
-		insights.recentInteractions.sort(
-			(a, b) =>
-				new Date(b.lastInteraction).getTime() -
-				new Date(a.lastInteraction).getTime(),
-		);
+		insights.strongestRelationships.sort((a, b) => {
+			const aSafe = safeSortNumber(a.analytics.strength);
+			const bSafe = safeSortNumber(b.analytics.strength);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
+		insights.needsAttention.sort((a, b) => {
+			const aSafe = safeSortNumber(a.daysSinceContact);
+			const bSafe = safeSortNumber(b.daysSinceContact);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
+		insights.recentInteractions.sort((a, b) => {
+			const aSafe = safeSortNumber(new Date(a.lastInteraction).getTime());
+			const bSafe = safeSortNumber(new Date(b.lastInteraction).getTime());
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.entity.id ?? "").localeCompare(String(b.entity.id ?? ""));
+		});
 
 		return insights;
 	}
@@ -1488,10 +1512,12 @@ export class RelationshipsService extends Service {
 			occurredAt,
 		};
 
-		const appended = [...contact.interactions, interaction].sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
-		);
+		const appended = [...contact.interactions, interaction].sort((a, b) => {
+			const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+			const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+			if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+			return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+		});
 		const latestAt = appended[appended.length - 1]?.occurredAt;
 		const currentLatest = contact.lastInteractionAt
 			? new Date(contact.lastInteractionAt).getTime()
@@ -1571,8 +1597,12 @@ export class RelationshipsService extends Service {
 			interactionMap.set(i.id, i);
 		}
 		const mergedInteractions = Array.from(interactionMap.values()).sort(
-			(a, b) =>
-				new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+			(a, b) => {
+				const aSafe = safeSortNumber(new Date(a.occurredAt).getTime());
+				const bSafe = safeSortNumber(new Date(b.occurredAt).getTime());
+				if (aSafe !== bSafe) return aSafe < bSafe ? -1 : 1;
+				return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+			},
 		);
 		const mergedCategories = Array.from(
 			new Set([...primary.categories, ...secondary.categories]),
@@ -1730,7 +1760,14 @@ export class RelationshipsService extends Service {
 			}
 		}
 
-		results.sort((a, b) => b.daysSinceInteraction - a.daysSinceInteraction);
+		results.sort((a, b) => {
+			const aSafe = safeSortNumber(a.daysSinceInteraction);
+			const bSafe = safeSortNumber(b.daysSinceInteraction);
+			if (aSafe !== bSafe) return bSafe > aSafe ? 1 : -1;
+			return String(a.contact.entityId).localeCompare(
+				String(b.contact.entityId),
+			);
+		});
 		return results;
 	}
 

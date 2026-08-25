@@ -119,6 +119,57 @@ describe("token-tree-codec", () => {
       /not connected to root/,
     );
   });
+
+  it("rejects descriptors with non-finite or invalid tokenIds during serialization", () => {
+    expect(() =>
+      serializeTokenTree({
+        path: "test",
+        leaves: [{ name: "leaf-nan", tokens: [NaN as unknown as number] }],
+      }),
+    ).toThrow(/invalid tokenId/);
+
+    expect(() =>
+      serializeTokenTree({
+        path: "test",
+        leaves: [
+          {
+            name: "leaf-inf",
+            tokens: [Number.POSITIVE_INFINITY as unknown as number],
+          },
+        ],
+      }),
+    ).toThrow(/invalid tokenId/);
+
+    expect(() =>
+      serializeTokenTree({
+        path: "test",
+        leaves: [{ name: "leaf-neg", tokens: [-5] }],
+      }),
+    ).toThrow(/invalid tokenId/);
+
+    expect(() =>
+      serializeTokenTree({
+        path: "test",
+        leaves: [{ name: "leaf-float", tokens: [3.14] }],
+      }),
+    ).toThrow(/invalid tokenId/);
+  });
+
+  it("serializes and deserializes descriptors with valid tokenIds and multiple branches", () => {
+    const input = {
+      path: "schema.field",
+      leaves: [
+        { name: "zero", tokens: [0, 10, 20] },
+        { name: "high", tokens: [0, 10, 30] },
+        { name: "other", tokens: [50000, 100] },
+      ],
+    };
+    const serialized = serializeTokenTree(input);
+    const deserialized = deserializeTokenTree(serialized);
+    expect(deserialized.path).toBe("schema.field");
+    expect(deserialized.leaves.length).toBe(3);
+    expect(leavesAsSets(deserialized)).toEqual(leavesAsSets(input));
+  });
 });
 
 /** Hostile RTKT v1 buffer: node i children = i+1..n-1. */

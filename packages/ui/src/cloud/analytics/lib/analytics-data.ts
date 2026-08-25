@@ -18,7 +18,7 @@ import type {
   AnalyticsTimeRange,
   EnhancedAnalyticsDataDto,
   ProjectionsDataDto,
-} from "@elizaos/cloud-shared/types";
+} from "@elizaos/cloud-sdk";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../lib/api-client";
 import {

@@ -444,7 +444,17 @@ export class RaydiumService extends Service {
       }
 
       // Sort by expected return (highest first)
-      return paths.sort((a, b) => b.expectedReturn - a.expectedReturn);
+      return paths.sort((a, b) => {
+        const bReturn =
+          typeof b.expectedReturn === "number" && Number.isFinite(b.expectedReturn)
+            ? b.expectedReturn
+            : 0;
+        const aReturn =
+          typeof a.expectedReturn === "number" && Number.isFinite(a.expectedReturn)
+            ? a.expectedReturn
+            : 0;
+        return bReturn - aReturn || a.path.join("-").localeCompare(b.path.join("-"));
+      });
     } catch (error) {
       logger.error(`Failed to find arbitrage paths: ${formatUnknownError(error)}`);
       throw error;

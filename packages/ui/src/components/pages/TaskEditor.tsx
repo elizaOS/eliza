@@ -279,7 +279,7 @@ export function TaskEditor({
           <ScheduleRadio
             id="task-sched-once"
             label={t("taskeditor.scheduleOnce", { defaultValue: "Once" })}
-            icon={<Zap className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Zap className="size-3.5" aria-hidden />}
             checked={scheduleKind === "once"}
             onSelect={() => setScheduleKind("once")}
           />
@@ -288,14 +288,14 @@ export function TaskEditor({
             label={t("taskeditor.scheduleRecurring", {
               defaultValue: "Recurring",
             })}
-            icon={<Clock3 className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Clock3 className="size-3.5" aria-hidden />}
             checked={scheduleKind === "recurring"}
             onSelect={() => setScheduleKind("recurring")}
           />
           <ScheduleRadio
             id="task-sched-event"
             label={t("taskeditor.scheduleEvent", { defaultValue: "On event" })}
-            icon={<Calendar className="h-3.5 w-3.5" aria-hidden />}
+            icon={<Calendar className="size-3.5" aria-hidden />}
             checked={scheduleKind === "event"}
             onSelect={() => setScheduleKind("event")}
             disabled={availableEvents.length === 0}
@@ -376,7 +376,7 @@ export function TaskEditor({
           data-testid="task-editor-save"
           {...saveButton.agentProps}
         >
-          {busy ? <Spinner className="mr-2 h-3.5 w-3.5" /> : null}
+          {busy ? <Spinner className="mr-2 size-3.5" /> : null}
           {isEditing
             ? t("taskeditor.saveTask", {
                 defaultValue: "Save prompt automation",

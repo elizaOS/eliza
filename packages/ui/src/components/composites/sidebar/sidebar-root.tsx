@@ -104,7 +104,7 @@ const sidebarFooterVariants = cva(
 const sidebarControlButtonClassName =
   // Borderless toggle (#10710): the card wash alone keeps it visible over
   // page content; hover expresses through text color.
-  "h-11 w-11 rounded-sm bg-card text-muted-strong transition-colors duration-200 hover:text-txt active:scale-95";
+  "size-11 rounded-sm bg-card text-muted-strong transition-colors duration-200 hover:text-txt active:scale-95";
 
 const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
@@ -695,7 +695,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
               aria-label={collapseButtonAriaLabel}
               onClick={handleCollapse}
             >
-              <PanelLeftClose className="h-4 w-4" />
+              <PanelLeftClose className="size-4" />
             </Button>
           </div>
         ) : null}
@@ -843,13 +843,13 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             size="icon-sm"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-2 left-2 z-40 h-6 w-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt",
+              "fixed bottom-2 left-2 z-40 size-6 shrink-0 rounded-sm bg-transparent p-0 text-muted transition-colors hover:text-txt",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}
             onClick={handleExpand}
           >
-            <PanelLeftOpen className="h-3.5 w-3.5" aria-hidden />
+            <PanelLeftOpen className="size-3.5" aria-hidden />
           </Button>
         ) : null}
         <React.Fragment key={renderedContentIdentity}>
@@ -865,13 +865,13 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
                 <Button
                   variant="surface"
                   size="icon"
-                  className="h-11 w-11 min-h-touch min-w-touch rounded-sm"
+                  className="size-11 min-h-touch min-w-touch rounded-sm"
                   onClick={onMobileClose}
                   aria-label={mobileCloseLabel}
                   title={mobileCloseLabel}
                   data-testid="conversations-mobile-close"
                 >
-                  <X className="h-4 w-4" aria-hidden />
+                  <X className="size-4" aria-hidden />
                 </Button>
               ) : null}
             </div>

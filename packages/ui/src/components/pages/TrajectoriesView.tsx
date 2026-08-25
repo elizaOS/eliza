@@ -499,11 +499,11 @@ export function TrajectoriesView({
                       variant="outline"
                       size="icon"
                       type="button"
-                      className="h-7 w-7 rounded-full"
+                      className="size-7 rounded-full"
                       disabled={exporting || trajectories.length === 0}
                       title={t("common.export")}
                     >
-                      <Download className="h-3 w-3" />
+                      <Download className="size-3" />
                     </AgentToolbarButton>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -558,7 +558,7 @@ export function TrajectoriesView({
                   confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
                   cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
                   disabled={deleteDisabled}
-                  triggerLabel={<Trash2 className="h-3 w-3" />}
+                  triggerLabel={<Trash2 className="size-3" />}
                   triggerTitle={t("trajectoriesview.DeleteCurrent", {
                     defaultValue: "Delete current",
                   })}
@@ -586,7 +586,7 @@ export function TrajectoriesView({
                   confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
                   cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
                   disabled={clearAllDisabled}
-                  triggerLabel={<XCircle className="h-3 w-3" />}
+                  triggerLabel={<XCircle className="size-3" />}
                   triggerTitle={t("trajectoriesview.ClearAll", {
                     defaultValue: "Clear all",
                   })}
@@ -703,7 +703,7 @@ export function TrajectoriesView({
         ) : !loading && trajectories.length === 0 ? (
           <PagePanel.Empty
             className="flex-1"
-            icon={<Route className="h-6 w-6" aria-hidden />}
+            icon={<Route className="size-6" aria-hidden />}
             title={
               hasActiveFilters
                 ? t("trajectoriesview.NoTrajectoriesMatchingFilters")

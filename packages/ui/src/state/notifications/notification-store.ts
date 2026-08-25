@@ -539,11 +539,30 @@ function onStewardSessionChange(event: Event): void {
   client.rotateConnection();
 }
 
+/**
+ * Orders notifications newest-first with a deterministic tiebreak.
+ *
+ * A non-finite `createdAt` (NaN from a corrupt persisted record, or an
+ * Infinity) would make the raw subtraction return NaN and leave the engine
+ * with an inconsistent comparator, so it is coerced to 0 — the oldest
+ * position. Equal timestamps fall back to the id so hydration and rollback
+ * produce a stable order instead of an engine-dependent one.
+ */
+export function compareNotificationsByRecency(
+  a: { id: string; createdAt: number },
+  b: { id: string; createdAt: number },
+): number {
+  const aSafe = Number.isFinite(a.createdAt) ? a.createdAt : 0;
+  const bSafe = Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  if (bSafe !== aSafe) return bSafe - aSafe;
+  return a.id.localeCompare(b.id);
+}
+
 function mergeHydratedNotifications(
   persisted: AgentNotification[],
 ): AgentNotification[] {
   const combined = [...state.notifications, ...persisted].sort(
-    (a, b) => b.createdAt - a.createdAt,
+    compareNotificationsByRecency,
   );
   const seenIds = new Set<string>();
   const seenGroups = new Set<string>();
@@ -890,7 +909,7 @@ function revertMutation(
       const original = snapshot.originals.get(id);
       if (original) restored.push(original);
     }
-    restored.sort((a, b) => b.createdAt - a.createdAt);
+    restored.sort(compareNotificationsByRecency);
     setState({ notifications: restored, unreadCount: countUnread(restored) });
   }
   logger.error({ err }, `[notification-store] ${op} failed; reverted`);

@@ -107,4 +107,67 @@ describe("scenario echo-assertion integrity", () => {
       `responseIncludesAny/All keywords all appear in the scenario input; assert the effect instead. Offenders:\n${echoFiles.join("\n")}`,
     ).toEqual([]);
   });
+
+  // Regression coverage for the convq.* fixes (#24943 follow-up): five
+  // conversation-quality scenarios shipped with responseIncludesAny keywords
+  // that echoed either the checked turn's own text or a seeded memory's
+  // `content.text` verbatim. These pin the two concrete defect shapes so a
+  // future scenario can't reintroduce either one undetected, and pin that the
+  // chosen fix (moving the check into assertResponse) is legitimately outside
+  // this guard's scope rather than an accidental scanner blind spot.
+  it("flags a responseIncludesAny keyword that only echoes the checked turn's own text", () => {
+    const src = `
+      turns: [
+        {
+          text: "ok you can stop bugging me, i called the dentist this morning. appointment is thursday 9am",
+          responseIncludesAny: ["thursday"],
+        },
+      ],
+    `;
+    expect(isEchoSatisfiable(src)).toBe(true);
+  });
+
+  it("flags a responseIncludesAny keyword that only echoes a seeded memory's content.text", () => {
+    const src = `
+      seed: [
+        {
+          type: "memory",
+          content: {
+            text: "Marcus and Dee signed up for an October 10k that is on October 18, starting at the riverfront park.",
+          },
+        },
+      ],
+      turns: [
+        {
+          text: "[Dee] @agent what date is the 10k again? and where does it start",
+          responseIncludesAny: ["october 18"],
+        },
+      ],
+    `;
+    expect(isEchoSatisfiable(src)).toBe(true);
+  });
+
+  it("does not flag the same seeded fact when checked via assertResponse instead of responseIncludesAny", () => {
+    const src = `
+      seed: [
+        {
+          type: "memory",
+          content: {
+            text: "Marcus and Dee signed up for an October 10k that is on October 18, starting at the riverfront park.",
+          },
+        },
+      ],
+      turns: [
+        {
+          text: "[Dee] @agent what date is the 10k again? and where does it start",
+          assertResponse: (text: string) => {
+            if (!/oct(ober)? 18/i.test(text)) {
+              return "expected the seeded date (October 18)";
+            }
+          },
+        },
+      ],
+    `;
+    expect(isEchoSatisfiable(src)).toBe(false);
+  });
 });

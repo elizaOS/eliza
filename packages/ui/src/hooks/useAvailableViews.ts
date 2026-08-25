@@ -658,8 +658,14 @@ export function useAvailableViews(
         )
         .map((page) => page.id),
     );
+    // Availability gates apply to the in-process fallback registration, not to
+    // a richer network entry that won the web/desktop merge for the same id.
+    // Cloud intentionally has both: its managed console page is unavailable on
+    // a local runtime while plugin-elizacloud's remote account view is valid.
+    const networkEntries = new Set(networkViews);
     const runtimeAvailable = merged.filter(
-      (view) => !unavailableRegistrationIds.has(view.id),
+      (view) =>
+        !unavailableRegistrationIds.has(view.id) || networkEntries.has(view),
     );
     // Native device-OS surfaces (phone, messages, contacts, camera) exist only
     // on the AOSP ElizaOS fork. Each such view declares `nativeOs: true` on its

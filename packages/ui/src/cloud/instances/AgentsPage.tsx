@@ -2,7 +2,7 @@
  * Agents page (`/cloud/agents`) — the hosted agent management table.
  */
 
-import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import type { NormalizedAgentListItemDto } from "@elizaos/cloud-sdk";
 import {
   Badge,
   ContainersSkeleton,
@@ -40,7 +40,7 @@ export default function AgentsPage() {
     );
   }
 
-  const agents: AgentListItemDto[] = agentsQuery.data ?? [];
+  const agents: NormalizedAgentListItemDto[] = agentsQuery.data ?? [];
   // The list response does not expose a canonical/superseded cutover marker.
   // Keep every authoritative row visible: a dedicated target exists before its
   // readiness/import handoff completes, so presence alone cannot retire Shared.

@@ -5,7 +5,7 @@
  * Google connector. Results are capped at `maxResults` (default 12).
  */
 
-import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
+import { parseCanonicalInteger } from "@elizaos/shared";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -32,11 +32,11 @@ app.get("/", async (c) => {
     if (query.length === 0) {
       return c.json({ error: "query is required." }, 400);
     }
-    const hasMaxResults = Boolean(rawMaxResults?.trim());
-    const maxResults = hasMaxResults ? parsePositiveInteger(rawMaxResults) : 12;
-    if (maxResults === undefined) {
+    const parsedMaxResults = parseCanonicalInteger(rawMaxResults, { min: 1 });
+    if (parsedMaxResults === "invalid") {
       return c.json({ error: "maxResults must be a positive integer." }, 400);
     }
+    const maxResults = parsedMaxResults ?? 12;
 
     const result = await fetchManagedGoogleGmailSearch({
       organizationId: user.organization_id,

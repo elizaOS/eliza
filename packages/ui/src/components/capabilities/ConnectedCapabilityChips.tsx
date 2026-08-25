@@ -30,7 +30,7 @@ export function ConnectedCapabilityChips({
     return (
       <p
         data-testid="capability-access-unreported"
-        className="text-[10px] text-muted"
+        className="text-xs text-muted"
       >
         {t("connectoraccount.capabilities.unreported", {
           defaultValue:
@@ -42,10 +42,7 @@ export function ConnectedCapabilityChips({
 
   if (chips.length === 0) {
     return (
-      <p
-        data-testid="capability-access-empty"
-        className="text-[10px] text-muted"
-      >
+      <p data-testid="capability-access-empty" className="text-xs text-muted">
         {t("connectoraccount.capabilities.none", {
           defaultValue: "No capabilities granted to this account.",
         })}
@@ -68,7 +65,7 @@ export function ConnectedCapabilityChips({
             data-state={chip.state}
             title={chip.description}
             className={cn(
-              "inline-flex items-center gap-1 rounded px-1.5 py-px text-[10px] font-medium",
+              "inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs font-medium",
               missing
                 ? "border border-dashed border-border/60 text-muted"
                 : "bg-accent-subtle text-accent-muted",
@@ -84,9 +81,9 @@ export function ConnectedCapabilityChips({
                   defaultValue: `Grant ${chip.label}`,
                   label: chip.label,
                 })}
-                className="inline-flex items-center gap-0.5 rounded px-1 text-[10px] font-semibold text-accent transition-colors hover:text-accent-muted disabled:opacity-50"
+                className="inline-flex items-center gap-0.5 rounded px-1 text-2xs font-semibold text-accent transition-colors hover:text-accent-muted disabled:opacity-50"
               >
-                <Plus className="h-2.5 w-2.5" aria-hidden />
+                <Plus className="size-2.5" aria-hidden />
                 {busy
                   ? t("connectoraccount.capabilities.granting", {
                       defaultValue: "Granting...",

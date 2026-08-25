@@ -1,4 +1,17 @@
 @import "tailwindcss";
+
+/* Tailwind v4 defaults bare `border` utilities to currentColor, which paints
+   near-white text-colored frames on dark surfaces. Restore the themed default
+   so an unqualified border always means the subtle `--border` token. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border, currentColor);
+  }
+}
 /* Wallet-modal vendor styles. steward-wallet-providers.tsx is CSS-import-free
    by design (its dist must stay Node-loadable), so this host CSS entry owns
    them: without these imports the RainbowKit connect modal (EVM no-wallet

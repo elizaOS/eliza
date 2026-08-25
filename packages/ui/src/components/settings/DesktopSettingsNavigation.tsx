@@ -116,7 +116,7 @@ export function DesktopSettingsNavigation({
                       }
                     }}
                     className={cn(
-                      "group flex min-h-11 w-full items-center gap-2.5 rounded-md border border-transparent px-2 py-2 text-left text-sm transition-colors",
+                      "group flex min-h-11 w-full items-center gap-2.5 rounded-md border border-transparent p-2 text-left text-sm transition-colors",
                       "text-muted hover:bg-surface/70 hover:text-txt-strong",
                       isActive &&
                         "bg-accent/10 font-medium text-txt-strong hover:bg-accent/12",

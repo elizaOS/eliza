@@ -38,6 +38,7 @@ import {
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
+  filterMemoryReadByAccessContext,
   type IDatabaseAdapter,
   isDocumentVisibleToRequester,
   type JsonValue,
@@ -364,6 +365,24 @@ function levenshtein(a: string, b: string): number {
 // ────────────────────────────────────────────────────────────────────────────
 // Adapter
 // ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Newest-first `(createdAt DESC, id DESC)` ordering, matching what the SQL
+ * adapters return for the unpaginated memory reads. A non-finite `createdAt`
+ * is normalised to `0` so the comparator never returns `NaN` — a `NaN` result
+ * makes `Array#sort` treat the pair as equal and leave surrounding runs in an
+ * engine-defined order, so one corrupted row silently reorders its neighbours.
+ * Ids break timestamp ties through the same case-insensitive comparison
+ * PostgreSQL applies.
+ */
+function compareStoredMemoriesNewestFirst(a: StoredMemory, b: StoredMemory): number {
+  const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
+  const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
+  if (ta !== tb) return tb - ta;
+  const aId = typeof a.id === "string" ? a.id : "";
+  const bId = typeof b.id === "string" ? b.id : "";
+  return compareMemoryIds(bId, aId);
+}
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -1044,7 +1063,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       throw new Error("getMemories cursor and offset are mutually exclusive");
     }
     const textContains = params.textContains?.trim().toLowerCase();
-    let memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
+    const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (params.entityId && m.entityId !== params.entityId) return false;
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
@@ -1067,9 +1086,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       return true;
     });
+    let readableMemories = memories.map(toMemory);
+    if (params.accessContext) {
+      readableMemories = filterMemoryReadByAccessContext(
+        readableMemories,
+        params.accessContext,
+        this.agentId,
+        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+          ? "room"
+          : "private"
+      );
+    }
 
     const direction = params.orderDirection ?? "desc";
-    memories.sort((a, b) => {
+    readableMemories.sort((a, b) => {
       const ta = typeof a.createdAt === "number" && Number.isFinite(a.createdAt) ? a.createdAt : 0;
       const tb = typeof b.createdAt === "number" && Number.isFinite(b.createdAt) ? b.createdAt : 0;
       if (ta !== tb) return direction === "asc" ? ta - tb : tb - ta;
@@ -1080,7 +1110,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     if (params.cursor) {
       const cursor = params.cursor;
-      memories = memories.filter((memory) => {
+      readableMemories = readableMemories.filter((memory) => {
         const createdAt = typeof memory.createdAt === "number" ? memory.createdAt : 0;
         const id = typeof memory.id === "string" ? memory.id : "";
         if (createdAt !== cursor.createdAt) {
@@ -1093,10 +1123,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? params.count;
-    if (offset > 0) memories = memories.slice(offset);
-    if (limit !== undefined) memories = memories.slice(0, limit);
+    if (offset > 0) readableMemories = readableMemories.slice(offset);
+    if (limit !== undefined) readableMemories = readableMemories.slice(0, limit);
 
-    return memories.map(toMemory);
+    return readableMemories;
   }
 
   async getMemoriesByRoomIds(params: {
@@ -1126,11 +1156,22 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       }
       return true;
     });
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
+    let readableMemories = memories.map(toMemory);
+    if (params.accessContext) {
+      readableMemories = filterMemoryReadByAccessContext(
+        readableMemories,
+        params.accessContext,
+        this.agentId,
+        params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+          ? "room"
+          : "private"
+      );
+    }
     const offset = typeof params.offset === "number" ? params.offset : 0;
-    let sliced = offset > 0 ? memories.slice(offset) : memories;
+    let sliced = offset > 0 ? readableMemories.slice(offset) : readableMemories;
     if (params.limit !== undefined) sliced = sliced.slice(0, params.limit);
-    return sliced.map(toMemory);
+    return sliced;
   }
 
   async searchMessages(params: {
@@ -1152,7 +1193,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     );
     // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
     // adapters' created_at range conditions.
-    const candidates = stored
+    let candidates = stored
       .map(toMemory)
       .filter((memory) =>
         withinCreatedAtWindow(
@@ -1161,6 +1202,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           params.until
         )
       );
+    if (params.accessContext) {
+      candidates = filterMemoryReadByAccessContext(
+        candidates,
+        params.accessContext,
+        this.agentId,
+        "room"
+      );
+    }
     const ranked = rankMessageSearch(candidates, params.query);
     const offset = typeof params.offset === "number" ? params.offset : 0;
     const limit = params.limit ?? 20;
@@ -1217,6 +1266,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     match_threshold?: number;
     count?: number;
     limit?: number;
+    offset?: number;
     unique?: boolean;
     query?: string;
     roomId?: UUID;
@@ -1227,6 +1277,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.withDocumentMutationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit ?? 10;
+      const offset = params.offset ?? 0;
 
       // Scope eligibility must be applied BEFORE the top-K cut so the result is
       // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
@@ -1251,19 +1302,29 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           (!params.entityId || memory.entityId === params.entityId) &&
           (!params.unique || !!memory.unique)
       );
+      const readableMemories = params.accessContext
+        ? filterMemoryReadByAccessContext(
+            eligibleMemories.map(toMemory),
+            params.accessContext,
+            this.agentId,
+            params.tableName === "messages" && params.accessContext.authorizedRoomIds !== undefined
+              ? "room"
+              : "private"
+          )
+        : eligibleMemories.map(toMemory);
       const memoriesById = new Map(
-        eligibleMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
+        readableMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
       );
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        limit,
+        limit + offset,
         threshold,
         new Set(memoriesById.keys())
       );
 
-      return results.flatMap((result) => {
+      return results.slice(offset).flatMap((result) => {
         const memory = memoriesById.get(result.id);
-        return memory ? [{ ...toMemory(memory), similarity: result.similarity }] : [];
+        return memory ? [{ ...memory, similarity: result.similarity }] : [];
       });
     });
   }
@@ -1397,7 +1458,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
         (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
-    memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    memories.sort(compareStoredMemoriesNewestFirst);
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
     return sliced.map(toMemory);
   }

@@ -5,17 +5,25 @@ import { startFetchServer } from "../fetch-server";
 
 export type StewardMockUserState = "active" | "deactivated" | "deleted";
 
+export interface StewardMockCall {
+  method: "PATCH" | "DELETE";
+  path: string;
+  userId: string;
+}
+
 export interface RunningStewardMock {
   stop(): Promise<void>;
   url: string;
   port: number;
   users: Map<string, StewardMockUserState>;
+  calls: StewardMockCall[];
 }
 
 export async function startStewardMock(
   options: { port?: number; hostname?: string; platformKey?: string } = {},
 ): Promise<RunningStewardMock> {
   const users = new Map<string, StewardMockUserState>();
+  const calls: StewardMockCall[] = [];
   const platformKey = options.platformKey ?? "steward-e2e-platform-key";
   const app = new Hono();
 
@@ -28,12 +36,14 @@ export async function startStewardMock(
 
   app.patch("/platform/users/:id/deactivate", (c) => {
     const userId = c.req.param("id");
+    calls.push({ method: "PATCH", path: c.req.path, userId });
     users.set(userId, "deactivated");
     return c.json({ ok: true, data: { userId } });
   });
 
   app.delete("/platform/users/:id", (c) => {
     const userId = c.req.param("id");
+    calls.push({ method: "DELETE", path: c.req.path, userId });
     users.set(userId, "deleted");
     return c.json({ ok: true, data: { userId } });
   });
@@ -48,5 +58,6 @@ export async function startStewardMock(
     url: `http://${server.hostname}:${server.port}`,
     port: server.port,
     users,
+    calls,
   };
 }

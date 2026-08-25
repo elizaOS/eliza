@@ -8,12 +8,12 @@
 
 "use client";
 
-import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
+import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
+  AGENT_PRICING,
   formatHourlyRate,
   formatMonthlyEstimate,
-} from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
-import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
+} from "@elizaos/cloud-sdk/browser-contracts";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
 import { useT } from "../lib/i18n";
 
@@ -48,7 +48,7 @@ export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex items-center gap-1 text-[10px] text-white/30 font-mono tabular-nums cursor-help">
+        <span className="inline-flex items-center gap-1 text-2xs text-white/30 font-mono tabular-nums cursor-help">
           <span
             className={`inline-block size-1 rounded-full ${isRunning ? "bg-green-500/60" : "bg-white/40"}`}
           />
