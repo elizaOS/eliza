@@ -28,6 +28,11 @@ const workflow = parse(
     "utf8",
   ),
 ) as Workflow;
+const wrangler = Bun.TOML.parse(
+  readFileSync(resolve(repoRoot, "packages/cloud/api/wrangler.toml"), "utf8"),
+) as {
+  env?: Record<string, { vars?: Record<string, string> }>;
+};
 
 function namedStep(name: string): WorkflowStep {
   const step = workflow.jobs["deploy-api"].steps.find(
@@ -81,6 +86,17 @@ describe("realtime staging deploy contract", () => {
     );
     expect(run.indexOf("trap rollback_on_unproven_exit EXIT")).toBeLessThan(
       run.indexOf("requires an authenticated canary credential"),
+    );
+  });
+});
+
+describe("Twilio public callback origin deploy contract", () => {
+  test("pins the externally routed HTTPS origin in every deployed environment", () => {
+    expect(wrangler.env?.staging?.vars?.TWILIO_PUBLIC_URL).toBe(
+      "https://api-staging.eliza.app",
+    );
+    expect(wrangler.env?.production?.vars?.TWILIO_PUBLIC_URL).toBe(
+      "https://api.eliza.app",
     );
   });
 });
