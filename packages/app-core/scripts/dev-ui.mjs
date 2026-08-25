@@ -37,6 +37,7 @@ import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed
 import {
   createApiHealthWatchdog,
   createParentExitGuard,
+  formatProbeEvidence,
 } from "./lib/dev-process-lifecycle.mjs";
 import { isRedundantApiListenLine } from "./lib/dev-ui-log-filter.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
@@ -689,21 +690,41 @@ async function waitForAgentReady(
   );
 }
 
-// Single quick health probe — true only when the agent reports ready. Used to
-// gate hot-reload restarts so the watcher only ever bounces a HEALTHY agent,
-// never one that is still booting (a booting agent already picks up the latest
-// source, and killing it mid-boot would loop).
-async function isAgentReadyNow(port) {
+// Watchdog probe timeout. Deliberately slow: the probe must distinguish
+// dead/wedged from busy-but-alive. Healthy children answer /api/health in
+// milliseconds, but a heavy turn or midnight host contention (hypervisor CPU
+// steal + swap-in, live 2026-08-24/25) can stall the event loop for seconds —
+// the old shared 1.5s timeout recycled healthy children through those windows.
+const API_HEALTH_PROBE_TIMEOUT_MS = 10_000;
+
+// Single health probe with an outcome detail for watchdog evidence. Healthy
+// only when the agent reports ready.
+async function probeAgentHealth(port, timeoutMs) {
   try {
     const resp = await fetch(`http://127.0.0.1:${port}/api/health`, {
-      signal: AbortSignal.timeout(1500),
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    if (!resp.ok) return false;
+    if (!resp.ok) return { healthy: false, detail: `http-${resp.status}` };
     const body = await resp.json().catch(() => null);
-    return body?.ready === true;
-  } catch {
-    return false;
+    return body?.ready === true
+      ? { healthy: true, detail: "ready" }
+      : { healthy: false, detail: "not-ready" };
+  } catch (error) {
+    const detail =
+      error instanceof Error && error.name === "TimeoutError"
+        ? `timeout>${timeoutMs}ms`
+        : (error?.cause?.code ?? error?.code ?? error?.name ?? "fetch-error");
+    return { healthy: false, detail: String(detail) };
   }
+}
+
+// Quick ready gate — true only when the agent reports ready. Used to gate
+// hot-reload restarts so the watcher only ever bounces a HEALTHY agent, never
+// one that is still booting (a booting agent already picks up the latest
+// source, and killing it mid-boot would loop). Kept fast on purpose: a busy
+// agent should DEFER the reload, unlike the watchdog which must tolerate busy.
+async function isAgentReadyNow(port) {
+  return (await probeAgentHealth(port, 1500)).healthy;
 }
 
 const ACP_MIDFLIGHT_SESSION_STATUSES = new Set([
@@ -1308,6 +1329,12 @@ if (uiOnly) {
     },
     onSpawn: (child) => {
       apiProcess = child;
+      // Every spawn path (initial launch, crash respawn, hot reload, watchdog
+      // restart) arms the watchdog's boot hold so a booting child is never
+      // probe-killed mid-boot. Optional-chained: the first launch happens
+      // before the watchdog exists, and its boot is covered by the watchdog
+      // only starting after the first agent-ready.
+      apiHealthWatchdog?.noteChildSpawn();
       child.on("error", (err) => {
         console.error(
           `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
@@ -1339,10 +1366,10 @@ if (uiOnly) {
 
   apiSupervisor.start();
   apiHealthWatchdog = createApiHealthWatchdog({
-    check: () => isAgentReadyNow(API_PORT),
-    restart: () => {
+    check: () => probeAgentHealth(API_PORT, API_HEALTH_PROBE_TIMEOUT_MS),
+    restart: (evidence) => {
       console.error(
-        `\n  ${green(logPrefix)} API health failed 3 consecutive probes — restarting wedged child…`,
+        `\n  ${green(logPrefix)} API health failed ${evidence.failures} consecutive probes — restarting wedged child (${formatProbeEvidence(evidence)})`,
       );
       apiSupervisor.restart();
     },
