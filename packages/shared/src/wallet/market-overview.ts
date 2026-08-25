@@ -94,7 +94,7 @@ function coerceNumber(value: unknown): number | null {
 function coerceInteger(value: unknown): number | null {
   const parsed = coerceNumber(value);
   if (parsed === null) return null;
-  return Number.isInteger(parsed) ? parsed : Math.round(parsed);
+  return Number.isInteger(parsed) ? parsed : Math.trunc(parsed);
 }
 
 /** Build the CoinGecko `/coins/markets` request URL (USD, 24h change). */

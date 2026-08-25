@@ -75,6 +75,91 @@ describe("wallet market-overview shared domain", () => {
     ).toBeNull();
   });
 
+  it("truncates fractional marketCapRank instead of rounding", () => {
+    // CoinGecko occasionally returns rank as float string; must truncate not round
+    expect(
+      mapCoinGeckoMarket({
+        id: "test",
+        symbol: "tst",
+        name: "Test",
+        current_price: 10,
+        price_change_percentage_24h: 5,
+        market_cap_rank: "200.6",
+      })?.marketCapRank,
+    ).toBe(200);
+    expect(
+      mapCoinGeckoMarket({
+        id: "test",
+        symbol: "tst",
+        name: "Test",
+        current_price: 10,
+        price_change_percentage_24h: 5,
+        market_cap_rank: 200.6,
+      })?.marketCapRank,
+    ).toBe(200);
+    expect(
+      mapCoinGeckoMarket({
+        id: "test",
+        symbol: "tst",
+        name: "Test",
+        current_price: 10,
+        price_change_percentage_24h: 5,
+        market_cap_rank: "199.9",
+      })?.marketCapRank,
+    ).toBe(199);
+    expect(
+      mapCoinGeckoMarket({
+        id: "test",
+        symbol: "tst",
+        name: "Test",
+        current_price: 10,
+        price_change_percentage_24h: 5,
+        market_cap_rank: 199.9,
+      })?.marketCapRank,
+    ).toBe(199);
+    // integer ranks unchanged
+    expect(
+      mapCoinGeckoMarket({
+        id: "test",
+        symbol: "tst",
+        name: "Test",
+        current_price: 10,
+        price_change_percentage_24h: 5,
+        market_cap_rank: 150,
+      })?.marketCapRank,
+    ).toBe(150);
+    // mover cap: 200.6 truncated to 200 is within cap, 200.6 rounded to 201 would be excluded
+    const record = (
+      id: string,
+      rank: number | null,
+      change: number,
+    ): CoinGeckoMarketRecord => ({
+      id,
+      symbol: id.toUpperCase(),
+      name: id,
+      currentPriceUsd: 10,
+      change24hPct: change,
+      marketCapRank: rank,
+      imageUrl: null,
+    });
+    const markets = [record("a", 200, 10), record("b", 201, 20)];
+    // also test via mapped fractional record that truncates into cap
+    const fractional = mapCoinGeckoMarket({
+      id: "c",
+      symbol: "c",
+      name: "C",
+      current_price: 10,
+      price_change_percentage_24h: 30,
+      market_cap_rank: "200.6",
+    });
+    expect(fractional).not.toBeNull();
+    if (!fractional) throw new Error("expected fractional market");
+    expect(fractional.marketCapRank).toBe(200);
+    const movers = buildMarketMovers([...markets, fractional]);
+    expect(movers.map((m) => m.id)).toContain("c");
+    expect(movers.map((m) => m.id)).not.toContain("b");
+  });
+
   it("flags stablecoins by id or symbol", () => {
     const usdc: CoinGeckoMarketRecord = {
       id: "usd-coin",
