@@ -90,7 +90,17 @@ export function getErrorType(error: unknown): TwitterErrorType {
   if (
     message.includes("network") ||
     message.includes("timeout") ||
-    message.includes("econnrefused")
+    message.includes("timed out") ||
+    message.includes("econnrefused") ||
+    // Node fetch/undici + net errors: "read ECONNRESET", "getaddrinfo
+    // ENOTFOUND", "connect ETIMEDOUT", "socket hang up", "fetch failed".
+    // These were previously classified UNKNOWN, which made isRetryableError
+    // return false for transient network failures.
+    message.includes("econnreset") ||
+    message.includes("enotfound") ||
+    message.includes("etimedout") ||
+    message.includes("socket hang up") ||
+    message.includes("fetch failed")
   ) {
     return TwitterErrorType.NETWORK;
   }
