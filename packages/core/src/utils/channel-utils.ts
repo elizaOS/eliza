@@ -488,6 +488,7 @@ function formatAccuracy(accuracy?: number): string {
 }
 
 function formatCoords(latitude: number, longitude: number): string {
+	if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return "";
 	return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
 }
 
@@ -499,6 +500,12 @@ function formatCoords(latitude: number, longitude: number): string {
  */
 export function formatLocationText(location: NormalizedLocation): string {
 	const resolved = resolveLocation(location);
+	if (
+		!Number.isFinite(resolved.latitude) ||
+		!Number.isFinite(resolved.longitude)
+	) {
+		return "";
+	}
 	const coords = formatCoords(resolved.latitude, resolved.longitude);
 	const accuracy = formatAccuracy(resolved.accuracy);
 	const caption = resolved.caption?.trim();
@@ -545,9 +552,11 @@ export function toLocationContext(
 		resolved.accuracy >= 0
 			? resolved.accuracy
 			: undefined;
+	const lat = Number.isFinite(resolved.latitude) ? resolved.latitude : 0;
+	const lon = Number.isFinite(resolved.longitude) ? resolved.longitude : 0;
 	return {
-		LocationLat: resolved.latitude,
-		LocationLon: resolved.longitude,
+		LocationLat: lat,
+		LocationLon: lon,
 		LocationAccuracy: accuracy,
 		LocationName: resolved.name,
 		LocationAddress: resolved.address,

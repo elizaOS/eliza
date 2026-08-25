@@ -230,6 +230,42 @@ describe("formatLocationText", () => {
 			"🛰 Live location: 37.774900, -122.419400\nSharing live route for 15 mins",
 		);
 	});
+
+	it("returns empty string for non-finite coordinates instead of leaking NaN/Infinity", () => {
+		expect(
+			formatLocationText({
+				latitude: Number.NaN,
+				longitude: -122.4194,
+			}),
+		).toBe("");
+		expect(
+			formatLocationText({
+				latitude: Number.POSITIVE_INFINITY,
+				longitude: -122.4194,
+			}),
+		).toBe("");
+		expect(
+			formatLocationText({
+				latitude: 37.7749,
+				longitude: Number.NEGATIVE_INFINITY,
+			}),
+		).toBe("");
+		expect(
+			formatLocationText({
+				latitude: Number.NaN,
+				longitude: Number.NaN,
+				name: "Nowhere",
+			}),
+		).toBe("");
+		expect(
+			formatLocationText({
+				latitude: 37.7749,
+				longitude: Number.NaN,
+				isLive: true,
+				caption: "caption should not leak",
+			}),
+		).toBe("");
+	});
 });
 
 describe("toLocationContext", () => {
@@ -272,6 +308,36 @@ describe("toLocationContext", () => {
 
 			expect(context.LocationAccuracy).toBeUndefined();
 		}
+	});
+
+	it("guards non-finite latitude/longitude in location context", () => {
+		for (const bad of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+		]) {
+			const ctxLat = toLocationContext({
+				latitude: bad,
+				longitude: -122.4194,
+			});
+			expect(Number.isFinite(ctxLat.LocationLat)).toBe(true);
+			expect(ctxLat.LocationLat).toBe(0);
+
+			const ctxLon = toLocationContext({
+				latitude: 37.7749,
+				longitude: bad,
+			});
+			expect(Number.isFinite(ctxLon.LocationLon)).toBe(true);
+			expect(ctxLon.LocationLon).toBe(0);
+		}
+		const both = toLocationContext({
+			latitude: Number.NaN,
+			longitude: Number.POSITIVE_INFINITY,
+			accuracy: 10,
+		});
+		expect(both.LocationLat).toBe(0);
+		expect(both.LocationLon).toBe(0);
+		expect(both.LocationAccuracy).toBe(10);
 	});
 });
 
