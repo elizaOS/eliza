@@ -193,6 +193,11 @@ async function runReview(
     await callback?.({ text: err });
     return { success: false, error: err };
   }
+  if (action === "request-changes" && !body) {
+    const err = "request-changes review requires a body explaining the changes";
+    await callback?.({ text: err });
+    return { success: false, error: err };
+  }
 
   const preview = buildReviewPreview(
     action,
@@ -222,12 +227,6 @@ async function runReview(
     const text = "GitHub PR review cancelled.";
     await callback?.({ text });
     return { success: true, text, data: { cancelled: true } };
-  }
-
-  if (action === "request-changes" && !body) {
-    const err = "request-changes review requires a body explaining the changes";
-    await callback?.({ text: err });
-    return { success: false, error: err };
   }
 
   const resolved = buildResolvedClient(runtime, selection);
