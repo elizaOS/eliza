@@ -36,6 +36,8 @@ describe("text helpers", () => {
   it("truncateText, getSentimentEmoji, formatNumber, extractTokenSymbol, stripHtml", () => {
     expect(truncateText("short", 200)).toBe("short");
     expect(truncateText("abcdef", 3)).toBe("abc...");
+    // Surrogate pair safety: boundary lands between emoji surrogates
+    expect(truncateText("ab" + String.fromCodePoint(0x1F600) + "cd", 3)).toBe("ab...");
     expect(getSentimentEmoji("positive")).toBe("😊");
     expect(getSentimentEmoji("negative")).toBe("😟");
     expect(getSentimentEmoji(undefined)).toBe("😐");

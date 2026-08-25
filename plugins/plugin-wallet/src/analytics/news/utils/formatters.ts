@@ -67,7 +67,14 @@ export function truncateText(text: string, maxLength: number = 200): string {
   if (text.length <= maxLength) {
     return text;
   }
-  return `${text.substring(0, maxLength)}...`;
+  let end = maxLength;
+  if (end > 0 && end < text.length) {
+    const code = text.charCodeAt(end - 1);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      end -= 1;
+    }
+  }
+  return `${text.substring(0, end)}...`;
 }
 
 /**
