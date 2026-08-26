@@ -1,3 +1,15 @@
+function truncateUtf16Safe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  let limit = maxLength;
+  const leadChar = text.charCodeAt(limit - 1);
+  if (leadChar >= 0xd800 && leadChar <= 0xdbff) {
+    limit -= 1;
+  }
+  return text.slice(0, limit);
+}
+
 /**
  * Gmail send-target MessageConnector: advertises Gmail as a cross-connector
  * send surface so `MESSAGE op=send source=gmail` (aliases "email"/"mail") and
@@ -170,7 +182,7 @@ function subjectFromContent(content: Content): string {
     .trim();
   return firstLine.length <= SUBJECT_MAX_LENGTH
     ? firstLine
-    : `${firstLine.slice(0, SUBJECT_MAX_LENGTH - 3)}...`;
+    : `${truncateUtf16Safe(firstLine, SUBJECT_MAX_LENGTH - 3)}...`;
 }
 
 async function sendGmailFromTarget(

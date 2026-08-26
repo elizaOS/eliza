@@ -349,6 +349,28 @@ describe("gmail send handler", () => {
   });
 });
 
+
+  it("preserves surrogate pairs when truncating long subject lines", async () => {
+    const { runtime, sendGmailMessage } = runtimeStub({
+      accounts: [CONNECTED_ACCOUNT],
+    });
+    const registration = createGmailMessageConnector(runtime);
+    const longText = "A".repeat(74) + "🎯" + " rest of the message";
+
+    await invokeSend(
+      registration,
+      runtime,
+      { channelId: "shadow@example.com" },
+      { text: longText }
+    );
+
+    expect(sendGmailMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: "A".repeat(74) + "...",
+      })
+    );
+  });
+
 describe("isEmailAddress", () => {
   it("accepts literal addresses and rejects names/handles", () => {
     expect(isEmailAddress("shadow@example.com")).toBe(true);

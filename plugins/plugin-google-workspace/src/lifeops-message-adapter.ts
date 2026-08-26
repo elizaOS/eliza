@@ -46,7 +46,17 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  if (value.length <= maxLength) {
+    return value;
+  }
+  let limit = maxLength - 3;
+  if (limit > 0) {
+    const leadChar = value.charCodeAt(limit - 1);
+    if (leadChar >= 0xd800 && leadChar <= 0xdbff) {
+      limit -= 1;
+    }
+  }
+  return `${value.slice(0, Math.max(0, limit))}...`;
 }
 
 function refId(messageId: string): string {
