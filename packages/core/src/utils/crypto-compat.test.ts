@@ -227,6 +227,107 @@ describe("createCipheriv / createDecipheriv AES-256-CBC", () => {
 		);
 	});
 
+	it("preserves a leading UTF-8 BOM in utf8 output like node:crypto", () => {
+		const bomPlaintext = "\ufeffhello";
+		const hex = concatCipherHex(AES_CBC_KEY, AES_CBC_IV, bomPlaintext);
+		const nodeDecipher = nodeCreateDecipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		const nodeOut =
+			nodeDecipher.update(hex, "hex", "utf8") + nodeDecipher.final("utf8");
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		const ourOut =
+			decipher.update(hex, "hex", "utf8") + decipher.final("utf8");
+		expect(ourOut).toBe(nodeOut);
+		expect(ourOut.startsWith("\ufeff")).toBe(true);
+	});
+
+	it("preserves a UTF-8 BOM split across update chunks like node:crypto", () => {
+		// 17 plaintext bytes: BOM (3) + 14 chars, so the first update decrypts
+		// 16 bytes (BOM fully inside the first chunk) and the second update
+		// plus final carry the tail; ciphertext fed in 10-byte slices.
+		const bomPlaintext = "\ufeff0123456789abcd";
+		const nodeCipher = nodeCreateCipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		const hex =
+			nodeCipher.update(bomPlaintext, "utf8", "hex") +
+			nodeCipher.final("hex");
+		const buf = Buffer.from(hex, "hex");
+		const nodeDecipher = nodeCreateDecipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		let nodeOut = "";
+		for (let o = 0; o < buf.length; o += 10) {
+			nodeOut += nodeDecipher.update(
+				buf.subarray(o, o + 10),
+				undefined as unknown as "hex",
+				"utf8",
+			);
+		}
+		nodeOut += nodeDecipher.final("utf8");
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		let ourOut = "";
+		for (let o = 0; o < buf.length; o += 10) {
+			ourOut += decipher.update(
+				buf.subarray(o, o + 10).toString("hex"),
+				"hex",
+				"utf8",
+			);
+		}
+		ourOut += decipher.final("utf8");
+		expect(ourOut).toBe(nodeOut);
+		expect(ourOut).toBe(bomPlaintext);
+	});
+
+	it("emits non-3-byte-aligned base64 decipher output across update/final like node:crypto", () => {
+		// 17 plaintext bytes: update decrypts 16, final decrypts the 17-byte
+		// remainder minus hold-back → the concatenated base64 of update+final
+		// must equal node's one-shot base64 (no mid-stream padding).
+		const plaintext = "0123456789abcdefg"; // 17 chars
+		const nodeCipher = nodeCreateCipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		const b64 =
+			nodeCipher.update(plaintext, "utf8", "base64") +
+			nodeCipher.final("base64");
+		const raw = Buffer.from(b64, "base64");
+		const nodeDecipher = nodeCreateDecipheriv(
+			"aes-256-cbc",
+			Buffer.from(AES_CBC_KEY),
+			Buffer.from(AES_CBC_IV),
+		);
+		let nodeOut = "";
+		for (let o = 0; o < raw.length; o += 10) {
+			nodeOut += nodeDecipher.update(
+				raw.subarray(o, o + 10),
+				undefined as unknown as "hex",
+				"base64",
+			);
+		}
+		nodeOut += nodeDecipher.final("base64");
+		const decipher = createDecipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
+		let ourOut = "";
+		for (let o = 0; o < raw.length; o += 10) {
+			ourOut += decipher.update(
+				raw.subarray(o, o + 10).toString("base64"),
+				"base64",
+				"base64",
+			);
+		}
+		ourOut += decipher.final("base64");
+		expect(ourOut).toBe(nodeOut);
+		expect(ourOut).toBe(Buffer.from(plaintext, "utf8").toString("base64"));
+	});
+
 	it("throws on update after final like node:crypto (cipher)", () => {
 		const cipher = createCipheriv("aes-256-cbc", AES_CBC_KEY, AES_CBC_IV);
 		cipher.update("data", "utf8", "hex");
