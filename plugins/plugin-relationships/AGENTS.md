@@ -6,8 +6,7 @@ Entity and relationship knowledge graph for Eliza agents.
 
 Adds an entity / relationship knowledge graph to any Eliza agent: a single
 `KNOWLEDGE_GRAPH` umbrella action for non-identity graph CRUD, an `ENTITY_GRAPH` provider that injects a projection of
-the owner's ego-network into the planner each turn, a `/relationships` viewer
-(React component served as a bundled view), and a drizzle
+the owner's ego-network into the planner each turn and a drizzle
 `pgSchema('app_relationships')` with `entities` and `relationships` tables.
 
 The graph stores (`EntityStore` / `RelationshipStore`) are owned by
@@ -34,12 +33,10 @@ The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
   in the `people` / `contacts` / `relationships` contexts. Projects the owner's
   recently observed entities and ego-network edges.
 
-**Views**
-- `relationships` (`src/components/relationships/RelationshipsView.tsx`) — a
-  GUI view registered at path `/relationships`, bundled as
-  `dist/views/bundle.js`. Displays the entity and relationship knowledge graph
-  (people, organizations, identities, typed edges). Enabled in the desktop tab
-  and the manager.
+**View ownership**
+- The app-owned Relationships view at `/apps/relationships` is the only
+  first-party renderer. `/relationships` remains a shell compatibility route;
+  this plugin does not register or build a view bundle.
 
 **Schema**
 - `relationshipsSchema` / `entitiesTable` / `relationshipsTable`
@@ -54,7 +51,7 @@ The plugin is opt-in — add it to the agent's plugin list. It hard-depends on
 ```
 src/
   index.ts                  Plugin export; re-exports action + provider + schema + types
-  plugin.ts                 Plugin object (action + provider + schema + views)
+  plugin.ts                 Plugin object (action + provider + schema)
   types.ts                  Entity / Relationship interfaces, ENTITY_OPS, constants
   actions/
     entity.ts               entityAction — KNOWLEDGE_GRAPH op dispatch
@@ -63,17 +60,12 @@ src/
   db/
     schema.ts               drizzle pgSchema + entitiesTable + relationshipsTable
     index.ts                re-exports schema.ts
-  components/
-    relationships/
-      RelationshipsView.tsx          React view component (entity/relationship graph UI)
-      RelationshipsView.test.tsx     Component tests
-      relationships-view-bundle.ts   Vite bundle entry for the view
 ```
 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-relationships build        # tsup (JS) + vite (views bundle) + tsc (types)
+bun run --cwd plugins/plugin-relationships build        # tsup (JS) + tsc (types)
 bun run --cwd plugins/plugin-relationships test         # vitest run
 bun run --cwd plugins/plugin-relationships typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-relationships check        # typecheck + test

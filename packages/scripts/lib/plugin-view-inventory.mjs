@@ -1,10 +1,11 @@
 /**
  * Derives the authoritative first-party runtime-view inventory from source.
  *
- * The built-in registry and typed Plugin manifests are parsed with the
- * TypeScript AST. The resulting provenance-backed inventory is shared by the
- * collision gate and its JSON/Markdown review artifacts, so a newly declared
- * view cannot be omitted by forgetting to update a second roster.
+ * The built-in registry, typed Plugin manifests, and app-shell route table are
+ * parsed with the TypeScript AST. The resulting provenance-backed inventory is
+ * shared by the collision gate and its JSON/Markdown review artifacts, so a
+ * newly declared view cannot be omitted by forgetting to update a second
+ * roster.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -16,7 +17,10 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 
 const BUILTIN_SOURCE = "packages/agent/src/api/builtin-views.ts";
+const SHELL_ROUTE_SOURCE = "packages/ui/src/navigation/index.ts";
 const PLUGIN_SOURCE = /^plugins\/[^/]+\/src\/.*\.(?:ts|tsx)$/;
+const APP_SHELL_SOURCE =
+  /^(?:packages\/(?:app|ui)|plugins\/[^/]+)\/src\/.*\.(?:ts|tsx)$/;
 const VIEW_MODALITIES = new Set(["gui", "tui", "xr"]);
 
 function compareText(left, right) {
@@ -35,6 +39,9 @@ function repositoryFiles(repoRoot) {
       "--others",
       "--exclude-standard",
       BUILTIN_SOURCE,
+      SHELL_ROUTE_SOURCE,
+      "packages/app/src",
+      "packages/ui/src",
       "plugins",
     ],
     { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
@@ -45,12 +52,177 @@ function repositoryFiles(repoRoot) {
     .filter(
       (file) =>
         file === BUILTIN_SOURCE ||
-        (PLUGIN_SOURCE.test(file) &&
-          !file.includes("/__tests__/") &&
+        file === SHELL_ROUTE_SOURCE ||
+        (APP_SHELL_SOURCE.test(file) &&
+          !/\/(?:__tests__|__e2e__|fixtures)\//.test(file) &&
           !file.includes("/test/") &&
-          !/\.(?:test|spec)\.[^.]+$/.test(file)),
+          !/\.(?:test|spec|stories)\.[^.]+$/.test(file)),
     )
     .sort(compareText);
+}
+
+function parseStaticStringRecord(context, constantName) {
+  const declaration = context.constants.get(constantName);
+  if (!declaration) {
+    throw new Error(
+      `[plugin-view-inventory] ${context.source} does not declare ${constantName}`,
+    );
+  }
+  const resolved = resolveStaticExpression(declaration, context);
+  if (!ts.isObjectLiteralExpression(resolved.value)) {
+    throw new Error(
+      `[plugin-view-inventory] ${context.source} ${constantName} must resolve to an object literal`,
+    );
+  }
+  return resolved.value.properties.map((property) => {
+    if (!ts.isPropertyAssignment(property)) {
+      throw new Error(
+        `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, property)} ${constantName} entries must be property assignments`,
+      );
+    }
+    const id = propertyName(property, resolved.context, { strict: true });
+    const value = staticStringValue(property.initializer, resolved.context);
+    if (!id || value === null) {
+      throw new Error(
+        `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, property)} ${constantName} entries must resolve to literal strings`,
+      );
+    }
+    return {
+      id,
+      value,
+      source: context.source,
+      line: sourceLine(context.sourceFile, property),
+    };
+  });
+}
+
+function staticStringValue(expression, context) {
+  const resolved = resolveStaticExpression(expression, context);
+  if (ts.isStringLiteralLike(resolved.value)) return resolved.value.text;
+  if (!ts.isTemplateExpression(resolved.value)) return null;
+  let value = resolved.value.head.text;
+  for (const span of resolved.value.templateSpans) {
+    const substitution = staticStringValue(span.expression, resolved.context);
+    if (substitution === null) return null;
+    value += substitution + span.literal.text;
+  }
+  return value;
+}
+
+function parseShellRoutes(context) {
+  const aliases = new Map(
+    parseStaticStringRecord(context, "TAB_ROUTE_OWNER_ALIASES").map(
+      ({ id, value }) => [id, value],
+    ),
+  );
+  const routes = parseStaticStringRecord(context, "TAB_PATHS").map(
+    ({ id, value, source, line }) => ({
+      id,
+      ownerId: aliases.get(id) ?? id,
+      path: value,
+      owner: "@elizaos/ui",
+      source,
+      line,
+      routeKind: "builtin-tab",
+      pattern: false,
+      platforms: [],
+    }),
+  );
+  for (const {
+    id: path,
+    value: targetId,
+    source,
+    line,
+  } of parseStaticStringRecord(context, "LEGACY_PREFIX_TAB_ALIASES")) {
+    routes.push({
+      id: `legacy:${path}`,
+      ownerId: aliases.get(targetId) ?? targetId,
+      path,
+      owner: "@elizaos/ui",
+      source,
+      line,
+      routeKind: "legacy-alias",
+      pattern: false,
+      platforms: [],
+    });
+  }
+  for (const route of routes) {
+    if (
+      !route.path.startsWith("/") ||
+      route.path.includes("?") ||
+      route.path.includes("#")
+    ) {
+      throw new Error(
+        `[plugin-view-inventory] ${route.source}:${route.line} shell route ${route.id} has invalid path ${route.path}`,
+      );
+    }
+  }
+  return { aliases, routes };
+}
+
+function parseAppShellRegistrations(context, aliases) {
+  const routes = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "registerAppShellPage" &&
+      node.arguments.length === 1
+    ) {
+      const resolved = resolveStaticExpression(node.arguments[0], context);
+      if (!ts.isObjectLiteralExpression(resolved.value)) {
+        throw new Error(
+          `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, node)} registerAppShellPage argument must resolve to an object literal`,
+        );
+      }
+      const registration = resolved.value;
+      const registrationContext = resolved.context;
+      const id = literalString(registration, "id", registrationContext, {
+        required: true,
+      });
+      const owner = literalString(
+        registration,
+        "pluginId",
+        registrationContext,
+        { required: true },
+      );
+      const pathValue = literalString(
+        registration,
+        "path",
+        registrationContext,
+        { required: true },
+      );
+      const tabAffinity = literalString(
+        registration,
+        "tabAffinity",
+        registrationContext,
+      );
+      const affinityOwner = tabAffinity ?? id;
+      const ownerId = aliases.get(affinityOwner) ?? affinityOwner;
+      const pathPatterns =
+        literalStringArray(registration, "pathPatterns", registrationContext) ??
+        [];
+      for (const [routePath, pattern] of [
+        [pathValue, false],
+        ...pathPatterns.map((pathPattern) => [pathPattern, true]),
+      ]) {
+        routes.push({
+          id,
+          ownerId,
+          path: routePath,
+          owner,
+          source: registrationContext.source,
+          line: sourceLine(registrationContext.sourceFile, registration),
+          routeKind: "app-shell-registration",
+          pattern,
+          platforms: [],
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(context.sourceFile);
+  return routes;
 }
 
 function pluginPackageDirectory(source) {
@@ -388,7 +560,13 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
 }
 
 function literalString(object, name, context, { required = false } = {}) {
-  const property = objectProperty(object, name, context);
+  const property =
+    objectProperty(object, name, context) ??
+    object.properties.find(
+      (candidate) =>
+        ts.isShorthandPropertyAssignment(candidate) &&
+        candidate.name.text === name,
+    );
   if (!property) {
     if (required) {
       throw new Error(
@@ -397,13 +575,16 @@ function literalString(object, name, context, { required = false } = {}) {
     }
     return null;
   }
-  const resolved = resolveStaticExpression(property.initializer, context);
-  if (!ts.isStringLiteralLike(resolved.value)) {
+  const expression = ts.isShorthandPropertyAssignment(property)
+    ? property.name
+    : property.initializer;
+  const value = staticStringValue(expression, context);
+  if (value === null) {
     throw new Error(
       `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, property)} ${name} must resolve to a string literal`,
     );
   }
-  return resolved.value.text;
+  return value;
 }
 
 function literalBoolean(object, name, context) {
@@ -804,6 +985,7 @@ function parseView(object, context, owner, builtin) {
     line: sourceLine(context.sourceFile, object),
     route,
     modalities,
+    platforms: literalStringArray(object, "platforms", context) ?? [],
     viewKind: literalString(object, "viewKind", context),
     componentExport,
     bundlePath,
@@ -918,6 +1100,22 @@ function routeIdentity(route) {
   return collisionIdentity(withoutTrailingSlash.replace(/\/{2,}/g, "/"));
 }
 
+function shellRoutesOverlap(left, right) {
+  const segments = (route) => routeIdentity(route).split("/").filter(Boolean);
+  const leftSegments = segments(left);
+  const rightSegments = segments(right);
+  const length = Math.max(leftSegments.length, rightSegments.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftSegment = leftSegments[index];
+    const rightSegment = rightSegments[index];
+    if (leftSegment === "*" || rightSegment === "*") return true;
+    if (leftSegment === undefined || rightSegment === undefined) return false;
+    if (leftSegment.startsWith(":") || rightSegment.startsWith(":")) continue;
+    if (leftSegment !== rightSegment) return false;
+  }
+  return true;
+}
+
 function assertNoCollisions(views) {
   for (const [field, selectValue, normalize] of [
     ["id", (view) => view.id, collisionIdentity],
@@ -941,15 +1139,80 @@ function assertNoCollisions(views) {
   }
 }
 
+function assertShellOwnership(views, shellRoutes) {
+  const runtimeById = new Map(
+    views.map((view) => [collisionIdentity(view.id), view]),
+  );
+  const shellIds = new Set(
+    shellRoutes.map((route) => collisionIdentity(route.id)),
+  );
+  const seenShellRoutes = [];
+  const errors = [];
+  for (const route of shellRoutes) {
+    const id = collisionIdentity(route.id);
+    const ownerId = collisionIdentity(route.ownerId);
+    const path = routeIdentity(route.path);
+    const runtime = runtimeById.get(id);
+    if (!shellIds.has(ownerId) && !runtimeById.has(ownerId)) {
+      errors.push(
+        `[plugin-view-inventory] ${route.source}:${route.line} shell route ${route.id} aliases missing owner ${route.ownerId}`,
+      );
+    }
+    if (
+      !route.pattern &&
+      runtime &&
+      runtime.route &&
+      routeIdentity(runtime.route) !== path
+    ) {
+      errors.push(
+        `[plugin-view-inventory] cross-registry owner mismatch for id "${route.id}": ${runtime.owner} ${runtime.source}:${runtime.line} declares ${runtime.route}, but ${route.owner} ${route.source}:${route.line} declares ${route.path}`,
+      );
+    }
+    for (const previous of seenShellRoutes) {
+      if (
+        previous.ownerId !== ownerId &&
+        shellRoutesOverlap(previous.path, route.path)
+      ) {
+        errors.push(
+          `[plugin-view-inventory] overlapping shell paths "${previous.path}" and "${route.path}": ${previous.owner} ${previous.source}:${previous.line} owns ${previous.id}, but ${route.owner} ${route.source}:${route.line} owns ${route.id}`,
+        );
+      }
+    }
+    seenShellRoutes.push({ ...route, ownerId });
+    const runtimeAtPath = views.find(
+      (view) => view.route && shellRoutesOverlap(view.route, route.path),
+    );
+    if (runtimeAtPath && collisionIdentity(runtimeAtPath.id) !== ownerId) {
+      errors.push(
+        `[plugin-view-inventory] cross-registry path collision "${route.path}": ${runtimeAtPath.owner} ${runtimeAtPath.source}:${runtimeAtPath.line} owns ${runtimeAtPath.id}, but ${route.owner} ${route.source}:${route.line} owns ${route.ownerId}`,
+      );
+    }
+  }
+  if (errors.length > 0) throw new Error(errors.join("\n"));
+}
+
 /** Discover and validate every built-in and first-party Plugin view declaration. */
 export function discoverPluginViewInventory({
   repoRoot,
   files = repositoryFiles(repoRoot),
 }) {
   const cache = new Map();
-  const inventory = { views: [], sources: [] };
+  const inventory = { views: [], sources: [], shellRoutes: [] };
   const reachablePlugins = runtimeReachablePluginFiles(repoRoot, files, cache);
+  if (!files.includes(SHELL_ROUTE_SOURCE)) {
+    throw new Error("[plugin-view-inventory] TAB_PATHS was not discovered");
+  }
+  const shellContext = parseSourceContext(repoRoot, SHELL_ROUTE_SOURCE, cache);
+  const shellNavigation = parseShellRoutes(shellContext);
+  inventory.shellRoutes.push(...shellNavigation.routes);
   for (const source of files) {
+    if (source === SHELL_ROUTE_SOURCE) continue;
+    if (APP_SHELL_SOURCE.test(source)) {
+      const context = parseSourceContext(repoRoot, source, cache);
+      inventory.shellRoutes.push(
+        ...parseAppShellRegistrations(context, shellNavigation.aliases),
+      );
+    }
     if (source !== BUILTIN_SOURCE && !PLUGIN_SOURCE.test(source)) continue;
     if (source !== BUILTIN_SOURCE && !reachablePlugins.has(source)) continue;
     const context = parseSourceContext(repoRoot, source, cache);
@@ -969,6 +1232,18 @@ export function discoverPluginViewInventory({
     );
   }
   assertNoCollisions(inventory.views);
+  if (inventory.shellRoutes.length === 0) {
+    throw new Error("[plugin-view-inventory] TAB_PATHS was not discovered");
+  }
+  const runtimeById = new Map(
+    inventory.views.map((view) => [collisionIdentity(view.id), view]),
+  );
+  for (const route of inventory.shellRoutes) {
+    route.platforms = [
+      ...(runtimeById.get(collisionIdentity(route.ownerId))?.platforms ?? []),
+    ];
+  }
+  assertShellOwnership(inventory.views, inventory.shellRoutes);
   inventory.views.sort(
     (left, right) =>
       compareText(left.owner, right.owner) ||
@@ -981,6 +1256,10 @@ export function discoverPluginViewInventory({
       compareText(left.owner, right.owner) ||
       compareText(left.source, right.source) ||
       left.line - right.line,
+  );
+  inventory.shellRoutes.sort(
+    (left, right) =>
+      compareText(left.id, right.id) || compareText(left.path, right.path),
   );
   return inventory;
 }
@@ -995,6 +1274,8 @@ export function serializePluginViewInventory(inventory) {
     pluginCount: inventory.views.filter((view) => !view.builtin).length,
     declarationSourceCount: inventory.sources.length,
     declarationSources: inventory.sources,
+    shellRouteCount: inventory.shellRoutes.length,
+    shellRoutes: inventory.shellRoutes,
     views: inventory.views,
   };
 }
@@ -1008,12 +1289,13 @@ export function renderPluginViewInventoryMarkdown(serialized) {
   const lines = [
     "# First-party runtime view inventory",
     "",
-    "Generated from `BUILTIN_VIEWS` and typed first-party `Plugin.views` declarations.",
+    "Generated from `BUILTIN_VIEWS`, typed first-party `Plugin.views`, app-shell registrations, and canonical/compatibility navigation routes.",
     "",
     `- Total views: ${serialized.discoveredCount}`,
     `- Built-in views: ${serialized.builtinCount}`,
     `- Plugin views: ${serialized.pluginCount}`,
     `- Declaration sources: ${serialized.declarationSourceCount}`,
+    `- Shell routes: ${serialized.shellRouteCount}`,
     "",
     "| Owner | ID | Modalities | Path | Kind | Related actions | Operations | Source |",
     "| --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -1021,6 +1303,18 @@ export function renderPluginViewInventoryMarkdown(serialized) {
   for (const view of serialized.views) {
     lines.push(
       `| ${markdownCell(view.owner)} | ${markdownCell(view.id)} | ${markdownCell(view.modalities.join(", "))} | ${markdownCell(view.route ?? "—")} | ${markdownCell(view.viewKind ?? "—")} | ${markdownCell(view.relatedActions.join(", ") || "—")} | ${markdownCell(view.operationIds.join(", ") || "—")} | ${markdownCell(`${view.source}:${view.line}`)} |`,
+    );
+  }
+  lines.push(
+    "",
+    "## App-shell routes",
+    "",
+    "| Route ID | Canonical owner ID | Path | Kind | Declared platforms | Source |",
+    "| --- | --- | --- | --- | --- | --- |",
+  );
+  for (const route of serialized.shellRoutes) {
+    lines.push(
+      `| ${markdownCell(route.id)} | ${markdownCell(route.ownerId)} | ${markdownCell(route.path)} | ${markdownCell(route.routeKind)} | ${markdownCell(route.platforms.join(", ") || "—")} | ${markdownCell(`${route.source}:${route.line}`)} |`,
     );
   }
   return `${lines.join("\n")}\n`;

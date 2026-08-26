@@ -229,6 +229,8 @@ describeLive("Live memory + relationships browser E2E", () => {
       "/api/relationships/activity?limit=10",
     );
 
+    // Exercise the retired plugin deep link; the shell must translate it to
+    // the canonical app-owned relationships workspace.
     await navigate(page, `${uiUrl}/relationships`);
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 

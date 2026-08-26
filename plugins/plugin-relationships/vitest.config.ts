@@ -1,20 +1,17 @@
 /**
- * Vitest configuration for relationships contract and React view tests with
- * shared workspace aliases.
+ * Vitest configuration for relationships domain contract tests with shared
+ * workspace aliases.
  */
-import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import baseConfig from "../../packages/scripts/vitest/default.config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
 
-// Pin one React copy so jsdom tests do not mix workspace and hoisted peers.
 const liveOnlyExcludes = [
   "dist/**",
   "**/node_modules/**",
@@ -31,26 +28,6 @@ export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     alias: [
-      {
-        find: /^react$/,
-        replacement: path.dirname(require.resolve("react/package.json")),
-      },
-      {
-        find: /^react\/jsx-runtime$/,
-        replacement: require.resolve("react/jsx-runtime"),
-      },
-      {
-        find: /^react\/jsx-dev-runtime$/,
-        replacement: require.resolve("react/jsx-dev-runtime"),
-      },
-      {
-        find: /^react-dom$/,
-        replacement: path.dirname(require.resolve("react-dom/package.json")),
-      },
-      {
-        find: /^react-dom\/client$/,
-        replacement: require.resolve("react-dom/client"),
-      },
       {
         find: /^@elizaos\/plugin-wallet\/diagnostic$/,
         replacement: path.resolve(here, "../plugin-wallet/src/diagnostic.ts"),

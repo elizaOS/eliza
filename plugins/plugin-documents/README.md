@@ -2,6 +2,9 @@
 
 Adds a document management REST API to an elizaOS agent.
 
+The app shell owns the canonical Knowledge UI at `/character/documents`. This
+plugin intentionally ships no view or view bundle.
+
 ## What it does
 
 This plugin registers HTTP routes on the agent server that let clients (the dashboard UI, other agents, and external tools) upload, retrieve, search, edit, and delete documents from the agent's document store.

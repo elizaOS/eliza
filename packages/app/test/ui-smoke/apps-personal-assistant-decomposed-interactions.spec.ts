@@ -286,78 +286,11 @@ test("todos decomposed view: renders the todo lanes", async ({ page }) => {
   ).toBeVisible({ timeout: 15_000 });
 });
 
-test("relationships decomposed view: renders the graph and toggles a kind filter", async ({
-  page,
-}) => {
-  // /relationships mounts the unified RelationshipsView. The helper mocks
-  // GET /api/lifeops/entities + /api/lifeops/relationships with a populated
-  // graph (Owner, Pat Doe, Acme Corp), so the view lands on its populated
-  // branch. Toggling the "Organizations" kind filter narrows the node list to
-  // the organization node only; "All" restores it.
-  await openAppPath(page, "/relationships");
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
-    timeout: 60_000,
-  });
-  await expect(page.getByText("Pat Doe").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Acme Corp").first()).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // Layout sanity (#11145 lineage): this decomposed route renders the unified
-  // list-based RelationshipsSpatialView (RelationshipsView.tsx), whose
-  // container is `[data-spatial-surface]` — the zoomable
-  // `[data-graph-container]` belongs to RelationshipsGraphPanel on the
-  // /apps/relationships workspace (covered by the pinch/pan tests below), not
-  // to this route. Assert the rendered surface never exceeds the viewport
-  // width (no horizontal page-scroll blowout).
-  const viewport = page.viewportSize();
-  if (viewport) {
-    const box = await page
-      .locator("[data-spatial-surface]")
-      .first()
-      .boundingBox();
-    expect(box, "spatial surface should be laid out").not.toBeNull();
-    if (box) {
-      // +1px slack for sub-pixel rounding.
-      expect(box.width).toBeLessThanOrEqual(viewport.width + 1);
-    }
-  }
-
-  await page
-    .getByRole("button", { name: "Organizations", exact: true })
-    .click();
-  await expect(page.getByText("Graph (1)").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Pat Doe")).toHaveCount(0, { timeout: 15_000 });
-  await expect(page.getByText("Acme Corp").first()).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // #11144 guard: the first "All" kind chip is the one that used to sit under
-  // the removed global corner back button. Drive the real restore path through
-  // it, then assert every kind is visible again.
-  const allChip = page
-    .getByRole("button", { name: "All", exact: true })
-    .first();
-  await expectTopmostAtCenter(allChip, "Relationships All kind chip");
-  await allChip.click();
-  await expect(page.getByText("Graph (3)").first()).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByText("Pat Doe").first()).toBeVisible({
-    timeout: 15_000,
-  });
-});
-
 /**
- * A populated RelationshipsGraphSnapshot for the BUILT-IN relationships
- * workspace at /apps/relationships (a shell-reserved path), whose
+ * A populated RelationshipsGraphSnapshot for the app-owned relationships
+ * workspace at /apps/relationships, whose
  * RelationshipsGraphPanel is the app's zoomable `[data-graph-container]` pinch
- * surface. (The decomposed /relationships plugin view above is the spatial node
- * LIST — it has no zoom surface.) Shape mirrors
+ * surface. Shape mirrors
  * packages/ui/src/api/client-types-relationships.ts, wrapped in the `{ data }`
  * envelope `getRelationshipsGraph` unwraps.
  */

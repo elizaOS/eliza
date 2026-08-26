@@ -207,6 +207,22 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     desktopTabEnabled: true,
   },
   {
+    id: "relationships",
+    viewKind: "developer",
+    developerOnly: true,
+    label: "Relationships",
+    description:
+      "People, organizations, identity evidence, relationship activity, and merge candidates",
+    icon: "Network",
+    path: "/apps/relationships",
+    order: 52,
+    tags: ["relationships", "people", "contacts", "entities", "identity"],
+    relatedActions: ["ENTITY", "KNOWLEDGE_GRAPH"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
     id: "automations",
     viewKind: "system",
     label: "Automations",

@@ -1,6 +1,6 @@
 # @elizaos/plugin-documents
 
-HTTP API surface and reusable presentation components for the elizaOS document store.
+HTTP API surface for the elizaOS document store.
 
 ## Purpose / role
 
@@ -46,15 +46,14 @@ src/
                          getDocumentProvenance(), getDocumentVisibilityScope(), etc.
   service-loader.ts      Re-exports canonical types and getDocumentsService() from
                          @elizaos/agent/api/documents-service-loader
-  components/
-    documents/
-      DocumentsView.tsx          React view for documents UI
-      DocumentsView.test.tsx     Component tests
 test/
   documents-api.live.e2e.test.ts   Live API e2e tests
   documents-live.e2e.test.ts       Live document ingestion e2e tests
   routes.test.ts                   Unit tests for route logic
 ```
+
+The app-owned Knowledge view at `/character/documents` is the only first-party
+Documents renderer. This package must not export or build a second view bundle.
 
 ## Commands
 

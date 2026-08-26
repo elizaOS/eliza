@@ -15,6 +15,7 @@ const SOURCE_ORDER_IDS = [
   "browser",
   "character",
   "documents",
+  "relationships",
   "automations",
   "cloud-apps",
   "plugins-page",
@@ -73,6 +74,7 @@ describe("BUILTIN_VIEWS", () => {
       "device-control",
       "character",
       "documents",
+      "relationships",
       "automations",
       "cloud-apps",
       "plugins-page",
@@ -142,6 +144,7 @@ describe("BUILTIN_VIEWS", () => {
       (view) => view.viewKind === "developer",
     );
     expect(developer.map((view) => view.id)).toEqual([
+      "relationships",
       "trajectories",
       "database",
       "logs",
