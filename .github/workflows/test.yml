@@ -692,6 +692,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --frozen-lockfile --ignore-scripts
           install-native-deps: "false"
+          run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
 

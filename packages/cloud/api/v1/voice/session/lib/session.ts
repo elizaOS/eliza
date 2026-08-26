@@ -1254,6 +1254,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             serverTiming: headers.serverTiming,
           });
         },
+        onProgress: (text: string) => {
+          if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
+            return;
+          // Progress cues are deliberately non-authoritative: they keep a slow
+          // action audible without entering the reply buffer or being persisted
+          // as an assistant answer. The next authoritative delta continues the
+          // same TTS context and normal terminal cleanup closes it.
+          const stream = ensureTts();
+          if (pendingPhrase !== null) {
+            stream.sendPhrase({ text: pendingPhrase, continueContext: true });
+            pendingPhrase = null;
+          }
+          stream.sendPhrase({ text, continueContext: true });
+          logger.info("[voice-session] action progress cue", {
+            traceId,
+            elapsedMs: this.now() - responseStartedAt,
+          });
+        },
       };
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;

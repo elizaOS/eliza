@@ -469,8 +469,13 @@ const SCHEMA_ARRAY_WRAPPER_KEYWORDS = new Set([
 	"prefixItems",
 ]);
 
-function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
-	reserveVisits(ctx, 1);
+function walkSchemaStrings<T>(
+	value: T,
+	depth: number,
+	ctx: SchemaWalkCtx,
+	visitAlreadyReserved = false,
+): T {
+	if (!visitAlreadyReserved) reserveVisits(ctx, 1);
 	if (typeof value === "string") {
 		return toWellFormedUnicode(value) as unknown as T;
 	}
@@ -488,20 +493,44 @@ function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
 		if (Array.isArray(value)) {
 			let changed = false;
 			const next = new Array<unknown>(value.length);
+			// JSON serialization visits every index, including holes. Charge the
+			// logical length up front so a sparse array reached through a
+			// non-schema keyword pays the same visit budget as a dense one
+			// instead of driving an O(length) descriptor loop for free. Present
+			// elements are covered by that charge and must not self-charge
+			// again — the array costs 1 + length, matching the dense budget of
+			// walkSchemaArrayEntry and walkDeep.
+			reserveVisits(ctx, value.length);
 			for (let index = 0; index < value.length; index += 1) {
 				const descriptor = Object.getOwnPropertyDescriptor(value, index);
-				if (!descriptor || !("value" in descriptor)) continue;
-				const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+				// A hole is a missing descriptor and stays exempt. A PRESENT
+				// numeric accessor is not: skipping it would leave changed=false
+				// and return the original array, letting provider serialization
+				// invoke the getter. Fail closed without invocation — mirrors
+				// the object-branch policy.
+				if (!descriptor) continue;
+				if (!("value" in descriptor)) {
+					failUnsafeValue("accessor", undefined, String(index));
+				}
+				const walked = walkSchemaStrings(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					true,
+				);
 				if (walked !== descriptor.value) changed = true;
 				next[index] = walked;
 			}
 			return (changed ? next : value) as unknown as T;
 		}
 		let changed = false;
-		const next = Object.create(Object.getPrototypeOf(value)) as Record<
-			string,
-			unknown
-		>;
+		// Stage on a null prototype so assigning an own `__proto__` key writes
+		// a data property instead of triggering the inherited setter (which
+		// silently drops the key and hands the projected node a
+		// caller-controlled prototype). The source prototype is restored only
+		// after every own key has been defined — same policy as walkDeep.
+		const sourceProto = Object.getPrototypeOf(value);
+		const next = Object.create(null) as Record<string, unknown>;
 		for (const key of Reflect.ownKeys(value)) {
 			if (typeof key !== "string") continue;
 			const descriptor = Object.getOwnPropertyDescriptor(value, key);
@@ -513,7 +542,19 @@ function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
 			// Annotation data is opaque caller JSON: carried by reference, never
 			// descended into, never observed.
 			if (isAnnotationKey(sanitizedKey)) {
-				next[sanitizedKey] = descriptor.value;
+				// A rewritten annotation KEY is still a wire change: without setting
+				// changed here, a schema whose only dirty member is an annotation key
+				// would return the ORIGINAL object and ship the lone surrogate to a
+				// strict provider.
+				if (sanitizedKey !== key) changed = true;
+				if (!(sanitizedKey in next)) {
+					Object.defineProperty(next, sanitizedKey, {
+						value: descriptor.value,
+						writable: true,
+						enumerable: true,
+						configurable: true,
+					});
+				}
 				continue;
 			}
 			// Mirror the Cerebras normalizer depth accounting: a MAP keyword's
@@ -538,8 +579,19 @@ function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
 				walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
 			}
 			if (sanitizedKey !== key || walked !== descriptor.value) changed = true;
-			next[sanitizedKey] = walked;
+			// First-write-wins: two distinct keys that sanitize to the same form
+			// must not overwrite each other silently.
+			if (!(sanitizedKey in next)) {
+				Object.defineProperty(next, sanitizedKey, {
+					value: walked,
+					writable: true,
+					enumerable: true,
+					configurable: true,
+				});
+			}
 		}
+		// Restore the source prototype after defining every own key.
+		Object.setPrototypeOf(next, sourceProto);
 		return (changed ? next : value) as unknown as T;
 	} finally {
 		ctx.visiting.delete(value);
@@ -547,12 +599,29 @@ function walkSchemaStrings<T>(value: T, depth: number, ctx: SchemaWalkCtx): T {
 }
 
 /**
- * Typed wire-boundary check for schema annotation data. Descriptor-only:
- * accessors are detected through `Object.getOwnPropertyDescriptor` and rejected
- * WITHOUT invocation, cycles are detected through path-local ancestry, and
- * depth beyond `maxDepth` fails closed — so a hostile annotation cannot run
- * caller-controlled code during a mere admissibility check. Reflection on a
- * revoked proxy is translated into the same typed contract.
+ * Typed wire-boundary check for schema ANNOTATION data (`default`, `examples`,
+ * `const`, `x-*`).
+ *
+ * The raw tools argument reaches this check WITHOUT a prior bounded walk on
+ * every branch (the ToolSet path preserves wrapper metadata by descriptor),
+ * so the traversal here is FULLY BOUNDED with UNIFORM charging: every node
+ * pays one visit, EVERY edge — including keyword-named ones — charges one
+ * depth unit against `maxDepth`, and cycles fail closed on path-local
+ * ancestry. There are no name-based exemptions: a hostile wrapper can nest
+ * arbitrarily deep under repeated "properties"/"items" keys, so key names
+ * alone must never gate the budget. Callers that check a tool's schema
+ * region pass a maxDepth sized for the schema walk's doubled unit cost
+ * (`2 × MAX_WELL_FORMED_DEPTH + slack`) so an honest full-authority schema
+ * still passes while wrapper depth stays bounded far below stack limits.
+ *
+ * Accessor policing is ANNOTATION-SCOPED: accessors inside an annotation
+ * subtree are detected via `Object.getOwnPropertyDescriptor` and rejected
+ * WITHOUT invocation; schema-region accessors are the walkers' job and
+ * wrapper-region accessors (lazy AI SDK `jsonSchema` getters preserved by
+ * the ToolSet branch) are a documented contract — both are skipped here,
+ * never read or invoked.
+ *
+ * Reflection on a revoked proxy is translated into the same typed contract.
  */
 export function assertSchemaAnnotationsSerializable(
 	value: unknown,
@@ -564,60 +633,36 @@ export function assertSchemaAnnotationsSerializable(
 		maxDepth: options.maxDepth ?? MAX_WELL_FORMED_DEPTH,
 	};
 	try {
-		assertAnnotationsWalk(value, 0, ctx);
+		assertAnnotationsWalk(value, 0, ctx, false);
 	} catch (error) {
 		if (error instanceof ElizaError) throw error;
 		failUnsafeValue("reflection", error);
 	}
 }
 
-function walkSchemaMapEntry(
-	map: object,
-	depth: number,
-	ctx: SchemaWalkCtx,
-): Record<string, unknown> {
-	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
-	reserveVisits(ctx, 1);
-	let changed = false;
-	const next: Record<string, unknown> = Object.create(
-		Object.getPrototypeOf(map),
-	) as Record<string, unknown>;
-	for (const key of Reflect.ownKeys(map)) {
-		if (typeof key !== "string") continue;
-		const descriptor = Object.getOwnPropertyDescriptor(map, key);
-		if (!descriptor?.enumerable || !("value" in descriptor)) continue;
-		const sanitizedKey = toWellFormedUnicode(key);
-		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
-		if (sanitizedKey !== key || walked !== descriptor.value) changed = true;
-		next[sanitizedKey] = walked;
-	}
-	return (changed ? next : map) as Record<string, unknown>;
+/**
+ * True when `key` is the canonical string form of a uint32 array index below
+ * `arr.length` (so "01" or "-0" stay self-charging non-index keys).
+ */
+function isArrayIndexKey(key: string, arr: unknown[]): boolean {
+	if (!/^\d+$/.test(key)) return false;
+	const index = Number(key);
+	return Number.isInteger(index) && index < arr.length && String(index) === key;
 }
 
-function walkSchemaArrayEntry(
-	arr: unknown[],
-	depth: number,
-	ctx: SchemaWalkCtx,
-): unknown[] {
-	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
-	reserveVisits(ctx, arr.length || 1);
-	let changed = false;
-	const next = new Array<unknown>(arr.length);
-	for (let index = 0; index < arr.length; index += 1) {
-		const descriptor = Object.getOwnPropertyDescriptor(arr, index);
-		if (!descriptor || !("value" in descriptor)) continue;
-		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
-		if (walked !== descriptor.value) changed = true;
-		next[index] = walked;
-	}
-	return changed ? next : arr;
-}
 function assertAnnotationsWalk(
 	value: unknown,
 	depth: number,
 	ctx: SchemaWalkCtx,
+	inAnnotation: boolean,
+	visitAlreadyReserved = false,
 ): void {
-	reserveVisits(ctx, 1);
+	// EVERY node pays one visit regardless of region: the raw tools argument
+	// reaches this check without a prior bounded walk on every branch, so a
+	// hostile deep or extremely wide wrapper must be bounded here, before
+	// provider dispatch. An exception is threaded, not assumed: present array
+	// members arrive prepaid through their parent's logical-length charge.
+	if (!visitAlreadyReserved) reserveVisits(ctx, 1);
 	if (!value || typeof value !== "object") return;
 	if (depth > ctx.maxDepth) {
 		failSchemaDepth(depth, ctx);
@@ -633,6 +678,14 @@ function assertAnnotationsWalk(
 		} catch (cause) {
 			failUnsafeValue("reflection", cause);
 		}
+		if (Array.isArray(value)) {
+			// JSON.stringify traverses every index INCLUDING holes while
+			// Reflect.ownKeys only enumerates present members. Reserving the
+			// full logical length up front closes the sparse-array bypass and
+			// keeps a dense array at the same 1 + length cost the other walkers
+			// charge (members arrive prepaid via `visitAlreadyReserved`).
+			reserveVisits(ctx, value.length);
+		}
 		for (const key of keys) {
 			if (typeof key !== "string") continue;
 			let descriptor: PropertyDescriptor | undefined;
@@ -643,11 +696,107 @@ function assertAnnotationsWalk(
 			}
 			if (!descriptor?.enumerable) continue;
 			if (!("value" in descriptor)) {
-				failUnsafeValue("accessor", undefined, key);
+				// Accessor policing is ANNOTATION-SCOPED: schema-region accessors
+				// are the walkers' job and wrapper-region accessors are a preserved
+				// ToolSet contract — observing either here would invoke caller
+				// code, so outside annotations they are skipped, never read.
+				if (inAnnotation) {
+					failUnsafeValue("accessor", undefined, key);
+				}
+				continue;
 			}
-			assertAnnotationsWalk(descriptor.value, depth + 1, ctx);
+			const nextInAnnotation = inAnnotation || isAnnotationKey(key);
+			// Present members of an ARRAY node were covered by the upfront
+			// logical-length reservation (which also charges holes that
+			// Reflect.ownKeys never enumerates); everything else self-charges.
+			// Non-index extra keys on an array are deliberately NOT prepaid.
+			const prepaid = Array.isArray(value) && isArrayIndexKey(key, value);
+			// UNIFORM depth charging: every edge costs one unit with NO
+			// name-based exemptions. Keyword-named edges cannot be distinguished
+			// from hostile wrapper metadata by key alone (a wrapper can nest
+			// repeatedly under "properties"), so none are exempt — callers size
+			// maxDepth to cover the schema region's doubled unit cost instead.
+			assertAnnotationsWalk(
+				descriptor.value,
+				depth + 1,
+				ctx,
+				nextInAnnotation,
+				prepaid,
+			);
 		}
 	} finally {
 		ctx.visiting.delete(value);
 	}
+}
+
+function walkSchemaMapEntry(
+	map: object,
+	depth: number,
+	ctx: SchemaWalkCtx,
+): Record<string, unknown> {
+	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
+	reserveVisits(ctx, 1);
+	let changed = false;
+	// Stage on a null prototype so an own `__proto__` key writes a data
+	// property instead of triggering the inherited setter; the source
+	// prototype is restored after every own key is defined.
+	const sourceProto = Object.getPrototypeOf(map);
+	const next = Object.create(null) as Record<string, unknown>;
+	for (const key of Reflect.ownKeys(map)) {
+		if (typeof key !== "string") continue;
+		const descriptor = Object.getOwnPropertyDescriptor(map, key);
+		if (!descriptor?.enumerable) continue;
+		// Fail closed like the object branch in walkSchemaStrings: a getter
+		// skipped silently here would survive by reference and run at the
+		// provider serialization boundary instead of being rejected now.
+		if (!("value" in descriptor)) {
+			failUnsafeValue("accessor", undefined, key);
+		}
+		const sanitizedKey = toWellFormedUnicode(key);
+		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx);
+		if (sanitizedKey !== key || walked !== descriptor.value) changed = true;
+		// First-write-wins collision policy, matching walkSchemaStrings.
+		if (!(sanitizedKey in next)) {
+			Object.defineProperty(next, sanitizedKey, {
+				value: walked,
+				writable: true,
+				enumerable: true,
+				configurable: true,
+			});
+		}
+	}
+	Object.setPrototypeOf(next, sourceProto);
+	return (changed ? next : map) as Record<string, unknown>;
+}
+
+function walkSchemaArrayEntry(
+	arr: unknown[],
+	depth: number,
+	ctx: SchemaWalkCtx,
+): unknown[] {
+	if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx);
+	reserveVisits(ctx, arr.length || 1);
+	let changed = false;
+	const next = new Array<unknown>(arr.length);
+	for (let index = 0; index < arr.length; index += 1) {
+		const descriptor = Object.getOwnPropertyDescriptor(arr, index);
+		// A hole stays exempt: the upfront length charge already paid for it and
+		// JSON.stringify emits undefined without invoking anything. A PRESENT
+		// numeric accessor is not exempt — skipping it would leave changed=false
+		// and hand the ORIGINAL array back, letting provider serialization
+		// invoke the getter. Fail closed without invocation, mirroring the
+		// generic-array and properties-map policies.
+		if (!descriptor) continue;
+		if (!("value" in descriptor)) {
+			failUnsafeValue("accessor", undefined, String(index));
+		}
+		// Present elements are covered by the upfront length charge (the array
+		// costs 1 + length, matching the generic-array branch); passing
+		// visitAlreadyReserved prevents a dense array from being double-charged
+		// to roughly twice its declared acceptance budget.
+		const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx, true);
+		if (walked !== descriptor.value) changed = true;
+		next[index] = walked;
+	}
+	return changed ? next : arr;
 }
