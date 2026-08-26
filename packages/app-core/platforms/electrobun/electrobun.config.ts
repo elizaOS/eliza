@@ -318,6 +318,67 @@ const libMacWindowEffectsDylib = path.join(
   "src",
   "libMacWindowEffects.dylib",
 );
+const experimentalExactWindowHelper = path.join(
+  electrobunDir,
+  "build",
+  "computeruse-exact-window-helper",
+);
+const experimentalExactWindowManifest = `${experimentalExactWindowHelper}.manifest.json`;
+const experimentalExactWindowNotices = path.join(
+  electrobunDir,
+  "direct-only",
+  "computeruse-exact-window",
+  "THIRD_PARTY_NOTICES.txt",
+);
+
+export interface ExperimentalExactWindowCopyOptions {
+  enabled: boolean;
+  platform: NodeJS.Platform;
+  helperPath: string;
+  manifestPath: string;
+  noticesPath: string;
+  existsSync?: (filePath: string) => boolean;
+}
+
+export function resolveExperimentalExactWindowCopyMap({
+  buildVariant,
+  options,
+}: {
+  buildVariant: "store" | "direct";
+  options?: ExperimentalExactWindowCopyOptions;
+}): Record<string, string> {
+  if (!options?.enabled) return {};
+  if (buildVariant === "store") {
+    throw new Error(
+      "Experimental exact-window helper is forbidden in Mac App Store builds",
+    );
+  }
+  if (options.platform !== "darwin") {
+    throw new Error(
+      "Experimental exact-window helper is available only for direct macOS builds",
+    );
+  }
+  const exists = options.existsSync ?? fs.existsSync;
+  for (const required of [
+    options.helperPath,
+    options.manifestPath,
+    options.noticesPath,
+  ]) {
+    if (!exists(required)) {
+      throw new Error(
+        `Experimental exact-window helper input is missing: ${required}`,
+      );
+    }
+  }
+  return {
+    [path.relative(electrobunDir, options.helperPath)]:
+      "computeruse-exact-window-helper",
+    [path.relative(electrobunDir, options.manifestPath)]:
+      "computeruse-exact-window-helper.manifest.json",
+    [path.relative(electrobunDir, options.noticesPath)]:
+      "computeruse-exact-window-THIRD_PARTY_NOTICES.txt",
+  };
+}
 
 function readJsonFile(filePath: string): Record<string, unknown> {
   try {
@@ -426,10 +487,12 @@ export function resolveElectrobunCopyMap({
   buildVariant,
   runtimeDistDir,
   embedRuntime = buildVariant !== "store",
+  experimentalExactWindow,
 }: {
   buildVariant: "store" | "direct";
   runtimeDistDir: string;
   embedRuntime?: boolean;
+  experimentalExactWindow?: ExperimentalExactWindowCopyOptions;
 }): Record<string, string> {
   const copy: Record<string, string> = {
     [rendererDistDir]: "renderer",
@@ -476,6 +539,14 @@ export function resolveElectrobunCopyMap({
     }
     copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
   }
+
+  Object.assign(
+    copy,
+    resolveExperimentalExactWindowCopyMap({
+      buildVariant,
+      options: experimentalExactWindow,
+    }),
+  );
 
   return copy;
 }
@@ -566,6 +637,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
     (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
   const buildVariant: "store" | "direct" =
     process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
+  const experimentalExactWindowEnabled = isTruthyEnv(
+    process.env.ELIZA_BUILD_EXPERIMENTAL_EXACT_WINDOW_HELPER,
+  );
   const embedRuntime = shouldEmbedRuntimeBundle(process.env);
   const linuxRenderer = resolveLinuxRenderer(process.env);
   const appleTeamId = resolveAppleTeamId(process.env);
@@ -667,6 +741,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
           buildVariant,
           runtimeDistDir,
           embedRuntime,
+          experimentalExactWindow: {
+            enabled: experimentalExactWindowEnabled,
+            platform: process.platform,
+            helperPath: experimentalExactWindowHelper,
+            manifestPath: experimentalExactWindowManifest,
+            noticesPath: experimentalExactWindowNotices,
+          },
         }),
         [brandConfigCopySource]: "brand-config.json",
         ...(process.platform === "darwin" &&

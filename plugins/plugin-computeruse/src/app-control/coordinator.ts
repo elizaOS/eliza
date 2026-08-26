@@ -9,10 +9,12 @@ import type {
   AppControlPermissionState,
   AppDescriptor,
   AppElement,
+  AppExactWindowPointerDispatcher,
   AppState,
   AppStateCapture,
   NativeAppElement,
   PhysicalPointerDriver,
+  PhysicalPointerObserver,
 } from "./types.js";
 
 export class AppControlError extends Error {
@@ -42,6 +44,8 @@ interface AppControlCoordinatorOptions {
   capture: AppStateCapture;
   grounder?: AppControlGrounder;
   pointer?: PhysicalPointerDriver;
+  pointerObserver?: PhysicalPointerObserver;
+  exactWindowPointer?: AppExactWindowPointerDispatcher;
   now?: () => number;
   idFactory?: () => string;
 }
@@ -96,12 +100,55 @@ function makeDiff(previous: AppState, next: AppState): AppState["diff"] {
   };
 }
 
+function sameValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isTargetOrDescendant(
+  locator: number[],
+  targetLocator: number[],
+): boolean {
+  return targetLocator.every((part, index) => locator[index] === part);
+}
+
+function targetReadbackSignature(
+  elements: NativeAppElement[],
+  target: NativeAppElement,
+  kind: "click" | "scroll",
+): string {
+  return JSON.stringify(
+    elements
+      .filter((element) =>
+        isTargetOrDescendant(element.locator, target.locator),
+      )
+      .map((element) => ({
+        locator: element.locator.slice(target.locator.length),
+        role: element.role,
+        subrole: element.subrole,
+        label: element.label,
+        description: element.description,
+        value: element.secure ? undefined : element.value,
+        bounds: element.bounds,
+        ...(kind === "click"
+          ? {
+              actions: element.actions,
+              enabled: element.enabled,
+              focused: element.focused,
+              selected: element.selected,
+            }
+          : {}),
+      })),
+  );
+}
+
 export class AppControlCoordinator {
   private readonly states = new Map<string, StoredState>();
   private readonly adapter: AppControlAdapter;
   private readonly capture: AppStateCapture;
   private readonly grounder?: AppControlGrounder;
   private readonly pointer?: PhysicalPointerDriver;
+  private readonly pointerObserver?: PhysicalPointerObserver;
+  private readonly exactWindowPointer?: AppExactWindowPointerDispatcher;
   private readonly now: () => number;
   private readonly idFactory: () => string;
   private permission: AppControlPermissionState | "unknown" = "unknown";
@@ -111,6 +158,8 @@ export class AppControlCoordinator {
     this.capture = options.capture;
     this.grounder = options.grounder;
     this.pointer = options.pointer;
+    this.pointerObserver = options.pointerObserver;
+    this.exactWindowPointer = options.exactWindowPointer;
     this.now = options.now ?? Date.now;
     this.idFactory = options.idFactory ?? randomUUID;
   }
@@ -176,6 +225,9 @@ export class AppControlCoordinator {
             screenshotBounds: captured.bounds,
           }
         : {}),
+      ...(native.focusedWindowId !== undefined
+        ? { focusedWindowId: native.focusedWindowId }
+        : {}),
     };
     const previous = this.states.get(native.app.id)?.publicState;
     if (previous && !options.disableDiff)
@@ -208,6 +260,151 @@ export class AppControlCoordinator {
       );
     }
     const element = this.resolveElement(stored, request);
+    // Semantic AX owns the first attempt; experimental delivery is never a shortcut.
+    let nativeResult =
+      request.kind === "hover_target"
+        ? { success: true }
+        : await this.adapter.perform(
+            stored.publicState.app,
+            element,
+            request,
+            signal,
+          );
+    if (
+      !nativeResult.success &&
+      request.allowExperimentalExactWindow &&
+      this.exactWindowPointer?.available() &&
+      element &&
+      (request.kind === "click" || request.kind === "scroll")
+    ) {
+      if (stored.publicState.focusedWindowId === undefined) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window dispatch requires an exact window binding",
+        };
+      }
+      const freshState = await this.getAppState(request.app, {
+        disableDiff: true,
+        signal,
+      });
+      const fresh = this.states.get(request.app);
+      const freshElement = request.element_index
+        ? fresh?.nativeElements[request.element_index - 1]
+        : undefined;
+      if (
+        !fresh ||
+        freshState.app.pid !== stored.publicState.app.pid ||
+        freshState.focusedWindowId !== stored.publicState.focusedWindowId ||
+        !sameValue(
+          freshState.screenshotBounds,
+          stored.publicState.screenshotBounds,
+        ) ||
+        !freshElement ||
+        !sameValue(freshElement.locator, element.locator) ||
+        !sameValue(freshElement.bounds, element.bounds)
+      ) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window target changed during pre-dispatch recapture",
+        };
+      }
+      let pointerBefore: { x: number; y: number };
+      try {
+        if (!this.pointerObserver) throw new Error("observer unavailable");
+        pointerBefore = await this.pointerObserver.position();
+      } catch {
+        // error-policy:J4 experimental dispatch visibly refuses when independent
+        // physical-pointer provenance cannot be established.
+        return {
+          success: false,
+          error:
+            "Experimental exact-window dispatch requires physical pointer provenance",
+        };
+      }
+      const result = await this.exactWindowPointer.dispatch(
+        {
+          app: freshState.app,
+          state: freshState,
+          element: freshElement,
+          request,
+          expectedWindowId: freshState.focusedWindowId,
+        },
+        signal,
+      );
+      let pointerAfter: { x: number; y: number };
+      try {
+        pointerAfter = await this.pointerObserver.position();
+      } catch {
+        // error-policy:J4 a helper receipt cannot substitute for independent
+        // post-dispatch physical-pointer provenance.
+        return {
+          success: false,
+          error:
+            "Experimental exact-window dispatch could not verify physical pointer stability",
+        };
+      }
+      if (
+        !result.success ||
+        result.observationId !== freshState.stateId ||
+        result.targetPid !== freshState.app.pid ||
+        result.targetWindowId !== freshState.focusedWindowId ||
+        !freshState.screenshotBounds ||
+        JSON.stringify(result.targetWindowBounds) !==
+          JSON.stringify(freshState.screenshotBounds) ||
+        result.pointerBefore.x !== result.pointerAfter.x ||
+        result.pointerBefore.y !== result.pointerAfter.y ||
+        !sameValue(result.pointerBefore, pointerBefore) ||
+        !sameValue(result.pointerAfter, pointerAfter) ||
+        !sameValue(pointerBefore, pointerAfter)
+      ) {
+        return {
+          success: false,
+          error:
+            result.error ??
+            "Experimental exact-window dispatch failed validation",
+        };
+      }
+      const after = await this.getAppState(request.app, { signal });
+      const afterNative = this.states.get(request.app)?.nativeElements;
+      if (
+        after.app.pid !== freshState.app.pid ||
+        after.focusedWindowId !== freshState.focusedWindowId ||
+        !sameValue(after.screenshotBounds, freshState.screenshotBounds) ||
+        !afterNative ||
+        targetReadbackSignature(
+          fresh.nativeElements,
+          freshElement,
+          request.kind,
+        ) === targetReadbackSignature(afterNative, freshElement, request.kind)
+      ) {
+        return {
+          success: false,
+          error:
+            "Experimental exact-window dispatch lacked same-window action-specific target readback",
+        };
+      }
+      return {
+        success: true,
+        state: after,
+        receipt: {
+          receiptId: this.idFactory(),
+          appId: request.app,
+          kind: request.kind,
+          beforeStateId: freshState.stateId,
+          afterStateId: after.stateId,
+          executionMode: "experimental_direct_exact_window",
+          ...(request.element_index !== undefined
+            ? { element_index: request.element_index }
+            : {}),
+          completedAt: new Date(this.now()).toISOString(),
+          changed: true,
+          physicalPointerMoved: false,
+          targetBounds: freshElement.bounds,
+        },
+      };
+    }
     if (request.kind === "secondary_action") {
       const action = request.secondaryAction?.trim();
       if (!action || !element?.actions.includes(action)) {
@@ -246,12 +443,6 @@ export class AppControlCoordinator {
       | "set_of_marks"
       | "ocr"
       | "guarded_physical" = "semantic_ax";
-    let nativeResult = await this.adapter.perform(
-      stored.publicState.app,
-      element,
-      request,
-      signal,
-    );
     let physicalPointerMoved = false;
 
     if (!nativeResult.success) {

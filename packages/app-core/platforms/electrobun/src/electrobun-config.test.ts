@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   createElectrobunConfig,
   resolveElectrobunCopyMap,
+  resolveExperimentalExactWindowCopyMap,
   resolveLinuxRenderer,
   shouldEmbedRuntimeBundle,
 } from "../electrobun.config";
@@ -97,6 +98,79 @@ describe("Electrobun Store packaging", () => {
     expect(copy["scripts/browser-bridge-unregister.ps1"]).toBe(
       "browser-bridge-unregister.ps1",
     );
+  });
+
+  it("includes the experimental helper only in an explicitly enabled direct macOS copy map", () => {
+    const direct = resolveExperimentalExactWindowCopyMap({
+      buildVariant: "direct",
+      options: {
+        enabled: true,
+        platform: "darwin",
+        helperPath: "/fixture/build/computeruse-exact-window-helper",
+        manifestPath:
+          "/fixture/build/computeruse-exact-window-helper.manifest.json",
+        noticesPath: "/fixture/direct-only/THIRD_PARTY_NOTICES.txt",
+        existsSync: () => true,
+      },
+    });
+    expect(Object.values(direct)).toEqual([
+      "computeruse-exact-window-helper",
+      "computeruse-exact-window-helper.manifest.json",
+      "computeruse-exact-window-THIRD_PARTY_NOTICES.txt",
+    ]);
+  });
+
+  it("fails before manifest creation when the experimental helper is requested for Store", () => {
+    expect(() =>
+      resolveExperimentalExactWindowCopyMap({
+        buildVariant: "store",
+        options: {
+          enabled: true,
+          platform: "darwin",
+          helperPath: "/fixture/helper",
+          manifestPath: "/fixture/manifest",
+          noticesPath: "/fixture/notices",
+          existsSync: () => true,
+        },
+      }),
+    ).toThrow(/forbidden in Mac App Store builds/);
+  });
+
+  it("keeps direct-only source outside the published Electrobun source manifest", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "..", "package.json"),
+        "utf8",
+      ),
+    ) as { files: string[] };
+    expect(
+      manifest.files.some(
+        (entry) =>
+          entry === "." ||
+          entry === "*" ||
+          entry.startsWith("direct-only") ||
+          entry.startsWith("build"),
+      ),
+    ).toBe(false);
+    const appCoreManifest = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../..", "package.json"),
+        "utf8",
+      ),
+    ) as { files: string[] };
+    expect(appCoreManifest.files).toEqual(["dist"]);
+    const sharedLauncher = fs.readFileSync(
+      path.resolve(import.meta.dirname, "native", "agent.ts"),
+      "utf8",
+    );
+    for (const forbidden of [
+      "computeruse-exact-window-helper",
+      "experimental_direct_exact_window",
+      "SLEventPostToPid",
+      "SkyLight.framework",
+    ]) {
+      expect(sharedLauncher).not.toContain(forbidden);
+    }
   });
 
   it("omits the embedded runtime tree for external API desktop builds", () => {
