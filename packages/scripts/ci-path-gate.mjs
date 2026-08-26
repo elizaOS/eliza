@@ -114,6 +114,12 @@ export const CONFIGS = {
       },
       {
         lanes: ["server"],
+        patterns: ["packages/synthetic-world/**"],
+        reason:
+          "synthetic-world package - the server lane runs its transaction-backed test suite explicitly",
+      },
+      {
+        lanes: ["server"],
         patterns: ["packages/elizaos/**", "packages/skills/**"],
         reason:
           "elizaos CLI or runtime skills - test:server runs these suites (previously unmapped: a CLI/skills-only PR skipped every test lane)",
