@@ -923,8 +923,7 @@ function ensureWorkspaceRuntimePackageBuilt(packageName, packageDir) {
   if (
     canReuseDesktopRuntimePackage({
       packageName,
-      forceRebuild:
-        process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
+      forceRebuild: process.env.ELIZA_DESKTOP_REBUILD_RUNTIME_PACKAGES === "1",
       looksBuilt: workspaceRuntimePackageLooksBuilt(packageName, packageDir),
     })
   ) {
