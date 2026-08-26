@@ -32,9 +32,22 @@ export const EXAMPLE_NAMES = [
 	"Wren",
 ] as const;
 
+export function getExampleName(index = 0): string {
+	const safeIndex =
+		typeof index === "number" && Number.isFinite(index)
+			? Math.floor(index)
+			: 0;
+	const normalizedOffset =
+		((safeIndex % EXAMPLE_NAMES.length) + EXAMPLE_NAMES.length) %
+		EXAMPLE_NAMES.length;
+	return EXAMPLE_NAMES[normalizedOffset] ?? `user${safeIndex + 1}`;
+}
+
 export function pickRandomExampleName(index = 0): string {
 	const safeIndex =
-		typeof index === "number" && Number.isFinite(index) ? Math.floor(index) : 0;
+		typeof index === "number" && Number.isFinite(index)
+			? Math.floor(index)
+			: 0;
 	const offset = Math.floor(Math.random() * EXAMPLE_NAMES.length);
 	const normalizedOffset =
 		(((offset + safeIndex) % EXAMPLE_NAMES.length) + EXAMPLE_NAMES.length) %
