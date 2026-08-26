@@ -12,7 +12,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import {
   loopbackPorts,
   sandboxCommand,
   scenarioChildEnvironment,
+  writeSandboxEnvironment,
 } from "./linux-sandbox.ts";
 
 test("credential-minimal child environment rejects ambient runner secrets", () => {
@@ -29,13 +30,13 @@ test("credential-minimal child environment rejects ambient runner secrets", () =
       GITHUB_TOKEN: "runner-token",
       OPENAI_API_KEY: "provider-key",
       DATABASE_PASSWORD: "database-secret",
-      SAFE_SETTING: "retained",
+      NODE_ENV: "test",
+      SAFE_SETTING: "discarded",
     },
     { OPENAI_API_KEY: "sandbox-proxy-credential" },
   );
   expect(environment).toEqual({
-    PATH: "/bin",
-    SAFE_SETTING: "retained",
+    NODE_ENV: "test",
     OPENAI_API_KEY: "sandbox-proxy-credential",
   });
 });
@@ -54,10 +55,13 @@ test("loopback allowlist rejects non-loopback and implicit ports", () => {
 
 test("sandbox launch has no unprivileged fallback when sudo is absent", async () => {
   const launch = sandboxCommand({
-    uid: "65534",
+    enabled: true,
     allowedPorts: "4311",
     repoRoot: "/repo",
     outputDir: "/output",
+    environmentPath: "/output/.sandbox-environment-test.bin",
+    callerHome: "/home/caller",
+    callerUid: 1000,
     runtime: "/runtime",
     args: [],
   });
@@ -71,19 +75,23 @@ test("sandbox launch has no unprivileged fallback when sudo is absent", async ()
   expect(error.code).toBe("ENOENT");
 });
 
-const sandboxUid = process.env.ELIZA_STABILITY_LINUX_SANDBOX_UID;
-const hostedLinux = process.platform === "linux" && sandboxUid !== undefined;
+const hostedLinux =
+  process.platform === "linux" &&
+  process.env.ELIZA_STABILITY_LINUX_SANDBOX === "1";
 
 test.skipIf(!hostedLinux)(
   "kernel boundary blocks proc, fd, TCP, UDP, and DNS escapes",
   async () => {
-    if (!sandboxUid) throw new Error("sandbox UID unavailable");
     const directory = await mkdtemp(
       path.join(tmpdir(), "cloud-sandbox-proof-"),
     );
     const allowed = createServer((socket) => socket.end("allowed"));
     const blocked = createServer((socket) => socket.end("blocked"));
     const blockedIpv6 = createServer((socket) => socket.end("blocked-ipv6"));
+    const filesystemUnix = createServer((socket) => socket.end("host-unix"));
+    const abstractUnix = createServer((socket) => socket.end("host-abstract"));
+    const filesystemUnixPath = path.join(directory, "host-delegation.sock");
+    const abstractUnixPath = `\0eliza-stability-${process.pid}-${Date.now()}`;
     await Promise.all([
       new Promise<void>((resolve, reject) => {
         allowed.once("error", reject);
@@ -96,6 +104,14 @@ test.skipIf(!hostedLinux)(
       new Promise<void>((resolve, reject) => {
         blockedIpv6.once("error", reject);
         blockedIpv6.listen(0, "::1", resolve);
+      }),
+      new Promise<void>((resolve, reject) => {
+        filesystemUnix.once("error", reject);
+        filesystemUnix.listen(filesystemUnixPath, resolve);
+      }),
+      new Promise<void>((resolve, reject) => {
+        abstractUnix.once("error", reject);
+        abstractUnix.listen(abstractUnixPath, resolve);
       }),
     ]);
     try {
@@ -112,6 +128,12 @@ import { connect } from "node:net";
 import { createSocket } from "node:dgram";
 const tcp = (host, port) => new Promise((resolve) => {
   const socket = connect({ host, port });
+  const timer = setTimeout(() => { socket.destroy(); resolve(false); }, 1500);
+  socket.once("connect", () => { clearTimeout(timer); socket.destroy(); resolve(true); });
+  socket.once("error", () => { clearTimeout(timer); resolve(false); });
+});
+const unix = (path) => new Promise((resolve) => {
+  const socket = connect({ path });
   const timer = setTimeout(() => { socket.destroy(); resolve(false); }, 1500);
   socket.once("connect", () => { clearTimeout(timer); socket.destroy(); resolve(true); });
   socket.once("error", () => { clearTimeout(timer); resolve(false); });
@@ -153,6 +175,8 @@ console.log(JSON.stringify({
   rawProbeAvailable,
   rawIpv4: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
   rawIpv6: spawnSync("python3", ["-c", "import socket; socket.socket(socket.AF_INET6, socket.SOCK_RAW, socket.IPPROTO_RAW)"]).status === 0,
+  filesystemUnix: await unix(process.env.PROBE_FILESYSTEM_UNIX),
+  abstractUnix: await unix("\\0" + process.env.PROBE_ABSTRACT_UNIX_NAME),
 }));
 `,
         { mode: 0o600 },
@@ -160,10 +184,23 @@ console.log(JSON.stringify({
       process.env.PROBE_PARENT_CREDENTIAL = "must-not-cross-boundary";
       const repoRoot = path.resolve(import.meta.dirname, "../../../..");
       const launch = sandboxCommand({
-        uid: sandboxUid,
+        enabled: true,
         allowedPorts: String(allowedPort),
         repoRoot,
         outputDir: directory,
+        environmentPath: await writeSandboxEnvironment(
+          directory,
+          scenarioChildEnvironment(process.env, {
+            PROBE_PARENT_PID: String(process.pid),
+            PROBE_ALLOWED_PORT: String(allowedPort),
+            PROBE_BLOCKED_PORT: String(blockedPort),
+            PROBE_BLOCKED_IPV6_PORT: String(blockedIpv6Port),
+            PROBE_FILESYSTEM_UNIX: filesystemUnixPath,
+            PROBE_ABSTRACT_UNIX_NAME: abstractUnixPath.slice(1),
+          }),
+        ),
+        callerHome: process.env.HOME ?? "",
+        callerUid: process.getuid?.() ?? 0,
         runtime: process.execPath,
         args: [probe],
       });
@@ -173,12 +210,7 @@ console.log(JSON.stringify({
       const sentinelFd = openSync(sentinelPath, "r");
       const child = spawn(launch.command, launch.args, {
         cwd: repoRoot,
-        env: scenarioChildEnvironment(process.env, {
-          PROBE_PARENT_PID: String(process.pid),
-          PROBE_ALLOWED_PORT: String(allowedPort),
-          PROBE_BLOCKED_PORT: String(blockedPort),
-          PROBE_BLOCKED_IPV6_PORT: String(blockedIpv6Port),
-        }),
+        env: { PATH: process.env.PATH },
         stdio: ["ignore", "pipe", "pipe", sentinelFd],
       });
       closeSync(sentinelFd);
@@ -197,11 +229,13 @@ console.log(JSON.stringify({
       await rm(sentinelDirectory, { recursive: true, force: true });
       expect(stderr).toBe("");
       expect(code).toBe(0);
-      expect(JSON.parse(stdout.trim())).toEqual({
+      const result = JSON.parse(stdout.trim()) as Record<string, unknown>;
+      expect(result.uid).not.toBe(process.getuid?.());
+      expect({ ...result, uid: undefined }).toEqual({
         secretPresent: false,
         procReadable: false,
         fdSecretReadable: false,
-        uid: Number(sandboxUid),
+        uid: undefined,
         allowed: true,
         blockedLoopback: false,
         blockedIpv6: false,
@@ -212,6 +246,8 @@ console.log(JSON.stringify({
         rawProbeAvailable: true,
         rawIpv4: false,
         rawIpv6: false,
+        filesystemUnix: false,
+        abstractUnix: false,
       });
       const firewall = spawnSync(
         "sudo",
@@ -221,8 +257,15 @@ console.log(JSON.stringify({
       expect(firewall.status).toBe(0);
       expect(firewall.stdout).not.toContain("ELIZA_SBX_");
       expect(
-        spawnSync("pgrep", ["-u", sandboxUid], { stdio: "ignore" }).status,
+        spawnSync("pgrep", ["-u", String(result.uid)], {
+          stdio: "ignore",
+        }).status,
       ).not.toBe(0);
+      const accessControl = spawnSync("getfacl", ["-R", directory], {
+        encoding: "utf8",
+      });
+      expect(accessControl.status).toBe(0);
+      expect(accessControl.stdout).not.toContain(`user:${String(result.uid)}:`);
 
       const missingTools = mkdtempSync(
         path.join(tmpdir(), "sandbox-missing-tools-"),
@@ -269,6 +312,125 @@ console.log(JSON.stringify({
       allowed.close();
       blocked.close();
       blockedIpv6.close();
+      filesystemUnix.close();
+      abstractUnix.close();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
+
+test.skipIf(!hostedLinux)(
+  "forced teardown kills signal-resistant descendants and removes kernel state",
+  async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cloud-sandbox-teardown-"),
+    );
+    const repoRoot = path.resolve(import.meta.dirname, "../../../..");
+    const readyPath = path.join(directory, "ready.json");
+    const probePath = path.join(directory, "teardown-probe.ts");
+    try {
+      await writeFile(
+        probePath,
+        `
+import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+const descendant = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], {
+  detached: false,
+  stdio: "ignore",
+});
+process.on("SIGTERM", () => {});
+writeFileSync(process.env.TEARDOWN_READY_PATH, JSON.stringify({
+  uid: process.getuid?.(),
+  pid: process.pid,
+  descendantPid: descendant.pid,
+}));
+setInterval(() => {}, 1000);
+`,
+        { mode: 0o600 },
+      );
+      const environmentPath = await writeSandboxEnvironment(
+        directory,
+        scenarioChildEnvironment(process.env, {
+          TEARDOWN_READY_PATH: readyPath,
+        }),
+      );
+      const launch = sandboxCommand({
+        enabled: true,
+        allowedPorts: "9",
+        repoRoot,
+        outputDir: directory,
+        environmentPath,
+        callerHome: process.env.HOME ?? "",
+        callerUid: process.getuid?.() ?? 0,
+        runtime: process.execPath,
+        args: [probePath],
+      });
+      const child = spawn(launch.command, launch.args, {
+        cwd: repoRoot,
+        detached: true,
+        env: { PATH: process.env.PATH },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      if (!child.pid) throw new Error("sandbox teardown probe omitted PGID");
+      let ready:
+        | { uid: number; pid: number; descendantPid: number }
+        | undefined;
+      const readyDeadline = Date.now() + 15_000;
+      while (!ready && Date.now() < readyDeadline) {
+        try {
+          ready = JSON.parse(await readFile(readyPath, "utf8")) as typeof ready;
+        } catch (error) {
+          // error-policy:J3 The ready file is untrusted until an atomic complete JSON write is observed.
+          if (
+            !error ||
+            typeof error !== "object" ||
+            !("code" in error) ||
+            error.code !== "ENOENT"
+          ) {
+            throw error;
+          }
+          await Bun.sleep(25);
+        }
+      }
+      if (!ready)
+        throw new Error("sandbox teardown probe did not become ready");
+      expect(
+        spawnSync("sudo", ["-n", "kill", "-TERM", `-${child.pid}`], {
+          stdio: "ignore",
+        }).status,
+      ).toBe(0);
+      const closed = await Promise.race([
+        new Promise<boolean>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", () => resolve(true));
+        }),
+        Bun.sleep(10_000).then(() => false),
+      ]);
+      expect(closed).toBe(true);
+      expect(
+        spawnSync("pgrep", ["-u", String(ready.uid)], {
+          stdio: "ignore",
+        }).status,
+      ).not.toBe(0);
+      expect(
+        spawnSync("getent", ["passwd", String(ready.uid)], {
+          stdio: "ignore",
+        }).status,
+      ).not.toBe(0);
+      const accessControl = spawnSync("getfacl", ["-R", directory], {
+        encoding: "utf8",
+      });
+      expect(accessControl.status).toBe(0);
+      expect(accessControl.stdout).not.toContain(`user:${ready.uid}:`);
+      const firewall = spawnSync(
+        "sudo",
+        ["-n", "sh", "-c", "iptables-save; ip6tables-save"],
+        { encoding: "utf8" },
+      );
+      expect(firewall.status).toBe(0);
+      expect(firewall.stdout).not.toContain("ELIZA_SBX_");
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   },

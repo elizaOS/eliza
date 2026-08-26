@@ -62,8 +62,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes acl bubblewrap iptables
-          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
-          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three keyless AgentRuntime scenario
@@ -108,8 +109,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes acl bubblewrap iptables
-          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
-          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+          sudo -n /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+            /bin/bash packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup
+          echo "ELIZA_STABILITY_LINUX_SANDBOX=1" >> "$GITHUB_ENV"
       - name: Prove Linux containment against adversarial escapes
         run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
@@ -122,6 +124,10 @@ jobs:
         run: |
           args=(--provider "$STABILITY_PROVIDER")
           if [[ -n "$STABILITY_MODEL" ]]; then
+            if [[ ! "$STABILITY_MODEL" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$ ]]; then
+              echo "::error::model must match the bounded provider model identifier grammar"
+              exit 1
+            fi
             args+=(--model "$STABILITY_MODEL")
           fi
           bun run --cwd packages/cloud/e2e stability:real -- "${args[@]}" \
