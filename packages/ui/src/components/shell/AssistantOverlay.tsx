@@ -137,7 +137,7 @@ export function AssistantOverlay({
       // pseudo-elements. This overlay is itself the anchored surface, so keep
       // the fixed-position contract explicit at higher precedence.
       style={{ zIndex: Z_SHELL_OVERLAY + 1 }}
-      className="pointer-events-auto fixed inset-x-0 bottom-0 h-[80vh] sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto sm:h-[min(640px,80vh)] sm:w-[min(560px,90vw)] sm:-translate-x-1/2 sm:-translate-y-1/2"
+      className="shell-assistant-overlay-positioner pointer-events-auto fixed inset-x-0 bottom-0 h-[80vh] sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto sm:h-[min(640px,80vh)] sm:w-[min(560px,90vw)] sm:-translate-x-1/2 sm:-translate-y-1/2"
     >
       <Card
         surface="transparent"
@@ -169,7 +169,7 @@ export function AssistantOverlay({
         visualStyle={{
           borderColor: "var(--assistant-overlay-border)",
         }}
-        className="shell-assistant-overlay-panel h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
+        className="h-full w-full overflow-hidden motion-safe:animate-[shell-overlay-in_220ms_ease-out]"
       >
         <Button
           variant="ghostMuted"
