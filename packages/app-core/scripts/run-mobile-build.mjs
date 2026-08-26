@@ -5846,7 +5846,10 @@ function isJsonRecord(value) {
 }
 
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
-export function sanitizeAndroidCloudCapacitorConfig(value) {
+export function sanitizeAndroidCloudCapacitorConfig(
+  value,
+  { launcherKiosk = false, webViewDebugging = false } = {},
+) {
   if (!isJsonRecord(value)) {
     throw new Error(
       "android-cloud capacitor.config.json must contain an object",
@@ -5863,6 +5866,7 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
+    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
     },
@@ -5874,12 +5878,12 @@ export function sanitizeAndroidCloudCapacitorConfig(value) {
           : "#000000",
       allowMixedContent: false,
       captureInput: sourceAndroid.captureInput === true,
-      webContentsDebuggingEnabled: false,
+      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
     },
   };
 }
 
-function sanitizeAndroidCloudPackagedConfig() {
+function sanitizeAndroidCloudPackagedConfig(env = process.env) {
   const configPath = path.join(
     androidDir,
     "app",
@@ -5903,7 +5907,10 @@ function sanitizeAndroidCloudPackagedConfig() {
       }`,
     );
   }
-  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed);
+  const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
+  });
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
     "[mobile-build] Rewrote capacitor.config.json to the restricted Play runtime contract.",
@@ -6226,15 +6233,22 @@ import androidx.activity.OnBackPressedCallback;
                 // Intentionally stay on the launcher root.
             }
         });
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Browser-based identity providers temporarily cover the launcher.
+        // Re-enter containment whenever their deep-link callback returns.
         try {
             startLockTask();
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             Log.w(TAG, "Unable to enter launcher lock-task mode", e);
         }
-`
-    : "";
-  const launcherMethods = launcherKiosk
-    ? `
+    }
+
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         // Keep hardware keyboards and accessibility navigation from moving the
@@ -6501,14 +6515,6 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
 
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
-    }
-
-    private String preferenceKey(PluginCall call) {
-        String slot = call.getString("slot", "credential");
-        if ("credential".equals(slot)) return CREDENTIAL_CIPHERTEXT;
-        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
-        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
-        return null;
     }
 
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {
@@ -8072,7 +8078,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
-  sanitizeAndroidCloudPackagedConfig();
+  sanitizeAndroidCloudPackagedConfig(env);
 }
 
 function stripAndroidForSmsGateway() {
