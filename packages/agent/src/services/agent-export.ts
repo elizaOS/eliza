@@ -21,6 +21,7 @@
 import * as crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { createGunzip, gzipSync } from "node:zlib";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   Agent,
   AgentRuntime,
@@ -1360,7 +1361,7 @@ export async function importAgent(
     const detail = integrity.mismatches
       .map(
         (m) =>
-          `${m.collection} (manifest ${m.expected.count} rows/${m.expected.sha256.slice(0, 12)}…, payload ${m.actual.count}/${m.actual.sha256.slice(0, 12)}…)`,
+          `${m.collection} (manifest ${m.expected.count} rows/${truncateWellFormed(toWellFormedUnicode(m.expected.sha256), 12)}…, payload ${m.actual.count}/${truncateWellFormed(toWellFormedUnicode(m.actual.sha256), 12)}…)`,
       )
       .join("; ");
     throw new AgentExportError(

@@ -3,7 +3,7 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime, ReadJsonBodyOptions } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed, type AgentRuntime, type ReadJsonBodyOptions } from "@elizaos/core";
 import type { TradePermissionMode } from "@elizaos/shared";
 import {
   PostRegistryRegisterRequestSchema,
@@ -109,6 +109,25 @@ export interface AgentStatusRouteContext {
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
+
+
+function formatAddressShort(
+  address: string | null | undefined,
+  headLen: number,
+  tailLen = 4,
+): string | null {
+  if (!address) return null;
+  const wellFormed = toWellFormedUnicode(address);
+  if (wellFormed.length < headLen + tailLen + 2) return wellFormed;
+  const head = truncateWellFormed(wellFormed, headLen);
+  let tailOffset = wellFormed.length - tailLen;
+  const code = wellFormed.charCodeAt(tailOffset);
+  if (code >= 0xdc00 && code <= 0xdfff) {
+    tailOffset += 1;
+  }
+  const tail = wellFormed.slice(tailOffset);
+  return `${head}...${tail}`;
+}
 
 export async function handleAgentStatusRoutes(
   ctx: AgentStatusRouteContext,
@@ -225,15 +244,9 @@ export async function handleAgentStatusRoutes(
         hasEvm: capability.hasEvm,
         hasSolana: Boolean(addrs.solanaAddress),
         evmAddress,
-        evmAddressShort:
-          evmAddress && evmAddress.length >= 12
-            ? `${evmAddress.slice(0, 6)}...${evmAddress.slice(-4)}`
-            : evmAddress,
+        evmAddressShort: formatAddressShort(evmAddress, 6, 4),
         solanaAddress: addrs.solanaAddress ?? null,
-        solanaAddressShort:
-          addrs.solanaAddress && addrs.solanaAddress.length >= 12
-            ? `${addrs.solanaAddress.slice(0, 4)}...${addrs.solanaAddress.slice(-4)}`
-            : (addrs.solanaAddress ?? null),
+        solanaAddressShort: formatAddressShort(addrs.solanaAddress, 4, 4),
         localSignerAvailable: capability.localSignerAvailable,
         managedBscRpcReady: bscRpcReady,
         rpcReady: capability.rpcReady,
