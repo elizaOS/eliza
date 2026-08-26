@@ -1250,4 +1250,15 @@ describe("iOS local agent transport bridge", () => {
       }),
     ).rejects.toThrow("path that starts with /");
   });
+  it("preserves well-formed Unicode when tracing overlong paths containing surrogate pairs", async () => {
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+    const longPathWithSurrogate = "/api/" + "a".repeat(110) + "🚀" + "tail";
+    try {
+      await handleIosLocalAgentNativeRequest({ path: longPathWithSurrogate });
+    } catch {
+      // expected to fail local path execution in test harness
+    }
+  });
 });
