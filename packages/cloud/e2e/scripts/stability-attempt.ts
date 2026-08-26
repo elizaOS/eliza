@@ -4,7 +4,7 @@
  * a real AgentRuntime, and emits retained runtime/action/durable evidence.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -24,6 +24,12 @@ import {
   type StabilityParentNetworkEntry,
 } from "../src/stability/parent-network-guard.ts";
 import { readRealModelBootstrap } from "../src/stability/real-model-bootstrap.ts";
+import {
+  linuxSandboxUid,
+  loopbackPorts,
+  sandboxCommand,
+  scenarioChildEnvironment,
+} from "../src/stability/linux-sandbox.ts";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -41,6 +47,7 @@ const outputDir = required("ELIZA_STABILITY_OUTPUT_DIR");
 const mode = required("ELIZA_STABILITY_MODEL_MODE");
 const provider = required("ELIZA_STABILITY_PROVIDER");
 const model = required("ELIZA_STABILITY_MODEL");
+const sandboxUid = linuxSandboxUid(mode);
 const initialStateHash = required(
   "ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH",
 );
@@ -223,6 +230,13 @@ async function startMockAuditProxy(
 }
 
 function processGroupExists(pid: number): boolean {
+  if (sandboxUid) {
+    return (
+      spawnSync("sudo", ["-n", "kill", "-0", `-${pid}`], {
+        stdio: "ignore",
+      }).status === 0
+    );
+  }
   try {
     process.kill(-pid, 0);
     return true;
@@ -241,6 +255,13 @@ function processGroupExists(pid: number): boolean {
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  if (sandboxUid) {
+    const result = spawnSync("sudo", ["-n", "kill", `-${signal}`, `-${pid}`], {
+      stdio: "ignore",
+    });
+    if (result.status === 0 || !processGroupExists(pid)) return;
+    throw new Error(`privileged scenario process-group ${signal} failed`);
+  }
   try {
     process.kill(-pid, signal);
   } catch (error) {
@@ -359,27 +380,49 @@ try {
     required("ELIZA_STABILITY_ATTEMPT_ID"),
     ...(mode === "real-llm" ? ["--provider", provider] : []),
   ];
-  const child = spawn(process.execPath, args, {
+  const childEnvironment = scenarioChildEnvironment(childProcessEnvironment, {
+    CLOUD_E2E_API_URL: cloudApiProxy.url,
+    CLOUD_E2E_CONTROL_PLANE_URL: stack.urls.controlPlane,
+    CLOUD_E2E_HETZNER_URL: hetznerProxy.url,
+    ELIZA_SCENARIO_MODEL: model,
+    ELIZA_SYNTHETIC_CONTROL_TOKEN: required("ELIZA_SYNTHETIC_CONTROL_TOKEN"),
+    ...(modelProxy
+      ? {
+          [provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"]:
+            provider === "openai"
+              ? childProcessEnvironment.OPENAI_API_KEY
+              : childProcessEnvironment.ANTHROPIC_API_KEY,
+        }
+      : {}),
+    ELIZA_STABILITY_CHILD_NETWORK_LEDGER: childNetworkLedgerPath,
+    ELIZA_STABILITY_CHILD_QUIESCENCE_LEDGER: childQuiescenceLedgerPath,
+    ELIZA_SYNTHETIC_RUNTIME_LEDGER: childRuntimeLedgerPath,
+    ELIZA_SYNTHETIC_RUNTIME_POLICY: serializedRuntimePolicy,
+    ELIZA_SYNTHETIC_DISABLE_CONNECTOR_GRANTS: "1",
+    SCENARIO_USE_DETERMINISTIC_MODEL: mode === "deterministic-mock" ? "1" : "0",
+    ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL:
+      mode === "deterministic-mock" ? "1" : "0",
+  });
+  const launch = sandboxCommand({
+    uid: sandboxUid,
+    allowedPorts: loopbackPorts([
+      cloudApiProxy.url,
+      stack.urls.controlPlane,
+      hetznerProxy.url,
+      required("ELIZA_SYNTHETIC_CONTROL_URL"),
+      ...(modelProxy ? [modelProxy.url] : []),
+    ]),
+    repoRoot,
+    outputDir,
+    runtime: process.execPath,
+    args,
+  });
+  const child = spawn(launch.command, launch.args, {
     cwd: repoRoot,
     detached: true,
     shell: false,
     stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...childProcessEnvironment,
-      CLOUD_E2E_API_URL: cloudApiProxy.url,
-      CLOUD_E2E_CONTROL_PLANE_URL: stack.urls.controlPlane,
-      CLOUD_E2E_HETZNER_URL: hetznerProxy.url,
-      ELIZA_SCENARIO_MODEL: model,
-      ELIZA_STABILITY_CHILD_NETWORK_LEDGER: childNetworkLedgerPath,
-      ELIZA_STABILITY_CHILD_QUIESCENCE_LEDGER: childQuiescenceLedgerPath,
-      ELIZA_SYNTHETIC_RUNTIME_LEDGER: childRuntimeLedgerPath,
-      ELIZA_SYNTHETIC_RUNTIME_POLICY: serializedRuntimePolicy,
-      ELIZA_SYNTHETIC_DISABLE_CONNECTOR_GRANTS: "1",
-      SCENARIO_USE_DETERMINISTIC_MODEL:
-        mode === "deterministic-mock" ? "1" : "0",
-      ELIZA_SCENARIO_USE_DETERMINISTIC_MODEL:
-        mode === "deterministic-mock" ? "1" : "0",
-    },
+    env: childEnvironment,
   });
   if (!child.pid) throw new Error("scenario CLI omitted its process-group id");
   const childProcessGroupId = child.pid;

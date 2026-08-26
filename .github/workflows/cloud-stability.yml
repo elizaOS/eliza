@@ -50,7 +50,17 @@ jobs:
       HCLOUD_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Establish Linux scenario containment boundary
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes acl bubblewrap iptables
+          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
+          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+      - name: Prove Linux containment against adversarial escapes
+        run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three keyless AgentRuntime scenario
         run: >-
           bun run --cwd packages/cloud/e2e stability:keyless --
@@ -80,15 +90,28 @@ jobs:
       MOCK_HETZNER_LATENCY: "0"
       MOCK_HETZNER_ACTION_MS: "30"
       CONTROL_PLANE_TICK_MS: "50"
-      OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
-      ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
       AWS_ACCESS_KEY_ID: ""
       AWS_SECRET_ACCESS_KEY: ""
       HCLOUD_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cloud-setup-test-env
+      - name: Establish Linux scenario containment boundary
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes acl bubblewrap iptables
+          uid="$(sudo -n packages/cloud/e2e/scripts/stability-linux-sandbox.sh setup)"
+          echo "ELIZA_STABILITY_LINUX_SANDBOX_UID=$uid" >> "$GITHUB_ENV"
+      - name: Prove Linux containment against adversarial escapes
+        run: bun run --cwd packages/cloud/e2e test:containment
       - name: Run exact-three real-model scenario over mock services
+        env:
+          OPENAI_API_KEY: ${{ (github.event_name == 'schedule' || inputs.provider == 'openai') && secrets.OPENAI_API_KEY || '' }}
+          ANTHROPIC_API_KEY: ${{ inputs.provider == 'anthropic' && secrets.ANTHROPIC_API_KEY || '' }}
         run: >-
           bun run --cwd packages/cloud/e2e stability:real --
           --provider ${{ github.event_name == 'schedule' && 'openai' || inputs.provider }}

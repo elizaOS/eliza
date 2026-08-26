@@ -88,10 +88,11 @@ SHA-256; rejected requests retain structural evidence without a forwarded hash.
 The trusted attempt harness signs the complete real-model receipt with the
 parent-owned, per-attempt HMAC key; the outer adapter verifies that attestation
 before accepting it.
-This blocks direct secret inheritance into the harness and scenario child, but
-does not claim isolation from generic same-UID process inspection or raw network
-transports. The credentialed lane is not certifiable against a hostile child
-until #26821 supplies the OS/user/process sandbox for those boundaries.
+On Linux the scenario runs as a dedicated unprivileged UID in a fresh PID and
+`/proc` namespace with no capabilities, a read-only repository, bounded
+resources, and owner-scoped firewall rules admitting only declared loopback
+proxy ports. The pinned-Bun preload remains application-level diagnostics; the
+kernel boundary rejects direct TCP, UDP, DNS, and raw-socket bypasses.
 
 Attempts retain trajectories, tool receipts, transitions, bounded logs,
 network and mock-service ledgers, and authority hashes. The aggregate retains
