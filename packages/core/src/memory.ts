@@ -124,6 +124,30 @@ export function isFragmentMemory(
 	);
 }
 
+/**
+ * Memory type guard for message memories
+ */
+export function isMessageMemory(
+	memory: Memory,
+): memory is MessageMemory {
+	return (
+		memory.metadata !== undefined &&
+		memory.metadata.type === MemoryType.MESSAGE
+	);
+}
+
+/**
+ * Memory type guard for description memories
+ */
+export function isDescriptionMemory(
+	memory: Memory,
+): memory is Memory & { metadata: DescriptionMetadata } {
+	return (
+		memory.metadata !== undefined &&
+		memory.metadata.type === MemoryType.DESCRIPTION
+	);
+}
+
 export function getMemoryText(memory: Memory, defaultValue = ""): string {
-	return memory.content.text ?? defaultValue;
+	return memory.content?.text ?? defaultValue;
 }

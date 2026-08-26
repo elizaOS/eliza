@@ -13,11 +13,13 @@ import {
 	createMessageMemory,
 	getMemoryText,
 	isCustomMetadata,
+	isDescriptionMemory,
 	isDescriptionMetadata,
 	isDocumentMemory,
 	isDocumentMetadata,
 	isFragmentMemory,
 	isFragmentMetadata,
+	isMessageMemory,
 	isMessageMetadata,
 } from "./memory.ts";
 import {
@@ -104,11 +106,16 @@ describe("memory-level guards", () => {
 			...(type ? { metadata: { type } } : {}),
 		}) as Memory;
 
-	it("isDocumentMemory / isFragmentMemory require matching metadata", () => {
+	it("isDocumentMemory / isFragmentMemory / isMessageMemory / isDescriptionMemory require matching metadata", () => {
 		expect(isDocumentMemory(mem(MemoryType.DOCUMENT))).toBe(true);
 		expect(isDocumentMemory(mem(MemoryType.FRAGMENT))).toBe(false);
 		expect(isDocumentMemory(mem())).toBe(false); // no metadata
 		expect(isFragmentMemory(mem(MemoryType.FRAGMENT))).toBe(true);
+		expect(isFragmentMemory(mem(MemoryType.MESSAGE))).toBe(false);
+		expect(isMessageMemory(mem(MemoryType.MESSAGE))).toBe(true);
+		expect(isMessageMemory(mem(MemoryType.DOCUMENT))).toBe(false);
+		expect(isDescriptionMemory(mem(MemoryType.DESCRIPTION))).toBe(true);
+		expect(isDescriptionMemory(mem(MemoryType.MESSAGE))).toBe(false);
 	});
 });
 
@@ -120,5 +127,6 @@ describe("getMemoryText", () => {
 		expect(getMemoryText({ content: {} } as Memory, "fallback")).toBe(
 			"fallback",
 		);
+		expect(getMemoryText({} as Memory, "fallback")).toBe("fallback");
 	});
 });
