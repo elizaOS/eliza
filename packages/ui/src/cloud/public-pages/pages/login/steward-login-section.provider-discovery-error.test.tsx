@@ -21,7 +21,8 @@ const harness = vi.hoisted(() => ({
   mode: "fail-twice-then-succeed" as
     | "fail-twice-then-succeed"
     | "always-fail"
-    | "hang",
+    | "hang"
+    | "malformed-then-succeed",
 }));
 
 const LIVE_PROVIDERS = {
@@ -60,7 +61,17 @@ vi.mock("@stwd/sdk", () => ({
       if (harness.mode === "hang") {
         return new Promise(() => {});
       }
-      if (harness.mode === "always-fail" || harness.getProvidersCalls <= 2) {
+      if (
+        harness.mode === "malformed-then-succeed" &&
+        harness.getProvidersCalls === 1
+      ) {
+        return Promise.resolve({});
+      }
+      if (
+        harness.mode === "always-fail" ||
+        (harness.mode === "fail-twice-then-succeed" &&
+          harness.getProvidersCalls <= 2)
+      ) {
         return Promise.reject(
           new Error("Provider service is temporarily unavailable"),
         );
@@ -182,6 +193,24 @@ describe("StewardLoginSection provider discovery truth", () => {
     await waitFor(() => expect(harness.getProvidersCalls).toBe(1));
     expect(screen.queryByText("Sign-in options couldn't load")).toBeNull();
     expect(screen.getByRole("button", { name: "Discord" })).toBeTruthy();
+  });
+
+  it("rejects a malformed successful response without fabricating providers", async () => {
+    harness.mode = "malformed-then-succeed";
+    renderSection();
+
+    expect(
+      await screen.findByText("Sign-in options couldn't load"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Steward returned an invalid sign-in provider configuration.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText("Email")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Passkey" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Google" })).toBeNull();
+    expect(harness.getProvidersCalls).toBe(1);
   });
 
   it("fails visibly without fabricated providers and survives repeated failure", async () => {
