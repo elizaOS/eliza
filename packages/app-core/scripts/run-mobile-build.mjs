@@ -4513,6 +4513,38 @@ const ANDROID_SPLASH_SIZES = {
   "drawable-land-xxxhdpi": [1920, 1280],
 };
 
+const ANDROID_CLOUD_SPLASH_MARK_RESOURCE = "eliza_cloud_splash_mark";
+const ANDROID_CLOUD_SPLASH_MARK_SIZE = 288;
+
+export function applyAndroidCloudSplashTheme(source, { cloudBuild }) {
+  if (!cloudBuild) return source;
+
+  const launchThemePattern =
+    /(<style\s+name=["']AppTheme\.NoActionBarLaunch["'][^>]*>)([\s\S]*?)(<\/style>)/;
+  const launchTheme = source.match(launchThemePattern);
+  if (!launchTheme) {
+    throw new Error(
+      "[mobile-build] Android launch theme AppTheme.NoActionBarLaunch is missing",
+    );
+  }
+
+  const splashIconPattern =
+    /\n\s*<item\s+name=["']windowSplashScreenAnimatedIcon["'][^>]*>[^<]*<\/item>/g;
+  const bodyWithoutCloudIcon = launchTheme[2].replace(splashIconPattern, "");
+  const body = bodyWithoutCloudIcon.replace(
+    /(\n\s*<item\s+name=["']windowSplashScreenBackground["'][^>]*>[^<]*<\/item>)/,
+    `$1\n        <item name="windowSplashScreenAnimatedIcon">@drawable/${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}</item>`,
+  );
+
+  if (!body.includes(`@drawable/${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}`)) {
+    throw new Error(
+      "[mobile-build] Android launch theme is missing windowSplashScreenBackground",
+    );
+  }
+
+  return source.replace(launchThemePattern, `$1${body}$3`);
+}
+
 async function loadImageToolForBrandAssets(platform) {
   try {
     return { kind: "sharp", sharp: (await import("sharp")).default };
@@ -4718,7 +4750,7 @@ async function generateIosBrandAssets() {
   console.log(`[mobile-build] Generated iOS brand assets for ${APP.appName}.`);
 }
 
-async function generateAndroidBrandAssets() {
+async function generateAndroidBrandAssets({ cloudBuild = false } = {}) {
   assertSharedTreeOnlyForEliza("write brand icons");
   const resDir = path.join(androidDir, "app", "src", "main", "res");
   if (!fs.existsSync(resDir)) return;
@@ -4727,6 +4759,54 @@ async function generateAndroidBrandAssets() {
   if (!iconSource && !launchSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("Android");
+
+  const stylesPath = path.join(resDir, "values", "styles.xml");
+  if (!fs.existsSync(stylesPath)) {
+    throw new Error("[mobile-build] Android styles.xml is missing");
+  }
+  fs.writeFileSync(
+    stylesPath,
+    applyAndroidCloudSplashTheme(fs.readFileSync(stylesPath, "utf8"), {
+      cloudBuild,
+    }),
+    "utf8",
+  );
+
+  const cloudSplashMarkPath = path.join(
+    resDir,
+    "drawable-nodpi",
+    `${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}.png`,
+  );
+  if (!cloudBuild && fs.existsSync(cloudSplashMarkPath)) {
+    fs.rmSync(cloudSplashMarkPath);
+  }
+
+  if (cloudBuild) {
+    const cloudSplashSource = path.join(
+      appDir,
+      "public",
+      "brand",
+      "logos",
+      "logo_white_nobg.svg",
+    );
+    const source = fs.readFileSync(cloudSplashSource, "utf8");
+    if (
+      !source.includes('fill="none"') ||
+      !source.includes('fill="white"') ||
+      /#FF5800|<rect[^>]+fill=["']#FF5800["']/i.test(source)
+    ) {
+      throw new Error(
+        "[mobile-build] Android Cloud splash mark must be a transparent white face without a background rectangle",
+      );
+    }
+    fs.mkdirSync(path.dirname(cloudSplashMarkPath), { recursive: true });
+    await writeAndroidForegroundPng(
+      imageTool,
+      cloudSplashSource,
+      cloudSplashMarkPath,
+      ANDROID_CLOUD_SPLASH_MARK_SIZE,
+    );
+  }
 
   if (iconSource) {
     for (const [dir, size] of Object.entries(ANDROID_LAUNCHER_ICON_SIZES)) {
@@ -5517,20 +5597,18 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // Permissions removed from the manifest. Anything that triggers a Play
 // Store policy review (sensitive runtime perms, system-only signature
 // perms, default-role / call / SMS perms, background location) gets
-// dropped. The Play client retains only ordinary HTTPS networking and
-// user-triggered microphone voice; it has no background service, notification,
-// camera, location, Bluetooth, health, telephony, or shared-storage contract.
+// dropped. The Play client retains ordinary HTTPS networking, user-triggered
+// microphone voice, foreground location, and notifications. It has no
+// background location/service, camera, Bluetooth, health, telephony, or
+// shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "CAMERA",
-  "ACCESS_FINE_LOCATION",
-  "ACCESS_COARSE_LOCATION",
   "BLUETOOTH_SCAN",
   "BLUETOOTH_CONNECT",
   "BLUETOOTH",
   "BLUETOOTH_ADMIN",
   "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_DATA_SYNC",
-  "POST_NOTIFICATIONS",
   "WRITE_EXTERNAL_STORAGE",
   "READ_EXTERNAL_STORAGE",
   "WAKE_LOCK",
@@ -5574,6 +5652,8 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
 export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
   "ACCESS_BACKGROUND_LOCATION",
   "RECEIVE_BOOT_COMPLETED",
+  "SCHEDULE_EXACT_ALARM",
+  "WAKE_LOCK",
 ];
 
 // Java sources removed from the merged sources tree so they don't
@@ -5593,7 +5673,6 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "NativeTranscriptPlugin.java",
   "NativeTranscriptReducer.java",
   "ResourceProbePlugin.java",
-  "SafePushNotificationsPlugin.java",
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAgentWatchdogPolicy.java",
@@ -5796,8 +5875,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@capacitor/device", "capacitor-device"],
   ["@capacitor/filesystem", "capacitor-filesystem"],
   ["@capacitor/haptics", "capacitor-haptics"],
-  ["@capacitor/local-notifications", "capacitor-local-notifications"],
-  ["@capacitor/push-notifications", "capacitor-push-notifications"],
   ["@capacitor/share", "capacitor-share"],
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
@@ -5806,7 +5883,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
   ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
-  ["@elizaos/capacitor-location", "elizaos-capacitor-location"],
   ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
   ["@elizaos/capacitor-mlkit-text", "elizaos-capacitor-mlkit-text"],
   [
@@ -5828,10 +5904,13 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/app",
   "@capacitor/browser",
   "@capacitor/keyboard",
+  "@capacitor/local-notifications",
   "@capacitor/network",
   "@capacitor/preferences",
+  "@capacitor/push-notifications",
   "@capacitor/status-bar",
   "@elizaos/capacitor-browser-surface",
+  "@elizaos/capacitor-location",
   "@elizaos/capacitor-secure-store",
 ]);
 
@@ -5852,7 +5931,11 @@ function isJsonRecord(value) {
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
 export function sanitizeAndroidCloudCapacitorConfig(
   value,
-  { allowInAppAuthNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    webViewDebugging = false,
+    allowInAppAuthNavigation = launcherKiosk,
+  } = {},
 ) {
   if (!isJsonRecord(value)) {
     throw new Error(
@@ -5870,7 +5953,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
-    ...(value.loggingBehavior === "none" ? { loggingBehavior: "none" } : {}),
+    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
     server: {
       androidScheme: "https",
       ...(allowInAppAuthNavigation
@@ -5885,14 +5968,12 @@ export function sanitizeAndroidCloudCapacitorConfig(
           : "#000000",
       allowMixedContent: false,
       captureInput: sourceAndroid.captureInput === true,
-      webContentsDebuggingEnabled: false,
+      webContentsDebuggingEnabled: launcherKiosk && webViewDebugging,
     },
   };
 }
 
-function sanitizeAndroidCloudPackagedConfig({
-  allowInAppAuthNavigation = false,
-} = {}) {
+function sanitizeAndroidCloudPackagedConfig(env = process.env) {
   const configPath = path.join(
     androidDir,
     "app",
@@ -5917,7 +5998,8 @@ function sanitizeAndroidCloudPackagedConfig({
     );
   }
   const sanitized = sanitizeAndroidCloudCapacitorConfig(parsed, {
-    allowInAppAuthNavigation,
+    launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    webViewDebugging: env.ELIZA_WEBVIEW_DEBUG === "1",
   });
   fs.writeFileSync(configPath, `${JSON.stringify(sanitized, null, "\t")}\n`);
   console.log(
@@ -5926,10 +6008,14 @@ function sanitizeAndroidCloudPackagedConfig({
 }
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
+  "android.permission.ACCESS_COARSE_LOCATION",
+  "android.permission.ACCESS_FINE_LOCATION",
   "android.permission.ACCESS_NETWORK_STATE",
   "android.permission.INTERNET",
   "android.permission.MODIFY_AUDIO_SETTINGS",
+  "android.permission.POST_NOTIFICATIONS",
   "android.permission.RECORD_AUDIO",
+  "com.google.android.c2dm.permission.RECEIVE",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
 
@@ -5937,14 +6023,30 @@ export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
   `activity:${APP.appId}.ElizaShareActivity`,
   `activity:${APP.appId}.MainActivity`,
   "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
+  "activity:com.google.android.gms.common.api.GoogleApiActivity",
+  "provider:com.capacitorjs.plugins.localnotifications.LocalNotificationsAssetProvider",
+  "provider:com.google.firebase.provider.FirebaseInitProvider",
   "provider:androidx.core.content.FileProvider",
   "provider:androidx.startup.InitializationProvider",
+  "receiver:com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver",
+  "receiver:com.capacitorjs.plugins.localnotifications.NotificationDismissReceiver",
+  "receiver:com.capacitorjs.plugins.localnotifications.TimedNotificationPublisher",
+  "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
+  "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
   "receiver:androidx.profileinstaller.ProfileInstallReceiver",
+  "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
+  "service:com.google.android.datatransport.runtime.backends.TransportBackendDiscovery",
+  "service:com.google.android.datatransport.runtime.scheduling.jobscheduling.JobInfoSchedulerService",
+  "service:com.google.firebase.components.ComponentDiscoveryService",
+  "service:com.google.firebase.messaging.FirebaseMessagingService",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
+  "android.intent.action.BOOT_COMPLETED",
+  "android.intent.action.LOCKED_BOOT_COMPLETED",
   "android.intent.action.MAIN",
   "android.intent.action.PROCESS_TEXT",
+  "android.intent.action.QUICKBOOT_POWERON",
   "android.intent.action.SEND",
   "android.intent.action.VIEW",
   "android.speech.RecognitionService",
@@ -5953,6 +6055,8 @@ export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
   "androidx.profileinstaller.action.INSTALL_PROFILE",
   "androidx.profileinstaller.action.SAVE_PROFILE",
   "androidx.profileinstaller.action.SKIP_FILE",
+  "com.google.android.c2dm.intent.RECEIVE",
+  "com.google.firebase.MESSAGING_EVENT",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
@@ -5961,6 +6065,15 @@ export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
   "androidx.emoji2.text.EmojiCompatInitializer",
   "androidx.lifecycle.ProcessLifecycleInitializer",
   "androidx.profileinstaller.ProfileInstallerInitializer",
+  "backend:com.google.android.datatransport.cct.CctBackendFactory",
+  "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
+  "com.google.android.gms.version",
+  "com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar",
+  "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
+  "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar",
+  "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsRegistrar",
+  "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingKtxRegistrar",
+  "com.google.firebase.components:com.google.firebase.messaging.FirebaseMessagingRegistrar",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
@@ -5968,7 +6081,15 @@ export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
   "android.support.customtabs.action.CustomTabsService",
 ]);
 
-export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
+// Firebase Messaging's AndroidX DataStore dependency ships the standard
+// cross-process shared-counter JNI helper. Keep an exact ABI allowlist so a
+// local-agent or inference library still cannot leak into the Cloud client.
+export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([
+  "lib/arm64-v8a/libdatastore_shared_counter.so",
+  "lib/armeabi-v7a/libdatastore_shared_counter.so",
+  "lib/x86/libdatastore_shared_counter.so",
+  "lib/x86_64/libdatastore_shared_counter.so",
+]);
 
 export const ANDROID_PLAY_DATA_EXTRACTION_RULES = `<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
@@ -6245,15 +6366,22 @@ import androidx.activity.OnBackPressedCallback;
                 // Intentionally stay on the launcher root.
             }
         });
+`
+    : "";
+  const launcherMethods = launcherKiosk
+    ? `
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Browser-based identity providers temporarily cover the launcher.
+        // Re-enter containment whenever their deep-link callback returns.
         try {
             startLockTask();
         } catch (IllegalArgumentException | IllegalStateException | SecurityException e) {
             Log.w(TAG, "Unable to enter launcher lock-task mode", e);
         }
-`
-    : "";
-  const launcherMethods = launcherKiosk
-    ? `
+    }
+
     private boolean isCloudAuthCallback(Intent intent) {
         Uri data = intent == null ? null : intent.getData();
         return data != null
@@ -6346,6 +6474,12 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // Push registration must be guarded when a distributor omits Firebase
+        // configuration. Permission checks and local notifications still work;
+        // register() then returns a typed configuration failure instead of
+        // crashing Android's activity startup.
+        getBridge().registerPlugin(SafePushNotificationsPlugin.class);
 ${launcherSetup}
 
         // Draw the canonical Cloud renderer behind transparent system bars. The
@@ -6543,25 +6677,19 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
         return currentUrl.get();
     }
 
-    private String preferenceKey(PluginCall call) {
-        String slot = call.getString("slot");
-        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
-        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
-        if (slot != null) {
-            call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
-            return null;
-        }
-        String key = call.getString("key", "session");
-        if ("session".equals(key)) return SESSION_CIPHERTEXT;
-        if ("accountDeletionAdmission".equals(key)) return ADMISSION_CIPHERTEXT;
-        if ("accountDeletionStatus".equals(key)) return STATUS_CIPHERTEXT;
-        if ("accountDeletionRecovery".equals(key)) return RECOVERY_CIPHERTEXT;
-        call.reject("The credential namespace is invalid.", "SECURE_CREDENTIAL_INVALID");
-        return null;
-    }
-
     private SharedPreferences preferences() {
         return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private String preferenceKey(PluginCall call) {
+        String slot = call.getString("slot", "credential");
+        if ("credential".equals(slot)) return SESSION_CIPHERTEXT;
+        if ("pending_login".equals(slot)) return PENDING_LOGIN_CIPHERTEXT;
+        if ("account_deletion_admission".equals(slot)) return ADMISSION_CIPHERTEXT;
+        if ("account_deletion_status".equals(slot)) return STATUS_CIPHERTEXT;
+        if ("account_deletion_recovery".equals(slot)) return RECOVERY_CIPHERTEXT;
+        call.reject("The secure credential slot is invalid.", "SECURE_CREDENTIAL_INVALID");
+        return null;
     }
 
     private SecretKey loadOrCreateKey() throws GeneralSecurityException {
@@ -6810,7 +6938,7 @@ public final class ElizaPlayExportPlugin extends Plugin {
 `;
 }
 
-/** Permissionless bridge to this app's standard Android settings page. */
+/** Permissionless bridge to this app's Android permission settings pages. */
 export function cloudSafePlaySettingsPluginJava(androidPackage) {
   return `package ${androidPackage};
 
@@ -6826,11 +6954,31 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "ElizaPlaySettings")
 public final class ElizaPlaySettingsPlugin extends Plugin {
     @PluginMethod
+    public void openPermissionSettings(PluginCall call) {
+        String permission = call.getString("permission", "app");
+        Intent intent;
+        if ("notifications".equals(permission)) {
+            intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            intent.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+        } else {
+            intent = appDetailsIntent();
+        }
+        openSettingsIntent(call, intent);
+    }
+
+    @PluginMethod
     public void openAppSettings(PluginCall call) {
+        openSettingsIntent(call, appDetailsIntent());
+    }
+
+    private Intent appDetailsIntent() {
+        return new Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + getContext().getPackageName()));
+    }
+
+    private void openSettingsIntent(PluginCall call, Intent intent) {
         try {
-            Intent intent = new Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + getContext().getPackageName()));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
             call.resolve();
@@ -7300,12 +7448,29 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
   const active = path.resolve(activeRoot);
   const seen = new Set();
   let removed = 0;
+
+  const removeExceptActivePath = (root) => {
+    for (const entry of fs.readdirSync(root)) {
+      const candidate = path.resolve(root, entry);
+      if (candidate === active) continue;
+      if (active.startsWith(`${candidate}${path.sep}`)) {
+        removeExceptActivePath(candidate);
+        continue;
+      }
+      rmRecursive(candidate);
+    }
+  };
+
   for (const root of javaRoots) {
     const resolved = path.resolve(root);
     if (resolved === active || seen.has(resolved)) continue;
     seen.add(resolved);
     if (!fs.existsSync(root)) continue;
-    rmRecursive(root);
+    if (active.startsWith(`${resolved}${path.sep}`)) {
+      removeExceptActivePath(resolved);
+    } else {
+      rmRecursive(root);
+    }
     removed += 1;
   }
   return removed;
@@ -7574,6 +7739,40 @@ function auditAndroidCloudSource(
   }
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
+  const cloudSplashStylesPath = path.join(resRoot, "values", "styles.xml");
+  const cloudSplashMarkPath = path.join(
+    resRoot,
+    "drawable-nodpi",
+    `${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}.png`,
+  );
+  if (!fs.existsSync(cloudSplashStylesPath)) {
+    failures.push("app/src/main/res/values/styles.xml is missing");
+  } else {
+    const styles = fs.readFileSync(cloudSplashStylesPath, "utf8");
+    if (
+      !styles.includes(
+        `<item name="windowSplashScreenAnimatedIcon">@drawable/${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}</item>`,
+      )
+    ) {
+      failures.push(
+        "AppTheme.NoActionBarLaunch does not use the transparent Cloud splash mark",
+      );
+    }
+    if (
+      !styles.includes(
+        '<item name="windowSplashScreenBackground">@color/splash_background</item>',
+      )
+    ) {
+      failures.push(
+        "AppTheme.NoActionBarLaunch does not use splash_background",
+      );
+    }
+  }
+  if (!fs.existsSync(cloudSplashMarkPath)) {
+    failures.push(
+      `app/src/main/res/drawable-nodpi/${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}.png is missing`,
+    );
+  }
   const dataExtractionRulesPath = path.join(
     resRoot,
     "xml",
@@ -8113,7 +8312,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage, {
+  rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
   });
@@ -8168,9 +8367,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   //    libeliza_*.so jniLibs disguise.
   removeCloudNativeArtifacts();
   stripAndroidCloudNativePlugins();
-  sanitizeAndroidCloudPackagedConfig({
-    allowInAppAuthNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
-  });
+  sanitizeAndroidCloudPackagedConfig(env);
 }
 
 function stripAndroidForSmsGateway() {
@@ -8458,6 +8655,12 @@ export async function runAndroidBuild(
   await runCapacitor(["sync", "android"], { env: targetEnv });
   normalizeCapacitorSettingsFile(
     path.join(androidDir, "capacitor.settings.gradle"),
+    {
+      appPackageRootRelative: path
+        .relative(androidDir, appDir)
+        .split(path.sep)
+        .join("/"),
+    },
   );
   ensureBunRuntimeRegistered();
   mirrorCapacitorWebPayloadIntoAndroidDir();
@@ -8465,7 +8668,9 @@ export async function runAndroidBuild(
   patchAndroidGradle({
     cloudBuild: target.env.ELIZA_ANDROID_CLOUD_BUILD === "1",
   });
-  await generateAndroidBrandAssets();
+  await generateAndroidBrandAssets({
+    cloudBuild: target.env.ELIZA_ANDROID_CLOUD_BUILD === "1",
+  });
   overlayAndroid(target.overlayOptions);
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   writeAndroidCleartextPolicy(target.cleartextPolicy);
@@ -9600,6 +9805,21 @@ export function auditAndroidCloudArtifact(
       {
         code: "ANDROID_CLOUD_RUNTIME_PAYLOAD_PRESENT",
         context: { artifact, offenders },
+      },
+    );
+  }
+  if (
+    !entries.some((entry) =>
+      new RegExp(
+        `(?:^|/)res/drawable-nodpi(?:-v4)?/${ANDROID_CLOUD_SPLASH_MARK_RESOURCE}\\.png$`,
+      ).test(entry),
+    )
+  ) {
+    throw mobileBuildError(
+      "[mobile-build] android-cloud artifact is missing its transparent white system-splash mark",
+      {
+        code: "ANDROID_CLOUD_SPLASH_MARK_MISSING",
+        context: { artifact },
       },
     );
   }

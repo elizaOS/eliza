@@ -2115,6 +2115,13 @@
       "when": 1794254400009,
       "tag": "0318_provider_admissions",
       "breakpoints": true
+    },
+    {
+      "idx": 302,
+      "version": "7",
+      "when": 1794254400010,
+      "tag": "0319_personal_dedicated_upgrade_authorities",
+      "breakpoints": true
     }
   ]
 }

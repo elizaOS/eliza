@@ -198,6 +198,10 @@ describe("refreshCloudStewardSession (web/fetch branch)", () => {
       expect.objectContaining({
         method: "POST",
         credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Eliza-CSRF": "1",
+        },
         signal: expect.any(AbortSignal),
       }),
     );

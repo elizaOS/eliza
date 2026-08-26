@@ -19,6 +19,7 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getConfiguredElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { publicJobErrorSummary } from "@/lib/services/job-error-text";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import type {
@@ -231,7 +232,9 @@ app.get("/", async (c) => {
       databaseStatus: agent.database_status,
       lastBackupAt: toIsoStringOrNull(agent.last_backup_at),
       lastHeartbeatAt: toIsoStringOrNull(agent.last_heartbeat_at),
-      errorMessage: agent.error_message,
+      // Match the list/jobs owner boundary: keep the full redacted diagnostic
+      // in storage, never expose server frames through the normal-user DTO.
+      errorMessage: publicJobErrorSummary(agent.error_message),
       errorCount: agent.error_count,
       createdAt: toIsoString(agent.created_at),
       updatedAt: toIsoString(agent.updated_at),

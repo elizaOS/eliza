@@ -38,6 +38,11 @@ import {
 } from "../cloud-live-continuity-contract";
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
+  CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS,
+  type CloudLiveTrajectoryPhase,
+  writeCloudLiveTrajectoryDiagnostic,
+} from "../cloud-live-trajectory-diagnostic";
+import {
   assertOnboardingLivenessWithTiming,
   chatComposer,
   describeAnchoredLiveTurnState,
@@ -573,7 +578,13 @@ async function resolvePersonalIdentity(
 }
 
 test.describe("real cloud login + personal identity + chat", () => {
-  test.setTimeout(900_000);
+  // This single contract contains two independently bounded Personal identity
+  // resolutions (2 x 2 x 180s), two 240s history proofs, protected renderer
+  // boot twice, and one 180s live-chat proof. A 15-minute aggregate timeout can
+  // therefore close a healthy browser before the later phase-specific bounds
+  // adjudicate. Keep the test below its 45-minute workflow job while allowing
+  // every fail-closed phase to report its own result.
+  test.setTimeout(CLOUD_LIVE_TRAJECTORY_TIMEOUT_MS);
   test.skip(
     !CLOUD_LIVE_ENABLED && !REQUIRE_NAMED_WARMING,
     "set ELIZA_UI_SMOKE_CLOUD_LIVE=1 and ELIZA_UI_SMOKE_LIVE_STACK=1 to run against real Eliza Cloud",
@@ -589,6 +600,21 @@ test.describe("real cloud login + personal identity + chat", () => {
     context,
     page,
   }) => {
+    const trajectoryStartedAt = Date.now();
+    const trajectoryDiagnosticPath = test
+      .info()
+      .outputPath("privacy-safe-trajectory-history-network-diagnostics.json");
+    const enterTrajectoryPhase = async (
+      phase: CloudLiveTrajectoryPhase,
+    ): Promise<void> => {
+      await writeCloudLiveTrajectoryDiagnostic({
+        diagnosticPath: trajectoryDiagnosticPath,
+        phase,
+        elapsedMs: Date.now() - trajectoryStartedAt,
+      });
+    };
+    await enterTrajectoryPhase("protected-cloud-boot");
+
     // #18076: prove which Cloud deployment this lane targets BEFORE any
     // auth/identity/chat traffic. When the workflow pins an expected
     // environment (staging/production), a defaulted or mismatched origin is a
@@ -670,6 +696,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     // The current Cloud join flow resolves the account-derived Personal Eliza
     // identity through the read-only Personal endpoint. It persists the
     // account-owned binding without creating dedicated compute.
+    await enterTrajectoryPhase("personal-identity");
     const referenceBinding = await resolvePersonalIdentity(page);
     const identityAudit = await primaryAudit.snapshot();
     expect(
@@ -682,6 +709,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     // The random token anchors the exact user row; transcript order pairs its
     // following assistant row without treating verbatim code echo as a model
     // liveness requirement.
+    await enterTrajectoryPhase("live-chat");
     await openAppPath(page, "/chat");
     const turnAnchorToken = randomBytes(8).toString("hex");
     primaryAudit.setHistoryAnchorToken(turnAnchorToken);
@@ -925,7 +953,9 @@ test.describe("real cloud login + personal identity + chat", () => {
     // both turn-anchored rows proves the turn did not survive merely in React
     // memory. Private binding values are reduced to booleans before evidence.
     const reloadHistoryBefore = await primaryAudit.snapshot();
+    await enterTrajectoryPhase("post-reload-navigation");
     await page.reload({ waitUntil: "domcontentloaded" });
+    await enterTrajectoryPhase("post-reload-history");
     const reload = await proveAnchoredTurnHistory(
       page,
       primaryAudit,
@@ -942,6 +972,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       baseURL,
       "Playwright baseURL is required for a fresh context",
     ).toBeTruthy();
+    await enterTrajectoryPhase("fresh-context-boot");
     const freshResult = await (async () => {
       // Deliberately omit storageState. The new context gets no cookies or
       // origins from the first one, blocks the production service worker, and
@@ -970,9 +1001,11 @@ test.describe("real cloud login + personal identity + chat", () => {
         if (DEPLOYED_RENDERER_ENABLED) {
           expect(freshDeployedRenderer).toEqual(deployedRenderer);
         }
+        await enterTrajectoryPhase("fresh-context-identity");
         const freshBinding = await resolvePersonalIdentity(freshPage);
         const freshHistoryBefore = await freshAudit.snapshot();
         await openAppPath(freshPage, "/chat");
+        await enterTrajectoryPhase("fresh-context-history");
         const history = await proveAnchoredTurnHistory(
           freshPage,
           freshAudit,
@@ -1040,6 +1073,7 @@ test.describe("real cloud login + personal identity + chat", () => {
     } satisfies CloudLiveContinuityEvidenceInput;
     createCloudLiveContinuityEvidence(continuityEvidenceInput);
 
+    await enterTrajectoryPhase("evidence-write");
     if (originContract.environment === "staging") {
       await writeStagingCloudChatLatencyEvidence(
         stagingLatencyEvidencePath,
@@ -1058,5 +1092,6 @@ test.describe("real cloud login + personal identity + chat", () => {
         );
       }
     }
+    await enterTrajectoryPhase("complete");
   });
 });
