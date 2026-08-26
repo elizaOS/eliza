@@ -49,36 +49,54 @@ function canonicalizeAction(action: string): string {
 
 function requestedAction(trailingRequest: string): string | undefined {
   const match =
-    /^\s+(?:to|and)\s+(?:(?:then|please)\s+)*(.+?)(?=\s+but\b|\s+actually\b|\s+on\s+second\s+thought\b|\s+(?:and\s+then\s+|and\s+)?(?:(?:just|please)\s+)?(?:do\s+not|don't|never)\b|\s+and\s+then\s+(?:cancel|stop)\b|\s+(?:cancel|stop)\s+(?:that|it|the\s+request)\b|[?!.,;:—-]|$)/iu.exec(
+    /^\s+(?:to|and)\s+(?:(?:then|please|now|just|[\p{L}-]+ly)\s+)*(.+?)(?=\s+but\b|\s+actually\b|\s+on\s+second\s+thought\b|\s+(?:and\s+then\s+|and\s+)?(?:(?:just|please)\s+)?(?:do\s+not|don't|never)\b|\s+and\s+then\s+(?:cancel|stop)\b|\s+(?:cancel|stop)\s+(?:that|it|the\s+request)\b|[?!.,;:—-]|$)/iu.exec(
       trailingRequest,
     );
   const normalized = canonicalizeAction(match?.[1] ?? "");
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function terminalRetractionCancels(trailingRequest: string): boolean {
+function terminalRetractionDecision(
+  trailingRequest: string,
+): boolean | undefined {
   const retraction = TERMINAL_RETRACTION.exec(trailingRequest);
-  if (!retraction) return false;
+  if (!retraction) return undefined;
 
   const actionPrefix =
-    /^\s+(?:to|and)\s+(?:(?:then|please)\s+)*([\p{L}\p{N}_-]+)\b/iu.exec(
+    /^\s+(?:to|and)\s+(?:(?:then|please|now|just|[\p{L}-]+ly)\s+)*([\p{L}\p{N}_-]+)\b/iu.exec(
       trailingRequest,
     );
   if (!actionPrefix) return true;
   if (/^[?!.,;:—-]/u.test(retraction[0].trimStart())) return true;
-  if (
-    UI_LABEL_ACTION.test(actionPrefix[1] ?? "") &&
-    !/^(?:and|but|actually|just|please)\b/iu.test(retraction[0].trimStart())
-  ) {
-    return false;
-  }
-
   // A terminal phrase can itself be the requested text or UI target (for
   // example, "click Stop" or "type never mind"). It is a retraction only
   // once an earlier target/instruction exists before that terminal phrase.
-  const priorTarget = normalizeAction(
-    trailingRequest.slice(actionPrefix[0].length, retraction.index),
+  const priorTargetText = trailingRequest.slice(
+    actionPrefix[0].length,
+    retraction.index,
   );
+  const priorTarget = canonicalizeAction(priorTargetText);
+  if (priorTarget.length === 0) return false;
+
+  const terminalText = retraction[0].trimStart();
+  const explicitDiscourse = /^(?:and|but|actually|just|please)\b/iu.test(
+    terminalText,
+  );
+  const titleCaseLabel = /^\p{Lu}/u.test(terminalText);
+  const titleCasePrefix = /^\s*(?:the\s+)?(?:\p{Lu}[\p{L}\p{N}-]*\s*)+$/u.test(
+    priorTargetText,
+  );
+  const negativeTextLabel =
+    /^(?:do\s+not|don't|never)\b/iu.test(terminalText) &&
+    /^(?:type|enter|write)$/iu.test(actionPrefix[1] ?? "");
+  if (
+    (negativeTextLabel ||
+      (titleCaseLabel &&
+        (UI_LABEL_ACTION.test(actionPrefix[1] ?? "") || titleCasePrefix))) &&
+    !explicitDiscourse
+  ) {
+    return false;
+  }
   return priorTarget.length > 0;
 }
 
@@ -109,7 +127,7 @@ function negatedActionRetractsRequest(
       normalizedNegation === `${affirmativeVerb} those` ||
       (allowDeicticTarget &&
         new RegExp(
-          `^${affirmativeVerb}\\s+(?:it|that|this|them|those)\\b`,
+          `^${affirmativeVerb}\\s+(?:it|that|this|them|those)(?:\\s+(?:window|windows|app|application|button|item|items))?$`,
           "iu",
         ).test(normalizedNegation)))
   ) {
@@ -120,7 +138,8 @@ function negatedActionRetractsRequest(
 
 function retractsExplicitComputerUseRequest(trailingRequest: string): boolean {
   if (IMMEDIATE_NEGATED_ACTION.test(trailingRequest)) return true;
-  if (terminalRetractionCancels(trailingRequest)) return true;
+  const terminalRetraction = terminalRetractionDecision(trailingRequest);
+  if (terminalRetraction !== undefined) return terminalRetraction;
 
   const affirmativeAction = requestedAction(trailingRequest);
   const reconsideration = RECONSIDERED_NEGATED_ACTION.exec(trailingRequest);

@@ -43,6 +43,12 @@ describe("Computer Use direct routing", () => {
     "use computer use to type hello never mind",
     "use computer use to click the Never Mind",
     "use computer use to select blue Forget It",
+    "use computer use to type hello don't do it",
+    "use computer use to select Don't Do It",
+    "use computer use to open the Never Mind",
+    "use computer use to launch Emergency Stop",
+    "use computer use to open Telegram and don't open it full-screen",
+    "use computer use to open Telegram. Actually, don't open it full-screen",
   ])("recognizes an explicit host-control request: %s", (text) => {
     expect(looksLikeExplicitComputerUseRequest(text)).toBe(true);
   });
@@ -111,6 +117,12 @@ describe("Computer Use direct routing", () => {
     "use computer use to click Send, but do not click the Send button",
     "use computer use to open Telegram never—mind",
     "use computer use to open Telegram forget ’bout it",
+    "use computer use to click Telegram cancel that",
+    "use computer use to press Escape stop",
+    "use computer use to select Telegram never mind",
+    "use computer use to type hello forget it",
+    "use computer use and now open Telegram. Actually, don't open it",
+    "use computer use and safely open Telegram. Actually, don't open it",
     'please explain why "use computer use to take a screenshot" is unsafe',
     "please explain why `use computer use to open Telegram` is unsafe",
   ])("does not hijack an adjacent request: %s", (text) => {
