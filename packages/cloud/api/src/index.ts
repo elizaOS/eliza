@@ -36,6 +36,10 @@ import { KNOWN_ROUTE_SHARD_KEYS } from "./_router-shard-keys.generated";
 import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
+import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH,
+} from "./personal-telegram-delivery";
 import { serveRegistryHostRequest } from "./registry-host";
 import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
@@ -602,8 +606,10 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
     env.ENVIRONMENT === "staging" &&
     env.STAGING_SESSION_EXCHANGE_ENABLED === "true" &&
     env.STAGING_SESSION_EXCHANGE_VERSION === "v1";
-  const stagingSessionReady =
-    stagingSessionEnabled &&
+  const stagingSessionConfigured =
+    env.NODE_ENV === "production" &&
+    env.ENVIRONMENT === "staging" &&
+    env.STAGING_SESSION_EXCHANGE_VERSION === "v1" &&
     stagingSessionSigningSecret.length >= 32 &&
     stagingSessionSigningSecret !== env.STEWARD_JWT_SECRET?.trim() &&
     stagingSessionSigningSecret !== env.STEWARD_SESSION_SECRET?.trim() &&
@@ -649,21 +655,29 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       personalSharedTelegramEdge: {
         enabled: personalSharedTelegramEdgeEnabled,
       },
+      personalTelegramDelivery: {
+        epoch: PERSONAL_TELEGRAM_DELIVERY_EPOCH,
+        legacyEpoch1CompatEnabled:
+          isPersonalTelegramDeliveryEpoch1CompatEnabled(env),
+      },
       // Value-free schema compatibility beacon. The release workflow checks
       // the currently served Worker for this marker before the later quota
       // table drop is allowed to run.
       schemaCompatibility: {
         usageQuotasTombstone: true,
       },
-      // Value-free cutover receipt for the default-off staging QA bridge. The
-      // deploy workflow proves exact code first, flips the secret last, then
-      // requires this beacon to report the expected version/readiness. No key,
-      // allowlist, kid, or subject value is exposed.
+      // Value-free configuration receipt for the default-off staging QA
+      // bridge. `configured` proves only that the binding shapes are valid;
+      // it deliberately cannot infer subject eligibility from primary data.
+      // Operational readiness remains false until a separate verified-subject
+      // receipt and provider-backed exchange exist. No key, allowlist, kid, or
+      // subject value is exposed.
       stagingSessionExchange:
         env.ENVIRONMENT === "staging"
           ? {
+              configured: stagingSessionConfigured,
               enabled: stagingSessionEnabled,
-              ready: stagingSessionReady,
+              ready: false,
               version: stagingSessionVersion,
             }
           : null,

@@ -28,6 +28,7 @@ import {
   PRE_DELETE_BACKUP_RETENTION_MS,
   type ProvisioningAdmissionCapture,
   prepareAgentBackupInsertData,
+  reconstructStoredAgentSandboxBackupChain,
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -38,6 +39,7 @@ import {
   type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
@@ -45,6 +47,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import { personalDedicatedUpgradeAuthorities } from "../../db/schemas/personal-dedicated-upgrade-authorities";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
@@ -112,6 +115,13 @@ import {
   prepareManagedElizaSharedEnvironment,
 } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
+import {
+  type PersonalDedicatedReviewedBackupChainEntry,
+  personalDedicatedActivationAuthority,
+  personalDedicatedActivationAuthorityFromReceipt,
+  personalDedicatedActivationAuthorityKey,
+  personalDedicatedBackupProvenanceFromStored,
+} from "./personal-dedicated-adoption-provenance";
 import { EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES, JOB_TYPES } from "./provisioning-job-types";
 import { applyRemoteDockerRuntimeMode } from "./remote-docker-runtime-mode";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
@@ -445,6 +455,30 @@ function rejectNonContainerBackedProvision(
   };
 }
 
+type ContainerBackedServiceAction =
+  | "shutdown"
+  | "suspend"
+  | "sleep"
+  | "wake"
+  | "resume"
+  | "restart"
+  | "upgrade"
+  | "downgrade"
+  | "logs"
+  | "replacement"
+  | "credential"
+  | "character push";
+
+/** Canonical fail-closed error for direct container-service re-entry. */
+function containerBackedServiceRejection(
+  rec: Pick<AgentSandbox, "execution_tier">,
+  action: ContainerBackedServiceAction,
+): string | undefined {
+  return isContainerBackedExecutionTier(rec.execution_tier)
+    ? undefined
+    : `Agent ${action} requires a container-backed execution tier`;
+}
+
 /**
  * Restore-source override for `provision()`. `from-backup` restores a specific
  * backup instead of the latest and disables unrecoverable-snapshot degradation;
@@ -465,7 +499,36 @@ export type ProvisionRestoreOverride =
       requireRestoreEndpoint: true;
       expectedAdmission: ProvisioningAdmissionCapture;
     }
+  | {
+      kind: "from-reviewed-backup";
+      selectionId: string;
+      backupId: string;
+      expectedContentHash: string;
+      expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+    }
+  | { kind: "reviewed-fresh-boot"; selectionId: string }
   | { kind: "fresh-boot" };
+
+type ReviewedProvisionRestoreOverride = Extract<
+  ProvisionRestoreOverride,
+  { kind: "from-reviewed-backup" }
+>;
+
+type ReviewedProvisionAuthorityOverride = Extract<
+  ProvisionRestoreOverride,
+  { kind: "from-reviewed-backup" | "reviewed-fresh-boot" }
+>;
+
+interface ElizaSandboxServiceTestHooks {
+  afterReviewedRestorePreflight?: () => Promise<void>;
+  afterReviewedRestoreFence?: () => Promise<void>;
+}
+
+function isExplicitBackupRestore(
+  override: ProvisionRestoreOverride | undefined,
+): override is Extract<ProvisionRestoreOverride, { kind: "from-backup" | "from-reviewed-backup" }> {
+  return override?.kind === "from-backup" || override?.kind === "from-reviewed-backup";
+}
 
 export type DeleteAgentResult =
   | { success: true; rowDeleted: true; deletedSandbox: AgentSandbox }
@@ -612,7 +675,13 @@ function snapshotCaptureStillCanonical(
   captured: SnapshotAuthorityCapture,
 ): boolean {
   return (
+    current.id === captured.id &&
+    current.organization_id === captured.organization_id &&
+    current.status === captured.status &&
     current.execution_tier === captured.execution_tier &&
+    current.pool_status === captured.pool_status &&
+    (current.deleted_at?.getTime() ?? null) === (captured.deleted_at?.getTime() ?? null) &&
+    current.deletion_attempt_id === captured.deletion_attempt_id &&
     current.sandbox_id === captured.sandbox_id &&
     current.node_id === captured.node_id &&
     current.container_name === captured.container_name &&
@@ -722,6 +791,280 @@ function storedRestoreChainStillCanonical(
     const candidate = currentById.get(row.id);
     return candidate !== undefined && storedRestorePointStillCanonical(candidate, row);
   });
+}
+
+function storedRestoreChainMatchesReviewedAuthority(
+  storedChain: readonly StoredAgentSandboxBackup[],
+  sandboxRecordId: string,
+  directive: ReviewedProvisionRestoreOverride,
+): boolean {
+  if (
+    storedChain.length !== directive.expectedBackupChain.length ||
+    directive.expectedBackupChain[0]?.backupId !== directive.backupId ||
+    directive.expectedBackupChain[0]?.contentHash !== directive.expectedContentHash
+  ) {
+    return false;
+  }
+  const expectedById = new Map(
+    directive.expectedBackupChain.map((entry) => [entry.backupId, entry]),
+  );
+  return storedChain.every((stored) => {
+    const expected = expectedById.get(stored.id);
+    return (
+      expected !== undefined &&
+      stored.id === expected.backupId &&
+      stored.sandbox_record_id === sandboxRecordId &&
+      stored.backup_kind === expected.backupKind &&
+      stored.parent_backup_id === expected.parentBackupId &&
+      stored.content_hash === expected.contentHash &&
+      stored.verification_status === "verified" &&
+      stored.verified_at !== null &&
+      stored.catalog_version === expected.catalogVersion &&
+      stored.catalog_state === expected.catalogState &&
+      stored.catalog_deleted_at === null
+    );
+  });
+}
+
+function reviewedProvisionAuthorityHash(directive: ReviewedProvisionAuthorityOverride): string {
+  return crypto.createHash("sha256").update(JSON.stringify(directive)).digest("hex");
+}
+
+async function assertReviewedSelectionReceipt(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<typeof personalDedicatedAdoptionSelections.$inferSelect> {
+  const [selection] = await dbWrite
+    .select()
+    .from(personalDedicatedAdoptionSelections)
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.id, directive.selectionId),
+        eq(personalDedicatedAdoptionSelections.dedicated_agent_id, sandboxRecordId),
+        eq(personalDedicatedAdoptionSelections.schema_version, 1),
+      ),
+    )
+    .limit(1);
+  if (!selection) throw new Error(RESTORE_BACKUP_CHANGED);
+  const receiptAuthority = personalDedicatedActivationAuthorityFromReceipt(
+    selection.activation_kind,
+    selection.activation_backup_id,
+    selection.activation_backup_hash,
+    selection.activation_backup_chain,
+  );
+  if (directive.kind === "reviewed-fresh-boot") {
+    if (receiptAuthority?.kind !== "fresh-boot") throw new Error(RESTORE_BACKUP_CHANGED);
+    return selection;
+  }
+  if (
+    receiptAuthority?.kind !== "from-legacy-backup" ||
+    personalDedicatedActivationAuthorityKey(receiptAuthority) !==
+      personalDedicatedActivationAuthorityKey({
+        kind: "from-legacy-backup",
+        backupId: directive.backupId,
+        backupHash: directive.expectedContentHash,
+        backupChain: directive.expectedBackupChain,
+      })
+  ) {
+    throw new Error(RESTORE_BACKUP_CHANGED);
+  }
+  return selection;
+}
+
+export async function assertReviewedFreshBootAuthority(
+  sandboxRecordId: string,
+  directive: Extract<ProvisionRestoreOverride, { kind: "reviewed-fresh-boot" }>,
+): Promise<void> {
+  try {
+    await assertReviewedSelectionActivationAuthority(sandboxRecordId, directive);
+  } catch {
+    throw new ApiError(
+      409,
+      "session_not_ready",
+      "Reviewed fresh-boot authority changed before Dedicated provisioning",
+    );
+  }
+}
+
+async function assertReviewedSelectionActivationAuthority(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<void> {
+  const selection = await assertReviewedSelectionReceipt(sandboxRecordId, directive);
+  const backups = await dbWrite
+    .select()
+    .from(agentSandboxBackups)
+    .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+    .orderBy(asc(agentSandboxBackups.id));
+  const currentAuthority = personalDedicatedActivationAuthority(
+    selection.organization_id,
+    sandboxRecordId,
+    backups.map(personalDedicatedBackupProvenanceFromStored),
+  );
+  const reviewedAuthority =
+    directive.kind === "reviewed-fresh-boot"
+      ? ({ kind: "fresh-boot" } as const)
+      : ({
+          kind: "from-legacy-backup",
+          backupId: directive.backupId,
+          backupHash: directive.expectedContentHash,
+          backupChain: directive.expectedBackupChain,
+        } as const);
+  if (
+    personalDedicatedActivationAuthorityKey(currentAuthority) !==
+    personalDedicatedActivationAuthorityKey(reviewedAuthority)
+  ) {
+    throw new Error(RESTORE_BACKUP_CHANGED);
+  }
+}
+
+interface ReviewedProvisionAdmissionFence {
+  selectionId: string;
+  hash: string;
+  reviewedRestore?: PreparedReviewedProvisionRestore;
+}
+
+async function releaseReviewedProvisionAdmissionFence(
+  fence: ReviewedProvisionAdmissionFence,
+): Promise<void> {
+  await dbWrite
+    .update(personalDedicatedAdoptionSelections)
+    .set({ restore_fence_hash: null, restore_fence_started_at: null, updated_at: new Date() })
+    .where(
+      and(
+        eq(personalDedicatedAdoptionSelections.id, fence.selectionId),
+        eq(personalDedicatedAdoptionSelections.restore_fence_hash, fence.hash),
+      ),
+    );
+}
+
+async function acquireReviewedProvisionAdmissionFence(
+  sandboxRecordId: string,
+  organizationId: string,
+  directive: ReviewedProvisionAuthorityOverride,
+): Promise<ReviewedProvisionAdmissionFence> {
+  const hash = reviewedProvisionAuthorityHash(directive);
+  await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaProvisionAdvisoryLockSql(organizationId, sandboxRecordId));
+    const [agent] = await tx
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, sandboxRecordId),
+          eq(agentSandboxes.organization_id, organizationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!agent) throw new Error(RESTORE_AUTHORITY_CHANGED);
+    const [selection] = await tx
+      .select()
+      .from(personalDedicatedAdoptionSelections)
+      .where(
+        and(
+          eq(personalDedicatedAdoptionSelections.id, directive.selectionId),
+          eq(personalDedicatedAdoptionSelections.organization_id, organizationId),
+          eq(personalDedicatedAdoptionSelections.dedicated_agent_id, sandboxRecordId),
+          eq(personalDedicatedAdoptionSelections.schema_version, 1),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!selection || (selection.restore_fence_hash && selection.restore_fence_hash !== hash)) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    const receiptAuthority = personalDedicatedActivationAuthorityFromReceipt(
+      selection.activation_kind,
+      selection.activation_backup_id,
+      selection.activation_backup_hash,
+      selection.activation_backup_chain,
+    );
+    const expectedAuthority =
+      directive.kind === "reviewed-fresh-boot"
+        ? ({ kind: "fresh-boot" } as const)
+        : ({
+            kind: "from-legacy-backup",
+            backupId: directive.backupId,
+            backupHash: directive.expectedContentHash,
+            backupChain: directive.expectedBackupChain,
+          } as const);
+    if (
+      personalDedicatedActivationAuthorityKey(receiptAuthority) !==
+      personalDedicatedActivationAuthorityKey(expectedAuthority)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    await tx
+      .update(personalDedicatedAdoptionSelections)
+      .set({
+        restore_fence_hash: hash,
+        restore_fence_started_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(personalDedicatedAdoptionSelections.id, selection.id));
+  });
+
+  const fence: ReviewedProvisionAdmissionFence = { selectionId: directive.selectionId, hash };
+  try {
+    if (directive.kind === "from-reviewed-backup") {
+      fence.reviewedRestore = await assertReviewedProvisionRestoreAuthority(
+        sandboxRecordId,
+        directive,
+      );
+    } else {
+      await assertReviewedFreshBootAuthority(sandboxRecordId, directive);
+    }
+    return fence;
+  } catch (error) {
+    await releaseReviewedProvisionAdmissionFence(fence);
+    throw error;
+  }
+}
+
+interface PreparedReviewedProvisionRestore {
+  storedChain: StoredAgentSandboxBackup[];
+  backup: AgentSandboxBackup;
+  state: AgentBackupStateData;
+}
+
+/**
+ * Read, authenticate, decrypt, and reconstruct the exact reviewed chain before
+ * provider admission. A second capture closes DB/R2 read races; the provision
+ * path repeats this after the job-level check and carries the materialized
+ * state to the final locked push rather than downgrading to a mutable id.
+ */
+export async function assertReviewedProvisionRestoreAuthority(
+  sandboxRecordId: string,
+  directive: ReviewedProvisionRestoreOverride,
+): Promise<PreparedReviewedProvisionRestore> {
+  try {
+    await assertReviewedSelectionActivationAuthority(sandboxRecordId, directive);
+    const storedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
+    if (
+      !storedChain ||
+      !storedRestoreChainMatchesReviewedAuthority(storedChain, sandboxRecordId, directive)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    const reconstructed = await reconstructStoredAgentSandboxBackupChain(storedChain);
+    const confirmedChain = await captureStoredRestoreChain(directive.backupId, sandboxRecordId);
+    if (
+      !confirmedChain ||
+      !storedRestoreChainStillCanonical(confirmedChain, storedChain) ||
+      !storedRestoreChainMatchesReviewedAuthority(confirmedChain, sandboxRecordId, directive)
+    ) {
+      throw new Error(RESTORE_BACKUP_CHANGED);
+    }
+    return { storedChain, backup: reconstructed.target, state: reconstructed.state };
+  } catch {
+    throw new ApiError(
+      409,
+      "session_not_ready",
+      "Reviewed backup authority changed before Dedicated provisioning",
+    );
+  }
 }
 
 /**
@@ -838,12 +1181,18 @@ type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 /** Columns the tailnet-IP reconcile path reads to locate and repair an agent. */
 type ReconcilableSandbox = Pick<
   AgentSandbox,
-  "id" | "node_id" | "container_name" | "environment_vars" | "bridge_url" | "headscale_ip"
+  | "id"
+  | "node_id"
+  | "container_name"
+  | "environment_vars"
+  | "bridge_url"
+  | "health_url"
+  | "headscale_ip"
 >;
 
 /** Outcome of a stale-tailnet-IP reconcile attempt (see reconcileStaleTailnetIp). */
 type TailnetIpReconcileResult =
-  | { outcome: "repaired"; headscaleIp: string; bridgeUrl: string }
+  | { outcome: "repaired"; headscaleIp: string; bridgeUrl: string; healthUrl: string }
   | { outcome: "container-dead" }
   | { outcome: "ip-unresolvable" }
   | { outcome: "unrepairable" };
@@ -1356,10 +1705,13 @@ export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
 
-  constructor(provider?: SandboxProvider) {
+  private readonly testHooks?: ElizaSandboxServiceTestHooks;
+
+  constructor(provider?: SandboxProvider, testHooks?: ElizaSandboxServiceTestHooks) {
     if (provider) {
       this._provider = provider;
     }
+    this.testHooks = testHooks;
   }
 
   private async getProvider(): Promise<SandboxProvider> {
@@ -2010,8 +2362,10 @@ export class ElizaSandboxService {
           params.agentId,
           params.organizationId,
         );
-        if (rec?.deletion_attempt_id || rec?.claimed_at) return undefined;
         if (!rec) return undefined;
+        const tierRejection = containerBackedServiceRejection(rec, "credential");
+        if (tierRejection) throw new Error(tierRejection);
+        if (rec.deletion_attempt_id || rec.claimed_at) return undefined;
 
         const environment = await prepareManagedElizaSharedEnvironment({
           existingEnv: rec.environment_vars,
@@ -2037,6 +2391,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.organization_id, rec.organization_id),
               eq(agentSandboxes.environment_revision, rec.environment_revision),
               eq(agentSandboxes.lifecycle_revision, rec.lifecycle_revision),
+              inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
             ),
@@ -2243,6 +2598,7 @@ export class ElizaSandboxService {
       sizeBytes: number;
       bridgeUrl: string;
     } | null = null;
+    let preDeleteCaptureAuthority: SnapshotAuthorityCapture | null = null;
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     // An unauthorized delete of a still-`running` row is refused by
     // prepareAgentDelete no matter what happens here, so it skips the capture
@@ -2297,6 +2653,7 @@ export class ElizaSandboxService {
             "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
         };
       } else {
+        preDeleteCaptureAuthority = snapshotSource;
         try {
           preDeleteSnapshot = await this.fetchSnapshotState(snapshotSource);
         } catch (error) {
@@ -2364,6 +2721,7 @@ export class ElizaSandboxService {
     // same agent/org. The lock + transaction are released the moment this returns.
     const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
       snapshot: preDeleteSnapshot,
+      captureAuthority: preDeleteCaptureAuthority,
       captureWaiverGeneration,
       captureWaiverAlreadyPersisted,
       existingBackup: preDeleteBackupCandidate,
@@ -2640,6 +2998,7 @@ export class ElizaSandboxService {
         sizeBytes: number;
         bridgeUrl: string;
       } | null;
+      captureAuthority: SnapshotAuthorityCapture | null;
       captureWaiverGeneration: {
         bridgeUrl: string;
         environmentRevision: number;
@@ -2732,12 +3091,9 @@ export class ElizaSandboxService {
           this.hasCurrentPreDeleteCaptureWaiver(rec);
         if (preDeleteBackupId === null && !captureWaiverIsCurrent) {
           const waiver = preDeleteCapture?.captureWaiverGeneration ?? null;
+          const captureAuthority = preDeleteCapture?.captureAuthority ?? null;
           if (waiver) {
-            if (
-              rec.bridge_url !== waiver.bridgeUrl ||
-              rec.environment_revision !== waiver.environmentRevision ||
-              rec.sandbox_id !== waiver.sandboxId
-            ) {
+            if (!captureAuthority || !snapshotCaptureStillCanonical(rec, captureAuthority)) {
               return {
                 ok: false as const,
                 error:
@@ -2747,10 +3103,16 @@ export class ElizaSandboxService {
             captureWaiverToPersist = waiver;
           } else {
             const snapshot = preDeleteCapture?.snapshot ?? null;
-            // The capture must be OF THIS generation (shutdown's rule): a
-            // capture taken against a different bridge_url is another
-            // container's state. Refuse, leaving the row for a retry.
-            if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+            // The capture must be OF THIS exact generation (shutdown's rule).
+            // Reusing a bridge URL does not make replacement compute the same
+            // authority; every container identity and lifecycle field stays
+            // fenced through the canonical comparator.
+            if (
+              !snapshot ||
+              !captureAuthority ||
+              !snapshotCaptureStillCanonical(rec, captureAuthority) ||
+              rec.bridge_url !== snapshot.bridgeUrl
+            ) {
               return {
                 ok: false as const,
                 error:
@@ -3304,6 +3666,32 @@ export class ElizaSandboxService {
     orgId: string,
     restoreOverride?: ProvisionRestoreOverride,
   ): Promise<ProvisionResult> {
+    let reviewedRestore: PreparedReviewedProvisionRestore | undefined;
+    if (restoreOverride?.kind === "from-reviewed-backup") {
+      try {
+        reviewedRestore = await assertReviewedProvisionRestoreAuthority(agentId, restoreOverride);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed backup authority changed",
+        };
+      }
+    } else if (restoreOverride?.kind === "reviewed-fresh-boot") {
+      try {
+        await assertReviewedFreshBootAuthority(agentId, restoreOverride);
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Reviewed fresh-boot authority changed",
+        };
+      }
+    }
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      await this.testHooks?.afterReviewedRestorePreflight?.();
+    }
     const expectedAdmission =
       restoreOverride?.kind === "from-backup" && restoreOverride.requireRestoreEndpoint
         ? restoreOverride.expectedAdmission
@@ -3374,7 +3762,7 @@ export class ElizaSandboxService {
       const lock = await agentSandboxesRepository.trySetProvisioning(candidate.id);
       if (!lock) {
         if (candidate.status === "running" && candidate.bridge_url && candidate.health_url) {
-          if (restoreOverride?.kind === "from-backup") {
+          if (isExplicitBackupRestore(restoreOverride)) {
             return {
               success: false,
               sandboxRecord: candidate,
@@ -3397,6 +3785,37 @@ export class ElizaSandboxService {
       rec = lock;
     }
 
+    let reviewedAdmissionFence: ReviewedProvisionAdmissionFence | undefined;
+    if (
+      restoreOverride?.kind === "from-reviewed-backup" ||
+      restoreOverride?.kind === "reviewed-fresh-boot"
+    ) {
+      try {
+        reviewedAdmissionFence = await acquireReviewedProvisionAdmissionFence(
+          rec.id,
+          rec.organization_id,
+          restoreOverride,
+        );
+        reviewedRestore = reviewedAdmissionFence.reviewedRestore;
+        await this.testHooks?.afterReviewedRestoreFence?.();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Reviewed restore authority changed";
+        if (reviewedAdmissionFence) {
+          await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+          reviewedAdmissionFence = undefined;
+        }
+        await this.markError(rec, message);
+        return {
+          success: false,
+          sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+          error: message,
+        };
+      }
+    }
+
+    // biome-ignore format: keep the existing provision body stable while this guard owns fence cleanup.
+    try {
     // 1. Database
     let dbUri = rec.database_uri;
     if (rec.database_status !== "ready" || !dbUri) {
@@ -3507,10 +3926,13 @@ export class ElizaSandboxService {
             : null;
         if (retryHandle) {
           handle = retryHandle;
-          logger.info("[agent-sandbox] Re-probing persisted provisioning container before create", {
-            agentId: rec.id,
-            sandboxId: handle.sandboxId,
-          });
+          logger.info(
+            "[agent-sandbox] Re-probing persisted provisioning container before create",
+            {
+              agentId: rec.id,
+              sandboxId: handle.sandboxId,
+            },
+          );
         } else {
           // 2. Sandbox (via provider)
           const callerEnv = materializedEnv;
@@ -3764,7 +4186,10 @@ export class ElizaSandboxService {
         let restoreState: Awaited<
           ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
         >;
-        if (restoreOverride?.kind === "fresh-boot") {
+        if (
+          restoreOverride?.kind === "fresh-boot" ||
+          restoreOverride?.kind === "reviewed-fresh-boot"
+        ) {
           // Explicit opt-in (wake forceFreshBoot): the caller accepted the
           // data loss, so no backup is read, degraded, or pruned — the stored
           // chain stays intact for a later explicit restore.
@@ -3775,11 +4200,12 @@ export class ElizaSandboxService {
           });
         } else {
           try {
-            backup =
-              restoreOverride?.kind === "from-backup"
+            backup = reviewedRestore
+              ? reviewedRestore.backup
+              : restoreOverride?.kind === "from-backup"
                 ? await agentSandboxesRepository.getBackupById(restoreOverride.backupId)
                 : await agentSandboxesRepository.getLatestBackup(rec.id);
-            if (restoreOverride?.kind === "from-backup") {
+            if (isExplicitBackupRestore(restoreOverride)) {
               // Cross-sandbox ids are rejected here as defense in depth; the
               // wake gate and route already enforce ownership.
               if (!backup || backup.sandbox_record_id !== rec.id) {
@@ -3788,10 +4214,12 @@ export class ElizaSandboxService {
                 );
               }
             }
-            restoreState = backup
-              ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
-              : undefined;
-            if (restoreOverride?.kind === "from-backup" && !restoreState) {
+            restoreState = reviewedRestore
+              ? reviewedRestore.state
+              : backup
+                ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
+                : undefined;
+            if (isExplicitBackupRestore(restoreOverride) && !restoreState) {
               // The exact row can disappear or leave the legacy-visible lane
               // between lookup and chain reconstruction. An explicit restore
               // must fail closed instead of booting a reachable empty runtime.
@@ -3827,7 +4255,7 @@ export class ElizaSandboxService {
                 },
               );
             }
-            if (restoreOverride?.kind === "from-backup") throw error;
+            if (isExplicitBackupRestore(restoreOverride)) throw error;
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             backup = undefined;
@@ -3836,10 +4264,47 @@ export class ElizaSandboxService {
         }
         if (restoreState) {
           try {
-            await this.pushState(handle.bridgeUrl, restoreState, {
-              trusted: true,
-              authRec: rec,
-            });
+            if (reviewedRestore && restoreOverride?.kind === "from-reviewed-backup") {
+              await dbWrite.transaction(async (tx) => {
+                const lockedRestoreChain = await tx
+                  .select()
+                  .from(agentSandboxBackups)
+                  .where(
+                    and(
+                      inArray(
+                        agentSandboxBackups.id,
+                        reviewedRestore.storedChain.map((row) => row.id),
+                      ),
+                      eq(agentSandboxBackups.sandbox_record_id, rec.id),
+                    ),
+                  )
+                  .orderBy(asc(agentSandboxBackups.id))
+                  .for("update")
+                  .execute();
+                if (
+                  !storedRestoreChainStillCanonical(
+                    lockedRestoreChain,
+                    reviewedRestore.storedChain,
+                  ) ||
+                  !storedRestoreChainMatchesReviewedAuthority(
+                    lockedRestoreChain,
+                    rec.id,
+                    restoreOverride,
+                  )
+                ) {
+                  throw new Error(RESTORE_BACKUP_CHANGED);
+                }
+                await this.pushState(handle.bridgeUrl, restoreState, {
+                  trusted: true,
+                  authRec: rec,
+                });
+              });
+            } else {
+              await this.pushState(handle.bridgeUrl, restoreState, {
+                trusted: true,
+                authRec: rec,
+              });
+            }
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const missingCustomRestoreEndpoint =
@@ -3863,8 +4328,10 @@ export class ElizaSandboxService {
                 },
               );
             } else if (
-              restoreOverride?.kind === "from-backup" &&
-              (restoreOverride.requireRestoreEndpoint || !missingCustomRestoreEndpoint)
+              isExplicitBackupRestore(restoreOverride) &&
+              (restoreOverride.kind === "from-reviewed-backup" ||
+                restoreOverride.requireRestoreEndpoint ||
+                !missingCustomRestoreEndpoint)
             ) {
               // Same no-silent-fresh-boot rule as the fetch above: an explicit
               // restore point that cannot be pushed fails the provision. A
@@ -4023,6 +4490,11 @@ export class ElizaSandboxService {
       sandboxRecord: await agentSandboxesRepository.findById(rec.id),
       error: lastError,
     };
+    } finally {
+      if (reviewedAdmissionFence) {
+        await releaseReviewedProvisionAdmissionFence(reviewedAdmissionFence);
+      }
+    }
   }
 
   private async getSafeBridgeEndpoint(
@@ -5091,8 +5563,11 @@ export class ElizaSandboxService {
       | "web_ui_port"
       | "headscale_ip"
       | "sandbox_id"
+      | "execution_tier"
     >,
   ): Promise<{ pushed: boolean; agentName?: string }> {
+    const tierRejection = containerBackedServiceRejection(rec, "character push");
+    if (tierRejection) throw new Error(tierRejection);
     const payload = buildWarmClaimCharacterPayload(rec.agent_config, rec.agent_name);
     if (!payload) return { pushed: false };
 
@@ -5190,7 +5665,10 @@ export class ElizaSandboxService {
     await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
-      if (!current?.claimed_at) return;
+      if (!current) return;
+      const tierRejection = containerBackedServiceRejection(current, "credential");
+      if (tierRejection) throw new Error(tierRejection);
+      if (!current.claimed_at) return;
       if (current.warm_claim_credential_state !== null) return;
       if (!["running", "provisioning", "stopped", "error"].includes(current.status)) {
         throw new Error(
@@ -5214,6 +5692,7 @@ export class ElizaSandboxService {
           AND status IN ('running', 'provisioning', 'stopped', 'error')
           AND claimed_at IS NOT NULL
           AND warm_claim_credential_state IS NULL
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
@@ -5236,6 +5715,10 @@ export class ElizaSandboxService {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (current) {
+        const tierRejection = containerBackedServiceRejection(current, "credential");
+        if (tierRejection) throw new Error(tierRejection);
+      }
       if (
         !current?.claimed_at ||
         current.warm_claim_credential_state !== "failed" ||
@@ -5288,6 +5771,7 @@ export class ElizaSandboxService {
           AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING id
       `);
@@ -5313,27 +5797,58 @@ export class ElizaSandboxService {
       if (!current || current.warm_claim_credential_state !== "failed") {
         return null;
       }
+      const tierRejection = containerBackedServiceRejection(current, "credential");
+      if (tierRejection) throw new Error(tierRejection);
       if (current.warm_claim_cleanup_completed_at) {
-        return { alreadyComplete: true, sourcePoolId: null };
+        return {
+          alreadyComplete: true,
+          sourcePoolId: null,
+          lifecycleRevision: current.lifecycle_revision,
+          revoked: [] as Array<{ ownerId: string; hashes: string[] }>,
+        };
+      }
+      const credentialOwners = new Set(
+        [agentId, current.warm_claim_source_pool_id].filter((id): id is string => Boolean(id)),
+      );
+      const revoked: Array<{ ownerId: string; hashes: string[] }> = [];
+      for (const credentialOwnerId of credentialOwners) {
+        revoked.push({
+          ownerId: credentialOwnerId,
+          hashes: await apiKeysService.revokeForAgent(credentialOwnerId, tx),
+        });
       }
       return {
         alreadyComplete: false,
         sourcePoolId: current.warm_claim_source_pool_id,
         lifecycleRevision: current.lifecycle_revision,
+        revoked,
       };
     });
     if (!prepared) return false;
     if (prepared.alreadyComplete) return true;
 
-    const credentialOwners = new Set(
-      [agentId, prepared.sourcePoolId].filter((id): id is string => Boolean(id)),
-    );
-    for (const credentialOwnerId of credentialOwners) {
-      await apiKeysService.revokeForAgent(credentialOwnerId);
+    for (const { ownerId, hashes } of prepared.revoked) {
+      if (hashes.length === 0) continue;
+      await apiKeysService.confirmRevocationAfterCommit(hashes);
+      await apiKeysService.purgeConfirmedRevokedAgentKeys(ownerId, hashes);
     }
 
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (!current) return false;
+      const tierRejection = containerBackedServiceRejection(current, "credential");
+      if (tierRejection) throw new Error(tierRejection);
+      if (
+        current.warm_claim_credential_state !== "failed" ||
+        current.warm_claim_source_pool_id !== prepared.sourcePoolId ||
+        current.lifecycle_revision !== prepared.lifecycleRevision
+      ) {
+        return Boolean(
+          current.warm_claim_credential_state === "failed" &&
+            current.warm_claim_cleanup_completed_at,
+        );
+      }
       const result = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
@@ -5345,15 +5860,12 @@ export class ElizaSandboxService {
           AND warm_claim_credential_state = 'failed'
           AND warm_claim_cleanup_completed_at IS NULL
           AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${prepared.sourcePoolId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND lifecycle_revision = ${prepared.lifecycleRevision}
         RETURNING id
       `);
       if (result.rows.length === 1) return true;
-      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
-      return Boolean(
-        current?.warm_claim_credential_state === "failed" &&
-          current.warm_claim_cleanup_completed_at,
-      );
+      throw new Error("Failed warm-claim credential cleanup lost its state CAS");
     });
   }
 
@@ -5370,7 +5882,12 @@ export class ElizaSandboxService {
     const prepared = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
-      if (!current?.claimed_at) {
+      if (!current) {
+        throw new Error("Warm-claim key push requires a claimed sandbox row");
+      }
+      const tierRejection = containerBackedServiceRejection(current, "credential");
+      if (tierRejection) throw new Error(tierRejection);
+      if (!current.claimed_at) {
         throw new Error("Warm-claim key push requires a claimed sandbox row");
       }
       if (
@@ -5416,6 +5933,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
               AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
@@ -5451,6 +5969,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
               AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
@@ -5493,6 +6012,7 @@ export class ElizaSandboxService {
                 current.warm_claim_source_pool_id
               }
               AND environment_revision = ${current.environment_revision}
+              AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
               AND lifecycle_revision = ${current.lifecycle_revision}
             RETURNING *
           `);
@@ -5528,6 +6048,7 @@ export class ElizaSandboxService {
                 rearmed.warm_claim_source_pool_id
               }
               AND environment_revision = ${rearmed.environment_revision}
+              AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
               AND lifecycle_revision = ${rearmed.lifecycle_revision}
             RETURNING *
           `);
@@ -5571,6 +6092,7 @@ export class ElizaSandboxService {
             warm_claim_credential_state = 'pending'
             OR warm_claim_credential_state IS NULL
           )
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING *
       `);
@@ -5657,37 +6179,12 @@ export class ElizaSandboxService {
       throw new Error("Warm-claim key push has no usable minted key/org for the claimed row");
     }
 
-    const materializedEnv = await decryptAgentEnvVars(prepared.current.environment_vars);
-    const res = await this.fetchAgentApi(
-      { ...prepared.current, environment_vars: materializedEnv },
-      "/api/cloud/login/persist",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(WARM_CLAIM_KEY_PUSH_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`Warm-claim key push failed: HTTP ${res.status}`);
-    }
-
-    const responseBody = (await res.json()) as {
-      ok?: unknown;
-      appliedKeyFingerprint?: unknown;
-    };
-    const echoedFingerprint =
-      typeof responseBody.appliedKeyFingerprint === "string"
-        ? responseBody.appliedKeyFingerprint
-        : undefined;
-    if (responseBody.ok !== true || echoedFingerprint !== prepared.fingerprint) {
-      throw new Error("Warm-claim key push was not attested by the running runtime");
-    }
-
-    const attestedAt = new Date();
     const attestedRevision = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
       if (!current) return null;
+      const tierRejection = containerBackedServiceRejection(current, "credential");
+      if (tierRejection) throw new Error(tierRejection);
       if (current.warm_claim_credential_state === "attested") {
         return current.warm_claim_attested_environment_revision;
       }
@@ -5704,6 +6201,34 @@ export class ElizaSandboxService {
       if (!currentKey || (await warmClaimKeyFingerprint(currentKey)) !== prepared.fingerprint) {
         return null;
       }
+      // Keep the authoritative row lock across the bounded runtime write. A
+      // tier transition therefore cannot race the credential PUT and later
+      // turn a container-free row into the owner of the runtime side effect.
+      const res = await this.fetchAgentApi(
+        { ...current, environment_vars: currentEnv },
+        "/api/cloud/login/persist",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(WARM_CLAIM_KEY_PUSH_TIMEOUT_MS),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(`Warm-claim key push failed: HTTP ${res.status}`);
+      }
+      const responseBody = (await res.json()) as {
+        ok?: unknown;
+        appliedKeyFingerprint?: unknown;
+      };
+      const echoedFingerprint =
+        typeof responseBody.appliedKeyFingerprint === "string"
+          ? responseBody.appliedKeyFingerprint
+          : undefined;
+      if (responseBody.ok !== true || echoedFingerprint !== prepared.fingerprint) {
+        throw new Error("Warm-claim key push was not attested by the running runtime");
+      }
+
+      const attestedAt = new Date();
       const result = await tx.execute<{ environment_revision: number }>(sql`
         UPDATE ${agentSandboxes}
         SET
@@ -5721,6 +6246,7 @@ export class ElizaSandboxService {
             prepared.current.warm_claim_source_pool_id
           }
           AND environment_revision = ${current.environment_revision}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND lifecycle_revision = ${current.lifecycle_revision}
         RETURNING environment_revision
       `);
@@ -5750,9 +6276,13 @@ export class ElizaSandboxService {
     if (!expectedFingerprint || expectedEnvironmentRevision === null) {
       throw new Error("Warm-claim attestation metadata is incomplete");
     }
-    const revocationRevision = await dbWrite.transaction(async (tx) => {
+    const revocation = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (current) {
+        const tierRejection = containerBackedServiceRejection(current, "credential");
+        if (tierRejection) throw new Error(tierRejection);
+      }
       if (
         !current ||
         current.status !== "provisioning" ||
@@ -5764,19 +6294,33 @@ export class ElizaSandboxService {
       ) {
         return null;
       }
-      return current.lifecycle_revision;
+      const revokedKeyHashes = expectedSourcePoolId
+        ? await apiKeysService.revokeForAgent(expectedSourcePoolId, tx)
+        : [];
+      return {
+        lifecycleRevision: current.lifecycle_revision,
+        revokedKeyHashes,
+      };
     });
-    if (revocationRevision === null) {
+    if (!revocation) {
       throw new Error("Warm-claim source revocation lost its state CAS");
     }
 
-    if (expectedSourcePoolId) {
-      await apiKeysService.revokeForAgent(expectedSourcePoolId);
+    if (expectedSourcePoolId && revocation.revokedKeyHashes.length > 0) {
+      await apiKeysService.confirmRevocationAfterCommit(revocation.revokedKeyHashes);
+      await apiKeysService.purgeConfirmedRevokedAgentKeys(
+        expectedSourcePoolId,
+        revocation.revokedKeyHashes,
+      );
     }
 
     const finalized = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, organizationId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (current) {
+        const tierRejection = containerBackedServiceRejection(current, "credential");
+        if (tierRejection) throw new Error(tierRejection);
+      }
       if (
         current?.status === "running" &&
         current.warm_claim_credential_state === "ready" &&
@@ -5792,7 +6336,7 @@ export class ElizaSandboxService {
         current.warm_claim_key_fingerprint !== expectedFingerprint ||
         current.environment_revision !== expectedEnvironmentRevision ||
         current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision ||
-        current.lifecycle_revision !== revocationRevision
+        current.lifecycle_revision !== revocation.lifecycleRevision
       ) {
         return false;
       }
@@ -5812,7 +6356,8 @@ export class ElizaSandboxService {
           AND warm_claim_key_fingerprint = ${expectedFingerprint}
           AND environment_revision = ${expectedEnvironmentRevision}
           AND warm_claim_attested_environment_revision = ${expectedEnvironmentRevision}
-          AND lifecycle_revision = ${revocationRevision}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
+          AND lifecycle_revision = ${revocation.lifecycleRevision}
         RETURNING id
       `);
       return result.rows.length === 1;
@@ -8022,7 +8567,9 @@ export class ElizaSandboxService {
 
   async heartbeat(agentId: string, orgId: string): Promise<boolean> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return false;
+    if (!rec || !isContainerBackedExecutionTier(rec.execution_tier) || !rec.bridge_url) {
+      return false;
+    }
 
     const probe = await this.probeBridgeHealthDetailed(rec);
 
@@ -8059,6 +8606,7 @@ export class ElizaSandboxService {
         const updated = await this.updateObservedRunningGeneration(rec, {
           headscale_ip: reconcile.headscaleIp,
           bridge_url: reconcile.bridgeUrl,
+          health_url: reconcile.healthUrl,
           last_heartbeat_at: new Date(),
           error_count: 0,
         });
@@ -8382,13 +8930,13 @@ export class ElizaSandboxService {
    * Attempt to reconcile a bridge-probe miss as a stale stored tailnet IP.
    * Containers do not persist tailscale node state, so a restart mints a fresh
    * node key and headscale assigns the next IP — leaving headscale_ip /
-   * bridge_url pointing at a dead address that EVERY consumer reads (the
+   * bridge_url / health_url pointing at a dead address that EVERY consumer reads (the
    * heartbeat probe, the agent-router's subdomain resolution, and therefore
    * the public dedicated-agent proxy). Repairing the columns heals them all;
    * anything unrepairable falls back to the existing disconnect → reprovision
-   * self-heal. The repaired bridge_url keeps the stored scheme/port and swaps
-   * only the host — the same `http://<tailnetIp>:<containerPort>` shape the
-   * provisioner writes.
+   * self-heal. A repair is admitted only for the provider's canonical tailnet
+   * pair (same old IP and internal HTTP port); it swaps the host while retaining
+   * the health path and moves every trusted ingress column to one generation.
    */
   private async reconcileStaleTailnetIp(
     rec: ReconcilableSandbox,
@@ -8398,17 +8946,44 @@ export class ElizaSandboxService {
     if (!currentIp) return { outcome: "ip-unresolvable" };
     // Same IP as stored = nothing to repair: the miss is genuine
     // unreachability at the correct address, so the dead-agent path applies.
-    if (!rec.bridge_url || currentIp === rec.headscale_ip) return { outcome: "unrepairable" };
+    if (
+      !rec.bridge_url ||
+      !rec.health_url ||
+      !rec.headscale_ip ||
+      isIP(rec.headscale_ip) !== 4 ||
+      currentIp === rec.headscale_ip
+    ) {
+      return { outcome: "unrepairable" };
+    }
 
     let bridgeUrl: string;
+    let healthUrl: string;
     try {
-      const repaired = new URL(rec.bridge_url);
-      repaired.hostname = currentIp;
-      bridgeUrl = repaired.origin;
+      const repairedBridge = new URL(rec.bridge_url);
+      const repairedHealth = new URL(rec.health_url);
+      // Bind the repair to the exact old tailnet generation. A non-tailnet
+      // Docker row stores the node hostname plus host-published ports; swapping
+      // only that hostname to a tailnet IP would manufacture unreachable URLs.
+      // Canonical headscale handles use one internal HTTP port for both ingress
+      // URLs, so reject mixed/corrupt generations and let reprovision rebuild
+      // the pair from provider metadata.
+      if (
+        repairedBridge.protocol !== "http:" ||
+        repairedHealth.protocol !== "http:" ||
+        repairedBridge.hostname !== rec.headscale_ip ||
+        repairedHealth.hostname !== rec.headscale_ip ||
+        repairedBridge.port !== repairedHealth.port
+      ) {
+        return { outcome: "unrepairable" };
+      }
+      repairedBridge.hostname = currentIp;
+      bridgeUrl = repairedBridge.origin;
+      repairedHealth.hostname = currentIp;
+      healthUrl = repairedHealth.toString();
     } catch (error) {
-      // error-policy:J4 a malformed stored bridge_url cannot be repaired in
-      // place; degrade to the existing disconnect → reprovision self-heal.
-      logger.warn("[agent-sandbox] Stored bridge_url unparsable during reconcile", {
+      // error-policy:J4 malformed stored ingress cannot be repaired in place;
+      // degrade to the existing disconnect → reprovision self-heal.
+      logger.warn("[agent-sandbox] Stored ingress URL unparsable during reconcile", {
         agentId: rec.id,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -8419,7 +8994,7 @@ export class ElizaSandboxService {
     // container we think it is — never persist an unverified repair.
     const reachable = await this.probeBridgeHealth({ ...rec, bridge_url: bridgeUrl });
     if (!reachable) return { outcome: "unrepairable" };
-    return { outcome: "repaired", headscaleIp: currentIp, bridgeUrl };
+    return { outcome: "repaired", headscaleIp: currentIp, bridgeUrl, healthUrl };
   }
 
   private async verifyReplacementRuntimeHealth(args: {
@@ -8614,9 +9189,14 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<"recovered" | "unreachable" | "gone"> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec || (rec.status !== "disconnected" && rec.status !== "error")) return "gone";
-    const recoverableStatus = rec.status;
+    const rec = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !rec ||
+      !isContainerBackedExecutionTier(rec.execution_tier) ||
+      (rec.status !== "disconnected" && rec.status !== "error")
+    ) {
+      return "gone";
+    }
     const reachable = await this.probeBridgeHealth(rec);
     if (!reachable) {
       // The stored bridge_url may simply be stale (container restart → new
@@ -8630,16 +9210,13 @@ export class ElizaSandboxService {
       // Same guarded CAS as the plain recovery flip below: only revive a row
       // that is STILL in the probed recoverable status, then persist the
       // repaired ingress columns on the now-running row.
-      const revived = await agentSandboxesRepository.markReconnectedFromDisconnected(
-        rec.id,
-        recoverableStatus,
-      );
-      if (!revived) return "gone";
-      await agentSandboxesRepository.update(rec.id, {
-        headscale_ip: reconcile.headscaleIp,
-        bridge_url: reconcile.bridgeUrl,
-        error_count: 0,
+      const revived = await agentSandboxesRepository.markReconnectedFromDisconnected(rec, {
+        headscaleIp: reconcile.headscaleIp,
+        bridgeUrl: reconcile.bridgeUrl,
+        healthUrl: reconcile.healthUrl,
+        errorCount: 0,
       });
+      if (!revived) return "gone";
       logger.info(
         `[agent-sandbox] Reconciled stale tailnet IP ${rec.headscale_ip}→${reconcile.headscaleIp} for agent ${agentId}`,
       );
@@ -8649,10 +9226,7 @@ export class ElizaSandboxService {
     // bridge_url) / provisioning during the multi-second probe. Only flip it if
     // it is STILL disconnected with a live bridge — otherwise we'd resurrect a
     // being-deleted agent or wedge a stopped one at `running` with a dead bridge.
-    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(
-      rec.id,
-      recoverableStatus,
-    );
+    const restored = await agentSandboxesRepository.markReconnectedFromDisconnected(rec);
     if (!restored) return "gone";
     logger.info("[agent-sandbox] Recovered agent back to running", {
       agentId,
@@ -8682,16 +9256,44 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<"recovered" | "unresolved" | "gone"> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec || rec.status !== "provisioning" || !rec.sandbox_id) return "gone";
+    let rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
+    if (
+      !rec ||
+      !isContainerBackedExecutionTier(rec.execution_tier) ||
+      rec.status !== "provisioning" ||
+      !rec.sandbox_id
+    ) {
+      return "gone";
+    }
     if (rec.claimed_at && rec.warm_claim_credential_state !== "ready") {
       await this.recoverPendingWarmClaimInferenceKey(agentId, orgId);
       return "recovered";
     }
 
+    // Provider health is read-only, but it still must not be dialled for a row
+    // that became container-free after the first snapshot. This primary read
+    // is deliberately adjacent to the probe; the final state mutation remains
+    // a tier-qualified lifecycle CAS. Cross-system atomicity would require a
+    // durable probe lease and is outside this bounded service/CAS fix.
+    const probeSource = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !probeSource ||
+      !isContainerBackedExecutionTier(probeSource.execution_tier) ||
+      !probeSource.sandbox_id ||
+      probeSource.status !== rec.status ||
+      probeSource.sandbox_id !== rec.sandbox_id ||
+      probeSource.node_id !== rec.node_id ||
+      probeSource.container_name !== rec.container_name ||
+      probeSource.environment_revision !== rec.environment_revision ||
+      probeSource.lifecycle_revision !== rec.lifecycle_revision
+    ) {
+      return "gone";
+    }
+    rec = probeSource;
+
     const provider = await this.getProvider();
     const handle: SandboxHandle = {
-      sandboxId: rec.sandbox_id,
+      sandboxId: probeSource.sandbox_id,
       bridgeUrl: rec.bridge_url ?? "",
       healthUrl: rec.health_url ?? "",
       metadata: rec.headscale_ip ? { headscaleIp: rec.headscale_ip } : undefined,
@@ -8716,7 +9318,7 @@ export class ElizaSandboxService {
 
     // Guarded CAS: only flip if still `provisioning` with a live container and
     // no active provision job racing it (see markRunningFromProvisioning).
-    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(rec.id);
+    const flipped = await agentSandboxesRepository.markRunningFromProvisioning(rec);
     if (!flipped) return "gone";
     logger.info(
       "[agent-sandbox] Reconciled wedged provisioning row to running (container re-probed healthy)",
@@ -8754,9 +9356,19 @@ export class ElizaSandboxService {
       sizeBytes: number;
       bridgeUrl: string;
     } | null = null;
+    // Exact authority for every remote capture attempt, including the two
+    // explicit no-capture outcomes (unsupported image and operator waiver).
+    // A response from generation A must never authorize persisting or stopping
+    // a replacement generation B that happens to reuse the same bridge URL.
+    let shutdownCaptureAuthority: SnapshotAuthorityCapture | null = null;
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
+    if (snapshotSource) {
+      const tierRejection = containerBackedServiceRejection(snapshotSource, "shutdown");
+      if (tierRejection) return { success: false, error: tierRejection };
+    }
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
+      shutdownCaptureAuthority = snapshotSource;
       try {
         preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
       } catch (error) {
@@ -8819,11 +9431,24 @@ export class ElizaSandboxService {
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
+      const tierRejection = containerBackedServiceRejection(rec, "shutdown");
+      if (tierRejection) return { success: false, error: tierRejection } as const;
       if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
         return { success: false, error: "Agent not found" } as const;
       }
       if (this.getReplacementCleanupLocator(rec)) {
         return { success: false, error: "Agent replacement cleanup is still pending" } as const;
+      }
+
+      if (
+        shutdownCaptureAuthority &&
+        !snapshotCaptureStillCanonical(rec, shutdownCaptureAuthority)
+      ) {
+        return {
+          success: false,
+          error:
+            "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+        } as const;
       }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
@@ -8862,11 +9487,9 @@ export class ElizaSandboxService {
         !captureUnsupported &&
         !captureWaivedByOperator
       ) {
-        // The capture must be OF THIS generation. A capture taken against a
-        // different bridge_url (the row moved between the unlocked fetch and
-        // this locked read) is some other container's state; persisting it
-        // would masquerade as current, and stopping without persisting would
-        // silently discard the delta. Both refuse.
+        // The exact capture authority was checked above. Keep the returned URL
+        // assertion as an additional response-integrity check: a helper must
+        // never return bytes attributed to a different bridge than it dialled.
         if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
           return {
             success: false,
@@ -8900,6 +9523,11 @@ export class ElizaSandboxService {
         }
       }
 
+      // `getAgentForLifecycleMutation()` holds this exact row FOR UPDATE through
+      // the provider absence proof and write. The locked tier guard above
+      // therefore makes the allowlist predicate stable; it is a final SQL
+      // backstop, not an unchecked optimistic CAS that can silently lose a tier
+      // race after the container has stopped.
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
         SET
@@ -8909,6 +9537,8 @@ export class ElizaSandboxService {
           health_url = NULL,
           updated_at = NOW()
         WHERE id = ${rec.id}
+          AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
 
       snapshotAgentId = rec.id;
@@ -8950,16 +9580,19 @@ export class ElizaSandboxService {
    * billing-request suspend surfaces through the stop-intent retry /
    * terminal-attention machinery instead of destroying state.
    */
-  private async prepareSuspendBackupGate(
-    rec: AgentSandbox,
-  ): Promise<
+  private async prepareSuspendBackupGate(rec: AgentSandbox): Promise<
     | { outcome: "skip" }
-    | { outcome: "proceed"; backupId?: string; capturedFresh: boolean }
+    | {
+        outcome: "proceed";
+        backupId?: string;
+        capturedFresh: boolean;
+        pendingSnapshot?: { stateData: AgentBackupStateData; sizeBytes: number };
+      }
     | { outcome: "refuse"; error: string }
   > {
     if (
       !rec.sandbox_id ||
-      rec.execution_tier === "shared" ||
+      !isContainerBackedExecutionTier(rec.execution_tier) ||
       (rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
     ) {
       return { outcome: "skip" };
@@ -8967,13 +9600,14 @@ export class ElizaSandboxService {
     if (rec.bridge_url) {
       try {
         const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
-        const backup = await agentSandboxesRepository.createBackup({
-          sandbox_record_id: rec.id,
-          snapshot_type: "pre-shutdown",
-          state_data: stateData,
-          size_bytes: sizeBytes,
-        });
-        return { outcome: "proceed", backupId: backup.id, capturedFresh: true };
+        // Network capture is intentionally outside the write transaction. The
+        // backup row itself is inserted only after the authoritative locked
+        // tier/generation revalidation in executeSuspend.
+        return {
+          outcome: "proceed",
+          capturedFresh: true,
+          pendingSnapshot: { stateData, sizeBytes },
+        };
       } catch (error) {
         // error-policy:J1 the suspend command boundary translates capture
         // failures into an explicit disposition: a transient signal defers to
@@ -9041,35 +9675,66 @@ export class ElizaSandboxService {
     // The backup is captured without holding the lifecycle lock (an HTTP
     // round-trip must not pin a write transaction); the lifecycle generation
     // is revalidated under the lock before the stop.
-    const snapshotSource = await this.getAgentForWrite(agentId, orgId);
-    if (
-      !snapshotSource ||
-      snapshotSource.deletion_attempt_id ||
-      this.isAwaitingDeletion(snapshotSource.status)
-    ) {
+    let snapshotSource = await this.getAgentForWrite(agentId, orgId);
+    if (!snapshotSource) {
+      return { success: false, containerStopped: false, error: "Agent not found" };
+    }
+    const initialTierRejection = containerBackedServiceRejection(snapshotSource, "suspend");
+    if (initialTierRejection) {
+      return { success: false, containerStopped: false, error: initialTierRejection };
+    }
+    if (snapshotSource.deletion_attempt_id || this.isAwaitingDeletion(snapshotSource.status)) {
       return { success: false, containerStopped: false, error: "Agent not found" };
     }
     let suspendBackupId: string | undefined;
     let backupCapturedFresh = false;
+    let pendingSuspendSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
     if (snapshotSource.status !== "stopped") {
+      const revalidated = await this.revalidateContainerBackedLifecycleGeneration(
+        snapshotSource,
+        "suspend",
+      );
+      if (!revalidated) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent lifecycle changed while the suspend backup was prepared",
+        };
+      }
+      snapshotSource = revalidated;
       const gateResult = await this.prepareSuspendBackupGate(snapshotSource);
       if (gateResult.outcome === "refuse") {
         return { success: false, containerStopped: false, error: gateResult.error };
       }
       if (gateResult.outcome === "proceed") {
         suspendBackupId = gateResult.backupId;
-        backupCapturedFresh = gateResult.capturedFresh;
+        pendingSuspendSnapshot = gateResult.pendingSnapshot;
       }
     }
     const result = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
+      if (!rec)
         return {
           success: false,
           containerStopped: false,
           error: "Agent not found",
         } as const;
+      const tierRejection = containerBackedServiceRejection(rec, "suspend");
+      if (tierRejection) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: tierRejection,
+        } as const;
+      }
+      if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent not found",
+        } as const;
+      }
       if (this.getReplacementCleanupLocator(rec)) {
         return {
           success: false,
@@ -9165,17 +9830,25 @@ export class ElizaSandboxService {
 
       // The gate captured against snapshotSource's generation; a moved
       // lifecycle means the backup may not cover the container being stopped.
-      if (
-        rec.lifecycle_revision !== snapshotSource.lifecycle_revision ||
-        rec.sandbox_id !== snapshotSource.sandbox_id ||
-        rec.bridge_url !== snapshotSource.bridge_url ||
-        rec.environment_revision !== snapshotSource.environment_revision
-      ) {
+      if (!snapshotCaptureStillCanonical(rec, snapshotSource)) {
         return {
           success: false,
           containerStopped: false,
           error: "Agent lifecycle changed while the suspend backup was prepared",
         } as const;
+      }
+
+      if (pendingSuspendSnapshot) {
+        const persisted = await this.persistSnapshotWithinTransaction(
+          tx,
+          rec.id,
+          rec.organization_id,
+          "pre-shutdown",
+          pendingSuspendSnapshot.stateData,
+          pendingSuspendSnapshot.sizeBytes,
+        );
+        suspendBackupId = persisted.backupId;
+        backupCapturedFresh = true;
       }
 
       let containerStopped = false;
@@ -9218,6 +9891,9 @@ export class ElizaSandboxService {
         containerStopped = true;
       }
 
+      // The lifecycle row remains FOR UPDATE from the locked tier check through
+      // provider stop and persistence, so this final allowlist cannot become a
+      // zero-row tier race. It mirrors the guard in SQL as defense in depth.
       await tx.execute(sql`
         UPDATE ${agentSandboxes}
         SET status = 'stopped', billing_status = 'suspended',
@@ -9225,6 +9901,8 @@ export class ElizaSandboxService {
             bridge_url = NULL, health_url = NULL, updated_at = NOW()
             ${backupCapturedFresh ? sql`, last_backup_at = NOW()` : sql``}
         WHERE id = ${rec.id}
+          AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
       `);
       if (stopIntent) {
         const confirmedAt = new Date();
@@ -9310,6 +9988,20 @@ export class ElizaSandboxService {
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
 
+    const fundingAuthority = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !fundingAuthority ||
+      !isContainerBackedExecutionTier(fundingAuthority.execution_tier) ||
+      fundingAuthority.lifecycle_revision !== rec.lifecycle_revision
+    ) {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Agent lifecycle changed before resume billing settlement",
+      };
+    }
+
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
       agentId,
       orgId,
@@ -9365,9 +10057,15 @@ export class ElizaSandboxService {
     error?: string;
   }> {
     // Primary read: replica lag must not turn a real sleep into a no-op.
-    const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
+    let rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec) return { success: false, containerRemoved: false, error: "Agent not found" };
+    const initialTierRejection = containerBackedServiceRejection(rec, "sleep");
+    if (initialTierRejection) {
+      return { success: false, containerRemoved: false, error: initialTierRejection };
+    }
+    if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
       return { success: false, containerRemoved: false, error: "Agent not found" };
+    }
     if (this.getReplacementCleanupLocator(rec)) {
       return {
         success: false,
@@ -9384,18 +10082,23 @@ export class ElizaSandboxService {
       };
     }
 
+    const revalidated = await this.revalidateContainerBackedLifecycleGeneration(rec, "sleep");
+    if (!revalidated) {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent lifecycle changed while sleep was prepared",
+      };
+    }
+    rec = revalidated;
+
     // 1. Durable backup before compute is freed.
     let backupId: string | undefined;
+    let pendingSleepSnapshot: { stateData: AgentBackupStateData; sizeBytes: number } | undefined;
     if (rec.status === "running" && rec.bridge_url) {
       try {
         const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
-        const backup = await agentSandboxesRepository.createBackup({
-          sandbox_record_id: rec.id,
-          snapshot_type: "pre-shutdown",
-          state_data: stateData,
-          size_bytes: sizeBytes,
-        });
-        backupId = backup.id;
+        pendingSleepSnapshot = { stateData, sizeBytes };
       } catch (error) {
         logger.warn("[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup", {
           agentId,
@@ -9403,7 +10106,7 @@ export class ElizaSandboxService {
         });
       }
     }
-    if (!backupId) {
+    if (!backupId && !pendingSleepSnapshot) {
       // The fallback destroys newer compute state in favor of whatever this
       // resolves to, so "a backup row exists" is not enough: it must be PROVEN
       // restorable (fresh verified stamp, or a live decrypt+chain+hash
@@ -9453,7 +10156,22 @@ export class ElizaSandboxService {
     const sleepCommit = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current || current.deletion_attempt_id || this.isAwaitingDeletion(current.status)) {
+      if (!current) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Agent not found",
+        };
+      }
+      const tierRejection = containerBackedServiceRejection(current, "sleep");
+      if (tierRejection) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: tierRejection,
+        };
+      }
+      if (current.deletion_attempt_id || this.isAwaitingDeletion(current.status)) {
         return {
           success: false as const,
           containerRemoved: false,
@@ -9478,21 +10196,25 @@ export class ElizaSandboxService {
         };
       }
 
-      const unchangedLifecycleGeneration =
-        current.status === rec.status &&
-        current.sandbox_id === rec.sandbox_id &&
-        current.node_id === rec.node_id &&
-        current.container_name === rec.container_name &&
-        current.bridge_url === rec.bridge_url &&
-        current.health_url === rec.health_url &&
-        current.environment_revision === rec.environment_revision &&
-        current.lifecycle_revision === rec.lifecycle_revision;
-      if (!unchangedLifecycleGeneration) {
+      if (!snapshotCaptureStillCanonical(current, rec)) {
         return {
           success: false as const,
           containerRemoved: false,
           error: "Agent lifecycle changed while sleep was prepared",
         };
+      }
+      let commitLifecycleRevision = current.lifecycle_revision;
+      if (pendingSleepSnapshot) {
+        const persisted = await this.persistSnapshotWithinTransaction(
+          tx,
+          current.id,
+          current.organization_id,
+          "pre-shutdown",
+          pendingSleepSnapshot.stateData,
+          pendingSleepSnapshot.sizeBytes,
+        );
+        backupId = persisted.backupId;
+        commitLifecycleRevision = persisted.lifecycleRevision;
       }
       if (!current.sandbox_id && (current.node_id || current.container_name)) {
         return {
@@ -9530,11 +10252,12 @@ export class ElizaSandboxService {
         WHERE id = ${current.id}
           AND organization_id = ${orgId}
           AND status = ${current.status}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND environment_revision = ${current.environment_revision}
-          AND lifecycle_revision = ${current.lifecycle_revision}
+          AND lifecycle_revision = ${commitLifecycleRevision}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
@@ -9594,9 +10317,15 @@ export class ElizaSandboxService {
     error?: string;
   }> {
     // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
-    const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
+    let rec = await this.getAgentForWrite(agentId, orgId);
+    if (!rec) return { success: false, reprovisioned: false, error: "Agent not found" };
+    const tierRejection = containerBackedServiceRejection(rec, "wake");
+    if (tierRejection) {
+      return { success: false, reprovisioned: false, error: tierRejection };
+    }
+    if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
       return { success: false, reprovisioned: false, error: "Agent not found" };
+    }
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
     }
@@ -9609,6 +10338,19 @@ export class ElizaSandboxService {
         error: "restoreBackupId and forceFreshBoot are mutually exclusive",
       };
     }
+    const fundingAuthority = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !fundingAuthority ||
+      !isContainerBackedExecutionTier(fundingAuthority.execution_tier) ||
+      fundingAuthority.lifecycle_revision !== rec.lifecycle_revision
+    ) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Agent lifecycle changed before wake billing settlement",
+      };
+    }
+    rec = fundingAuthority;
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
       agentId,
       orgId,
@@ -9621,6 +10363,27 @@ export class ElizaSandboxService {
         error: "Insufficient credits to settle accrued agent compute charges",
       };
     }
+
+    const gateSource = await this.getAgentForWrite(agentId, orgId);
+    if (!gateSource || !isContainerBackedExecutionTier(gateSource.execution_tier)) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: gateSource ? containerBackedServiceRejection(gateSource, "wake") : "Agent not found",
+      };
+    }
+    const gateAuthority = await this.revalidateContainerBackedLifecycleGeneration(
+      gateSource,
+      "wake",
+    );
+    if (!gateAuthority) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "Agent lifecycle changed before wake restore validation",
+      };
+    }
+    rec = gateAuthority;
 
     if (opts?.forceFreshBoot) {
       logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
@@ -9716,12 +10479,42 @@ export class ElizaSandboxService {
     // PRIMARY so a replica-lagged status doesn't bail a legitimate restart (or
     // miss an in-flight deletion) on stale data.
     const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
+    if (!rec) {
       return {
         success: false,
         containerStopped: false,
         containerStarted: false,
         error: "Agent not found",
+      };
+    }
+    const tierRejection = containerBackedServiceRejection(rec, "restart");
+    if (tierRejection) {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: tierRejection,
+      };
+    }
+    if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Agent not found",
+      };
+    }
+    const fundingAuthority = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !fundingAuthority ||
+      !isContainerBackedExecutionTier(fundingAuthority.execution_tier) ||
+      fundingAuthority.lifecycle_revision !== rec.lifecycle_revision
+    ) {
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: "Agent lifecycle changed before restart billing settlement",
       };
     }
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
@@ -9874,10 +10667,12 @@ export class ElizaSandboxService {
     fromDigest: string | null,
     adminCanary?: AdminCanaryImageExecutionPolicy,
   ): Promise<ImageSwapResult> {
-    let agent = adminCanary
-      ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
-      : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    let agent = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    let tierRejection = containerBackedServiceRejection(agent, "upgrade");
+    if (tierRejection) {
+      return { success: false, rolledBack: true, error: tierRejection };
+    }
     if (this.getReplacementCleanupLocator(agent)) {
       try {
         await this.retirePersistedReplacementCleanup(agentId, orgId);
@@ -9893,10 +10688,12 @@ export class ElizaSandboxService {
           }`,
         };
       }
-      agent = adminCanary
-        ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
-        : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      agent = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
       if (!agent) return { success: false, error: "Agent not found" };
+      tierRejection = containerBackedServiceRejection(agent, "upgrade");
+      if (tierRejection) {
+        return { success: false, rolledBack: true, error: tierRejection };
+      }
     }
     if (!hasReadyWarmClaimCredential(agent)) {
       return {
@@ -10124,6 +10921,7 @@ export class ElizaSandboxService {
         if (!current) return false;
         const cleanupLocator = this.getReplacementCleanupLocator(current);
         if (
+          containerBackedServiceRejection(current, "upgrade") ||
           current.status !== "running" ||
           current.node_id !== oldNodeId ||
           current.container_name !== oldContainerName ||
@@ -10201,6 +10999,7 @@ export class ElizaSandboxService {
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
             AND environment_revision = ${sourceEnvironmentRevision}
             AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
@@ -10394,10 +11193,12 @@ export class ElizaSandboxService {
     fromDigest: string,
     adminCanary?: AdminCanaryImageExecutionPolicy,
   ): Promise<ImageSwapResult> {
-    let agent = adminCanary
-      ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
-      : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    let agent = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    let tierRejection = containerBackedServiceRejection(agent, "downgrade");
+    if (tierRejection) {
+      return { success: false, rolledBack: true, error: tierRejection };
+    }
     if (this.getReplacementCleanupLocator(agent)) {
       try {
         await this.retirePersistedReplacementCleanup(agentId, orgId);
@@ -10412,10 +11213,12 @@ export class ElizaSandboxService {
           }`,
         };
       }
-      agent = adminCanary
-        ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
-        : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      agent = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
       if (!agent) return { success: false, error: "Agent not found" };
+      tierRejection = containerBackedServiceRejection(agent, "downgrade");
+      if (tierRejection) {
+        return { success: false, rolledBack: true, error: tierRejection };
+      }
     }
     if (!hasReadyWarmClaimCredential(agent)) {
       return {
@@ -10648,6 +11451,7 @@ export class ElizaSandboxService {
         if (!current) return false;
         const cleanupLocator = this.getReplacementCleanupLocator(current);
         if (
+          containerBackedServiceRejection(current, "downgrade") ||
           current.status !== "running" ||
           current.node_id !== oldNodeId ||
           current.container_name !== oldContainerName ||
@@ -10719,6 +11523,7 @@ export class ElizaSandboxService {
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
             AND environment_revision = ${sourceEnvironmentRevision}
             AND lifecycle_revision = ${current.lifecycle_revision}
             AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
@@ -10848,9 +11653,13 @@ export class ElizaSandboxService {
     message?: string;
     error?: string;
   }> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    let rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
     if (!rec) {
       return { success: false, status: "missing", error: "Agent not found" };
+    }
+    const tierRejection = containerBackedServiceRejection(rec, "logs");
+    if (tierRejection) {
+      return { success: false, status: rec.status, error: tierRejection };
     }
     if (!rec.sandbox_id) {
       return {
@@ -10869,8 +11678,35 @@ export class ElizaSandboxService {
       };
     }
 
+    // Logs are a provider read, not a durable mutation. Re-read from primary
+    // immediately before that read so a stale canonical snapshot cannot dial a
+    // forged Shared/unknown row. A final SQL CAS is inapplicable because this
+    // operation intentionally writes no state.
+    const logSource = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
+    if (
+      !logSource ||
+      !isContainerBackedExecutionTier(logSource.execution_tier) ||
+      !logSource.sandbox_id ||
+      logSource.status !== rec.status ||
+      logSource.sandbox_id !== rec.sandbox_id ||
+      logSource.node_id !== rec.node_id ||
+      logSource.container_name !== rec.container_name ||
+      logSource.environment_revision !== rec.environment_revision ||
+      logSource.lifecycle_revision !== rec.lifecycle_revision
+    ) {
+      return {
+        success: false,
+        status: logSource?.status ?? "missing",
+        error: logSource
+          ? containerBackedServiceRejection(logSource, "logs") ||
+            "Agent lifecycle changed before logs were fetched"
+          : "Agent not found",
+      };
+    }
+    rec = logSource;
+
     try {
-      const logs = await provider.fetchLogs(rec.sandbox_id, tail);
+      const logs = await provider.fetchLogs(logSource.sandbox_id, tail);
       return { success: true, status: rec.status, logs };
     } catch (e) {
       return {
@@ -11171,6 +12007,8 @@ export class ElizaSandboxService {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement ownership");
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
       if (
         current.deletion_attempt_id !== null ||
         current.status === "deletion_pending" ||
@@ -11192,6 +12030,7 @@ export class ElizaSandboxService {
             updated_at = NOW()
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
+            AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
             AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
             AND replacement_cleanup_node_id = ${existing.nodeId}
             AND replacement_cleanup_container_name = ${existing.containerName}
@@ -11257,6 +12096,7 @@ export class ElizaSandboxService {
           updated_at = NOW()
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND status = ${expected.status}
           AND environment_revision = ${expected.environmentRevision}
           AND sandbox_id IS NOT DISTINCT FROM ${expected.sandboxId}
@@ -11285,6 +12125,8 @@ export class ElizaSandboxService {
       if (!current) {
         throw new Error("Agent disappeared before unresolved replacement could be fenced");
       }
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
       const existing = this.getReplacementCleanupLocator(current);
       if (!existing) {
         throw new Error("Unresolved replacement escaped without durable intent ownership");
@@ -11301,6 +12143,7 @@ export class ElizaSandboxService {
           updated_at = NOW()
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
           AND replacement_cleanup_node_id = ${existing.nodeId}
           AND replacement_cleanup_container_name = ${existing.containerName}
@@ -11332,6 +12175,8 @@ export class ElizaSandboxService {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) throw new Error("Agent disappeared before replacement adoption");
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
       if (
         current.status !== "provisioning" ||
         current.environment_revision !== expectedEnvironmentRevision
@@ -11386,6 +12231,7 @@ export class ElizaSandboxService {
           and(
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
             eq(agentSandboxes.status, "provisioning"),
             eq(agentSandboxes.environment_revision, expectedEnvironmentRevision),
             eq(agentSandboxes.lifecycle_revision, current.lifecycle_revision),
@@ -11450,6 +12296,8 @@ export class ElizaSandboxService {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!current) return { state: "missing" as const };
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
       const locator = this.getReplacementCleanupLocator(current);
       if (expectation) {
         this.assertAdminCanaryCleanupExpectation(current, locator, expectation);
@@ -11520,6 +12368,8 @@ export class ElizaSandboxService {
             )
           : new Error("Agent disappeared after replacement cleanup proof");
       }
+      const tierRejection = containerBackedServiceRejection(current, "replacement");
+      if (tierRejection) throw new Error(tierRejection);
       const currentLocator = this.getReplacementCleanupLocator(current);
       if (expectation) {
         this.assertAdminCanaryCleanupExpectation(current, currentLocator, expectation);
@@ -11544,6 +12394,7 @@ export class ElizaSandboxService {
           updated_at = NOW()
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
+          AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
           AND replacement_cleanup_sandbox_id = ${locator.sandboxId}
           AND replacement_cleanup_node_id = ${locator.nodeId}
           AND replacement_cleanup_container_name = ${locator.containerName}
@@ -11601,6 +12452,7 @@ export class ElizaSandboxService {
       SELECT id, organization_id
       FROM ${agentSandboxes}
       WHERE replacement_cleanup_sandbox_id IS NOT NULL
+        AND ${inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS])}
         AND (
           replacement_cleanup_attempt_id IS NULL
           OR replacement_cleanup_created_at <=
@@ -11676,6 +12528,38 @@ export class ElizaSandboxService {
   private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {
     await configureElizaLifecycleTransaction(tx);
     await tx.execute(elizaProvisionAdvisoryLockSql(orgId, agentId));
+  }
+
+  /**
+   * Short authoritative checkpoint before an unlocked backup/probe read. It
+   * does not pretend to make PostgreSQL and a remote provider atomic; durable
+   * writes still repeat the allowlist under their final lifecycle row lock.
+   */
+  private async revalidateContainerBackedLifecycleGeneration(
+    expected: AgentSandbox,
+    action: ContainerBackedServiceAction,
+  ): Promise<AgentSandbox | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, expected.id, expected.organization_id);
+      const current = await this.getAgentForLifecycleMutation(
+        tx,
+        expected.id,
+        expected.organization_id,
+      );
+      if (!current) return undefined;
+      if (containerBackedServiceRejection(current, action)) return undefined;
+      return current.execution_tier === expected.execution_tier &&
+        current.status === expected.status &&
+        current.sandbox_id === expected.sandbox_id &&
+        current.node_id === expected.node_id &&
+        current.container_name === expected.container_name &&
+        current.bridge_url === expected.bridge_url &&
+        current.health_url === expected.health_url &&
+        current.environment_revision === expected.environment_revision &&
+        current.lifecycle_revision === expected.lifecycle_revision
+        ? current
+        : undefined;
+    });
   }
 
   private async isReplacementCleanupSweepEligibleTx(
@@ -11949,7 +12833,13 @@ export class ElizaSandboxService {
     const [sandbox] = await tx
       .update(agentSandboxes)
       .set({ last_backup_at: new Date(), updated_at: new Date() })
-      .where(eq(agentSandboxes.id, sandboxRecordId))
+      .where(
+        and(
+          eq(agentSandboxes.id, sandboxRecordId),
+          eq(agentSandboxes.organization_id, organizationId),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+        ),
+      )
       .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
     if (!sandbox) {
       throw new ElizaError("Backup metadata update lost its sandbox row", {

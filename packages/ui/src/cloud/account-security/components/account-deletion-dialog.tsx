@@ -13,6 +13,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/input";
+import { TextLink } from "../../../components/ui/text-link";
 import {
   endLocalSessionAfterDeletion,
   submitAccountDeletion,
@@ -108,9 +109,9 @@ export function AccountDeletionDialog({
             <p className="text-sm text-danger" role="alert">
               {error}{" "}
               {serverAccepted ? (
-                <a className="underline" href="/account-deletion">
+                <TextLink href="/account-deletion">
                   Continue to deletion status
-                </a>
+                </TextLink>
               ) : null}
             </p>
           ) : null}

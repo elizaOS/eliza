@@ -52,6 +52,8 @@ export interface CreateBrowserSessionOptions {
   ip: string | null;
   userAgent: string | null;
   rememberDevice: boolean;
+  /** Capability restrictions enforced by the canonical request resolver. */
+  scopes?: string[];
   /** Override `Date.now()` for tests. */
   now?: number;
 }
@@ -119,7 +121,7 @@ export async function createBrowserSession(
     csrfSecret,
     ip: options.ip,
     userAgent: options.userAgent,
-    scopes: [],
+    scopes: [...(options.scopes ?? [])],
   });
   return { session, csrfToken: deriveCsrfToken(session) };
 }

@@ -11,7 +11,14 @@ const meta = {
   argTypes: {
     variant: {
       control: "select",
-      options: ["primary", "ghost", "outline", "icon", "icon-primary"],
+      options: [
+        "primary",
+        "primaryBilling",
+        "ghost",
+        "outline",
+        "icon",
+        "icon-primary",
+      ],
     },
     size: {
       control: "select",
@@ -65,6 +72,14 @@ export const Disabled: Story = {
   args: {
     disabled: true,
     children: "Unavailable",
+  },
+};
+
+export const BillingDisabled: Story = {
+  args: {
+    variant: "primaryBilling",
+    disabled: true,
+    children: "Add funds",
   },
 };
 

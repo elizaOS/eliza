@@ -38,6 +38,7 @@ import { voiceCaptureDebug } from "../../../utils/voice-capture-debug";
 import { isVoiceTargetResolvableForActiveAgent } from "../../../voice/shared-runtime-voice";
 import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 import { Textarea } from "../../ui/textarea";
 import type { ChatVariant } from "./chat-types";
 import { PstnCallButton } from "./pstn-call-button";
@@ -45,9 +46,6 @@ import { PstnCallButton } from "./pstn-call-button";
 const INLINE_TEXTAREA_MIN_HEIGHT_PX = 32;
 const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
-
-const inlineComposerSurfaceClass =
-  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)]   ";
 
 type InlineTextareaMeasurement = {
   scrollHeight: number;
@@ -487,14 +485,14 @@ export function ChatComposer({
     );
 
     return (
-      <div
+      <Card
+        variant="insetCompact"
+        flow={isInlineMultiline ? "column" : "row"}
         ref={inlineRootRef}
         data-chat-composer="true"
         data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
         className={
-          isInlineMultiline
-            ? `flex min-h-[64px] flex-col gap-1 rounded-sm border px-1.5 py-1.5 ${inlineComposerSurfaceClass}`
-            : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass}`
+          isInlineMultiline ? "min-h-[64px] gap-1" : "min-h-[40px] gap-1"
         }
       >
         <div className="pointer-events-none fixed left-0 top-0 z-[-1] opacity-0">
@@ -526,7 +524,7 @@ export function ChatComposer({
             {inlineTrailingActions}
           </>
         )}
-      </div>
+      </Card>
     );
   }
 

@@ -107,6 +107,23 @@ describe("migrations/meta/_journal.json registration", () => {
     expect(new Set(entries.map((e) => e.tag)).size).toBe(entries.length);
   });
 
+  test("keeps the deployed 0320-0328 stack and appends dedicated adoption as 0329", () => {
+    const entries = journalEntries();
+    const sharedConsent = entries.find(
+      ({ tag }) => tag === "0320_personal_shared_multi_principal_consent",
+    );
+    const replacementTail = entries.find(
+      ({ tag }) => tag === "0328_agent_sandbox_replacement_attempt_state_guard",
+    );
+    const dedicatedAdoption = entries.find(
+      ({ tag }) => tag === "0329_personal_dedicated_adoption_selections",
+    );
+
+    expect(sharedConsent).toMatchObject({ idx: 303, when: 1794254400011 });
+    expect(replacementTail).toMatchObject({ idx: 311, when: 1794254400019 });
+    expect(dedicatedAdoption).toMatchObject({ idx: 312, when: 1794254400020 });
+  });
+
   test("the catalogue, capture, and restore stack is registered in strict deployment order", () => {
     const entries = journalEntries();
     const firstIndex = entries.findIndex(({ tag }) => tag === BACKUP_CATALOGUE_MIGRATION_TAGS[0]);

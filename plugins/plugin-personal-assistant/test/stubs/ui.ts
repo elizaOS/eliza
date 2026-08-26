@@ -1,9 +1,23 @@
 /**
- * Test stub for @elizaos/ui: null and passthrough React components plus an empty
- * ElizaClient, so LifeOps component tests can import the UI surface without its real
- * implementation.
+ * Test stub for @elizaos/ui: lightweight semantic controls, inert components,
+ * and an empty ElizaClient let LifeOps tests exercise accessibility and event
+ * behavior without loading the production UI runtime.
  */
-import { createElement, Fragment, type ReactNode } from "react";
+import {
+  type ButtonHTMLAttributes,
+  type ChangeEvent,
+  Children,
+  createContext,
+  createElement,
+  Fragment,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  isValidElement,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+  useContext,
+} from "react";
 
 type ComponentProps = Record<string, unknown>;
 
@@ -18,6 +32,106 @@ function PassthroughComponent(props: { children?: ReactNode }): ReactNode {
 export class ElizaClient {}
 
 export const client = new ElizaClient();
+
+function TestButton({
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>): ReactNode {
+  return createElement("button", { ...props, type: "button" }, children);
+}
+
+function TestCheckbox({
+  onCheckedChange,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & {
+  onCheckedChange?: (checked: boolean) => void;
+}): ReactNode {
+  return createElement("input", {
+    ...props,
+    type: "checkbox",
+    onChange: (event: ChangeEvent<HTMLInputElement>) => {
+      props.onChange?.(event);
+      onCheckedChange?.(event.currentTarget.checked);
+    },
+  });
+}
+
+function TestSelect({
+  children,
+  onValueChange,
+  ...props
+}: SelectHTMLAttributes<HTMLSelectElement> & {
+  onValueChange?: (value: string) => void;
+}): ReactNode {
+  const trigger = Children.toArray(children).find(
+    (child) => isValidElement(child) && child.type === TestSelectTrigger,
+  );
+  const id = isValidElement<{ id?: string }>(trigger)
+    ? trigger.props.id
+    : undefined;
+  return createElement(
+    "select",
+    {
+      ...props,
+      id,
+      onChange: (event: ChangeEvent<HTMLSelectElement>) => {
+        props.onChange?.(event);
+        onValueChange?.(event.currentTarget.value);
+      },
+    },
+    children,
+  );
+}
+
+function TestSelectTrigger(_props: ComponentProps): null {
+  return null;
+}
+
+function TestSelectItem({
+  children,
+  value,
+}: {
+  children?: ReactNode;
+  value?: string;
+}): ReactNode {
+  return createElement("option", { value }, children);
+}
+
+const TestRadioGroupContext = createContext<{
+  value: string;
+  onValueChange?: (value: string) => void;
+}>({ value: "" });
+
+function TestRadioGroup({
+  children,
+  value,
+  onValueChange,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & {
+  children?: ReactNode;
+  value: string;
+  onValueChange?: (value: string) => void;
+}): ReactNode {
+  return createElement(
+    TestRadioGroupContext.Provider,
+    { value: { value, onValueChange } },
+    createElement("div", { ...props, role: "radiogroup" }, children),
+  );
+}
+
+function TestRadioGroupItem({
+  value,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { value: string }): ReactNode {
+  const group = useContext(TestRadioGroupContext);
+  return createElement("input", {
+    ...props,
+    type: "radio",
+    value,
+    checked: group.value === value,
+    onChange: () => group.onValueChange?.(value),
+  });
+}
 
 // Lifecycle constants + platform probes the activity-signal capture imports at
 // module scope; the capture only calls them once a renderer-service host
@@ -43,13 +157,25 @@ export async function loadDesktopWorkspaceSnapshot(): Promise<{
   return { supported: false };
 }
 
-export const Badge = NullComponent;
-export const Button = NullComponent;
-export const Input = NullComponent;
-export const PagePanel = NullComponent;
+export const Badge = PassthroughComponent;
+export const Button = TestButton;
+export const Checkbox = TestCheckbox;
+export const Input = (
+  props: InputHTMLAttributes<HTMLInputElement>,
+): ReactNode => createElement("input", props);
+export const PagePanel = PassthroughComponent;
+export const RadioGroup = TestRadioGroup;
+export const RadioGroupItem = TestRadioGroupItem;
+export const Select = TestSelect;
+export const SelectContent = PassthroughComponent;
+export const SelectItem = TestSelectItem;
+export const SelectTrigger = TestSelectTrigger;
+export const SelectValue = NullComponent;
 export const SegmentedControl = NullComponent;
 export const Switch = NullComponent;
-export const Textarea = NullComponent;
+export const Textarea = (
+  props: TextareaHTMLAttributes<HTMLTextAreaElement>,
+): ReactNode => createElement("textarea", props);
 export const TooltipHint = PassthroughComponent;
 export const TooltipProvider = PassthroughComponent;
 

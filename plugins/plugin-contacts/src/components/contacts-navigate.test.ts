@@ -31,7 +31,7 @@ describe("Contacts navigate helpers", () => {
 
   it("navigateToPhoneWithNumber opens the Phone view pre-seeding the dialer", () => {
     const events = captureNavigateEvents(() =>
-      navigateToPhoneWithNumber("+15550100"),
+      navigateToPhoneWithNumber("  +15550100  "),
     );
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toEqual({
@@ -43,7 +43,7 @@ describe("Contacts navigate helpers", () => {
 
   it("navigateToMessagesWithNumber opens the Messages view pre-seeding the composer", () => {
     const events = captureNavigateEvents(() =>
-      navigateToMessagesWithNumber("+15550100"),
+      navigateToMessagesWithNumber("  +15550100  "),
     );
     expect(events).toHaveLength(1);
     expect(events[0]?.detail).toEqual({

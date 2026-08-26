@@ -32,6 +32,7 @@ import {
   AlertDialogTrigger,
 } from "../../../components/ui/alert-dialog";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { Input } from "../../../components/ui/input";
 import { openExternalUrl } from "../../../utils/openExternalUrl";
 import { ApiError, api } from "../../lib/api-client";
@@ -169,7 +170,7 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
   }
 
   return (
-    <div className="bg-card rounded-sm p-4 space-y-4">
+    <Card stack="default" variant="flatPadded">
       <div>
         <h3 className="text-sm font-medium text-txt flex items-center gap-2">
           <ShoppingCart className="size-4 text-muted" />
@@ -333,6 +334,6 @@ export function BuyDomainCard({ appId, onPurchased }: BuyDomainCardProps) {
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }

@@ -24,9 +24,20 @@ export function resolveMobileRendererFeatureEnv({ platform, env = {} } = {}) {
     platform === ANDROID_CLOUD_DEBUG &&
     env.ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED === "1";
   if (!isLp3Debug) return {};
+  const isLp3RemoteFallback = ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
+      .trim()
+      .toLowerCase(),
+  );
   return {
     VITE_VOICE_REALTIME_WS: "1",
     VITE_VOICE_REALTIME_FORCE: "1",
+    ...(isLp3RemoteFallback
+      ? {
+          VITE_ENABLE_STREAM: "false",
+          VITE_ELIZA_ANDROID_LP3_SHARED_BROWSER_STORAGE: "1",
+        }
+      : {}),
   };
 }
 

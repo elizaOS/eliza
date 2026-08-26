@@ -28,6 +28,23 @@ function entry(overrides: Partial<ViewEntry> = {}): ViewEntry {
 }
 
 describe("ViewTileImage catalog previews", () => {
+  it("delegates launcher tiles to the shared Ionicon plate without probing hero art", () => {
+    const { container } = render(
+      <ViewTileImage
+        entry={entry()}
+        source="launcher"
+        containerClassName="launcher-icon"
+        imageTestId="catalog-hero"
+      />,
+    );
+
+    expect(screen.queryByTestId("catalog-hero")).toBeNull();
+    expect(
+      container.querySelector('[data-launcher-icon-variant="ionicon"]'),
+    ).toBeTruthy();
+    expect(container.querySelector('[data-ionicon="calendar"]')).toBeTruthy();
+  });
+
   it("keeps catalog hero imagery independent from launcher glyph styling", () => {
     render(
       <ViewTileImage
@@ -60,5 +77,25 @@ describe("ViewTileImage catalog previews", () => {
     expect(screen.getByTestId("catalog-hero").getAttribute("src")).toBe(
       "https://cdn.example.com/calendar-fallback.png",
     );
+  });
+
+  it("falls back to the deterministic glyph after every catalog image fails", () => {
+    const { container } = render(
+      <ViewTileImage
+        entry={entry()}
+        source="view-catalog"
+        containerClassName="preview"
+        imageTestId="catalog-hero"
+      />,
+    );
+
+    fireEvent.error(screen.getByTestId("catalog-hero"));
+    fireEvent.error(screen.getByTestId("catalog-hero"));
+
+    expect(screen.queryByTestId("catalog-hero")).toBeNull();
+    expect(
+      container.querySelector('[data-view-visual="calendar"]'),
+    ).toBeTruthy();
+    expect(container.querySelector("svg.lucide-calendar-days")).toBeTruthy();
   });
 });

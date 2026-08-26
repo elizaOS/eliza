@@ -17,6 +17,7 @@ import {
   usePageHeader,
 } from "../../cloud-ui/components/layout";
 import { ViewHeader } from "../../components/shared/ViewHeader";
+import { PageFrame } from "../../layouts";
 import { useAppSelector } from "../../state";
 import { useSessionAuth } from "../lib/use-session-auth";
 import { isManagedCloudRuntime } from "../managed-cloud-runtime";
@@ -83,6 +84,13 @@ function ManagedCloudRouteFrame({
   const location = useLocation();
   const navigate = useNavigate();
   const isCloudOverview = location.pathname === "/cloud";
+  const layout = route.surface?.layout ?? {
+    kind: "content",
+    topology: "framed",
+    width: "standard",
+    scroll: "view",
+    gutter: "standard",
+  };
   return (
     <div className="theme-cloud flex min-h-0 min-w-0 flex-1 flex-col bg-bg text-txt">
       <ViewHeader
@@ -102,9 +110,7 @@ function ManagedCloudRouteFrame({
       {pageInfo?.description ? (
         <p className="sr-only">{pageInfo.description}</p>
       ) : null}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto p-4 md:p-6">
-        {renderManagedRoute(route)}
-      </div>
+      <PageFrame layout={layout}>{renderManagedRoute(route)}</PageFrame>
     </div>
   );
 }

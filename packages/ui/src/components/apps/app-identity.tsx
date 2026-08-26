@@ -11,6 +11,7 @@ import {
   getAppHeroMonogram,
 } from "@elizaos/shared";
 import { type CSSProperties, useState } from "react";
+import { Card } from "../ui/card";
 import {
   getAppCategoryIcon,
   iconImageSource,
@@ -310,8 +311,22 @@ export function AppHero({
       )}
       {!imageOnly ? (
         <>
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-linear-to-t from-black/60 via-black/20 to-transparent" />
+          <Card
+            variant="transparentSquare"
+            className="pointer-events-none absolute inset-0"
+            visualStyle={{
+              background:
+                "radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--inverse-foreground) 22%, transparent), transparent 55%)",
+            }}
+          />
+          <Card
+            variant="transparentSquare"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5"
+            visualStyle={{
+              background:
+                "linear-gradient(to top, color-mix(in srgb, var(--inverse) 60%, transparent), color-mix(in srgb, var(--inverse) 20%, transparent), transparent)",
+            }}
+          />
         </>
       ) : null}
     </div>

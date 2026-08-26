@@ -25,6 +25,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { personalDedicatedAdoptionSelections } from "../../db/schemas/personal-dedicated-adoption-selections";
 import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
@@ -68,6 +69,7 @@ function makeTx(txIndex: number) {
       const state = {
         table: undefined as unknown,
         hasAuthorityJoin: false,
+        hasAuthorityLeftJoin: false,
         hasOrderBy: false,
         selectsOnlyId: selection ? Object.keys(selection).length === 1 && "id" in selection : false,
       };
@@ -78,6 +80,10 @@ function makeTx(txIndex: number) {
         },
         innerJoin: () => {
           state.hasAuthorityJoin = true;
+          return chain;
+        },
+        leftJoin: () => {
+          state.hasAuthorityLeftJoin = true;
           return chain;
         },
         where: (_clause: SQL | undefined) => chain,
@@ -97,12 +103,21 @@ function makeTx(txIndex: number) {
             return liveTargetRowsForTx(txIndex).map((agent) => ({ agent }));
           }
           if (state.table === agentSandboxes && state.selectsOnlyId) {
-            events.push({ tx: txIndex, kind: "select-quarantined-marker" });
+            events.push({
+              tx: txIndex,
+              kind: state.hasAuthorityLeftJoin
+                ? "select-adoption-candidate"
+                : "select-quarantined-marker",
+            });
             return [];
           }
           if (state.table === agentSandboxes) {
             events.push({ tx: txIndex, kind: "select-sandbox-for-enqueue" });
             return insertedTarget ? [insertedTarget] : [];
+          }
+          if (state.table === personalDedicatedAdoptionSelections) {
+            events.push({ tx: txIndex, kind: "select-adoption-selection" });
+            return [];
           }
           events.push({ tx: txIndex, kind: "select-active-job" });
           return [];
@@ -236,6 +251,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
+      "select-adoption-selection",
+      "select-adoption-candidate",
       "select-quota-count",
     ]);
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
@@ -257,6 +274,8 @@ describe("tier-upgrade single-flight span (#15943)", () => {
       "lock",
       "select-live-target",
       "select-quarantined-marker",
+      "select-adoption-selection",
+      "select-adoption-candidate",
       "select-quota-count",
       "insert-target",
       "deadline",

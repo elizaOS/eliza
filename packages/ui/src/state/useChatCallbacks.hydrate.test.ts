@@ -48,6 +48,7 @@ function makeDeps(
   const setConversations = vi.fn();
   const setActiveConversationId = vi.fn();
   const setConversationMessages = vi.fn();
+  const claimConversationMessagesOwnership = vi.fn();
   const conversationMessagesRef: { current: ConversationMessage[] } = {
     current: [],
   };
@@ -63,6 +64,7 @@ function makeDeps(
     greetingFiredRef,
     conversationMessagesRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
     setConversations,
     setActiveConversationId,
     setConversationMessages,
@@ -77,6 +79,7 @@ function makeDeps(
     greetingFiredRef,
     activeConversationIdRef,
     loadedConversationIdRef,
+    claimConversationMessagesOwnership,
   };
 }
 
@@ -158,12 +161,14 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
       setActiveConversationId,
       setConversationMessages,
       loadedConversationIdRef,
+      claimConversationMessagesOwnership,
     } = makeDeps(client);
 
     const result = await hydrateInitialConversation(deps);
 
     expect(client.createConversation).not.toHaveBeenCalled();
     expect(setActiveConversationId).toHaveBeenCalledWith("c1");
+    expect(claimConversationMessagesOwnership).toHaveBeenCalledWith("c1");
     expect(setConversationMessages.mock.calls.at(-1)?.[0]).toHaveLength(1);
     // The thread holder is bound to the restored conversation so the
     // empty-draft cleanup may legitimately judge it by these messages.
@@ -192,6 +197,9 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
       expect(setActiveConversationId).toHaveBeenCalledWith("c1"),
     );
     expect(setConversationMessages).not.toHaveBeenCalled();
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "false",
+    );
 
     resolveMessages({
       messages: [{ id: "m1", role: "user", text: "hello", timestamp: 1 }],
@@ -200,6 +208,9 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     expect(setConversationMessages).toHaveBeenCalledWith([
       { id: "m1", role: "user", text: "hello", timestamp: 1 },
     ]);
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "true",
+    );
   });
 
   it("leaves the thread holder UNKNOWN when the restore fetch fails (placeholder [] must never feed draft cleanup)", async () => {
@@ -220,6 +231,9 @@ describe("hydrateInitialConversation — chat always has a chat (#1)", () => {
     // judge a possibly-real conversation as an empty draft and delete it.
     expect(result).toBe("c1");
     expect(loadedConversationIdRef.current).toBeNull();
+    expect(document.documentElement.dataset.conversationHistoryApplied).toBe(
+      "false",
+    );
   });
 
   it("skips a saved greeting-only draft when a real conversation exists", async () => {

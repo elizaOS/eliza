@@ -13,6 +13,7 @@
 
 import { lazy, type ReactNode, Suspense, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import { Card } from "../../components/ui/card";
 import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
 import { CloudRouteErrorBoundary } from "./CloudRouteErrorBoundary";
 import {
@@ -104,25 +105,15 @@ export function shouldLoadStewardRuntime(pathname: string): boolean {
  */
 function StewardRuntimeLoading() {
   return (
-    <main
-      aria-busy="true"
-      aria-live="polite"
-      role="status"
-      style={{
-        // Pre-theme fallback (renders before the theme tree mounts, so it uses
-        // literals not vars): black to match the console, not the old beige that
-        // flashed light-on-black and read as a broken load.
-        alignItems: "center",
-        background: "#000",
-        color: "rgba(255,255,255,0.55)",
-        display: "flex",
-        justifyContent: "center",
-        minHeight: "100dvh",
-        padding: "24px",
-      }}
+    <Card
+      asChild
+      variant="cloudPaymentPublic"
+      className="flex min-h-dvh items-center justify-center p-6"
     >
-      <span style={{ fontSize: 16 }}>Loading…</span>
-    </main>
+      <main aria-busy="true" aria-live="polite" role="status">
+        <span className="text-base">Loading…</span>
+      </main>
+    </Card>
   );
 }
 
@@ -158,43 +149,28 @@ function PlaywrightStewardAuthProvider({
 
 function StewardConfigError() {
   return (
-    <main
-      aria-labelledby="steward-config-error-title"
-      role="alert"
-      style={{
-        alignItems: "center",
-        background: "#f8f4ef",
-        color: "#2f261f",
-        display: "flex",
-        minHeight: "100dvh",
-        padding: "24px",
-      }}
-    >
-      <section
-        style={{
-          border: "1px solid #d8c7b8",
-          borderRadius: 8,
-          margin: "0 auto",
-          maxWidth: 560,
-          padding: "24px",
-        }}
-      >
-        <h1
-          id="steward-config-error-title"
-          style={{
-            fontSize: 24,
-            lineHeight: 1.2,
-            margin: "0 0 12px",
-          }}
+    <Card asChild variant="flatPadded" className="flex min-h-dvh items-center">
+      <main aria-labelledby="steward-config-error-title" role="alert">
+        <Card
+          asChild
+          variant="outlinedPadded"
+          className="mx-auto max-w-[35rem] p-6"
         >
-          Sign-in temporarily unavailable
-        </h1>
-        <p style={{ fontSize: 16, lineHeight: 1.5, margin: 0 }}>
-          Eliza Cloud authentication is not configured for this environment. Set
-          a valid Steward API URL and reload this page.
-        </p>
-      </section>
-    </main>
+          <section>
+            <h1
+              id="steward-config-error-title"
+              className="mb-3 text-2xl leading-tight"
+            >
+              Sign-in temporarily unavailable
+            </h1>
+            <p className="m-0 text-base leading-normal">
+              Eliza Cloud authentication is not configured for this environment.
+              Set a valid Steward API URL and reload this page.
+            </p>
+          </section>
+        </Card>
+      </main>
+    </Card>
   );
 }
 

@@ -103,6 +103,7 @@ import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.ts";
+import { enrichChatUiViewMetadata } from "./chat-view-metadata.ts";
 import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
 import {
   extractAnthropicSystemAndLastUser,
@@ -3148,12 +3149,13 @@ export async function readChatRequestPayload(
     typeof body.source === "string" && body.source.trim().length > 0
       ? body.source.trim()
       : undefined;
-  const metadata =
+  const rawMetadata =
     body.metadata &&
     typeof body.metadata === "object" &&
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  const metadata = enrichChatUiViewMetadata(rawMetadata);
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   if (body.clientMessageId !== undefined && clientMessageId === null) {
     helpers.error(

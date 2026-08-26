@@ -1589,6 +1589,8 @@ export class AgentManager {
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
+      if (packagedRuntime) childEnv.ELIZA_DESKTOP_PACKAGED_RUNTIME = "1";
+      else delete childEnv.ELIZA_DESKTOP_PACKAGED_RUNTIME;
       childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);
       applyDesktopChildStateEnv(childEnv);
       delete childEnv.ELIZA_PORT;

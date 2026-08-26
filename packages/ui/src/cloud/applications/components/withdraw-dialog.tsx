@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -120,14 +121,14 @@ export function WithdrawDialog({
 
             <div className="space-y-4 py-4">
               {/* Balance display */}
-              <div className="flex items-center justify-between p-3 bg-surface rounded-sm border border-border">
+              <Card flow="rowBetween" variant="insetPadded">
                 <span className="text-sm text-neutral-400">
                   Available Balance
                 </span>
                 <span className="text-lg font-mono font-semibold text-status-success">
                   ${withdrawableBalance.toFixed(2)}
                 </span>
-              </div>
+              </Card>
 
               {/* Amount input */}
               <div className="space-y-2">
@@ -219,7 +220,7 @@ export function WithdrawDialog({
             <p className="text-xs text-neutral-500 mb-4">
               Visit your Earnings page to redeem as elizaOS tokens
             </p>
-            <div className="inline-block p-3 bg-surface rounded-sm border border-border">
+            <Card className="inline-block" variant="insetPadded">
               <span className="text-xs text-neutral-500">
                 Remaining App Balance
               </span>
@@ -232,7 +233,7 @@ export function WithdrawDialog({
                   Withdrawal succeeded; refresh to see new balance.
                 </p>
               )}
-            </div>
+            </Card>
             <DialogFooter className="mt-6">
               <Button onClick={handleClose} className="w-full">
                 Close

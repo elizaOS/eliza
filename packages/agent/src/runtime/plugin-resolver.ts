@@ -2272,6 +2272,48 @@ const blockingPhaseClaimedProviderNames = new Set<string>();
 const blockingPhaseLoadedPluginNames = new Set<string>();
 let blockingPhaseFailedPlugins: readonly FailedPluginDetail[] = [];
 
+function appManifestPluginPackageName(pluginId: string): string {
+  return resolvePluginPackageAlias(
+    pluginId.includes("/")
+      ? pluginId
+      : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
+  );
+}
+
+function isPluginExplicitlyEnabled(
+  config: ElizaConfig,
+  pluginPackageName: string,
+): boolean {
+  const entries = config.plugins?.entries ?? {};
+  return Object.entries(entries).some(([pluginId, entry]) => {
+    if (entry?.enabled !== true) return false;
+    return appManifestPluginPackageName(pluginId) === pluginPackageName;
+  });
+}
+
+/**
+ * Project a disabled plugin down to its deterministic boot-time registration
+ * seam. App-manifest metadata is the trust declaration that this init hook only
+ * registers intent ownership; all executable capability surfaces stay absent.
+ */
+function projectRoutingOnlyPlugin(plugin: Plugin): Plugin {
+  if (!plugin.init) {
+    throw new ElizaError(
+      `Plugin ${plugin.name} declares routingOnlyWhenDisabled but has no init hook`,
+      {
+        code: "PLUGIN_ROUTING_ONLY_INIT_MISSING",
+        context: { pluginName: plugin.name },
+      },
+    );
+  }
+  return {
+    name: plugin.name,
+    description: plugin.description,
+    ...(plugin.packageName ? { packageName: plugin.packageName } : {}),
+    init: plugin.init.bind(plugin),
+  };
+}
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -2365,27 +2407,50 @@ export async function resolvePlugins(
     logger.debug(`[eliza] Plugin auto-enable: ${changes.join("; ")}`);
   }
 
+  const forceIncludePluginNames = new Set(
+    (opts?.forceIncludePluginNames ?? []).map(resolvePluginPackageAlias),
+  );
   // Provenance for "why is this package in the load set?" — surfaced when an
   // optional plugin fails to resolve so logs point at config/env, not "eliza broke".
+  // Forced providers enter the collector before its final topology precedence
+  // sweep; they must not bypass cloud/remote/local-only ownership policy.
   const loadReasons: PluginLoadReasons = new Map();
-  const pluginsToLoad = collectPluginNames(config, loadReasons);
+  const pluginsToLoad = collectPluginNames(
+    config,
+    loadReasons,
+    Array.from(forceIncludePluginNames),
+  );
   const corePluginSet = new Set<string>(CORE_PLUGINS);
   const blockingPluginSet = new Set<string>(BLOCKING_CORE_PLUGINS);
+  const routingOwnershipPluginNames = new Set<string>();
+  const routingOnlyPluginNames = new Set<string>();
   for (const [pluginId, appDefault] of Object.entries(
     appManifest?.defaults ?? {},
   )) {
-    if (appDefault.requiredForReady === true) {
-      blockingPluginSet.add(
-        resolvePluginPackageAlias(
-          pluginId.includes("/")
-            ? pluginId
-            : `@elizaos/${pluginId.startsWith("plugin-") ? pluginId : `plugin-${pluginId}`}`,
-        ),
-      );
+    const pluginPackageName = appManifestPluginPackageName(pluginId);
+    if (
+      appDefault.requiredForReady === true ||
+      appDefault.routingOnlyWhenDisabled === true
+    ) {
+      blockingPluginSet.add(pluginPackageName);
+    }
+    if (appDefault.routingOnlyWhenDisabled === true) {
+      routingOwnershipPluginNames.add(pluginPackageName);
+    }
+    if (
+      appDefault.routingOnlyWhenDisabled === true &&
+      !isPluginExplicitlyEnabled(config, pluginPackageName)
+    ) {
+      routingOnlyPluginNames.add(pluginPackageName);
+      pluginsToLoad.add(pluginPackageName);
+      if (!loadReasons.has(pluginPackageName)) {
+        loadReasons.set(
+          pluginPackageName,
+          `elizaos.app.defaults[${JSON.stringify(pluginId)}].routingOnlyWhenDisabled`,
+        );
+      }
     }
   }
-  const forceIncludePluginNames = new Set(opts?.forceIncludePluginNames ?? []);
-
   // Build a mutable map of install records so we can merge drop-in discoveries
   const installRecords: Record<string, PluginInstallRecord> = {
     ...(config.plugins?.installs ?? {}),
@@ -2405,6 +2470,21 @@ export async function resolvePlugins(
     );
   }
   for (const pluginName of denyList) {
+    const routingOwnerPackageName = pluginName.includes("/")
+      ? resolvePluginPackageAlias(pluginName)
+      : appManifestPluginPackageName(pluginName);
+    if (routingOwnershipPluginNames.has(routingOwnerPackageName)) {
+      throw new ElizaError(
+        `Plugin ${routingOwnerPackageName} owns required disabled-capability routing and cannot be denied`,
+        {
+          code: "PLUGIN_ROUTING_ONLY_DENIED",
+          context: {
+            pluginName: routingOwnerPackageName,
+            deniedAs: pluginName,
+          },
+        },
+      );
+    }
     pluginsToLoad.delete(pluginName);
     const canonical = resolvePluginPackageAlias(pluginName);
     if (canonical !== pluginName) {
@@ -2736,21 +2816,38 @@ export async function resolvePlugins(
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {
+        const routingOnly = routingOnlyPluginNames.has(pluginName);
+        const pluginForRegistration = routingOnly
+          ? projectRoutingOnlyPlugin(pluginInstance)
+          : pluginInstance;
         // Generic pre-init hook: a plugin owning a load-time dependency (e.g.
         // plugin-browser's optional stagehand-server) prepares it here, before
         // its services start. Runs for every plugin that declares `preflight`,
         // so the resolver no longer special-cases any plugin by name (#12665).
-        await pluginInstance.preflight?.();
+        // A routing-only projection must execute only `init`; importing the
+        // disabled plugin must not prepare or start any capability dependency.
+        if (!routingOnly) await pluginInstance.preflight?.();
         // Wrap the plugin's init function with an error boundary.
         // Core plugins re-throw on init failure; optional plugins degrade gracefully.
         const wrappedPlugin = wrapPluginWithErrorBoundary(
           pluginName,
-          pluginInstance,
+          pluginForRegistration,
           { isCore },
         );
-        logger.debug(`[eliza] ✓ Loaded plugin: ${pluginName}`);
+        logger.debug(
+          `[eliza] ✓ Loaded plugin: ${pluginName}${routingOnly ? " (routing-only while disabled)" : ""}`,
+        );
         return { name: pluginName, plugin: wrappedPlugin };
       } else {
+        if (routingOnlyPluginNames.has(pluginName)) {
+          throw new ElizaError(
+            `Routing-only plugin ${pluginName} did not export a valid Plugin object`,
+            {
+              code: "PLUGIN_ROUTING_ONLY_EXPORT_MISSING",
+              context: { pluginName },
+            },
+          );
+        }
         const msg = `[eliza] Plugin ${pluginName} did not export a valid Plugin object`;
         failedPlugins.push({
           name: pluginName,
@@ -2764,6 +2861,17 @@ export async function resolvePlugins(
         return null;
       }
     } catch (err) {
+      if (routingOnlyPluginNames.has(pluginName)) {
+        if (err instanceof ElizaError) throw err;
+        throw new ElizaError(
+          `Required routing-only plugin ${pluginName} failed to load`,
+          {
+            code: "PLUGIN_ROUTING_ONLY_LOAD_FAILED",
+            cause: err,
+            context: { pluginName },
+          },
+        );
+      }
       // error-policy:J4 plugin resolution records the unavailable plugin in
       // failedPlugins; required core-plugin validation fails boot afterward.
       const msg = formatError(err);

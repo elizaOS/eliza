@@ -25,6 +25,22 @@ border, radius, typography, control height, padding, focus, hover, disabled,
 selected, invalid, loading, and destructive presentation belong to the atom's
 typed interface.
 
+Raw semantic utilities can still reproduce a canonical recipe without using
+its owner. The compliance gate therefore normalizes class order and rejects the
+opaque padded surface recipe (`bg-card`, `rounded-sm`, and `p-4`) on raw hosts;
+use `Card variant="flatPadded"`. The corresponding outlined recipe is owned by
+`Card variant="outlinedPadded"` and is independently order-normalized and
+ratcheted to zero. Analytics-style report surfaces use
+`Card variant="reportPanel"`; repainting `Card` with that background and border
+pair is also rejected even when it arrives through an internal barrel. `Card`
+also owns repeated vertical content spacing through
+the typed `stack` axis and repeated column geometry through `flow`, so callers
+do not repaint or redensify the surface through `className`.
+
+Inset rows and compact settings panels use `insetPadded` or `insetCompact`.
+Their shared `bg-surface`/border/radius recipe is normalized independently of
+the density utilities, and repeated row alignment comes from the `flow` axis.
+
 The same ownership rule applies to computed classes and React `style` objects.
 Conditional expressions, templates, named class constants, CSS-module lookups,
 and styling helper calls cannot conceal atom paint. Canonical controls reject
@@ -143,6 +159,38 @@ completion gate. The accepted final dispositions are
 requires a gate and policy change in the same review. Run
 `audit:molecular-inventory` to update the committed report after source,
 contract, or decision changes. Package lint checks that the report is current.
+
+## Design contract graph
+
+`audit:design-contract-graph` derives a typed ownership graph from the live
+semantic-token stylesheet, every maintained React component symbol, the
+canonical atom inventory, molecule contracts, and higher-order declarations.
+Source discovery is authoritative: aliases, barrels, and local wrappers are
+resolved through TypeScript symbols, atom dependencies are closed transitively,
+and reuse across independent source domains infers molecule ownership even when
+no registry entry names the component. Registries add semantic stability
+contracts to discovered owners; omission from a registry cannot hide an owner.
+
+The graph validates token aliases, canonical import identity, downward
+dependencies, real exported owners, raw capability ownership, and exact
+migration debt. Debt is keyed by a semantic fingerprint and match count, so
+removing one finding cannot make room for a different finding under the same
+aggregate count. Tight CI also rejects stale and expired debt.
+
+The graph distinguishes canonical implementations from route instances.
+Organism and page-shell declarations may name component owners and supported
+layout kinds, but route IDs and resolved layout policy remain in the existing
+route declarations and `SurfaceManifest`. `PageLayoutManifest` keeps content,
+workspace, and immersive topology separate from header framing and renderer
+isolation. This prevents the design graph from becoming another route registry.
+
+Repository-wide raw painted and interactive hosts remain migration inventory.
+Inside a source-inferred molecule, however, a raw host that claims surface,
+border, radius, elevation, or interaction capability is an enforced finding.
+New claims fail immediately. Existing migration debt is exact and expiring;
+tight mode also fails after a cleanup until the ledger is reduced, preventing
+removed debt from becoming allowance for unrelated drift. Completion requires
+that molecular capability debt reach zero.
 
 ## Story and accessibility proof
 

@@ -11,6 +11,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { Button } from "../components/ui/button";
+import { Card } from "../components/ui/card";
 import { cn } from "../lib/utils";
 import type { TranscriptItem, TranscriptViewModel } from "./contract";
 import {
@@ -103,37 +105,46 @@ export function LiveNativeTranscriptView({
   };
 
   return (
-    <details
-      className={cn(
-        "group w-full basis-full border-t border-border/30 pt-1 text-left",
-        className,
-      )}
-      data-testid="native-transcript-activity"
-      data-transcript-source={snapshot.source}
-      onToggle={handleToggle}
+    <Card
+      asChild
+      variant="topDivider"
+      className={cn("group w-full basis-full pt-1 text-left", className)}
     >
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-sm px-1 text-xs text-muted outline-none transition-colors duration-200 hover:text-txt motion-reduce:transition-none [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 font-medium text-txt">Live captions</span>
-        <span
-          className="min-w-0 flex-1 truncate"
-          data-testid="native-transcript-activity-summary"
+      <details
+        data-testid="native-transcript-activity"
+        data-transcript-source={snapshot.source}
+        onToggle={handleToggle}
+      >
+        <Button
+          asChild
+          variant="ghostMuted"
+          size="content"
+          nativeTranscriptSummary
         >
-          {activitySummary(view)}
-        </span>
-        <ChevronDown
-          className="size-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
-          aria-hidden="true"
-        />
-      </summary>
-      {expanded ? (
-        <div
-          className="max-h-48 overflow-y-auto px-1 pb-2 pt-1"
-          data-scroll-cert-scroller
-        >
-          <TranscriptView viewModel={view} />
-        </div>
-      ) : null}
-    </details>
+          <summary>
+            <span className="shrink-0 font-medium text-txt">Live captions</span>
+            <span
+              className="min-w-0 flex-1 truncate"
+              data-testid="native-transcript-activity-summary"
+            >
+              {activitySummary(view)}
+            </span>
+            <ChevronDown
+              className="size-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+              aria-hidden="true"
+            />
+          </summary>
+        </Button>
+        {expanded ? (
+          <div
+            className="max-h-48 overflow-y-auto px-1 pb-2 pt-1"
+            data-scroll-cert-scroller
+          >
+            <TranscriptView viewModel={view} />
+          </div>
+        ) : null}
+      </details>
+    </Card>
   );
 }
 

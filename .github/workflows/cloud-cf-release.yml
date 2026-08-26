@@ -310,6 +310,33 @@ jobs:
             exit "$gate_status"
           fi
 
+      - name: Validate database identity gate configuration
+        if: ${{ steps.source_guard.outputs.superseded != 'true' }}
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_IDENTITY_GATE_MODE: ${{ vars.DATABASE_IDENTITY_GATE_MODE || 'off' }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" != "production" ]; then
+            exit 0
+          fi
+          if [ "$DATABASE_IDENTITY_GATE_MODE" != "enforce" ]; then
+            echo "::error::Production migrations require DATABASE_IDENTITY_GATE_MODE=enforce"
+            exit 1
+          fi
+          for name in \
+            DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 \
+            DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::$name must be a protected lowercase SHA-256 identity receipt"
+              exit 1
+            fi
+          done
+          echo "Production database identity enforcement is configured; receipt values were not printed."
+
       - name: Run migrations
         if: ${{ steps.source_guard.outputs.superseded != 'true' }}
         env:
@@ -1659,7 +1686,7 @@ jobs:
           echo "::error::Authenticated staging realtime canary did not prove the deployed route"
           exit 1
 
-      - name: Activate and verify staging session exchange after deploy proof
+      - name: Activate and verify staging session exchange configuration after deploy proof
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
@@ -1721,14 +1748,24 @@ jobs:
           const [path, expectedCommit, expectedEnabled] = process.argv.slice(2);
           const body = JSON.parse(fs.readFileSync(path, "utf8"));
           const status = body.stagingSessionExchange;
-          const enabled = status?.enabled === true;
           const expected = expectedEnabled === "true";
+          const statusIsObject =
+            status !== null && typeof status === "object" && !Array.isArray(status);
+          const versionIsSupported =
+            statusIsObject && (status.version === null || status.version === "v1");
           if (
             body.commit !== expectedCommit ||
             body.environment !== "staging" ||
-            enabled !== expected ||
-            (expected && (status?.ready !== true || status?.version !== "v1")) ||
-            (!expected && status?.ready !== false)
+            !statusIsObject ||
+            typeof status.enabled !== "boolean" ||
+            status.enabled !== expected ||
+            typeof status.configured !== "boolean" ||
+            status.ready !== false ||
+            !versionIsSupported ||
+            (expected &&
+              (status.configured !== true || status.version !== "v1")) ||
+            (!expected &&
+              (status.configured !== false || status.version !== null))
           ) {
             process.exit(1);
           }
@@ -1736,7 +1773,7 @@ jobs:
             then
               rm -f "$tmp"
               rollback_needed=false
-              echo "Staging session exchange cutover matches the exact deployed commit and desired state."
+              echo "Staging session exchange configuration matches the exact deployed commit and desired state."
               exit 0
             fi
             rm -f "$tmp"

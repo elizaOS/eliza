@@ -15,6 +15,7 @@ import {
   resolveTelegramVoiceNote,
   sendTelegramReply,
   sendTelegramTyping,
+  TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER,
   TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
@@ -27,7 +28,11 @@ import {
   TelegramEgressAlreadyClaimedError,
 } from "@elizaos/cloud-services-common/telegram-delivery";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { PERSONAL_TELEGRAM_DELIVERY_PATH } from "@/api-app/personal-telegram-delivery";
+import {
+  isPersonalTelegramDeliveryEpoch1CompatEnabled,
+  PERSONAL_TELEGRAM_DELIVERY_EPOCH,
+  PERSONAL_TELEGRAM_DELIVERY_PATH,
+} from "@/api-app/personal-telegram-delivery";
 import { runWithDbCacheAsync } from "@/db/client";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { appendServerTiming } from "@/lib/observability/http-telemetry";
@@ -45,6 +50,8 @@ const TYPING_REFRESH_MS = 4_000;
 const DELIVERY_PROJECT_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DELIVERY_SENDER_RE = /^\d{1,32}$/;
 const DELIVERY_THREAD_RE = /^[1-9]\d{0,15}$/;
+const DELIVERY_MESSAGE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,159}$/;
+const TELEGRAM_CONNECTOR_ACCOUNT_RE = /^bot:(?:\d{1,20}|[0-9a-f]{64})$/;
 
 export interface TelegramEdgeDeps {
   runTurn(
@@ -71,6 +78,7 @@ interface LedgerResponse {
 
 export interface PersonalTelegramReminderDispatchInput {
   project: string;
+  connectorAccountId: string;
   chatId: string;
   providerThreadId?: string;
   text: string;
@@ -93,6 +101,50 @@ export type PersonalTelegramReminderDispatchResult =
 function readEnvString(env: AppEnv["Bindings"], key: string): string | null {
   const value = env[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function resolveTelegramConnectorAccountId(
+  botToken: string,
+): Promise<string> {
+  // Match the gateway identity contract: the documented decimal prefix is the
+  // immutable bot id, while opaque proxy/test credentials remain non-secret.
+  const botId = botToken.match(/^(\d{1,20}):/)?.[1];
+  return botId ? `bot:${botId}` : `bot:${await sha256Hex(botToken)}`;
+}
+
+async function configuredPersonalTelegramScope(
+  env: AppEnv["Bindings"],
+): Promise<{ project: string; connectorAccountId: string } | null> {
+  const project =
+    readEnvString(env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
+  const botToken = readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
+  if (!DELIVERY_PROJECT_RE.test(project) || !botToken) return null;
+  return {
+    project,
+    connectorAccountId: await resolveTelegramConnectorAccountId(botToken),
+  };
+}
+
+async function telegramCanonicalMessageId(
+  project: string,
+  connectorAccountId: string,
+  providerMessageId: string,
+): Promise<string> {
+  const readable = `telegram:${project}:${connectorAccountId}:${providerMessageId}`;
+  if (DELIVERY_MESSAGE_ID_RE.test(readable)) return readable;
+  return `telegram:v2:${connectorAccountId}:${await sha256Hex(
+    `${project}\0${providerMessageId}`,
+  )}`;
+}
+
+function telegramDeliveryObjectName(
+  project: string,
+  senderId: string,
+  connectorAccountId?: string,
+): string {
+  return connectorAccountId
+    ? `telegram:${project}:personal-shared:${connectorAccountId}:${senderId}`
+    : `telegram:${project}:personal-shared:${senderId}`;
 }
 
 async function runInternalRoute(
@@ -221,6 +273,45 @@ export function verifyPersonalTelegramGatewayRequest(c: AppContext): boolean {
   );
 }
 
+/**
+ * Binds an authenticated Gateway handoff to the exact Worker-side bot account
+ * before the Worker allocates delivery state or performs a provider action.
+ */
+export async function personalTelegramGatewayConnectorAccountFailure(
+  c: AppContext,
+): Promise<Response | null> {
+  const configuredScope = await configuredPersonalTelegramScope(c.env);
+  if (!configuredScope) {
+    return c.json(
+      { success: false, error: "Telegram connector is not configured" },
+      503,
+    );
+  }
+  const presentedHeader = c.req.header(TELEGRAM_CONNECTOR_ACCOUNT_ID_HEADER);
+  if (
+    presentedHeader === undefined &&
+    isPersonalTelegramDeliveryEpoch1CompatEnabled(c.env)
+  ) {
+    logger.warn(
+      "[PersonalTelegramEdge] legacy headerless gateway handoff accepted",
+      { deliveryEpoch: 1 },
+    );
+    return null;
+  }
+  const presentedAccountId = presentedHeader?.trim() ?? "";
+  if (
+    !TELEGRAM_CONNECTOR_ACCOUNT_RE.test(presentedAccountId) ||
+    presentedAccountId !== configuredScope.connectorAccountId
+  ) {
+    c.header("X-Eliza-Failure-Stage", "connector_account");
+    return c.json(
+      { success: false, error: "Telegram connector account mismatch" },
+      409,
+    );
+  }
+  return null;
+}
+
 export async function handlePersonalTelegramDeliveryLedger(
   c: AppContext,
 ): Promise<Response> {
@@ -240,20 +331,84 @@ export async function handlePersonalTelegramDeliveryLedger(
   const input = body as Record<string, unknown>;
   const project = input.project;
   const senderId = input.senderId;
+  const messageId = input.messageId;
+  const operation = input.operation;
+  const deliveryEpoch = input.deliveryEpoch;
+  const connectorAccountId = input.connectorAccountId;
+  const legacyEpoch =
+    deliveryEpoch === undefined && connectorAccountId === undefined;
+  const accountScopedEpoch =
+    deliveryEpoch === PERSONAL_TELEGRAM_DELIVERY_EPOCH &&
+    typeof connectorAccountId === "string" &&
+    TELEGRAM_CONNECTOR_ACCOUNT_RE.test(connectorAccountId);
   if (
     typeof project !== "string" ||
     !DELIVERY_PROJECT_RE.test(project) ||
     typeof senderId !== "string" ||
-    !DELIVERY_SENDER_RE.test(senderId)
+    !DELIVERY_SENDER_RE.test(senderId) ||
+    typeof messageId !== "string" ||
+    !DELIVERY_MESSAGE_ID_RE.test(messageId) ||
+    (operation !== "mark_uncertain" && operation !== "mark_delivered") ||
+    (!legacyEpoch && !accountScopedEpoch)
   ) {
     return c.json({ success: false, error: "Invalid delivery scope" }, 400);
+  }
+  const configuredScope = await configuredPersonalTelegramScope(c.env);
+  if (!configuredScope) {
+    return c.json(
+      { success: false, error: "Telegram connector is not configured" },
+      503,
+    );
+  }
+  if (
+    project !== configuredScope.project ||
+    (accountScopedEpoch &&
+      connectorAccountId !== configuredScope.connectorAccountId)
+  ) {
+    return c.json({ success: false, error: "Forbidden delivery scope" }, 403);
+  }
+  if (legacyEpoch && !isPersonalTelegramDeliveryEpoch1CompatEnabled(c.env)) {
+    logger.warn(
+      "[PersonalTelegramDelivery] legacy epoch reconciliation rejected",
+      { deliveryEpoch: 1, operation },
+    );
+    return c.json(
+      {
+        success: false,
+        error: "Legacy Telegram delivery epoch is disabled",
+        code: "LEGACY_DELIVERY_EPOCH_DISABLED",
+      },
+      409,
+    );
   }
   const namespace = c.env.PERSONAL_TELEGRAM_DELIVERIES;
   if (!namespace) {
     return c.json({ success: false, error: "Delivery binding missing" }, 503);
   }
+  // Epoch 1 is a temporary, observable rolling-upgrade bridge. Its ambiguous
+  // tombstones stay quarantined from epoch 2 and expire after 30 days.
+  if (legacyEpoch) {
+    logger.warn(
+      "[PersonalTelegramDelivery] legacy epoch reconciliation accepted",
+      { deliveryEpoch: 1, operation },
+    );
+  }
+  const scopedConnectorAccountId = accountScopedEpoch
+    ? configuredScope.connectorAccountId
+    : undefined;
+  const scopedMessageId = scopedConnectorAccountId
+    ? await telegramCanonicalMessageId(
+        configuredScope.project,
+        scopedConnectorAccountId,
+        messageId,
+      )
+    : messageId;
   const stub = namespace.getByName(
-    `telegram:${project}:personal-shared:${senderId}`,
+    telegramDeliveryObjectName(
+      configuredScope.project,
+      senderId,
+      scopedConnectorAccountId,
+    ),
   );
   const response = await stub.fetch(
     `https://personal-telegram-delivery${PERSONAL_TELEGRAM_DELIVERY_PATH}`,
@@ -261,9 +416,8 @@ export async function handlePersonalTelegramDeliveryLedger(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...input,
-        project: undefined,
-        senderId: undefined,
+        messageId: scopedMessageId,
+        operation,
       }),
     },
   );
@@ -277,38 +431,40 @@ export async function handlePersonalTelegramDeliveryLedger(
 async function edgeLedger(
   env: AppEnv["Bindings"],
   project: string,
+  connectorAccountId: string,
+  canonicalMessageId: string,
   event: TelegramConnectorEvent,
 ): Promise<TelegramDeliveryLedger> {
   const namespace = env.PERSONAL_TELEGRAM_DELIVERIES;
   if (!namespace)
     throw new Error("Personal Telegram delivery binding is missing");
   const stub = namespace.getByName(
-    `telegram:${project}:personal-shared:${event.senderId}`,
+    telegramDeliveryObjectName(project, event.senderId, connectorAccountId),
   );
   return {
     async read() {
-      const body = await callLedger(stub, event.messageId, "read");
+      const body = await callLedger(stub, canonicalMessageId, "read");
       return body.state === "uncertain" || body.state === "delivered"
         ? body.state
         : null;
     },
     async claimProcessing() {
       return (
-        (await callLedger(stub, event.messageId, "claim_processing"))
+        (await callLedger(stub, canonicalMessageId, "claim_processing"))
           .claimed === true
       );
     },
     async releaseProcessing() {
-      await callLedger(stub, event.messageId, "release_processing");
+      await callLedger(stub, canonicalMessageId, "release_processing");
     },
     async preparePlan(chunkDigests) {
-      const body = await callLedger(stub, event.messageId, "prepare_plan", {
+      const body = await callLedger(stub, canonicalMessageId, "prepare_plan", {
         chunkDigests,
       });
       return body.plan === "prepared" ? "prepared" : "conflict";
     },
     async readChunk(chunkIndex, chunkDigest) {
-      const body = await callLedger(stub, event.messageId, "read_chunk", {
+      const body = await callLedger(stub, canonicalMessageId, "read_chunk", {
         chunkIndex,
         chunkDigest,
       });
@@ -325,7 +481,7 @@ async function edgeLedger(
     async claimChunk(chunkIndex, chunkDigest) {
       return (
         (
-          await callLedger(stub, event.messageId, "claim_chunk", {
+          await callLedger(stub, canonicalMessageId, "claim_chunk", {
             chunkIndex,
             chunkDigest,
           })
@@ -333,20 +489,20 @@ async function edgeLedger(
       );
     },
     async releaseChunk(chunkIndex, chunkDigest) {
-      await callLedger(stub, event.messageId, "release_chunk", {
+      await callLedger(stub, canonicalMessageId, "release_chunk", {
         chunkIndex,
         chunkDigest,
       });
     },
     async markChunkDelivered(chunkIndex, chunkDigest, providerMessageId) {
-      await callLedger(stub, event.messageId, "mark_chunk_delivered", {
+      await callLedger(stub, canonicalMessageId, "mark_chunk_delivered", {
         chunkIndex,
         chunkDigest,
         providerMessageId,
       });
     },
     async markDelivered() {
-      await callLedger(stub, event.messageId, "mark_delivered");
+      await callLedger(stub, canonicalMessageId, "mark_delivered");
     },
   };
 }
@@ -354,14 +510,16 @@ async function edgeLedger(
 async function readEdgeReceipt(
   env: AppEnv["Bindings"],
   project: string,
+  connectorAccountId: string,
+  canonicalMessageId: string,
   event: TelegramConnectorEvent,
 ): Promise<{ acceptedAt: string; providerMessageIds: string[] } | null> {
   const namespace = env.PERSONAL_TELEGRAM_DELIVERIES;
   if (!namespace) return null;
   const stub = namespace.getByName(
-    `telegram:${project}:personal-shared:${event.senderId}`,
+    telegramDeliveryObjectName(project, event.senderId, connectorAccountId),
   );
-  const body = await callLedger(stub, event.messageId, "read_receipt");
+  const body = await callLedger(stub, canonicalMessageId, "read_receipt");
   const acceptedAt =
     typeof body.acceptedAt === "string" &&
     Number.isFinite(Date.parse(body.acceptedAt))
@@ -405,6 +563,20 @@ export async function dispatchPersonalTelegramReminder(
       message: "Telegram connector is not configured",
     };
   }
+  const configuredScope = await configuredPersonalTelegramScope(env);
+  if (
+    !configuredScope ||
+    configuredScope.project !== input.project ||
+    !TELEGRAM_CONNECTOR_ACCOUNT_RE.test(input.connectorAccountId) ||
+    configuredScope.connectorAccountId !== input.connectorAccountId
+  ) {
+    return {
+      ok: false,
+      acceptance: "not_accepted",
+      message:
+        "Telegram connector account no longer matches the reminder destination",
+    };
+  }
   const event: TelegramConnectorEvent = {
     platform: "telegram",
     messageId: input.idempotencyKey,
@@ -420,7 +592,19 @@ export async function dispatchPersonalTelegramReminder(
     rawPayload: { source: "shared-reminder" },
   };
   try {
-    const ledger = await edgeLedger(env, input.project, event);
+    const connectorAccountId = input.connectorAccountId;
+    const canonicalMessageId = await telegramCanonicalMessageId(
+      input.project,
+      connectorAccountId,
+      event.messageId,
+    );
+    const ledger = await edgeLedger(
+      env,
+      input.project,
+      connectorAccountId,
+      canonicalMessageId,
+      event,
+    );
     const outcome = await executeTelegramDelivery(ledger, async (hooks) => {
       await sendTelegramReply({ botToken }, event, input.text, logger, hooks);
     });
@@ -431,7 +615,13 @@ export async function dispatchPersonalTelegramReminder(
         message: `Telegram reminder delivery is ${outcome}`,
       };
     }
-    const receipt = await readEdgeReceipt(env, input.project, event);
+    const receipt = await readEdgeReceipt(
+      env,
+      input.project,
+      connectorAccountId,
+      canonicalMessageId,
+      event,
+    );
     return receipt
       ? { ok: true, ...receipt }
       : {
@@ -493,16 +683,19 @@ function startTyping(
 
 function deliveryBody(
   project: string,
+  connectorAccountId: string,
+  canonicalMessageId: string,
   event: TelegramConnectorEvent,
   voiceNote?: Awaited<ReturnType<typeof resolveTelegramVoiceNote>>,
 ): Record<string, unknown> {
   return {
     platform: "telegram",
     project,
+    connectorAccountId,
     chatId: event.chatId,
     telegramUserId: event.senderId,
     displayName: event.senderName,
-    messageId: `telegram:${project}:${event.messageId}`,
+    messageId: canonicalMessageId,
     ...(event.text ? { message: event.text } : {}),
     ...(voiceNote ? { voiceNote } : {}),
   };
@@ -596,7 +789,19 @@ export async function handlePersonalTelegramEdge(
   const project =
     readEnvString(c.env, "ELIZA_APP_WEBHOOK_PROJECT") ?? "eliza-app";
   const config = { botToken, webhookSecret };
-  const ledger = await edgeLedger(c.env, project, event);
+  const connectorAccountId = await resolveTelegramConnectorAccountId(botToken);
+  const canonicalMessageId = await telegramCanonicalMessageId(
+    project,
+    connectorAccountId,
+    event.messageId,
+  );
+  const ledger = await edgeLedger(
+    c.env,
+    project,
+    connectorAccountId,
+    canonicalMessageId,
+    event,
+  );
 
   try {
     let turnMs = 0;
@@ -661,7 +866,13 @@ export async function handlePersonalTelegramEdge(
           const turn = await runTurnWithRetry(
             c,
             deps,
-            deliveryBody(project, event, voiceNote),
+            deliveryBody(
+              project,
+              connectorAccountId,
+              canonicalMessageId,
+              event,
+              voiceNote,
+            ),
             event,
             traceId,
           );

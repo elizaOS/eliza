@@ -28,7 +28,10 @@ if (appDirCandidates.length !== 1) {
   );
 }
 const [APP_DIR] = appDirCandidates;
-const NAVIGATION_SOURCE = resolve(APP_DIR, "../ui/src/navigation/index.ts");
+const NAVIGATION_SOURCE = resolve(
+  APP_DIR,
+  "../ui/src/navigation/builtin-route-descriptors.ts",
+);
 
 describe("aesthetic audit semantic OCR policy coverage", () => {
   it("declares exactly one policy for every captured view slug", () => {
@@ -50,8 +53,17 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
         (key) => BUILTIN_TAB_PATHS[key] !== navigationPaths[key],
       ),
     ).toEqual([]);
+    const pluginOwnedPaths = new Set([
+      "/phone",
+      "/messages",
+      "/contacts",
+      "/apps/relationships",
+    ]);
+    const hostOwnedNavigationPaths = Object.values(navigationPaths).filter(
+      (path) => !pluginOwnedPaths.has(path),
+    );
     expect(new Set(Object.values(BUILTIN_TAB_PATHS))).toEqual(
-      new Set(Object.values(navigationPaths)),
+      new Set(hostOwnedNavigationPaths),
     );
   });
 
@@ -116,20 +128,18 @@ describe("aesthetic audit semantic OCR policy coverage", () => {
     });
   });
 
-  it("recognizes Contacts by stable empty-state content rather than a removed heading", () => {
-    for (const slug of ["builtin-contacts", "plugin-contacts-gui"]) {
-      const policy = resolveViewOcrPolicy(slug);
-      expect(policy.kind).toBe("expectation");
-      if (policy.kind !== "expectation") {
-        throw new Error(`Expected ${slug} to declare an OCR expectation`);
-      }
-      expect(policy.expectation.requireAll).toBeUndefined();
-      expect(policy.expectation.requireAny).toEqual([
-        "address book",
-        "phone, or email",
-        "search",
-      ]);
+  it("recognizes plugin-owned Contacts by stable empty-state content", () => {
+    const policy = resolveViewOcrPolicy("plugin-contacts-gui");
+    expect(policy.kind).toBe("expectation");
+    if (policy.kind !== "expectation") {
+      throw new Error("Expected plugin Contacts to declare an OCR expectation");
     }
+    expect(policy.expectation.requireAll).toBeUndefined();
+    expect(policy.expectation.requireAny).toEqual([
+      "address book",
+      "phone, or email",
+      "search",
+    ]);
   });
 
   it("fails closed for an unknown captured slug", () => {

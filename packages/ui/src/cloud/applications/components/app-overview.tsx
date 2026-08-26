@@ -44,6 +44,7 @@ import {
 } from "../../../components/ui/alert-dialog";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { CopyButton } from "../../../components/ui/copy-button";
 import { Input } from "../../../components/ui/input";
 import { api } from "../../lib/api-client";
@@ -310,7 +311,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     <div className="space-y-4">
       {/* New API Key Alert */}
       {showKey && displayApiKey && (
-        <div className="p-4 rounded-sm bg-card border border-border">
+        <Card variant="outlinedPadded">
           <div className="flex items-start gap-3">
             <Key className="size-5 text-muted mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -338,7 +339,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </p>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Stats Grid */}
@@ -389,7 +390,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       </div>
 
       {/* Deployment (#9145) — the client trigger for POST /apps/:id/deploy. */}
-      <div className="bg-card rounded-sm p-4 space-y-3">
+      <Card stack="compact" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Rocket className="size-4 text-muted" />
@@ -500,11 +501,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             {deployInputError}
           </p>
         )}
-      </div>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* API Key Card */}
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-txt flex items-center gap-2">
               <Key className="size-4 text-muted" />
@@ -556,7 +557,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </AlertDialog>
           </div>
 
-          <div className="bg-surface rounded-sm p-3 border border-border">
+          <Card variant="insetPadded">
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs text-muted font-mono overflow-x-auto">
                 {showKey && displayApiKey ? displayApiKey : maskedApiKey}
@@ -583,17 +584,17 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 </>
               )}
             </div>
-          </div>
+          </Card>
           <p className="text-xs text-neutral-500">
             {t("cloud.apps.overview.apiKeyHint", {
               defaultValue:
                 "Use this key to authenticate API requests from your app.",
             })}
           </p>
-        </div>
+        </Card>
 
         {/* Basic Info Card */}
-        <div className="bg-card rounded-sm p-4 space-y-4">
+        <Card stack="default" variant="flatPadded">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Globe className="size-4 text-muted" />
             {t("cloud.apps.overview.appInformation", {
@@ -648,12 +649,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               />
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Monetization Card */}
       {monetizationEnabled !== null && (
-        <div className="bg-card rounded-sm p-4">
+        <Card variant="flatPadded">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-sm bg-surface">
@@ -686,11 +687,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               </Button>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Allowed Origins */}
-      <div className="bg-card rounded-sm p-4 space-y-3">
+      <Card stack="compact" variant="flatPadded">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-medium text-txt flex items-center gap-2">
             <Shield className="size-4 text-muted" />
@@ -718,7 +719,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             <p className="text-xs text-neutral-500">No origins configured</p>
           )}
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

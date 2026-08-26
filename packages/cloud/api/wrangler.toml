@@ -239,6 +239,10 @@ SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
+# PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED is deliberately absent from
+# the root and production vars blocks. Staging commits the temporary exact-true
+# bridge below so its Worker deploy cannot race the legacy Gateway's headerless
+# handoff or epoch-1 reconciliation. Production remains protected and closed.
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED and
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED are deliberately
 # absent from every [vars] block. The protected activation workflows own them
@@ -541,6 +545,11 @@ SHARED_TURN_TRACES_SAMPLE = "1"
 # identity/lifecycle writer participates in the durable mutation-fence protocol.
 # The bound Durable Object remains available for exact-head isolated proof.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
+# Temporary Worker-first compatibility fence: this must deploy atomically with
+# delivery epoch 2 before the legacy staging Gateway is replaced. Remove it only
+# after the epoch-2 Gateway is live, legacy warnings are zero, and the drain and
+# reconciliation checks in the PR rollout evidence have passed.
+PERSONAL_TELEGRAM_DELIVERY_EPOCH1_COMPAT_ENABLED = "true"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
 # staging plaintext binding; either binding must be exactly true to opt in.

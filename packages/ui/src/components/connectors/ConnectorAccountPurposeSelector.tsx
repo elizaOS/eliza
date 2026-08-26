@@ -8,6 +8,7 @@ import { useId, useMemo, useState } from "react";
 import type { ConnectorAccountRole } from "../../api/client-agent";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { Button } from "../ui/button";
+import { Card } from "../ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Spinner } from "../ui/spinner";
 import {
   CONNECTOR_ACCOUNT_PURPOSE_OPTIONS,
   CONNECTOR_OWNER_ROLE_CONFIRMATION,
@@ -119,7 +121,8 @@ export function ConnectorAccountPurposeSelector({
                 : t("connectorpurpose.actsAs", { defaultValue: "Acts as" })
             }
             id={id}
-            className="h-8 w-[132px] rounded-sm border border-border bg-card text-xs"
+            variant="connectorCompact"
+            className="w-[132px]"
           >
             <SelectValue />
           </SelectTrigger>
@@ -162,7 +165,7 @@ export function ConnectorAccountPurposeSelector({
           </DialogHeader>
 
           <div className="space-y-3">
-            <div className="rounded-sm border border-border/50 bg-bg-accent/40 px-3 py-2 text-xs text-muted">
+            <Card variant="connectorInset">
               <span className="font-medium text-txt">
                 {accountLabel ??
                   t("connectorpurpose.defaultLabel", {
@@ -173,7 +176,7 @@ export function ConnectorAccountPurposeSelector({
                 defaultValue: "will be promoted to",
               })}{" "}
               <span className="font-medium text-txt">OWNER</span>.
-            </div>
+            </Card>
             <div className="space-y-1.5">
               <label
                 htmlFor={confirmInputId}
@@ -210,7 +213,7 @@ export function ConnectorAccountPurposeSelector({
               onClick={() => void handleConfirm()}
             >
               {confirmBusy ? (
-                <span className="size-3 animate-spin rounded-full border border-current border-t-transparent" />
+                <Spinner className="size-3" />
               ) : (
                 t("connectorpurpose.confirm", { defaultValue: "Confirm" })
               )}

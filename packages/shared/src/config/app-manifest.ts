@@ -32,6 +32,19 @@ export interface PluginAppDefault {
    * must register before the runtime reports ready.
    */
   requiredForReady?: boolean;
+  /**
+   * When true and the plugin is disabled, the host still imports the plugin in
+   * the blocking boot phase and registers an init-only projection of it. The
+   * projection deliberately excludes actions, services, routes, providers,
+   * views, and every other runtime surface.
+   *
+   * This lets a disabled-by-default capability claim deterministic intent
+   * ownership before the first chat turn and return a typed unavailable result
+   * instead of silently falling through to a different capability. The host
+   * must only set this for a plugin whose `init` is registration-only and safe
+   * to run while the capability itself remains disabled.
+   */
+  routingOnlyWhenDisabled?: boolean;
 }
 
 /** Capability requirement level declared by the app. */

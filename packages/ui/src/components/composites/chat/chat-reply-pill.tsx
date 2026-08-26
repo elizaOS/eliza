@@ -11,6 +11,7 @@ import { Reply, X } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import type { ChatReplyTarget } from "../../../state/ChatComposerContext.hooks";
 import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
 
 export interface ChatReplyPillProps {
   target: ChatReplyTarget;
@@ -31,14 +32,15 @@ export function ChatReplyPill({
   const glass = appearance === "glass";
 
   return (
-    <div
+    <Card
+      surface={glass ? "transparent" : "raised"}
+      border={glass ? "none" : "standard"}
+      padding="compact"
+      tone={glass ? undefined : "text"}
+      flow="row"
+      gap="compact"
+      wallpaperText={glass}
       data-testid="chat-reply-pill"
-      className={cn(
-        "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs",
-        glass
-          ? "bg-white/10 text-white/85"
-          : "border border-border bg-bg-accent text-txt",
-      )}
     >
       <Reply
         className={cn(
@@ -69,6 +71,6 @@ export function ChatReplyPill({
       >
         <X className="size-3.5" aria-hidden="true" />
       </Button>
-    </div>
+    </Card>
   );
 }

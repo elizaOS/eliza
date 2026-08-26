@@ -17,7 +17,14 @@ import {
   buildStewardOAuthRedirectUri,
   resolveStewardOAuthTenantId,
 } from "../../../cloud/public-pages/lib/steward-oauth-url";
+import { Alert } from "../../../components/ui/alert";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "../../../components/ui/avatar";
 import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
@@ -597,11 +604,7 @@ function AuthorizeFlow({
         your cloud credit balance.
       </p>
 
-      {error && (
-        <div className="rounded-sm border border-destructive/40 bg-destructive-subtle p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      {error && <Alert variant="dashboardError">{error}</Alert>}
 
       {isAuthenticated ? (
         <SignedInActions
@@ -635,9 +638,14 @@ function AuthorizationErrorFrame({
 }) {
   return (
     <Frame>
-      <div className="p-4 rounded-full bg-destructive-subtle">
+      <Card
+        surface="destructiveSubtle"
+        radius="full"
+        padding="comfortable"
+        className="flex size-16 items-center justify-center"
+      >
         <AlertTriangle className="size-8 text-destructive" />
-      </div>
+      </Card>
       <h3 className="text-lg font-semibold text-white">Authorization Error</h3>
       <p className="text-sm text-white/60 max-w-xs text-center">{error}</p>
       <BrandButton variant="outline" onClick={onHome} className="mt-4">
@@ -655,9 +663,14 @@ function Frame({ children }: { children: React.ReactNode }) {
   // same): single-purpose, not a navigable location.
   return (
     <div className="relative flex min-h-dvh w-full flex-col overflow-hidden">
-      <div className="absolute inset-0 bg-linear-to-br from-black via-zinc-900 to-black" />
+      <Card
+        surface="card"
+        radius="none"
+        className="theme-cloud absolute inset-0"
+        aria-hidden
+      />
       <div className="relative z-10 flex flex-1 items-center justify-center p-4">
-        <BrandCard className="w-full max-w-md bg-black/85">
+        <BrandCard className="w-full max-w-md">
           <CornerBrackets size="md" className="opacity-50" />
           <div className="relative z-10 flex flex-col items-center gap-6 py-8 px-2">
             {children}
@@ -672,20 +685,26 @@ function AppHeader({ appInfo }: { appInfo: AppInfo }) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
       {appInfo.logo_url ? (
-        <Image
-          src={appInfo.logo_url}
-          alt={appInfo.name}
-          width={64}
-          height={64}
-          className="size-16 rounded-sm object-cover"
-          unoptimized
-        />
+        <Avatar shape="square" className="size-16">
+          <AvatarImage asChild>
+            <Image
+              src={appInfo.logo_url}
+              alt={appInfo.name}
+              width={64}
+              height={64}
+              className="object-cover"
+              unoptimized
+            />
+          </AvatarImage>
+        </Avatar>
       ) : (
-        <div className="size-16 rounded-sm bg-muted flex items-center justify-center">
-          <span className="text-2xl font-bold text-txt-strong">
-            {appInfo.name.charAt(0)}
-          </span>
-        </div>
+        <Avatar shape="square" className="size-16">
+          <AvatarFallback shape="square" tone="muted">
+            <span className="text-2xl font-bold text-txt-strong">
+              {appInfo.name.charAt(0)}
+            </span>
+          </AvatarFallback>
+        </Avatar>
       )}
       <div>
         <h1 className="text-xl font-bold text-white">{appInfo.name}</h1>
@@ -710,10 +729,7 @@ function SignedInActions({
 }) {
   return (
     <div className="flex w-full flex-col items-center gap-3">
-      <BrandButton
-        onClick={onAuthorize}
-        className="w-full hover:bg-accent-hover hover:text-accent-foreground"
-      >
+      <BrandButton onClick={onAuthorize} className="w-full">
         Authorize {appName}
       </BrandButton>
       <InlineCancelButton onCancel={onCancel} />

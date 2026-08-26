@@ -1,7 +1,8 @@
 /**
  * Exercises the production remote host/session/command repositories against
  * real PGlite transactions, including one-use pairing, replay fencing,
- * pre-start lease recovery, post-start ambiguity, and revocation cleanup.
+ * activation compensation, pre-start lease recovery, post-start ambiguity,
+ * and revocation cleanup.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
@@ -174,7 +175,11 @@ async function enrollAndPair(activate = true): Promise<void> {
         code,
         pairingSecret,
       }),
-    ).toMatchObject({ kind: "activated", session: { status: "active" } });
+    ).toMatchObject({ kind: "activated", session: { status: "activating" } });
+    expect(await sessions.commitHostActivation({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "committed",
+      session: { status: "active" },
+    });
   }
 }
 
@@ -208,6 +213,9 @@ beforeAll(async () => {
     "0275_remote_sessions_first_class_expiry",
     "0305_secure_remote_hosts",
     "0306_secure_remote_command_relay",
+    "0330_remote_session_two_phase_activation",
+    "0331_remote_host_managed_network",
+    "0332_remote_target_initiated_pairing",
   ]) {
     await applyMigration(migration);
   }
@@ -224,6 +232,137 @@ afterAll(async () => {
 });
 
 describe("secure remote relay repositories", () => {
+  it("keeps managed enrollment non-authoritative until durable activation", async () => {
+    hostToken = generateRemoteHostToken();
+    expect(
+      await hosts.createOwned({
+        id: hostId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        device_id: "linux-one",
+        display_name: "Linux One",
+        platform: "linux",
+        connection_mode: "relay",
+        runtime_key_id: targetKeyId,
+        signing_public_jwk: ecPublicJwk,
+        encryption_public_jwk: ecPublicJwk,
+        host_token_hash: await hashRemoteHostToken(hostToken),
+        status: "pending",
+      }),
+    ).toMatchObject({ kind: "created", host: { status: "pending" } });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    const pairingExpiry = new Date(Date.now() + 5 * 60_000);
+    expect(
+      await sessions.createPendingForOwnedHost({
+        id: sessionId,
+        organization_id: organizationId,
+        user_id: ownerId,
+        host_id: hostId,
+        grant_id: grantId,
+        grant_revision: 1,
+        status: "pending",
+        requester_identity: ownerId,
+        pairing_token_hash: await deriveRemotePairingCodeVerifier(
+          pairingSecret,
+          { organizationId, userId: ownerId, hostId, sessionId },
+          "123456",
+          pairingExpiry,
+        ),
+        controller_device_id: controllerDeviceId,
+        controller_key_id: controllerKeyId,
+        controller_display_name: "Controller",
+        controller_platform: "linux",
+        controller_signing_public_jwk: ecPublicJwk,
+        controller_encryption_public_jwk: ecPublicJwk,
+        target_key_id: targetKeyId,
+        expires_at: pairingExpiry,
+        grant_expires_at: new Date(Date.now() + 60 * 60_000),
+      }),
+    ).toBeUndefined();
+    await hosts.recordManagedEnrollment({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      hostname: "eliza-host-test",
+      preAuthKeyId: "123",
+    });
+    let [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: "eliza-host-test",
+      headscale_preauth_key_id: "123",
+      headscale_cleanup_pending: true,
+      status: "pending",
+    });
+    expect(JSON.stringify(host)).not.toContain("hskey-");
+    expect(
+      await hosts.listManagedCleanupCandidates({
+        pendingUpdatedBefore: new Date("2100-01-01T00:00:00.000Z"),
+        limit: 10,
+      }),
+    ).toHaveLength(1);
+    expect(await hosts.authenticateManagedEnrollment(hostId, hostToken)).toMatchObject({
+      id: hostId,
+      status: "pending",
+    });
+
+    const active = await hosts.activateManagedEnrollment({
+      hostId,
+      organizationId,
+      userId: ownerId,
+      hostname: "eliza-host-test-cnpx9uop",
+    });
+    expect(active.status).toBe("active");
+    expect(active.headscale_hostname).toBe("eliza-host-test-cnpx9uop");
+    expect(await hosts.authenticate(hostId, hostToken)).toMatchObject({
+      id: hostId,
+      status: "active",
+    });
+    expect(
+      await hosts.listManagedCleanupCandidates({
+        pendingUpdatedBefore: new Date("2100-01-01T00:00:00.000Z"),
+        limit: 10,
+      }),
+    ).toHaveLength(0);
+
+    await hosts.completeManagedCleanup({
+      hostId,
+      organizationId,
+      userId: ownerId,
+    });
+    [host] = await database.select().from(remoteHosts);
+    expect(host).toMatchObject({
+      headscale_hostname: null,
+      headscale_preauth_key_id: null,
+      headscale_cleanup_pending: false,
+      headscale_cleanup_error: null,
+    });
+  });
+
+  it("revokes a pending managed host without ever granting bearer authority", async () => {
+    hostToken = generateRemoteHostToken();
+    await hosts.createOwned({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      device_id: "linux-one",
+      display_name: "Linux One",
+      platform: "linux",
+      connection_mode: "relay",
+      runtime_key_id: targetKeyId,
+      signing_public_jwk: ecPublicJwk,
+      encryption_public_jwk: ecPublicJwk,
+      host_token_hash: await hashRemoteHostToken(hostToken),
+      status: "pending",
+    });
+
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+    expect(await hosts.revoke(hostId, organizationId, ownerId)).toMatchObject({
+      host: { status: "revoked" },
+      alreadyRevoked: false,
+    });
+    expect(await hosts.authenticate(hostId, hostToken)).toBeUndefined();
+  });
+
   it("records a host heartbeat even when its active session has no command", async () => {
     await enrollAndPair();
     expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("empty");
@@ -272,6 +411,160 @@ describe("secure remote relay repositories", () => {
     ).toEqual({ kind: "mismatch" });
   });
 
+  it("runs target challenge claim, confirmation, expiry, denial, replay, and no-resurrection", async () => {
+    hostToken = generateRemoteHostToken();
+    await hosts.createOwned({
+      id: hostId,
+      organization_id: organizationId,
+      user_id: ownerId,
+      device_id: "mac-one",
+      display_name: "Nubs's Mac",
+      platform: "macos",
+      connection_mode: "relay",
+      runtime_key_id: targetKeyId,
+      signing_public_jwk: ecPublicJwk,
+      encryption_public_jwk: ecPublicJwk,
+      host_token_hash: await hashRemoteHostToken(hostToken),
+      status: "active",
+    });
+
+    const challenge = async (id: string, code: string) =>
+      sessions.createPendingForAuthenticatedHost({
+        id,
+        hostId,
+        hostToken,
+        grantId: crypto.randomUUID(),
+        grantRevision: 1,
+        code,
+        pairingSecret,
+        expiresAt: new Date(Date.now() + 5 * 60_000),
+        grantExpiresAt: new Date(Date.now() + 60 * 60_000),
+      });
+    expect(await challenge(sessionId, "123456")).toMatchObject({
+      status: "pending",
+      controller_device_id: null,
+      pairing_consumed_at: null,
+    });
+    const [pending] = await database.select().from(remoteSessions);
+    expect(pending?.pairing_token_hash).toMatch(/^hmac-sha256-v3:/);
+    expect(pending?.pairing_token_hash).not.toContain("123456");
+
+    const controller = {
+      controllerDeviceId: "iphone-one",
+      controllerKeyId,
+      controllerDisplayName: "Nubs's iPhone",
+      controllerPlatform: "ios",
+      controllerSigningPublicJwk: ecPublicJwk,
+      controllerEncryptionPublicJwk: ecPublicJwk,
+    };
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: otherOwnerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "not_found" });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toMatchObject({
+      kind: "claimed",
+      session: {
+        status: "claimed",
+        controller_device_id: "iphone-one",
+        controller_key_id: controllerKeyId,
+        pairing_token_hash: null,
+      },
+    });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId,
+        code: "123456",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+    expect(
+      await sessions.readAuthenticatedHostPairing({
+        sessionId,
+        hostId,
+        hostToken: generateRemoteHostToken(),
+      }),
+    ).toEqual({ kind: "not_found" });
+    expect(await sessions.confirmClaimedHost({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "activated",
+      session: { status: "activating" },
+    });
+    expect(await sessions.commitHostActivation({ sessionId, hostId, hostToken })).toMatchObject({
+      kind: "committed",
+      session: { status: "active" },
+    });
+    expect(await sessions.revoke(sessionId, organizationId, ownerId)).toMatchObject({
+      session: { status: "revoked" },
+      alreadyEnded: false,
+    });
+    expect(
+      await new RemoteSessionsRepository(database).listByOwnedHost(hostId, organizationId, ownerId),
+    ).toEqual([]);
+
+    const expiredSessionId = "50000000-0000-4000-8000-000000000002";
+    await challenge(expiredSessionId, "234567");
+    await database.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 second'
+      WHERE id = ${expiredSessionId}
+    `);
+    expect(
+      await sessions.readAuthenticatedHostPairing({
+        sessionId: expiredSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({ kind: "found", session: { status: "expired" } });
+    expect(
+      await sessions.claimPendingHostForOwner({
+        organizationId,
+        userId: ownerId,
+        sessionId: expiredSessionId,
+        code: "234567",
+        pairingSecret,
+        ...controller,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+
+    const deniedSessionId = "50000000-0000-4000-8000-000000000003";
+    await challenge(deniedSessionId, "345678");
+    expect(
+      await sessions.compensateHostActivation({
+        sessionId: deniedSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({
+      kind: "compensated",
+      session: { status: "denied" },
+      alreadyCompensated: false,
+    });
+    expect(
+      await sessions.compensateHostActivation({
+        sessionId: deniedSessionId,
+        hostId,
+        hostToken,
+      }),
+    ).toMatchObject({ kind: "compensated", alreadyCompensated: true });
+  });
+
   it("consumes a host-bound pairing verifier only once", async () => {
     await enrollAndPair(false);
     const attempts = await Promise.all([
@@ -304,6 +597,148 @@ describe("secure remote relay repositories", () => {
         pairingSecret,
       }),
     ).toEqual({ kind: "invalid_pairing" });
+  });
+
+  it("discovers one host-bound session from only its six-digit code", async () => {
+    await enrollAndPair(false);
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "000000",
+        pairingSecret,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "123456",
+        pairingSecret,
+      }),
+    ).toMatchObject({
+      kind: "activated",
+      session: { id: sessionId, status: "activating" },
+    });
+    expect(
+      await sessions.activatePendingHostByCode({
+        hostId,
+        hostToken,
+        code: "123456",
+        pairingSecret,
+      }),
+    ).toEqual({ kind: "invalid_pairing" });
+  });
+
+  it("commits an exact staged activation idempotently without admitting pre-commit commands", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    expect((await commands.claimNext({ sessionId, hostId, hostToken })).kind).toBe("not_found");
+    await expect(
+      sessions.commitHostActivation({
+        sessionId,
+        hostId,
+        hostToken: `rhost_v1_${"Z".repeat(43)}`,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    await expect(
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({
+      kind: "committed",
+      session: { id: sessionId, status: "active" },
+      alreadyCommitted: false,
+    });
+    await expect(
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({ kind: "committed", alreadyCommitted: true });
+  });
+
+  it("serializes staged commit against host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    const [commit, finalization] = await Promise.all([
+      sessions.commitHostActivation({ sessionId, hostId, hostToken }),
+      hosts.revokeAuthenticated(hostId, hostToken),
+    ]);
+    expect(finalization).toMatchObject({ host: { status: "revoked" } });
+    expect(["committed", "conflict"]).toContain(commit.kind);
+    const [stored] = await database.select().from(remoteSessions);
+    expect(["denied", "revoked"]).toContain(stored?.status);
+  });
+
+  it("compensates an exact activation idempotently under host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    await expect(
+      sessions.compensateHostActivation({
+        sessionId,
+        hostId,
+        hostToken: `rhost_v1_${"Z".repeat(43)}`,
+      }),
+    ).resolves.toEqual({ kind: "not_found" });
+    const first = await sessions.compensateHostActivation({
+      sessionId,
+      hostId,
+      hostToken,
+    });
+    expect(first).toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+      alreadyCompensated: false,
+    });
+    await expect(
+      sessions.compensateHostActivation({ sessionId, hostId, hostToken }),
+    ).resolves.toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+      alreadyCompensated: true,
+    });
+  });
+
+  it("serializes activation compensation with host finalization", async () => {
+    await enrollAndPair(false);
+    await sessions.activatePendingHost({
+      sessionId,
+      hostId,
+      hostToken,
+      code: "123456",
+      pairingSecret,
+    });
+    const [compensation, finalization] = await Promise.all([
+      sessions.compensateHostActivation({ sessionId, hostId, hostToken }),
+      hosts.revokeAuthenticated(hostId, hostToken),
+    ]);
+    expect(compensation).toMatchObject({
+      kind: "compensated",
+      session: { id: sessionId, status: "denied" },
+    });
+    expect(finalization).toMatchObject({
+      host: { id: hostId, status: "revoked" },
+    });
+    const [stored] = await database
+      .select()
+      .from(remoteSessions)
+      .where(eq(remoteSessions.id, sessionId));
+    expect(["denied", "revoked"]).toContain(stored?.status);
   });
 
   it("serializes sequence, nonce, and idempotency under the session lock", async () => {

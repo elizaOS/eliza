@@ -79,7 +79,7 @@ interface DatabaseError extends Error {
   position?: string;
 }
 
-interface MigrationClient {
+export interface MigrationClient {
   backend: "pglite" | "postgres";
   query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
   end(): Promise<void>;
@@ -349,6 +349,48 @@ async function assertEmptyLedgerDatabaseIsFresh(
     );
     throw new Error(
       "Migration ledger is empty but the database contains application relations; refusing to replay historical migrations",
+    );
+  }
+}
+
+const CANONICAL_CLOUD_RELATIONS = [
+  "apps",
+  "organizations",
+  "users",
+  "api_keys",
+] as const;
+
+/**
+ * A complete/non-empty ledger cannot authorize a schema with missing baseline
+ * application relations. This catches a wrong DATABASE_URL and destructive
+ * schema drift before pending-count success can impersonate a healthy target.
+ */
+export async function assertAppliedLedgerHasCanonicalRelations(
+  client: MigrationClient,
+): Promise<void> {
+  const result = await client.query<Record<string, boolean>>(`
+    SELECT
+      to_regclass('public.apps') IS NOT NULL AS apps,
+      to_regclass('public.organizations') IS NOT NULL AS organizations,
+      to_regclass('public.users') IS NOT NULL AS users,
+      to_regclass('public.api_keys') IS NOT NULL AS api_keys
+  `);
+  const row = result.rows[0];
+  const presence = CANONICAL_CLOUD_RELATIONS.map((relation) => ({
+    present: row?.[relation] === true,
+    relation,
+  }));
+  console.log(
+    `[db:migrate] canonical relation presence: ${presence
+      .map(
+        ({ present, relation }) =>
+          `${relation}=${present ? "present" : "missing"}`,
+      )
+      .join(" ")}`,
+  );
+  if (presence.some(({ present }) => !present)) {
+    throw new Error(
+      "Migration ledger is non-empty but canonical application relations are missing",
     );
   }
 }
@@ -763,6 +805,9 @@ export async function runMigrations(
         applied,
         migrations,
       );
+      if (client.backend === "postgres" && applied.length > 0) {
+        await assertAppliedLedgerHasCanonicalRelations(client);
+      }
       const lastApplied = applied.at(-1);
       const lastAppliedCreatedAt = lastApplied
         ? createdAtValue(lastApplied)

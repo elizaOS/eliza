@@ -142,12 +142,14 @@ vi.mock("../../api", async (importOriginal) => {
   };
 });
 
+import { client } from "../../api";
 import { BrowserWorkspaceView } from "./BrowserWorkspaceView";
 
 beforeEach(() => {
   surfaceHarness.error = null;
   surfaceHarness.retry.mockClear();
   openExternalHarness.openExternalUrl.mockClear();
+  vi.mocked(client.getBrowserWorkspace).mockClear();
 });
 
 afterEach(() => {
@@ -174,6 +176,12 @@ describe("BrowserWorkspaceView native surface error states", () => {
     // Scope to the error card: the toolbar renders its own always-present
     // "Open external" icon button with the same accessible name.
     const alertCard = screen.getByRole("alert");
+    expect(alertCard.dataset.nativeSurfaceErrorKey).toBe(
+      "browser-tab:tab-1:lifecycle",
+    );
+    expect(alertCard.dataset.nativeSurfaceErrorMessage).toContain(
+      "multi-profile support",
+    );
     const openExternal = within(alertCard).getByRole("button", {
       name: "Open external",
     });
@@ -195,9 +203,36 @@ describe("BrowserWorkspaceView native surface error states", () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("Browser view unavailable")).not.toBeNull();
     expect(screen.queryByText("Secure browsing not supported here")).toBeNull();
+    const alertCard = screen.getByRole("alert");
+    expect(alertCard.dataset.nativeSurfaceErrorKey).toBe(
+      "browser-tab:tab-1:bounds",
+    );
+    expect(alertCard.dataset.nativeSurfaceErrorMessage).toBe("bounds rejected");
     const retry = screen.getByRole("button", { name: "Retry" });
     fireEvent.click(retry);
     expect(surfaceHarness.retry).toHaveBeenCalledTimes(1);
     expect(openExternalHarness.openExternalUrl).not.toHaveBeenCalled();
+  });
+
+  it("does not replace native client tabs with an empty server poll", async () => {
+    vi.useFakeTimers();
+    try {
+      render(<BrowserWorkspaceView />);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.getByText("Example")).not.toBeNull();
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_000);
+      });
+
+      expect(client.getBrowserWorkspace).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Example")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -84,6 +84,12 @@ describe("InMemoryDatabaseAdapter connector account storage", () => {
 		await expect(
 			adapter.listConnectorAccountCredentialRefs({ accountId: account.id }),
 		).resolves.toHaveLength(1);
+		await expect(
+			adapter.deleteConnectorAccountCredentialRefs({ accountId: account.id }),
+		).resolves.toBe(1);
+		await expect(
+			adapter.listConnectorAccountCredentialRefs({ accountId: account.id }),
+		).resolves.toEqual([]);
 
 		const audit = await adapter.appendConnectorAccountAuditEvent({
 			accountId: account.id,

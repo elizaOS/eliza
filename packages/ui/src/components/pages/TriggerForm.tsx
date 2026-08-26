@@ -15,11 +15,13 @@ import {
   intervalHostWarning,
 } from "../../utils/host-capabilities";
 import { PagePanel } from "../composites/page-panel";
+import { Alert } from "../ui/alert";
 import { Button } from "../ui/button";
 import { FieldLabel } from "../ui/field";
 import { FieldSwitch } from "../ui/field-switch";
 import { FormSelect, FormSelectItem } from "../ui/form-select";
 import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
 import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
 import {
@@ -1403,8 +1405,7 @@ function TriggerRunHistory({
           if (!hasLoadedRuns) {
             return (
               <div className="py-6 text-sm text-muted flex items-center gap-2">
-                <div className="size-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
-                {t("appsview.Loading")}
+                <Spinner className="size-4" /> {t("appsview.Loading")}
               </div>
             );
           }
@@ -1446,9 +1447,12 @@ function TriggerRunHistory({
                           </span>
                         </div>
                         {run.error && (
-                          <div className="mt-2.5 text-xs text-danger/90 bg-danger/10 border border-danger/20 p-2.5 rounded-sm whitespace-pre-wrap font-mono leading-relaxed">
+                          <Alert
+                            variant="inlineDanger"
+                            className="mt-2.5 whitespace-pre-wrap leading-relaxed"
+                          >
                             {run.error}
-                          </div>
+                          </Alert>
                         )}
                       </div>
                     </div>

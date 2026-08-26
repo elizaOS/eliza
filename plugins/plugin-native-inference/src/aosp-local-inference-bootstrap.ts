@@ -82,7 +82,9 @@ import {
   streamGenerate,
 } from "./aosp-llama-streaming.js";
 import {
+  assertAospModelDownloadSize,
   bundleSlugFromModelName,
+  fetchRecommendedAospModel,
   resolveRecommendedAospModel,
 } from "./aosp-model-paths.js";
 import {
@@ -1334,13 +1336,13 @@ async function downloadRecommendedAospModel(
     } catch {
       // error-policy:J6 best-effort teardown — unlink stale staging file before download.
     }
+    const { response, candidate } = await fetchRecommendedAospModel(model);
     logger.info(
-      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${model.url}`,
+      `[aosp-local-inference] Auto-downloading recommended ${role} model ${model.id} from ${candidate.label ?? candidate.base}`,
     );
-    const response = await fetch(model.url, { redirect: "follow" });
     if (!response.ok || !response.body) {
       throw new Error(
-        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${model.url}`,
+        `[aosp-local-inference] Recommended-model download failed (${role}): HTTP ${response.status} ${response.statusText} from ${candidate.url}`,
       );
     }
     await pipeline(
@@ -1348,15 +1350,15 @@ async function downloadRecommendedAospModel(
       createWriteStream(stagingPath),
     );
     const stagedSize = statSync(stagingPath).size;
-    if (model.expectedSizeBytes && stagedSize !== model.expectedSizeBytes) {
+    try {
+      assertAospModelDownloadSize(model, stagedSize);
+    } catch (error) {
       try {
         unlinkSync(stagingPath);
       } catch {
         // error-policy:J6 best-effort teardown — unlink bad-size staging artifact (real error thrown next).
       }
-      throw new Error(
-        `[aosp-local-inference] Downloaded ${model.ggufFile} size ${stagedSize} != expected ${model.expectedSizeBytes}.`,
-      );
+      throw error;
     }
     renameSync(stagingPath, finalPath);
     logger.info(

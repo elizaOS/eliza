@@ -59,8 +59,21 @@ describe("Android Cloud native auth handoff", () => {
   beforeEach(() => {
     harness.pending = null;
     harness.token = null;
+    localStorage.clear();
     vi.resetModules();
     vi.restoreAllMocks();
+  });
+
+  it("preserves account-switch intent across module recreation", async () => {
+    const first = await import("./android-cloud-auth");
+    first.markAndroidCloudAccountSwitchPending();
+    expect(first.isAndroidCloudAccountSwitchPending()).toBe(true);
+
+    vi.resetModules();
+    const recreated = await import("./android-cloud-auth");
+    expect(recreated.isAndroidCloudAccountSwitchPending()).toBe(true);
+    recreated.clearAndroidCloudAccountSwitchPending();
+    expect(recreated.isAndroidCloudAccountSwitchPending()).toBe(false);
   });
 
   it("keeps launcher login on the first-party HTTPS WebView surface", async () => {

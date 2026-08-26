@@ -5,6 +5,10 @@
  * row action is a ghost destructive "Revoke". Mobile renders one compact card
  * per key instead of the table.
  */
+
+import { Badge } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 import { StatusBadge } from "../../../components/ui/status-badge";
 import {
   Table,
@@ -14,7 +18,6 @@ import {
   TableHeader,
   TableRow,
 } from "../../../components/ui/table";
-import { BrandButton } from "../brand/brand-button";
 import {
   DashboardDataListDesktop,
   DashboardDataListMobile,
@@ -61,22 +64,17 @@ function statusBadge(status: ApiKeyStatus) {
 
 function keyPrefixChip(keyPrefix: string) {
   return (
-    <span className="rounded-sm border border-border bg-bg-elevated px-1.5 py-0.5 font-mono text-xs text-muted-strong">
-      {`${keyPrefix}…`}
-    </span>
+    <Badge asChild variant="adminMono">
+      <span className="text-xs">{`${keyPrefix}…`}</span>
+    </Badge>
   );
 }
 
 function revokeButton(id: string, onRevokeKey?: (id: string) => void) {
   return (
-    <BrandButton
-      variant="ghost"
-      size="sm"
-      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-      onClick={() => onRevokeKey?.(id)}
-    >
+    <Button variant="dangerGhost" size="sm" onClick={() => onRevokeKey?.(id)}>
       Revoke
-    </BrandButton>
+    </Button>
   );
 }
 
@@ -89,29 +87,28 @@ export function ApiKeysTable({ keys, onRevokeKey }: ApiKeysTableProps) {
     <>
       <DashboardDataListMobile className="space-y-3">
         {keys.map((key) => (
-          <div
-            key={key.id}
-            className="space-y-2 rounded-sm border border-border bg-card p-4"
-          >
-            <div className="flex min-w-0 items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate font-medium text-txt-strong">
-                  {key.name}
-                </span>
-                {statusBadge(key.status)}
+          <Card key={key.id} variant="outlinedPadded">
+            <div className="space-y-2">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate font-medium text-txt-strong">
+                    {key.name}
+                  </span>
+                  {statusBadge(key.status)}
+                </div>
+                {revokeButton(key.id, onRevokeKey)}
               </div>
-              {revokeButton(key.id, onRevokeKey)}
+              <div>{keyPrefixChip(key.keyPrefix)}</div>
+              <p className="text-xs text-muted">
+                Created {formatApiKeyDate(key.createdAt)} · Last used{" "}
+                {key.lastUsedAt ? formatApiKeyDate(key.lastUsedAt) : "Never"}
+              </p>
             </div>
-            <div>{keyPrefixChip(key.keyPrefix)}</div>
-            <p className="text-xs text-muted">
-              Created {formatApiKeyDate(key.createdAt)} · Last used{" "}
-              {key.lastUsedAt ? formatApiKeyDate(key.lastUsedAt) : "Never"}
-            </p>
-          </div>
+          </Card>
         ))}
       </DashboardDataListMobile>
 
-      <DashboardDataListDesktop className="border-0">
+      <DashboardDataListDesktop variant="borderless">
         <Table>
           <TableHeader>
             <TableRow>

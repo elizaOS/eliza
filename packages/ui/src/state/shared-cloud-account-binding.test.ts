@@ -11,7 +11,10 @@ import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
-import { clearSharedCloudAccountBinding } from "./shared-cloud-account-binding";
+import {
+  clearManagedCloudAccountBinding,
+  clearSharedCloudAccountBinding,
+} from "./shared-cloud-account-binding";
 
 const SHARED_BASE =
   "https://api.eliza.app/api/v1/eliza/agents/previous-account-agent";
@@ -89,5 +92,53 @@ describe("clearSharedCloudAccountBinding", () => {
     expect(getBootConfig().apiToken).toBeUndefined();
     expect(localStorage.getItem("elizaos_api_base")).toBeNull();
     expect(sessionStorage.getItem("elizaos_api_base")).toBeNull();
+  });
+
+  it("clears dedicated Cloud selection while preserving self-hosted profiles", async () => {
+    const dedicatedBase =
+      "https://dedicated-agent.cloud.eliza.app/api/v1/eliza/agents/dedicated-agent";
+    savePersistedActiveServer({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Dedicated agent",
+      apiBase: dedicatedBase,
+      accessToken: "dedicated-pair-token",
+    });
+    saveAgentProfileRegistry({
+      version: 1,
+      activeProfileId: "dedicated-profile",
+      profiles: [
+        {
+          id: "dedicated-profile",
+          kind: "cloud",
+          label: "Dedicated agent",
+          apiBase: dedicatedBase,
+          accessToken: "dedicated-pair-token",
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: "self-hosted-profile",
+          kind: "remote",
+          label: "Self hosted",
+          apiBase: "https://box.example/api",
+          accessToken: "self-hosted-token",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await clearManagedCloudAccountBinding();
+
+    expect(loadPersistedActiveServer()).toBeNull();
+    expect(loadAgentProfileRegistry()).toEqual({
+      version: 1,
+      activeProfileId: null,
+      profiles: [
+        expect.objectContaining({
+          id: "self-hosted-profile",
+          accessToken: "self-hosted-token",
+        }),
+      ],
+    });
   });
 });

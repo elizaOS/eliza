@@ -7,6 +7,7 @@
 import * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import { Card } from "../../ui/card";
 import type { ChatVariant } from "./chat-types";
 
 type RefLike<T> = ((instance: T | null) => void) | { current: T | null } | null;
@@ -99,14 +100,15 @@ export const ChatThreadLayout = React.forwardRef<
       aria-label="Chat workspace"
       className={cn(
         "relative flex min-h-0 flex-1 flex-col",
-        isGameModal ? "overflow-visible pointer-events-none" : "bg-transparent",
+        isGameModal ? "overflow-visible pointer-events-none" : undefined,
         className,
       )}
       {...props}
     >
-      <div
+      <Card
+        variant="transparent"
+        scrollbar="styled"
         role="log"
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: the scrollable message log needs keyboard access
         tabIndex={0}
         aria-label="Chat messages"
         ref={(node) => assignRef(messagesRef, node)}
@@ -116,14 +118,14 @@ export const ChatThreadLayout = React.forwardRef<
         data-no-camera-zoom={false}
         className={cn(
           isGameModal
-            ? "chat-native-scrollbar absolute inset-x-0 overflow-x-hidden overflow-y-auto pointer-events-auto"
-            : "chat-native-scrollbar relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 xl:px-5",
+            ? "absolute inset-x-0 overflow-x-hidden overflow-y-auto pointer-events-auto"
+            : "relative flex flex-1 flex-col overflow-x-hidden overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 xl:px-5",
           messagesClassName,
         )}
         style={resolvedMessagesStyle}
       >
         {children}
-      </div>
+      </Card>
       {composer}
       {footerStack}
     </section>

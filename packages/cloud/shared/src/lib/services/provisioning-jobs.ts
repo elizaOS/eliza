@@ -101,11 +101,17 @@ import {
 } from "./eliza-provision-lock";
 import {
   AdminCanaryCleanupExpectationError,
+  assertReviewedFreshBootAuthority,
+  assertReviewedProvisionRestoreAuthority,
   type DeleteAuthorization,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { finalizeJobErrorText, jobErrorSummary, jobErrorText } from "./job-error-text";
+import {
+  isPersonalDedicatedReviewedBackupChain,
+  type PersonalDedicatedReviewedBackupChainEntry,
+} from "./personal-dedicated-adoption-provenance";
 import {
   acquireProviderAdmission,
   type ProviderAdmissionAuthority,
@@ -221,6 +227,17 @@ export interface AgentProvisionJobData {
   organizationId: string;
   userId: string;
   agentName: string;
+  restoreDirective?:
+    | { kind: "from-backup"; backupId: string }
+    | { kind: "fresh-boot" }
+    | { kind: "reviewed-fresh-boot"; selectionId: string }
+    | {
+        kind: "from-reviewed-backup";
+        selectionId: string;
+        backupId: string;
+        expectedContentHash: string;
+        expectedBackupChain: PersonalDedicatedReviewedBackupChainEntry[];
+      };
 }
 
 export interface AgentDeleteJobData {
@@ -580,13 +597,39 @@ function agentSnapshotJobResultToRecord(result: AgentSnapshotJobResult): Record<
 }
 
 function isAgentProvisionJobData(value: unknown): value is AgentProvisionJobData {
+  const restoreDirective =
+    typeof value === "object" && value !== null
+      ? (value as { restoreDirective?: unknown }).restoreDirective
+      : undefined;
+  const validRestoreDirective =
+    restoreDirective === undefined ||
+    (typeof restoreDirective === "object" &&
+      restoreDirective !== null &&
+      (((restoreDirective as { kind?: unknown }).kind === "fresh-boot" &&
+        !("backupId" in restoreDirective)) ||
+        ((restoreDirective as { kind?: unknown }).kind === "reviewed-fresh-boot" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string") ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-backup" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string") ||
+        ((restoreDirective as { kind?: unknown }).kind === "from-reviewed-backup" &&
+          typeof (restoreDirective as { selectionId?: unknown }).selectionId === "string" &&
+          typeof (restoreDirective as { backupId?: unknown }).backupId === "string" &&
+          typeof (restoreDirective as { expectedContentHash?: unknown }).expectedContentHash ===
+            "string" &&
+          /^[a-f0-9]{64}$/.test(
+            (restoreDirective as { expectedContentHash: string }).expectedContentHash,
+          ) &&
+          isPersonalDedicatedReviewedBackupChain(
+            (restoreDirective as { expectedBackupChain?: unknown }).expectedBackupChain,
+          ))));
   return (
     typeof value === "object" &&
     value !== null &&
     typeof (value as { agentId?: unknown }).agentId === "string" &&
     typeof (value as { organizationId?: unknown }).organizationId === "string" &&
     typeof (value as { userId?: unknown }).userId === "string" &&
-    typeof (value as { agentName?: unknown }).agentName === "string"
+    typeof (value as { agentName?: unknown }).agentName === "string" &&
+    validRestoreDirective
   );
 }
 
@@ -683,6 +726,48 @@ function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
     throw new Error(`Invalid agent provision job data for job ${job.id}`);
   }
   return job.data;
+}
+
+function sameProvisionRestoreDirective(
+  left: AgentProvisionJobData["restoreDirective"],
+  right: AgentProvisionJobData["restoreDirective"],
+): boolean {
+  if (left?.kind !== right?.kind) return false;
+  if (left?.kind === "from-backup" && right?.kind === "from-backup") {
+    return left.backupId === right.backupId;
+  }
+  if (left?.kind === "from-reviewed-backup" && right?.kind === "from-reviewed-backup") {
+    return (
+      left.selectionId === right.selectionId &&
+      left.backupId === right.backupId &&
+      left.expectedContentHash === right.expectedContentHash &&
+      JSON.stringify(left.expectedBackupChain) === JSON.stringify(right.expectedBackupChain)
+    );
+  }
+  if (left?.kind === "reviewed-fresh-boot" && right?.kind === "reviewed-fresh-boot") {
+    return left.selectionId === right.selectionId;
+  }
+  return true;
+}
+
+/**
+ * Revalidate the immutable payload authority selected before the asynchronous
+ * worker may cross into provider compute. The backup row is deliberately read
+ * at execution time: a verifier downgrade, reassignment, deletion, or digest
+ * change after quote/adoption must fail without calling the sandbox provider.
+ */
+export async function resolveReviewedProvisionRestoreDirectiveForExecution(
+  data: AgentProvisionJobData,
+): Promise<AgentProvisionJobData["restoreDirective"]> {
+  const directive = data.restoreDirective;
+  if (directive?.kind === "from-reviewed-backup") {
+    await assertReviewedProvisionRestoreAuthority(data.agentId, directive);
+  } else if (directive?.kind === "reviewed-fresh-boot") {
+    await assertReviewedFreshBootAuthority(data.agentId, directive);
+  } else {
+    return directive;
+  }
+  return directive;
 }
 
 function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
@@ -1810,6 +1895,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJob<AgentProvisionJobData>(
       this.agentProvisionLifecycleOptions(params),
@@ -1835,6 +1921,7 @@ export class ProvisioningJobService {
       organizationId: string;
       userId: string;
       agentName: string;
+      restoreDirective?: AgentProvisionJobData["restoreDirective"];
     },
   ): Promise<EnqueueAgentProvisionResult> {
     return this.enqueueLifecycleJobInTx<AgentProvisionJobData>(
@@ -1850,6 +1937,7 @@ export class ProvisioningJobService {
     agentName: string;
     webhookUrl?: string;
     expectedLifecycleRevision?: number;
+    restoreDirective?: AgentProvisionJobData["restoreDirective"];
   }): LifecycleJobOptions<AgentProvisionJobData> {
     const expected = params.expectedLifecycleRevision;
     return {
@@ -1859,6 +1947,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
         agentName: params.agentName,
+        ...(params.restoreDirective ? { restoreDirective: params.restoreDirective } : {}),
       },
       toRecord: agentProvisionJobDataToRecord,
       agentId: params.agentId,
@@ -1876,6 +1965,24 @@ export class ProvisioningJobService {
               }
             }
           : undefined,
+      // A reviewed adoption pins either one exact backup or an explicit fresh
+      // boot. Reusing an ordinary provision job would silently discard that
+      // authority and could activate different state, so directive-bearing
+      // callers only converge with an identical durable job payload.
+      validateReuse: params.restoreDirective
+        ? (existing) => {
+            const active = readAgentProvisionJobData(existing);
+            if (sameProvisionRestoreDirective(active.restoreDirective, params.restoreDirective)) {
+              return;
+            }
+            throw new ApiError(
+              409,
+              "session_not_ready",
+              `Provision job ${existing.id} is already ${existing.status} for this agent with different restore authority`,
+              { conflictingJobId: existing.id },
+            );
+          }
+        : undefined,
     };
   }
 
@@ -6085,7 +6192,12 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
+    const restoreDirective = await resolveReviewedProvisionRestoreDirectiveForExecution(data);
+    const provResult = await elizaSandboxService.provision(
+      data.agentId,
+      data.organizationId,
+      restoreDirective,
+    );
 
     if (await this.completeIfAgentGone(job, provResult, data.agentId)) return;
 

@@ -227,6 +227,9 @@ describe("mac-window-effects loaded native mapping", () => {
       ffi.dylibPathDefault,
       expect.objectContaining({
         enableWindowVibrancy: expect.any(Object),
+        elizaCalendarStoreChangesStart: expect.any(Object),
+        elizaCalendarStoreChangesPoll: expect.any(Object),
+        elizaCalendarStoreChangesStop: expect.any(Object),
         elizaFnMonitorPoll: expect.any(Object),
       }),
     );

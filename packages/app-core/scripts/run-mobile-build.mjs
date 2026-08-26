@@ -5536,6 +5536,7 @@ export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
 export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
   "WRITE_SECURE_SETTINGS",
   "RECEIVE_BOOT_COMPLETED",
+  "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_SPECIAL_USE",
 ];
 
@@ -5741,6 +5742,59 @@ export function resolveAndroidLp3ColorPolicyBuildEnv(env = process.env) {
   };
 }
 
+export function isAndroidLp3RemoteFallbackRequired(env = process.env) {
+  return ["1", "true", "yes"].includes(
+    String(env.ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
+export function enforceAndroidLp3RemoteFallbackBuildPolicy({
+  targetName,
+  env = process.env,
+}) {
+  const required = isAndroidLp3RemoteFallbackRequired(env);
+  if (!required) return;
+  if (
+    targetName !== "android-cloud-debug" ||
+    !isAndroidLp3ColorPolicyEnabled(env)
+  ) {
+    throw new Error(
+      "[mobile-build] ELIZA_ANDROID_LP3_REMOTE_FALLBACK_REQUIRED is restricted to the LP3 android-cloud-debug direct profile.",
+    );
+  }
+  const raw = String(env.VITE_ELIZA_REMOTE_FALLBACK_API_BASE ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      "[mobile-build] the LP3 VPS profile requires VITE_ELIZA_REMOTE_FALLBACK_API_BASE",
+    );
+  }
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch (cause) {
+    // error-policy:J2 preserve the parser cause while adding build-profile context.
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a valid root HTTPS origin",
+      { cause },
+    );
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    parsed.port ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.pathname.replace(/\/+$/, "") !== ""
+  ) {
+    throw new Error(
+      "[mobile-build] VITE_ELIZA_REMOTE_FALLBACK_API_BASE must be a credential-free root HTTPS origin without a custom port",
+    );
+  }
+}
+
 // LP3 is an elizaOS direct-debug policy, never a whitelabel capability. Build
 // entrypoints pass their resolved identity explicitly so nested hosts cannot
 // leak ambient branding into these pure policy helpers.
@@ -5772,37 +5826,50 @@ export function enforceAndroidLp3ColorPolicyBuildPolicy({
 }
 
 export function resolveAndroidCloudStripPolicy(env = process.env) {
-  if (!isAndroidLp3ColorPolicyEnabled(env)) {
-    return {
-      components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
-      permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
-      mergerRemovedPermissions:
-        ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
-      javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
-      testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
-    };
+  const stripPolicy = !isAndroidLp3ColorPolicyEnabled(env)
+    ? {
+        components: ANDROID_CLOUD_STRIPPED_COMPONENTS,
+        permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+        mergerRemovedPermissions:
+          ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
+        javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+        testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+      }
+    : (() => {
+        const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
+        const allowedPermissions = new Set(
+          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+        );
+        const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
+        return {
+          components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
+            (component) => !allowedComponents.has(component),
+          ),
+          permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
+            (permission) => !allowedPermissions.has(permission),
+          ),
+          mergerRemovedPermissions:
+            ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
+              (permission) => !allowedPermissions.has(permission),
+            ),
+          javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+            (file) => !allowedJavaFiles.has(file),
+          ),
+          testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+        };
+      })();
+
+  if (!isAndroidLp3RemoteFallbackRequired(env)) {
+    return { ...stripPolicy, safePushNotifications: true };
   }
 
-  const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-  const allowedPermissions = new Set(
-    ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
-  );
-  const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
   return {
-    components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
-      (component) => !allowedComponents.has(component),
-    ),
-    permissions: ANDROID_CLOUD_STRIPPED_PERMISSIONS.filter(
-      (permission) => !allowedPermissions.has(permission),
-    ),
-    mergerRemovedPermissions:
-      ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS.filter(
-        (permission) => !allowedPermissions.has(permission),
-      ),
-    javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-      (file) => !allowedJavaFiles.has(file),
-    ),
-    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
+    ...stripPolicy,
+    safePushNotifications: false,
+    // This wrapper subclasses the native FCM plugin. The dedicated fallback
+    // intentionally excludes that dependency because it has no Firebase
+    // project, so its Java wrapper must leave the generated tree with it.
+    javaFiles: [...stripPolicy.javaFiles, "SafePushNotificationsPlugin.java"],
   };
 }
 
@@ -5914,6 +5981,16 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@elizaos/capacitor-secure-store",
 ]);
 
+export function resolveAndroidCloudAllowedNativePluginPackages(
+  env = process.env,
+) {
+  return isAndroidLp3RemoteFallbackRequired(env)
+    ? ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES.filter(
+        (pkg) => pkg !== "@capacitor/push-notifications",
+      )
+    : [...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES];
+}
+
 export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "CapacitorHttp",
   "Keyboard",
@@ -5963,7 +6040,7 @@ export function sanitizeAndroidCloudCapacitorConfig(
     appId: APP.appId,
     appName: APP.appName,
     webDir: "dist",
-    ...(launcherKiosk ? { loggingBehavior: "none" } : {}),
+    loggingBehavior: "none",
     server: {
       androidScheme: "https",
       ...(allowInAppAuthNavigation
@@ -6273,10 +6350,12 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
     (permission) => !ANDROID_SMS_GATEWAY_PERMISSIONS.has(permission),
   );
 
-export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES =
-  ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
+export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
+  ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
     (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
-  );
+  ),
+  "SafePushNotificationsPlugin.java",
+];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
   ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -6348,7 +6427,11 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
 
 export function cloudSafeMainActivityJava(
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   const launcherImports = launcherKiosk
     ? `import android.app.admin.DevicePolicyManager;
@@ -6415,6 +6498,7 @@ import androidx.activity.OnBackPressedCallback;
     @Override
     public void onResume() {
         super.onResume();
+        keepScreenAwake();
         // Only a managed-device owner may contain the launcher task. Android's
         // unmanaged screen-pinning mode blocks the secure browser that Google
         // OAuth requires, preventing the callback from ever reaching the app.
@@ -6433,17 +6517,29 @@ import androidx.activity.OnBackPressedCallback;
     }
 `
     : "";
+  const resumeHandler = launcherKiosk
+    ? ""
+    : `
+    @Override
+    public void onResume() {
+        super.onResume();
+        keepScreenAwake();
+    }
+`;
   const navigationBarPolicy = immersiveNavigation
     ? `            systemBars.hide(WindowInsetsCompat.Type.navigationBars());
             systemBars.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);`
     : "            systemBars.setAppearanceLightNavigationBars(false);";
-  const focusHandler = immersiveNavigation
-    ? `
+  const focusHandler = `
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) return;
+        keepScreenAwake();
+${
+  immersiveNavigation
+    ? `
         WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(
                 getWindow(), getWindow().getDecorView());
@@ -6452,7 +6548,19 @@ import androidx.activity.OnBackPressedCallback;
             controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
-    }
+`
+    : ""
+}    }
+`;
+  const safePushRegistration = safePushNotifications
+    ? `
+        // Capacitor discovers the community push plugin before Firebase is
+        // available in builds without google-services.json. Replace it after
+        // bridge creation so registration reports unavailable instead of
+        // terminating the process when the renderer requests notifications.
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
 `
     : "";
   return `package ${androidPackage};
@@ -6461,6 +6569,7 @@ import android.os.Bundle;
 import android.content.Intent;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.view.WindowManager;
 
 import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
@@ -6494,6 +6603,8 @@ ${launcherConstants}
         registerPlugin(ElizaPlaySettingsPlugin.class);
 
         super.onCreate(savedInstanceState);
+        keepScreenAwake();
+${safePushRegistration}
 
 ${launcherSetup}
 
@@ -6522,7 +6633,12 @@ ${navigationBarPolicy}
 ${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
+${resumeHandler}
 ${focusHandler}
+
+    private void keepScreenAwake() {
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
 
 }
 `;
@@ -7387,7 +7503,11 @@ public class ElizaTasksWorker extends Worker {
 function rewriteCloudJavaSources(
   javaRoots,
   androidPackage,
-  { launcherKiosk = false, immersiveNavigation = false } = {},
+  {
+    launcherKiosk = false,
+    immersiveNavigation = false,
+    safePushNotifications = true,
+  } = {},
 ) {
   let touched = 0;
   for (const root of javaRoots) {
@@ -7399,6 +7519,7 @@ function rewriteCloudJavaSources(
         cloudSafeMainActivityJava(androidPackage, {
           launcherKiosk,
           immersiveNavigation,
+          safePushNotifications,
         }),
         "utf8",
       );
@@ -7723,6 +7844,11 @@ function auditAndroidCloudSource(
           );
         }
       }
+      if (!lp3Manifest.includes('android:screenOrientation="portrait"')) {
+        failures.push(
+          "LP3 direct-debug manifest does not lock MainActivity to portrait",
+        );
+      }
     }
     const lp3JavaRoot = path.join(lp3DebugRoot, "java", "ai", "elizaos", "app");
     for (const file of ANDROID_LP3_COLOR_POLICY_JAVA_FILES) {
@@ -7903,9 +8029,8 @@ function auditAndroidCloudSource(
             .filter(Boolean)
             .sort()
         : [];
-      const allowedPackages = [
-        ...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
-      ].sort();
+      const allowedPackages =
+        resolveAndroidCloudAllowedNativePluginPackages(env).sort();
       if (JSON.stringify(actualPackages) !== JSON.stringify(allowedPackages)) {
         failures.push(
           `capacitor.plugins.json packages differ from the Play allowlist: ${JSON.stringify(actualPackages)}`,
@@ -8318,6 +8443,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   rewriteCloudJavaSources([activeJavaRoot], androidPackage, {
     launcherKiosk: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
     immersiveNavigation: env.ELIZA_ANDROID_LAUNCHER_BUILD === "1",
+    safePushNotifications: stripPolicy.safePushNotifications,
   });
 
   const testJavaRoots = [
@@ -8451,7 +8577,9 @@ function stripAndroidForSmsGateway() {
       `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
-  rewriteCloudJavaSources(javaRoots, androidPackage);
+  rewriteCloudJavaSources(javaRoots, androidPackage, {
+    safePushNotifications: false,
+  });
 
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
@@ -8632,6 +8760,10 @@ export async function runAndroidBuild(
     targetName: target.target,
     env: resolvedEnv,
     appId: APP.appId,
+  });
+  enforceAndroidLp3RemoteFallbackBuildPolicy({
+    targetName: target.target,
+    env: resolvedEnv,
   });
   runAndroidTargetPhase(target, ANDROID_PREFLIGHTS, "preflightKey", {
     env: resolvedEnv,
@@ -9644,6 +9776,11 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
     "receiver",
     receiverName,
   );
+  const mainActivity = findAndroidManifestElementBlock(
+    manifestText,
+    "activity",
+    `${APP.appId}.MainActivity`,
+  );
   if (!initializer) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${initializerName}`,
@@ -9657,6 +9794,14 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
   if (!receiver) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${receiverName}`,
+    );
+  }
+  if (
+    !mainActivity ||
+    !/android:screenOrientation[^\n]*0x1/.test(mainActivity)
+  ) {
+    throw new Error(
+      "[mobile-build] opted-in LP3 MainActivity must be locked to portrait",
     );
   }
   if (!/android:exported[^\n]*(?:0x0|false)/.test(service)) {

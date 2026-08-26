@@ -15,8 +15,12 @@ import { BrandButton } from "../../cloud-ui/components/brand/brand-button";
 import { DashboardPageContainer } from "../../cloud-ui/components/layout/dashboard-page";
 import { useSetPageHeader } from "../../cloud-ui/components/layout/page-header-context.hooks";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { CodeBlock } from "../../components/ui/code-block";
+import { EmptyState as EmptyStateAtom } from "../../components/ui/empty-state";
 import { Input } from "../../components/ui/input";
-import { cn } from "../../lib/utils";
+import { Skeleton } from "../../components/ui/skeleton";
+import { StatusBadge } from "../../components/ui/status-badge";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { BuiltinMcpDefinition, UserMcpRecord } from "./lib/api-types";
 import {
@@ -129,7 +133,7 @@ export function McpsView() {
   return (
     <DashboardPageContainer className="flex flex-col gap-5">
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-border">
+      <Card variant="bottomDivider" className="flex gap-1">
         {tabs.map((tabDef) => (
           <Button
             variant="selection"
@@ -143,7 +147,7 @@ export function McpsView() {
             {tabDef.label}
           </Button>
         ))}
-      </div>
+      </Card>
 
       {/* Search + category filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -267,9 +271,9 @@ const UserMcpCard = memo(function UserMcpCard({
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
+          <Card variant="insetPadded" className="shrink-0">
             <Puzzle className="size-4 text-accent" />
-          </div>
+          </Card>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate flex items-center gap-2">
               {mcp.name}
@@ -319,12 +323,12 @@ const BuiltinCard = memo(function BuiltinCard({
   };
 
   return (
-    <div className="border-b border-border p-4 last:border-b-0">
+    <Card variant="outlinedPadded">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 rounded-sm border border-border bg-bg-elevated shrink-0">
+          <Card variant="insetPadded" className="shrink-0">
             <Puzzle className="size-4 text-accent" />
-          </div>
+          </Card>
           <div className="min-w-0">
             <h3 className="font-semibold text-txt-strong truncate">
               {mcp.name}
@@ -338,9 +342,7 @@ const BuiltinCard = memo(function BuiltinCard({
             </p>
           </div>
         </div>
-        <span className="text-2xs px-1.5 py-0 rounded-full border border-status-success/30 bg-status-success-bg text-status-success capitalize">
-          {mcp.status}
-        </span>
+        <StatusBadge label={mcp.status} variant="success" />
       </div>
       <p className="mt-3 text-xs text-muted line-clamp-2 min-h-[2.5rem]">
         {mcp.description}
@@ -361,18 +363,14 @@ const BuiltinCard = memo(function BuiltinCard({
         </BrandButton>
       </div>
       {result && (
-        <pre
-          className={cn(
-            "mt-3 rounded-sm border p-2 font-mono text-xs-tight max-h-32 overflow-auto",
-            result.ok
-              ? "border-border bg-bg-elevated text-muted"
-              : "border-destructive/30 bg-status-danger-bg text-destructive",
-          )}
-        >
-          {result.summary}
-        </pre>
+        <CodeBlock
+          presentation="compactResult"
+          tone={result.ok ? "muted" : "destructive"}
+          className="mt-3 max-h-32"
+          value={result.summary}
+        />
       )}
-    </div>
+    </Card>
   );
 });
 
@@ -380,10 +378,7 @@ function GridSkeleton() {
   return (
     <div className="grid gap-4 sm:grid-cols-2" aria-busy="true">
       {[0, 1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="h-32 rounded-sm border border-border bg-card animate-pulse motion-reduce:animate-none"
-        />
+        <Skeleton key={i} className="h-32 motion-reduce:animate-none" />
       ))}
     </div>
   );
@@ -397,10 +392,12 @@ function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-sm border border-border bg-card py-16 text-center">
-      <Puzzle className="size-10 text-muted" />
-      <p className="text-sm text-muted">{message}</p>
-      {action}
-    </div>
+    <EmptyStateAtom
+      variant="minimal"
+      icon={<Puzzle className="size-10 text-muted" />}
+      title={message}
+      action={action}
+      className="py-16"
+    />
   );
 }

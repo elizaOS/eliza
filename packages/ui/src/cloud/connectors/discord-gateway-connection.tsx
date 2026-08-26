@@ -30,8 +30,10 @@ import {
   ConnectionInstructions,
 } from "../../cloud-ui/components/connection-card";
 import { DiscordIcon } from "../../cloud-ui/components/icons";
+import { Avatar, AvatarFallback } from "../../components/ui/avatar";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -47,6 +49,7 @@ import {
   SelectValue,
 } from "../../components/ui/select";
 import { StatusBadge } from "../../components/ui/status-badge";
+import { TextLink } from "../../components/ui/text-link";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 
@@ -657,12 +660,19 @@ export function DiscordGatewayConnection() {
                     if (open) initEditState(conn);
                   }}
                 >
-                  <div className="border rounded-sm">
+                  <Card variant="connectorPanel">
                     <CollapsibleTrigger asChild>
-                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        <div className="size-12 rounded-full bg-accent flex items-center justify-center shrink-0">
-                          <Bot className="size-6 text-txt-strong" />
-                        </div>
+                      <Button
+                        variant="surface"
+                        size="row"
+                        align="start"
+                        className="gap-4"
+                      >
+                        <Avatar className="size-12">
+                          <AvatarFallback>
+                            <Bot className="size-6 text-txt-strong" />
+                          </AvatarFallback>
+                        </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold truncate">
@@ -745,11 +755,15 @@ export function DiscordGatewayConnection() {
                             className={`size-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
                           />
                         </div>
-                      </div>
+                      </Button>
                     </CollapsibleTrigger>
 
                     <CollapsibleContent>
-                      <div className="border-t p-4 space-y-4 bg-muted/30">
+                  <Card
+                    variant="topDivider"
+                    stack="default"
+                    padding="comfortable"
+                  >
                         {edit && (
                           <>
                             {/* Character Selection */}
@@ -1040,9 +1054,9 @@ export function DiscordGatewayConnection() {
                             </div>
                           </>
                         )}
-                      </div>
+                      </Card>
                     </CollapsibleContent>
-                  </div>
+                  </Card>
                 </Collapsible>
               );
             })}
@@ -1064,7 +1078,7 @@ export function DiscordGatewayConnection() {
 
           {/* Create Form (collapsible) */}
           {showForm && (
-            <div className="border rounded-sm p-4 space-y-4">
+            <Card variant="outlinedPadded" stack="default">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">
                   {t("cloud.discord.addNewBot", {
@@ -1093,16 +1107,15 @@ export function DiscordGatewayConnection() {
                 <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>
                     {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
-                    <a
+                    <TextLink
                       href="https://discord.com/developers/applications"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-accent hover:underline"
                     >
                       {t("cloud.discord.devPortal", {
                         defaultValue: "Discord Developer Portal",
                       })}
-                    </a>
+                    </TextLink>
                   </li>
                   <li>
                     {t("cloud.discord.stepNewApp", {
@@ -1170,7 +1183,7 @@ export function DiscordGatewayConnection() {
               </ConnectionInstructions>
 
               {renderForm()}
-            </div>
+            </Card>
           )}
         </div>
       }
@@ -1187,16 +1200,15 @@ export function DiscordGatewayConnection() {
             <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
               <li>
                 {t("cloud.discord.stepGoTo", { defaultValue: "Go to the" })}{" "}
-                <a
+                <TextLink
                   href="https://discord.com/developers/applications"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-accent hover:underline"
                 >
                   {t("cloud.discord.devPortal", {
                     defaultValue: "Discord Developer Portal",
                   })}
-                </a>
+                </TextLink>
               </li>
               <li>
                 {t("cloud.discord.stepNewApp", {

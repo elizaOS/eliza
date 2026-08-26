@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { PluginInfo } from "../../api";
 import { getProviderLogo } from "../../providers";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { Card } from "../ui/card";
 import {
   iconImageSource,
   pluginMonogram,
@@ -41,6 +42,11 @@ const PROVIDER_LOGO_IDS = new Set([
   "zai",
 ]);
 
+const PLUGIN_VISUAL_LAYOUT_STYLES = {
+  md: { height: "2.75rem", width: "2.75rem" },
+  lg: { height: "3.5rem", width: "3.5rem" },
+} as const;
+
 /**
  * Resolve the strongest available visual for a plugin and render it as a square
  * tile. Resolution order: brand SVG logo (connectors) → AI-provider brand PNG →
@@ -55,26 +61,31 @@ export function PluginVisual({
   size?: "md" | "lg";
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const dimension = size === "lg" ? "h-14 w-14" : "h-11 w-11";
   const glyph = size === "lg" ? "h-7 w-7" : "h-6 w-6";
   const monogramText = size === "lg" ? "text-lg" : "text-base";
 
   const BrandIcon = getBrandIcon(plugin.id);
   if (BrandIcon) {
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 text-txt`}
+      <Card
+        variant="connectorAvatar"
+        tone="text"
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <BrandIcon className={glyph} />
-      </span>
+      </Card>
     );
   }
 
   if (!imgFailed && PROVIDER_LOGO_IDS.has(plugin.id)) {
     const logo = getProviderLogo(plugin.id, isDarkTheme());
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 p-2`}
+      <Card
+        variant="connectorAvatar"
+        padding="compact"
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <img
           src={logo}
@@ -82,7 +93,7 @@ export function PluginVisual({
           className="h-full w-full object-contain"
           onError={() => setImgFailed(true)}
         />
-      </span>
+      </Card>
     );
   }
 
@@ -91,8 +102,11 @@ export function PluginVisual({
     const imageSrc = iconImageSource(icon);
     if (imageSrc) {
       return (
-        <span
-          className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 p-2`}
+        <Card
+          variant="connectorAvatar"
+          padding="compact"
+          layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+          className="flex shrink-0 items-center justify-center"
         >
           <img
             src={imageSrc}
@@ -100,7 +114,7 @@ export function PluginVisual({
             className="h-full w-full object-contain"
             onError={() => setImgFailed(true)}
           />
-        </span>
+        </Card>
       );
     }
   }
@@ -108,25 +122,29 @@ export function PluginVisual({
   if (icon && typeof icon !== "string") {
     const Glyph = icon;
     return (
-      <span
-        className={`flex ${dimension} shrink-0 items-center justify-center rounded-md border border-border/45 bg-bg-accent/70 text-muted-strong`}
+      <Card
+        variant="connectorAvatar"
+        layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+        className="flex shrink-0 items-center justify-center"
       >
         <Glyph className={glyph} />
-      </span>
+      </Card>
     );
   }
 
   // Generative monogram tile — deterministic gradient + initials.
   return (
-    <span
-      className={`flex ${dimension} shrink-0 select-none items-center justify-center rounded-md font-bold tracking-tight text-white ${monogramText}`}
-      style={{
+    <Card
+      variant="connectorAvatar"
+      layoutStyle={PLUGIN_VISUAL_LAYOUT_STYLES[size]}
+      className="flex shrink-0 select-none items-center justify-center font-bold tracking-tight"
+      visualStyle={{
         background: pluginTileGradient(plugin),
-        textShadow: "0 1px 2px rgba(0,0,0,0.35)",
       }}
+      wallpaperText
       aria-hidden="true"
     >
-      {pluginMonogram(plugin)}
-    </span>
+      <span className={monogramText}>{pluginMonogram(plugin)}</span>
+    </Card>
   );
 }

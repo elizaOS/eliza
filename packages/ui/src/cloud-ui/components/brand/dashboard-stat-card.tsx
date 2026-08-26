@@ -2,6 +2,7 @@
  * A single dashboard stat card (label + value) built on BrandCard.
  */
 import type { ReactNode } from "react";
+import { Badge, type BadgeProps } from "../../../components/ui/badge";
 import { cn } from "../../lib/utils";
 import { BrandCard } from "./brand-card";
 
@@ -22,6 +23,19 @@ const accentStyles: Record<DashboardStatAccent, string> = {
   red: "text-danger",
   violet: "text-status-info",
   white: "text-txt-strong",
+};
+
+const accentBadges: Record<
+  DashboardStatAccent,
+  NonNullable<BadgeProps["variant"]>
+> = {
+  orange: "primingIcon",
+  amber: "statusWarning",
+  blue: "statusInfo",
+  emerald: "statusSuccess",
+  red: "statusDanger",
+  violet: "statusInfo",
+  white: "providerMarkActive",
 };
 
 interface DashboardStatCardProps {
@@ -64,14 +78,13 @@ export function DashboardStatCard({
           </p>
         </div>
         {icon ? (
-          <div
-            className={cn(
-              "flex size-10 shrink-0 items-center justify-center rounded-sm border border-current/15 bg-bg-elevated",
-              accentStyles[accent],
-            )}
+          <Badge
+            variant={accentBadges[accent]}
+            size="providerMark"
+            className="flex size-10 shrink-0 items-center justify-center"
           >
             {icon}
-          </div>
+          </Badge>
         ) : null}
       </div>
       {helper ? (
