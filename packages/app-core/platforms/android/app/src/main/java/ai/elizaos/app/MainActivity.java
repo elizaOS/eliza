@@ -184,7 +184,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // Some vendor Android builds clear window flags while switching tasks
         // or returning from an out-of-process browser surface. Restore the

@@ -63,7 +63,7 @@ describe("cloudSafeMainActivityJava", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
 
     expect(source).toContain("import android.view.WindowManager;");
-    expect(source).toContain("protected void onResume()");
+    expect(source).toContain("public void onResume()");
     expect(source).toContain("onWindowFocusChanged(boolean hasFocus)");
     expect(source).toContain(
       "getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);",

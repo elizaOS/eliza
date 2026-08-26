@@ -6521,7 +6521,7 @@ import androidx.activity.OnBackPressedCallback;
     ? ""
     : `
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         keepScreenAwake();
     }
