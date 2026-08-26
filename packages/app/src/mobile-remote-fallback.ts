@@ -43,6 +43,7 @@ export function resolveMobileRemoteFallbackApiBase(
   try {
     parsed = new URL(raw.trim());
   } catch (cause) {
+    // error-policy:J2 preserve the parser cause while adding the build contract.
     throw new Error(
       `[mobile-remote-fallback] ${REMOTE_FALLBACK_API_BASE_ENV_KEY} must be a valid HTTPS origin`,
       { cause },
