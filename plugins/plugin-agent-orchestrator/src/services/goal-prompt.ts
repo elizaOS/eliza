@@ -15,6 +15,7 @@
 
 import { COMPLETION_ENVELOPE_INSTRUCTION } from "./completion-envelope.js";
 import type { AttemptReflection } from "./orchestrator-task-types.js";
+import { textuallyContains } from "./user-task-text.js";
 
 /** The coding-relevant capability fence applied when a caller does not pass an
  * explicit allow-list. Keeps a worker from reaching for unrelated connectors or
@@ -164,13 +165,6 @@ export interface GoalFollowUpInput {
 
 function bulletList(items: string[]): string {
   return items.map((item) => `- ${item}`).join("\n");
-}
-
-/** Whitespace-insensitive, case-insensitive containment for prompt text. */
-function textuallyContains(haystack: string, needle: string): boolean {
-  const squash = (text: string): string =>
-    text.replace(/\s+/g, " ").trim().toLowerCase();
-  return squash(haystack).includes(squash(needle));
 }
 
 const COMPLETION_CONTRACT: readonly string[] = [

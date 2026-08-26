@@ -22,9 +22,15 @@ export function userTaskFromInitialTask(raw: string | undefined): string {
   return (next >= 0 ? after.slice(0, next) : after).trim();
 }
 
-/** Whitespace-insensitive, case-insensitive containment for prompt text. */
 function squash(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Whitespace-insensitive, case-insensitive containment for prompt text —
+ *  the shared "does this prompt already carry that text" predicate behind
+ *  every verbatim-ask dedupe (here and in goal-prompt). */
+export function textuallyContains(haystack: string, needle: string): boolean {
+  return squash(haystack).includes(squash(needle));
 }
 
 /** Framing line that introduces the verbatim ask inside a User Task body. */

@@ -329,7 +329,9 @@ export async function generateDefaultAcceptanceCriteria(
   const type = taskTypeHint ?? detectTaskType(detectionText);
   const fallback = [...DEFAULT_CRITERIA_TEMPLATES[type]];
 
-  const hasModel = Boolean(runtime && typeof runtime.useModel === "function");
+  // Narrowed once: a runtime that can actually refine, or undefined.
+  const modelRuntime =
+    runtime && typeof runtime.useModel === "function" ? runtime : undefined;
 
   // Static app builds keep the serve-focused template as the FLOOR — its
   // three lines are exactly what the evidence pipeline can prove, and the
@@ -346,10 +348,10 @@ export async function generateDefaultAcceptanceCriteria(
   // degrading to the pure template on any model failure.
   if (type === "app-build") {
     const requestText = verbatim || goal.trim();
-    if (!hasModel || !requestText || !runtime) return fallback;
+    if (!modelRuntime || !requestText) return fallback;
     try {
       const prompt = buildAppBuildContentPrompt(requestText, fallback);
-      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+      const result = await modelRuntime.useModel(ModelType.TEXT_SMALL, {
         prompt,
         stopSequences: [],
       });
@@ -378,7 +380,7 @@ export async function generateDefaultAcceptanceCriteria(
   // request-anchored for the verifier.
   if (type === "script-run") return fallback;
 
-  if (!hasModel || !runtime) return fallback;
+  if (!modelRuntime) return fallback;
 
   try {
     const prompt = buildRefinePrompt(
@@ -387,7 +389,7 @@ export async function generateDefaultAcceptanceCriteria(
       fallback,
       verbatim && verbatim !== goal.trim() ? verbatim : undefined,
     );
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+    const result = await modelRuntime.useModel(ModelType.TEXT_SMALL, {
       prompt,
       stopSequences: [],
     });
