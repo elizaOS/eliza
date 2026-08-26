@@ -25,6 +25,9 @@ function hasNativeBuffer(): boolean {
  * @returns A BufferLike object
  */
 export function fromHex(hex: string): BufferLike {
+	if (typeof hex !== "string") {
+		return hasNativeBuffer() ? Buffer.alloc(0) : new Uint8Array(0);
+	}
 	// Clean the hex string to remove non-hex characters
 	const cleanHex = hex.replace(/[^0-9a-fA-F]/g, "");
 
@@ -33,9 +36,9 @@ export function fromHex(hex: string): BufferLike {
 	}
 
 	// Browser implementation using Uint8Array
-	const bytes = new Uint8Array(cleanHex.length / 2);
+	const bytes = new Uint8Array(Math.floor(cleanHex.length / 2));
 	for (let i = 0; i < bytes.length; i++) {
-		bytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+		bytes[i] = parseInt(cleanHex.substring(i * 2, i * 2 + 2), 16);
 	}
 	return bytes;
 }
@@ -50,14 +53,15 @@ export function fromString(
 	str: string,
 	encoding: "utf8" | "utf-8" | "base64" = "utf8",
 ): BufferLike {
+	const safeStr = typeof str === "string" ? str : "";
 	if (hasNativeBuffer()) {
 		const enc = encoding === "utf-8" ? "utf8" : encoding;
-		return Buffer.from(str, enc as BufferEncoding);
+		return Buffer.from(safeStr, enc as BufferEncoding);
 	}
 
 	// Browser implementation
 	if (encoding === "base64") {
-		const binaryString = atob(str);
+		const binaryString = atob(safeStr);
 		const bytes = new Uint8Array(binaryString.length);
 		for (let i = 0; i < binaryString.length; i++) {
 			bytes[i] = binaryString.charCodeAt(i);

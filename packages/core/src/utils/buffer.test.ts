@@ -36,6 +36,12 @@ describe("hex / string round-trips", () => {
 	it("hex via bufferToString", () => {
 		expect(bufferToString(fromBytes([1, 2, 3]), "hex")).toBe("010203");
 	});
+
+	it("handles non-string inputs safely", () => {
+		expect(byteLength(fromHex(null as unknown as string))).toBe(0);
+		expect(byteLength(fromHex(undefined as unknown as string))).toBe(0);
+		expect(byteLength(fromString(null as unknown as string))).toBe(0);
+	});
 });
 
 describe("isBuffer", () => {
