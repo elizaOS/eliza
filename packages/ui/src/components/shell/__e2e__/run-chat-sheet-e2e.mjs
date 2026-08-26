@@ -36,11 +36,12 @@
  */
 
 import { mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, webkit } from "playwright";
 import { PNG } from "pngjs";
 import {
+  compileTailwindTheme,
   renameRecordedVideo,
   stubElizaCore,
   stubNodeBuiltins,
@@ -53,6 +54,7 @@ import {
 } from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const uiRoot = resolve(here, "../../../..");
 const browserName = process.argv.includes("--browser=webkit")
   ? "webkit"
   : "chromium";
@@ -80,6 +82,12 @@ function near(a, b, tol) {
 // at render in the browser; the only render-path core symbol,
 // findInteractionRegions, is test-only) are replaced with no-op proxies,
 // mirroring the sibling shell runners.
+// Compile every component-owned utility the fixture can reach (shell, ui,
+// chat, and composites) rather than relying on the approximate CDN scanner.
+const themeCss = await compileTailwindTheme({
+  uiRoot,
+  sources: [join(uiRoot, "src/components")],
+});
 const url = await writeFixturePage({
   entry: join(here, "chat-sheet-fixture.tsx"),
   outDir,
@@ -87,6 +95,7 @@ const url = await writeFixturePage({
   title: "chat sheet e2e",
   plugins: [stubElizaCore(), stubNodeBuiltins()],
   processShim: true,
+  tailwind: { css: themeCss },
   background: "#0a0d16",
   headHtml: "<style>.bg-bg{background-color:#0a0d16}</style>",
 });
