@@ -137,6 +137,34 @@ describe("Matrix account settings", () => {
     }
   });
 
+  it("names the offending entry index (not the synthesized default id) when array entries omit accountId/id", () => {
+    const runtime = runtimeWithSettings({
+      MATRIX_ACCOUNTS: JSON.stringify([
+        { homeserver: "https://a", userId: "@a:a", accessToken: "a" },
+        { homeserver: "https://b", userId: "@b:b", accessToken: "b" },
+      ]),
+    });
+
+    try {
+      listMatrixAccountIds(runtime);
+      throw new Error("expected id-less array entries to throw");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      const elizaError = error as ElizaError;
+      expect(elizaError.code).toBe("MATRIX_CONFIG_INVALID");
+      // The operator wrote no "default" id, so the message must not claim a
+      // duplicate of it; it names the second (index 1) entry instead.
+      expect(elizaError.message).not.toContain("duplicate account id");
+      expect(elizaError.message).toContain("index 1");
+      expect(elizaError.context).toEqual({
+        setting: "MATRIX_ACCOUNTS",
+        accountId: DEFAULT_MATRIX_ACCOUNT_ID,
+        index: 1,
+      });
+      expect(elizaError.severity).toBe("fatal");
+    }
+  });
+
   it("rejects character.settings.matrix.accounts keys that collide after normalization", () => {
     const runtime = runtimeWithSettings(
       {},

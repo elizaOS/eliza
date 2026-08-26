@@ -42,23 +42,41 @@ function isAccountConfig(value: unknown): value is MatrixAccountConfig {
 // accountConfig() (which looks up the map key) agree: a padded " work " key
 // otherwise lists as `work` but resolves to an empty config. Reject a
 // post-normalization collision so two keys cannot silently clobber one config.
+// Two collision shapes get distinct diagnostics: a genuine duplicate of an
+// id the operator actually wrote names that id, while entries that supply no
+// id at all (e.g. array items missing both `accountId` and `id`) collapse to
+// the synthesized DEFAULT_MATRIX_ACCOUNT_ID sentinel — naming that sentinel
+// as a "duplicate" would send the operator searching for an id absent from
+// their config, so those name the offending entry index instead.
 function indexAccountConfigs(
   entries: Iterable<readonly [unknown, unknown]>,
   setting: string
 ): Record<string, MatrixAccountConfig> {
   const configs = new Map<string, MatrixAccountConfig>();
+  let index = -1;
   for (const [rawId, value] of entries) {
+    index += 1;
     if (!isAccountConfig(value)) continue;
+    const hasExplicitId = typeof rawId === "string" && rawId.trim().length > 0;
     const accountId = normalizeMatrixAccountId(rawId);
     if (configs.has(accountId)) {
-      throw new ElizaError(
-        `Matrix accounts config contains duplicate account id ${JSON.stringify(accountId)} after normalization.`,
-        {
-          code: "MATRIX_CONFIG_INVALID",
-          context: { setting, accountId },
-          severity: "fatal",
-        }
-      );
+      throw hasExplicitId
+        ? new ElizaError(
+            `Matrix accounts config contains duplicate account id ${JSON.stringify(accountId)} after normalization.`,
+            {
+              code: "MATRIX_CONFIG_INVALID",
+              context: { setting, accountId },
+              severity: "fatal",
+            }
+          )
+        : new ElizaError(
+            `Matrix accounts config entry at index ${index} supplies no accountId/id and collides with the ${JSON.stringify(accountId)} account; give each account an explicit accountId.`,
+            {
+              code: "MATRIX_CONFIG_INVALID",
+              context: { setting, accountId, index },
+              severity: "fatal",
+            }
+          );
     }
     configs.set(accountId, value);
   }
