@@ -21,6 +21,7 @@ import {
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "@elizaos/ui/state/persistence";
+import { installBuildConfiguredRemoteApiBaseUrl } from "@elizaos/ui/state/runtime-url-trust";
 
 const REMOTE_FALLBACK_API_BASE_ENV_KEY = "VITE_ELIZA_REMOTE_FALLBACK_API_BASE";
 const REMOTE_FALLBACK_SERVER_ID = "remote:lp3-vps";
@@ -101,6 +102,12 @@ export async function installMobileRemoteFallback(
 ): Promise<boolean> {
   const apiBase = getMobileRemoteFallbackApiBase(env);
   if (!apiBase) return false;
+
+  // The app entrypoint sees the Vite build variable even when @elizaos/ui was
+  // pre-built before Vite ran. Publish the validated origin before any shared
+  // persistence/client code executes so its hard-pin gates cannot disappear
+  // after the first route transition.
+  installBuildConfiguredRemoteApiBaseUrl(apiBase);
 
   const current = loadPersistedActiveServer();
   const profileCredential = loadAgentProfileRegistry().profiles.find(
