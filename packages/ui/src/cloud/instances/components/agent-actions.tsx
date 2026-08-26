@@ -23,6 +23,7 @@
  */
 "use client";
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { AgentExecutionTier } from "@elizaos/cloud-sdk";
 import {
   AGENT_PRICING,
@@ -784,7 +785,7 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.jobLabel", {
                   defaultValue: "Job",
                 })}{" "}
-                {upgradeJob.jobId.slice(0, 8)} • {upgradeJob.status}
+                {truncateWellFormed(toWellFormedUnicode(upgradeJob.jobId), 8)} • {upgradeJob.status}
               </p>
             )}
           </div>
@@ -828,7 +829,7 @@ export function ElizaAgentActions({
                 {t("cloud.containers.agentActions.jobLabel", {
                   defaultValue: "Job",
                 })}{" "}
-                {trackedJob.jobId.slice(0, 8)} • {trackedJob.status}
+                {truncateWellFormed(toWellFormedUnicode(trackedJob.jobId), 8)} • {trackedJob.status}
               </p>
             )}
           </div>
