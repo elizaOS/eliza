@@ -4,7 +4,6 @@
  */
 
 import * as path from "node:path";
-import { TextDecoder } from "node:util";
 import { Worker } from "node:worker_threads";
 import { logger } from "@elizaos/core";
 import type {
@@ -13,6 +12,10 @@ import type {
   ScreenCapture,
   VisionConfig,
 } from "./types";
+import {
+  OCR_RESULTS_BUFFER_SIZE,
+  readOcrResultFromBuffer,
+} from "./workers/ocr-results-buffer";
 
 interface WorkerStats {
   fps: number;
@@ -33,7 +36,7 @@ export class VisionWorkerManager {
   private ocrResultsView: DataView;
 
   private readonly SCREEN_BUFFER_SIZE = 50 * 1024 * 1024;
-  private readonly OCR_RESULTS_SIZE = 5 * 1024 * 1024;
+  private readonly OCR_RESULTS_SIZE = OCR_RESULTS_BUFFER_SIZE;
 
   private readonly FRAME_ID_INDEX = 0;
   private readonly WIDTH_INDEX = 2;
@@ -197,26 +200,12 @@ export class VisionWorkerManager {
   }
 
   private readOCRResult(): OCRResult | null {
+    // error-policy:J4 buffer read/parse/capacity failures degrade to a null OCR
+    // result (an explicit unavailable state surfaced via getReadiness().ocr),
+    // never a fabricated or silently truncated one.
     try {
-      const RESULTS_HEADER_SIZE = 16;
-      const offset = RESULTS_HEADER_SIZE;
-
-      const length = this.ocrResultsView.getUint32(offset, true);
-      if (length === 0) {
-        return null;
-      }
-
-      const _frameId = this.ocrResultsView.getUint32(offset + 4, true);
-      const _timestamp = this.ocrResultsView.getFloat64(offset + 8, true);
-
-      const dataOffset = offset + 16;
-      const bytes = new Uint8Array(Math.min(length, 65536));
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = this.ocrResultsView.getUint8(dataOffset + i);
-      }
-
-      const json = new TextDecoder().decode(bytes);
-      return JSON.parse(json);
+      const result = readOcrResultFromBuffer(this.ocrResultsView);
+      return result as OCRResult | null;
     } catch (error) {
       logger.error(
         { error },

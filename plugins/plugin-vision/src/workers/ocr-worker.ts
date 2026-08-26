@@ -6,6 +6,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { getSharp } from "../image/sharp-compat";
 import { OCRService } from "../ocr-service";
 import type { OCRResult } from "../types";
+import { writeOcrResultToBuffer } from "./ocr-results-buffer";
 import { logger } from "./worker-logger";
 
 interface WorkerConfig {
@@ -41,9 +42,8 @@ class OCRWorker {
   private readonly TIMESTAMP_INDEX = 5;
   private readonly DATA_OFFSET = 24;
 
-  // Results buffer structure
-  private readonly RESULTS_HEADER_SIZE = 16;
-  private readonly MAX_TEXT_LENGTH = 65536; // 64KB for text
+  // Results buffer layout and codec are shared with the reader in
+  // `ocr-results-buffer.ts`; the writer no longer hardcodes a byte cap.
 
   constructor(
     config: WorkerConfig,
@@ -244,38 +244,19 @@ class OCRWorker {
     results: OCRResult[],
     frameId: number,
   ): Promise<void> {
-    // Combine all results
-    const combinedResult = {
+    // Delegate to the shared codec so the committed byte count and the header
+    // length always agree and the payload is bounded by the real buffer
+    // capacity rather than an arbitrary 64KB cap.
+    const { length, truncated } = writeOcrResultToBuffer(
+      this.resultsView,
+      results,
       frameId,
-      timestamp: Date.now(),
-      fullText: results.map((r) => r.fullText).join("\n"),
-      blocks: results.flatMap((r) => r.blocks),
-      regions: results.length,
-    };
+    );
 
-    const resultJson = JSON.stringify(combinedResult);
-    const resultBytes = Buffer.from(resultJson, "utf-8");
-
-    // Write to results buffer
-    const offset = this.RESULTS_HEADER_SIZE;
-
-    // Write length
-    this.resultsView.setUint32(offset, resultBytes.length, true);
-
-    // Write frame ID
-    this.resultsView.setUint32(offset + 4, frameId, true);
-
-    // Write timestamp
-    this.resultsView.setFloat64(offset + 8, Date.now(), true);
-
-    // Write text data
-    const dataOffset = offset + 16;
-    for (
-      let i = 0;
-      i < Math.min(resultBytes.length, this.MAX_TEXT_LENGTH);
-      i++
-    ) {
-      this.resultsView.setUint8(dataOffset + i, resultBytes[i]);
+    if (truncated) {
+      logger.warn(
+        `[OCRWorker] OCR result for frame ${frameId} exceeded buffer capacity; dropped lower-value blocks to fit (${length} bytes written)`,
+      );
     }
   }
 
