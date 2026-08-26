@@ -21,7 +21,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { ensureDefaultAssignment } from "./assignments";
 import {
 	buildHuggingFaceResolveUrlCandidatesForPath,
@@ -532,8 +532,8 @@ async function resumableStartByte(
 	if (recorded === expectedSha256) return size;
 	logger.warn(
 		`[Downloader] discarding stale partial ${path.basename(stagingPath)} ` +
-			`(started against ${recorded ? `sha256 ${recorded.slice(0, 12)}…` : "unknown content"}, ` +
-			`manifest now expects ${expectedSha256.slice(0, 12)}…)`,
+			`(started against ${recorded ? `sha256 ${truncateWellFormed(toWellFormedUnicode(recorded), 12)}…` : "unknown content"}, ` +
+			`manifest now expects ${truncateWellFormed(toWellFormedUnicode(expectedSha256), 12)}…)`,
 	);
 	// error-policy:J6 best-effort discard of a stale partial + its sidecar; a
 	// cleanup failure just means we redownload from 0 (return 0), never accept it.
@@ -1511,7 +1511,7 @@ export class Downloader {
 					// path. The stale blob must never be kept — discard and re-fetch.
 					logger.warn(
 						`[Downloader] stale ${remotePath} on disk ` +
-							`(sha256 ${currentSha256.slice(0, 12)}… != manifest ${expectedSha256.slice(0, 12)}…); re-downloading`,
+							`(sha256 ${truncateWellFormed(toWellFormedUnicode(currentSha256), 12)}… != manifest ${truncateWellFormed(toWellFormedUnicode(expectedSha256), 12)}…); re-downloading`,
 					);
 					await fsp.rm(finalPath, { force: true });
 				}
