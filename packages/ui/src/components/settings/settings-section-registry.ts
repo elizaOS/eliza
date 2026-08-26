@@ -76,6 +76,8 @@ export interface SettingsSectionDef {
    * remote-password security section. Evaluated against isAndroidCloudBuild().
    */
   hideOnCloud?: boolean;
+  /** Show only in the standard Android Cloud/Play build. */
+  androidCloudOnly?: boolean;
   /**
    * Hide while the active runtime is managed by Eliza Cloud. Use this for
    * implementation controls that Cloud owns and a consumer cannot change.

@@ -12,7 +12,7 @@ registerAppShellPage({
   id: "calendar",
   pluginId: "@elizaos/plugin-calendar",
   label: "Calendar",
-  icon: "Calendar",
+  icon: "CalendarDays",
   path: "/calendar",
   order: 910,
   viewKind: "release",
@@ -21,7 +21,7 @@ registerAppShellPage({
     capabilities: ["agent-surface"],
   },
   loader: () =>
-    import("./components/calendar/SimpleCalendarView.tsx").then((module) => ({
-      default: module.SimpleCalendarView,
+    import("./components/calendar/CalendarPage.tsx").then((module) => ({
+      default: module.CalendarPage,
     })),
 });

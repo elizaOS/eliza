@@ -58,6 +58,7 @@ interface LocalNotificationsPluginLike extends Record<string, unknown> {
       title: string;
       body: string;
       schedule?: { at: Date };
+      isExactNotification?: boolean;
       channelId?: string;
       extra?: Record<string, unknown>;
     }>;
@@ -327,6 +328,9 @@ async function tryLocalNotifications(
         id: numericId(req.groupKey ?? req.id),
         title: req.title,
         body: req.body ?? "",
+        // This bridge posts immediately. Capacitor 8.3 otherwise opens the
+        // exact-alarm settings screen even though no future alarm is needed.
+        isExactNotification: false,
         ...(channel.channelId ? { channelId: channel.channelId } : {}),
         ...(safeDeepLink ? { extra: { deepLink: safeDeepLink } } : {}),
       },

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertCloudLiveNamedWarmingMode,
   assertCloudLiveNamedWarmingProof,
@@ -16,6 +16,7 @@ import {
   createCloudLiveNetworkAudit,
   installCloudLiveAnchoredRetryChipObserver,
   parseCloudLiveContinuityEvidence,
+  readCloudLiveBoundedResponseBody,
   readCloudLiveContinuityEvidence,
   writeCloudLiveContinuityEvidence,
 } from "./cloud-live-continuity-contract";
@@ -53,6 +54,7 @@ function boundedJsonBody(
 
 const temporaryDirectories: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -528,6 +530,92 @@ describe("forbidden Cloud agent mutations", () => {
     expect(wrongMedia.budgets).toEqual([]);
     expect(overBudget.budgets).toEqual([4096]);
     expect(lyingReader.budgets).toEqual([4096]);
+  });
+});
+
+describe("bounded Cloud response diagnostics", () => {
+  it("treats a zero-byte body as unavailable rather than inspected proof", async () => {
+    const read = vi.fn(async () => new Uint8Array());
+
+    await expect(
+      readCloudLiveBoundedResponseBody(
+        { contentType: "application/json", read },
+        1024,
+      ),
+    ).resolves.toBeNull();
+    expect(read).toHaveBeenCalledWith(1024);
+  });
+
+  it("settles an indefinitely pending body before the trajectory phase deadline", async () => {
+    vi.useFakeTimers();
+    const pending = readCloudLiveBoundedResponseBody(
+      {
+        contentType: "application/json",
+        read: () => new Promise<Uint8Array | null>(() => {}),
+      },
+      1024,
+      30_000,
+    );
+
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  it("drains stalled history and warming inspections without creating proof", async () => {
+    vi.useFakeTimers();
+    const audit = createCloudLiveNetworkAudit();
+    const history = "/api/conversations/private/messages";
+    const chat = `${history}/stream`;
+    const neverSettles = {
+      contentType: "application/json",
+      read: () => new Promise<Uint8Array | null>(() => {}),
+    };
+    audit.setHistoryAnchorToken("private-anchor");
+    audit.observeRequest("GET", history);
+    audit.observeResponse("GET", history, 200, neverSettles);
+    audit.observeRequest(
+      "POST",
+      chat,
+      JSON.stringify({ clientMessageId: "private-id" }),
+    );
+    audit.observeResponse("POST", chat, 503, neverSettles);
+
+    let settled = false;
+    const pending = audit.snapshot().then((snapshot) => {
+      settled = true;
+      return snapshot;
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(pending).resolves.toMatchObject({
+      successfulHistoryGetCount: 1,
+      inspectedHistoryResponseCount: 0,
+      uninspectableHistoryResponseCount: 1,
+      historyResponseWithAnchorUserCount: 0,
+      historyResponseWithAnchoredAssistantCount: 0,
+      namedWarmingResponseCount: 0,
+    });
+  });
+
+  it("rejects invalid byte and time budgets without reading the body", async () => {
+    const read = vi.fn(async () => textEncoder.encode("{}"));
+    const body = { contentType: "application/json", read };
+
+    await expect(readCloudLiveBoundedResponseBody(body, 0)).rejects.toThrow(
+      "byte budget must be a positive safe integer",
+    );
+    await expect(
+      readCloudLiveBoundedResponseBody(body, 1024, 0),
+    ).rejects.toThrow("timeout must be a positive safe integer");
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

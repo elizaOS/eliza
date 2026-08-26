@@ -14,7 +14,10 @@ import { resolveGroupParticipantDisplayName } from "../../lib/services/shared-ru
 import type { Database } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
-import { personalSharedGroupParticipants } from "../schemas/personal-shared-groups";
+import {
+  personalSharedGroupBindings,
+  personalSharedGroupParticipants,
+} from "../schemas/personal-shared-groups";
 
 /**
  * Second advisory-lock key. The first key is the binding id, so the lock space
@@ -80,10 +83,9 @@ export class PersonalSharedGroupParticipantsRepository {
    * assignments for the same binding can read the same maximum. Two guards
    * make that impossible:
    *
-   *  - a per-binding transaction advisory lock serializes the read-then-insert
-   *    window, so concurrent first-time speakers in one group queue instead of
-   *    racing (the lock is per binding, so unrelated groups never wait, and
-   *    this transaction takes no other lock, so it cannot deadlock);
+   *  - a binding key-share lock followed by a per-binding transaction advisory
+   *    lock serializes the read-then-insert window. Rebind uses the same
+   *    B -> advisory -> participant order, while unrelated groups never wait;
    *  - `personal_shared_group_participants_ordinal_uidx` is the schema-level
    *    backstop: even if the lock were somehow bypassed, a duplicate ordinal
    *    cannot be persisted, and the turn fails loudly instead of quietly
@@ -109,6 +111,18 @@ export class PersonalSharedGroupParticipantsRepository {
     }
     try {
       return await this.database.transaction(async (tx) => {
+        const [binding] = await tx
+          .select({ id: personalSharedGroupBindings.id })
+          .from(personalSharedGroupBindings)
+          .where(eq(personalSharedGroupBindings.id, input.bindingId))
+          .limit(1)
+          .for("key share");
+        if (!binding) {
+          throw storageFailure("Group participant registration failed", {
+            bindingId: input.bindingId,
+            reason: "binding_missing",
+          });
+        }
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(
             hashtext(${input.bindingId}),

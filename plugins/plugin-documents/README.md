@@ -1,6 +1,6 @@
 # @elizaos/plugin-documents
 
-Adds a document management REST API to an elizaOS agent.
+Adds a document management REST API and Knowledge app-shell views to an elizaOS agent.
 
 ## What it does
 
@@ -79,6 +79,11 @@ const character = {
   // ...
 };
 ```
+
+When the package is included in the renderer workspace, its manifest-driven
+`src/register.ts` entry auto-registers the `/documents` Knowledge route and
+lazy-loads the view bundle. The app shell does not import these feature views
+from `@elizaos/ui`.
 
 ## Limitations
 

@@ -11,6 +11,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { ScheduledTaskInput, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 
 const listDueScheduledTaskRefs = mock(async () => []);
 const listRecoverableScheduledTaskRefs = mock(async () => []);
@@ -78,7 +79,9 @@ const recordDeliveryReceipts = mock(async () => ({ recorded: true, inserted: 1 }
 
 // The real prefix builder keeps the asserted fire-time text and the plugin's
 // creation-time budget on the same source of truth.
-const { sharedGroupReminderMessageText } = await import("@elizaos/plugin-scheduling/edge");
+const { createSharedRemindersEdgePlugin, sharedGroupReminderMessageText } = await import(
+  "@elizaos/plugin-scheduling/edge"
+);
 
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
   listDueScheduledTaskRefs,
@@ -88,7 +91,8 @@ mock.module("@elizaos/plugin-scheduling/edge", () => ({
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
-    if (delivery.platform === "telegram") return delivery;
+    if (delivery.platform === "telegram" && typeof delivery.connectorAccountId === "string")
+      return delivery;
     if (delivery.platform === "blooio") return delivery;
     if (delivery.platform === "discord") return delivery;
     return undefined;
@@ -216,6 +220,7 @@ describe("Shared group reminder dispatch", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: IDEMPOTENCY_KEY,
@@ -259,6 +264,99 @@ describe("Shared group reminder dispatch", () => {
     expect(tokens[2]).not.toBe(tokens[0]);
   });
 
+  test("carries a persisted Telegram forum topic through the gateway wire", async () => {
+    const requests: Request[] = [];
+    globalThis.fetch = acceptingFetch(requests);
+    const dispatcher = sharedReminderDispatcher(env, PERSONAL_AGENT_ID);
+
+    const result = await dispatcher.dispatch(
+      groupRecord({ delivery: { providerThreadId: "909" } }),
+    );
+
+    await expect(requests[0]?.json()).resolves.toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      chatId: "-100123456789",
+      providerThreadId: "909",
+      text: "Reminder for this group from Nubs: pay the rent",
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+    expect(result).toMatchObject({ ok: true, target: "-100123456789" });
+  });
+
+  test("preserves a Telegram forum topic from reminder creation through JSON persistence and fire", async () => {
+    const scheduleWithResult = mock(async (input: ScheduledTaskInput) => ({
+      task: {
+        taskId: "created-topic-reminder",
+        ...input,
+        state: { status: "scheduled" as const, followupCount: 0 },
+      },
+      commit: {
+        logId: "created-topic-reminder-log",
+        occurredAtIso: "2026-08-20T19:25:00.000Z",
+      },
+      replayed: false,
+    }));
+    const runner = {
+      scheduleWithResult,
+      list: mock(async () => []),
+      applyWithResult: mock(),
+      pipeline: mock(async () => []),
+    } as unknown as ScheduledTaskRunner;
+    const delivery = groupRecord({
+      delivery: { providerThreadId: "909" },
+    }).metadata.delivery;
+    const [action] =
+      createSharedRemindersEdgePlugin({
+        runner,
+        agentId: PERSONAL_AGENT_ID,
+        delivery,
+        now: () => new Date("2026-08-20T19:25:00.000Z"),
+      }).actions ?? [];
+
+    const creation = await action?.handler(
+      {} as never,
+      { id: "topic-reminder-create" } as never,
+      undefined,
+      {
+        parameters: {
+          operation: "create",
+          reminderText: "pay the rent",
+          inMinutes: 5,
+        },
+      },
+    );
+
+    expect(creation?.success).toBe(true);
+    expect(scheduleWithResult).toHaveBeenCalledTimes(1);
+    const scheduledInput = scheduleWithResult.mock.calls[0]?.[0];
+    expect(scheduledInput?.metadata).toEqual({ delivery });
+    const persistedInput = JSON.parse(JSON.stringify(scheduledInput)) as ScheduledTaskInput;
+    const requests: Request[] = [];
+    globalThis.fetch = acceptingFetch(requests);
+    const dispatcher = sharedReminderDispatcher(env, PERSONAL_AGENT_ID);
+
+    const result = await dispatcher.dispatch({
+      ...persistedInput,
+      taskId: "created-topic-reminder",
+      firedAtIso: "2026-08-20T19:30:00.000Z",
+      metadata: {
+        ...persistedInput.metadata,
+        dispatchIdempotencyKey: IDEMPOTENCY_KEY,
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, target: "-100123456789" });
+    await expect(requests[0]?.json()).resolves.toEqual({
+      platform: "telegram",
+      project: "eliza-app",
+      chatId: "-100123456789",
+      providerThreadId: "909",
+      text: "Reminder for this group from Nubs: pay the rent",
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+  });
+
   test("delivers a Telegram group reminder through the edge dispatch with the prefixed text and records receipts", async () => {
     globalThis.fetch = mock(async () => {
       throw new Error("gateway egress must not run when edge dispatch is configured");
@@ -270,7 +368,9 @@ describe("Shared group reminder dispatch", () => {
     }));
     const dispatcher = sharedReminderDispatcher(env, PERSONAL_AGENT_ID, { telegramDispatch });
 
-    const result = await dispatcher.dispatch(groupRecord());
+    const result = await dispatcher.dispatch(
+      groupRecord({ delivery: { providerThreadId: "909" } }),
+    );
 
     expect(authorizeDelivery).toHaveBeenCalledTimes(1);
     expect(commitDelivery).toHaveBeenCalledTimes(1);
@@ -279,7 +379,9 @@ describe("Shared group reminder dispatch", () => {
     );
     expect(telegramDispatch).toHaveBeenCalledWith({
       project: "eliza-app",
+      connectorAccountId: "telegram:test-bot",
       chatId: "-100123456789",
+      providerThreadId: "909",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: IDEMPOTENCY_KEY,
     });
@@ -323,6 +425,7 @@ describe("Shared group reminder dispatch", () => {
     await expect(requests[0]?.json()).resolves.toEqual({
       platform: "blooio",
       project: "eliza-app",
+      connectorAccountId: "blooio:test-number",
       chatId: "chat_group_123",
       text: "Reminder for this group from Nubs: pay the rent",
       idempotencyKey: IDEMPOTENCY_KEY,
@@ -472,6 +575,7 @@ describe("Shared group reminder dispatch", () => {
         delivery: {
           platform: "telegram",
           project: "eliza-app",
+          connectorAccountId: "bot:123456789",
           chatId: "123456789",
         },
       },
