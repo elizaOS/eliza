@@ -2,8 +2,10 @@
  * Unit coverage for chat image/media attachment validation (mime allowlist, size
  * caps, count limits). Pure functions, no harness.
  */
+
 import {
   CHAT_UPLOAD_MIME_TYPES,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH,
   MAX_CHAT_IMAGE_BASE64_BYTES,
   MAX_CHAT_MEDIA_BASE64_BYTES,
   MAX_CHAT_MEDIA_RAW_BYTES,
@@ -14,6 +16,7 @@ import {
   bytesToMb,
   CHAT_UPLOAD_ACCEPT,
   chatUploadKind,
+  clampAttachmentName,
   classifyComposerPaste,
   createImageThumbnail,
   imageNeedsReencode,
@@ -491,5 +494,108 @@ describe("buildDroppedAttachmentNotice", () => {
     expect(notice).toContain("chat.attachmentsKeptDroppedMixed");
     expect(notice).toContain('"tooLarge":1');
     expect(notice).toContain('"overCount":1');
+  });
+});
+
+describe("attachment name truncation preserves well-formed Unicode", () => {
+  it("backs off a trailing high surrogate when the 255 boundary splits an emoji", () => {
+    const prefix = "a".repeat(254);
+    const emoji = "😀";
+    const name = `${prefix}${emoji}X`;
+    expect(name.length).toBe(257);
+    const truncated = clampAttachmentName(name);
+    expect(truncated.length).toBe(254);
+    expect(truncated).toBe(prefix);
+    expect(truncated.isWellFormed?.() ?? true).toBe(true);
+    expect(() => JSON.stringify({ name: truncated })).not.toThrow();
+  });
+
+  it("preserves a pure ASCII name over the cap by simple truncation", () => {
+    const name = "a".repeat(300);
+    const truncated = clampAttachmentName(name);
+    expect(truncated.length).toBe(MAX_CHAT_ATTACHMENT_NAME_LENGTH);
+    expect(truncated).toBe("a".repeat(255));
+  });
+
+  it("keeps an exact-limit name unchanged and well-formed", () => {
+    const name = "b".repeat(MAX_CHAT_ATTACHMENT_NAME_LENGTH);
+    const truncated = clampAttachmentName(name);
+    expect(truncated).toBe(name);
+    expect(truncated.length).toBe(255);
+  });
+
+  it("preserves a name ending with an emoji that fits exactly", () => {
+    const prefix = "a".repeat(253);
+    const name = `${prefix}😀`;
+    expect(name.length).toBe(255);
+    const truncated = clampAttachmentName(name);
+    expect(truncated).toBe(name);
+    expect(truncated.isWellFormed?.() ?? true).toBe(true);
+  });
+
+  it("never creates a lone surrogate for any emoji-boundary split", () => {
+    const cases = ["😀", "🧪", "👨‍👩‍👧", "é", "café"];
+    for (const c of cases) {
+      const name = `${"a".repeat(254)}${c}X`;
+      const truncated = clampAttachmentName(name);
+      const last = truncated.charCodeAt(truncated.length - 1);
+      const isHighSurrogate = last >= 0xd800 && last <= 0xdbff;
+      expect(isHighSurrogate).toBe(false);
+      expect(
+        truncated.isWellFormed?.() ?? !/[\uD800-\uDFFF]/.test(truncated),
+      ).toBe(true);
+    }
+  });
+});
+
+describe("clampAttachmentName preserves well-formed Unicode via production path", () => {
+  const isWellFormed = (s: string): boolean => {
+    const w = s as unknown as { isWellFormed?: () => boolean };
+    if (typeof w.isWellFormed === "function") return w.isWellFormed();
+    return !/[\uD800-\uDFFF]/.test(s) || s.includes("�");
+  };
+
+  it("sanitizes lone high surrogate to replacement character even under cap", () => {
+    const name = `ok \ud800 end`;
+    const clamped = clampAttachmentName(name);
+    expect(clamped.includes("\ud800")).toBe(false);
+    expect(clamped.includes("�")).toBe(true);
+    expect(isWellFormed(clamped)).toBe(true);
+    expect(() => JSON.stringify({ name: clamped })).not.toThrow();
+  });
+
+  it("sanitizes lone low surrogate to replacement character", () => {
+    const name = `ok \udc00 end`;
+    const clamped = clampAttachmentName(name);
+    expect(clamped.includes("\udc00")).toBe(false);
+    expect(clamped.includes("�")).toBe(true);
+    expect(isWellFormed(clamped)).toBe(true);
+  });
+
+  it("backs off when clamp would split an emoji at the 255 boundary", () => {
+    const prefix = "a".repeat(254);
+    const name = `${prefix}😀X${"b".repeat(10)}`;
+    const clamped = clampAttachmentName(name);
+    expect(clamped.length).toBe(254);
+    expect(clamped).toBe(prefix);
+    expect(isWellFormed(clamped)).toBe(true);
+    expect(() => JSON.stringify({ name: clamped })).not.toThrow();
+  });
+
+  it("preserves a fitting emoji name via clamp at exact cap", () => {
+    const prefix = "a".repeat(253);
+    const name = `${prefix}😀`;
+    expect(name.length).toBe(255);
+    const clamped = clampAttachmentName(name);
+    expect(clamped).toBe(name);
+    expect(isWellFormed(clamped)).toBe(true);
+  });
+
+  it("falls back to attachment for empty input and truncates long via clamp", () => {
+    expect(clampAttachmentName("")).toBe("attachment");
+    const long = "a".repeat(300);
+    const clamped = clampAttachmentName(long);
+    expect(clamped.length).toBe(MAX_CHAT_ATTACHMENT_NAME_LENGTH);
+    expect(clamped).toBe("a".repeat(255));
   });
 });
