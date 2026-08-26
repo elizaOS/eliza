@@ -10,20 +10,23 @@ describe("Companion protocol frame parsing surrogate safety", () => {
     } catch (err: any) {
       expect(err.code).toBe("COMPANION_BAD_FRAME");
       const rawContext = err.context?.raw as string;
-      expect(rawContext.isWellFormed?.()).not.toBe(false);
+      expect(rawContext.isWellFormed()).toBe(true);
       expect(rawContext).toBe("{" + "a".repeat(254));
     }
   });
 
-  it("preserves surrogate pairs when clamping invalid frame in badFrame", () => {
-    const rawInvalid = JSON.stringify({ type: "register", deviceId: "" }) + "a".repeat(200) + "🚀" + "extra";
+  it("clamps raw at 256 without splitting a surrogate via badFrame()", () => {
+    const prefix = '{"type":"register","deviceId":"","pad":"';
+    const raw = prefix + "a".repeat(215) + "🚀" + '"}';
     try {
-      parseDeviceFrame(rawInvalid);
-      expect.unreachable("should have thrown");
+      parseDeviceFrame(raw);
+      expect.unreachable("should throw badFrame");
     } catch (err: any) {
       expect(err.code).toBe("COMPANION_BAD_FRAME");
+      expect(err.message).toContain("invalid frame");
       const rawContext = err.context?.raw as string;
-      expect(rawContext.isWellFormed?.()).not.toBe(false);
+      expect(rawContext.isWellFormed()).toBe(true);
+      expect(rawContext.length).toBe(255);
     }
   });
 });
