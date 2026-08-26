@@ -62,6 +62,7 @@ describe("cloudSafeMainActivityJava", () => {
       "registerPlugin(ElizaSecureCredentialsPlugin.class);",
     );
     expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
+    expect(source).not.toContain("GoogleIdentityPlugin");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
     expect(coldCapture).toBeLessThan(bridgeCreation);
     expect(warmCapture).toBeGreaterThanOrEqual(0);
@@ -78,6 +79,8 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("Cipher.getInstance(TRANSFORMATION)");
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
+    expect(source).toContain('"pending_login".equals(slot)');
+    expect(source).toContain('"mobile_login_ciphertext"');
     expect(source).not.toContain("uses-permission");
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");
