@@ -225,6 +225,8 @@
     "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs",
     "voice:matrix": "node packages/app-core/scripts/voice/voice-matrix.mjs",
     "build:android:cloud": "node packages/app-core/scripts/run-mobile-build.mjs android-cloud",
+    "build:android:launcher": "node packages/app-core/scripts/run-mobile-build.mjs android-launcher",
+    "install:android:launcher": "bun run build:android:launcher && node packages/app/scripts/android-adb-install.mjs --launcher",
     "build:android:lp3-cloud:debug": "ELIZA_ANDROID_LP3_COLOR_POLICY_ENABLED=1 node packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug",
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system"
   },
