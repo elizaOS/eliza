@@ -36,6 +36,8 @@ import { SettingsView } from "./SettingsView";
 const appMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 const bootConfigMock = vi.hoisted(() => ({ cloudOnly: false }));
 const electrobunRuntimeMock = vi.hoisted(() => ({ isElectrobun: false }));
+const androidCloudBuildMock = vi.hoisted(() => ({ isAndroidCloud: false }));
+const frontendPlatformMock = vi.hoisted(() => ({ platform: "web" }));
 const permissionPrimingMock = vi.hoisted(() => ({
   calls: [] as Array<{ ids: string[]; open: boolean }>,
 }));
@@ -112,6 +114,20 @@ vi.mock("../../config/boot-config-store", () => ({
 vi.mock("../../bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => electrobunRuntimeMock.isElectrobun,
 }));
+
+vi.mock("../../platform/android-runtime", () => ({
+  isAndroidCloudBuild: () => androidCloudBuildMock.isAndroidCloud,
+}));
+
+vi.mock("../../platform/platform-guards", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../platform/platform-guards")
+  >("../../platform/platform-guards");
+  return {
+    ...actual,
+    getFrontendPlatform: () => frontendPlatformMock.platform,
+  };
+});
 
 vi.mock("../settings/cloud-panel/CloudSettingsPanel", () => ({
   CloudSettingsPanel: () => <div data-testid="cloud-settings-panel" />,
@@ -261,6 +277,8 @@ beforeEach(() => {
   appMock.value = makeContext();
   bootConfigMock.cloudOnly = false;
   electrobunRuntimeMock.isElectrobun = false;
+  androidCloudBuildMock.isAndroidCloud = false;
+  frontendPlatformMock.platform = "web";
   permissionPrimingMock.calls = [];
   crashControl.shouldThrow = true;
 });
@@ -417,6 +435,24 @@ describe("SettingsView", () => {
       ids: ["microphone"],
       open: true,
     });
+  });
+
+  it("ignores targeted generic permission priming in the Android Cloud build", () => {
+    androidCloudBuildMock.isAndroidCloud = true;
+    frontendPlatformMock.platform = "android";
+
+    render(
+      <SettingsView
+        initialSection="runtime"
+        navigatePayload={{
+          permissionRequest: { permission: "microphone" },
+        }}
+        navigateSequence={1}
+      />,
+    );
+
+    expect(screen.queryByTestId("permission-priming-modal")).toBeNull();
+    expect(permissionPrimingMock.calls).toHaveLength(0);
   });
 
   it("ignores malformed permission request navigation payloads", () => {

@@ -24,6 +24,7 @@ import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } fr
 import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { apiKeys } from "../schemas/api-keys";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
+import { personalDedicatedUpgradeAuthorities } from "../schemas/personal-dedicated-upgrade-authorities";
 import { userCharacters } from "../schemas/user-characters";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
@@ -73,6 +74,28 @@ function cutoverFor(sourceAgentId: string) {
   };
 }
 
+async function bindDedicatedAuthority(params: {
+  organizationId: string;
+  userId: string;
+  sourceAgentId: string;
+  dedicatedAgentId: string;
+}) {
+  const cutover = cutoverFor(params.sourceAgentId);
+  await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+    organization_id: params.organizationId,
+    user_id: params.userId,
+    source_agent_id: params.sourceAgentId,
+    dedicated_agent_id: params.dedicatedAgentId,
+    cutover_token: cutover.cutoverToken,
+    shared_message_count: cutover.sharedMessageCount,
+    shared_scheduled_task_count: cutover.sharedScheduledTaskCount,
+    shared_todo_count: cutover.sharedTodoCount,
+    shared_todo_mutation_count: cutover.sharedTodoMutationCount,
+    shared_todo_digest: cutover.sharedTodoDigest,
+    cutover_activated_at: new Date(cutover.activatedAt),
+  });
+}
+
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
@@ -90,6 +113,7 @@ beforeAll(async () => {
         userIdentities,
         userCharacters,
         agentSandboxes,
+        personalDedicatedUpgradeAuthorities,
         apiKeys,
       } as never,
       dbWrite as never,
@@ -108,6 +132,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
   await dbWrite.delete(apiKeys);
+  await dbWrite.delete(personalDedicatedUpgradeAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userIdentities);
   await dbWrite.delete(users);
@@ -170,14 +195,55 @@ describe("Telegram personal Shared repeat delivery", () => {
         },
       })
       .returning();
+    await bindDedicatedAuthority({
+      organizationId: account.organizationId,
+      userId: account.userId,
+      sourceAgentId,
+      dedicatedAgentId: target.id,
+    });
 
     const query = spyOn(getPgliteClientForTests(), "query");
     const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
-    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(2);
     query.mockRestore();
     expect(replayed.dedicatedTarget).toMatchObject({
       id: target.id,
       status: "running",
+    });
+  });
+
+  test("does not project another user's marked Dedicated row from the same organization", async () => {
+    const input = telegramInput("714700109");
+    const account = await elizaAppUserService.resolvePersonalDelivery(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    const otherUserId = "aaaaaaaa-9999-4999-8999-999999999999";
+    await dbWrite.insert(users).values({
+      id: otherUserId,
+      email: "other-user@test.test",
+      organization_id: account.organizationId,
+      role: "member",
+      steward_user_id: `steward-${otherUserId}`,
+    });
+    await dbWrite.insert(agentSandboxes).values({
+      organization_id: account.organizationId,
+      user_id: otherUserId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      agent_config: {
+        [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+        [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+      },
+    });
+
+    const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
+    expect(replayed).toMatchObject({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      dedicatedTarget: null,
+      resolution: "single-query-repeat",
     });
   });
 
@@ -202,6 +268,12 @@ describe("Telegram personal Shared repeat delivery", () => {
         },
       })
       .returning();
+    await bindDedicatedAuthority({
+      organizationId: account.organizationId,
+      userId: account.userId,
+      sourceAgentId,
+      dedicatedAgentId: exact.id,
+    });
     await dbWrite.insert(agentSandboxes).values({
       organization_id: account.organizationId,
       user_id: account.userId,
@@ -368,10 +440,16 @@ describe("Phone personal Shared repeat delivery", () => {
         },
       })
       .returning();
+    await bindDedicatedAuthority({
+      organizationId: account.organizationId,
+      userId: account.userId,
+      sourceAgentId,
+      dedicatedAgentId: target.id,
+    });
 
     const query = spyOn(getPgliteClientForTests(), "query");
     const replayed = await elizaAppUserService.resolvePersonalDelivery(input);
-    expect(query).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(2);
     query.mockRestore();
     expect(replayed.dedicatedTarget).toMatchObject({
       id: target.id,
@@ -462,10 +540,16 @@ describe("Discord personal Shared repeat delivery", () => {
         },
       })
       .returning();
+    await bindDedicatedAuthority({
+      organizationId: account.organizationId,
+      userId: account.userId,
+      sourceAgentId,
+      dedicatedAgentId: exact.id,
+    });
 
     const directQuery = spyOn(getPgliteClientForTests(), "query");
     const direct = await elizaAppUserService.resolvePersonalDelivery(input);
-    expect(directQuery).toHaveBeenCalledTimes(1);
+    expect(directQuery).toHaveBeenCalledTimes(2);
     directQuery.mockRestore();
     expect(direct.dedicatedTarget?.id).toBe(exact.id);
 

@@ -37,6 +37,7 @@ const DEDICATED_A = "cccccccc-4444-4444-8444-444444444444";
 const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
 const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
 const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
+const ERROR_TARGET = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
@@ -488,11 +489,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
-  test("stopped and sleeping targets cannot restart below the hosting runway", async () => {
+  test("error, stopped, and sleeping targets cannot restart below the hosting runway", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
     const { jobs } = await import("@/db/schemas/jobs");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(agentSandboxes).values({
       id: SHARED_RESUME,
       organization_id: ORG_A,
@@ -504,6 +508,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     });
 
     for (const [targetId, status] of [
+      [ERROR_TARGET, "error"],
       [STOPPED_TARGET, "stopped"],
       [SLEEPING_TARGET, "sleeping"],
     ] as const) {
@@ -517,6 +522,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         status,
         database_status: "none",
       });
+      await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+        organization_id: ORG_A,
+        user_id: USER_A,
+        source_agent_id: SHARED_RESUME,
+        dedicated_agent_id: targetId,
+      });
 
       const res = await upgrade(SHARED_RESUME);
       expect(res.status).toBe(402);
@@ -528,6 +539,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .where(eq(jobs.agent_id, targetId));
       expect(targetJobs).toHaveLength(0);
 
+      await dbWrite
+        .delete(personalDedicatedUpgradeAuthorities)
+        .where(
+          eq(personalDedicatedUpgradeAuthorities.dedicated_agent_id, targetId),
+        );
       await dbWrite
         .delete(agentSandboxes)
         .where(eq(agentSandboxes.id, targetId));
@@ -968,6 +984,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
     const { users } = await import("@/db/schemas/users");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { personalDedicatedUpgradeAuthorities } = await import(
+      "@/db/schemas/personal-dedicated-upgrade-authorities"
+    );
     await dbWrite.insert(organizations).values({
       id: ORG_C,
       name: "Cutover Org",
@@ -993,6 +1012,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       database_status: "none",
       bridge_url: "https://dedicated-cutover.test/chat",
       environment_vars: { ELIZA_API_TOKEN: "agent_cutover_transport" },
+    });
+    await dbWrite.insert(personalDedicatedUpgradeAuthorities).values({
+      organization_id: ORG_C,
+      user_id: USER_C,
+      source_agent_id: PERSONAL_C,
+      dedicated_agent_id: CUTOVER_TARGET,
     });
 
     const originalFetch = globalThis.fetch;
@@ -1509,10 +1534,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(recoveredAfterCommit.status).toBe(200);
-      expect(cutoverCoordinatorOperations).toEqual([
-        "cutover-seal",
-        "cutover-commit",
-      ]);
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
       const [afterCommittedRecovery] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1548,7 +1570,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "@/lib/services/agent-tier-upgrade-target"
       );
       expect(
-        (await findActivePersonalDedicatedTarget(ORG_C, PERSONAL_C))?.id,
+        (await findActivePersonalDedicatedTarget(ORG_C, USER_C, PERSONAL_C))
+          ?.id,
       ).toBe(CUTOVER_TARGET);
       expect(
         (await dbWrite.select().from(agentSandboxes)).some(

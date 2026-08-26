@@ -1452,11 +1452,11 @@ describe("Android Cloud outer audit boundary", () => {
     }
   });
 
-  it("rejects a release AAB missing the Background Runner JNI bridge before inspection", () => {
+  it("keeps the Play AAB native-free when Background Runner is stripped", () => {
     const temporaryDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "eliza-outer-aab-no-background-runner-jni-"),
     );
-    const inspectAndroidAppBundleImpl = vi.fn();
+    const inspectAndroidAppBundleImpl = vi.fn(() => syntheticAabEvidence());
     const log = vi.fn();
     try {
       const artifact = writeSyntheticCloudAab(temporaryDir, {
@@ -1465,21 +1465,16 @@ describe("Android Cloud outer audit boundary", () => {
         },
       });
 
-      expect(() =>
+      expect(
         auditAndroidCloudArtifact(
           { artifact, env: {}, javaHome: JAVA_HOME },
           { inspectAndroidAppBundleImpl, log },
         ),
-      ).toThrow(
-        expect.objectContaining({
-          code: "ANDROID_BACKGROUND_RUNNER_JNI_CLASS_MISSING",
-          context: expect.objectContaining({
-            label: "android-cloud release AAB",
-          }),
-        }),
+      ).toBe(path.resolve(artifact));
+      expect(inspectAndroidAppBundleImpl).toHaveBeenCalledOnce();
+      expect(log.mock.calls.at(-1)?.[0]).toContain(
+        "android-cloud artifact audit passed",
       );
-      expect(inspectAndroidAppBundleImpl).not.toHaveBeenCalled();
-      expect(log).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(temporaryDir, { force: true, recursive: true });
     }
