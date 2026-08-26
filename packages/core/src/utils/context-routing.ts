@@ -82,19 +82,11 @@ export function isPageScopedRoutingContext(context: unknown): boolean {
 	return normalized === "page" || normalized.startsWith("page-");
 }
 
-export function isAgentContext(value: unknown): value is AgentContext {
-	return typeof value === "string" && value.trim().length > 0;
-}
-
 export function normalizeRoutingContexts(
 	contexts: readonly unknown[] | undefined,
 ): AgentContext[] {
-	if (!contexts) return [];
-	if (!Array.isArray(contexts)) {
-		return typeof contexts === "string" ? parseContextList(contexts) : [];
-	}
 	return dedupeStringValues(
-		contexts.flatMap((context) =>
+		(contexts ?? []).flatMap((context) =>
 			typeof context === "string" ? context.split(LIST_SPLIT_RE) : [],
 		),
 	)

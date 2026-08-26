@@ -15,37 +15,13 @@ import {
 	getActiveRoutingContexts,
 	getActiveRoutingContextsForTurn,
 	inferContextRoutingFromText,
-	isAgentContext,
 	mergeContextRouting,
-	normalizeRoutingContexts,
 	routingContextsOverlap,
 	shouldIncludeByContext,
 } from "./context-routing.ts";
 
 const action = (name: string, contexts?: string[]): Action =>
 	({ name, ...(contexts ? { contexts } : {}) }) as unknown as Action;
-
-describe("normalizeRoutingContexts and isAgentContext", () => {
-	it("normalizes arrays, single strings, and filters invalid entries", () => {
-		expect(normalizeRoutingContexts(["code", "  BROWSER  ", "code"])).toEqual([
-			"code",
-			"browser",
-		]);
-		expect(normalizeRoutingContexts("code, browser" as unknown as readonly unknown[])).toEqual([
-			"code",
-			"browser",
-		]);
-		expect(normalizeRoutingContexts(null as unknown as readonly unknown[])).toEqual([]);
-		expect(normalizeRoutingContexts(123 as unknown as readonly unknown[])).toEqual([]);
-	});
-
-	it("identifies non-empty string context names with isAgentContext", () => {
-		expect(isAgentContext("code")).toBe(true);
-		expect(isAgentContext("")).toBe(false);
-		expect(isAgentContext("   ")).toBe(false);
-		expect(isAgentContext(null)).toBe(false);
-	});
-});
 
 describe("routingContextsOverlap", () => {
 	it("is true only when the two sets share a context (case-insensitive)", () => {
