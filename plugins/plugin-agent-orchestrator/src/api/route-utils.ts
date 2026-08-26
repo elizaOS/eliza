@@ -41,18 +41,22 @@ export async function parseBody(
   }
 
   return new Promise((resolve, reject) => {
-    let body = "";
+    const chunks: Buffer[] = [];
     let size = 0;
     req.on("data", (chunk: Buffer | string) => {
-      size += typeof chunk === "string" ? chunk.length : chunk.byteLength;
+      const buf =
+        typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk;
+      size += buf.byteLength;
       if (size > MAX_BODY_SIZE) {
         req.destroy();
         reject(new Error("Request body too large"));
         return;
       }
-      body += chunk;
+      chunks.push(buf);
     });
     req.on("end", () => {
+      const body =
+        chunks.length > 0 ? Buffer.concat(chunks).toString("utf-8") : "";
       try {
         resolve(body ? JSON.parse(body) : {});
       } catch {
